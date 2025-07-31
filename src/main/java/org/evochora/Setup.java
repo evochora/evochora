@@ -1,6 +1,9 @@
 // src/main/java/org/evochora/Setup.java
 package org.evochora;
 
+import org.evochora.organism.Organism;
+import org.evochora.world.Symbol;
+import org.evochora.world.World;
 import java.util.Arrays;
 
 public class Setup {
@@ -10,23 +13,23 @@ public class Setup {
     }
 
     private static void placeInitialOrganism(Simulation simulation) {
-        int[] programCode = {
-                Config.OP_SETL,
-                0,
-                123
+        // Definiere den Maschinencode als Symbol-Objekte
+        Symbol[] programCode = {
+                new Symbol(Config.TYPE_CODE, 1), // SETL Opcode
+                new Symbol(Config.TYPE_DATA, 0), // Argument 1: Register Index (DR0)
+                new Symbol(Config.TYPE_DATA, 123) // Argument 2: Literal-Wert
         };
 
         int[] startPos = {Config.WORLD_SHAPE[0] / 2, Config.WORLD_SHAPE[1] / 2};
+        World world = simulation.getWorld();
 
         int[] currentPos = Arrays.copyOf(startPos, startPos.length);
-        for (int symbol : programCode) {
-            simulation.getWorld().setSymbol(symbol, currentPos);
+        for (Symbol symbol : programCode) {
+            world.setSymbol(symbol, currentPos);
             currentPos[0]++;
         }
 
-        // KORRIGIERT: Erstellt den Organismus über die Factory-Methode
         Organism org = Organism.create(simulation, startPos, Config.INITIAL_ORGANISM_ENERGY);
-        // Fügt die fertige Instanz zur Simulation hinzu
         simulation.addOrganism(org);
     }
 }

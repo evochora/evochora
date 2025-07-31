@@ -5,45 +5,42 @@ import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
+import org.evochora.organism.Organism;
+import org.evochora.world.Symbol;
+import org.evochora.world.World;
 
 import java.util.List;
 
 public class Renderer {
     private final Canvas canvas;
     private final GraphicsContext gc;
-    private final Config config;
 
-    public Renderer(Canvas canvas, Config config) {
+    public Renderer(Canvas canvas) {
         this.canvas = canvas;
         this.gc = canvas.getGraphicsContext2D();
-        this.config = config; // TODO: Renderer.config is not used and can be removed
     }
 
     public void draw(Simulation simulation, Organism selectedOrganism) {
-        // 1. Hintergrund zeichnen
         gc.setFill(Color.rgb(10, 10, 20));
         gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
 
-        // 2. Welt-Gitter zeichnen
         World world = simulation.getWorld();
         for (int x = 0; x < world.getShape()[0]; x++) {
             for (int y = 0; y < world.getShape()[1]; y++) {
-                int symbol = world.getSymbol(x, y);
-                if (symbol > 0) { // Zeichne nur, was nicht leer ist
+                Symbol symbol = world.getSymbol(x, y);
+                if (!symbol.isEmpty()) {
                     gc.setFill(getColorForSymbol(symbol));
                     gc.fillRect(x * Config.CELL_SIZE, y * Config.CELL_SIZE, Config.CELL_SIZE, Config.CELL_SIZE);
                 }
             }
         }
 
-        // 3. Organismen zeichnen
         for (Organism org : simulation.getOrganisms()) {
             if (!org.isDead()) {
                 drawOrganism(org);
             }
         }
 
-        // 4. Sidebar zeichnen (sehr einfach für den Anfang)
         drawSidebar(simulation, selectedOrganism);
     }
 
@@ -79,10 +76,13 @@ public class Renderer {
         }
     }
 
-    private Color getColorForSymbol(int symbol) {
-        if (symbol == Config.OP_SETL) {
-            return Color.rgb(60, 80, 120); // Code-Farbe
-        }
-        return Color.rgb(100, 100, 100); // Daten-Farbe
+    private Color getColorForSymbol(Symbol symbol) {
+        return switch (symbol.type()) {
+            case Config.TYPE_CODE -> Color.rgb(60, 80, 120);
+            case Config.TYPE_DATA -> Color.rgb(100, 100, 100);
+            case Config.TYPE_STRUCTURE -> Color.rgb(150, 150, 180);
+            case Config.TYPE_ENERGY -> Color.rgb(200, 200, 50);
+            default -> Color.rgb(30, 30, 40);
+        };
     }
 }

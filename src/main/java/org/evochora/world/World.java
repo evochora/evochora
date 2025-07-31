@@ -1,6 +1,7 @@
-// src/main/java/org/evochora/World.java
-package org.evochora;
+// src/main/java/org/evochora/world/World.java
+package org.evochora.world;
 
+import org.evochora.Config;
 import java.util.Arrays;
 
 public class World {
@@ -12,14 +13,10 @@ public class World {
     public World(int[] shape, boolean toroidal) {
         this.shape = shape;
         this.isToroidal = toroidal;
-
         int size = 1;
-        for (int dim : shape) {
-            size *= dim;
-        }
+        for (int dim : shape) { size *= dim; }
         this.grid = new int[size];
-        Arrays.fill(this.grid, Config.OP_NOP);
-
+        Arrays.fill(this.grid, 0);
         this.strides = new int[shape.length];
         int stride = 1;
         for (int i = shape.length - 1; i >= 0; i--) {
@@ -28,19 +25,9 @@ public class World {
         }
     }
 
-    /**
-     * NEU: Öffentliche Methode, die von Organismen zur Berechnung von
-     * n-dimensionalen Koordinaten verwendet wird.
-     * @param coord Die zu normalisierende Koordinate.
-     * @return Die normalisierte Koordinate.
-     *
-     * TODO: make World.getNormalizedCoordinate() n-dimensional
-     */
     public int[] getNormalizedCoordinate(int... coord) {
         if (coord.length != this.shape.length) {
-            // Wirft einen Fehler, wenn die Dimensionen nicht übereinstimmen.
-            throw new IllegalArgumentException("Coordinate dimensions " + coord.length +
-                    " do not match world dimensions " + this.shape.length);
+            throw new IllegalArgumentException("Coordinate dimensions do not match world dimensions.");
         }
         int[] normalized = new int[coord.length];
         for (int i = 0; i < coord.length; i++) {
@@ -55,15 +42,13 @@ public class World {
 
     private int getFlatIndex(int... coord) {
         int[] normalizedCoord = getNormalizedCoordinate(coord);
-
         if (!isToroidal) {
             for(int i = 0; i < shape.length; i++) {
                 if (normalizedCoord[i] < 0 || normalizedCoord[i] >= shape[i]) {
-                    return -1; // Außerhalb der Grenzen
+                    return -1;
                 }
             }
         }
-
         int flatIndex = 0;
         for (int i = 0; i < shape.length; i++) {
             flatIndex += normalizedCoord[i] * this.strides[i];
@@ -71,19 +56,18 @@ public class World {
         return flatIndex;
     }
 
-    // TODO: return instance of abstract class Symbol that can be Code, Data, Structure or Energy
-    public int getSymbol(int... coord) {
+    public Symbol getSymbol(int... coord) {
         int index = getFlatIndex(coord);
         if (index == -1) {
-            return 0;
+            return Symbol.fromInt(0);
         }
-        return this.grid[index];
+        return Symbol.fromInt(this.grid[index]);
     }
 
-    public void setSymbol(int value, int... coord) {
+    public void setSymbol(Symbol symbol, int... coord) {
         int index = getFlatIndex(coord);
         if (index != -1) {
-            this.grid[index] = value;
+            this.grid[index] = symbol.toInt();
         }
     }
 
