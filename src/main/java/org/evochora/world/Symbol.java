@@ -5,28 +5,34 @@ import org.evochora.Config;
 
 public record Symbol(int type, int value) {
 
+    /**
+     * Erstellt ein Symbol-Objekt aus einem vollen 32-Bit-Integer-Wert.
+     */
     public static Symbol fromInt(int fullValue) {
-        // KORRIGIERT: Prüft direkt auf den Wert 0 für "Leer".
+        // FINALE LOGIK: 0 ist immer Leerer Raum/NOP und hat den Typ CODE.
         if (fullValue == 0) {
-            // Wir geben einen neutralen Typ zurück, da 0 keinen Typ-Header hat.
-            // TYPE_DATA ist hier ein sicherer Platzhalter.
-            return new Symbol(Config.TYPE_DATA, 0);
+            return new Symbol(Config.TYPE_CODE, 0);
         }
         int type = fullValue & Config.TYPE_MASK;
         int value = fullValue & Config.VALUE_MASK;
         return new Symbol(type, value);
     }
 
+    /**
+     * Konvertiert dieses Symbol-Objekt zurück in einen 32-Bit-Integer.
+     */
     public int toInt() {
-        // KORRIGIERT: Prüft auf den Wert 0. Wenn der Wert 0 ist, ist die Zelle leer.
-        if (this.value == 0) {
+        // FINALE LOGIK: Der NOP-Befehl (Code, Wert 0) wird korrekt zu 0.
+        if (this.type == Config.TYPE_CODE && this.value == 0) {
             return 0;
         }
         return this.type | this.value;
     }
 
+    /**
+     * Eine Zelle ist leer, wenn ihr Gesamtwert 0 ist.
+     */
     public boolean isEmpty() {
-        // Eine Zelle ist leer, wenn ihr Gesamtwert 0 ist.
         return this.toInt() == 0;
     }
 }

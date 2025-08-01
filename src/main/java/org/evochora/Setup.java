@@ -17,7 +17,9 @@ public class Setup {
         Symbol[] programCode = {
                 new Symbol(Config.TYPE_CODE, 1), // SETL Opcode
                 new Symbol(Config.TYPE_DATA, 0), // Argument 1: Register Index (DR0)
-                new Symbol(Config.TYPE_DATA, 123) // Argument 2: Literal-Wert
+                new Symbol(Config.TYPE_DATA, 123), // Argument 2: Literal-Wert
+                new Symbol(Config.TYPE_ENERGY, 765),
+                new Symbol(Config.TYPE_STRUCTURE, 345) // Argument 2: Literal-Wert
         };
 
         int[] startPos = {Config.WORLD_SHAPE[0] / 2, Config.WORLD_SHAPE[1] / 2};
