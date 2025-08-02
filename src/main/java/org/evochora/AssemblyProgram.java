@@ -2,66 +2,74 @@
 package org.evochora;
 
 import org.evochora.organism.Organism;
-import org.evochora.world.World;
-
+import org.evochora.world.Symbol;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public abstract class AssemblyProgram {
-    // Statische Dictionaries, die für alle Programme gelten
     protected static final Map<String, Object> programIdToMetadata = new HashMap<>();
     protected static final Map<Integer, String> organismIdToProgramId = new HashMap<>();
 
-    // Instanzvariablen für das Ergebnis der Assemblierung
     protected List<Integer> machineCode;
     protected String programId;
+    protected Map<int[], Integer> layout;
+    protected Map<int[], Symbol> initialWorldObjects = new HashMap<>();
 
-    /**
-     * Muss von jeder Unterklasse implementiert werden.
-     * @return Der menschenlesbare Assembly-Code als String.
-     */
     public abstract String getAssemblyCode();
 
-    /**
-     * Übersetzt den Assembly-Code in Maschinencode.
-     * Diese Version verarbeitet .REG Direktiven und einfache Befehle ohne Labels.
-     * @return Eine Liste von Integern, die den Maschinencode repräsentiert.
-     */
-    public List<Integer> assemble() {
-        if (this.machineCode != null) {
-            return this.machineCode; // Nur einmal assemblieren
-        }
+    public Map<int[], Integer> assemble() {
+        if (this.layout != null && !this.layout.isEmpty()) return this.layout;
 
-        List<Integer> machineCodeList = new ArrayList<>();
+        this.layout = new LinkedHashMap<>();
         Map<String, Integer> registerMap = new HashMap<>();
-
+        this.initialWorldObjects.clear();
         String[] lines = getAssemblyCode().split("\\r?\\n");
 
-        // Phase 1: Register-Definitionen sammeln
+        int[] currentPos = new int[Config.WORLD_DIMENSIONS];
+        int[] currentDv = new int[Config.WORLD_DIMENSIONS];
+        currentDv[0] = 1;
+
         for (String line : lines) {
             line = line.strip();
-            if (line.toUpperCase().startsWith(".REG")) {
-                String[] parts = line.split("\\s+");
-                if (parts.length != 3 || !parts[1].startsWith("%")) {
-                    throw new IllegalArgumentException("Syntaxfehler in .REG-Direktive: " + line);
+            if (line.isEmpty() || line.startsWith("#")) continue;
+
+            String[] parts = line.split("\\s+");
+            String directive = parts[0].toUpperCase();
+
+            if (directive.equals(".REG")) {
+                registerMap.put(parts[1].toUpperCase(), Integer.parseInt(parts[2]));
+            } else if (directive.equals(".PLACE")) {
+                if (parts.length != 3 + Config.WORLD_DIMENSIONS) throw new IllegalArgumentException(".PLACE erwartet " + Config.WORLD_DIMENSIONS + " Koordinaten.");
+                String typeName = parts[1].toUpperCase();
+                int value = Integer.parseInt(parts[2]);
+                int[] relativePos = new int[Config.WORLD_DIMENSIONS];
+                for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
+                    relativePos[i] = Integer.parseInt(parts[3 + i]);
                 }
-                String regName = parts[1].toUpperCase();
-                int regId = Integer.parseInt(parts[2]);
-                registerMap.put(regName, regId);
+                int type = switch (typeName) {
+                    case "ENERGY" -> Config.TYPE_ENERGY;
+                    case "STRUCTURE" -> Config.TYPE_STRUCTURE;
+                    case "DATA" -> Config.TYPE_DATA;
+                    case "CODE" -> Config.TYPE_CODE;
+                    default -> throw new IllegalArgumentException("Unbekannter Typ in .PLACE: " + typeName);
+                };
+                initialWorldObjects.put(relativePos, new Symbol(type, value));
             }
         }
 
-        // Phase 2: Maschinencode generieren
         for (String line : lines) {
             line = line.split("#")[0].strip();
-            if (line.isEmpty() || line.toUpperCase().startsWith(".REG")) {
+            if (line.isEmpty() || line.startsWith(".")) {
+                if (line.toUpperCase().startsWith(".DIR")) {
+                    String[] parts = line.split("\\s+");
+                    String[] vectorComponents = parts[1].split("\\|");
+                    if (vectorComponents.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException(".DIR erwartet einen " + Config.WORLD_DIMENSIONS + "D Vektor.");
+                    for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
+                        currentDv[i] = Integer.parseInt(vectorComponents[i].strip());
+                    }
+                }
                 continue;
             }
 
@@ -70,85 +78,72 @@ public abstract class AssemblyProgram {
             String argsStr = (parts.length > 1) ? parts[1] : "";
 
             Integer opcode = Config.NAME_TO_OPCODE.get(opcodeName);
-            if (opcode == null) {
-                throw new IllegalArgumentException("Unbekannter Befehl: " + opcodeName);
-            }
-            machineCodeList.add(opcode);
+            if (opcode == null) throw new IllegalArgumentException("Unbekannter Befehl: " + opcodeName);
+
+            this.layout.put(Arrays.copyOf(currentPos, currentPos.length), opcode);
+            for(int i=0; i<currentPos.length; i++) currentPos[i] += currentDv[i];
 
             if (!argsStr.isEmpty()) {
                 String[] args = argsStr.split("\\s+");
-
-                // --- NEUE LOGIK FÜR SETV ---
                 if (opcodeName.equals("SETV")) {
-                    if (args.length != 2 || !args[0].startsWith("%")) {
-                        throw new IllegalArgumentException("Syntaxfehler bei SETV: Erwartet 'SETV %REG X|Y|...'");
-                    }
-                    // Verarbeite das Register-Argument
                     String regName = args[0].toUpperCase();
-                    if (!registerMap.containsKey(regName)) {
-                        throw new IllegalArgumentException("Unbekanntes Register in SETV: " + regName);
-                    }
-                    machineCodeList.add(registerMap.get(regName));
+                    if (!registerMap.containsKey(regName)) throw new IllegalArgumentException("Unbekanntes Register in SETV: " + regName);
+                    this.layout.put(Arrays.copyOf(currentPos, currentPos.length), registerMap.get(regName));
+                    for(int i=0; i<currentPos.length; i++) currentPos[i] += currentDv[i];
 
-                    // Verarbeite das Vektor-Literal
                     String[] vectorComponents = args[1].split("\\|");
+                    if (vectorComponents.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("Falsche Vektor-Dimensionalität bei SETV");
                     for (String component : vectorComponents) {
-                        machineCodeList.add(Integer.parseInt(component.strip()));
+                        this.layout.put(Arrays.copyOf(currentPos, currentPos.length), Integer.parseInt(component.strip()));
+                        for(int i=0; i<currentPos.length; i++) currentPos[i] += currentDv[i];
                     }
                 } else {
-                    // --- Bestehende Logik für alle anderen Befehle ---
                     for (String arg : args) {
                         arg = arg.strip().toUpperCase();
-                        if (arg.startsWith("%")) { // Register
-                            if (!registerMap.containsKey(arg)) {
-                                throw new IllegalArgumentException("Unbekanntes Register: " + arg);
-                            }
-                            machineCodeList.add(registerMap.get(arg));
-                        } else { // Literal
-                            machineCodeList.add(Integer.parseInt(arg));
+                        int value;
+                        if (arg.startsWith("%")) {
+                            if (!registerMap.containsKey(arg)) throw new IllegalArgumentException("Unbekanntes Register: " + arg);
+                            value = registerMap.get(arg);
+                        } else {
+                            value = Integer.parseInt(arg);
                         }
+                        this.layout.put(Arrays.copyOf(currentPos, currentPos.length), value);
+                        for(int i=0; i<currentPos.length; i++) currentPos[i] += currentDv[i];
                     }
                 }
             }
         }
 
-        this.machineCode = machineCodeList;
+        this.machineCode = new ArrayList<>(this.layout.values());
 
-        // Erzeuge die programId als Hash des Maschinencodes
         try {
+            // KORRIGIERTER ALGORITHMUS-NAME
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             ByteBuffer buffer = ByteBuffer.allocate(machineCode.size() * 4);
-            for (int code : machineCode) {
-                buffer.putInt(code);
-            }
+            for (int code : machineCode) buffer.putInt(code);
             byte[] hashBytes = digest.digest(buffer.array());
             this.programId = Base64.getUrlEncoder().withoutPadding().encodeToString(Arrays.copyOf(hashBytes, 12));
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 nicht gefunden", e);
         }
 
-        // Metadaten speichern
         programIdToMetadata.put(this.programId, Map.of("registerMap", registerMap));
-
-        return this.machineCode;
+        return this.layout;
     }
 
-    /**
-     * Verknüpft eine laufende Organismus-ID mit der Programm-ID dieser Instanz.
-     * @param organismId Die von der Simulation vergebene ID.
-     */
-    public void assignOrganism(int organismId) {
+    public Map<int[], Symbol> getInitialWorldObjects() {
+        return this.initialWorldObjects;
+    }
+
+    public void assignOrganism(Organism organism) {
         if (this.programId == null) {
             throw new IllegalStateException("Muss zuerst .assemble() aufrufen.");
         }
-        organismIdToProgramId.put(organismId, this.programId);
+        organismIdToProgramId.put(organism.getId(), this.programId);
     }
 
-    /**
-     * Die Schnittstelle für den intelligenten Logger. (Platzhalter)
-     */
     public static String disassembleLine(int organismId) {
-        // TODO: Hier kommt die Disassembler-Logik hin.
+        // TODO: Implementierung folgt
         return null;
     }
 }

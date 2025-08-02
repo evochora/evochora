@@ -54,7 +54,7 @@ public final class Config {
     // Typen 0x04 bis 0xFF sind für die Zukunft reserviert.
 
     // --- Opcode Definition ---
-    public record Opcode(int id, String name, int baseCost, int length, String shortName) {}
+    public record Opcode(int id, String name, int baseCost, int length) {}
     public static final Map<Integer, Opcode> OPCODE_DEFINITIONS = new HashMap<>();
     public static final Map<String, Integer> NAME_TO_OPCODE = new HashMap<>();
     public static final Map<Integer, Integer> OPCODE_COSTS = new HashMap<>();
@@ -65,16 +65,32 @@ public final class Config {
             OP_POKE, OP_SCAN, OP_NRG, OP_FORK, OP_DIFF;
 
     static {
-        addOpcode(0, "NOP", 1, 1, "NP");
-        addOpcode(1, "SETL", 1, 3, "SL");
-        addOpcode(2, "SETR", 1, 3, "SR");
-        // ... (alle anderen addOpcode Aufrufe)
+        addOpcode(0, "NOP", 1, 1);
+        addOpcode(1, "SETL", 1, 3);
+        addOpcode(2, "SETR", 1, 3);
+        addOpcode(3, "SETV", 1, 2 + WORLD_DIMENSIONS);
+        addOpcode(4, "ADD", 1, 3);
+        addOpcode(5, "SUB", 1, 3);
+        addOpcode(6, "NAND", 1, 3);
+        addOpcode(7, "IF", 1, 3);
+        addOpcode(8, "IFLT", 1, 3);
+        addOpcode(9, "IFGT", 1, 3);
+        addOpcode(10, "JUMP", 1, 2);
+        addOpcode(11, "TURN", 1, 2);
+        addOpcode(12, "SEEK", 1, 2);
+        addOpcode(13, "SYNC", 1, 1);
+        addOpcode(14, "PEEK", 1, 3);
+        addOpcode(15, "POKE", 1, 3);
+        addOpcode(16, "SCAN", 0, 3);
+        addOpcode(17, "NRG", 0, 2);
+        addOpcode(18, "FORK", 10, 4);
+        addOpcode(19, "DIFF", 1, 2);
     }
 
-    private static void addOpcode(int value, String name, int cost, int length, String shortName) {
+    private static void addOpcode(int value, String name, int cost, int length) {
         // FINALE LOGIK: 0 ist NOP und hat Typ CODE. Alle anderen Werte werden mit TYPE_CODE kombiniert.
         int finalId = (value == 0) ? 0 : TYPE_CODE | value;
-        Opcode opcode = new Opcode(finalId, name, cost, length, shortName);
+        Opcode opcode = new Opcode(finalId, name, cost, length);
 
         OPCODE_DEFINITIONS.put(finalId, opcode);
         NAME_TO_OPCODE.put(name, finalId);

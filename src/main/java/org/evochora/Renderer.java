@@ -34,9 +34,11 @@ public class Renderer {
     }
 
     public void draw(Simulation simulation, Organism selectedOrganism) {
+        // 1. Hintergrund löschen
         gc.setFill(Config.COLOR_BG);
         gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
 
+        // 2. Welt-Gitter zeichnen
         World world = simulation.getWorld();
         for (int x = 0; x < world.getShape()[0]; x++) {
             for (int y = 0; y < world.getShape()[1]; y++) {
@@ -51,10 +53,12 @@ public class Renderer {
             }
         }
 
+        // 3. Organismen zeichnen
         for (Organism org : simulation.getOrganisms()) {
             drawOrganism(org, selectedOrganism);
         }
 
+        // 4. Header und Footer zeichnen
         drawHeader(simulation);
         drawFooter(simulation, selectedOrganism);
     }
@@ -62,44 +66,32 @@ public class Renderer {
     private void drawCellText(Symbol symbol, double cellX, double cellY) {
         if (symbol.isEmpty()) return;
 
-        if (symbol.type() == Config.TYPE_CODE) {
-            gc.setFill(Config.COLOR_TEXT);
-        } else {
-            gc.setFill(Config.COLOR_TEXT_IN_CELL);
-        }
-
+        gc.setFill(Config.COLOR_TEXT_IN_CELL);
         gc.setFont(cellFont);
         gc.setTextAlign(TextAlignment.CENTER);
 
-        double textHeight = gc.getFont().getSize();
-
-        String text = "";
         Config.Opcode opcode = Config.OPCODE_DEFINITIONS.get(symbol.toInt());
         if (opcode != null) {
-            String name = opcode.name();
-            if (name.length() == 4) {
-                String line1 = name.substring(0, 2);
-                String line2 = name.substring(2, 4);
+            String fullName = opcode.name();
+            String line1 = fullName.substring(0, Math.min(fullName.length(), 2));
+            String line2 = (fullName.length() > 2) ? fullName.substring(2) : "";
 
-                double startY = cellY + Config.CELL_SIZE / 2.0 - textHeight + (textHeight * 0.9);
+            double centerX = cellX + Config.CELL_SIZE / 2.0;
+            double y1 = cellY + Config.CELL_SIZE * 0.4;
+            double y2 = cellY + Config.CELL_SIZE * 0.8;
 
-                gc.fillText(line1, cellX + Config.CELL_SIZE / 2.0, startY);
-                gc.fillText(line2, cellX + Config.CELL_SIZE / 2.0, startY + textHeight);
-                return;
-            } else {
-                text = name;
-            }
-        } else if (symbol.toInt() != 0) {
-            text = String.valueOf(symbol.value());
+            gc.fillText(line1, centerX, y1);
+            gc.fillText(line2, centerX, y2);
+        } else {
+            String text = String.valueOf(symbol.value());
+            gc.fillText(text, cellX + Config.CELL_SIZE / 2.0, cellY + Config.CELL_SIZE / 2.0 + 4);
         }
-
-        double textY = cellY + Config.CELL_SIZE / 2.0 + textHeight * 0.35;
-        gc.fillText(text, cellX + Config.CELL_SIZE / 2.0, textY);
     }
 
     private void drawOrganism(Organism org, Organism selectedOrganism) {
         Color orgColor = organismColorMap.computeIfAbsent(org.getId(), id -> colorPalette[id % colorPalette.length]);
 
+        // --- Zeichne den IP (Instruction Pointer) als Umrandung für ALLE Organismen ---
         int[] ip = org.getIp();
         double x = ip[0] * Config.CELL_SIZE;
         double y = ip[1] * Config.CELL_SIZE + Config.HEADER_HEIGHT;
@@ -108,83 +100,82 @@ public class Renderer {
         gc.setLineWidth(2.5);
         gc.strokeRect(x + 1, y + 1, Config.CELL_SIZE - 2, Config.CELL_SIZE - 2);
 
+        // --- Zeichne DP und DV NUR für den ausgewählten, lebenden Organismus ---
         if (org == selectedOrganism && !org.isDead()) {
-            drawDv(org, x, y);
+            // Zeichne den DP (Daten-Pointer)
+            int[] dp = org.getDp();
+            double dpX = dp[0] * Config.CELL_SIZE;
+            double dpY = dp[1] * Config.CELL_SIZE + Config.HEADER_HEIGHT;
+            drawDp(new javafx.geometry.Rectangle2D(dpX, dpY, Config.CELL_SIZE, Config.CELL_SIZE), orgColor);
+
+            // Zeichne den DV (Direction Vector)
+            drawDv(x, y, orgColor, org.getDv());
         }
     }
 
-    private void drawDv(Organism org, double cellX, double cellY) {
-        Color orgColor = organismColorMap.computeIfAbsent(org.getId(), id -> colorPalette[id % colorPalette.length]);
+    private void drawDp(javafx.geometry.Rectangle2D cellRect, Color color) {
+        Color dpColor = color.deriveColor(0, 1.0, 1.2, 0.9);
+        gc.setStroke(dpColor);
+        gc.setLineWidth(1.5);
+        double radius = Config.CELL_SIZE * 0.35;
+        gc.strokeOval(cellRect.getMinX() + (Config.CELL_SIZE / 2.0) - radius,
+                cellRect.getMinY() + (Config.CELL_SIZE / 2.0) - radius,
+                radius * 2, radius * 2);
+    }
 
-        gc.setFill(orgColor);
-        int[] dv = org.getDv();
+    private void drawDv(double cellX, double cellY, Color color, int[] dv) {
+        gc.setFill(color);
         double centerX = cellX + Config.CELL_SIZE / 2.0;
         double centerY = cellY + Config.CELL_SIZE / 2.0;
         double size = Config.CELL_SIZE * 0.2;
-
-        gc.fillOval(centerX + dv[0] * size - size/2, centerY + dv[1] * size - size/2, size, size);
+        double offset = Config.CELL_SIZE * 0.35;
+        gc.fillOval(centerX + dv[0] * offset - size / 2, centerY + dv[1] * offset - size / 2, size, size);
     }
 
     private void drawHeader(Simulation simulation) {
         gc.setFill(Config.COLOR_HEADER_FOOTER);
-        gc.fillRect(0, 0, canvas.getWidth(), Config.HEADER_HEIGHT);
-
+        gc.fillRect(0, 0, Config.SCREEN_WIDTH, Config.HEADER_HEIGHT);
         gc.setFill(Config.COLOR_TEXT);
         gc.setFont(uiFont);
         gc.setTextAlign(TextAlignment.LEFT);
-
         String status = simulation.paused ? "PAUSED" : "RUNNING";
         gc.fillText("Status: " + status, 10, 30);
         gc.fillText("Tick: " + simulation.getCurrentTick(), 200, 30);
-
-        double buttonWidth = 100;
-        double buttonHeight = 30;
-        double buttonY = 10;
-        double textOffset = 20;
-
         gc.setStroke(Config.COLOR_TEXT);
         gc.setTextAlign(TextAlignment.CENTER);
-
-        // Play/Pause Button
-        double playPauseX = 400;
-        gc.strokeRect(playPauseX, buttonY, buttonWidth, buttonHeight);
-        gc.fillText("Play/Pause", playPauseX + buttonWidth / 2, buttonY + textOffset);
-
-        // Next Tick Button
-        double nextTickX = 510;
-        gc.strokeRect(nextTickX, buttonY, buttonWidth, buttonHeight);
-        gc.fillText("Next Tick", nextTickX + buttonWidth / 2, buttonY + textOffset);
-
-        // Restart Button
-        double restartX = 620;
-        gc.strokeRect(restartX, buttonY, buttonWidth, buttonHeight);
-        gc.fillText("Restart", restartX + buttonWidth / 2, buttonY + textOffset);
+        gc.strokeRect(400, 10, 100, 30);
+        gc.fillText("Play/Pause", 450, 30);
+        gc.strokeRect(510, 10, 100, 30);
+        gc.fillText("Next Tick", 560, 30);
+        gc.strokeRect(620, 10, 100, 30);
+        gc.fillText("Restart", 670, 30);
     }
 
     private void drawFooter(Simulation simulation, Organism selectedOrganism) {
         double footerY = Config.HEADER_HEIGHT + (Config.WORLD_SHAPE[1] * Config.CELL_SIZE);
         gc.setFill(Config.COLOR_HEADER_FOOTER);
-        gc.fillRect(0, footerY, canvas.getWidth(), Config.FOOTER_HEIGHT);
+        gc.fillRect(0, footerY, Config.SCREEN_WIDTH, Config.FOOTER_HEIGHT);
 
         if (selectedOrganism != null) {
-            Color orgColor = organismColorMap.computeIfAbsent(selectedOrganism.getId(), id -> colorPalette[id % colorPalette.length]);
+            Color orgColor = organismColorMap.get(selectedOrganism.getId());
+            if (orgColor == null) return; // Sicherheitsabfrage
+
             gc.setFill(selectedOrganism.isDead() ? Config.COLOR_DEAD : orgColor);
-            gc.setFont(uiFont);
+            gc.setFont(Font.font("Monospaced", 14));
             gc.setTextAlign(TextAlignment.LEFT);
 
-            String line1 = String.format("ID: %d %s | ER: %d | IP: %s",
+            String line1 = String.format("ID: %d %s | ER: %d | IP: %s | DP: %s",
                     selectedOrganism.getId(), selectedOrganism.isDead() ? "(DEAD)" : "",
-                    selectedOrganism.getEr(), Arrays.toString(selectedOrganism.getIp()));
-            // Position der ersten Zeile: 15 Pixel von oben im Footer
-            gc.fillText(line1, 10, footerY + 18); // Angepasst von 20 auf 18
+                    selectedOrganism.getEr(), Arrays.toString(selectedOrganism.getIp()),
+                    Arrays.toString(selectedOrganism.getDp()));
+            gc.fillText(line1, 10, footerY + 20);
 
             List<Object> drs = selectedOrganism.getDrs();
             StringBuilder line2 = new StringBuilder("DRs: ");
             for(int i = 0; i < drs.size(); i++) {
                 line2.append(String.format("%d:[%s] ", i, drs.get(i).toString()));
             }
-            // Position der zweiten Zeile: 15 Pixel unterhalb der ersten Zeile
-            gc.fillText(line2.toString(), 10, footerY + 18 + uiFont.getSize() + 8); // uiFont.getSize() + 8 für mehr Abstand
+            gc.fillText(line2.toString(), 10, footerY + 45);
         }
     }
 

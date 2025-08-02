@@ -2,36 +2,73 @@
 package org.evochora;
 
 import org.evochora.organism.Organism;
+import org.evochora.organism.prototypes.AllOpcodesTester;
+import org.evochora.organism.prototypes.DpMovementTester;
+import org.evochora.organism.prototypes.LShapedOrganism; // NEUER IMPORT
+import org.evochora.organism.prototypes.SetlTester;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 
 public class Setup {
 
     public static void run(Simulation simulation) {
-        placeInitialOrganism(simulation);
+        // Test 1: SETL
+        SetlTester setlTestProgram = new SetlTester();
+        placeProgram(simulation, setlTestProgram, new int[]{10, 5});
+
+        // Test 2: DP Movement
+        DpMovementTester dpTestProgram = new DpMovementTester();
+        placeProgram(simulation, dpTestProgram, new int[]{10, 10});
+
+        // Test 3: All other Opcodes
+        AllOpcodesTester allOpcodesProgram = new AllOpcodesTester();
+        placeProgram(simulation, allOpcodesProgram, new int[]{10, 15});
+
+        // NEU: Test 4: L-förmiger Organismus
+        LShapedOrganism lShapedProgram = new LShapedOrganism();
+        placeProgram(simulation, lShapedProgram, new int[]{10, 20});
     }
 
-    private static void placeInitialOrganism(Simulation simulation) {
-        // Definiere den Maschinencode als Symbol-Objekte
-        Symbol[] programCode = {
-                new Symbol(Config.TYPE_CODE, 1), // SETL Opcode
-                new Symbol(Config.TYPE_DATA, 0), // Argument 1: Register Index (DR0)
-                new Symbol(Config.TYPE_DATA, 123), // Argument 2: Literal-Wert
-                new Symbol(Config.TYPE_ENERGY, 765),
-                new Symbol(Config.TYPE_STRUCTURE, 345) // Argument 2: Literal-Wert
-        };
+    private static void placeProgram(Simulation simulation, AssemblyProgram program, int[] startPos) {
+        Map<int[], Integer> layout = program.assemble();
+        Map<int[], Symbol> worldObjects = program.getInitialWorldObjects();
+        Organism org = placeOrganismWithLayout(simulation, startPos, layout, worldObjects);
+        program.assignOrganism(org);
+    }
 
-        int[] startPos = {Config.WORLD_SHAPE[0] / 2, Config.WORLD_SHAPE[1] / 2};
+    private static Organism placeOrganismWithLayout(
+            Simulation simulation,
+            int[] startPos,
+            Map<int[], Integer> layout,
+            Map<int[], Symbol> worldObjects)
+    {
         World world = simulation.getWorld();
 
-        int[] currentPos = Arrays.copyOf(startPos, startPos.length);
-        for (Symbol symbol : programCode) {
-            world.setSymbol(symbol, currentPos);
-            currentPos[0]++;
+        for (Map.Entry<int[], Integer> entry : layout.entrySet()) {
+            int[] relativePos = entry.getKey();
+            int value = entry.getValue();
+            int[] absolutePos = new int[startPos.length];
+            for (int i = 0; i < startPos.length; i++) {
+                absolutePos[i] = startPos[i] + relativePos[i];
+            }
+            world.setSymbol(Symbol.fromInt(value), absolutePos);
+        }
+
+        for (Map.Entry<int[], Symbol> entry : worldObjects.entrySet()) {
+            int[] relativePos = entry.getKey();
+            Symbol symbol = entry.getValue();
+            int[] absolutePos = new int[startPos.length];
+            for (int i = 0; i < startPos.length; i++) {
+                absolutePos[i] = startPos[i] + relativePos[i];
+            }
+            world.setSymbol(symbol, absolutePos);
         }
 
         Organism org = Organism.create(simulation, startPos, Config.INITIAL_ORGANISM_ENERGY);
         simulation.addOrganism(org);
+        return org;
     }
 }
