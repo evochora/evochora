@@ -1,8 +1,11 @@
-// src/main/java/org/evochora/organism/actions/NandAction.java
+// src/main/java/org/evochora/organism/NandAction.java
 package org.evochora.organism;
 
+import org.evochora.organism.Action;
+import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -10,7 +13,7 @@ public class NandAction extends Action {
     private final int reg1;
     private final int reg2;
 
-    public NandAction(Organism organism, int reg1, int reg2) { super(organism); this.reg1 = reg1; this.reg2 = reg2; }
+    public NandAction(Organism o, int r1, int r2) { super(o); this.reg1 = r1; this.reg2 = r2; }
 
     public static List<Integer> assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
         if (args.length != 2) throw new IllegalArgumentException("NAND erwartet 2 Argumente: %REG1 %REG2");
@@ -18,7 +21,8 @@ public class NandAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        return new NandAction(organism, organism.fetchArgument(world), organism.fetchArgument(world));
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+        return new NandAction(organism, organism.fetchArgument(tempIp, world), organism.fetchArgument(tempIp, world));
     }
 
     @Override

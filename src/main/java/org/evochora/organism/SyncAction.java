@@ -1,6 +1,8 @@
-// src/main/java/org/evochora/organism/actions/SyncAction.java
+// src/main/java/org/evochora/organism/SyncAction.java
 package org.evochora.organism;
 
+import org.evochora.organism.Action;
+import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
 import java.util.Collections;

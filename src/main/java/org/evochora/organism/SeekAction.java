@@ -1,8 +1,11 @@
-// src/main/java/org/evochora/organism/actions/SeekAction.java
+// src/main/java/org/evochora/organism/SeekAction.java
 package org.evochora.organism;
 
+import org.evochora.organism.Action;
+import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -16,18 +19,25 @@ public class SeekAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        return new SeekAction(organism, organism.fetchArgument(world));
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+        return new SeekAction(organism, organism.fetchArgument(tempIp, world));
     }
 
     @Override
     public void execute(Simulation simulation) {
         Object vec = organism.getDr(reg);
         if (vec instanceof int[] v) {
+            // NEUE PRÜFUNG: Ist es ein gültiger Einheitsvektor?
+            if (!organism.isUnitVector(v)) {
+                organism.instructionFailed();
+                return;
+            }
+
             int[] targetDp = organism.getTargetCoordinate(organism.getDp(), v, simulation.getWorld());
             if (simulation.getWorld().getSymbol(targetDp).isEmpty()) {
                 organism.setDp(targetDp);
             } else {
-                organism.instructionFailed();
+                organism.instructionFailed(); // Zielzelle nicht leer
             }
         } else {
             organism.instructionFailed();

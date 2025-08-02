@@ -1,12 +1,15 @@
-// src/main/java/org/evochora/organism/actions/ForkAction.java
+// src/main/java/org/evochora/organism/ForkAction.java
 package org.evochora.organism;
 
 import org.evochora.Config;
+import org.evochora.organism.Action;
 import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
+
 import java.util.List;
 import java.util.Map;
+import java.util.Arrays;
 
 public class ForkAction extends Action {
     private final int deltaReg;
@@ -26,7 +29,8 @@ public class ForkAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        return new ForkAction(organism, organism.fetchArgument(world), organism.fetchArgument(world), organism.fetchArgument(world));
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+        return new ForkAction(organism, organism.fetchArgument(tempIp, world), organism.fetchArgument(tempIp, world), organism.fetchArgument(tempIp, world));
     }
 
     @Override
@@ -36,7 +40,6 @@ public class ForkAction extends Action {
         Object dv = organism.getDr(dvReg);
 
         if (d instanceof int[] delta && e instanceof Integer energy && dv instanceof int[] childDv) {
-            // Prüfe, ob genug Energie vorhanden ist
             int totalCost = energy + Config.OPCODE_COSTS.get(Config.OP_FORK);
             if (energy > 0 && organism.getEr() > totalCost) {
 
@@ -46,8 +49,7 @@ public class ForkAction extends Action {
 
                 // KORRIGIERT: Erstelle zuerst das Organismus-Objekt
                 Organism child = Organism.create(simulation, childIp, energy);
-                // Setze den DV des Kindes
-                child.setDv(childDv);
+                child.setDv(childDv); // Setze den DV des Kindes
 
                 // Füge das fertige Objekt hinzu
                 simulation.addNewOrganism(child);

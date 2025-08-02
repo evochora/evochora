@@ -1,8 +1,11 @@
-// src/main/java/org/evochora/organism/actions/JumpAction.java
+// src/main/java/org/evochora/organism/JumpAction.java
 package org.evochora.organism;
 
+import org.evochora.organism.Action;
+import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -16,7 +19,8 @@ public class JumpAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        return new JumpAction(organism, organism.fetchArgument(world));
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+        return new JumpAction(organism, organism.fetchArgument(tempIp, world));
     }
 
     @Override

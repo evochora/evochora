@@ -1,8 +1,11 @@
-// src/main/java/org/evochora/organism/actions/ScanAction.java
+// src/main/java/org/evochora/organism/ScanAction.java
 package org.evochora.organism;
 
+import org.evochora.organism.Action;
+import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -16,13 +19,19 @@ public class ScanAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        return new ScanAction(organism, organism.fetchArgument(world), organism.fetchArgument(world));
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+        return new ScanAction(organism, organism.fetchArgument(tempIp, world), organism.fetchArgument(tempIp, world));
     }
 
     @Override
     public void execute(Simulation simulation) {
         Object vec = organism.getDr(vecReg);
         if(vec instanceof int[] v) {
+            // NEUE PRÜFUNG: Ist es ein gültiger Einheitsvektor?
+            if (!organism.isUnitVector(v)) {
+                organism.instructionFailed();
+                return;
+            }
             int[] target = organism.getTargetCoordinate(organism.getDp(), v, simulation.getWorld());
             organism.setDr(targetReg, simulation.getWorld().getSymbol(target).toInt());
         } else {

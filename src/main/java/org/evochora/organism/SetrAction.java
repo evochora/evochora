@@ -1,4 +1,4 @@
-// src/main/java/org/evochora/organism/actions/SetrAction.java
+// src/main/java/org/evochora/organism/SetrAction.java
 package org.evochora.organism;
 
 import org.evochora.Simulation;
@@ -9,26 +9,18 @@ import java.util.Map;
 public class SetrAction extends Action {
     private final int destReg;
     private final int srcReg;
-
-    public SetrAction(Organism organism, int destReg, int srcReg) {
-        super(organism);
-        this.destReg = destReg;
-        this.srcReg = srcReg;
-    }
-
-    public static List<Integer> assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 2) throw new IllegalArgumentException("SETR erwartet 2 Argumente: %REG_DEST %REG_SRC");
-        int destId = registerMap.get(args[0].toUpperCase());
-        int srcId = registerMap.get(args[1].toUpperCase());
-        return List.of(destId, srcId);
-    }
+    public SetrAction(Organism o, int d, int s) { super(o); this.destReg = d; this.srcReg = s; }
 
     public static Action plan(Organism organism, World world) {
-        int dest = organism.fetchArgument(world);
-        int src = organism.fetchArgument(world);
+        int[] tempIp = organism.getIp();
+        int dest = organism.fetchArgument(tempIp, world);
+        int src = organism.fetchArgument(tempIp, world);
         return new SetrAction(organism, dest, src);
     }
-
+    public static List<Integer> assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
+        if (args.length != 2) throw new IllegalArgumentException("SETR erwartet 2 Argumente: %REG_DEST %REG_SRC");
+        return List.of(registerMap.get(args[0].toUpperCase()), registerMap.get(args[1].toUpperCase()));
+    }
     @Override
     public void execute(Simulation simulation) {
         Object value = organism.getDr(srcReg);

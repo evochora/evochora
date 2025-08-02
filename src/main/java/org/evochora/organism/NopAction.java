@@ -1,4 +1,4 @@
-// src/main/java/org/evochora/organism/actions/NopAction.java
+// src/main/java/org/evochora/organism/NopAction.java
 package org.evochora.organism;
 
 import org.evochora.Simulation;

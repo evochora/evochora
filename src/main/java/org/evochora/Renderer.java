@@ -68,8 +68,8 @@ public class Renderer {
         Config.Opcode opcode = Config.OPCODE_DEFINITIONS.get(symbol.toInt());
         if (opcode != null) {
             String fullName = opcode.name();
-            String line1 = fullName.substring(0, Math.min(fullName.length(), 2));
-            String line2 = (fullName.length() > 2) ? fullName.substring(2) : "";
+            String line1 = fullName.length() >= 2 ? fullName.substring(0, 2) : fullName;
+            String line2 = fullName.length() > 2 ? fullName.substring(2) : "";
             double centerX = cellX + Config.CELL_SIZE / 2.0;
             double y1 = cellY + Config.CELL_SIZE * 0.4;
             double y2 = cellY + Config.CELL_SIZE * 0.8;
@@ -97,8 +97,6 @@ public class Renderer {
             double dpX = dp[0] * Config.CELL_SIZE;
             double dpY = dp[1] * Config.CELL_SIZE + Config.HEADER_HEIGHT;
             drawDp(new javafx.geometry.Rectangle2D(dpX, dpY, Config.CELL_SIZE, Config.CELL_SIZE), orgColor);
-
-            // KORRIGIERT: Die Farbe wird jetzt direkt übergeben
             drawDv(x, y, orgColor, org.getDv());
         }
     }
@@ -114,7 +112,6 @@ public class Renderer {
     }
 
     private void drawDv(double cellX, double cellY, Color color, int[] dv) {
-        // KORRIGIERT: Verwendet die übergebene Farbe, anstatt sie neu zu laden
         gc.setFill(color);
         double centerX = cellX + Config.CELL_SIZE / 2.0;
         double centerY = cellY + Config.CELL_SIZE / 2.0;
@@ -150,21 +147,23 @@ public class Renderer {
         if (selectedOrganism != null) {
             Color orgColor = organismColorMap.get(selectedOrganism.getId());
             if (orgColor == null) return;
-
             gc.setFill(selectedOrganism.isDead() ? Config.COLOR_DEAD : orgColor);
             gc.setFont(Font.font("Monospaced", 14));
             gc.setTextAlign(TextAlignment.LEFT);
 
-            String line1 = String.format("ID: %d %s | ER: %d | IP: %s | DP: %s",
+            String line1 = String.format("ID: %d %s | ER: %d | IP: %s | DP: %s | DV: %s",
                     selectedOrganism.getId(), selectedOrganism.isDead() ? "(DEAD)" : "",
                     selectedOrganism.getEr(), Arrays.toString(selectedOrganism.getIp()),
-                    Arrays.toString(selectedOrganism.getDp()));
+                    Arrays.toString(selectedOrganism.getDp()), Arrays.toString(selectedOrganism.getDv()));
             gc.fillText(line1, 10, footerY + 20);
 
             List<Object> drs = selectedOrganism.getDrs();
             StringBuilder line2 = new StringBuilder("DRs: ");
             for(int i = 0; i < drs.size(); i++) {
-                line2.append(String.format("%d:[%s] ", i, drs.get(i).toString()));
+                Object val = drs.get(i);
+                // KORRIGIERT: Behandle Vektoren (int[]) in der Anzeige korrekt
+                String valStr = (val instanceof int[]) ? Arrays.toString((int[]) val) : val.toString();
+                line2.append(String.format("%d:[%s] ", i, valStr));
             }
             gc.fillText(line2.toString(), 10, footerY + 45);
         }

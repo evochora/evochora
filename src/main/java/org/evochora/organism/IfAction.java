@@ -1,9 +1,12 @@
-// src/main/java/org/evochora/organism/actions/IfAction.java
+// src/main/java/org/evochora/organism/IfAction.java
 package org.evochora.organism;
 
 import org.evochora.Config;
+import org.evochora.organism.Action;
+import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -21,7 +24,8 @@ public class IfAction extends Action {
 
     public static Action plan(Organism organism, World world) {
         int opType = world.getSymbol(organism.getIp()).toInt();
-        return new IfAction(organism, organism.fetchArgument(world), organism.fetchArgument(world), opType);
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+        return new IfAction(organism, organism.fetchArgument(tempIp, world), organism.fetchArgument(tempIp, world), opType);
     }
 
     @Override

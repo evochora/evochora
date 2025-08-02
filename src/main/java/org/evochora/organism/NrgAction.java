@@ -1,8 +1,11 @@
-// src/main/java/org/evochora/organism/actions/NrgAction.java
+// src/main/java/org/evochora/organism/NrgAction.java
 package org.evochora.organism;
 
+import org.evochora.organism.Action;
+import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -16,7 +19,8 @@ public class NrgAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        return new NrgAction(organism, organism.fetchArgument(world));
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+        return new NrgAction(organism, organism.fetchArgument(tempIp, world));
     }
 
     @Override

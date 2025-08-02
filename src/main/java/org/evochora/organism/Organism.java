@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
 
-// Hilfsklasse für Fork-Anfragen
 record ForkRequest(int[] childIp, int childEnergy, int[] childDv) {}
 
 public class Organism {
@@ -29,6 +28,7 @@ public class Organism {
     private boolean instructionFailed = false;
     private boolean skipIpAdvance = false;
     private int[] ipBeforeFetch;
+    private int[] dvBeforeFetch; // HINZUGEFÜGT
 
     Organism(int id, int[] startIp, int initialEnergy) {
         this.id = id;
@@ -42,6 +42,7 @@ public class Organism {
             this.drs.add(0);
         }
         this.ipBeforeFetch = Arrays.copyOf(startIp, startIp.length);
+        this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length); // HINZUGEFÜGT
     }
 
     public static Organism create(Simulation simulation, int[] startIp, int initialEnergy) {
@@ -49,11 +50,11 @@ public class Organism {
         return new Organism(newId, startIp, initialEnergy);
     }
 
-    // --- Logik für den Zwei-Phasen-Zyklus ---
     public Action planTick(World world, Map<Integer, BiFunction<Organism, World, Action>> plannerRegistry) {
         this.instructionFailed = false;
         this.skipIpAdvance = false;
         this.ipBeforeFetch = Arrays.copyOf(this.ip, this.ip.length);
+        this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length); // HINZUGEFÜGT
 
         Symbol symbol = world.getSymbol(this.ip);
         if (symbol.type() != Config.TYPE_CODE && symbol.toInt() != 0) {
@@ -65,7 +66,6 @@ public class Organism {
         BiFunction<Organism, World, Action> planner = plannerRegistry.get(opcode);
 
         if (planner != null) {
-            // Die Planungs-Logik ist jetzt in der Action-Klasse selbst gekapselt
             return planner.apply(this, world);
         }
 
@@ -79,9 +79,7 @@ public class Organism {
         World world = simulation.getWorld();
         int opcode = world.getSymbol(ip).toInt();
 
-        // Energie-Grundkosten abziehen
         this.er -= Config.OPCODE_COSTS.getOrDefault(opcode, 1);
-        if (this.er <= 0) { isDead = true; return; }
 
         action.execute(simulation);
 
@@ -96,6 +94,8 @@ public class Organism {
         if (!this.skipIpAdvance) {
             Config.Opcode opcodeDef = Config.OPCODE_DEFINITIONS.get(opcode);
             int length = (opcodeDef != null) ? opcodeDef.length() : 1;
+
+            // KORRIGIERT: Verwendet den DV, der zu Beginn des Ticks galt.
             advanceIpBy(length, world);
         }
     }
@@ -103,39 +103,39 @@ public class Organism {
     // --- Package-Private Methoden für Actions ---
 
     int fetchArgument(int[] readHead, World world) {
-        // KORRIGIERT: Arbeitet jetzt auf einem temporären Lese-Kopf, nicht dem echten IP
-        int[] nextReadHead = getNextInstructionPosition(readHead, world);
-        System.arraycopy(nextReadHead, 0, readHead, 0, readHead.length); // Update des Lese-Kopfs
+        // Verwendet den DV, der zu Beginn des Ticks galt, für eine konsistente Lese-Operation
+        int[] nextReadHead = getNextInstructionPosition(readHead, world, this.dvBeforeFetch);
+        System.arraycopy(nextReadHead, 0, readHead, 0, readHead.length);
         return world.getSymbol(readHead).value();
     }
 
+    int fetchSignedArgument(int[] readHead, World world) {
+        int[] nextReadHead = getNextInstructionPosition(readHead, world, this.dvBeforeFetch);
+        System.arraycopy(nextReadHead, 0, readHead, 0, readHead.length);
+        return world.getSymbol(readHead).toInt();
+    }
+
     boolean setDr(int index, Object value) {
-        if (index >= 0 && index < this.drs.size()) {
-            this.drs.set(index, value);
-            return true;
-        }
-        this.instructionFailed = true;
-        return false;
+        if (index >= 0 && index < this.drs.size()) { this.drs.set(index, value); return true; }
+        this.instructionFailed = true; return false;
     }
 
     Object getDr(int index) {
-        if (index >= 0 && index < this.drs.size()) {
-            return this.drs.get(index);
-        }
-        this.instructionFailed = true;
-        return null;
+        if (index >= 0 && index < this.drs.size()) { return this.drs.get(index); }
+        this.instructionFailed = true; return null;
     }
 
     void advanceIpBy(int steps, World world) {
         for (int i = 0; i < steps; i++) {
-            this.ip = getNextInstructionPosition(this.ip, world);
+            // KORRIGIERT: Verwendet den DV, der zu Beginn des Ticks galt.
+            this.ip = getNextInstructionPosition(this.ip, world, this.dvBeforeFetch);
         }
     }
 
-    int[] getNextInstructionPosition(int[] currentIp, World world) {
+    int[] getNextInstructionPosition(int[] currentIp, World world, int[] directionVector) {
         int[] nextIp = new int[currentIp.length];
         for (int i = 0; i < currentIp.length; i++) {
-            nextIp[i] = currentIp[i] + this.dv[i];
+            nextIp[i] = currentIp[i] + directionVector[i];
         }
         return world.getNormalizedCoordinate(nextIp);
     }
@@ -149,11 +149,19 @@ public class Organism {
     }
 
     void skipNextInstruction(World world) {
-        int[] nextIp = getNextInstructionPosition(this.ip, world);
+        int[] nextIp = getNextInstructionPosition(this.ip, world, this.dv);
         int opcodeToSkip = world.getSymbol(nextIp).toInt();
         Config.Opcode opcodeDef = Config.OPCODE_DEFINITIONS.get(opcodeToSkip);
         int lengthToSkip = (opcodeDef != null) ? opcodeDef.length() : 1;
         advanceIpBy(lengthToSkip, world);
+    }
+
+    boolean isUnitVector(int[] vector) {
+        int distance = 0;
+        for (int component : vector) {
+            distance += Math.abs(component);
+        }
+        return distance == 1;
     }
 
     void instructionFailed() { this.instructionFailed = true; }
