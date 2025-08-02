@@ -4,24 +4,24 @@ package org.evochora.organism;
 import org.evochora.Config;
 import org.evochora.Simulation;
 import org.evochora.world.World;
+import java.util.List;
+import java.util.Map;
 
 public class IfAction extends Action {
     private final int reg1;
     private final int reg2;
     private final int type;
 
-    public IfAction(Organism organism, int reg1, int reg2, int type) {
-        super(organism);
-        this.reg1 = reg1;
-        this.reg2 = reg2;
-        this.type = type;
+    public IfAction(Organism o, int r1, int r2, int t) { super(o); this.reg1 = r1; this.reg2 = r2; this.type = t; }
+
+    public static List<Integer> assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
+        if (args.length != 2) throw new IllegalArgumentException("IF-Befehle erwarten 2 Argumente: %REG1 %REG2");
+        return List.of(registerMap.get(args[0].toUpperCase()), registerMap.get(args[1].toUpperCase()));
     }
 
     public static Action plan(Organism organism, World world) {
-        int r1 = organism.fetchArgument(world);
-        int r2 = organism.fetchArgument(world);
         int opType = world.getSymbol(organism.getIp()).toInt();
-        return new IfAction(organism, r1, r2, opType);
+        return new IfAction(organism, organism.fetchArgument(world), organism.fetchArgument(world), opType);
     }
 
     @Override

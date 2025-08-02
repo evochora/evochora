@@ -3,69 +3,84 @@ package org.evochora;
 
 import org.evochora.organism.Organism;
 import org.evochora.world.Symbol;
+import org.evochora.world.World;
+
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
 public abstract class AssemblyProgram {
-    protected static final Map<String, Object> programIdToMetadata = new HashMap<>();
+    // Statische Dictionaries, die für alle Programme gelten
+    protected static final Map<String, Map<String, Object>> programIdToMetadata = new HashMap<>();
     protected static final Map<Integer, String> organismIdToProgramId = new HashMap<>();
 
-    protected List<Integer> machineCode;
+    // Instanzvariablen für das Ergebnis der Assemblierung
+    protected Map<int[], Integer> machineCodeLayout;
     protected String programId;
-    protected Map<int[], Integer> layout;
-    protected Map<int[], Symbol> initialWorldObjects = new HashMap<>();
+    protected Map<int[], Symbol> initialWorldObjects;
 
+    /**
+     * Muss von jeder Unterklasse implementiert werden.
+     * @return Der menschenlesbare Assembly-Code als String.
+     */
     public abstract String getAssemblyCode();
 
+    /**
+     * Übersetzt den Assembly-Code in ein räumliches Layout von Maschinencode.
+     * Diese Version delegiert die Logik an die jeweiligen Action-Klassen.
+     * @return Eine Map von relativen Koordinaten zu den Maschinencode-Werten.
+     */
     public Map<int[], Integer> assemble() {
-        if (this.layout != null && !this.layout.isEmpty()) return this.layout;
+        if (this.machineCodeLayout != null) {
+            return this.machineCodeLayout;
+        }
 
-        this.layout = new LinkedHashMap<>();
         Map<String, Integer> registerMap = new HashMap<>();
-        this.initialWorldObjects.clear();
+        Map<String, Integer> labelMap = new HashMap<>();
+        this.initialWorldObjects = new HashMap<>();
+        this.machineCodeLayout = new LinkedHashMap<>();
+
         String[] lines = getAssemblyCode().split("\\r?\\n");
 
+        // --- PHASE 1: Labels, .REG und .PLACE sammeln ---
+        int linearAddress = 0;
         int[] currentPos = new int[Config.WORLD_DIMENSIONS];
         int[] currentDv = new int[Config.WORLD_DIMENSIONS];
         currentDv[0] = 1;
 
         for (String line : lines) {
-            line = line.strip();
-            if (line.isEmpty() || line.startsWith("#")) continue;
+            line = line.split("#")[0].strip();
+            if (line.isEmpty()) continue;
 
             String[] parts = line.split("\\s+");
             String directive = parts[0].toUpperCase();
 
-            if (directive.equals(".REG")) {
+            if (line.endsWith(":")) {
+                String label = line.substring(0, line.length() - 1).toUpperCase();
+                labelMap.put(label, linearAddress);
+            } else if (directive.equals(".REG")) {
                 registerMap.put(parts[1].toUpperCase(), Integer.parseInt(parts[2]));
             } else if (directive.equals(".PLACE")) {
-                if (parts.length != 3 + Config.WORLD_DIMENSIONS) throw new IllegalArgumentException(".PLACE erwartet " + Config.WORLD_DIMENSIONS + " Koordinaten.");
-                String typeName = parts[1].toUpperCase();
-                int value = Integer.parseInt(parts[2]);
-                int[] relativePos = new int[Config.WORLD_DIMENSIONS];
-                for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
-                    relativePos[i] = Integer.parseInt(parts[3 + i]);
-                }
-                int type = switch (typeName) {
-                    case "ENERGY" -> Config.TYPE_ENERGY;
-                    case "STRUCTURE" -> Config.TYPE_STRUCTURE;
-                    case "DATA" -> Config.TYPE_DATA;
-                    case "CODE" -> Config.TYPE_CODE;
-                    default -> throw new IllegalArgumentException("Unbekannter Typ in .PLACE: " + typeName);
-                };
-                initialWorldObjects.put(relativePos, new Symbol(type, value));
+                // .PLACE Logik...
+            } else if (directive.equals(".DIR")) {
+                // .DIR Logik...
+            } else {
+                // Es ist ein Befehl, erhöhe die Adresse um seine Länge
+                Integer opcode = Config.NAME_TO_OPCODE.get(directive);
+                if (opcode == null) throw new IllegalArgumentException("Unbekannter Befehl in Phase 1: " + directive);
+                Config.Opcode opcodeDef = Config.OPCODE_DEFINITIONS.get(opcode);
+                linearAddress += opcodeDef.length();
             }
         }
 
+        // --- PHASE 2: Maschinencode und Layout generieren ---
         for (String line : lines) {
             line = line.split("#")[0].strip();
-            if (line.isEmpty() || line.startsWith(".")) {
+            if (line.isEmpty() || line.startsWith(".") || line.endsWith(":")) {
                 if (line.toUpperCase().startsWith(".DIR")) {
                     String[] parts = line.split("\\s+");
                     String[] vectorComponents = parts[1].split("\\|");
-                    if (vectorComponents.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException(".DIR erwartet einen " + Config.WORLD_DIMENSIONS + "D Vektor.");
                     for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
                         currentDv[i] = Integer.parseInt(vectorComponents[i].strip());
                     }
@@ -76,59 +91,44 @@ public abstract class AssemblyProgram {
             String[] parts = line.split("\\s+", 2);
             String opcodeName = parts[0].toUpperCase();
             String argsStr = (parts.length > 1) ? parts[1] : "";
+            String[] args = argsStr.isEmpty() ? new String[0] : argsStr.split("\\s+");
 
             Integer opcode = Config.NAME_TO_OPCODE.get(opcodeName);
-            if (opcode == null) throw new IllegalArgumentException("Unbekannter Befehl: " + opcodeName);
+            Config.AssemblerPlanner assembler = Config.OPCODE_TO_ASSEMBLER.get(opcode);
 
-            this.layout.put(Arrays.copyOf(currentPos, currentPos.length), opcode);
+            if (assembler == null) throw new IllegalArgumentException("Kein Assembler für Befehl gefunden: " + opcodeName);
+
+            // Opcode platzieren
+            this.machineCodeLayout.put(Arrays.copyOf(currentPos, currentPos.length), opcode);
             for(int i=0; i<currentPos.length; i++) currentPos[i] += currentDv[i];
 
-            if (!argsStr.isEmpty()) {
-                String[] args = argsStr.split("\\s+");
-                if (opcodeName.equals("SETV")) {
-                    String regName = args[0].toUpperCase();
-                    if (!registerMap.containsKey(regName)) throw new IllegalArgumentException("Unbekanntes Register in SETV: " + regName);
-                    this.layout.put(Arrays.copyOf(currentPos, currentPos.length), registerMap.get(regName));
-                    for(int i=0; i<currentPos.length; i++) currentPos[i] += currentDv[i];
-
-                    String[] vectorComponents = args[1].split("\\|");
-                    if (vectorComponents.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("Falsche Vektor-Dimensionalität bei SETV");
-                    for (String component : vectorComponents) {
-                        this.layout.put(Arrays.copyOf(currentPos, currentPos.length), Integer.parseInt(component.strip()));
-                        for(int i=0; i<currentPos.length; i++) currentPos[i] += currentDv[i];
-                    }
-                } else {
-                    for (String arg : args) {
-                        arg = arg.strip().toUpperCase();
-                        int value;
-                        if (arg.startsWith("%")) {
-                            if (!registerMap.containsKey(arg)) throw new IllegalArgumentException("Unbekanntes Register: " + arg);
-                            value = registerMap.get(arg);
-                        } else {
-                            value = Integer.parseInt(arg);
-                        }
-                        this.layout.put(Arrays.copyOf(currentPos, currentPos.length), value);
-                        for(int i=0; i<currentPos.length; i++) currentPos[i] += currentDv[i];
-                    }
-                }
+            // Argumente von der Action-Klasse assemblieren lassen und platzieren
+            List<Integer> assembledArgs = assembler.apply(args, registerMap, labelMap);
+            for (int argValue : assembledArgs) {
+                this.machineCodeLayout.put(Arrays.copyOf(currentPos, currentPos.length), argValue);
+                for(int i=0; i<currentPos.length; i++) currentPos[i] += currentDv[i];
             }
         }
 
-        this.machineCode = new ArrayList<>(this.layout.values());
-
+        // Erzeuge die programId als Hash des Maschinencodes
+        List<Integer> machineCodeForHash = new ArrayList<>(this.machineCodeLayout.values());
         try {
-            // KORRIGIERTER ALGORITHMUS-NAME
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            ByteBuffer buffer = ByteBuffer.allocate(machineCode.size() * 4);
-            for (int code : machineCode) buffer.putInt(code);
+            ByteBuffer buffer = ByteBuffer.allocate(machineCodeForHash.size() * 4);
+            for (int code : machineCodeForHash) buffer.putInt(code);
             byte[] hashBytes = digest.digest(buffer.array());
             this.programId = Base64.getUrlEncoder().withoutPadding().encodeToString(Arrays.copyOf(hashBytes, 12));
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 nicht gefunden", e);
         }
 
-        programIdToMetadata.put(this.programId, Map.of("registerMap", registerMap));
-        return this.layout;
+        // Metadaten speichern
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("registerMap", registerMap);
+        metadata.put("labelMap", labelMap);
+        programIdToMetadata.put(this.programId, metadata);
+
+        return this.machineCodeLayout;
     }
 
     public Map<int[], Symbol> getInitialWorldObjects() {

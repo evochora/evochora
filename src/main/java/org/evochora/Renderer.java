@@ -34,11 +34,9 @@ public class Renderer {
     }
 
     public void draw(Simulation simulation, Organism selectedOrganism) {
-        // 1. Hintergrund löschen
         gc.setFill(Config.COLOR_BG);
         gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
 
-        // 2. Welt-Gitter zeichnen
         World world = simulation.getWorld();
         for (int x = 0; x < world.getShape()[0]; x++) {
             for (int y = 0; y < world.getShape()[1]; y++) {
@@ -48,42 +46,37 @@ public class Renderer {
 
                 gc.setFill(getColorForSymbol(symbol));
                 gc.fillRect(cellX, cellY, Config.CELL_SIZE, Config.CELL_SIZE);
-
                 drawCellText(symbol, cellX, cellY);
             }
         }
 
-        // 3. Organismen zeichnen
         for (Organism org : simulation.getOrganisms()) {
             drawOrganism(org, selectedOrganism);
         }
 
-        // 4. Header und Footer zeichnen
         drawHeader(simulation);
         drawFooter(simulation, selectedOrganism);
     }
 
     private void drawCellText(Symbol symbol, double cellX, double cellY) {
         if (symbol.isEmpty()) return;
-
         gc.setFill(Config.COLOR_TEXT_IN_CELL);
         gc.setFont(cellFont);
         gc.setTextAlign(TextAlignment.CENTER);
 
+        String text = "";
         Config.Opcode opcode = Config.OPCODE_DEFINITIONS.get(symbol.toInt());
         if (opcode != null) {
             String fullName = opcode.name();
             String line1 = fullName.substring(0, Math.min(fullName.length(), 2));
             String line2 = (fullName.length() > 2) ? fullName.substring(2) : "";
-
             double centerX = cellX + Config.CELL_SIZE / 2.0;
             double y1 = cellY + Config.CELL_SIZE * 0.4;
             double y2 = cellY + Config.CELL_SIZE * 0.8;
-
             gc.fillText(line1, centerX, y1);
             gc.fillText(line2, centerX, y2);
         } else {
-            String text = String.valueOf(symbol.value());
+            text = String.valueOf(symbol.value());
             gc.fillText(text, cellX + Config.CELL_SIZE / 2.0, cellY + Config.CELL_SIZE / 2.0 + 4);
         }
     }
@@ -91,7 +84,6 @@ public class Renderer {
     private void drawOrganism(Organism org, Organism selectedOrganism) {
         Color orgColor = organismColorMap.computeIfAbsent(org.getId(), id -> colorPalette[id % colorPalette.length]);
 
-        // --- Zeichne den IP (Instruction Pointer) als Umrandung für ALLE Organismen ---
         int[] ip = org.getIp();
         double x = ip[0] * Config.CELL_SIZE;
         double y = ip[1] * Config.CELL_SIZE + Config.HEADER_HEIGHT;
@@ -100,15 +92,13 @@ public class Renderer {
         gc.setLineWidth(2.5);
         gc.strokeRect(x + 1, y + 1, Config.CELL_SIZE - 2, Config.CELL_SIZE - 2);
 
-        // --- Zeichne DP und DV NUR für den ausgewählten, lebenden Organismus ---
         if (org == selectedOrganism && !org.isDead()) {
-            // Zeichne den DP (Daten-Pointer)
             int[] dp = org.getDp();
             double dpX = dp[0] * Config.CELL_SIZE;
             double dpY = dp[1] * Config.CELL_SIZE + Config.HEADER_HEIGHT;
             drawDp(new javafx.geometry.Rectangle2D(dpX, dpY, Config.CELL_SIZE, Config.CELL_SIZE), orgColor);
 
-            // Zeichne den DV (Direction Vector)
+            // KORRIGIERT: Die Farbe wird jetzt direkt übergeben
             drawDv(x, y, orgColor, org.getDv());
         }
     }
@@ -124,6 +114,7 @@ public class Renderer {
     }
 
     private void drawDv(double cellX, double cellY, Color color, int[] dv) {
+        // KORRIGIERT: Verwendet die übergebene Farbe, anstatt sie neu zu laden
         gc.setFill(color);
         double centerX = cellX + Config.CELL_SIZE / 2.0;
         double centerY = cellY + Config.CELL_SIZE / 2.0;
@@ -158,7 +149,7 @@ public class Renderer {
 
         if (selectedOrganism != null) {
             Color orgColor = organismColorMap.get(selectedOrganism.getId());
-            if (orgColor == null) return; // Sicherheitsabfrage
+            if (orgColor == null) return;
 
             gc.setFill(selectedOrganism.isDead() ? Config.COLOR_DEAD : orgColor);
             gc.setFont(Font.font("Monospaced", 14));

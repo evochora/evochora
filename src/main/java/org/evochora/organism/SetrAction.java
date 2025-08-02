@@ -3,6 +3,8 @@ package org.evochora.organism;
 
 import org.evochora.Simulation;
 import org.evochora.world.World;
+import java.util.List;
+import java.util.Map;
 
 public class SetrAction extends Action {
     private final int destReg;
@@ -12,6 +14,13 @@ public class SetrAction extends Action {
         super(organism);
         this.destReg = destReg;
         this.srcReg = srcReg;
+    }
+
+    public static List<Integer> assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
+        if (args.length != 2) throw new IllegalArgumentException("SETR erwartet 2 Argumente: %REG_DEST %REG_SRC");
+        int destId = registerMap.get(args[0].toUpperCase());
+        int srcId = registerMap.get(args[1].toUpperCase());
+        return List.of(destId, srcId);
     }
 
     public static Action plan(Organism organism, World world) {

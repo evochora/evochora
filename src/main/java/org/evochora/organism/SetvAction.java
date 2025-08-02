@@ -4,6 +4,9 @@ package org.evochora.organism;
 import org.evochora.Config;
 import org.evochora.Simulation;
 import org.evochora.world.World;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 public class SetvAction extends Action {
     private final int destReg;
@@ -13,6 +16,18 @@ public class SetvAction extends Action {
         super(organism);
         this.destReg = destReg;
         this.values = values;
+    }
+
+    public static List<Integer> assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
+        if (args.length != 2) throw new IllegalArgumentException("SETV erwartet 2 Argumente: %REG WERT1|WERT2|...");
+        List<Integer> machineCode = new ArrayList<>();
+        machineCode.add(registerMap.get(args[0].toUpperCase()));
+        String[] vectorComponents = args[1].split("\\|");
+        if (vectorComponents.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("SETV: Falsche Vektor-Dimensionalität.");
+        for (String component : vectorComponents) {
+            machineCode.add(Integer.parseInt(component.strip()));
+        }
+        return machineCode;
     }
 
     public static Action plan(Organism organism, World world) {

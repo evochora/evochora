@@ -1,8 +1,12 @@
 // src/main/java/org/evochora/organism/actions/AddAction.java
 package org.evochora.organism;
 
+import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
+import java.util.Arrays; // Wichtig für Arrays.copyOf
+import java.util.List;
+import java.util.Map;
 
 public class AddAction extends Action {
     private final int reg1;
@@ -15,7 +19,18 @@ public class AddAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        return new AddAction(organism, organism.fetchArgument(world), organism.fetchArgument(world));
+        // Erstelle einen temporären Lese-Kopf, der beim IP startet
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+
+        // Jede Action liest ihre eigenen Argumente
+        int r1 = organism.fetchArgument(tempIp, world);
+        int r2 = organism.fetchArgument(tempIp, world);
+        return new AddAction(organism, r1, r2);
+    }
+
+    public static List<Integer> assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
+        if (args.length != 2) throw new IllegalArgumentException("ADD erwartet 2 Argumente: %REG1 %REG2");
+        return List.of(registerMap.get(args[0].toUpperCase()), registerMap.get(args[1].toUpperCase()));
     }
 
     @Override
