@@ -20,17 +20,8 @@ public abstract class AssemblyProgram {
     protected String programId;
     protected Map<int[], Symbol> initialWorldObjects;
 
-    /**
-     * Muss von jeder Unterklasse implementiert werden.
-     * @return Der menschenlesbare Assembly-Code als String.
-     */
     public abstract String getAssemblyCode();
 
-    /**
-     * Übersetzt den Assembly-Code in ein räumliches Layout von Maschinencode.
-     * Diese Version delegiert die Logik an die jeweiligen Action-Klassen.
-     * @return Eine Map von relativen Koordinaten zu den Maschinencode-Werten.
-     */
     public Map<int[], Integer> assemble() {
         if (this.machineCodeLayout != null) {
             return this.machineCodeLayout;
@@ -45,10 +36,6 @@ public abstract class AssemblyProgram {
 
         // --- PHASE 1: Labels, .REG und .PLACE sammeln ---
         int linearAddress = 0;
-        int[] currentPos = new int[Config.WORLD_DIMENSIONS];
-        int[] currentDv = new int[Config.WORLD_DIMENSIONS];
-        currentDv[0] = 1;
-
         for (String line : lines) {
             line = line.split("#")[0].strip();
             if (line.isEmpty()) continue;
@@ -62,11 +49,22 @@ public abstract class AssemblyProgram {
             } else if (directive.equals(".REG")) {
                 registerMap.put(parts[1].toUpperCase(), Integer.parseInt(parts[2]));
             } else if (directive.equals(".PLACE")) {
-                // .PLACE Logik...
-            } else if (directive.equals(".DIR")) {
-                // .DIR Logik...
-            } else {
-                // Es ist ein Befehl, erhöhe die Adresse um seine Länge
+                if (parts.length != 3 + Config.WORLD_DIMENSIONS) throw new IllegalArgumentException(".PLACE erwartet " + Config.WORLD_DIMENSIONS + " Koordinaten.");
+                String typeName = parts[1].toUpperCase();
+                int value = Integer.parseInt(parts[2]);
+                int[] relativePos = new int[Config.WORLD_DIMENSIONS];
+                for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
+                    relativePos[i] = Integer.parseInt(parts[3 + i]);
+                }
+                int type = switch (typeName) {
+                    case "ENERGY" -> Config.TYPE_ENERGY;
+                    case "STRUCTURE" -> Config.TYPE_STRUCTURE;
+                    case "DATA" -> Config.TYPE_DATA;
+                    case "CODE" -> Config.TYPE_CODE;
+                    default -> throw new IllegalArgumentException("Unbekannter Typ in .PLACE: " + typeName);
+                };
+                initialWorldObjects.put(relativePos, new Symbol(type, value));
+            } else if (!directive.equals(".DIR")) {
                 Integer opcode = Config.NAME_TO_OPCODE.get(directive);
                 if (opcode == null) throw new IllegalArgumentException("Unbekannter Befehl in Phase 1: " + directive);
                 Config.Opcode opcodeDef = Config.OPCODE_DEFINITIONS.get(opcode);
@@ -75,12 +73,18 @@ public abstract class AssemblyProgram {
         }
 
         // --- PHASE 2: Maschinencode und Layout generieren ---
+        int[] currentPos = new int[Config.WORLD_DIMENSIONS];
+        int[] currentDv = new int[Config.WORLD_DIMENSIONS];
+        currentDv[0] = 1;
+
         for (String line : lines) {
             line = line.split("#")[0].strip();
-            if (line.isEmpty() || line.startsWith(".") || line.endsWith(":")) {
+            // KORRIGIERTE LOGIK: Überspringe jetzt ALLE Direktiven und Labels in Phase 2
+            if (line.isEmpty() || line.endsWith(":") || line.startsWith(".")) {
                 if (line.toUpperCase().startsWith(".DIR")) {
                     String[] parts = line.split("\\s+");
                     String[] vectorComponents = parts[1].split("\\|");
+                    if (vectorComponents.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException(".DIR erwartet einen " + Config.WORLD_DIMENSIONS + "D Vektor.");
                     for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
                         currentDv[i] = Integer.parseInt(vectorComponents[i].strip());
                     }
@@ -88,6 +92,7 @@ public abstract class AssemblyProgram {
                 continue;
             }
 
+            // Ab hier wird nur noch Code verarbeitet, der ein Opcode sein muss
             String[] parts = line.split("\\s+", 2);
             String opcodeName = parts[0].toUpperCase();
             String argsStr = (parts.length > 1) ? parts[1] : "";
@@ -98,19 +103,19 @@ public abstract class AssemblyProgram {
 
             if (assembler == null) throw new IllegalArgumentException("Kein Assembler für Befehl gefunden: " + opcodeName);
 
-            // Opcode platzieren
-            this.machineCodeLayout.put(Arrays.copyOf(currentPos, currentPos.length), opcode);
+            machineCodeLayout.put(Arrays.copyOf(currentPos, currentPos.length), opcode);
             for(int i=0; i<currentPos.length; i++) currentPos[i] += currentDv[i];
 
-            // Argumente von der Action-Klasse assemblieren lassen und platzieren
             List<Integer> assembledArgs = assembler.apply(args, registerMap, labelMap);
             for (int argValue : assembledArgs) {
-                this.machineCodeLayout.put(Arrays.copyOf(currentPos, currentPos.length), argValue);
+                // KORRIGIERT: Zuerst den argValue auf den VALUE_MASK anwenden,
+                // dann den TYPE_DATA hinzufügen. Dies stellt sicher, dass negative Werte
+                // nicht in den Typ-Bereich "überlaufen", wenn sie als 32-Bit int behandelt werden.
+                machineCodeLayout.put(Arrays.copyOf(currentPos, currentPos.length), Config.TYPE_DATA | (argValue & Config.VALUE_MASK));
                 for(int i=0; i<currentPos.length; i++) currentPos[i] += currentDv[i];
             }
         }
 
-        // Erzeuge die programId als Hash des Maschinencodes
         List<Integer> machineCodeForHash = new ArrayList<>(this.machineCodeLayout.values());
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -122,7 +127,6 @@ public abstract class AssemblyProgram {
             throw new RuntimeException("SHA-256 nicht gefunden", e);
         }
 
-        // Metadaten speichern
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("registerMap", registerMap);
         metadata.put("labelMap", labelMap);
@@ -142,7 +146,7 @@ public abstract class AssemblyProgram {
         organismIdToProgramId.put(organism.getId(), this.programId);
     }
 
-    public static String disassembleLine(int organismId) {
+    public static String disassembleLine(int organismId, World world) {
         // TODO: Implementierung folgt
         return null;
     }

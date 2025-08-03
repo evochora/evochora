@@ -35,6 +35,11 @@ public class PokeAction extends Action {
         int vec = organism.fetchArgument(tempIp, world);
         Object v = organism.getDr(vec);
         if (v instanceof int[] vi) {
+            // NEUE PRÜFUNG: Ist es ein gültiger Einheitsvektor?
+            if (!organism.isUnitVector(vi)) { // Prüfung hier hinzufügen
+                organism.instructionFailed();
+                return new NopAction(organism); // oder eine spezifische Fehleraktion
+            }
             int[] target = organism.getTargetCoordinate(organism.getDp(), vi, world);
             return new PokeAction(organism, src, vec, target);
         }
@@ -49,8 +54,12 @@ public class PokeAction extends Action {
         Object val = organism.getDr(srcReg);
 
         if (vec instanceof int[] v && val instanceof Integer i) {
-            // FINALE PRÜFUNG: Erzwinge strikte Lokalität.
-            if (!organism.isUnitVector(v)) {
+            // Die isUnitVector-Prüfung kann hier bleiben, um Redundanz zu gewährleisten,
+            // oder entfernt werden, wenn wir davon ausgehen, dass plan diese bereits behandelt hat.
+            // Ich würde sie hier behalten, da getDr(vecReg) in execute erneut aufgerufen wird
+            // und sich der Wert im Register zwischen plan und execute ändern könnte,
+            // auch wenn das unwahrscheinlich ist.
+            if (!organism.isUnitVector(v)) { // Beibehalten
                 organism.instructionFailed();
                 return;
             }

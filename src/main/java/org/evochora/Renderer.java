@@ -44,7 +44,7 @@ public class Renderer {
                 double cellX = x * Config.CELL_SIZE;
                 double cellY = y * Config.CELL_SIZE + Config.HEADER_HEIGHT;
 
-                gc.setFill(getColorForSymbol(symbol));
+                gc.setFill(getBackgroundColorForSymbol(symbol));
                 gc.fillRect(cellX, cellY, Config.CELL_SIZE, Config.CELL_SIZE);
                 drawCellText(symbol, cellX, cellY);
             }
@@ -60,12 +60,14 @@ public class Renderer {
 
     private void drawCellText(Symbol symbol, double cellX, double cellY) {
         if (symbol.isEmpty()) return;
-        gc.setFill(Config.COLOR_TEXT_IN_CELL);
+
+        gc.setFill(getTextColorForSymbol(symbol));
         gc.setFont(cellFont);
         gc.setTextAlign(TextAlignment.CENTER);
 
-        String text = "";
+        String text;
         Config.Opcode opcode = Config.OPCODE_DEFINITIONS.get(symbol.toInt());
+
         if (opcode != null) {
             String fullName = opcode.name();
             String line1 = fullName.length() >= 2 ? fullName.substring(0, 2) : fullName;
@@ -76,14 +78,16 @@ public class Renderer {
             gc.fillText(line1, centerX, y1);
             gc.fillText(line2, centerX, y2);
         } else {
-            text = String.valueOf(symbol.value());
+            // KORRIGIERT: Verwende symbol.value(), um nur den reinen Wert zu erhalten,
+            // der als signed int angezeigt werden soll.
+            int value = symbol.value(); // Verwende symbol.value() statt symbol.toInt()
+            text = String.valueOf(value);
             gc.fillText(text, cellX + Config.CELL_SIZE / 2.0, cellY + Config.CELL_SIZE / 2.0 + 4);
         }
     }
 
     private void drawOrganism(Organism org, Organism selectedOrganism) {
         Color orgColor = organismColorMap.computeIfAbsent(org.getId(), id -> colorPalette[id % colorPalette.length]);
-
         int[] ip = org.getIp();
         double x = ip[0] * Config.CELL_SIZE;
         double y = ip[1] * Config.CELL_SIZE + Config.HEADER_HEIGHT;
@@ -161,7 +165,6 @@ public class Renderer {
             StringBuilder line2 = new StringBuilder("DRs: ");
             for(int i = 0; i < drs.size(); i++) {
                 Object val = drs.get(i);
-                // KORRIGIERT: Behandle Vektoren (int[]) in der Anzeige korrekt
                 String valStr = (val instanceof int[]) ? Arrays.toString((int[]) val) : val.toString();
                 line2.append(String.format("%d:[%s] ", i, valStr));
             }
@@ -169,14 +172,24 @@ public class Renderer {
         }
     }
 
-    private Color getColorForSymbol(Symbol symbol) {
-        if (symbol.isEmpty()) return Config.COLOR_EMPTY;
+    private Color getBackgroundColorForSymbol(Symbol symbol) {
+        if (symbol.isEmpty()) return Config.COLOR_EMPTY_BG;
         return switch (symbol.type()) {
-            case Config.TYPE_CODE -> Config.COLOR_CODE;
-            case Config.TYPE_DATA -> Config.COLOR_DATA;
-            case Config.TYPE_STRUCTURE -> Config.COLOR_STRUCTURE;
-            case Config.TYPE_ENERGY -> Config.COLOR_ENERGY;
-            default -> Config.COLOR_EMPTY;
+            case Config.TYPE_CODE -> Config.COLOR_CODE_BG;
+            case Config.TYPE_DATA -> Config.COLOR_DATA_BG;
+            case Config.TYPE_STRUCTURE -> Config.COLOR_STRUCTURE_BG;
+            case Config.TYPE_ENERGY -> Config.COLOR_ENERGY_BG;
+            default -> Config.COLOR_EMPTY_BG;
+        };
+    }
+
+    private Color getTextColorForSymbol(Symbol symbol) {
+        return switch (symbol.type()) {
+            case Config.TYPE_STRUCTURE -> Config.COLOR_STRUCTURE_TEXT;
+            case Config.TYPE_ENERGY -> Config.COLOR_ENERGY_TEXT;
+            case Config.TYPE_DATA -> Config.COLOR_DATA_TEXT;
+            case Config.TYPE_CODE -> Config.COLOR_CODE_TEXT;
+            default -> Config.COLOR_TEXT;
         };
     }
 }

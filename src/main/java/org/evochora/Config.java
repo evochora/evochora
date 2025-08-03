@@ -41,13 +41,20 @@ public final class Config {
     public static final Color COLOR_BG = Color.rgb(10, 10, 20);
     public static final Color COLOR_HEADER_FOOTER = Color.rgb(25, 25, 35);
     public static final Color COLOR_TEXT = Color.LIGHTGRAY;
-    public static final Color COLOR_TEXT_IN_CELL = Color.BLACK;
     public static final Color COLOR_DEAD = Color.rgb(80, 80, 80);
-    public static final Color COLOR_EMPTY = Color.rgb(20, 20, 30);
-    public static final Color COLOR_CODE = Color.rgb(60, 80, 120);
-    public static final Color COLOR_DATA = Color.rgb(100, 100, 100);
-    public static final Color COLOR_STRUCTURE = Color.rgb(150, 150, 180);
-    public static final Color COLOR_ENERGY = Color.rgb(200, 200, 50);
+
+    // Hintergrundfarben für Zelltypen
+    public static final Color COLOR_EMPTY_BG = Color.rgb(20, 20, 30);
+    public static final Color COLOR_CODE_BG = Color.rgb(60, 80, 120);
+    public static final Color COLOR_DATA_BG = Color.rgb(50, 50, 60);
+    public static final Color COLOR_STRUCTURE_BG = Color.rgb(255, 120, 120);
+    public static final Color COLOR_ENERGY_BG = Color.rgb(255, 230, 100);
+
+    // Textfarben für Zelltypen
+    public static final Color COLOR_CODE_TEXT = Color.WHITE;
+    public static final Color COLOR_DATA_TEXT = Color.WHITE;
+    public static final Color COLOR_STRUCTURE_TEXT = Color.rgb(50, 50, 50);
+    public static final Color COLOR_ENERGY_TEXT = Color.rgb(50, 50, 50);
 
     // --- Cell Type Definition (8-Bit-System) ---
     public static final int TYPE_SHIFT = 24;
@@ -66,7 +73,6 @@ public final class Config {
     public static final Map<Integer, Integer> OPCODE_COSTS = new HashMap<>();
     public static final Map<Integer, Integer> OPCODE_LENGTHS = new HashMap<>();
 
-    // --- Registries für die Action-Logik ---
     public static final Map<Integer, BiFunction<Organism, World, Action>> OPCODE_TO_ACTION_PLANNER = new HashMap<>();
 
     @FunctionalInterface
@@ -74,7 +80,6 @@ public final class Config {
         List<Integer> apply(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap);
     }
     public static final Map<Integer, AssemblerPlanner> OPCODE_TO_ASSEMBLER = new HashMap<>();
-
 
     public static int OP_NOP, OP_SETL, OP_SETR, OP_SETV, OP_ADD, OP_SUB, OP_NAND, OP_IF,
             OP_IFLT, OP_IFGT, OP_JUMP, OP_TURN, OP_SEEK, OP_SYNC, OP_PEEK,
