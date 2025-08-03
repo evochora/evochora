@@ -57,9 +57,11 @@ public class Organism {
         this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length); // HINZUGEFÜGT
 
         Symbol symbol = world.getSymbol(this.ip);
-        if (symbol.type() != Config.TYPE_CODE && symbol.toInt() != 0) {
-            this.instructionFailed = true;
-            return NopAction.plan(this, world);
+        if (Config.STRICT_TYPING) {
+            if (symbol.type() != Config.TYPE_CODE && symbol.toInt() != 0) {
+                this.instructionFailed = true;
+                return NopAction.plan(this, world);
+            }
         }
         int opcode = symbol.toInt();
 

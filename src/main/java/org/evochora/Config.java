@@ -25,6 +25,7 @@ public final class Config {
     public static final int INITIAL_ORGANISM_ENERGY = 2000;
     public static final int ERROR_PENALTY_COST = 5;
     public static final int MAX_ORGANISM_ENERGY = 10000;
+    public static final boolean STRICT_TYPING = true;
 
     // Organism Settings
     public static final int NUM_DATA_REGISTERS = 16;
