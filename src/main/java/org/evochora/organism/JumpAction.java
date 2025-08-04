@@ -1,8 +1,6 @@
 // src/main/java/org/evochora/organism/JumpAction.java
 package org.evochora.organism;
 
-import org.evochora.organism.Action;
-import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
 import java.util.Arrays;
@@ -19,7 +17,7 @@ public class JumpAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length); // Kopie, um das IP nicht zu verändern
         return new JumpAction(organism, organism.fetchArgument(tempIp, world));
     }
 
@@ -27,11 +25,14 @@ public class JumpAction extends Action {
     public void execute(Simulation simulation) {
         Object delta = organism.getDr(reg);
         if (delta instanceof int[] v) {
+            // Der Sprung erfolgt relativ zum IP, das VOR dem Fetch dieses Befehls galt.
+            // Das ist wichtig für die Reproduzierbarkeit bei paralleler Ausführung.
             int[] targetIp = organism.getTargetCoordinate(organism.getIpBeforeFetch(), v, simulation.getWorld());
             organism.setIp(targetIp);
-            organism.setSkipIpAdvance(true);
+            organism.setSkipIpAdvance(true); // JUMP ändert den IP selbst
         } else {
-            organism.instructionFailed();
+            // GEÄNDERT: instructionFailed mit spezifischem Grund aufrufen
+            organism.instructionFailed("JUMP: Invalid DR type for delta (Reg " + reg + "). Expected int[], found " + (delta != null ? delta.getClass().getSimpleName() : "null") + ".");
         }
     }
 }

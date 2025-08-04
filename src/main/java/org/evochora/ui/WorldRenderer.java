@@ -1,21 +1,21 @@
-// src/main/java/org/evochora/Renderer.java
-package org.evochora;
+// src/main/java/org/evochora/ui/WorldRenderer.java
+package org.evochora.ui;
 
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.TextAlignment;
+import org.evochora.Config;
+import org.evochora.Simulation;
 import org.evochora.organism.Organism;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
 
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
-public class Renderer {
+public class WorldRenderer {
     private final Canvas canvas;
     private final GraphicsContext gc;
     private final Map<Integer, Color> organismColorMap = new HashMap<>();
@@ -24,13 +24,11 @@ public class Renderer {
             Color.ORANGE, Color.MEDIUMPURPLE, Color.CYAN
     };
     private final Font cellFont;
-    private final Font uiFont;
 
-    public Renderer(Canvas canvas) {
+    public WorldRenderer(Canvas canvas) {
         this.canvas = canvas;
         this.gc = canvas.getGraphicsContext2D();
         this.cellFont = Font.font("Monospaced", Config.CELL_SIZE * 0.4);
-        this.uiFont = Font.font("Monospaced", 16);
     }
 
     public void draw(Simulation simulation, Organism selectedOrganism) {
@@ -42,7 +40,7 @@ public class Renderer {
             for (int y = 0; y < world.getShape()[1]; y++) {
                 Symbol symbol = world.getSymbol(x, y);
                 double cellX = x * Config.CELL_SIZE;
-                double cellY = y * Config.CELL_SIZE + Config.HEADER_HEIGHT;
+                double cellY = y * Config.CELL_SIZE; // KORRIGIERT: KEIN HEADER_HEIGHT OFFSET MEHR
 
                 gc.setFill(getBackgroundColorForSymbol(symbol));
                 gc.fillRect(cellX, cellY, Config.CELL_SIZE, Config.CELL_SIZE);
@@ -53,9 +51,6 @@ public class Renderer {
         for (Organism org : simulation.getOrganisms()) {
             drawOrganism(org, selectedOrganism);
         }
-
-        drawHeader(simulation);
-        drawFooter(simulation, selectedOrganism);
     }
 
     private void drawCellText(Symbol symbol, double cellX, double cellY) {
@@ -66,23 +61,25 @@ public class Renderer {
         gc.setTextAlign(TextAlignment.CENTER);
 
         String text;
-        Config.Opcode opcode = Config.OPCODE_DEFINITIONS.get(symbol.toInt());
+        double centerX = cellX + Config.CELL_SIZE / 2.0;
+        double y1 = cellY + Config.CELL_SIZE * 0.4;
+        double y2 = cellY + Config.CELL_SIZE * 0.8;
 
-        if (opcode != null) {
-            String fullName = opcode.name();
-            String line1 = fullName.length() >= 2 ? fullName.substring(0, 2) : fullName;
-            String line2 = fullName.length() > 2 ? fullName.substring(2) : "";
-            double centerX = cellX + Config.CELL_SIZE / 2.0;
-            double y1 = cellY + Config.CELL_SIZE * 0.4;
-            double y2 = cellY + Config.CELL_SIZE * 0.8;
-            gc.fillText(line1, centerX, y1);
-            gc.fillText(line2, centerX, y2);
+        if (symbol.type() == Config.TYPE_CODE) {
+            Config.Opcode opcode = Config.OPCODE_DEFINITIONS.get(symbol.toInt());
+            if (opcode != null) {
+                String fullName = opcode.name();
+                String line1 = fullName.length() >= 2 ? fullName.substring(0, 2) : fullName;
+                String line2 = fullName.length() > 2 ? fullName.substring(2) : "";
+                gc.fillText(line1, centerX, y1);
+                gc.fillText(line2, centerX, y2);
+            } else {
+                text = String.valueOf(symbol.value());
+                gc.fillText(text, centerX, cellY + Config.CELL_SIZE / 2.0 + 4);
+            }
         } else {
-            // KORRIGIERT: Verwende symbol.value(), um nur den reinen Wert zu erhalten,
-            // der als signed int angezeigt werden soll.
-            int value = symbol.value(); // Verwende symbol.value() statt symbol.toInt()
-            text = String.valueOf(value);
-            gc.fillText(text, cellX + Config.CELL_SIZE / 2.0, cellY + Config.CELL_SIZE / 2.0 + 4);
+            text = String.valueOf(symbol.value());
+            gc.fillText(text, centerX, cellY + Config.CELL_SIZE / 2.0 + 4);
         }
     }
 
@@ -90,7 +87,7 @@ public class Renderer {
         Color orgColor = organismColorMap.computeIfAbsent(org.getId(), id -> colorPalette[id % colorPalette.length]);
         int[] ip = org.getIp();
         double x = ip[0] * Config.CELL_SIZE;
-        double y = ip[1] * Config.CELL_SIZE + Config.HEADER_HEIGHT;
+        double y = ip[1] * Config.CELL_SIZE; // KORRIGIERT: KEIN HEADER_HEIGHT OFFSET MEHR
 
         gc.setStroke(org.isDead() ? Config.COLOR_DEAD : orgColor);
         gc.setLineWidth(2.5);
@@ -99,7 +96,7 @@ public class Renderer {
         if (org == selectedOrganism && !org.isDead()) {
             int[] dp = org.getDp();
             double dpX = dp[0] * Config.CELL_SIZE;
-            double dpY = dp[1] * Config.CELL_SIZE + Config.HEADER_HEIGHT;
+            double dpY = dp[1] * Config.CELL_SIZE; // KORRIGIERT: KEIN HEADER_HEIGHT OFFSET MEHR
             drawDp(new javafx.geometry.Rectangle2D(dpX, dpY, Config.CELL_SIZE, Config.CELL_SIZE), orgColor);
             drawDv(x, y, orgColor, org.getDv());
         }
@@ -124,54 +121,6 @@ public class Renderer {
         gc.fillOval(centerX + dv[0] * offset - size / 2, centerY + dv[1] * offset - size / 2, size, size);
     }
 
-    private void drawHeader(Simulation simulation) {
-        gc.setFill(Config.COLOR_HEADER_FOOTER);
-        gc.fillRect(0, 0, Config.SCREEN_WIDTH, Config.HEADER_HEIGHT);
-        gc.setFill(Config.COLOR_TEXT);
-        gc.setFont(uiFont);
-        gc.setTextAlign(TextAlignment.LEFT);
-        String status = simulation.paused ? "PAUSED" : "RUNNING";
-        gc.fillText("Status: " + status, 10, 30);
-        gc.fillText("Tick: " + simulation.getCurrentTick(), 200, 30);
-        gc.setStroke(Config.COLOR_TEXT);
-        gc.setTextAlign(TextAlignment.CENTER);
-        gc.strokeRect(400, 10, 100, 30);
-        gc.fillText("Play/Pause", 450, 30);
-        gc.strokeRect(510, 10, 100, 30);
-        gc.fillText("Next Tick", 560, 30);
-        gc.strokeRect(620, 10, 100, 30);
-        gc.fillText("Restart", 670, 30);
-    }
-
-    private void drawFooter(Simulation simulation, Organism selectedOrganism) {
-        double footerY = Config.HEADER_HEIGHT + (Config.WORLD_SHAPE[1] * Config.CELL_SIZE);
-        gc.setFill(Config.COLOR_HEADER_FOOTER);
-        gc.fillRect(0, footerY, Config.SCREEN_WIDTH, Config.FOOTER_HEIGHT);
-
-        if (selectedOrganism != null) {
-            Color orgColor = organismColorMap.get(selectedOrganism.getId());
-            if (orgColor == null) return;
-            gc.setFill(selectedOrganism.isDead() ? Config.COLOR_DEAD : orgColor);
-            gc.setFont(Font.font("Monospaced", 14));
-            gc.setTextAlign(TextAlignment.LEFT);
-
-            String line1 = String.format("ID: %d %s | ER: %d | IP: %s | DP: %s | DV: %s",
-                    selectedOrganism.getId(), selectedOrganism.isDead() ? "(DEAD)" : "",
-                    selectedOrganism.getEr(), Arrays.toString(selectedOrganism.getIp()),
-                    Arrays.toString(selectedOrganism.getDp()), Arrays.toString(selectedOrganism.getDv()));
-            gc.fillText(line1, 10, footerY + 20);
-
-            List<Object> drs = selectedOrganism.getDrs();
-            StringBuilder line2 = new StringBuilder("DRs: ");
-            for(int i = 0; i < drs.size(); i++) {
-                Object val = drs.get(i);
-                String valStr = (val instanceof int[]) ? Arrays.toString((int[]) val) : val.toString();
-                line2.append(String.format("%d:[%s] ", i, valStr));
-            }
-            gc.fillText(line2.toString(), 10, footerY + 45);
-        }
-    }
-
     private Color getBackgroundColorForSymbol(Symbol symbol) {
         if (symbol.isEmpty()) return Config.COLOR_EMPTY_BG;
         return switch (symbol.type()) {
@@ -179,7 +128,7 @@ public class Renderer {
             case Config.TYPE_DATA -> Config.COLOR_DATA_BG;
             case Config.TYPE_STRUCTURE -> Config.COLOR_STRUCTURE_BG;
             case Config.TYPE_ENERGY -> Config.COLOR_ENERGY_BG;
-            default -> Config.COLOR_EMPTY_BG;
+            default -> Config.COLOR_EMPTY_BG; // Falls Typ unbekannt oder ungültig
         };
     }
 
@@ -191,5 +140,9 @@ public class Renderer {
             case Config.TYPE_CODE -> Config.COLOR_CODE_TEXT;
             default -> Config.COLOR_TEXT;
         };
+    }
+
+    public Canvas getCanvas() {
+        return canvas;
     }
 }

@@ -1,8 +1,6 @@
 // src/main/java/org/evochora/organism/SetlAction.java
 package org.evochora.organism;
 
-import org.evochora.organism.Action;
-import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
 
@@ -24,18 +22,17 @@ public class SetlAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
-        // Das erste Argument (Register-Index) ist immer positiv.
-        int regIdx = organism.fetchArgument(tempIp, world);
-        // Das zweite Argument (der Literal-Wert) kann negativ sein.
-        int literal = organism.fetchSignedArgument(tempIp, world);
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length); // Kopie, um das IP nicht zu verändern
+        int regIdx = organism.fetchArgument(tempIp, world); // fetchArgument gibt den vollen Symbol-Wert zurück (hier: Register-ID)
+        int literal = organism.fetchSignedArgument(tempIp, world); // fetchSignedArgument gibt den reinen, vorzeichenbehafteten Wert zurück
         return new SetlAction(organism, regIdx, literal);
     }
 
     @Override
     public void execute(Simulation simulation) {
         if (!organism.setDr(registerIndex, literalValue)) {
-            organism.instructionFailed();
+            // GEÄNDERT: instructionFailed mit spezifischem Grund aufrufen
+            organism.instructionFailed("SETL: Failed to set literal value " + literalValue + " to DR " + registerIndex + ". Possible invalid register index.");
         }
     }
 }

@@ -1,8 +1,6 @@
 // src/main/java/org/evochora/organism/SubAction.java
 package org.evochora.organism;
 
-import org.evochora.organism.Action;
-import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
 import java.util.Arrays;
@@ -21,7 +19,7 @@ public class SubAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length); // Kopie, um das IP nicht zu verändern
         return new SubAction(organism, organism.fetchArgument(tempIp, world), organism.fetchArgument(tempIp, world));
     }
 
@@ -36,7 +34,8 @@ public class SubAction extends Action {
             for (int i = 0; i < v1.length; i++) result[i] = v1[i] - v2[i];
             organism.setDr(reg1, result);
         } else {
-            organism.instructionFailed();
+            // GEÄNDERT: instructionFailed mit spezifischem Grund aufrufen
+            organism.instructionFailed("SUB: Invalid DR types. Reg " + reg1 + " (" + (val1 != null ? val1.getClass().getSimpleName() : "null") + ") and Reg " + reg2 + " (" + (val2 != null ? val2.getClass().getSimpleName() : "null") + ") must be both Integer or both int[].");
         }
     }
 }

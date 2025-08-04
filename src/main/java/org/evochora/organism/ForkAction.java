@@ -2,8 +2,6 @@
 package org.evochora.organism;
 
 import org.evochora.Config;
-import org.evochora.organism.Action;
-import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
 
@@ -41,25 +39,28 @@ public class ForkAction extends Action {
 
         if (d instanceof int[] delta && e instanceof Integer energy && dv instanceof int[] childDv) {
             int totalCost = energy + Config.OPCODE_COSTS.get(Config.OP_FORK);
-            if (energy > 0 && organism.getEr() > totalCost) {
+            if (energy > 0 && organism.getEr() >= totalCost) {
 
                 int[] childIp = organism.getTargetCoordinate(organism.getIpBeforeFetch(), delta, simulation.getWorld());
 
                 organism.takeEr(totalCost);
 
-                // KORRIGIERT: Erstelle zuerst das Organismus-Objekt
-                Organism child = Organism.create(simulation, childIp, energy);
-                child.setDv(childDv); // Setze den DV des Kindes
+                // GEÄNDERT: Logger über Getter weitergeben
+                Organism child = Organism.create(simulation, childIp, energy, organism.getLogger()); // Jetzt über Getter zugreifen
+                child.setDv(childDv);
 
-                // Füge das fertige Objekt hinzu
                 simulation.addNewOrganism(child);
 
                 organism.setSkipIpAdvance(true);
             } else {
-                organism.instructionFailed();
+                if (energy <= 0) {
+                    organism.instructionFailed("FORK: Child energy must be positive (is " + energy + ").");
+                } else {
+                    organism.instructionFailed("FORK: Insufficient energy (" + organism.getEr() + ") for cost " + totalCost + " (child energy " + energy + " + base cost).");
+                }
             }
         } else {
-            organism.instructionFailed();
+            organism.instructionFailed("FORK: Invalid DR types. Delta (Reg " + deltaReg + ") must be int[], Energy (Reg " + energyReg + ") must be Integer, DV (Reg " + dvReg + ") must be int[]. Found: Delta " + (d != null ? d.getClass().getSimpleName() : "null") + ", Energy " + (e != null ? e.getClass().getSimpleName() : "null") + ", DV " + (dv != null ? dv.getClass().getSimpleName() : "null") + ".");
         }
     }
 }

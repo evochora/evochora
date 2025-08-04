@@ -1,8 +1,6 @@
 // src/main/java/org/evochora/organism/DiffAction.java
 package org.evochora.organism;
 
-import org.evochora.organism.Action;
-import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
 import java.util.Arrays;
@@ -23,28 +21,31 @@ public class DiffAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length); // Kopie, um das IP nicht zu verändern
         return new DiffAction(organism, organism.fetchArgument(tempIp, world));
     }
 
     @Override
     public void execute(Simulation simulation) {
-        int[] ip = organism.getIp(); // Die Position am Anfang der Ausführung
-
-        // KORRIGIERT: Verwendet jetzt die korrekte Methode
+        // Die Position am Anfang der Ausführung, bevor der IP vorgerückt wurde
         int[] lastIp = organism.getIpBeforeFetch();
 
-        if (lastIp == null) {
-            organism.instructionFailed();
+        // Überprüfen, ob lastIp gültig ist (sollte es immer sein, aber zur Sicherheit)
+        if (lastIp == null || lastIp.length != organism.getIp().length) {
+            // GEÄNDERT: instructionFailed mit spezifischem Grund aufrufen
+            organism.instructionFailed("DIFF: Cannot determine previous IP for difference calculation.");
             return;
         }
 
-        int[] delta = new int[ip.length];
-        for (int i = 0; i < ip.length; i++) {
-            delta[i] = ip[i] - lastIp[i];
+        int[] delta = new int[organism.getIp().length];
+        for (int i = 0; i < organism.getIp().length; i++) {
+            delta[i] = organism.getIp()[i] - lastIp[i];
         }
+
         if (!organism.setDr(reg, delta)) {
-            organism.instructionFailed();
+            // setDr setzt bereits instructionFailed und den Grund, aber hier könnte man noch spezifischer sein
+            // GEÄNDERT: instructionFailed mit spezifischem Grund aufrufen (falls setDr den Fehler nicht detailliert genug setzt)
+            organism.instructionFailed("DIFF: Failed to set result to DR " + reg + ". Possible invalid register index.");
         }
     }
 }

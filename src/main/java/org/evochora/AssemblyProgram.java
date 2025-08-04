@@ -56,6 +56,9 @@ public abstract class AssemblyProgram {
                 for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
                     relativePos[i] = Integer.parseInt(parts[3 + i]);
                 }
+                // KORRIGIERT: Typ-Werte müssen nun die dynamische TYPE_SHIFT verwenden.
+                // Außerdem muss der Wert maskiert werden, um sicherzustellen, dass er nicht
+                // in den Typ-Bereich ragt (besonders wichtig für negative Literale).
                 int type = switch (typeName) {
                     case "ENERGY" -> Config.TYPE_ENERGY;
                     case "STRUCTURE" -> Config.TYPE_STRUCTURE;
@@ -63,7 +66,7 @@ public abstract class AssemblyProgram {
                     case "CODE" -> Config.TYPE_CODE;
                     default -> throw new IllegalArgumentException("Unbekannter Typ in .PLACE: " + typeName);
                 };
-                initialWorldObjects.put(relativePos, new Symbol(type, value));
+                initialWorldObjects.put(relativePos, new Symbol(type, value)); // Symbol-Konstruktor übernimmt Maskierung
             } else if (!directive.equals(".DIR")) {
                 Integer opcode = Config.NAME_TO_OPCODE.get(directive);
                 if (opcode == null) throw new IllegalArgumentException("Unbekannter Befehl in Phase 1: " + directive);
@@ -108,9 +111,11 @@ public abstract class AssemblyProgram {
 
             List<Integer> assembledArgs = assembler.apply(args, registerMap, labelMap);
             for (int argValue : assembledArgs) {
-                // KORRIGIERT: Zuerst den argValue auf den VALUE_MASK anwenden,
-                // dann den TYPE_DATA hinzufügen. Dies stellt sicher, dass negative Werte
-                // nicht in den Typ-Bereich "überlaufen", wenn sie als 32-Bit int behandelt werden.
+                // KORRIGIERT: Argumente sollten als TYPE_DATA platziert werden.
+                // Der argValue wird hier explizit maskiert, um sicherzustellen,
+                // dass nur die relevanten Bits des Werts in den 32-Bit-Integer eingehen,
+                // bevor der TYPE_DATA-Header hinzugefügt wird.
+                // Dies löst das Problem des "Überlaufens" negativer Werte in den Typ-Bereich.
                 machineCodeLayout.put(Arrays.copyOf(currentPos, currentPos.length), Config.TYPE_DATA | (argValue & Config.VALUE_MASK));
                 for(int i=0; i<currentPos.length; i++) currentPos[i] += currentDv[i];
             }

@@ -2,8 +2,6 @@
 package org.evochora.organism;
 
 import org.evochora.Config;
-import org.evochora.organism.Action;
-import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
@@ -12,10 +10,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-public class PokeAction extends Action {
+public class PokeAction extends Action implements IWorldModifyingAction { // GEÄNDERT: Implementiert IWorldModifyingAction
     private final int srcReg;
     private final int vecReg;
-    private final int[] targetCoordinate;
+    private final int[] targetCoordinate; // Speichert die Zielkoordinate
 
     public PokeAction(Organism organism, int srcReg, int vecReg, int[] targetCoordinate) {
         super(organism);
@@ -30,51 +28,63 @@ public class PokeAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length); // Kopie, um das IP nicht zu verändern
         int src = organism.fetchArgument(tempIp, world);
         int vec = organism.fetchArgument(tempIp, world);
+
         Object v = organism.getDr(vec);
         if (v instanceof int[] vi) {
-            // NEUE PRÜFUNG: Ist es ein gültiger Einheitsvektor?
-            if (!organism.isUnitVector(vi)) { // Prüfung hier hinzufügen
-                organism.instructionFailed();
-                return new NopAction(organism); // oder eine spezifische Fehleraktion
+            // FINALE PRÜFUNG: Erzwinge strikte Lokalität.
+            if (!organism.isUnitVector(vi)) { // organism.isUnitVector setzt bereits den Fehlergrund
+                // Der Fehlergrund wird im Organismus gesetzt. Hier nur eine NopAction zurückgeben.
+                return new NopAction(organism);
             }
             int[] target = organism.getTargetCoordinate(organism.getDp(), vi, world);
             return new PokeAction(organism, src, vec, target);
         }
-        organism.instructionFailed();
-        return new NopAction(organism);
+        // GEÄNDERT: instructionFailed mit spezifischem Grund aufrufen
+        organism.instructionFailed("POKE: Invalid DR type for vector (Reg " + vec + "). Expected int[], found " + (v != null ? v.getClass().getSimpleName() : "null") + ".");
+        return new NopAction(organism); // Rückgabe einer NopAction bei Planungsfehler
     }
 
     @Override
     public void execute(Simulation simulation) {
         World world = simulation.getWorld();
-        Object vec = organism.getDr(vecReg);
-        Object val = organism.getDr(srcReg);
+        Object vec = organism.getDr(vecReg); // Erneuter Zugriff auf DR, falls sich der Wert geändert hat
+        Object val = organism.getDr(srcReg); // Erneuter Zugriff auf DR, falls sich der Wert geändert hat
 
-        if (vec instanceof int[] v && val instanceof Integer i) {
-            // Die isUnitVector-Prüfung kann hier bleiben, um Redundanz zu gewährleisten,
-            // oder entfernt werden, wenn wir davon ausgehen, dass plan diese bereits behandelt hat.
-            // Ich würde sie hier behalten, da getDr(vecReg) in execute erneut aufgerufen wird
-            // und sich der Wert im Register zwischen plan und execute ändern könnte,
-            // auch wenn das unwahrscheinlich ist.
-            if (!organism.isUnitVector(v)) { // Beibehalten
-                organism.instructionFailed();
-                return;
-            }
+        // Erneute Überprüfung der Typen und des Einheitsvektors zur Laufzeit,
+        // falls sich die Registerinhalte seit der Planungsphase geändert haben sollten.
+        if (!(vec instanceof int[] v) || !organism.isUnitVector(v)) {
+            // instructionFailed wurde bereits in plan gesetzt, oder durch isUnitVector(). Hier nur Return.
+            return;
+        }
 
-            if (world.getSymbol(targetCoordinate).isEmpty()) {
-                world.setSymbol(Symbol.fromInt(i), targetCoordinate);
+        if (val instanceof Integer i) {
+            // NEU: Nur ausführen, wenn die Aktion den Konflikt gewonnen hat oder es keinen Konflikt gab.
+            if (this.getConflictStatus() == ConflictResolutionStatus.WON_EXECUTION || this.getConflictStatus() == ConflictResolutionStatus.NOT_APPLICABLE) {
+                if (world.getSymbol(targetCoordinate).isEmpty()) {
+                    world.setSymbol(Symbol.fromInt(i), targetCoordinate);
+                } else {
+                    // GEÄNDERT: instructionFailed mit spezifischem Grund aufrufen
+                    organism.instructionFailed("POKE: Target cell is not empty at " + Arrays.toString(targetCoordinate) + ". Current content: " + world.getSymbol(targetCoordinate).toInt() + ".");
+                    // NEU: Setze Konfliktstatus, da Zelle bereits belegt war
+                    this.setConflictStatus(ConflictResolutionStatus.LOST_TARGET_OCCUPIED);
+                }
             } else {
-                organism.instructionFailed(); // Zielzelle nicht leer
+                // Wenn die Aktion den Konflikt verloren hat, tut sie nichts, aber setzt instructionFailed nicht
+                // Das Logging wird dies über den conflictStatus festhalten
             }
         } else {
-            organism.instructionFailed();
+            // GEÄNDERT: instructionFailed mit spezifischem Grund aufrufen
+            organism.instructionFailed("POKE: Invalid DR type for source value (Reg " + srcReg + "). Expected Integer, found " + (val != null ? val.getClass().getSimpleName() : "null") + ".");
         }
     }
 
-    public int[] getTargetCoordinate() {
-        return targetCoordinate;
+    @Override
+    public List<int[]> getTargetCoordinates() {
+        return List.of(targetCoordinate);
     }
+
+    // Getter und Setter für conflictStatus sind in Action.java implementiert
 }

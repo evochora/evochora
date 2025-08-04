@@ -1,8 +1,6 @@
 // src/main/java/org/evochora/organism/NrgAction.java
 package org.evochora.organism;
 
-import org.evochora.organism.Action;
-import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
 import java.util.Arrays;
@@ -19,14 +17,15 @@ public class NrgAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length); // Kopie, um das IP nicht zu verändern
         return new NrgAction(organism, organism.fetchArgument(tempIp, world));
     }
 
     @Override
     public void execute(Simulation simulation) {
         if (!organism.setDr(targetReg, organism.getEr())) {
-            organism.instructionFailed();
+            // GEÄNDERT: instructionFailed mit spezifischem Grund aufrufen
+            organism.instructionFailed("NRG: Failed to set energy to DR " + targetReg + ". Possible invalid register index.");
         }
     }
 }

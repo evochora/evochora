@@ -12,7 +12,7 @@ public class AddAction extends Action {
     public AddAction(Organism o, int r1, int r2) { super(o); this.reg1 = r1; this.reg2 = r2; }
 
     public static Action plan(Organism organism, World world) {
-        int[] tempIp = organism.getIp();
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length); // Kopie, um das IP nicht zu verändern
         return new AddAction(organism, organism.fetchArgument(tempIp, world), organism.fetchArgument(tempIp, world));
     }
     public static List<Integer> assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
@@ -21,12 +21,18 @@ public class AddAction extends Action {
     }
     @Override
     public void execute(Simulation simulation) {
-        Object val1 = organism.getDr(reg1); Object val2 = organism.getDr(reg2);
-        if (val1 instanceof Integer v1 && val2 instanceof Integer v2) organism.setDr(reg1, v1 + v2);
-        else if (val1 instanceof int[] v1 && val2 instanceof int[] v2 && v1.length == v2.length) {
+        Object val1 = organism.getDr(reg1);
+        Object val2 = organism.getDr(reg2);
+
+        if (val1 instanceof Integer v1 && val2 instanceof Integer v2) {
+            organism.setDr(reg1, v1 + v2);
+        } else if (val1 instanceof int[] v1 && val2 instanceof int[] v2 && v1.length == v2.length) {
             int[] result = new int[v1.length];
             for (int i = 0; i < v1.length; i++) result[i] = v1[i] + v2[i];
             organism.setDr(reg1, result);
-        } else organism.instructionFailed();
+        } else {
+            // GEÄNDERT: instructionFailed mit spezifischem Grund aufrufen
+            organism.instructionFailed("ADD: Invalid DR types. Reg " + reg1 + " (" + (val1 != null ? val1.getClass().getSimpleName() : "null") + ") and Reg " + reg2 + " (" + (val2 != null ? val2.getClass().getSimpleName() : "null") + ") must be both Integer or both int[].");
+        }
     }
 }

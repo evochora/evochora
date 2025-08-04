@@ -1,8 +1,6 @@
 // src/main/java/org/evochora/organism/SeekAction.java
 package org.evochora.organism;
 
-import org.evochora.organism.Action;
-import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
 import java.util.Arrays;
@@ -19,7 +17,7 @@ public class SeekAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length); // Kopie, um das IP nicht zu verändern
         return new SeekAction(organism, organism.fetchArgument(tempIp, world));
     }
 
@@ -27,20 +25,20 @@ public class SeekAction extends Action {
     public void execute(Simulation simulation) {
         Object vec = organism.getDr(reg);
         if (vec instanceof int[] v) {
-            // NEUE PRÜFUNG: Ist es ein gültiger Einheitsvektor?
-            if (!organism.isUnitVector(v)) {
-                organism.instructionFailed();
-                return;
+            if (!organism.isUnitVector(v)) { // organism.isUnitVector setzt bereits den Fehlergrund
+                return; // Fehler wurde bereits in isUnitVector gesetzt
             }
 
             int[] targetDp = organism.getTargetCoordinate(organism.getDp(), v, simulation.getWorld());
             if (simulation.getWorld().getSymbol(targetDp).isEmpty()) {
                 organism.setDp(targetDp);
             } else {
-                organism.instructionFailed(); // Zielzelle nicht leer
+                // GEÄNDERT: instructionFailed mit spezifischem Grund aufrufen
+                organism.instructionFailed("SEEK: Target DP cell is not empty at " + Arrays.toString(targetDp) + ". Current content: " + simulation.getWorld().getSymbol(targetDp).toInt() + ".");
             }
         } else {
-            organism.instructionFailed();
+            // GEÄNDERT: instructionFailed mit spezifischem Grund aufrufen
+            organism.instructionFailed("SEEK: Invalid DR type for vector (Reg " + reg + "). Expected int[], found " + (vec != null ? vec.getClass().getSimpleName() : "null") + ".");
         }
     }
 }

@@ -1,8 +1,6 @@
 // src/main/java/org/evochora/organism/ScanAction.java
 package org.evochora.organism;
 
-import org.evochora.organism.Action;
-import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
 import java.util.Arrays;
@@ -19,7 +17,7 @@ public class ScanAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length); // Kopie, um das IP nicht zu verändern
         return new ScanAction(organism, organism.fetchArgument(tempIp, world), organism.fetchArgument(tempIp, world));
     }
 
@@ -27,15 +25,16 @@ public class ScanAction extends Action {
     public void execute(Simulation simulation) {
         Object vec = organism.getDr(vecReg);
         if(vec instanceof int[] v) {
-            // NEUE PRÜFUNG: Ist es ein gültiger Einheitsvektor?
-            if (!organism.isUnitVector(v)) {
-                organism.instructionFailed();
-                return;
+            if (!organism.isUnitVector(v)) { // organism.isUnitVector setzt bereits den Fehlergrund
+                return; // Fehler wurde bereits in isUnitVector gesetzt
             }
             int[] target = organism.getTargetCoordinate(organism.getDp(), v, simulation.getWorld());
-            organism.setDr(targetReg, simulation.getWorld().getSymbol(target).toInt());
+            if (!organism.setDr(targetReg, simulation.getWorld().getSymbol(target).toInt())) {
+                // setDr setzt bereits instructionFailed und den Grund
+            }
         } else {
-            organism.instructionFailed();
+            // GEÄNDERT: instructionFailed mit spezifischem Grund aufrufen
+            organism.instructionFailed("SCAN: Invalid DR type for vector (Reg " + vecReg + "). Expected int[], found " + (vec != null ? vec.getClass().getSimpleName() : "null") + ".");
         }
     }
 }

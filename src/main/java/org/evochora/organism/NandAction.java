@@ -1,8 +1,6 @@
 // src/main/java/org/evochora/organism/NandAction.java
 package org.evochora.organism;
 
-import org.evochora.organism.Action;
-import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
 import java.util.Arrays;
@@ -21,7 +19,7 @@ public class NandAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length); // Kopie, um das IP nicht zu verändern
         return new NandAction(organism, organism.fetchArgument(tempIp, world), organism.fetchArgument(tempIp, world));
     }
 
@@ -32,7 +30,8 @@ public class NandAction extends Action {
         if (val1 instanceof Integer v1 && val2 instanceof Integer v2) {
             organism.setDr(reg1, ~(v1 & v2));
         } else {
-            organism.instructionFailed();
+            // GEÄNDERT: instructionFailed mit spezifischem Grund aufrufen
+            organism.instructionFailed("NAND: Invalid DR types. Reg " + reg1 + " (" + (val1 != null ? val1.getClass().getSimpleName() : "null") + ") and Reg " + reg2 + " (" + (val2 != null ? val2.getClass().getSimpleName() : "null") + ") must be Integer.");
         }
     }
 }

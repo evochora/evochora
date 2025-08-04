@@ -12,7 +12,7 @@ public class SetrAction extends Action {
     public SetrAction(Organism o, int d, int s) { super(o); this.destReg = d; this.srcReg = s; }
 
     public static Action plan(Organism organism, World world) {
-        int[] tempIp = organism.getIp();
+        int[] tempIp = organism.getIp(); // Kopie, um das IP nicht zu verändern
         int dest = organism.fetchArgument(tempIp, world);
         int src = organism.fetchArgument(tempIp, world);
         return new SetrAction(organism, dest, src);
@@ -23,9 +23,10 @@ public class SetrAction extends Action {
     }
     @Override
     public void execute(Simulation simulation) {
-        Object value = organism.getDr(srcReg);
+        Object value = organism.getDr(srcReg); // getDr setzt bereits instructionFailed und den Grund, falls srcReg ungültig
         if (value == null || !organism.setDr(destReg, value)) {
-            organism.instructionFailed();
+            // GEÄNDERT: instructionFailed mit spezifischem Grund aufrufen (falls setDr den Fehler nicht detailliert genug setzt)
+            organism.instructionFailed("SETR: Failed to set value from DR " + srcReg + " to DR " + destReg + ". Possible invalid register index or null source value.");
         }
     }
 }

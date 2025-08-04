@@ -2,8 +2,6 @@
 package org.evochora.organism;
 
 import org.evochora.Config;
-import org.evochora.organism.Action;
-import org.evochora.organism.Organism;
 import org.evochora.Simulation;
 import org.evochora.world.World;
 import java.util.ArrayList;
@@ -22,7 +20,7 @@ public class SetvAction extends Action {
         List<Integer> machineCode = new ArrayList<>();
         machineCode.add(registerMap.get(args[0].toUpperCase()));
         String[] vectorComponents = args[1].split("\\|");
-        if (vectorComponents.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("SETV: Falsche Vektor-Dimensionalität.");
+        if (vectorComponents.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("SETV: Falsche Vektor-Dimensionalität. Erwartet " + Config.WORLD_DIMENSIONS + ", gefunden " + vectorComponents.length + ".");
         for (String component : vectorComponents) {
             machineCode.add(Integer.parseInt(component.strip()));
         }
@@ -30,11 +28,10 @@ public class SetvAction extends Action {
     }
 
     public static Action plan(Organism organism, World world) {
-        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
+        int[] tempIp = Arrays.copyOf(organism.getIp(), organism.getIp().length); // Kopie, um das IP nicht zu verändern
         int reg = organism.fetchArgument(tempIp, world);
         int[] vals = new int[Config.WORLD_DIMENSIONS];
         for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
-            // KORRIGIERT: Verwendet die neue Methode, um negative Zahlen korrekt zu lesen
             vals[i] = organism.fetchSignedArgument(tempIp, world);
         }
         return new SetvAction(organism, reg, vals);
@@ -43,7 +40,8 @@ public class SetvAction extends Action {
     @Override
     public void execute(Simulation simulation) {
         if (!organism.setDr(destReg, values)) {
-            organism.instructionFailed();
+            // GEÄNDERT: instructionFailed mit spezifischem Grund aufrufen
+            organism.instructionFailed("SETV: Failed to set vector " + Arrays.toString(values) + " to DR " + destReg + ". Possible invalid register index.");
         }
     }
 }
