@@ -27,6 +27,7 @@ public class PokeInstruction extends Instruction implements IWorldModifyingInstr
 
     static {
         Instruction.registerInstruction(PokeInstruction.class, ID, "POKE", 3, PokeInstruction::plan, PokeInstruction::assemble);
+        Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER));
     }
 
     @Override
