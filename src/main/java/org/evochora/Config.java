@@ -2,15 +2,6 @@
 package org.evochora;
 
 import javafx.scene.paint.Color;
-import org.evochora.organism.Action;
-import org.evochora.organism.Organism;
-import org.evochora.organism.*;
-import org.evochora.world.World;
-
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.function.BiFunction;
 
 public final class Config {
 
@@ -32,8 +23,6 @@ public final class Config {
 
     // Graphics Settings
     public static final int CELL_SIZE = 22;
-    // GEÄNDERT: HEADER_HEIGHT und FOOTER_HEIGHT sind nun nur noch bevorzugte Höhen,
-    // nicht mehr Offsets für den Canvas des WorldRenderer.
     public static final int HEADER_HEIGHT = 50;
     public static final int FOOTER_HEIGHT = 90;
 
@@ -69,67 +58,14 @@ public final class Config {
     public static final int TYPE_ENERGY    = (0x02 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;
     public static final int TYPE_STRUCTURE = (0x03 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;
 
-    // --- Opcode Definition ---
-    public record Opcode(int id, String name, int baseCost, int length) {}
-    public static final Map<Integer, Opcode> OPCODE_DEFINITIONS = new HashMap<>();
-    public static final Map<String, Integer> NAME_TO_OPCODE = new HashMap<>();
-    public static final Map<Integer, Integer> OPCODE_COSTS = new HashMap<>();
-    public static final Map<Integer, Integer> OPCODE_LENGTHS = new HashMap<>();
+    // GEÄNDERT: Alle Opcode-bezogenen Maps, Opcode Record, OP_ Konstanten, static {} Block und addOpcode Methode entfernt.
+    // Die Instruktionsdetails werden nun direkt von der Instruction-Klasse (Instruction.java) bezogen.
 
-    public static final Map<Integer, BiFunction<Organism, World, Action>> OPCODE_TO_ACTION_PLANNER = new HashMap<>();
-
-    @FunctionalInterface
-    public interface AssemblerPlanner {
-        List<Integer> apply(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap);
-    }
-    public static final Map<Integer, AssemblerPlanner> OPCODE_TO_ASSEMBLER = new HashMap<>();
-
-    public static int OP_NOP, OP_SETL, OP_SETR, OP_SETV, OP_ADD, OP_SUB, OP_NAND, OP_IF,
-            OP_IFLT, OP_IFGT, OP_JUMP, OP_TURN, OP_SEEK, OP_SYNC, OP_PEEK,
-            OP_POKE, OP_SCAN, OP_NRG, OP_FORK, OP_DIFF;
-
-    static {
-        addOpcode(0, "NOP", 1, 1, org.evochora.organism.NopAction::plan, org.evochora.organism.NopAction::assemble);
-        addOpcode(1, "SETL", 1, 3, org.evochora.organism.SetlAction::plan, org.evochora.organism.SetlAction::assemble);
-        addOpcode(2, "SETR", 1, 3, org.evochora.organism.SetrAction::plan, org.evochora.organism.SetrAction::assemble);
-        addOpcode(3, "SETV", 1, 2 + WORLD_DIMENSIONS, org.evochora.organism.SetvAction::plan, org.evochora.organism.SetvAction::assemble);
-        addOpcode(4, "ADD", 1, 3, org.evochora.organism.AddAction::plan, org.evochora.organism.AddAction::assemble);
-        addOpcode(5, "SUB", 1, 3, org.evochora.organism.SubAction::plan, org.evochora.organism.SubAction::assemble);
-        addOpcode(6, "NAND", 1, 3, org.evochora.organism.NandAction::plan, org.evochora.organism.NandAction::assemble);
-        addOpcode(7, "IF", 1, 3, org.evochora.organism.IfAction::plan, org.evochora.organism.IfAction::assemble);
-        addOpcode(8, "IFLT", 1, 3, org.evochora.organism.IfAction::plan, org.evochora.organism.IfAction::assemble);
-        addOpcode(9, "IFGT", 1, 3, org.evochora.organism.IfAction::plan, org.evochora.organism.IfAction::assemble);
-        addOpcode(10, "JUMP", 1, 2, org.evochora.organism.JumpAction::plan, org.evochora.organism.JumpAction::assemble);
-        addOpcode(11, "TURN", 1, 2, org.evochora.organism.TurnAction::plan, org.evochora.organism.TurnAction::assemble);
-        addOpcode(12, "SEEK", 1, 2, org.evochora.organism.SeekAction::plan, org.evochora.organism.SeekAction::assemble);
-        addOpcode(13, "SYNC", 1, 1, org.evochora.organism.SyncAction::plan, org.evochora.organism.SyncAction::assemble);
-        addOpcode(14, "PEEK", 1, 3, org.evochora.organism.PeekAction::plan, org.evochora.organism.PeekAction::assemble);
-        addOpcode(15, "POKE", 1, 3, org.evochora.organism.PokeAction::plan, org.evochora.organism.PokeAction::assemble);
-        addOpcode(16, "SCAN", 0, 3, org.evochora.organism.ScanAction::plan, org.evochora.organism.ScanAction::assemble);
-        addOpcode(17, "NRG", 0, 2, org.evochora.organism.NrgAction::plan, org.evochora.organism.NrgAction::assemble);
-        addOpcode(18, "FORK", 10, 4, org.evochora.organism.ForkAction::plan, org.evochora.organism.ForkAction::assemble);
-        addOpcode(19, "DIFF", 1, 2, org.evochora.organism.DiffAction::plan, org.evochora.organism.DiffAction::assemble);
-    }
-
-    private static void addOpcode(int value, String name, int cost, int length,
-                                  BiFunction<Organism, World, Action> planner,
-                                  AssemblerPlanner assembler) {
-        int finalId = (value == 0) ? 0 : TYPE_CODE | (value & VALUE_MASK);
-
-        Opcode opcode = new Opcode(finalId, name, cost, length);
-
-        OPCODE_DEFINITIONS.put(finalId, opcode);
-        NAME_TO_OPCODE.put(name, finalId);
-        OPCODE_COSTS.put(finalId, cost);
-        OPCODE_LENGTHS.put(finalId, length);
-        OPCODE_TO_ACTION_PLANNER.put(finalId, planner);
-        OPCODE_TO_ASSEMBLER.put(finalId, assembler);
-
-        try {
-            Config.class.getField("OP_" + name).setInt(null, finalId);
-        } catch (Exception e) {
-            System.err.println("Fehler beim Setzen der Opcode-Konstante für " + name);
-            e.printStackTrace();
-        }
-    }
+    /**
+     * Prüft, ob ein gegebener Opcode (per seiner vollen ID) Argumente als Vektorkomponenten erwartet.
+     * DIESE METHODE WIRD NUN AUS Config ENTFERNT und ihre Logik wird direkt in AssemblyProgram
+     * über Instruction.getArgumentType() oder ähnliche Mechanismen abgebildet.
+     * Diese Methode wird als Teil dieses Refactorings entfernt.
+     */
+    // public static boolean expectsVectorArguments(int opcodeFullValue) { ... }
 }

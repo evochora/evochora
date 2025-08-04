@@ -8,6 +8,7 @@ import org.evochora.organism.prototypes.LShapedOrganism;
 import org.evochora.organism.prototypes.SetlTester;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
+import org.evochora.assembler.AssemblyProgram; // GEÄNDERT: Neuer Importpfad
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +47,6 @@ public class Setup {
         Map<int[], Symbol> worldObjects = program.getInitialWorldObjects();
 
         // 2. Platziere den Organismus physisch in der Welt.
-        // GEÄNDERT: Logger wird an placeOrganismWithLayout übergeben
         Organism org = placeOrganismWithLayout(simulation, startPos, layout, worldObjects, simulation.getLogger());
 
         // 3. Verknüpfe die laufende Instanz mit den Metadaten des assemblierten Programms.
@@ -62,7 +62,7 @@ public class Setup {
             int[] startPos,
             Map<int[], Integer> layout,
             Map<int[], Symbol> worldObjects,
-            Logger logger) // HINZUGEFÜGT: Logger Parameter
+            Logger logger)
     {
         World world = simulation.getWorld();
 
@@ -76,8 +76,6 @@ public class Setup {
                 absolutePos[i] = startPos[i] + relativePos[i];
             }
 
-            // Wir verlassen uns vollständig auf Symbol.fromInt, um den korrekten Typ
-            // aus dem 32-Bit-Integer zu extrahieren.
             world.setSymbol(Symbol.fromInt(value), absolutePos);
         }
 
@@ -93,7 +91,6 @@ public class Setup {
         }
 
         // 3. Erstelle den Organismus am Startpunkt des Codes.
-        // GEÄNDERT: Logger wird an Organism.create übergeben
         Organism org = Organism.create(simulation, startPos, Config.INITIAL_ORGANISM_ENERGY, logger);
         simulation.addOrganism(org);
         return org;

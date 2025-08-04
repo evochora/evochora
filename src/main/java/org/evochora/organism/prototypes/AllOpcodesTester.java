@@ -1,7 +1,7 @@
 // src/main/java/org/evochora/organism/prototypes/AllOpcodesTester.java
 package org.evochora.organism.prototypes;
 
-import org.evochora.AssemblyProgram;
+import org.evochora.assembler.AssemblyProgram; // GEÄNDERT: Neuer Importpfad
 
 public class AllOpcodesTester extends AssemblyProgram {
     @Override

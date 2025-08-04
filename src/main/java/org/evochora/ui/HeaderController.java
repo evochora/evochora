@@ -2,12 +2,12 @@
 package org.evochora.ui;
 
 import javafx.scene.control.Button;
-import javafx.scene.control.Label; // HINZUGEFÜGT
+import javafx.scene.control.Label;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.paint.Color;
-import javafx.scene.text.Font; // HINZUGEFÜGT
+import javafx.scene.text.Font;
 import org.evochora.Config;
 import org.evochora.Simulation;
 import org.evochora.organism.Organism;
@@ -21,7 +21,7 @@ public class HeaderController {
     private final Button nextTickButton;
     private final Button restartButton;
     private final Button loggingToggleButton;
-    private final Label tickLabel; // NEU: Label für Tick-Anzeige
+    private final Label tickLabel;
 
     private Runnable restartCallback;
 
@@ -33,7 +33,7 @@ public class HeaderController {
         this.nextTickButton = new Button("Next Tick");
         this.restartButton = new Button("Restart");
         this.loggingToggleButton = new Button("Logging: OFF");
-        this.tickLabel = new Label("Tick: 0"); // NEU: Initialisierung
+        this.tickLabel = new Label("Tick: 0");
 
         setupButtons();
 
@@ -41,17 +41,17 @@ public class HeaderController {
         headerPane.setPrefHeight(Config.HEADER_HEIGHT);
         headerPane.setStyle("-fx-background-color: " + toWebColor(Config.COLOR_HEADER_FOOTER) + "; -fx-padding: 10;");
 
-        tickLabel.setFont(Font.font("Monospaced", 16)); // Font anpassen
-        tickLabel.setTextFill(Config.COLOR_TEXT); // Textfarbe
+        tickLabel.setFont(Font.font("Monospaced", 16));
+        tickLabel.setTextFill(Config.COLOR_TEXT);
 
         Region spacer1 = new Region();
         HBox.setHgrow(spacer1, Priority.ALWAYS);
         Region spacer2 = new Region();
         HBox.setHgrow(spacer2, Priority.ALWAYS);
-        Region spacer3 = new Region(); // NEU: Spacer für die Tick-Anzeige
+        Region spacer3 = new Region();
         HBox.setHgrow(spacer3, Priority.ALWAYS);
 
-        headerPane.getChildren().addAll(playPauseButton, nextTickButton, restartButton, loggingToggleButton, spacer3, tickLabel); // GEÄNDERT: Reihenfolge und Tick-Label
+        headerPane.getChildren().addAll(playPauseButton, nextTickButton, restartButton, loggingToggleButton, spacer3, tickLabel);
     }
 
     private void setupButtons() {
@@ -89,7 +89,6 @@ public class HeaderController {
             loggingToggleButton.setDisable(true);
         }
 
-        // NEU: Tick-Anzeige aktualisieren
         tickLabel.setText("Tick: " + this.simulation.getCurrentTick());
     }
 

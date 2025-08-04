@@ -6,16 +6,17 @@ import org.evochora.Logger;
 import org.evochora.Simulation;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.function.BiFunction;
 
-record ForkRequest(int[] childIp, int childEnergy, int[] childDv) {}
-
 public class Organism {
+    // Hilfsklasse für Fork-Anfragen
+    record ForkRequest(int[] childIp, int childEnergy, int[] childDv) {}
+
+    public record FetchResult(int value, int[] nextIp) {}
+
     private final int id;
     private int[] ip;
     private int[] dp;
@@ -31,12 +32,15 @@ public class Organism {
     private int[] ipBeforeFetch;
     private int[] dvBeforeFetch;
     private final Logger logger;
+    private final Simulation simulation;
 
-    Organism(int id, int[] startIp, int initialEnergy, Logger logger) {
+    Organism(int id, int[] startIp, int initialEnergy, Logger logger, Simulation simulation) {
         this.id = id;
         this.ip = startIp;
         this.dp = startIp;
         this.er = initialEnergy;
+        this.logger = logger;
+        this.simulation = simulation;
         this.dv = new int[startIp.length];
         this.dv[0] = 1;
         this.drs = new ArrayList<>(Config.NUM_DATA_REGISTERS);
@@ -45,15 +49,14 @@ public class Organism {
         }
         this.ipBeforeFetch = Arrays.copyOf(startIp, startIp.length);
         this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length);
-        this.logger = logger;
     }
 
     public static Organism create(Simulation simulation, int[] startIp, int initialEnergy, Logger logger) {
         int newId = simulation.getNextOrganismId();
-        return new Organism(newId, startIp, initialEnergy, logger);
+        return new Organism(newId, startIp, initialEnergy, logger, simulation);
     }
 
-    public Action planTick(World world, Map<Integer, BiFunction<Organism, World, Action>> plannerRegistry) {
+    public Instruction planTick(World world) {
         this.instructionFailed = false;
         this.failureReason = null;
         this.skipIpAdvance = false;
@@ -62,82 +65,97 @@ public class Organism {
 
         Symbol symbol = world.getSymbol(this.ip);
         if (Config.STRICT_TYPING) {
-            if (symbol.type() != Config.TYPE_CODE && symbol.toInt() != 0) {
+            if (symbol.type() != Config.TYPE_CODE && !symbol.isEmpty()) {
                 this.instructionFailed("Illegal cell type (not CODE) at IP");
-                return NopAction.plan(this, world);
+                return NopInstruction.plan(this, world);
             }
         }
-        int opcode = symbol.value();
+        int opcodeId = symbol.value();
 
-        BiFunction<Organism, World, Action> planner = plannerRegistry.get(Config.TYPE_CODE | opcode);
+        BiFunction<Organism, World, Instruction> planner = Instruction.getPlannerById(Config.TYPE_CODE | opcodeId);
 
         if (planner != null) {
             return planner.apply(this, world);
         }
 
-        this.instructionFailed("Unknown opcode: " + opcode);
-        return NopAction.plan(this, world);
+        this.instructionFailed("Unknown opcode: " + opcodeId);
+        return NopInstruction.plan(this, world);
     }
 
-    // NEU HINZUGEFÜGT: Diese Methode kapselt die Ausführungslogik für einen Tick.
-    // Sie wird von Simulation.tick() aufgerufen.
-    public void processTickAction(Action action, Simulation simulation) {
-        if (isDead) return; // Organismus ist tot, tue nichts
+    public void processTickAction(Instruction instruction, Simulation simulation) {
+        if (isDead) return;
 
         World world = simulation.getWorld();
 
-        // Kosten für den Opcode abziehen
-        int opcodeFullValue = world.getSymbol(ipBeforeFetch).toInt(); // Verwende IP_BEFORE_FETCH für den Opcode selbst
-        int opcodeCostLookup = (opcodeFullValue == 0) ? 0 : Symbol.fromInt(opcodeFullValue).value();
-        this.er -= Config.OPCODE_COSTS.getOrDefault(Config.TYPE_CODE | opcodeCostLookup, 1);
+        List<Integer> rawArgs = getRawArgumentsFromWorld(ipBeforeFetch, instruction.getLength(), world);
+        this.er -= instruction.getCost(this, world, rawArgs);
 
-        // Spezifische Logik der Aktion ausführen
-        action.execute(simulation);
+        instruction.execute(simulation);
 
-        // Nach Ausführung der spezifischen Aktion, prüfen, ob sie fehlgeschlagen ist
         if (this.instructionFailed) {
             this.er -= Config.ERROR_PENALTY_COST;
         }
 
-        // Prüfen, ob Organismus tot ist
         if (this.er <= 0) {
             isDead = true;
-            if (!this.instructionFailed) { // Wenn noch kein anderer Fehlergrund gesetzt wurde
+            if (!this.instructionFailed) {
                 this.instructionFailed("Ran out of energy");
             }
-            return; // Organismus stirbt, kein IP-Vorrücken
+            return;
         }
 
-        // IP vorrücken, es sei denn, die Aktion hat es übersprungen (z.B. JUMP, FORK)
         if (!this.skipIpAdvance) {
-            Config.Opcode opcodeDef = Config.OPCODE_DEFINITIONS.get(opcodeFullValue);
-            int length = (opcodeDef != null) ? opcodeDef.length() : 1;
+            int length = instruction.getLength();
             advanceIpBy(length, world);
         }
     }
 
-    // --- Package-Private Methoden für Actions ---
+    private List<Integer> getRawArgumentsFromWorld(int[] startIp, int instructionLength, World world) {
+        List<Integer> rawArgs = new ArrayList<>();
+        int[] tempIp = Arrays.copyOf(startIp, startIp.length);
 
-    int fetchArgument(int[] readHead, World world) {
-        int[] nextReadHead = getNextInstructionPosition(readHead, world, this.dvBeforeFetch);
-        System.arraycopy(nextReadHead, 0, readHead, 0, readHead.length);
-        return world.getSymbol(readHead).value();
-    }
-
-    int fetchSignedArgument(int[] readHead, World world) {
-        int[] nextReadHead = getNextInstructionPosition(readHead, world, this.dvBeforeFetch);
-        System.arraycopy(nextReadHead, 0, readHead, 0, readHead.length);
-        return world.getSymbol(readHead).value();
+        for (int i = 0; i < instructionLength - 1; i++) {
+            tempIp = getNextInstructionPosition(tempIp, world, this.dvBeforeFetch);
+            rawArgs.add(world.getSymbol(tempIp).toInt());
+        }
+        return rawArgs;
     }
 
     boolean setDr(int index, Object value) {
-        if (index >= 0 && index < this.drs.size()) { this.drs.set(index, value); return true; }
-        this.instructionFailed("DR index out of bounds: " + index); return false;
+        if (index >= 0 && index < this.drs.size()) {
+            if (value instanceof Integer || value instanceof int[]) {
+                this.drs.set(index, value);
+                return true;
+            }
+            this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to DR " + index);
+            return false;
+        }
+        this.instructionFailed("DR index out of bounds: " + index);
+        return false;
     }
 
-    Object getDr(int index) {
-        if (index >= 0 && index < this.drs.size()) { return this.drs.get(index); }
-        this.instructionFailed("DR index out of bounds: " + index); return null;
+    // GEÄNDERT: Sichtbarkeit von package-private auf public gesetzt
+    public Object getDr(int index) {
+        if (index >= 0 && index < this.drs.size()) {
+            return this.drs.get(index);
+        }
+        this.instructionFailed("DR index out of bounds: " + index);
+        return null;
+    }
+
+    private FetchResult fetchArgumentInternal(int[] currentIp, World world, boolean signed) {
+        int[] nextIp = getNextInstructionPosition(currentIp, world, this.dvBeforeFetch);
+        Symbol symbol = world.getSymbol(nextIp);
+        int value = signed ? symbol.toScalarValue() : symbol.value();
+        return new FetchResult(value, nextIp);
+    }
+
+    public FetchResult fetchArgument(int[] currentIp, World world) {
+        return fetchArgumentInternal(currentIp, world, false);
+    }
+
+    public FetchResult fetchSignedArgument(int[] currentIp, World world) {
+        return fetchArgumentInternal(currentIp, world, true);
     }
 
     void advanceIpBy(int steps, World world) {
@@ -164,9 +182,8 @@ public class Organism {
 
     void skipNextInstruction(World world) {
         int[] nextIp = getNextInstructionPosition(this.ip, world, this.dv);
-        int opcodeToSkip = world.getSymbol(nextIp).toInt();
-        Config.Opcode opcodeDef = Config.OPCODE_DEFINITIONS.get(opcodeToSkip);
-        int lengthToSkip = (opcodeDef != null) ? opcodeDef.length() : 1;
+        int opcodeToSkipFullId = world.getSymbol(nextIp).toInt();
+        int lengthToSkip = Instruction.getInstructionLengthById(Config.TYPE_CODE | opcodeToSkipFullId);
         advanceIpBy(lengthToSkip, world);
     }
 
@@ -198,7 +215,6 @@ public class Organism {
     void setForkRequestData(int[] childIp, int childEnergy, int[] childDv) { this.forkRequestData = new ForkRequest(childIp, childEnergy, childDv); }
     void setSkipIpAdvance(boolean skip) { this.skipIpAdvance = skip; }
 
-    // --- Öffentliche Getter ---
     public int getId() { return id; }
     public int[] getIp() { return Arrays.copyOf(ip, ip.length); }
     public int[] getIpBeforeFetch() { return Arrays.copyOf(ipBeforeFetch, ipBeforeFetch.length); }
@@ -214,4 +230,5 @@ public class Organism {
     public String getFailureReason() { return failureReason; }
     public Logger getLogger() { return logger; }
     public int[] getDv() { return Arrays.copyOf(dv, dv.length); }
+    public Simulation getSimulation() { return simulation; }
 }

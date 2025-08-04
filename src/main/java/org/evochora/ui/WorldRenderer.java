@@ -8,6 +8,7 @@ import javafx.scene.text.Font;
 import javafx.scene.text.TextAlignment;
 import org.evochora.Config;
 import org.evochora.Simulation;
+import org.evochora.organism.Instruction;
 import org.evochora.organism.Organism;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
@@ -40,7 +41,7 @@ public class WorldRenderer {
             for (int y = 0; y < world.getShape()[1]; y++) {
                 Symbol symbol = world.getSymbol(x, y);
                 double cellX = x * Config.CELL_SIZE;
-                double cellY = y * Config.CELL_SIZE; // KORRIGIERT: KEIN HEADER_HEIGHT OFFSET MEHR
+                double cellY = y * Config.CELL_SIZE;
 
                 gc.setFill(getBackgroundColorForSymbol(symbol));
                 gc.fillRect(cellX, cellY, Config.CELL_SIZE, Config.CELL_SIZE);
@@ -54,7 +55,11 @@ public class WorldRenderer {
     }
 
     private void drawCellText(Symbol symbol, double cellX, double cellY) {
-        if (symbol.isEmpty()) return;
+        // GEÄNDERT: Wir prüfen hier explizit auf CODE:0.
+        // Die alte `symbol.isEmpty()`-Prüfung war zu ungenau für die Darstellung.
+        if (symbol.type() == Config.TYPE_CODE && symbol.value() == 0) {
+            return; // Nur für CODE:0 keinen Text zeichnen.
+        }
 
         gc.setFill(getTextColorForSymbol(symbol));
         gc.setFont(cellFont);
@@ -66,9 +71,9 @@ public class WorldRenderer {
         double y2 = cellY + Config.CELL_SIZE * 0.8;
 
         if (symbol.type() == Config.TYPE_CODE) {
-            Config.Opcode opcode = Config.OPCODE_DEFINITIONS.get(symbol.toInt());
-            if (opcode != null) {
-                String fullName = opcode.name();
+            String fullName = Instruction.getInstructionNameById(symbol.toInt());
+
+            if (fullName != null && !fullName.startsWith("UNKNOWN")) {
                 String line1 = fullName.length() >= 2 ? fullName.substring(0, 2) : fullName;
                 String line2 = fullName.length() > 2 ? fullName.substring(2) : "";
                 gc.fillText(line1, centerX, y1);
@@ -78,6 +83,7 @@ public class WorldRenderer {
                 gc.fillText(text, centerX, cellY + Config.CELL_SIZE / 2.0 + 4);
             }
         } else {
+            // Für alle anderen Typen (DATA, ENERGY, etc.) immer den Wert anzeigen.
             text = String.valueOf(symbol.value());
             gc.fillText(text, centerX, cellY + Config.CELL_SIZE / 2.0 + 4);
         }
@@ -87,7 +93,7 @@ public class WorldRenderer {
         Color orgColor = organismColorMap.computeIfAbsent(org.getId(), id -> colorPalette[id % colorPalette.length]);
         int[] ip = org.getIp();
         double x = ip[0] * Config.CELL_SIZE;
-        double y = ip[1] * Config.CELL_SIZE; // KORRIGIERT: KEIN HEADER_HEIGHT OFFSET MEHR
+        double y = ip[1] * Config.CELL_SIZE;
 
         gc.setStroke(org.isDead() ? Config.COLOR_DEAD : orgColor);
         gc.setLineWidth(2.5);
@@ -96,7 +102,7 @@ public class WorldRenderer {
         if (org == selectedOrganism && !org.isDead()) {
             int[] dp = org.getDp();
             double dpX = dp[0] * Config.CELL_SIZE;
-            double dpY = dp[1] * Config.CELL_SIZE; // KORRIGIERT: KEIN HEADER_HEIGHT OFFSET MEHR
+            double dpY = dp[1] * Config.CELL_SIZE;
             drawDp(new javafx.geometry.Rectangle2D(dpX, dpY, Config.CELL_SIZE, Config.CELL_SIZE), orgColor);
             drawDv(x, y, orgColor, org.getDv());
         }
@@ -122,13 +128,18 @@ public class WorldRenderer {
     }
 
     private Color getBackgroundColorForSymbol(Symbol symbol) {
-        if (symbol.isEmpty()) return Config.COLOR_EMPTY_BG;
+        // GEÄNDERT: Die Logik ist jetzt expliziter.
+        // Die alte `symbol.isEmpty()`-Prüfung wird nicht mehr verwendet.
         return switch (symbol.type()) {
-            case Config.TYPE_CODE -> Config.COLOR_CODE_BG;
+            case Config.TYPE_CODE -> {
+                if (symbol.value() == 0) yield Config.COLOR_EMPTY_BG; // Nur CODE:0 ist leerer Raum
+                else yield Config.COLOR_CODE_BG;
+            }
             case Config.TYPE_DATA -> Config.COLOR_DATA_BG;
+
             case Config.TYPE_STRUCTURE -> Config.COLOR_STRUCTURE_BG;
             case Config.TYPE_ENERGY -> Config.COLOR_ENERGY_BG;
-            default -> Config.COLOR_EMPTY_BG; // Falls Typ unbekannt oder ungültig
+            default -> Config.COLOR_EMPTY_BG;
         };
     }
 
