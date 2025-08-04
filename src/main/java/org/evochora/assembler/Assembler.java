@@ -53,25 +53,32 @@ public class Assembler {
         int[] currentPos = new int[Config.WORLD_DIMENSIONS];
 
         for (String line : lines) {
-            line = line.split("#")[0].strip();
-            if (line.isEmpty()) continue;
+            String processedLine;
+            String[] partsWithComment = line.split("#", 2);
+            if (partsWithComment.length > 0) {
+                processedLine = partsWithComment[0].strip();
+            } else {
+                processedLine = "";
+            }
+
+            if (processedLine.isEmpty()) continue;
 
             linearAddressToRelativeCoord.put(linearAddress, Arrays.copyOf(currentPos, currentPos.length));
             relativeCoordToLinearAddress.put(Arrays.stream(currentPos).boxed().collect(Collectors.toList()), linearAddress);
 
-            String[] parts = line.split("\\s+");
+            String[] parts = processedLine.split("\\s+");
             String directive = parts[0].toUpperCase();
 
-            if (line.endsWith(":")) {
-                String label = line.substring(0, line.length() - 1).toUpperCase();
+            if (processedLine.endsWith(":")) {
+                String label = processedLine.substring(0, processedLine.length() - 1).toUpperCase();
                 labelMap.put(label, linearAddress);
                 labelAddressToName.put(linearAddress, label);
             } else if (directive.equals(".REG")) {
+                if(parts.length != 3) throw new IllegalArgumentException("Invalid .REG directive: " + processedLine);
                 registerMap.put(parts[1].toUpperCase(), Integer.parseInt(parts[2]));
                 registerIdToName.put(Integer.parseInt(parts[2]), parts[1].toUpperCase());
             } else if (directive.equals(".PLACE")) {
-                // GEÄNDERT: Logik zum Parsen von .PLACE an die TYPE:WERT-Syntax angepasst
-                if (parts.length != 2 + Config.WORLD_DIMENSIONS) {
+                if (parts.length < 2 + Config.WORLD_DIMENSIONS && !parts[2].contains("|")) {
                     throw new IllegalArgumentException(".PLACE erwartet TYPE:WERT und " + Config.WORLD_DIMENSIONS + " Koordinaten.");
                 }
                 String[] typeAndValue = parts[1].split(":");
@@ -83,8 +90,18 @@ public class Assembler {
                 int value = Integer.parseInt(typeAndValue[1]);
 
                 int[] relativePos = new int[Config.WORLD_DIMENSIONS];
-                for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
-                    relativePos[i] = Integer.parseInt(parts[2 + i]);
+                if (parts[2].contains("|")) {
+                    String[] coords = parts[2].split("\\|");
+                    if (coords.length != Config.WORLD_DIMENSIONS) {
+                        throw new IllegalArgumentException(".PLACE erwartet einen " + Config.WORLD_DIMENSIONS + "D Vektor.");
+                    }
+                    for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
+                        relativePos[i] = Integer.parseInt(coords[i].strip());
+                    }
+                } else {
+                    for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
+                        relativePos[i] = Integer.parseInt(parts[2 + i]);
+                    }
                 }
 
                 int type = switch (typeName) {
@@ -96,6 +113,7 @@ public class Assembler {
                 };
                 initialWorldObjects.put(relativePos, new Symbol(type, value));
             } else if (directive.equals(".DIR")) {
+                if(parts.length != 2) throw new IllegalArgumentException("Invalid .DIR directive: " + processedLine);
                 String[] vectorComponents = parts[1].split("\\|");
                 if (vectorComponents.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException(".DIR erwartet einen " + Config.WORLD_DIMENSIONS + "D Vektor.");
                 for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
@@ -104,11 +122,11 @@ public class Assembler {
             } else {
                 int instructionLength;
                 if (directive.equals("JUMP")) {
-                    String[] jumpArgs = line.split("\\s+")[1].split("\\s+");
+                    String[] jumpArgs = processedLine.split("\\s+", 2)[1].split("\\s+");
                     if (labelMap.containsKey(jumpArgs[0].toUpperCase())) {
-                        instructionLength = 1 + Config.WORLD_DIMENSIONS; // JMPR
+                        instructionLength = 1 + Config.WORLD_DIMENSIONS;
                     } else {
-                        instructionLength = 2; // JMP
+                        instructionLength = 2;
                     }
                 } else {
                     Integer opcodeId = Instruction.getInstructionIdByName(directive);
@@ -135,15 +153,24 @@ public class Assembler {
         currentDv[0] = 1;
 
         for (String line : lines) {
-            line = line.split("#")[0].strip();
-            if (line.isEmpty() || line.endsWith(":")) continue;
+            String processedLine;
+            String[] partsWithComment = line.split("#", 2);
+            if (partsWithComment.length > 0) {
+                processedLine = partsWithComment[0].strip();
+            } else {
+                processedLine = "";
+            }
+            if (processedLine.isEmpty() || processedLine.endsWith(":")) {
+                continue;
+            }
 
-            String[] parts = line.split("\\s+", 2);
+            // KORRIGIERT: Behandle Befehle ohne Argumente
+            String[] parts = processedLine.split("\\s+", 2);
             String directive = parts[0].toUpperCase();
 
             if (directive.equals(".REG") || directive.equals(".PLACE") || directive.equals(".DIR")) {
                 if (directive.equals(".DIR")) {
-                    String[] vectorComponents = parts[1].split("\\|");
+                    String[] vectorComponents = processedLine.split("\\s+")[1].split("\\|");
                     for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
                         currentDv[i] = Integer.parseInt(vectorComponents[i].strip());
                     }
@@ -153,12 +180,22 @@ public class Assembler {
 
             int currentOpcodeLinearAddress = linearAddress;
             String argsStr = (parts.length > 1) ? parts[1] : "";
-            String[] args = argsStr.isEmpty() ? new String[0] : argsStr.split("\\s+");
+
+            String[] args;
+            if (argsStr.isEmpty()) {
+                args = new String[0];
+            } else {
+                args = argsStr.split("\\s+");
+            }
 
             Integer opcodeId;
             AssemblerOutput assemblerOutput;
 
             if (directive.equals("JUMP")) {
+                // KORRIGIERT: Überprüfe, ob es überhaupt Argumente gibt
+                if (args.length == 0) {
+                    throw new IllegalArgumentException("JUMP erwartet mindestens ein Argument.");
+                }
                 String arg = args[0].toUpperCase();
                 if (labelMap.containsKey(arg)) {
                     opcodeId = JmprInstruction.ID;
@@ -255,15 +292,14 @@ public class Assembler {
     private int[] getDvAtLinearAddress(int address, String[] lines) {
         int[] dv = new int[Config.WORLD_DIMENSIONS];
         dv[0] = 1;
-        int currentAddress = 0;
         for (String line : lines) {
-            line = line.split("#")[0].strip();
-            if (line.isEmpty()) continue;
+            String processedLine = line.split("#")[0].strip();
+            if (processedLine.isEmpty()) continue;
 
-            if (line.toUpperCase().startsWith(".DIR")) {
+            if (processedLine.toUpperCase().startsWith(".DIR")) {
                 int lineAddress = getLineAddress(line, lines);
                 if (lineAddress <= address) {
-                    String[] vectorComponents = line.split("\\s+")[1].split("\\|");
+                    String[] vectorComponents = processedLine.split("\\s+")[1].split("\\|");
                     for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
                         dv[i] = Integer.parseInt(vectorComponents[i].strip());
                     }
@@ -276,12 +312,12 @@ public class Assembler {
     private int getLineAddress(String lineToFind, String[] allLines) {
         int address = 0;
         for (String line : allLines) {
-            if (line.equals(lineToFind)) {
+            String processedLine = line.split("#")[0].strip();
+            if (processedLine.equals(lineToFind.split("#")[0].strip())) {
                 return address;
             }
-            line = line.split("#")[0].strip();
-            if (!line.isEmpty() && !line.startsWith(".") && !line.endsWith(":")) {
-                String directive = line.split("\\s+")[0].toUpperCase();
+            if (!processedLine.isEmpty() && !processedLine.startsWith(".") && !processedLine.endsWith(":")) {
+                String directive = processedLine.split("\\s+")[0].toUpperCase();
                 Integer opcodeId = Instruction.getInstructionIdByName(directive);
                 if(opcodeId != null) {
                     address += Instruction.getInstructionLengthById(Config.TYPE_CODE | opcodeId);
