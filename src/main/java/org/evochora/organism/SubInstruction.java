@@ -7,12 +7,12 @@ import org.evochora.world.World;
 import org.evochora.assembler.AssemblerOutput;
 import org.evochora.assembler.ArgumentType;
 import org.evochora.world.Symbol;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
 public class SubInstruction extends Instruction {
-    // Die ID wurde bereits von dir auf 6 geändert, das übernehme ich.
     public static final int ID = 6;
 
     private final int reg1;
@@ -59,7 +59,6 @@ public class SubInstruction extends Instruction {
 
 
     public static Instruction plan(Organism organism, World world) {
-        // GEÄNDERT: Neue Logik mit FetchResult
         Organism.FetchResult result1 = organism.fetchArgument(organism.getIp(), world);
         int r1 = result1.value();
 
@@ -86,36 +85,40 @@ public class SubInstruction extends Instruction {
         Object val1Obj = organism.getDr(reg1);
         Object val2Obj = organism.getDr(reg2);
 
-        if (val1Obj instanceof int[] || val2Obj instanceof int[]) {
-            organism.instructionFailed("SUB: Vektoren sind nicht für arithmetische Operationen erlaubt. Register (" + reg1 + ", " + reg2 + ") müssen skalare Integer sein.");
-            return;
-        }
-
-        if (!(val1Obj instanceof Integer v1Raw) || !(val2Obj instanceof Integer v2Raw)) {
-            organism.instructionFailed("SUB: Ungültige Registertypen. Beide Register (" + reg1 + ", " + reg2 + ") müssen skalare Integer sein.");
-            return;
-        }
-
-        int v1Value = Symbol.fromInt(v1Raw).toScalarValue();
-        int v2Value = Symbol.fromInt(v2Raw).toScalarValue();
-
-        int resultValue = v1Value - v2Value;
-
-        if (Config.STRICT_TYPING) {
-            Symbol s1 = Symbol.fromInt(v1Raw);
-            Symbol s2 = Symbol.fromInt(v2Raw);
-
-            if (s1.type() != s2.type()) {
-                organism.instructionFailed("SUB: Registertypen müssen übereinstimmen im strikten Modus. Reg " + reg1 + " (" + s1.type() + ") vs Reg " + reg2 + " (" + s2.type() + ").");
+        // KORREKTUR: Überprüfe, ob beide Argumente Vektoren sind
+        if (val1Obj instanceof int[] v1 && val2Obj instanceof int[] v2) {
+            if (v1.length != v2.length) {
+                organism.instructionFailed("SUB: Vektor-Dimensionen stimmen nicht überein. Reg " + reg1 + " (" + v1.length + ") vs Reg " + reg2 + " (" + v2.length + ").");
                 return;
             }
-            // KORRIGIERT: .toInt() wird aufgerufen
-            organism.setDr(reg1, new Symbol(s1.type(), resultValue).toInt());
+            int[] resultVector = new int[v1.length];
+            for (int i = 0; i < v1.length; i++) {
+                resultVector[i] = v1[i] - v2[i];
+            }
+            organism.setDr(reg1, resultVector);
+        }
+        // KORREKTUR: Überprüfe, ob beide Argumente Skalare sind
+        else if (val1Obj instanceof Integer v1Raw && val2Obj instanceof Integer v2Raw) {
+            int v1Value = Symbol.fromInt(v1Raw).toScalarValue();
+            int v2Value = Symbol.fromInt(v2Raw).toScalarValue();
+            int resultValue = v1Value - v2Value;
 
-        } else {
-            Symbol s1 = Symbol.fromInt(v1Raw);
-            // KORRIGIERT: .toInt() wird aufgerufen
-            organism.setDr(reg1, new Symbol(s1.type(), resultValue).toInt());
+            if (Config.STRICT_TYPING) {
+                Symbol s1 = Symbol.fromInt(v1Raw);
+                Symbol s2 = Symbol.fromInt(v2Raw);
+                if (s1.type() != s2.type()) {
+                    organism.instructionFailed("SUB: Registertypen müssen übereinstimmen im strikten Modus. Reg " + reg1 + " (" + s1.type() + ") vs Reg " + reg2 + " (" + s2.type() + ").");
+                    return;
+                }
+                organism.setDr(reg1, new Symbol(s1.type(), resultValue).toInt());
+            } else {
+                Symbol s1 = Symbol.fromInt(v1Raw);
+                organism.setDr(reg1, new Symbol(s1.type(), resultValue).toInt());
+            }
+        }
+        // KORREKTUR: Fehler, wenn nur ein Argument ein Vektor ist
+        else {
+            organism.instructionFailed("SUB: Ungültige Argumenttypen. Beide Register müssen entweder Skalare oder Vektoren sein.");
         }
     }
 }

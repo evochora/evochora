@@ -33,6 +33,7 @@ public class Organism {
     private int[] dvBeforeFetch;
     private final Logger logger;
     private final Simulation simulation;
+    private final int[] initialPosition;
 
     Organism(int id, int[] startIp, int initialEnergy, Logger logger, Simulation simulation) {
         this.id = id;
@@ -49,6 +50,7 @@ public class Organism {
         }
         this.ipBeforeFetch = Arrays.copyOf(startIp, startIp.length);
         this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length);
+        this.initialPosition = Arrays.copyOf(startIp, startIp.length);
     }
 
     public static Organism create(Simulation simulation, int[] startIp, int initialEnergy, Logger logger) {
@@ -134,7 +136,6 @@ public class Organism {
         return false;
     }
 
-    // GEÄNDERT: Sichtbarkeit von package-private auf public gesetzt
     public Object getDr(int index) {
         if (index >= 0 && index < this.drs.size()) {
             return this.drs.get(index);
@@ -231,4 +232,5 @@ public class Organism {
     public Logger getLogger() { return logger; }
     public int[] getDv() { return Arrays.copyOf(dv, dv.length); }
     public Simulation getSimulation() { return simulation; }
+    public int[] getInitialPosition() { return Arrays.copyOf(this.initialPosition, this.initialPosition.length); }
 }

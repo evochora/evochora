@@ -44,6 +44,7 @@ public abstract class Instruction {
             Class.forName(NrgInstruction.class.getName());
             Class.forName(ForkInstruction.class.getName());
             Class.forName(DiffInstruction.class.getName());
+            Class.forName(PosInstruction.class.getName());
 
         } catch (ClassNotFoundException e) {
             System.err.println("Fehler beim Initialisieren des Befehlssatzes.");
