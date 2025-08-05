@@ -63,14 +63,25 @@ public class Assembler {
 
             if (processedLine.isEmpty()) continue;
 
-            linearAddressToRelativeCoord.put(linearAddress, Arrays.copyOf(currentPos, currentPos.length));
-            relativeCoordToLinearAddress.put(Arrays.stream(currentPos).boxed().collect(Collectors.toList()), linearAddress);
+            // KORREKTION: Die Adresse wird vor der Verarbeitung der Zeile gespeichert.
+            // Der Rest der Logik bleibt unverändert.
+
+            this.linearAddressToRelativeCoord.put(linearAddress, Arrays.copyOf(currentPos, currentPos.length));
+            this.relativeCoordToLinearAddress.put(Arrays.stream(currentPos).boxed().collect(Collectors.toList()), linearAddress);
 
             String[] parts = processedLine.split("\\s+");
             String directive = parts[0].toUpperCase();
 
+            // NEU: Überprüfung, ob JMP oder JMPR verwendet werden
+            if (directive.equals("JMP") || directive.equals("JMPR")) {
+                throw new IllegalArgumentException("Verbotener Befehl: " + directive + ". Verwenden Sie stattdessen JUMP.");
+            }
+
             if (processedLine.endsWith(":")) {
                 String label = processedLine.substring(0, processedLine.length() - 1).toUpperCase();
+                if (labelMap.containsKey(label)) {
+                    throw new IllegalArgumentException("Label '" + label + "' wurde mehrfach vergeben.");
+                }
                 labelMap.put(label, linearAddress);
                 labelAddressToName.put(linearAddress, label);
             } else if (directive.equals(".REG")) {
@@ -123,6 +134,7 @@ public class Assembler {
                 int instructionLength;
                 if (directive.equals("JUMP")) {
                     String[] jumpArgs = processedLine.split("\\s+", 2)[1].split("\\s+");
+                    // KORRIGIERT: Überprüfung für direkte Vektor-Argumente entfernt
                     if (labelMap.containsKey(jumpArgs[0].toUpperCase())) {
                         instructionLength = 1 + Config.WORLD_DIMENSIONS;
                     } else {
@@ -164,9 +176,12 @@ public class Assembler {
                 continue;
             }
 
-            // KORRIGIERT: Behandle Befehle ohne Argumente
             String[] parts = processedLine.split("\\s+", 2);
             String directive = parts[0].toUpperCase();
+
+            if (directive.equals("JMP") || directive.equals("JMPR")) {
+                throw new IllegalArgumentException("Verbotener Befehl: " + directive + ". Verwenden Sie stattdessen JUMP.");
+            }
 
             if (directive.equals(".REG") || directive.equals(".PLACE") || directive.equals(".DIR")) {
                 if (directive.equals(".DIR")) {
@@ -192,18 +207,21 @@ public class Assembler {
             AssemblerOutput assemblerOutput;
 
             if (directive.equals("JUMP")) {
-                // KORRIGIERT: Überprüfe, ob es überhaupt Argumente gibt
                 if (args.length == 0) {
                     throw new IllegalArgumentException("JUMP erwartet mindestens ein Argument.");
                 }
                 String arg = args[0].toUpperCase();
+
                 if (labelMap.containsKey(arg)) {
                     opcodeId = JmprInstruction.ID;
                     assemblerOutput = new AssemblerOutput.JumpInstructionRequest(arg);
-                } else {
+                } else if (registerMap.containsKey(arg)) {
                     opcodeId = JmpInstruction.ID;
                     Instruction.AssemblerPlanner jmpAssembler = Instruction.getAssemblerById(Config.TYPE_CODE | opcodeId);
+                    if(jmpAssembler == null) throw new IllegalArgumentException("Kein Assembler für Befehl gefunden: " + directive);
                     assemblerOutput = jmpAssembler.apply(args, registerMap, labelMap);
+                } else {
+                    throw new IllegalArgumentException("JUMP erwartet ein Register oder Label. Gefunden: " + arg);
                 }
             } else {
                 opcodeId = Instruction.getInstructionIdByName(directive);
@@ -293,7 +311,13 @@ public class Assembler {
         int[] dv = new int[Config.WORLD_DIMENSIONS];
         dv[0] = 1;
         for (String line : lines) {
-            String processedLine = line.split("#")[0].strip();
+            String processedLine;
+            String[] partsWithComment = line.split("#", 2);
+            if (partsWithComment.length > 0) {
+                processedLine = partsWithComment[0].strip();
+            } else {
+                processedLine = "";
+            }
             if (processedLine.isEmpty()) continue;
 
             if (processedLine.toUpperCase().startsWith(".DIR")) {
@@ -312,7 +336,13 @@ public class Assembler {
     private int getLineAddress(String lineToFind, String[] allLines) {
         int address = 0;
         for (String line : allLines) {
-            String processedLine = line.split("#")[0].strip();
+            String processedLine;
+            String[] partsWithComment = line.split("#", 2);
+            if (partsWithComment.length > 0) {
+                processedLine = partsWithComment[0].strip();
+            } else {
+                processedLine = "";
+            }
             if (processedLine.equals(lineToFind.split("#")[0].strip())) {
                 return address;
             }
