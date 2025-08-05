@@ -27,6 +27,7 @@ public class ForkInstruction extends Instruction {
 
     static {
         Instruction.registerInstruction(ForkInstruction.class, ID, "FORK", 4, ForkInstruction::plan, ForkInstruction::assemble);
+        Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER, 2, ArgumentType.REGISTER));
     }
 
     @Override

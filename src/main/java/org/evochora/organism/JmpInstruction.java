@@ -29,6 +29,7 @@ public class JmpInstruction extends Instruction {
 
     static {
         Instruction.registerInstruction(JmpInstruction.class, ID, "JMP", 2, JmpInstruction::plan, JmpInstruction::assemble);
+        Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER));
     }
 
     @Override
@@ -38,7 +39,6 @@ public class JmpInstruction extends Instruction {
 
     @Override
     public int getLength() {
-        // GEÄNDERT: Feste Länge von 2 (Opcode + Register-ID)
         return 2;
     }
 
@@ -61,7 +61,6 @@ public class JmpInstruction extends Instruction {
     }
 
     public static Instruction plan(Organism organism, World world) {
-        // Verwendet die bereits verbesserte Logik mit FetchResult
         Organism.FetchResult result = organism.fetchArgument(organism.getIp(), world);
         int r = result.value();
         return new JmpInstruction(organism, r);

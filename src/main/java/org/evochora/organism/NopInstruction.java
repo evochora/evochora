@@ -18,6 +18,7 @@ public class NopInstruction extends Instruction {
 
     static {
         Instruction.registerInstruction(NopInstruction.class, ID, "NOP", 1, NopInstruction::plan, NopInstruction::assemble);
+        Instruction.registerArgumentTypes(ID, Map.of());
     }
 
     @Override

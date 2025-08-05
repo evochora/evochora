@@ -53,6 +53,10 @@ public abstract class AssemblyProgram {
         return organismIdToProgramId.get(organism.getId());
     }
 
+    public static ProgramMetadata getMetadataForProgram(String programId) {
+        return programIdToMetadata.get(programId);
+    }
+
     // --- HIER SIND DIE ÄNDERUNGEN ---
 
     /**

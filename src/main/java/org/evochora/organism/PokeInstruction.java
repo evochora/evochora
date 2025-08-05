@@ -10,6 +10,7 @@ import org.evochora.assembler.ArgumentType;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
 
 public class PokeInstruction extends Instruction implements IWorldModifyingInstruction {
     public static final int ID = 15;
@@ -27,6 +28,7 @@ public class PokeInstruction extends Instruction implements IWorldModifyingInstr
 
     static {
         Instruction.registerInstruction(PokeInstruction.class, ID, "POKE", 3, PokeInstruction::plan, PokeInstruction::assemble);
+        // KORREKTUR: Hinzufügen der korrekten Argumenttyp-Registrierung
         Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER));
     }
 
@@ -68,14 +70,12 @@ public class PokeInstruction extends Instruction implements IWorldModifyingInstr
     }
 
     public static Instruction plan(Organism organism, World world) {
-        // GEÄNDERT: Neue Logik mit FetchResult
         Organism.FetchResult result1 = organism.fetchArgument(organism.getIp(), world);
         int src = result1.value();
 
         Organism.FetchResult result2 = organism.fetchArgument(result1.nextIp(), world);
         int vec = result2.value();
 
-        // Die nachfolgende Logik bleibt erhalten
         Object v = organism.getDr(vec);
         if (v instanceof int[] vi) {
             if (!organism.isUnitVector(vi)) {
@@ -90,10 +90,14 @@ public class PokeInstruction extends Instruction implements IWorldModifyingInstr
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 2) throw new IllegalArgumentException("POKE erwartet 2 Argumente: %REG_SRC %REG_VEC");
+        if (args.length != 2) throw new IllegalArgumentException("POKE erwartet 2 Register-Argumente: %REG_SRC %REG_VEC");
 
-        int srcRegId = registerMap.get(args[0].toUpperCase());
-        int vecRegId = registerMap.get(args[1].toUpperCase());
+        Integer srcRegId = registerMap.get(args[0].toUpperCase());
+        Integer vecRegId = registerMap.get(args[1].toUpperCase());
+
+        if (srcRegId == null || vecRegId == null) {
+            throw new IllegalArgumentException("Ungültiges Register-Argument für POKE. Erwartet zwei Register, aber eines war ungültig.");
+        }
 
         return new AssemblerOutput.CodeSequence(List.of(
                 new Symbol(Config.TYPE_DATA, srcRegId).toInt(),

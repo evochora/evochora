@@ -23,6 +23,7 @@ public class DiffInstruction extends Instruction {
 
     static {
         Instruction.registerInstruction(DiffInstruction.class, ID, "DIFF", 2, DiffInstruction::plan, DiffInstruction::assemble);
+        Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER));
     }
 
     @Override

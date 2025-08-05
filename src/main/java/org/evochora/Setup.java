@@ -2,13 +2,13 @@
 package org.evochora;
 
 import org.evochora.organism.Organism;
-import org.evochora.organism.prototypes.AllOpcodesTester;
-import org.evochora.organism.prototypes.DpMovementTester;
-import org.evochora.organism.prototypes.LShapedOrganism;
-import org.evochora.organism.prototypes.SetlTester;
+import org.evochora.organism.prototypes.*;
+
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
 import org.evochora.assembler.AssemblyProgram; // GEÄNDERT: Neuer Importpfad
+
+import javax.lang.model.type.ErrorType;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +21,23 @@ public class Setup {
      * @param simulation die Simulationsinstanz
      */
     public static void run(Simulation simulation) {
+
+        // HIER IST DIE ZENTRALE STELLE FÜR DIE TESTER-LOGIK
+        // Um das Testprogramm auszuführen, aktivieren Sie diese Zeile:
+        //ErrorTester testerProgram = new ErrorTester();
+        //placeProgram(simulation, testerProgram, new int[]{10, 5});
+
+
+        // Um das Testprogramm auszuführen, aktivieren Sie diese Zeile:
+        InstructionLengthCounter testerProgram = new InstructionLengthCounter();
+        placeProgram(simulation, testerProgram, new int[]{10, 5});
+
+        // HIER IST DIE ZENTRALE STELLE FÜR DIE TESTER-LOGIK
+        // Um das Testprogramm auszuführen, aktivieren Sie diese Zeile:
+        //CompleteInstructionTester testerProgram = new CompleteInstructionTester();
+        //placeProgram(simulation, testerProgram, new int[]{10, 5});
+
+        /*
         // Test 1: SETL
         SetlTester setlTestProgram = new SetlTester();
         placeProgram(simulation, setlTestProgram, new int[]{10, 5});
@@ -36,6 +53,8 @@ public class Setup {
         // Test 4: L-förmiger Organismus
         LShapedOrganism lShapedProgram = new LShapedOrganism();
         placeProgram(simulation, lShapedProgram, new int[]{10, 20});
+
+        */
     }
 
     /**

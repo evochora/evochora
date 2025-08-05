@@ -5,6 +5,7 @@ import org.evochora.Simulation;
 import org.evochora.world.World;
 import org.evochora.assembler.AssemblerOutput;
 import org.evochora.assembler.ArgumentType;
+import org.evochora.Config;
 
 import java.util.HashMap;
 import java.util.List;
@@ -14,13 +15,13 @@ import java.util.function.BiFunction;
 public abstract class Instruction {
     protected final Organism organism;
 
-    // --- GEÄNDERT: Neue Maps zum Speichern der Metadaten ---
     private static final Map<Integer, Class<? extends Instruction>> REGISTERED_INSTRUCTIONS_BY_ID = new HashMap<>();
     private static final Map<String, Integer> NAME_TO_ID = new HashMap<>();
     private static final Map<Integer, String> ID_TO_NAME = new HashMap<>();
     private static final Map<Integer, Integer> ID_TO_LENGTH = new HashMap<>();
     private static final Map<Integer, BiFunction<Organism, World, Instruction>> REGISTERED_PLANNERS_BY_ID = new HashMap<>();
     private static final Map<Integer, Instruction.AssemblerPlanner> REGISTERED_ASSEMBLERS_BY_ID = new HashMap<>();
+    private static final Map<Integer, Map<Integer, ArgumentType>> ARGUMENT_TYPES_BY_ID = new HashMap<>();
 
     public static void init() {
         try {
@@ -43,6 +44,7 @@ public abstract class Instruction {
             Class.forName(NrgInstruction.class.getName());
             Class.forName(ForkInstruction.class.getName());
             Class.forName(DiffInstruction.class.getName());
+
         } catch (ClassNotFoundException e) {
             System.err.println("Fehler beim Initialisieren des Befehlssatzes.");
             e.printStackTrace();
@@ -72,12 +74,15 @@ public abstract class Instruction {
     public abstract int getCost(Organism organism, World world, List<Integer> rawArguments);
     public abstract ArgumentType getArgumentType(int argIndex);
 
+    public static ArgumentType getArgumentTypeFor(int opcodeFullId, int argIndex) {
+        return ARGUMENT_TYPES_BY_ID.getOrDefault(opcodeFullId, Map.of()).getOrDefault(argIndex, ArgumentType.LITERAL);
+    }
+
     @FunctionalInterface
     public interface AssemblerPlanner {
         AssemblerOutput apply(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap);
     }
 
-    // --- GEÄNDERT: registerInstruction nimmt jetzt Name und Länge direkt an ---
     protected static void registerInstruction(Class<? extends Instruction> instructionClass, int id, String name, int length,
                                               BiFunction<Organism, World, Instruction> planner,
                                               Instruction.AssemblerPlanner assembler) {
@@ -94,13 +99,20 @@ public abstract class Instruction {
         ID_TO_LENGTH.put(id, length);
         REGISTERED_PLANNERS_BY_ID.put(id, planner);
         REGISTERED_ASSEMBLERS_BY_ID.put(id, assembler);
+
+        // Der Teil, der automatisch die Argumente registrieren sollte, wurde entfernt.
+        // Stattdessen wird jetzt eine neue Methode verwendet.
+    }
+
+    // NEU: Statische Registrierungsmethode für die Argumenttypen
+    protected static void registerArgumentTypes(int instructionId, Map<Integer, ArgumentType> types) {
+        ARGUMENT_TYPES_BY_ID.put(instructionId | Config.TYPE_CODE, types);
     }
 
     public static Class<? extends Instruction> getInstructionClassById(int id) {
         return REGISTERED_INSTRUCTIONS_BY_ID.get(id);
     }
 
-    // --- GEÄNDERT: Alle get...ById Methoden lesen jetzt direkt aus den Maps ---
     public static String getInstructionNameById(int id) {
         return ID_TO_NAME.getOrDefault(id, "UNKNOWN");
     }
@@ -121,7 +133,6 @@ public abstract class Instruction {
         return REGISTERED_ASSEMBLERS_BY_ID.get(id);
     }
 
-    // ... Rest der Klasse bleibt gleich ...
     public final Organism getOrganism() {
         return this.organism;
     }

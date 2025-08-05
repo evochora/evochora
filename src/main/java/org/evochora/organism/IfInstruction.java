@@ -8,6 +8,7 @@ import org.evochora.assembler.AssemblerOutput;
 import org.evochora.assembler.ArgumentType;
 import org.evochora.world.Symbol;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,10 @@ public class IfInstruction extends Instruction {
         Instruction.registerInstruction(IfInstruction.class, ID, "IF", 3, IfInstruction::plan, IfInstruction::assemble);
         Instruction.registerInstruction(IfInstruction.class, ID_LT, "IFLT", 3, IfInstruction::plan, IfInstruction::assemble);
         Instruction.registerInstruction(IfInstruction.class, ID_GT, "IFGT", 3, IfInstruction::plan, IfInstruction::assemble);
+
+        Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER));
+        Instruction.registerArgumentTypes(ID_LT, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER));
+        Instruction.registerArgumentTypes(ID_GT, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER));
     }
 
     @Override
@@ -74,17 +79,54 @@ public class IfInstruction extends Instruction {
         return new IfInstruction(organism, r1, r2, fullOpcodeId);
     }
 
+    // Correction starts here
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 2) throw new IllegalArgumentException("IF-Befehle erwarten 2 Argumente: %REG1 %REG2");
+        if (args.length != 2) throw new IllegalArgumentException("IF-Befehle erwarten 2 Argumente: %REG1 %REG2 oder %REG1 TYPE:WERT");
 
-        int reg1Id = registerMap.get(args[0].toUpperCase());
-        int reg2Id = registerMap.get(args[1].toUpperCase());
+        Integer reg1Id = registerMap.get(args[0].toUpperCase());
+        if (reg1Id == null) {
+            throw new IllegalArgumentException("Ungültiges Register-Argument für IF: " + args[0]);
+        }
 
-        return new AssemblerOutput.CodeSequence(List.of(
-                new Symbol(Config.TYPE_DATA, reg1Id).toInt(),
-                new Symbol(Config.TYPE_DATA, reg2Id).toInt()
-        ));
+        Integer reg2Id = null;
+        Integer literalValue = null;
+
+        if (args[1].contains(":")) {
+            String[] literalParts = args[1].split(":");
+            if (literalParts.length != 2) {
+                throw new IllegalArgumentException("IF-Literal muss das Format TYPE:WERT haben: " + args[1]);
+            }
+            String typeName = literalParts[0].toUpperCase();
+            int value = Integer.parseInt(literalParts[1]);
+            int type = switch (typeName) {
+                case "CODE" -> Config.TYPE_CODE;
+                case "DATA" -> Config.TYPE_DATA;
+                case "ENERGY" -> Config.TYPE_ENERGY;
+                case "STRUCTURE" -> Config.TYPE_STRUCTURE;
+                default -> throw new IllegalArgumentException("Unbekannter Typ für IF-Literal: " + typeName);
+            };
+            literalValue = new Symbol(type, value).toInt();
+        } else {
+            reg2Id = registerMap.get(args[1].toUpperCase());
+            if (reg2Id == null) {
+                throw new IllegalArgumentException("Ungültiges Register-Argument für IF: " + args[1]);
+            }
+        }
+
+        // Pass the first argument as a register, and the second as either a register or a literal
+        List<Integer> machineCode = new ArrayList<>();
+        machineCode.add(new Symbol(Config.TYPE_DATA, reg1Id).toInt());
+        if (reg2Id != null) {
+            machineCode.add(new Symbol(Config.TYPE_DATA, reg2Id).toInt());
+        } else if (literalValue != null) {
+            machineCode.add(literalValue);
+        } else {
+            throw new IllegalStateException("Unerwarteter Zustand im IF-Assembler.");
+        }
+
+        return new AssemblerOutput.CodeSequence(machineCode);
     }
+    // Correction ends here
 
     @Override
     public void execute(Simulation simulation) {
@@ -112,16 +154,13 @@ public class IfInstruction extends Instruction {
                 organism.instructionFailed("IF: Registertypen müssen übereinstimmen im strikten Modus. Reg " + reg1 + " (" + s1.type() + ") vs Reg " + reg2 + " (" + s2.type() + ").");
                 return;
             }
-            // GEÄNDERT: simulation wird übergeben
             performComparison(v1, v2, simulation);
 
         } else {
-            // GEÄNDERT: simulation wird übergeben
             performComparison(v1, v2, simulation);
         }
     }
 
-    // GEÄNDERT: Methode akzeptiert jetzt die Simulation als Parameter
     private void performComparison(int v1, int v2, Simulation simulation) {
         boolean conditionMet = false;
         int opcodeValue = this.fullOpcodeId & Config.VALUE_MASK;

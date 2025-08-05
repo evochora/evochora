@@ -24,6 +24,7 @@ public class NandInstruction extends Instruction {
 
     static {
         Instruction.registerInstruction(NandInstruction.class, ID, "NAND", 3, NandInstruction::plan, NandInstruction::assemble);
+        Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER));
     }
 
     @Override

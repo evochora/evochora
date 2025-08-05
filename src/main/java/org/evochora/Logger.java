@@ -8,15 +8,22 @@ import org.evochora.world.Symbol;
 import org.evochora.world.World;
 import org.evochora.assembler.AssemblyProgram;
 import org.evochora.assembler.DisassembledInstruction;
+import org.evochora.assembler.ProgramMetadata;
+import org.evochora.assembler.Disassembler;
+import org.evochora.assembler.DisassembledArgument;
+
+
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 public class Logger {
 
     private final World world;
     private final Simulation simulation;
+    private final Disassembler disassembler = new Disassembler();
 
     public Logger(World world, Simulation simulation) {
         this.world = world;
@@ -32,6 +39,8 @@ public class Logger {
         }
 
         DisassembledInstruction disassembledInstruction = AssemblyProgram.getDisassembledInstructionDetailsForNextTick(organism);
+        String programId = AssemblyProgram.getProgramIdForOrganism(organism);
+        ProgramMetadata metadata = (programId != null) ? AssemblyProgram.getMetadataForProgram(programId) : null;
 
         StringBuilder info = new StringBuilder();
         if (disassembledInstruction != null && disassembledInstruction.opcodeName() != null && !disassembledInstruction.opcodeName().equals("N/A")) {
@@ -40,7 +49,8 @@ public class Logger {
                 info.append("(");
                 for (int i = 0; i < disassembledInstruction.arguments().size(); i++) {
                     if (i > 0) info.append(", ");
-                    info.append(disassembledInstruction.arguments().get(i).resolvedValue());
+                    var argument = disassembledInstruction.arguments().get(i);
+                    info.append(getResolvedArgumentString(organism, argument, metadata));
                 }
                 info.append(")");
             }
@@ -101,8 +111,12 @@ public class Logger {
             if (i < drs.size() - 1) logLine.append(", ");
         }
 
-        DisassembledInstruction disassembledInstruction = AssemblyProgram.getDisassembledInstructionDetailsForLastTick(organism);
         logLine.append(" | Planned: ");
+
+        DisassembledInstruction disassembledInstruction = AssemblyProgram.getDisassembledInstructionDetailsForLastTick(organism);
+        String programId = AssemblyProgram.getProgramIdForOrganism(organism);
+        ProgramMetadata metadata = (programId != null) ? AssemblyProgram.getMetadataForProgram(programId) : null;
+
         if (disassembledInstruction != null && disassembledInstruction.opcodeName() != null && !disassembledInstruction.opcodeName().equals("N/A")) {
             logLine.append(disassembledInstruction.opcodeName());
 
@@ -111,16 +125,7 @@ public class Logger {
                 for (int i = 0; i < disassembledInstruction.arguments().size(); i++) {
                     if (i > 0) logLine.append(", ");
                     var argument = disassembledInstruction.arguments().get(i);
-
-                    if (argument.type() == ArgumentType.REGISTER) {
-                        String regName = argument.resolvedValue();
-                        int regIndex = argument.rawValue();
-                        Object liveValue = organism.getDr(regIndex);
-                        String formattedValue = formatDrValue(liveValue);
-                        logLine.append(regName).append("=").append(formattedValue);
-                    } else {
-                        logLine.append(argument.resolvedValue());
-                    }
+                    logLine.append(getResolvedArgumentString(organism, argument, metadata));
                 }
                 logLine.append(")");
             }
@@ -150,6 +155,39 @@ public class Logger {
         }
 
         System.out.println(logLine.toString());
+    }
+
+    private String getResolvedArgumentString(Organism organism, DisassembledArgument argument, ProgramMetadata metadata) {
+        StringBuilder sb = new StringBuilder();
+
+        // Register-Namen anzeigen, falls vorhanden
+        if (argument.type() == ArgumentType.REGISTER && metadata != null) {
+            String regName = metadata.registerIdToName().get(argument.rawValue());
+            if (regName != null) {
+                sb.append(regName).append("=");
+            }
+        }
+
+        // Live-Wert des Registers, falls zutreffend
+        if (argument.type() == ArgumentType.REGISTER) {
+            Object liveValue = organism.getDr(argument.rawValue());
+            sb.append(formatDrValue(liveValue));
+        }
+        // Label-Namen anzeigen, falls vorhanden
+        else if (argument.type() == ArgumentType.LABEL && metadata != null) {
+            String labelName = metadata.labelAddressToName().get(argument.rawValue());
+            if (labelName != null) {
+                sb.append(labelName);
+            } else {
+                sb.append(argument.resolvedValue());
+            }
+        }
+        // Ansonsten den aufgelösten Wert verwenden
+        else {
+            sb.append(argument.resolvedValue());
+        }
+
+        return sb.toString();
     }
 
     private String formatCoordinate(int[] coord) {

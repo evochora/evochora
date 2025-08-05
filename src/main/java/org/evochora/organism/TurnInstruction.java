@@ -23,6 +23,7 @@ public class TurnInstruction extends Instruction {
 
     static {
         Instruction.registerInstruction(TurnInstruction.class, ID, "TURN", 2, TurnInstruction::plan, TurnInstruction::assemble);
+        Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER));
     }
 
     @Override

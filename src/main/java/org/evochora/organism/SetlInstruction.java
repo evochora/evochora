@@ -26,6 +26,7 @@ public class SetlInstruction extends Instruction {
     static {
         // Die Länge (3) und der Name ("SETL") werden jetzt direkt übergeben
         Instruction.registerInstruction(SetlInstruction.class, ID, "SETL", 3, SetlInstruction::plan, SetlInstruction::assemble);
+        Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.LITERAL));
     }
 
     @Override

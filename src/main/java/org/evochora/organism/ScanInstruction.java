@@ -24,6 +24,7 @@ public class ScanInstruction extends Instruction {
 
     static {
         Instruction.registerInstruction(ScanInstruction.class, ID, "SCAN", 3, ScanInstruction::plan, ScanInstruction::assemble);
+        Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER));
     }
 
     @Override

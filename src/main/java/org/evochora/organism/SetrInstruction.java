@@ -26,6 +26,7 @@ public class SetrInstruction extends Instruction {
 
     static {
         Instruction.registerInstruction(SetrInstruction.class, ID, "SETR", 3, SetrInstruction::plan, SetrInstruction::assemble);
+        Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER));
     }
 
     @Override

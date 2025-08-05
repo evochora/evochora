@@ -23,6 +23,7 @@ public class NrgInstruction extends Instruction {
 
     static {
         Instruction.registerInstruction(NrgInstruction.class, ID, "NRG", 2, NrgInstruction::plan, NrgInstruction::assemble);
+        Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER));
     }
 
     @Override

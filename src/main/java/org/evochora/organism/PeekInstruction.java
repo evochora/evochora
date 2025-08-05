@@ -26,6 +26,7 @@ public class PeekInstruction extends Instruction implements IWorldModifyingInstr
 
     static {
         Instruction.registerInstruction(PeekInstruction.class, ID, "PEEK", 3, PeekInstruction::plan, PeekInstruction::assemble);
+        Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER));
     }
 
     @Override

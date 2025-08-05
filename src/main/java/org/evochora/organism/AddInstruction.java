@@ -24,6 +24,7 @@ public class AddInstruction extends Instruction {
 
     static {
         Instruction.registerInstruction(AddInstruction.class, ID, "ADD", 3, AddInstruction::plan, AddInstruction::assemble);
+        Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER));
     }
 
     @Override

@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 public class SetvInstruction extends Instruction {
     public static final int ID = 3;
@@ -26,6 +27,14 @@ public class SetvInstruction extends Instruction {
 
     static {
         Instruction.registerInstruction(SetvInstruction.class, ID, "SETV", 2 + Config.WORLD_DIMENSIONS, SetvInstruction::plan, SetvInstruction::assemble);
+
+        // KORRIGIERT: Dynamische Erstellung der Map für n-Dimensionen
+        Map<Integer, ArgumentType> argumentTypes = new HashMap<>();
+        argumentTypes.put(0, ArgumentType.REGISTER);
+        for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
+            argumentTypes.put(1 + i, ArgumentType.COORDINATE);
+        }
+        Instruction.registerArgumentTypes(ID, argumentTypes);
     }
 
     @Override

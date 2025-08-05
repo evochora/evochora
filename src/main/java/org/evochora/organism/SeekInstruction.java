@@ -23,6 +23,7 @@ public class SeekInstruction extends Instruction {
 
     static {
         Instruction.registerInstruction(SeekInstruction.class, ID, "SEEK", 2, SeekInstruction::plan, SeekInstruction::assemble);
+        Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER));
     }
 
     @Override

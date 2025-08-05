@@ -26,6 +26,7 @@ public class SubInstruction extends Instruction {
 
     static {
         Instruction.registerInstruction(SubInstruction.class, ID, "SUB", 3, SubInstruction::plan, SubInstruction::assemble);
+        Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER));
     }
 
     @Override

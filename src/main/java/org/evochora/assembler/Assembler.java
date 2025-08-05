@@ -63,16 +63,12 @@ public class Assembler {
 
             if (processedLine.isEmpty()) continue;
 
-            // KORREKTION: Die Adresse wird vor der Verarbeitung der Zeile gespeichert.
-            // Der Rest der Logik bleibt unverändert.
-
             this.linearAddressToRelativeCoord.put(linearAddress, Arrays.copyOf(currentPos, currentPos.length));
             this.relativeCoordToLinearAddress.put(Arrays.stream(currentPos).boxed().collect(Collectors.toList()), linearAddress);
 
             String[] parts = processedLine.split("\\s+");
             String directive = parts[0].toUpperCase();
 
-            // NEU: Überprüfung, ob JMP oder JMPR verwendet werden
             if (directive.equals("JMP") || directive.equals("JMPR")) {
                 throw new IllegalArgumentException("Verbotener Befehl: " + directive + ". Verwenden Sie stattdessen JUMP.");
             }
@@ -134,11 +130,13 @@ public class Assembler {
                 int instructionLength;
                 if (directive.equals("JUMP")) {
                     String[] jumpArgs = processedLine.split("\\s+", 2)[1].split("\\s+");
-                    // KORRIGIERT: Überprüfung für direkte Vektor-Argumente entfernt
-                    if (labelMap.containsKey(jumpArgs[0].toUpperCase())) {
-                        instructionLength = 1 + Config.WORLD_DIMENSIONS;
+                    String arg = jumpArgs[0].toUpperCase();
+                    if (arg.startsWith("%")) {
+                        // KORREKTION: Lese die Länge von JMP aus der Instruction-Klasse
+                        instructionLength = Instruction.getInstructionLengthById(Config.TYPE_CODE | JmpInstruction.ID);
                     } else {
-                        instructionLength = 2;
+                        // KORREKTION: Lese die Länge von JMPR aus der Instruction-Klasse
+                        instructionLength = Instruction.getInstructionLengthById(Config.TYPE_CODE | JmprInstruction.ID);
                     }
                 } else {
                     Integer opcodeId = Instruction.getInstructionIdByName(directive);

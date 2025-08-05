@@ -18,6 +18,7 @@ public class SyncInstruction extends Instruction {
 
     static {
         Instruction.registerInstruction(SyncInstruction.class, ID, "SYNC", 1, SyncInstruction::plan, SyncInstruction::assemble);
+        Instruction.registerArgumentTypes(ID, Map.of());
     }
 
     @Override
