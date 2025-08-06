@@ -11,6 +11,7 @@ import org.evochora.world.World;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 public class PushInstruction extends Instruction {
 

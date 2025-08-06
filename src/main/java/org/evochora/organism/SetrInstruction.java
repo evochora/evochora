@@ -71,10 +71,18 @@ public class SetrInstruction extends Instruction {
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 2) throw new IllegalArgumentException("SETR erwartet 2 Argumente: %REG_DEST %REG_SRC");
+        if (args.length != 2) {
+            throw new IllegalArgumentException("SETR erwartet 2 Argumente: %REG_DEST %REG_SRC");
+        }
 
-        int destRegId = registerMap.get(args[0].toUpperCase());
-        int srcRegId = registerMap.get(args[1].toUpperCase());
+        Integer destRegId = registerMap.get(args[0].toUpperCase());
+        if (destRegId == null) {
+            throw new IllegalArgumentException("Ungültiges Register-Argument für Ziel: " + args[0]);
+        }
+        Integer srcRegId = registerMap.get(args[1].toUpperCase());
+        if (srcRegId == null) {
+            throw new IllegalArgumentException("Ungültiges Register-Argument für Quelle: " + args[1]);
+        }
 
         return new AssemblerOutput.CodeSequence(List.of(
                 new Symbol(Config.TYPE_DATA, destRegId).toInt(),

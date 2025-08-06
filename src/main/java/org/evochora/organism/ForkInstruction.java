@@ -80,11 +80,23 @@ public class ForkInstruction extends Instruction {
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 3) throw new IllegalArgumentException("FORK erwartet 3 Argumente: %REG_DELTA %REG_ENERGY %REG_DV");
+        if (args.length != 3) {
+            throw new IllegalArgumentException("FORK erwartet 3 Argumente: %REG_DELTA %REG_ENERGY %REG_DV");
+        }
 
-        int deltaRegId = registerMap.get(args[0].toUpperCase());
-        int energyRegId = registerMap.get(args[1].toUpperCase());
-        int dvRegId = registerMap.get(args[2].toUpperCase());
+        Integer deltaRegId = registerMap.get(args[0].toUpperCase());
+        if (deltaRegId == null) {
+            throw new IllegalArgumentException("Ungültiges Register-Argument für Delta: " + args[0]);
+        }
+        Integer energyRegId = registerMap.get(args[1].toUpperCase());
+        if (energyRegId == null) {
+            throw new IllegalArgumentException("Ungültiges Register-Argument für Energie: " + args[1]);
+        }
+        Integer dvRegId = registerMap.get(args[2].toUpperCase());
+        if (dvRegId == null) {
+            throw new IllegalArgumentException("Ungültiges Register-Argument für DV: " + args[2]);
+        }
+
 
         return new AssemblerOutput.CodeSequence(List.of(
                 new Symbol(Config.TYPE_DATA, deltaRegId).toInt(),

@@ -62,9 +62,13 @@ public class SeekInstruction extends Instruction {
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 1) throw new IllegalArgumentException("SEEK erwartet 1 Argument: %REG_VEC");
-
-        int regId = registerMap.get(args[0].toUpperCase());
+        if (args.length != 1) {
+            throw new IllegalArgumentException("SEEK erwartet genau 1 Argument: %REG_VEC");
+        }
+        Integer regId = registerMap.get(args[0].toUpperCase());
+        if (regId == null) {
+            throw new IllegalArgumentException("Ungültiges Register-Argument: " + args[0]);
+        }
 
         return new AssemblerOutput.CodeSequence(List.of(
                 new Symbol(Config.TYPE_DATA, regId).toInt()

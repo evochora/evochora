@@ -76,29 +76,30 @@ public class JmprInstruction extends Instruction {
         return new JmprInstruction(organism, delta);
     }
 
-    // KORRIGIERT: JmprInstruction.assemble akzeptiert nur Labels, die in Vektor-Literale umgewandelt werden
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
         if (args.length != 1) {
-            throw new IllegalArgumentException("JMPR erwartet 1 Argument (Label).");
+            throw new IllegalArgumentException("JUMP erwartet 1 Argument (Label).");
         }
         String arg = args[0].toUpperCase();
 
         if (labelMap.containsKey(arg)) {
-            // Der Assembler erzeugt einen Platzhalter, der später aufgelöst wird.
             return new AssemblerOutput.JumpInstructionRequest(arg);
         } else if (arg.contains("|")) {
-            // Der Assembler verarbeitet einen direkten Vektor-Literal
             List<Integer> machineCode = new ArrayList<>();
             String[] vectorComponents = arg.split("\\|");
             if (vectorComponents.length != Config.WORLD_DIMENSIONS) {
-                throw new IllegalArgumentException("Vektor hat falsche Dimension für JMPR: " + arg);
+                throw new IllegalArgumentException("Vektor hat falsche Dimension für JUMP: " + arg);
             }
             for (String component : vectorComponents) {
-                machineCode.add(new Symbol(Config.TYPE_DATA, Integer.parseInt(component.strip())).toInt());
+                try {
+                    machineCode.add(new Symbol(Config.TYPE_DATA, Integer.parseInt(component.strip())).toInt());
+                } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException("Vektor-Komponente ist keine gültige Zahl: " + component);
+                }
             }
             return new AssemblerOutput.CodeSequence(machineCode);
         } else {
-            throw new IllegalArgumentException("JMPR kann nur Labels oder Vektor-Literale als Argumente akzeptieren: " + arg);
+            throw new IllegalArgumentException("JUMP kann nur Labels oder Vektor-Literale als Argumente akzeptieren: " + arg);
         }
     }
 

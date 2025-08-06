@@ -61,7 +61,9 @@ public class PosInstruction extends Instruction {
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 1) throw new IllegalArgumentException("POS erwartet 1 Argument: %REG_TARGET");
+        if (args.length != 1) {
+            throw new IllegalArgumentException("POS erwartet genau 1 Argument: %REG_TARGET");
+        }
 
         Integer regId = registerMap.get(args[0].toUpperCase());
         if (regId == null) {

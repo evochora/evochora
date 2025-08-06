@@ -17,6 +17,9 @@ public class Assembler {
 
     private record MacroDefinition(List<String> parameters, List<String> body) {}
 
+    // NEU: Hält eine Zeile und die dazugehörige Originalzeilennummer
+    private record AnnotatedLine(String content, int originalLineNumber) {}
+
     // --- Instanzvariablen ---
     private String programName;
     private boolean isDebugMode;
@@ -48,8 +51,7 @@ public class Assembler {
         this.labelAddressToName = new LinkedHashMap<>();
 
         String[] initialLines = assemblyCode.split("\\r?\\n");
-        List<String> expandedLinesList = performMacroPass(initialLines);
-        String[] expandedLines = expandedLinesList.toArray(new String[0]);
+        List<AnnotatedLine> expandedLines = performMacroPass(initialLines);
         performFirstPass(expandedLines);
         performSecondPass(expandedLines);
         resolveJumpPlaceholders(expandedLines);
@@ -70,19 +72,22 @@ public class Assembler {
                 registerIdToName, labelMap, labelAddressToName, linearAddressToRelativeCoord, relativeCoordToLinearAddress);
     }
 
-    // GEÄNDERT: Die Methode wurde komplett umgeschrieben, um Rekursion und Loop-Erkennung zu unterstützen
-    private List<String> performMacroPass(String[] lines) {
-        List<String> codeWithoutMacroDefs = new ArrayList<>();
+    // GEÄNDERT: Die Methode wurde umgeschrieben, um Rekursion und Loop-Erkennung zu unterstützen
+    private List<AnnotatedLine> performMacroPass(String[] lines) {
+        List<AnnotatedLine> codeWithoutMacroDefs = new ArrayList<>();
 
         // Erster Durchlauf: Makro-Definitionen finden und entfernen
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i].split("#", 2)[0].strip();
-            if (line.isEmpty()) continue;
+            if (line.isEmpty()) {
+                codeWithoutMacroDefs.add(new AnnotatedLine(lines[i], i + 1));
+                continue;
+            }
 
             String[] parts = line.split("\\s+");
             if (parts[0].equalsIgnoreCase(".MACRO")) {
                 if (parts.length < 2 || !parts[1].startsWith("$")) {
-                    throw new IllegalArgumentException(String.format("Assembly Error in '%s' (Line %d): '%s'\n> Ungültige Makro-Definition. Erwartet: .MACRO $NAME [param1] [param2] ...", programName, i + 1, lines[i].strip()));
+                    throw new AssemblerException(programName, i + 1, String.format("Ungültige Makro-Definition. Erwartet: .MACRO $NAME [param1] [param2] ..."));
                 }
                 String macroName = parts[1];
                 List<String> params = Arrays.asList(parts).subList(2, parts.length);
@@ -93,12 +98,12 @@ public class Assembler {
                     j++;
                 }
                 if (j == lines.length) {
-                    throw new IllegalArgumentException(String.format("Assembly Error in '%s' (Line %d): '%s'\n> Fehlendes .ENDM für Makro-Definition.", programName, i + 1, lines[i].strip()));
+                    throw new AssemblerException(programName, i + 1, "Fehlendes .ENDM für Makro-Definition.");
                 }
                 macroMap.put(macroName, new MacroDefinition(params, body));
                 i = j;
             } else {
-                codeWithoutMacroDefs.add(lines[i]);
+                codeWithoutMacroDefs.add(new AnnotatedLine(lines[i], i + 1));
             }
         }
 
@@ -112,13 +117,16 @@ public class Assembler {
         return expandMacrosRecursively(codeWithoutMacroDefs, macroCallStack);
     }
 
-    private List<String> expandMacrosRecursively(List<String> lines, Deque<String> macroCallStack) {
-        List<String> expandedCode = new ArrayList<>();
+    private List<AnnotatedLine> expandMacrosRecursively(List<AnnotatedLine> lines, Deque<String> macroCallStack) {
+        List<AnnotatedLine> expandedCode = new ArrayList<>();
 
-        for (String line : lines) {
+        for (AnnotatedLine annotatedLine : lines) {
+            String line = annotatedLine.content();
+            int originalLineNumber = annotatedLine.originalLineNumber();
+
             String strippedLine = line.split("#", 2)[0].strip();
             if (strippedLine.isEmpty()) {
-                expandedCode.add(line);
+                expandedCode.add(new AnnotatedLine(line, originalLineNumber));
                 continue;
             }
 
@@ -129,7 +137,7 @@ public class Assembler {
                 // NEU: Endlosschleife erkennen
                 if (macroCallStack.contains(potentialMacroName)) {
                     String loopTrace = String.join(" -> ", macroCallStack) + " -> " + potentialMacroName;
-                    throw new IllegalArgumentException(String.format("Assembly Error in '%s':\n> Endlose Makro-Rekursion erkannt: %s", programName, loopTrace));
+                    throw new AssemblerException(programName, originalLineNumber, "Endlose Makro-Rekursion erkannt: " + loopTrace);
                 }
 
                 macroCallStack.push(potentialMacroName);
@@ -138,49 +146,52 @@ public class Assembler {
                 String[] args = (parts.length > 1) ? Arrays.copyOfRange(parts, 1, parts.length) : new String[0];
 
                 if (macro.parameters().size() != args.length) {
-                    throw new IllegalArgumentException(String.format("Assembly Error in '%s': '%s'\n> Falsche Anzahl an Argumenten für Makro %s. Erwartet %d, aber %d erhalten.", programName, line.strip(), potentialMacroName, macro.parameters().size(), args.length));
+                    throw new AssemblerException(programName, originalLineNumber, String.format("Falsche Anzahl an Argumenten für Makro %s. Erwartet %d, aber %d erhalten.", potentialMacroName, macro.parameters().size(), args.length));
                 }
 
-                List<String> macroBodyWithArgs = new ArrayList<>();
+                List<AnnotatedLine> macroBodyWithArgs = new ArrayList<>();
                 for (String bodyLine : macro.body()) {
                     String expandedLine = bodyLine;
                     for (int k = 0; k < args.length; k++) {
                         expandedLine = expandedLine.replace(macro.parameters().get(k), args[k]);
                     }
                     expandedLine = expandedLine.replace("@@", "_M" + this.macroExpansionCounter + "_");
-                    macroBodyWithArgs.add(expandedLine);
+                    macroBodyWithArgs.add(new AnnotatedLine(expandedLine, originalLineNumber));
                 }
 
                 // Rekursiver Aufruf, um verschachtelte Makros zu expandieren
-                List<String> recursivelyExpanded = expandMacrosRecursively(macroBodyWithArgs, macroCallStack);
+                List<AnnotatedLine> recursivelyExpanded = expandMacrosRecursively(macroBodyWithArgs, macroCallStack);
                 expandedCode.addAll(recursivelyExpanded);
 
                 macroCallStack.pop();
             } else {
-                expandedCode.add(line);
+                expandedCode.add(annotatedLine);
             }
         }
 
         return expandedCode;
     }
 
-    private void performFirstPass(String[] lines) {
+    private void performFirstPass(List<AnnotatedLine> annotatedLines) {
         int linearAddress = 0;
         int[] currentDv = {1, 0};
         int[] currentPos = new int[Config.WORLD_DIMENSIONS];
 
-        for (int i = 0; i < lines.length; i++) {
-            String line = lines[i].split("#", 2)[0].strip();
-            if (line.isEmpty()) continue;
+        for (AnnotatedLine annotatedLine : annotatedLines) {
+            String line = annotatedLine.content();
+            int lineNumber = annotatedLine.originalLineNumber();
 
-            String[] parts = line.split("\\s+");
+            String strippedLine = line.split("#", 2)[0].strip();
+            if (strippedLine.isEmpty()) continue;
+
+            String[] parts = strippedLine.split("\\s+");
             String directive = parts[0].toUpperCase();
 
             // KORREKTUR: Direktiven, die die Position beeinflussen, MÜSSEN zuerst behandelt werden.
             if (directive.equals(".ORG")) {
                 int[] parsedCoords = Arrays.stream(parts[1].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
                 if (parsedCoords.length != Config.WORLD_DIMENSIONS) {
-                    throw new IllegalArgumentException(String.format("Assembly Error in '%s' (Line %d): '%s'\n> .ORG-Direktive hat falsche Anzahl an Dimensionen. Erwartet: %d, erhalten: %d.", programName, i + 1, line, Config.WORLD_DIMENSIONS, parsedCoords.length));
+                    throw new AssemblerException(programName, lineNumber, String.format(".ORG-Direktive hat falsche Anzahl an Dimensionen. Erwartet: %d, erhalten: %d.", Config.WORLD_DIMENSIONS, parsedCoords.length));
                 }
                 currentPos = parsedCoords;
                 continue;
@@ -199,7 +210,7 @@ public class Assembler {
                     case "STRUCTURE" -> Config.TYPE_STRUCTURE;
                     case "DATA" -> Config.TYPE_DATA;
                     case "CODE" -> Config.TYPE_CODE;
-                    default -> throw new IllegalArgumentException(String.format("Assembly Error in '%s' (Line %d): '%s'\n> Unbekannter Typ in .PLACE: %s", programName, i + 1, line, typeName));
+                    default -> throw new AssemblerException(programName, lineNumber, String.format("Unbekannter Typ in .PLACE: %s", typeName));
                 };
                 initialWorldObjects.put(relativePos, new Symbol(type, value));
                 continue;
@@ -214,10 +225,10 @@ public class Assembler {
             this.linearAddressToRelativeCoord.put(linearAddress, Arrays.copyOf(currentPos, currentPos.length));
             this.relativeCoordToLinearAddress.put(Arrays.stream(currentPos).boxed().collect(Collectors.toList()), linearAddress);
 
-            if (line.endsWith(":")) {
-                String label = line.substring(0, line.length() - 1).toUpperCase();
+            if (strippedLine.endsWith(":")) {
+                String label = strippedLine.substring(0, strippedLine.length() - 1).toUpperCase();
                 if (labelMap.containsKey(label)) {
-                    throw new IllegalArgumentException(String.format("Assembly Error in '%s' (Line %d): '%s'\n> Label '%s' wurde mehrfach vergeben.", programName, i + 1, line, label));
+                    throw new AssemblerException(programName, lineNumber, String.format("Label '%s' wurde mehrfach vergeben.", label));
                 }
                 labelMap.put(label, linearAddress);
                 labelAddressToName.put(linearAddress, label);
@@ -233,7 +244,7 @@ public class Assembler {
                 } else {
                     Integer opcodeId = Instruction.getInstructionIdByName(directive);
                     if (opcodeId == null) {
-                        throw new IllegalArgumentException(String.format("Assembly Error in '%s' (Line %d): '%s'\n> Unbekannter Befehl: %s", programName, i + 1, line, directive));
+                        throw new AssemblerException(programName, lineNumber, String.format("Unbekannter Befehl: %s", directive));
                     }
                     instructionLength = Instruction.getInstructionLengthById(Config.TYPE_CODE | opcodeId);
                 }
@@ -257,16 +268,19 @@ public class Assembler {
         }
     }
 
-    private void performSecondPass(String[] lines) {
+    private void performSecondPass(List<AnnotatedLine> annotatedLines) {
         int linearAddress = 0;
         int[] currentPos = new int[Config.WORLD_DIMENSIONS];
         int[] currentDv = {1,0};
 
-        for (int i = 0; i < lines.length; i++) {
-            String line = lines[i].split("#", 2)[0].strip();
-            if (line.isEmpty()) continue;
+        for (AnnotatedLine annotatedLine : annotatedLines) {
+            String line = annotatedLine.content();
+            int lineNumber = annotatedLine.originalLineNumber();
+            String strippedLine = line.split("#", 2)[0].strip();
 
-            String[] parts = line.split("\\s+", 2);
+            if (strippedLine.isEmpty()) continue;
+
+            String[] parts = strippedLine.split("\\s+", 2);
             String directive = parts[0].toUpperCase();
 
             // KORREKTUR: Die Logik zur Behandlung von Direktiven MUSS exakt
@@ -281,7 +295,7 @@ public class Assembler {
             }
             // Wir überspringen nur noch Labels und Direktiven, die keinen Code generieren
             // und keine Position/Richtung ändern.
-            if (line.endsWith(":") || directive.equals(".REG") || directive.equals(".PLACE")) {
+            if (strippedLine.endsWith(":") || directive.equals(".REG") || directive.equals(".PLACE")) {
                 continue;
             }
 
@@ -291,24 +305,29 @@ public class Assembler {
             Integer opcodeId;
             AssemblerOutput assemblerOutput;
 
-            if (directive.equals("JUMP")) {
-                String arg = args[0].toUpperCase();
-                if (labelMap.containsKey(arg)) {
-                    opcodeId = JmprInstruction.ID;
-                    assemblerOutput = new AssemblerOutput.JumpInstructionRequest(arg);
-                } else if (registerMap.containsKey(arg)) {
-                    opcodeId = JmpInstruction.ID;
-                    assemblerOutput = Instruction.getAssemblerById(Config.TYPE_CODE | opcodeId).apply(args, registerMap, labelMap);
+            try {
+                if (directive.equals("JUMP")) {
+                    String arg = args[0].toUpperCase();
+                    if (labelMap.containsKey(arg)) {
+                        opcodeId = JmprInstruction.ID;
+                        assemblerOutput = new AssemblerOutput.JumpInstructionRequest(arg);
+                    } else if (registerMap.containsKey(arg)) {
+                        opcodeId = JmpInstruction.ID;
+                        assemblerOutput = Instruction.getAssemblerById(Config.TYPE_CODE | opcodeId).apply(args, registerMap, labelMap);
+                    } else {
+                        throw new IllegalArgumentException(String.format("JUMP erwartet ein Register oder Label. Gefunden: %s", arg));
+                    }
                 } else {
-                    throw new IllegalArgumentException(String.format("Assembly Error in '%s' (Line %d): '%s'\n> JUMP erwartet ein Register oder Label. Gefunden: %s", programName, i + 1, line, arg));
+                    opcodeId = Instruction.getInstructionIdByName(directive);
+                    if (opcodeId == null) {
+                        throw new IllegalArgumentException(String.format("Unbekannter Befehl: %s", directive));
+                    }
+                    assemblerOutput = Instruction.getAssemblerById(Config.TYPE_CODE | opcodeId).apply(args, registerMap, labelMap);
                 }
-            } else {
-                opcodeId = Instruction.getInstructionIdByName(directive);
-                if (opcodeId == null) {
-                    throw new IllegalArgumentException(String.format("Assembly Error in '%s' (Line %d): '%s'\n> Unbekannter Befehl: %s", programName, i + 1, line, directive));
-                }
-                assemblerOutput = Instruction.getAssemblerById(Config.TYPE_CODE | opcodeId).apply(args, registerMap, labelMap);
+            } catch (IllegalArgumentException e) {
+                throw new AssemblerException(programName, lineNumber, e.getMessage());
             }
+
 
             machineCodeLayout.put(Arrays.copyOf(currentPos, currentPos.length), Config.TYPE_CODE | opcodeId);
             linearAddress++;
@@ -336,7 +355,7 @@ public class Assembler {
         }
     }
 
-    private void resolveJumpPlaceholders(String[] lines) {
+    private void resolveJumpPlaceholders(List<AnnotatedLine> annotatedLines) {
         if (isDebugMode && !jumpPlaceholderLocations.isEmpty()) {
             System.out.printf("[DEBUG: %s] --- Sprung-Auflösung ---\n", programName);
         }
@@ -365,7 +384,7 @@ public class Assembler {
                 System.out.printf("[DEBUG: %s]   - JUMP zu '%-10s' (von %s nach %s): Delta berechnet als %s\n", programName, targetLabelName, Arrays.toString(jumpOpcodeRelativeCoord), Arrays.toString(targetLabelRelativeCoord), Arrays.toString(delta));
             }
 
-            int[] dvAtJump = getDvAtLinearAddress(jumpOpcodeLinearAddress, lines);
+            int[] dvAtJump = getDvAtLinearAddress(jumpOpcodeLinearAddress, annotatedLines);
             int[] currentArgPos = Arrays.copyOf(jumpOpcodeRelativeCoord, jumpOpcodeRelativeCoord.length);
 
             for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
@@ -375,11 +394,11 @@ public class Assembler {
         }
     }
 
-    private int[] getDvAtLinearAddress(int targetAddress, String[] lines) {
+    private int[] getDvAtLinearAddress(int targetAddress, List<AnnotatedLine> annotatedLines) {
         int[] dv = {1,0};
         int currentAddress = 0;
-        for (String line : lines) {
-            String strippedLine = line.split("#")[0].strip();
+        for (AnnotatedLine annotatedLine : annotatedLines) {
+            String strippedLine = annotatedLine.content().split("#")[0].strip();
             if (currentAddress > targetAddress) break;
 
             if(strippedLine.toUpperCase().startsWith(".DIR")) {

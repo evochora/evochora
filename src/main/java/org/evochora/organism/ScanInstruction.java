@@ -67,10 +67,15 @@ public class ScanInstruction extends Instruction {
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 2) throw new IllegalArgumentException("SCAN erwartet 2 Argumente: %REG_TARGET %REG_VEC");
+        if (args.length != 2) {
+            throw new IllegalArgumentException("SCAN erwartet genau 2 Argumente: %REG_TARGET %REG_VEC");
+        }
 
-        int targetRegId = registerMap.get(args[0].toUpperCase());
-        int vecRegId = registerMap.get(args[1].toUpperCase());
+        Integer targetRegId = registerMap.get(args[0].toUpperCase());
+        Integer vecRegId = registerMap.get(args[1].toUpperCase());
+        if (targetRegId == null || vecRegId == null) {
+            throw new IllegalArgumentException(String.format("Ungültiges Register-Argument. Target: '%s', Vec: '%s'", args[0], args[1]));
+        }
 
         return new AssemblerOutput.CodeSequence(List.of(
                 new Symbol(Config.TYPE_DATA, targetRegId).toInt(),

@@ -10,6 +10,7 @@ import org.evochora.assembler.ArgumentType;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
 
 public class PeekInstruction extends Instruction implements IWorldModifyingInstruction {
     public static final int ID = 14;
@@ -17,8 +18,8 @@ public class PeekInstruction extends Instruction implements IWorldModifyingInstr
     private final int targetReg, vecReg;
     private final int[] targetCoordinate;
 
-    public PeekInstruction(Organism o, int tr, int vr, int[] tc) {
-        super(o);
+    public PeekInstruction(Organism organism, int tr, int vr, int[] tc) {
+        super(organism);
         this.targetReg = tr;
         this.vecReg = vr;
         this.targetCoordinate = tc;
@@ -47,7 +48,6 @@ public class PeekInstruction extends Instruction implements IWorldModifyingInstr
     @Override
     public int getCost(Organism organism, World world, List<Integer> rawArguments) {
         int cost = getFixedBaseCost();
-        // Kostenlogik bleibt unverändert
         Symbol targetSymbol = world.getSymbol(targetCoordinate);
         if (targetSymbol.type() == Config.TYPE_STRUCTURE) {
             cost += Math.abs(targetSymbol.toScalarValue());
@@ -64,14 +64,12 @@ public class PeekInstruction extends Instruction implements IWorldModifyingInstr
     }
 
     public static Instruction plan(Organism organism, World world) {
-        // GEÄNDERT: Neue Logik mit FetchResult
         Organism.FetchResult result1 = organism.fetchArgument(organism.getIp(), world);
         int targetReg = result1.value();
 
         Organism.FetchResult result2 = organism.fetchArgument(result1.nextIp(), world);
         int vecReg = result2.value();
 
-        // Die nachfolgende Logik bleibt erhalten
         Object vec = organism.getDr(vecReg);
         if (vec instanceof int[] v) {
             if (!organism.isUnitVector(v)) {
@@ -80,16 +78,22 @@ public class PeekInstruction extends Instruction implements IWorldModifyingInstr
             int[] target = organism.getTargetCoordinate(organism.getDp(), v, world);
             return new PeekInstruction(organism, targetReg, vecReg, target);
         } else {
-            organism.instructionFailed("PEEK: Invalid DR type for vector (Reg " + vecReg + "). Expected int[], found " + (vec != null ? vec.getClass().getSimpleName() : "null") + ".");
+            organism.instructionFailed("PEEK: Invalid DR type for vector (Reg " + vec + "). Expected int[], found " + (vec != null ? vec.getClass().getSimpleName() : "null") + ".");
             return new NopInstruction(organism);
         }
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 2) throw new IllegalArgumentException("PEEK erwartet 2 Argumente: %REG_TARGET %REG_VEC");
+        if (args.length != 2) {
+            throw new IllegalArgumentException("PEEK erwartet 2 Register-Argumente: %REG_TARGET %REG_VEC");
+        }
 
-        int targetRegId = registerMap.get(args[0].toUpperCase());
-        int vecRegId = registerMap.get(args[1].toUpperCase());
+        Integer targetRegId = registerMap.get(args[0].toUpperCase());
+        Integer vecRegId = registerMap.get(args[1].toUpperCase());
+
+        if (targetRegId == null || vecRegId == null) {
+            throw new IllegalArgumentException(String.format("Ungültiges Register-Argument. Target: '%s', Vec: '%s'", args[0], args[1]));
+        }
 
         return new AssemblerOutput.CodeSequence(List.of(
                 new Symbol(Config.TYPE_DATA, targetRegId).toInt(),
@@ -102,7 +106,6 @@ public class PeekInstruction extends Instruction implements IWorldModifyingInstr
         World world = simulation.getWorld();
         Object vecObj = organism.getDr(vecReg);
         if (!(vecObj instanceof int[] v) || !organism.isUnitVector(v)) {
-            // Fehler wurde schon in plan() oder isUnitVector() gesetzt
             return;
         }
 

@@ -1,4 +1,4 @@
-// src/main/java/org/evochora/organism/SetlInstruction.java
+// src/main/java/org/evochora/organism/SetiInstruction.java
 package org.evochora.organism;
 
 import org.evochora.Config;
@@ -71,9 +71,15 @@ public class SetiInstruction extends Instruction {
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 2) throw new IllegalArgumentException("SETI erwartet 2 Argumente: %REG TYPE:WERT");
+        if (args.length != 2) {
+            throw new IllegalArgumentException("SETI erwartet 2 Argumente: %REG TYPE:WERT");
+        }
 
-        int regId = registerMap.get(args[0].toUpperCase());
+        Integer regId = registerMap.get(args[0].toUpperCase());
+        if (regId == null) {
+            throw new IllegalArgumentException("Ungültiges Register-Argument: " + args[0]);
+        }
+
         String[] literalParts = args[1].split(":");
         if (literalParts.length != 2) {
             throw new IllegalArgumentException("SETI-Literal muss das Format TYPE:WERT haben: " + args[1]);

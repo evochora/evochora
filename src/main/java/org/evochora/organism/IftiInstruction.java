@@ -76,7 +76,9 @@ public class IftiInstruction extends Instruction {
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 2) throw new IllegalArgumentException("IFTI erwartet 2 Argumente: %REG TYPE:WERT");
+        if (args.length != 2) {
+            throw new IllegalArgumentException("IFTI erwartet genau 2 Argumente: %REG TYPE:WERT");
+        }
 
         Integer regId = registerMap.get(args[0].toUpperCase());
         if (regId == null) {

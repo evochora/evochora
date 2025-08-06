@@ -67,10 +67,18 @@ public class NandInstruction extends Instruction {
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 2) throw new IllegalArgumentException("NAND erwartet 2 Argumente: %REG1 %REG2");
+        if (args.length != 2) {
+            throw new IllegalArgumentException("NAND erwartet 2 Argumente: %REG1 %REG2");
+        }
 
-        int reg1Id = registerMap.get(args[0].toUpperCase());
-        int reg2Id = registerMap.get(args[1].toUpperCase());
+        Integer reg1Id = registerMap.get(args[0].toUpperCase());
+        if (reg1Id == null) {
+            throw new IllegalArgumentException("Ungültiges Register-Argument: " + args[0]);
+        }
+        Integer reg2Id = registerMap.get(args[1].toUpperCase());
+        if (reg2Id == null) {
+            throw new IllegalArgumentException("Ungültiges Register-Argument: " + args[1]);
+        }
 
         return new AssemblerOutput.CodeSequence(List.of(
                 new Symbol(Config.TYPE_DATA, reg1Id).toInt(),

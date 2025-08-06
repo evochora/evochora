@@ -28,7 +28,6 @@ public class SetvInstruction extends Instruction {
     static {
         Instruction.registerInstruction(SetvInstruction.class, ID, "SETV", 2 + Config.WORLD_DIMENSIONS, SetvInstruction::plan, SetvInstruction::assemble);
 
-        // KORRIGIERT: Dynamische Erstellung der Map für n-Dimensionen
         Map<Integer, ArgumentType> argumentTypes = new HashMap<>();
         argumentTypes.put(0, ArgumentType.REGISTER);
         for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
@@ -87,12 +86,15 @@ public class SetvInstruction extends Instruction {
         if (args.length != 2) throw new IllegalArgumentException("SETV erwartet 2 Argumente: %REG WERT1|WERT2|...");
         List<Integer> machineCode = new ArrayList<>();
 
-        // GEÄNDERT: Alle Argumente werden explizit als DATA-Symbole verpackt
-        int regId = registerMap.get(args[0].toUpperCase());
+        // KORRIGIERT: Typ von regId wurde auf Integer geändert
+        Integer regId = registerMap.get(args[0].toUpperCase());
+        if (regId == null) {
+            throw new IllegalArgumentException("Ungültiges Register-Argument: " + args[0]);
+        }
         machineCode.add(new Symbol(Config.TYPE_DATA, regId).toInt());
 
         String[] vectorComponents = args[1].split("\\|");
-        if (vectorComponents.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("SETV: Falsche Vektor-Dimensionalität. Erwartet " + Config.WORLD_DIMENSIONS + ", gefunden " + vectorComponents.length + ".");
+        if (vectorComponents.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("Falsche Vektor-Dimensionalität. Erwartet " + Config.WORLD_DIMENSIONS + ", gefunden " + vectorComponents.length + ".");
 
         for (String component : vectorComponents) {
             int value = Integer.parseInt(component.strip());

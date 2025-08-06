@@ -51,6 +51,9 @@ public class NopInstruction extends Instruction {
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
+        if (args.length != 0) {
+            throw new IllegalArgumentException("NOP erwartet keine Argumente.");
+        }
         return new AssemblerOutput.CodeSequence(Collections.emptyList());
     }
 

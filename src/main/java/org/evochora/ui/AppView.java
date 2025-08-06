@@ -61,8 +61,8 @@ public class AppView {
 
         // KORRIGIERT: Zusätzlicher Puffer für die maximale Größe, um Layout-Unterschiede auszugleichen.
         // Der Puffer wurde von 20 auf 40 erhöht, um sicherzustellen, dass die Scrollbars nicht sichtbar sind.
-        double maxWorldWidth = Config.WORLD_SHAPE[0] * Config.CELL_SIZE + 40;
-        double maxWorldHeight = Config.WORLD_SHAPE[1] * Config.CELL_SIZE + Config.HEADER_HEIGHT + Config.FOOTER_HEIGHT + 40;
+        double maxWorldWidth = Config.WORLD_SHAPE[0] * Config.CELL_SIZE + 20;
+        double maxWorldHeight = Config.WORLD_SHAPE[1] * Config.CELL_SIZE + Config.HEADER_HEIGHT + Config.FOOTER_HEIGHT + 42;
         primaryStage.setMaxWidth(maxWorldWidth);
         primaryStage.setMaxHeight(maxWorldHeight);
 

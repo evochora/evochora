@@ -76,20 +76,21 @@ public class IfrInstruction extends Instruction {
         int r1 = result1.value();
 
         // KORREKTUR: Lese das zweite Argument explizit von der Position nach dem ersten.
-        Organism.FetchResult result2 = organism.fetchArgument(result1.nextIp(), world);
+        int[] nextIp = organism.getNextInstructionPosition(result1.nextIp(), world, organism.getDvBeforeFetch());
+        Organism.FetchResult result2 = organism.fetchArgument(nextIp, world);
         int r2 = result2.value();
 
         return new IfrInstruction(organism, r1, r2, fullOpcodeId);
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 2) throw new IllegalArgumentException( "IFR/LTR/GTR erwarten 2 Register-Argumente: %REG1 %REG2");
+        if (args.length != 2) throw new IllegalArgumentException( "IFR/LTR/GTR erwarten genau 2 Register-Argumente: %REG1 %REG2");
 
         Integer reg1Id = registerMap.get(args[0].toUpperCase());
         Integer reg2Id = registerMap.get(args[1].toUpperCase());
 
         if (reg1Id == null || reg2Id == null) {
-            throw new IllegalArgumentException("Ungültiges Register-Argument für IFR/LTR/GTR.");
+            throw new IllegalArgumentException(String.format("Ungültiges Register-Argument. Reg1: '%s', Reg2: '%s'", args[0], args[1]));
         }
 
         return new AssemblerOutput.CodeSequence(List.of(

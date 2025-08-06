@@ -67,12 +67,14 @@ public class JmpInstruction extends Instruction {
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 1) throw new IllegalArgumentException("JMP erwartet 1 Argument: %REG_DELTA");
+        if (args.length != 1) {
+            throw new IllegalArgumentException("JMP erwartet 1 Argument: %REG_DELTA");
+        }
         String arg = args[0].toUpperCase();
 
         Integer regId = registerMap.get(arg);
         if (regId == null) {
-            throw new IllegalArgumentException("JMP: Ungültiges Register-Argument: " + arg);
+            throw new IllegalArgumentException("Ungültiges Register-Argument: " + arg);
         }
 
         return new AssemblerOutput.CodeSequence(List.of(

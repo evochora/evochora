@@ -28,7 +28,6 @@ public class PokeInstruction extends Instruction implements IWorldModifyingInstr
 
     static {
         Instruction.registerInstruction(PokeInstruction.class, ID, "POKE", 3, PokeInstruction::plan, PokeInstruction::assemble);
-        // KORREKTUR: Hinzufügen der korrekten Argumenttyp-Registrierung
         Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER));
     }
 
@@ -90,13 +89,15 @@ public class PokeInstruction extends Instruction implements IWorldModifyingInstr
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 2) throw new IllegalArgumentException("POKE erwartet 2 Register-Argumente: %REG_SRC %REG_VEC");
+        if (args.length != 2) {
+            throw new IllegalArgumentException("POKE erwartet 2 Register-Argumente: %REG_SRC %REG_VEC");
+        }
 
         Integer srcRegId = registerMap.get(args[0].toUpperCase());
         Integer vecRegId = registerMap.get(args[1].toUpperCase());
 
         if (srcRegId == null || vecRegId == null) {
-            throw new IllegalArgumentException("Ungültiges Register-Argument für POKE. Erwartet zwei Register, aber eines war ungültig.");
+            throw new IllegalArgumentException(String.format("Ungültiges Register-Argument. Src: '%s', Vec: '%s'", args[0], args[1]));
         }
 
         return new AssemblerOutput.CodeSequence(List.of(

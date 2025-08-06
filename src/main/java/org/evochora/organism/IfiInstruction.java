@@ -1,4 +1,4 @@
-// src/main/java/org/evochora/organism/IflInstruction.java
+// src/main/java/org/evochora/organism/IfiInstruction.java
 package org.evochora.organism;
 
 import org.evochora.Config;
@@ -87,7 +87,9 @@ public class IfiInstruction extends Instruction {
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 2) throw new IllegalArgumentException("IFI/LTI/GTI erwarten 2 Argumente: %REG TYPE:WERT");
+        if (args.length != 2) {
+            throw new IllegalArgumentException("IFI/LTI/GTI erwarten genau 2 Argumente: %REG TYPE:WERT");
+        }
 
         Integer regId = registerMap.get(args[0].toUpperCase());
         if (regId == null) {
