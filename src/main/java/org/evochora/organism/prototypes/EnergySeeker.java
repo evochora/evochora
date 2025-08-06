@@ -49,22 +49,11 @@ public class EnergySeeker extends AssemblyProgram {
                                   JUMP %DR_RETURN
                 
                                   # Scanne nur die 4 benachbarten Felder mit Vektoren der Länge 1.
-                                  SCAN %DR_TMP 1|0
-                                  IFTI %DR_TMP ENERGY:0
-                                  PEEK %DR_TMP 1|0
-                                  
-                                  SCAN %DR_TMP -1|0
-                                  IFTI %DR_TMP ENERGY:0
-                                  PEEK %DR_TMP -1|0
-                                  
-                                  SCAN %DR_TMP 0|1
-                                  IFTI %DR_TMP ENERGY:0
-                                  PEEK %DR_TMP 0|1
-                                  
-                                  SCAN %DR_TMP 0|-1
-                                  IFTI %DR_TMP ENERGY:0
-                                  PEEK %DR_TMP 0|-1
-                                               
+                                  $SCAN_AND_PEEK_FIELD 1|0
+                                  $SCAN_AND_PEEK_FIELD -1|0
+                                  $SCAN_AND_PEEK_FIELD 0|1
+                                  $SCAN_AND_PEEK_FIELD 0|-1
+                
                                   # Bewege den DP zu einem freien Feld (Vektoren der Länge 1).
                                   $TRY_MOVE_AND_JUMP 1|0 @@START_LOOP
                                   $TRY_MOVE_AND_JUMP -1|0 @@START_LOOP

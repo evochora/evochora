@@ -23,7 +23,7 @@ tasks.test {
 
 javafx {
     version = "21"
-    modules = listOf("javafx.controls")
+    modules = listOf("javafx.controls", "javafx.fxml")
 }
 
 // Die mainClass gehört in diesen Block.

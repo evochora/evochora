@@ -207,7 +207,7 @@ public class Logger {
                 .collect(Collectors.joining("|")) + "]";
     }
 
-    private String formatDrValue(Object drVal) {
+    public String formatDrValue(Object drVal) {
         if (drVal == null) {
             return "null";
         }

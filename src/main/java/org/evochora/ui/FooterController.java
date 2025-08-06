@@ -42,7 +42,6 @@ public class FooterController {
         fullDetailsTextArea.setFont(uiFont);
         fullDetailsTextArea.setEditable(false);
         fullDetailsTextArea.setWrapText(true);
-        // GEÄNDERT: Die Anzahl der Zeilen im Textfeld wurde erhöht, um Platz für den Stack zu schaffen
         fullDetailsTextArea.setPrefRowCount(5);
         fullDetailsTextArea.setStyle("-fx-control-inner-background: " + toWebColor(Config.COLOR_HEADER_FOOTER) + ";" +
                 "-fx-text-fill: " + toWebColor(textColor) + ";" +
@@ -74,15 +73,14 @@ public class FooterController {
             StringBuilder drsText = new StringBuilder("DRs: ");
             for(int i = 0; i < drs.size(); i++) {
                 Object val = drs.get(i);
-                // HINWEIS: Hier könnte man die formatDrValue Methode aus dem Logger wiederverwenden,
-                // aber der Einfachheit halber belassen wir die einfachere Darstellung für die DRs.
-                String valStr = (val instanceof int[]) ? Arrays.toString((int[]) val) : (val != null ? val.toString() : "null");
-                drsText.append(String.format("%d:[%s] ", i, valStr));
+                drsText.append(String.format("%d=%s", i, this.logger.formatDrValue(val)));
+                if (i < drs.size() - 1) {
+                    drsText.append(", ");
+                }
             }
             displayText.append(drsText.toString()).append("\n");
 
-            // NEU: Fügt den GEKÜRZTEN Stack in einer eigenen Zeile hinzu
-            String stackText = "Stack: " + logger.formatStack(selectedOrganism, true, 8); // Kürzen nach 8 Elementen
+            String stackText = "Stack: " + logger.formatStack(selectedOrganism, true, 8);
             displayText.append(stackText).append("\n");
 
             displayText.append("Next: ").append(logger.getNextInstructionInfo(selectedOrganism));
@@ -92,7 +90,6 @@ public class FooterController {
                     "-fx-text-fill: " + toWebColor(Config.COLOR_TEXT) + ";" +
                     "-fx-background-color: transparent; -fx-border-width: 0;");
 
-            // GEÄNDERT: Den Platzhalter für den Stack hinzugefügt
             displayText.append("No Organism Selected.\nDRs: \nStack: ---\nNext: ---");
         }
         fullDetailsTextArea.setText(displayText.toString());
