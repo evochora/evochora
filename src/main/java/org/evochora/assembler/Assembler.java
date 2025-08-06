@@ -48,7 +48,8 @@ public class Assembler {
         this.labelAddressToName = new LinkedHashMap<>();
 
         String[] initialLines = assemblyCode.split("\\r?\\n");
-        String[] expandedLines = performMacroPass(initialLines);
+        List<String> expandedLinesList = performMacroPass(initialLines);
+        String[] expandedLines = expandedLinesList.toArray(new String[0]);
         performFirstPass(expandedLines);
         performSecondPass(expandedLines);
         resolveJumpPlaceholders(expandedLines);
@@ -69,9 +70,11 @@ public class Assembler {
                 registerIdToName, labelMap, labelAddressToName, linearAddressToRelativeCoord, relativeCoordToLinearAddress);
     }
 
-    private String[] performMacroPass(String[] lines) {
+    // GEÄNDERT: Die Methode wurde komplett umgeschrieben, um Rekursion und Loop-Erkennung zu unterstützen
+    private List<String> performMacroPass(String[] lines) {
         List<String> codeWithoutMacroDefs = new ArrayList<>();
 
+        // Erster Durchlauf: Makro-Definitionen finden und entfernen
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i].split("#", 2)[0].strip();
             if (line.isEmpty()) continue;
@@ -104,39 +107,61 @@ public class Assembler {
             macroMap.forEach((name, def) -> System.out.printf("[DEBUG: %s]   - %s mit Parametern %s\n", programName, name, def.parameters()));
         }
 
+        // Zweiter Durchlauf (rekursiv): Makro-Aufrufe expandieren
+        Deque<String> macroCallStack = new ArrayDeque<>();
+        return expandMacrosRecursively(codeWithoutMacroDefs, macroCallStack);
+    }
+
+    private List<String> expandMacrosRecursively(List<String> lines, Deque<String> macroCallStack) {
         List<String> expandedCode = new ArrayList<>();
-        for (int i=0; i < codeWithoutMacroDefs.size(); i++) {
-            String line = codeWithoutMacroDefs.get(i);
+
+        for (String line : lines) {
             String strippedLine = line.split("#", 2)[0].strip();
             if (strippedLine.isEmpty()) {
                 expandedCode.add(line);
                 continue;
             }
+
             String[] parts = strippedLine.split("\\s+");
             String potentialMacroName = parts[0];
 
             if (potentialMacroName.startsWith("$") && macroMap.containsKey(potentialMacroName)) {
+                // NEU: Endlosschleife erkennen
+                if (macroCallStack.contains(potentialMacroName)) {
+                    String loopTrace = String.join(" -> ", macroCallStack) + " -> " + potentialMacroName;
+                    throw new IllegalArgumentException(String.format("Assembly Error in '%s':\n> Endlose Makro-Rekursion erkannt: %s", programName, loopTrace));
+                }
+
+                macroCallStack.push(potentialMacroName);
                 this.macroExpansionCounter++;
                 MacroDefinition macro = macroMap.get(potentialMacroName);
                 String[] args = (parts.length > 1) ? Arrays.copyOfRange(parts, 1, parts.length) : new String[0];
 
                 if (macro.parameters().size() != args.length) {
-                    throw new IllegalArgumentException(String.format("Assembly Error in '%s' (Line %d): '%s'\n> Falsche Anzahl an Argumenten für Makro %s. Erwartet %d, aber %d erhalten.", programName, i+1, line.strip(), potentialMacroName, macro.parameters().size(), args.length));
+                    throw new IllegalArgumentException(String.format("Assembly Error in '%s': '%s'\n> Falsche Anzahl an Argumenten für Makro %s. Erwartet %d, aber %d erhalten.", programName, line.strip(), potentialMacroName, macro.parameters().size(), args.length));
                 }
 
+                List<String> macroBodyWithArgs = new ArrayList<>();
                 for (String bodyLine : macro.body()) {
                     String expandedLine = bodyLine;
                     for (int k = 0; k < args.length; k++) {
                         expandedLine = expandedLine.replace(macro.parameters().get(k), args[k]);
                     }
                     expandedLine = expandedLine.replace("@@", "_M" + this.macroExpansionCounter + "_");
-                    expandedCode.add(expandedLine);
+                    macroBodyWithArgs.add(expandedLine);
                 }
+
+                // Rekursiver Aufruf, um verschachtelte Makros zu expandieren
+                List<String> recursivelyExpanded = expandMacrosRecursively(macroBodyWithArgs, macroCallStack);
+                expandedCode.addAll(recursivelyExpanded);
+
+                macroCallStack.pop();
             } else {
                 expandedCode.add(line);
             }
         }
-        return expandedCode.toArray(new String[0]);
+
+        return expandedCode;
     }
 
     private void performFirstPass(String[] lines) {

@@ -21,9 +21,11 @@ public class HeaderController {
     private final Button nextTickButton;
     private final Button restartButton;
     private final Button loggingToggleButton;
+    private final Button zoomToggleButton; // NEU: Zoom-Schalter
     private final Label tickLabel;
 
     private Runnable restartCallback;
+    private boolean isZoomedOut = false; // NEU: Zoom-Status
 
     public HeaderController(Simulation simulation) {
         this.simulation = simulation;
@@ -33,6 +35,7 @@ public class HeaderController {
         this.nextTickButton = new Button("Next Tick");
         this.restartButton = new Button("Restart");
         this.loggingToggleButton = new Button("Logging: OFF");
+        this.zoomToggleButton = new Button("Zoom: Normal"); // NEU: Initialer Text
         this.tickLabel = new Label("Tick: 0");
 
         setupButtons();
@@ -51,7 +54,8 @@ public class HeaderController {
         Region spacer3 = new Region();
         HBox.setHgrow(spacer3, Priority.ALWAYS);
 
-        headerPane.getChildren().addAll(playPauseButton, nextTickButton, restartButton, loggingToggleButton, spacer3, tickLabel);
+        // GEÄNDERT: Zoom-Schalter zum Header hinzufügen
+        headerPane.getChildren().addAll(playPauseButton, nextTickButton, restartButton, loggingToggleButton, zoomToggleButton, spacer3, tickLabel);
     }
 
     private void setupButtons() {
@@ -72,6 +76,12 @@ public class HeaderController {
                 selectedOrganism.setLoggingEnabled(!selectedOrganism.isLoggingEnabled());
                 update(this.simulation, selectedOrganism);
             }
+        });
+
+        // NEU: Aktion für den Zoom-Schalter hinzufügen
+        zoomToggleButton.setOnAction(e -> {
+            isZoomedOut = !isZoomedOut;
+            zoomToggleButton.setText("Zoom: " + (isZoomedOut ? "Pixel" : "Normal"));
         });
     }
 
@@ -109,5 +119,10 @@ public class HeaderController {
                 (int) (color.getRed() * 255),
                 (int) (color.getGreen() * 255),
                 (int) (color.getBlue() * 255));
+    }
+
+    // NEU: Methode, um den Zoom-Status von außen abzufragen
+    public boolean isZoomedOut() {
+        return isZoomedOut;
     }
 }

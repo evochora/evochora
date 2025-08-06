@@ -28,14 +28,14 @@ public class Setup {
         //placeProgram(simulation, testerProgram, new int[]{10, 5});
 
         // Um ErrorTester auszuführen, aktivieren Sie diese Zeile:
-        //EnergySeeker energySeeker = new EnergySeeker();
-        //energySeeker.enableDebug();
-        //placeProgram(simulation, energySeeker, new int[]{10, 5});
+        EnergySeeker energySeeker = new EnergySeeker();
+        energySeeker.enableDebug();
+        placeProgram(simulation, energySeeker, new int[]{10, 5});
 
         // Um ErrorTester auszuführen, aktivieren Sie diese Zeile:
-        ErrorTest errorTest = new ErrorTest();
-        errorTest.enableDebug();
-        placeProgram(simulation, errorTest, new int[]{10, 5});
+        //ErrorTest errorTest = new ErrorTest();
+        //errorTest.enableDebug();
+        //placeProgram(simulation, errorTest, new int[]{10, 5});
     }
 
     /**

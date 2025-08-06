@@ -1,6 +1,7 @@
 // src/main/java/org/evochora/ui/WorldRenderer.java
 package org.evochora.ui;
 
+import javafx.geometry.Rectangle2D;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
@@ -32,11 +33,26 @@ public class WorldRenderer {
         this.cellFont = Font.font("Monospaced", Config.CELL_SIZE * 0.4);
     }
 
-    public void draw(Simulation simulation, Organism selectedOrganism) {
+    // GEÄNDERT: Die draw-Methode akzeptiert jetzt einen isZoomedOut-Parameter
+    public void draw(Simulation simulation, Organism selectedOrganism, boolean isZoomedOut) {
         gc.setFill(Config.COLOR_BG);
         gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
 
         World world = simulation.getWorld();
+
+        if (isZoomedOut) {
+            drawZoomedOut(world, selectedOrganism);
+        } else {
+            drawNormal(world, selectedOrganism);
+        }
+
+        // Organismen werden in beiden Modi gezeichnet, aber die Details unterscheiden sich.
+        for (Organism org : simulation.getOrganisms()) {
+            drawOrganism(org, selectedOrganism, isZoomedOut);
+        }
+    }
+
+    private void drawNormal(World world, Organism selectedOrganism) {
         for (int x = 0; x < world.getShape()[0]; x++) {
             for (int y = 0; y < world.getShape()[1]; y++) {
                 Symbol symbol = world.getSymbol(x, y);
@@ -48,17 +64,23 @@ public class WorldRenderer {
                 drawCellText(symbol, cellX, cellY);
             }
         }
+    }
 
-        for (Organism org : simulation.getOrganisms()) {
-            drawOrganism(org, selectedOrganism);
+    private void drawZoomedOut(World world, Organism selectedOrganism) {
+        for (int x = 0; x < world.getShape()[0]; x++) {
+            for (int y = 0; y < world.getShape()[1]; y++) {
+                Symbol symbol = world.getSymbol(x, y);
+                // Zeichne jede Zelle als 1x1 Pixel
+                gc.setFill(getBackgroundColorForSymbol(symbol));
+                gc.fillRect(x, y, 1, 1);
+            }
         }
     }
 
+
     private void drawCellText(Symbol symbol, double cellX, double cellY) {
-        // GEÄNDERT: Wir prüfen hier explizit auf CODE:0.
-        // Die alte `symbol.isEmpty()`-Prüfung war zu ungenau für die Darstellung.
         if (symbol.type() == Config.TYPE_CODE && symbol.value() == 0) {
-            return; // Nur für CODE:0 keinen Text zeichnen.
+            return;
         }
 
         gc.setFill(getTextColorForSymbol(symbol));
@@ -89,26 +111,33 @@ public class WorldRenderer {
         }
     }
 
-    private void drawOrganism(Organism org, Organism selectedOrganism) {
+    // GEÄNDERT: Die drawOrganism-Methode akzeptiert nun einen isZoomedOut-Parameter
+    private void drawOrganism(Organism org, Organism selectedOrganism, boolean isZoomedOut) {
         Color orgColor = organismColorMap.computeIfAbsent(org.getId(), id -> colorPalette[id % colorPalette.length]);
         int[] ip = org.getIp();
-        double x = ip[0] * Config.CELL_SIZE;
-        double y = ip[1] * Config.CELL_SIZE;
+        double x = ip[0] * (isZoomedOut ? 1 : Config.CELL_SIZE); // Skalierung anpassen
+        double y = ip[1] * (isZoomedOut ? 1 : Config.CELL_SIZE); // Skalierung anpassen
 
+        // Umrandung für den Organismus
         gc.setStroke(org.isDead() ? Config.COLOR_DEAD : orgColor);
-        gc.setLineWidth(2.5);
-        gc.strokeRect(x + 1, y + 1, Config.CELL_SIZE - 2, Config.CELL_SIZE - 2);
+        gc.setLineWidth(isZoomedOut ? 1 : 2.5);
+        gc.strokeRect(x, y, isZoomedOut ? 1 : Config.CELL_SIZE, isZoomedOut ? 1 : Config.CELL_SIZE);
 
+        // Highlight für den ausgewählten Organismus
         if (org == selectedOrganism && !org.isDead()) {
-            int[] dp = org.getDp();
-            double dpX = dp[0] * Config.CELL_SIZE;
-            double dpY = dp[1] * Config.CELL_SIZE;
-            drawDp(new javafx.geometry.Rectangle2D(dpX, dpY, Config.CELL_SIZE, Config.CELL_SIZE), orgColor);
-            drawDv(x, y, orgColor, org.getDv());
+            // NEU: Nur DP zeichnen, wenn nicht herausgezoomt ist
+            if (!isZoomedOut) {
+                int[] dp = org.getDp();
+                double dpX = dp[0] * Config.CELL_SIZE;
+                double dpY = dp[1] * Config.CELL_SIZE;
+                drawDp(new Rectangle2D(dpX, dpY, Config.CELL_SIZE, Config.CELL_SIZE), orgColor);
+            }
+            // drawDv-Methode handhabt den Zoom-Status intern
+            drawDv(x, y, orgColor, org.getDv(), isZoomedOut);
         }
     }
 
-    private void drawDp(javafx.geometry.Rectangle2D cellRect, Color color) {
+    private void drawDp(Rectangle2D cellRect, Color color) {
         Color dpColor = color.deriveColor(0, 1.0, 1.2, 0.9);
         gc.setStroke(dpColor);
         gc.setLineWidth(1.5);
@@ -118,7 +147,12 @@ public class WorldRenderer {
                 radius * 2, radius * 2);
     }
 
-    private void drawDv(double cellX, double cellY, Color color, int[] dv) {
+    // GEÄNDERT: Die drawDv-Methode akzeptiert nun einen isZoomedOut-Parameter
+    private void drawDv(double cellX, double cellY, Color color, int[] dv, boolean isZoomedOut) {
+        if (isZoomedOut) {
+            return; // Keine DV-Anzeige im Pixel-Modus
+        }
+
         gc.setFill(color);
         double centerX = cellX + Config.CELL_SIZE / 2.0;
         double centerY = cellY + Config.CELL_SIZE / 2.0;
@@ -128,15 +162,12 @@ public class WorldRenderer {
     }
 
     private Color getBackgroundColorForSymbol(Symbol symbol) {
-        // GEÄNDERT: Die Logik ist jetzt expliziter.
-        // Die alte `symbol.isEmpty()`-Prüfung wird nicht mehr verwendet.
         return switch (symbol.type()) {
             case Config.TYPE_CODE -> {
-                if (symbol.value() == 0) yield Config.COLOR_EMPTY_BG; // Nur CODE:0 ist leerer Raum
+                if (symbol.value() == 0) yield Config.COLOR_EMPTY_BG;
                 else yield Config.COLOR_CODE_BG;
             }
             case Config.TYPE_DATA -> Config.COLOR_DATA_BG;
-
             case Config.TYPE_STRUCTURE -> Config.COLOR_STRUCTURE_BG;
             case Config.TYPE_ENERGY -> Config.COLOR_ENERGY_BG;
             default -> Config.COLOR_EMPTY_BG;
