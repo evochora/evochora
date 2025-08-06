@@ -72,11 +72,9 @@ public class Assembler {
                 registerIdToName, labelMap, labelAddressToName, linearAddressToRelativeCoord, relativeCoordToLinearAddress);
     }
 
-    // GEÄNDERT: Die Methode wurde umgeschrieben, um Rekursion und Loop-Erkennung zu unterstützen
     private List<AnnotatedLine> performMacroPass(String[] lines) {
         List<AnnotatedLine> codeWithoutMacroDefs = new ArrayList<>();
 
-        // Erster Durchlauf: Makro-Definitionen finden und entfernen
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i].split("#", 2)[0].strip();
             if (line.isEmpty()) {
@@ -112,7 +110,6 @@ public class Assembler {
             macroMap.forEach((name, def) -> System.out.printf("[DEBUG: %s]   - %s mit Parametern %s\n", programName, name, def.parameters()));
         }
 
-        // Zweiter Durchlauf (rekursiv): Makro-Aufrufe expandieren
         Deque<String> macroCallStack = new ArrayDeque<>();
         return expandMacrosRecursively(codeWithoutMacroDefs, macroCallStack);
     }
@@ -134,13 +131,14 @@ public class Assembler {
             String potentialMacroName = parts[0];
 
             if (potentialMacroName.startsWith("$") && macroMap.containsKey(potentialMacroName)) {
-                // NEU: Endlosschleife erkennen
-                if (macroCallStack.contains(potentialMacroName)) {
-                    String loopTrace = String.join(" -> ", macroCallStack) + " -> " + potentialMacroName;
+                // KORRIGIERT: Makro-Namen ohne $ im Stack speichern
+                String macroNameWithoutPrefix = potentialMacroName.substring(1);
+                if (macroCallStack.contains(macroNameWithoutPrefix)) {
+                    String loopTrace = String.join(" -> ", macroCallStack) + " -> " + macroNameWithoutPrefix;
                     throw new AssemblerException(programName, originalLineNumber, "Endlose Makro-Rekursion erkannt: " + loopTrace);
                 }
 
-                macroCallStack.push(potentialMacroName);
+                macroCallStack.push(macroNameWithoutPrefix);
                 this.macroExpansionCounter++;
                 MacroDefinition macro = macroMap.get(potentialMacroName);
                 String[] args = (parts.length > 1) ? Arrays.copyOfRange(parts, 1, parts.length) : new String[0];
@@ -159,7 +157,6 @@ public class Assembler {
                     macroBodyWithArgs.add(new AnnotatedLine(expandedLine, originalLineNumber));
                 }
 
-                // Rekursiver Aufruf, um verschachtelte Makros zu expandieren
                 List<AnnotatedLine> recursivelyExpanded = expandMacrosRecursively(macroBodyWithArgs, macroCallStack);
                 expandedCode.addAll(recursivelyExpanded);
 
@@ -187,7 +184,6 @@ public class Assembler {
             String[] parts = strippedLine.split("\\s+");
             String directive = parts[0].toUpperCase();
 
-            // KORREKTUR: Direktiven, die die Position beeinflussen, MÜSSEN zuerst behandelt werden.
             if (directive.equals(".ORG")) {
                 int[] parsedCoords = Arrays.stream(parts[1].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
                 if (parsedCoords.length != Config.WORLD_DIMENSIONS) {
@@ -198,7 +194,7 @@ public class Assembler {
             }
             if (directive.equals(".DIR")) {
                 currentDv = Arrays.stream(parts[1].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
-                continue; // .DIR belegt selbst keinen Platz.
+                continue;
             }
             if (directive.equals(".PLACE")) {
                 String[] typeAndValue = parts[1].split(":");
@@ -221,7 +217,6 @@ public class Assembler {
                 continue;
             }
 
-            // Erst NACH den Direktiven wird die aktuelle Position für die Adress-Map gespeichert.
             this.linearAddressToRelativeCoord.put(linearAddress, Arrays.copyOf(currentPos, currentPos.length));
             this.relativeCoordToLinearAddress.put(Arrays.stream(currentPos).boxed().collect(Collectors.toList()), linearAddress);
 
@@ -232,7 +227,7 @@ public class Assembler {
                 }
                 labelMap.put(label, linearAddress);
                 labelAddressToName.put(linearAddress, label);
-            } else { // Annahme: Ein Befehl
+            } else {
                 int instructionLength;
                 if (directive.equals("JUMP")) {
                     String arg = parts[1].toUpperCase();
@@ -283,8 +278,6 @@ public class Assembler {
             String[] parts = strippedLine.split("\\s+", 2);
             String directive = parts[0].toUpperCase();
 
-            // KORREKTUR: Die Logik zur Behandlung von Direktiven MUSS exakt
-            // der von performFirstPass entsprechen.
             if (directive.equals(".ORG")) {
                 currentPos = Arrays.stream(parts[1].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
                 continue;
@@ -293,8 +286,6 @@ public class Assembler {
                 currentDv = Arrays.stream(parts[1].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
                 continue;
             }
-            // Wir überspringen nur noch Labels und Direktiven, die keinen Code generieren
-            // und keine Position/Richtung ändern.
             if (strippedLine.endsWith(":") || directive.equals(".REG") || directive.equals(".PLACE")) {
                 continue;
             }
@@ -327,7 +318,6 @@ public class Assembler {
             } catch (IllegalArgumentException e) {
                 throw new AssemblerException(programName, lineNumber, e.getMessage());
             }
-
 
             machineCodeLayout.put(Arrays.copyOf(currentPos, currentPos.length), Config.TYPE_CODE | opcodeId);
             linearAddress++;

@@ -57,7 +57,7 @@ public class AppView {
 
     private void setupPrimaryStage() {
         primaryStage.setTitle("Evochora");
-        primaryStage.setScene(new Scene(root, 800, 600));
+        primaryStage.setScene(new Scene(root, 1800, 1400));
 
         // KORRIGIERT: Zusätzlicher Puffer für die maximale Größe, um Layout-Unterschiede auszugleichen.
         // Der Puffer wurde von 20 auf 40 erhöht, um sicherzustellen, dass die Scrollbars nicht sichtbar sind.
