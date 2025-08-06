@@ -70,15 +70,15 @@ public class InstructionTest {
         // Argument ist Register 0
         world.setSymbol(new Symbol(Config.TYPE_DATA, 0), 1, 0);
 
-        // Setze einen Vektor im Register 0, der einen Sprung von 5 Einheiten nach rechts auslöst
-        int[] jumpVector = {5, 0};
-        organism.setDr(0, jumpVector);
+        // NEU: Setze einen Vektor im Register 0, der eine ABSOLUTE Zielkoordinate darstellt.
+        int[] targetCoordinate = {5, 0};
+        organism.setDr(0, targetCoordinate);
 
         // Führe den JMPR Befehl aus
         Instruction jmpr = JmprInstruction.plan(organism, world);
         organism.processTickAction(jmpr, simulation);
 
-        // Erwartete Position nach dem Sprung: ipBeforeFetch (0,0) + jumpVector (5,0) = (5,0)
+        // Erwartete Position nach dem Sprung ist die absolute Koordinate aus dem Register.
         Assertions.assertArrayEquals(new int[]{5, 0}, organism.getIp());
     }
 }

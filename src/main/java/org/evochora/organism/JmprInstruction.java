@@ -13,8 +13,8 @@ import java.util.Map;
 
 /**
  * Die JMPR-Instruktion (Jump Register).
- * Springt zu einer neuen Position, die durch einen Vektor in einem Register definiert ist.
- * Syntax: JMPR %REG_DELTA
+ * Springt zu einer neuen, programm-absoluten Position, die durch einen Vektor in einem Register definiert ist.
+ * Syntax: JMPR %REG_TARGET
  */
 public class JmprInstruction extends Instruction {
     public static final int ID = 10;
@@ -67,7 +67,7 @@ public class JmprInstruction extends Instruction {
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
         if (args.length != 1) {
-            throw new IllegalArgumentException("JMPR erwartet 1 Argument: %REG_DELTA");
+            throw new IllegalArgumentException("JMPR erwartet 1 Argument: %REG_TARGET");
         }
         String arg = args[0].toUpperCase();
 
@@ -83,20 +83,27 @@ public class JmprInstruction extends Instruction {
 
     @Override
     public void execute(Simulation simulation) {
-        Object deltaObj = organism.getDr(reg);
+        Object targetObj = organism.getDr(reg);
 
-        if (!(deltaObj instanceof int[] v)) {
-            organism.instructionFailed("JMPR: Ungültiger Registertyp für Delta (Reg " + reg + "). Erwartet Vektor (int[]), gefunden: " + (deltaObj != null ? deltaObj.getClass().getSimpleName() : "null") + ".");
+        if (!(targetObj instanceof int[] programCoord)) {
+            organism.instructionFailed("JMPR: Ungültiger Registertyp für Ziel (Reg " + reg + "). Erwartet Vektor (int[]), gefunden: " + (targetObj != null ? targetObj.getClass().getSimpleName() : "null") + ".");
             return;
         }
 
-        if (v.length != simulation.getWorld().getShape().length) {
-            organism.instructionFailed("JMPR: Dimension des Delta-Vektors stimmt nicht mit Welt-Dimension überein. Erwartet: " + simulation.getWorld().getShape().length + ", gefunden: " + v.length + ".");
+        if (programCoord.length != simulation.getWorld().getShape().length) {
+            organism.instructionFailed("JMPR: Dimension des Ziel-Vektors stimmt nicht mit Welt-Dimension überein. Erwartet: " + simulation.getWorld().getShape().length + ", gefunden: " + programCoord.length + ".");
             return;
         }
 
-        int[] targetIp = organism.getTargetCoordinate(organism.getIpBeforeFetch(), v, simulation.getWorld());
-        organism.setIp(targetIp);
+        // KORREKTUR: Die programm-relative Koordinate aus dem Register wird in eine
+        // absolute Welt-Koordinate umgerechnet, indem die Startposition des Organismus addiert wird.
+        int[] initialPosition = organism.getInitialPosition();
+        int[] worldCoord = new int[programCoord.length];
+        for (int i = 0; i < programCoord.length; i++) {
+            worldCoord[i] = initialPosition[i] + programCoord[i];
+        }
+
+        organism.setIp(worldCoord);
         organism.setSkipIpAdvance(true);
     }
 }

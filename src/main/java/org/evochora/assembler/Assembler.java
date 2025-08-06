@@ -3,9 +3,6 @@ package org.evochora.assembler;
 
 import org.evochora.Config;
 import org.evochora.organism.Instruction;
-import org.evochora.organism.JmprInstruction;
-import org.evochora.organism.JmpiInstruction;
-import org.evochora.organism.SetvInstruction;
 import org.evochora.world.Symbol;
 
 import java.nio.ByteBuffer;
@@ -16,76 +13,97 @@ import java.util.stream.Collectors;
 
 public class Assembler {
 
+    // Interne Datenstrukturen für den Assemblierungsprozess
     private record MacroDefinition(List<String> parameters, List<String> body) {}
     private record AnnotatedLine(String content, int originalLineNumber) {}
-    private record VectorRequest(int linearAddress, String labelName) {}
+    private record VectorRequest(int linearAddress, String labelName, int registerId) {}
+    private record Placeholder(int linearAddress, String value, int originalLineNumber, String lineContent) {}
+
 
     private String programName;
     private boolean isDebugMode;
     private int macroExpansionCounter = 0;
+
+    // Zustandsvariablen für die Assemblierung
     private Map<String, MacroDefinition> macroMap;
     private Map<int[], Integer> machineCodeLayout;
     private Map<int[], Symbol> initialWorldObjects;
     private Map<String, Integer> registerMap;
+    private Map<Integer, String> registerIdToName;
     private Map<String, Integer> labelMap;
+    private Map<Integer, String> labelAddressToName;
     private Map<Integer, int[]> linearAddressToRelativeCoord;
     private Map<List<Integer>, Integer> relativeCoordToLinearAddress;
-    private List<AbstractMap.SimpleEntry<Integer, String>> jumpPlaceholderLocations;
+    private List<Placeholder> jumpPlaceholderLocations;
     private List<VectorRequest> vectorPlaceholderLocations;
-    private Map<Integer, String> registerIdToName;
-    private Map<Integer, String> labelAddressToName;
 
+    /**
+     * Hauptmethode, die den gesamten Assemblierungsprozess steuert.
+     */
     public ProgramMetadata assemble(String assemblyCode, String programName, boolean isDebugMode) {
-        this.programName = programName;
-        this.isDebugMode = isDebugMode;
-        this.macroExpansionCounter = 0;
-        this.macroMap = new HashMap<>();
-        this.registerMap = new HashMap<>();
-        this.labelMap = new HashMap<>();
-        this.initialWorldObjects = new HashMap<>();
-        this.machineCodeLayout = new LinkedHashMap<>();
-        this.linearAddressToRelativeCoord = new LinkedHashMap<>();
-        this.relativeCoordToLinearAddress = new LinkedHashMap<>();
-        this.jumpPlaceholderLocations = new ArrayList<>();
-        this.vectorPlaceholderLocations = new ArrayList<>();
-        this.registerIdToName = new HashMap<>();
-        this.labelAddressToName = new LinkedHashMap<>();
+        initializeState(programName, isDebugMode);
 
         String[] initialLines = assemblyCode.split("\\r?\\n");
         List<AnnotatedLine> expandedLines = performMacroPass(initialLines);
+
         performFirstPass(expandedLines);
         performSecondPass(expandedLines);
-        resolveJumpPlaceholders(expandedLines);
-        resolveVectorPlaceholders(expandedLines);
 
-        String programId;
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            List<Integer> codeForHash = this.machineCodeLayout.values().stream().toList();
-            ByteBuffer buffer = ByteBuffer.allocate(codeForHash.size() * 4);
-            for (int code : codeForHash) buffer.putInt(code);
-            byte[] hashBytes = digest.digest(buffer.array());
-            programId = Base64.getUrlEncoder().withoutPadding().encodeToString(Arrays.copyOf(hashBytes, 12));
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 nicht gefunden", e);
-        }
+        resolveJumpPlaceholders(expandedLines);
+        resolveVectorPlaceholders(expandedLines); // KORRIGIERTE METHODE WIRD HIER GERUFEN
+
+        String programId = generateProgramId();
 
         return new ProgramMetadata(programId, machineCodeLayout, initialWorldObjects, null, registerMap,
                 registerIdToName, labelMap, labelAddressToName, linearAddressToRelativeCoord, relativeCoordToLinearAddress);
     }
 
+    /**
+     * Initialisiert alle Zustandsvariablen für einen neuen Assemblierungs-Durchlauf.
+     */
+    private void initializeState(String programName, boolean isDebugMode) {
+        this.programName = programName;
+        this.isDebugMode = isDebugMode;
+        this.macroExpansionCounter = 0;
+        this.macroMap = new HashMap<>();
+        this.machineCodeLayout = new LinkedHashMap<>();
+        this.initialWorldObjects = new HashMap<>();
+        this.registerMap = new HashMap<>();
+        this.registerIdToName = new HashMap<>();
+        this.labelMap = new HashMap<>();
+        this.labelAddressToName = new LinkedHashMap<>();
+        this.linearAddressToRelativeCoord = new LinkedHashMap<>();
+        this.relativeCoordToLinearAddress = new LinkedHashMap<>();
+        this.jumpPlaceholderLocations = new ArrayList<>();
+        this.vectorPlaceholderLocations = new ArrayList<>();
+    }
+
+    // =========================================================================================
+    // === Makro-Verarbeitung (Pass 0)
+    // =========================================================================================
+
     private List<AnnotatedLine> performMacroPass(String[] lines) {
+        List<AnnotatedLine> codeWithoutMacroDefs = extractMacroDefinitions(lines);
+        if (isDebugMode && !macroMap.isEmpty()) {
+            System.out.printf("[DEBUG: %s] --- Makro-Definitionen gefunden ---\n", programName);
+            macroMap.forEach((name, def) -> System.out.printf("[DEBUG: %s]   - %s mit Parametern %s\n", programName, name, def.parameters()));
+        }
+        return expandMacrosRecursively(codeWithoutMacroDefs, new ArrayDeque<>());
+    }
+
+    private List<AnnotatedLine> extractMacroDefinitions(String[] lines) {
         List<AnnotatedLine> codeWithoutMacroDefs = new ArrayList<>();
         for (int i = 0; i < lines.length; i++) {
-            String line = lines[i].split("#", 2)[0].strip();
-            if (line.isEmpty()) {
-                codeWithoutMacroDefs.add(new AnnotatedLine(lines[i], i + 1));
+            String line = lines[i];
+            String strippedLine = line.split("#", 2)[0].strip();
+            if (strippedLine.isEmpty()) {
+                codeWithoutMacroDefs.add(new AnnotatedLine(line, i + 1));
                 continue;
             }
-            String[] parts = line.split("\\s+");
+            String[] parts = strippedLine.split("\\s+");
             if (parts[0].equalsIgnoreCase(".MACRO")) {
                 if (parts.length < 2 || !parts[1].startsWith("$")) {
-                    throw new AssemblerException(programName, i + 1, String.format("Ungültige Makro-Definition. Erwartet: .MACRO $NAME [param1] [param2] ..."));
+                    throw new AssemblerException(programName, i + 1, "Ungültige Makro-Definition. Erwartet: .MACRO $NAME [param1] ...", line);
                 }
                 String macroName = parts[1];
                 List<String> params = Arrays.asList(parts).subList(2, parts.length);
@@ -96,59 +114,50 @@ public class Assembler {
                     j++;
                 }
                 if (j == lines.length) {
-                    throw new AssemblerException(programName, i + 1, "Fehlendes .ENDM für Makro-Definition.");
+                    throw new AssemblerException(programName, i + 1, "Fehlendes .ENDM für Makro-Definition '" + macroName + "'.", line);
                 }
                 macroMap.put(macroName, new MacroDefinition(params, body));
                 i = j;
             } else {
-                codeWithoutMacroDefs.add(new AnnotatedLine(lines[i], i + 1));
+                codeWithoutMacroDefs.add(new AnnotatedLine(line, i + 1));
             }
         }
-        if (isDebugMode && !macroMap.isEmpty()) {
-            System.out.printf("[DEBUG: %s] --- Makro-Definitionen gefunden ---\n", programName);
-            macroMap.forEach((name, def) -> System.out.printf("[DEBUG: %s]   - %s mit Parametern %s\n", programName, name, def.parameters()));
-        }
-        Deque<String> macroCallStack = new ArrayDeque<>();
-        return expandMacrosRecursively(codeWithoutMacroDefs, macroCallStack);
+        return codeWithoutMacroDefs;
     }
 
-    private List<AnnotatedLine> expandMacrosRecursively(List<AnnotatedLine> lines, Deque<String> macroCallStack) {
+    private List<AnnotatedLine> expandMacrosRecursively(List<AnnotatedLine> lines, Deque<String> callStack) {
         List<AnnotatedLine> expandedCode = new ArrayList<>();
         for (AnnotatedLine annotatedLine : lines) {
-            String line = annotatedLine.content();
-            int originalLineNumber = annotatedLine.originalLineNumber();
-            String strippedLine = line.split("#", 2)[0].strip();
+            String strippedLine = annotatedLine.content().split("#", 2)[0].strip();
             if (strippedLine.isEmpty()) {
-                expandedCode.add(new AnnotatedLine(line, originalLineNumber));
+                expandedCode.add(annotatedLine);
                 continue;
             }
             String[] parts = strippedLine.split("\\s+");
             String potentialMacroName = parts[0];
             if (potentialMacroName.startsWith("$") && macroMap.containsKey(potentialMacroName)) {
-                String macroNameWithoutPrefix = potentialMacroName.substring(1);
-                if (macroCallStack.contains(macroNameWithoutPrefix)) {
-                    String loopTrace = String.join(" -> ", macroCallStack) + " -> " + macroNameWithoutPrefix;
-                    throw new AssemblerException(programName, originalLineNumber, "Endlose Makro-Rekursion erkannt: " + loopTrace);
+                if (callStack.contains(potentialMacroName)) {
+                    String loopTrace = String.join(" -> ", callStack) + " -> " + potentialMacroName;
+                    throw new AssemblerException(programName, annotatedLine.originalLineNumber(), "Endlose Makro-Rekursion erkannt: " + loopTrace, annotatedLine.content());
                 }
-                macroCallStack.push(macroNameWithoutPrefix);
+                callStack.push(potentialMacroName);
                 this.macroExpansionCounter++;
                 MacroDefinition macro = macroMap.get(potentialMacroName);
                 String[] args = (parts.length > 1) ? Arrays.copyOfRange(parts, 1, parts.length) : new String[0];
                 if (macro.parameters().size() != args.length) {
-                    throw new AssemblerException(programName, originalLineNumber, String.format("Falsche Anzahl an Argumenten für Makro %s. Erwartet %d, aber %d erhalten.", potentialMacroName, macro.parameters().size(), args.length));
+                    throw new AssemblerException(programName, annotatedLine.originalLineNumber(), String.format("Falsche Anzahl an Argumenten für Makro %s. Erwartet %d, aber %d erhalten.", potentialMacroName, macro.parameters().size(), args.length), annotatedLine.content());
                 }
-                List<AnnotatedLine> macroBodyWithArgs = new ArrayList<>();
+                List<AnnotatedLine> expandedBody = new ArrayList<>();
                 for (String bodyLine : macro.body()) {
                     String expandedLine = bodyLine;
                     for (int k = 0; k < args.length; k++) {
                         expandedLine = expandedLine.replace(macro.parameters().get(k), args[k]);
                     }
                     expandedLine = expandedLine.replace("@@", "_M" + this.macroExpansionCounter + "_");
-                    macroBodyWithArgs.add(new AnnotatedLine(expandedLine, originalLineNumber));
+                    expandedBody.add(new AnnotatedLine(expandedLine, annotatedLine.originalLineNumber()));
                 }
-                List<AnnotatedLine> recursivelyExpanded = expandMacrosRecursively(macroBodyWithArgs, macroCallStack);
-                expandedCode.addAll(recursivelyExpanded);
-                macroCallStack.pop();
+                expandedCode.addAll(expandMacrosRecursively(expandedBody, callStack));
+                callStack.pop();
             } else {
                 expandedCode.add(annotatedLine);
             }
@@ -156,293 +165,288 @@ public class Assembler {
         return expandedCode;
     }
 
+
+    // =========================================================================================
+    // === Erster Durchlauf: Adressen berechnen, Labels und Register sammeln
+    // =========================================================================================
+
     private void performFirstPass(List<AnnotatedLine> annotatedLines) {
         int linearAddress = 0;
         int[] currentDv = {1, 0};
         int[] currentPos = new int[Config.WORLD_DIMENSIONS];
 
-        if (isDebugMode) {
-            System.out.printf("[DEBUG: %s] --- Pass 1 gestartet ---\n", programName);
-        }
-
         for (AnnotatedLine annotatedLine : annotatedLines) {
-            String line = annotatedLine.content();
-            int lineNumber = annotatedLine.originalLineNumber();
-            String strippedLine = line.split("#", 2)[0].strip();
+            String strippedLine = annotatedLine.content().split("#", 2)[0].strip();
             if (strippedLine.isEmpty()) continue;
+
             String[] parts = strippedLine.split("\\s+");
             String directive = parts[0].toUpperCase();
 
-            if (directive.equals(".ORG")) {
-                int[] parsedCoords = Arrays.stream(parts[1].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
-                if (parsedCoords.length != Config.WORLD_DIMENSIONS) {
-                    throw new AssemblerException(programName, lineNumber, String.format(".ORG-Direktive hat falsche Anzahl an Dimensionen. Erwartet: %d, erhalten: %d.", Config.WORLD_DIMENSIONS, parsedCoords.length));
+            if (directive.startsWith(".")) {
+                currentPos = processDirective(directive, parts, currentPos, currentDv, annotatedLine);
+            } else if (strippedLine.endsWith(":")) {
+                processLabel(strippedLine, linearAddress, currentPos, annotatedLine);
+            } else {
+                Integer opcodeId = Instruction.getInstructionIdByName(directive);
+                if (opcodeId == null) {
+                    throw new AssemblerException(programName, annotatedLine.originalLineNumber(), "Unbekannter Befehl: " + directive, annotatedLine.content());
                 }
-                currentPos = parsedCoords;
-                if (isDebugMode) System.out.printf("[DEBUG: %s] %-4d: .ORG -> %s\n", programName, linearAddress, Arrays.toString(currentPos));
-                continue;
-            }
-            if (directive.equals(".DIR")) {
-                currentDv = Arrays.stream(parts[1].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
-                if (isDebugMode) System.out.printf("[DEBUG: %s] %-4d: .DIR -> %s\n", programName, linearAddress, Arrays.toString(currentDv));
-                continue;
-            }
-            if (directive.equals(".PLACE")) {
-                String[] typeAndValue = parts[1].split(":");
-                String typeName = typeAndValue[0].toUpperCase();
-                int value = Integer.parseInt(typeAndValue[1]);
-                int[] relativePos = Arrays.stream(parts[2].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
-                int type = switch (typeName) {
-                    case "ENERGY" -> Config.TYPE_ENERGY;
-                    case "STRUCTURE" -> Config.TYPE_STRUCTURE;
-                    case "DATA" -> Config.TYPE_DATA;
-                    case "CODE" -> Config.TYPE_CODE;
-                    default -> throw new AssemblerException(programName, lineNumber, String.format("Unbekannter Typ in .PLACE: %s", typeName));
-                };
-                initialWorldObjects.put(relativePos, new Symbol(type, value));
-                if (isDebugMode) System.out.printf("[DEBUG: %s] %-4d: .PLACE %s:%s at %s\n", programName, linearAddress, typeName, value, Arrays.toString(relativePos));
-                continue;
-            }
-            if (directive.equals(".REG")) {
-                registerMap.put(parts[1].toUpperCase(), Integer.parseInt(parts[2]));
-                registerIdToName.put(Integer.parseInt(parts[2]), parts[1].toUpperCase());
-                if (isDebugMode) System.out.printf("[DEBUG: %s] %-4d: .REG %s -> %s\n", programName, linearAddress, parts[1], parts[2]);
-                continue;
-            }
-
-            if (strippedLine.endsWith(":")) {
-                String label = strippedLine.substring(0, strippedLine.length() - 1).toUpperCase();
-                if (labelMap.containsKey(label)) {
-                    throw new AssemblerException(programName, lineNumber, String.format("Label '%s' wurde mehrfach vergeben.", label));
-                }
-                labelMap.put(label, linearAddress);
-                labelAddressToName.put(linearAddress, label);
-                if (isDebugMode) System.out.printf("[DEBUG: %s] %-4d: %-20s (Koordinate: %s)\n", programName, linearAddress, strippedLine, Arrays.toString(currentPos));
-                continue;
-            }
-
-            if (isDebugMode) System.out.printf("[DEBUG: %s] %-4d: %-20s (Koordinate: %s)\n", programName, linearAddress, strippedLine, Arrays.toString(currentPos));
-
-            int instructionLength;
-            Integer opcodeId = Instruction.getInstructionIdByName(directive);
-            if (opcodeId == null) {
-                throw new AssemblerException(programName, lineNumber, String.format("Unbekannter Befehl: %s", directive));
-            }
-            instructionLength = Instruction.getInstructionLengthById(Config.TYPE_CODE | opcodeId);
-
-            for (int j = 0; j < instructionLength; j++) {
-                this.linearAddressToRelativeCoord.put(linearAddress, Arrays.copyOf(currentPos, currentPos.length));
-                this.relativeCoordToLinearAddress.put(Arrays.stream(currentPos).boxed().collect(Collectors.toList()), linearAddress);
-                linearAddress++;
-                for (int d = 0; d < Config.WORLD_DIMENSIONS; d++) {
-                    currentPos[d] += currentDv[d];
+                int instructionLength = Instruction.getInstructionLengthById(Config.TYPE_CODE | opcodeId);
+                for (int j = 0; j < instructionLength; j++) {
+                    linearAddressToRelativeCoord.put(linearAddress, Arrays.copyOf(currentPos, currentPos.length));
+                    relativeCoordToLinearAddress.put(Arrays.stream(currentPos).boxed().collect(Collectors.toList()), linearAddress);
+                    linearAddress++;
+                    for (int d = 0; d < Config.WORLD_DIMENSIONS; d++) {
+                        currentPos[d] += currentDv[d];
+                    }
                 }
             }
-        }
-        if (isDebugMode) {
-            System.out.printf("[DEBUG: %s] --- Pass 1 abgeschlossen ---\n", programName);
-            System.out.printf("[DEBUG: %s] Gefundene Labels:\n", programName);
-            labelMap.forEach((name, addr) -> {
-                int[] coord = linearAddressToRelativeCoord.get(addr);
-                System.out.printf("[DEBUG: %s]   - %-15s: Adresse=%-4d Koordinate=%s\n", programName, name, addr, Arrays.toString(coord));
-            });
         }
     }
+
+    private int[] processDirective(String directive, String[] parts, int[] currentPos, int[] currentDv, AnnotatedLine line) {
+        int[] newPos = Arrays.copyOf(currentPos, currentPos.length);
+        switch (directive) {
+            case ".ORG" -> {
+                int[] parsedCoords = Arrays.stream(parts[1].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
+                if (parsedCoords.length != Config.WORLD_DIMENSIONS) {
+                    throw new AssemblerException(programName, line.originalLineNumber(), ".ORG-Direktive hat falsche Anzahl an Dimensionen.", line.content());
+                }
+                newPos = parsedCoords;
+            }
+            case ".DIR" -> currentDv = Arrays.stream(parts[1].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
+            case ".PLACE" -> {
+                String[] typeAndValue = parts[1].split(":");
+                int type = getTypeFromString(typeAndValue[0], line);
+                int value = Integer.parseInt(typeAndValue[1]);
+                int[] relativePos = Arrays.stream(parts[2].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
+                initialWorldObjects.put(relativePos, new Symbol(type, value));
+            }
+            case ".REG" -> {
+                registerMap.put(parts[1].toUpperCase(), Integer.parseInt(parts[2]));
+                registerIdToName.put(Integer.parseInt(parts[2]), parts[1].toUpperCase());
+            }
+        }
+        return newPos;
+    }
+
+    private void processLabel(String strippedLine, int linearAddress, int[] currentPos, AnnotatedLine line) {
+        String label = strippedLine.substring(0, strippedLine.length() - 1).toUpperCase();
+        if (labelMap.containsKey(label)) {
+            throw new AssemblerException(programName, line.originalLineNumber(), "Label '" + label + "' wurde mehrfach vergeben.", line.content());
+        }
+        if (Instruction.getInstructionIdByName(label) != null) {
+            throw new AssemblerException(programName, line.originalLineNumber(), "Label '" + label + "' hat denselben Namen wie ein Befehl.", line.content());
+        }
+        labelMap.put(label, linearAddress);
+        labelAddressToName.put(linearAddress, label);
+    }
+
+
+    // =========================================================================================
+    // === Zweiter Durchlauf: Maschinencode generieren, Platzhalter für Sprünge setzen
+    // =========================================================================================
 
     private void performSecondPass(List<AnnotatedLine> annotatedLines) {
         int linearAddress = 0;
         int[] currentPos = new int[Config.WORLD_DIMENSIONS];
-        int[] currentDv = {1,0};
+        int[] currentDv = {1, 0};
 
         for (AnnotatedLine annotatedLine : annotatedLines) {
-            String line = annotatedLine.content();
-            int lineNumber = annotatedLine.originalLineNumber();
-            String strippedLine = line.split("#", 2)[0].strip();
-            if (strippedLine.isEmpty()) continue;
-            String[] parts = strippedLine.split("\\s+", 2);
-            String directive = parts[0].toUpperCase();
-
-            if (directive.equals(".ORG")) {
-                currentPos = Arrays.stream(parts[1].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
-                continue;
-            }
-            if (directive.equals(".DIR")) {
-                currentDv = Arrays.stream(parts[1].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
-                continue;
-            }
-            if (strippedLine.endsWith(":") || directive.equals(".REG") || directive.equals(".PLACE")) {
+            String strippedLine = annotatedLine.content().split("#", 2)[0].strip();
+            if (strippedLine.isEmpty() || strippedLine.endsWith(":") || strippedLine.startsWith(".")) {
+                if(strippedLine.toUpperCase().startsWith(".ORG")) currentPos = Arrays.stream(strippedLine.split("\\s+")[1].split("\\|")).mapToInt(Integer::parseInt).toArray();
+                if(strippedLine.toUpperCase().startsWith(".DIR")) currentDv = Arrays.stream(strippedLine.split("\\s+")[1].split("\\|")).mapToInt(Integer::parseInt).toArray();
                 continue;
             }
 
-            int currentOpcodeLinearAddress = linearAddress;
-            String[] args = (parts.length > 1) ? parts[1].split("\\s+") : new String[0];
+            linearAddress = processInstruction(annotatedLine, linearAddress, currentPos, currentDv);
 
-            Integer opcodeId;
-            AssemblerOutput assemblerOutput;
-            try {
-                opcodeId = Instruction.getInstructionIdByName(directive);
-                if (opcodeId == null) {
-                    throw new IllegalArgumentException(String.format("Unbekannter Befehl: %s", directive));
-                }
-                assemblerOutput = Instruction.getAssemblerById(Config.TYPE_CODE | opcodeId).apply(args, registerMap, labelMap);
-            } catch (IllegalArgumentException e) {
-                String fullError = String.format("Fehler in Anweisung '%s': %s", strippedLine, e.getMessage());
-                throw new AssemblerException(programName, lineNumber, fullError);
-            }
-
-            int instructionLength = Instruction.getInstructionLengthById(Config.TYPE_CODE | opcodeId);
-
-            machineCodeLayout.put(Arrays.copyOf(currentPos, Config.WORLD_DIMENSIONS), Config.TYPE_CODE | opcodeId);
-            linearAddress++;
-            for(int d=0; d<Config.WORLD_DIMENSIONS; d++) currentPos[d] += currentDv[d];
-
-            switch (assemblerOutput) {
-                case AssemblerOutput.CodeSequence code -> {
-                    for (int argVal : code.machineCode()) {
-                        machineCodeLayout.put(Arrays.copyOf(currentPos, Config.WORLD_DIMENSIONS), argVal);
-                        linearAddress++;
-                        for(int d=0; d<Config.WORLD_DIMENSIONS; d++) currentPos[d] += currentDv[d];
-                    }
-                }
-                case AssemblerOutput.JumpInstructionRequest req -> {
-                    jumpPlaceholderLocations.add(new AbstractMap.SimpleEntry<>(currentOpcodeLinearAddress, req.labelName()));
-                    int len = instructionLength;
-                    for (int j = 0; j < len - 1; j++) {
-                        machineCodeLayout.put(Arrays.copyOf(currentPos, Config.WORLD_DIMENSIONS), 0);
-                        linearAddress++;
-                        for(int d=0; d<Config.WORLD_DIMENSIONS; d++) currentPos[d] += currentDv[d];
-                    }
-                }
-                case AssemblerOutput.VectorInstructionRequest req -> {
-                    vectorPlaceholderLocations.add(new VectorRequest(currentOpcodeLinearAddress, req.labelName()));
-                    int len = instructionLength;
-                    for (int j = 0; j < len - 2; j++) {
-                        machineCodeLayout.put(Arrays.copyOf(currentPos, Config.WORLD_DIMENSIONS), 0);
-                        linearAddress++;
-                        for(int d=0; d<Config.WORLD_DIMENSIONS; d++) currentPos[d] += currentDv[d];
-                    }
-                }
-                case AssemblerOutput.LabelToVectorRequest req -> {
-                    machineCodeLayout.put(Arrays.copyOf(currentPos, Config.WORLD_DIMENSIONS), new Symbol(Config.TYPE_DATA, req.registerId()).toInt());
-                    linearAddress++;
+            String[] parts = strippedLine.split("\\s+");
+            Integer opcodeId = Instruction.getInstructionIdByName(parts[0].toUpperCase());
+            if(opcodeId != null){
+                int instructionLength = Instruction.getInstructionLengthById(Config.TYPE_CODE | opcodeId);
+                for (int i = 0; i < instructionLength; i++) {
                     for(int d=0; d<Config.WORLD_DIMENSIONS; d++) currentPos[d] += currentDv[d];
-
-                    vectorPlaceholderLocations.add(new VectorRequest(currentOpcodeLinearAddress, req.labelName()));
-                    int len = instructionLength;
-                    for (int j = 0; j < len - 2; j++) {
-                        machineCodeLayout.put(Arrays.copyOf(currentPos, Config.WORLD_DIMENSIONS), 0);
-                        linearAddress++;
-                        for(int d=0; d<Config.WORLD_DIMENSIONS; d++) currentPos[d] += currentDv[d];
-                    }
                 }
-                default -> {}
             }
         }
     }
 
-    private void resolveJumpPlaceholders(List<AnnotatedLine> annotatedLines) {
-        if (isDebugMode && !jumpPlaceholderLocations.isEmpty()) {
-            System.out.printf("[DEBUG: %s] --- Sprung-Auflösung ---\n", programName);
+    private int processInstruction(AnnotatedLine annotatedLine, int address, int[] pos, int[] dv) {
+        String strippedLine = annotatedLine.content().split("#", 2)[0].strip();
+        String[] parts = strippedLine.split("\\s+", 2);
+        String command = parts[0].toUpperCase();
+        String[] args = (parts.length > 1) ? parts[1].split("\\s+") : new String[0];
+
+        try {
+            Integer opcodeId = Instruction.getInstructionIdByName(command);
+            AssemblerOutput output = Instruction.getAssemblerById(Config.TYPE_CODE | opcodeId).apply(args, registerMap, labelMap);
+
+            int instructionLength = Instruction.getInstructionLengthById(Config.TYPE_CODE | opcodeId);
+            machineCodeLayout.put(Arrays.copyOf(pos, pos.length), Config.TYPE_CODE | opcodeId);
+            int[] argPos = Arrays.copyOf(pos, pos.length);
+            for(int d=0; d<Config.WORLD_DIMENSIONS; d++) argPos[d] += dv[d];
+
+            switch (output) {
+                case AssemblerOutput.CodeSequence code -> {
+                    for (int val : code.machineCode()) {
+                        machineCodeLayout.put(Arrays.copyOf(argPos, argPos.length), val);
+                        for(int d=0; d<Config.WORLD_DIMENSIONS; d++) argPos[d] += dv[d];
+                    }
+                }
+                case AssemblerOutput.JumpInstructionRequest req -> {
+                    jumpPlaceholderLocations.add(new Placeholder(address, req.labelName(), annotatedLine.originalLineNumber(), annotatedLine.content()));
+                    fillWithPlaceholders(argPos, dv, instructionLength - 1);
+                }
+                case AssemblerOutput.LabelToVectorRequest req -> {
+                    vectorPlaceholderLocations.add(new VectorRequest(address, req.labelName(), req.registerId()));
+                    machineCodeLayout.put(Arrays.copyOf(argPos, argPos.length), new Symbol(Config.TYPE_DATA, req.registerId()).toInt());
+                    int[] nextArgPos = Arrays.copyOf(argPos, argPos.length);
+                    for(int d=0; d<Config.WORLD_DIMENSIONS; d++) nextArgPos[d] += dv[d];
+                    fillWithPlaceholders(nextArgPos, dv, instructionLength - 2);
+                }
+                default -> {}
+            }
+            return address + instructionLength;
+        } catch (IllegalArgumentException e) {
+            throw new AssemblerException(programName, annotatedLine.originalLineNumber(), e.getMessage(), annotatedLine.content());
         }
+    }
 
-        for (AbstractMap.SimpleEntry<Integer, String> entry : jumpPlaceholderLocations) {
-            int jumpOpcodeLinearAddress = entry.getKey();
-            String targetLabelName = entry.getValue();
+    private void fillWithPlaceholders(int[] startPos, int[] dv, int count) {
+        int[] currentPos = Arrays.copyOf(startPos, startPos.length);
+        for (int i = 0; i < count; i++) {
+            machineCodeLayout.put(Arrays.copyOf(currentPos, currentPos.length), 0);
+            for(int d=0; d<Config.WORLD_DIMENSIONS; d++) currentPos[d] += dv[d];
+        }
+    }
 
-            int[] jumpOpcodeRelativeCoord = this.linearAddressToRelativeCoord.get(jumpOpcodeLinearAddress);
-            if (jumpOpcodeRelativeCoord == null) {
-                throw new IllegalStateException(String.format("Interner Assembler Fehler: Keine Koordinate für lineare Adresse %d gefunden. Dies deutet auf eine Asynchronität zwischen Pass 1 und 2 hin.", jumpOpcodeLinearAddress));
+
+    // =========================================================================================
+    // === Auflösungs-Phase: Sprünge und Vektoren finalisieren
+    // =========================================================================================
+
+    private void resolveJumpPlaceholders(List<AnnotatedLine> annotatedLines) {
+        for (Placeholder placeholder : jumpPlaceholderLocations) {
+            int jumpOpcodeAddress = placeholder.linearAddress();
+            String targetLabel = placeholder.value();
+
+            int[] jumpOpcodeCoord = linearAddressToRelativeCoord.get(jumpOpcodeAddress);
+            Integer targetLabelAddress = labelMap.get(targetLabel.toUpperCase());
+            if (targetLabelAddress == null) {
+                throw new AssemblerException(programName, placeholder.originalLineNumber(), "Unbekanntes Label für Sprungbefehl: " + targetLabel, placeholder.lineContent());
             }
+            int[] targetCoord = linearAddressToRelativeCoord.get(targetLabelAddress);
 
-            Integer targetLabelLinearAddress = this.labelMap.get(targetLabelName);
-            if (targetLabelLinearAddress == null) {
-                throw new IllegalStateException("Interner Fehler: Label '" + targetLabelName + "' nicht in der Label-Map gefunden.");
-            }
-
-            int[] targetLabelRelativeCoord = this.linearAddressToRelativeCoord.get(targetLabelLinearAddress);
             int[] delta = new int[Config.WORLD_DIMENSIONS];
             for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
-                delta[i] = targetLabelRelativeCoord[i] - jumpOpcodeRelativeCoord[i];
+                delta[i] = targetCoord[i] - jumpOpcodeCoord[i];
             }
 
-            if (isDebugMode) {
-                System.out.printf("[DEBUG: %s]   - JUMP zu '%-10s' (von %s nach %s): Delta berechnet als %s\n", programName, targetLabelName, Arrays.toString(jumpOpcodeRelativeCoord), Arrays.toString(targetLabelRelativeCoord), Arrays.toString(delta));
-            }
+            int[] dvAtJump = getDvAtLinearAddress(jumpOpcodeAddress, annotatedLines);
+            int[] argPos = Arrays.copyOf(jumpOpcodeCoord, jumpOpcodeCoord.length);
+            for(int d=0; d<Config.WORLD_DIMENSIONS; d++) argPos[d] += dvAtJump[d];
 
-            int[] dvAtJump = getDvAtLinearAddress(jumpOpcodeLinearAddress, annotatedLines);
-            int[] currentArgPos = Arrays.copyOf(jumpOpcodeRelativeCoord, jumpOpcodeRelativeCoord.length);
-
-            for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
-                for(int d=0; d<Config.WORLD_DIMENSIONS; d++) currentArgPos[d] += dvAtJump[d];
-                machineCodeLayout.put(Arrays.copyOf(currentArgPos, Config.WORLD_DIMENSIONS), new Symbol(Config.TYPE_DATA, delta[i]).toInt());
+            for (int component : delta) {
+                machineCodeLayout.put(Arrays.copyOf(argPos, argPos.length), new Symbol(Config.TYPE_DATA, component).toInt());
+                for(int d=0; d<Config.WORLD_DIMENSIONS; d++) argPos[d] += dvAtJump[d];
             }
         }
     }
 
     private void resolveVectorPlaceholders(List<AnnotatedLine> annotatedLines) {
-        if (isDebugMode && !vectorPlaceholderLocations.isEmpty()) {
-            System.out.printf("[DEBUG: %s] --- Vektor-Auflösung ---\n", programName);
-        }
-
         for (VectorRequest request : vectorPlaceholderLocations) {
-            int opcodeLinearAddress = request.linearAddress();
-            String targetLabelName = request.labelName();
+            int opcodeAddress = request.linearAddress();
+            String targetLabel = request.labelName();
 
-            int[] opcodeRelativeCoord = this.linearAddressToRelativeCoord.get(opcodeLinearAddress);
-            if (opcodeRelativeCoord == null) {
-                throw new IllegalStateException(String.format("Interner Assembler Fehler: Keine Koordinate für lineare Adresse %d gefunden. Dies deutet auf eine Asynchronität zwischen Pass 1 und 2 hin.", opcodeLinearAddress));
+            int[] opcodeCoord = linearAddressToRelativeCoord.get(opcodeAddress);
+            Integer targetLabelAddress = labelMap.get(targetLabel.toUpperCase());
+            if (targetLabelAddress == null) {
+                int lineNumber = findLineNumberForAddress(opcodeAddress, annotatedLines);
+                throw new AssemblerException(programName, lineNumber, "Unbekanntes Label für Vektor-Zuweisung: " + targetLabel, findLineContentByNumber(lineNumber, annotatedLines));
             }
 
-            Integer targetLabelLinearAddress = this.labelMap.get(targetLabelName);
-            if (targetLabelLinearAddress == null) {
-                throw new IllegalStateException("Interner Fehler: Label '" + targetLabelName + "' nicht in der Label-Map gefunden.");
-            }
+            // KORREKTUR: Hier wird die ABSOLUTE Koordinate des Labels verwendet, kein Delta.
+            int[] targetCoord = linearAddressToRelativeCoord.get(targetLabelAddress);
 
-            int[] targetLabelRelativeCoord = this.linearAddressToRelativeCoord.get(targetLabelLinearAddress);
-
-            // KORRIGIERT: Berechnet den Delta-Vektor für SETV
-            int[] delta = new int[Config.WORLD_DIMENSIONS];
-            for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
-                delta[i] = targetLabelRelativeCoord[i] - opcodeRelativeCoord[i];
-            }
             if (isDebugMode) {
-                System.out.printf("[DEBUG: %s]   - SETV zu '%-10s' (von %s nach %s): Delta berechnet als %s\n", programName, targetLabelName, Arrays.toString(opcodeRelativeCoord), Arrays.toString(targetLabelRelativeCoord), Arrays.toString(delta));
+                System.out.printf("[DEBUG: %s]   - SETV zu '%-10s' an Koordinate %s -> Vektor %s\n", programName, targetLabel, Arrays.toString(opcodeCoord), Arrays.toString(targetCoord));
             }
 
+            int[] dvAtOpcode = getDvAtLinearAddress(opcodeAddress, annotatedLines);
+            int[] argPos = Arrays.copyOf(opcodeCoord, opcodeCoord.length);
+            for(int d=0; d<Config.WORLD_DIMENSIONS; d++) argPos[d] += dvAtOpcode[d]; // zum Register-Argument
+            for(int d=0; d<Config.WORLD_DIMENSIONS; d++) argPos[d] += dvAtOpcode[d]; // zur ersten Vektor-Komponente
 
-            int[] dvAtOpcode = getDvAtLinearAddress(opcodeLinearAddress, annotatedLines);
-            int[] currentArgPos = Arrays.copyOf(opcodeRelativeCoord, opcodeRelativeCoord.length);
-
-            for(int d=0; d<Config.WORLD_DIMENSIONS; d++) currentArgPos[d] += dvAtOpcode[d];
-            for(int d=0; d<Config.WORLD_DIMENSIONS; d++) currentArgPos[d] += dvAtOpcode[d];
-
-            for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
-                machineCodeLayout.put(Arrays.copyOf(currentArgPos, Config.WORLD_DIMENSIONS), new Symbol(Config.TYPE_DATA, delta[i]).toInt());
-                for(int d=0; d<Config.WORLD_DIMENSIONS; d++) currentArgPos[d] += dvAtOpcode[d];
+            for (int component : targetCoord) {
+                machineCodeLayout.put(Arrays.copyOf(argPos, argPos.length), new Symbol(Config.TYPE_DATA, component).toInt());
+                for(int d=0; d<Config.WORLD_DIMENSIONS; d++) argPos[d] += dvAtOpcode[d];
             }
         }
     }
 
+
+    // =========================================================================================
+    // === Hilfsmethoden
+    // =========================================================================================
+
+    private int getTypeFromString(String typeName, AnnotatedLine line) {
+        return switch (typeName.toUpperCase()) {
+            case "CODE" -> Config.TYPE_CODE;
+            case "DATA" -> Config.TYPE_DATA;
+            case "ENERGY" -> Config.TYPE_ENERGY;
+            case "STRUCTURE" -> Config.TYPE_STRUCTURE;
+            default -> throw new AssemblerException(programName, line.originalLineNumber(), "Unbekannter Typ: " + typeName, line.content());
+        };
+    }
+
+    private String findLineContentByNumber(int lineNumber, List<AnnotatedLine> annotatedLines) {
+        return annotatedLines.stream()
+                .filter(l -> l.originalLineNumber() == lineNumber)
+                .findFirst()
+                .map(AnnotatedLine::content)
+                .orElse("");
+    }
+
+    private int findLineNumberForAddress(int targetAddress, List<AnnotatedLine> annotatedLines) {
+        int currentAddress = 0;
+        for (AnnotatedLine line : annotatedLines) {
+            if(currentAddress == targetAddress) return line.originalLineNumber();
+            String strippedLine = line.content().split("#")[0].strip();
+            if (strippedLine.isEmpty() || strippedLine.startsWith(".") || strippedLine.endsWith(":")) continue;
+            Integer opcodeId = Instruction.getInstructionIdByName(strippedLine.split("\\s+")[0].toUpperCase());
+            if(opcodeId != null) currentAddress += Instruction.getInstructionLengthById(Config.TYPE_CODE | opcodeId);
+        }
+        return -1;
+    }
+
     private int[] getDvAtLinearAddress(int targetAddress, List<AnnotatedLine> annotatedLines) {
-        int[] dv = {1,0};
+        int[] dv = {1, 0};
         int currentAddress = 0;
         for (AnnotatedLine annotatedLine : annotatedLines) {
-            String strippedLine = annotatedLine.content().split("#")[0].strip();
             if (currentAddress > targetAddress) break;
+            String strippedLine = annotatedLine.content().split("#")[0].strip();
             if(strippedLine.toUpperCase().startsWith(".DIR")) {
-                dv = Arrays.stream(strippedLine.split("\\s+")[1].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
+                dv = Arrays.stream(strippedLine.split("\\s+")[1].split("\\|")).mapToInt(Integer::parseInt).toArray();
             }
-            if (strippedLine.isEmpty() || strippedLine.endsWith(":") || strippedLine.startsWith(".")) {
-                continue;
-            }
-            String directive = strippedLine.split("\\s+")[0].toUpperCase();
-            String[] parts = strippedLine.split("\\s+");
-            int instructionLength;
-            Integer opcodeId = Instruction.getInstructionIdByName(directive);
-            if (opcodeId == null) continue;
-            instructionLength = Instruction.getInstructionLengthById(Config.TYPE_CODE | opcodeId);
-            currentAddress += instructionLength;
+            if (strippedLine.isEmpty() || strippedLine.startsWith(".") || strippedLine.endsWith(":")) continue;
+            Integer opcodeId = Instruction.getInstructionIdByName(strippedLine.split("\\s+")[0].toUpperCase());
+            if(opcodeId != null) currentAddress += Instruction.getInstructionLengthById(Config.TYPE_CODE | opcodeId);
         }
         return dv;
+    }
+
+    private String generateProgramId() {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            List<Integer> codeForHash = this.machineCodeLayout.values().stream().toList();
+            ByteBuffer buffer = ByteBuffer.allocate(codeForHash.size() * 4);
+            for (int code : codeForHash) buffer.putInt(code);
+            byte[] hashBytes = digest.digest(buffer.array());
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(Arrays.copyOf(hashBytes, 12));
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 nicht gefunden", e);
+        }
     }
 }

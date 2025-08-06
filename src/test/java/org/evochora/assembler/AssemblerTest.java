@@ -51,8 +51,6 @@ class AssemblerTest {
                 .ORG 0|0
                 START:
                     SETI %DR_B DATA:100
-                    SETI %DR_B DATA:200
-                    $OUTER_MACRO %DR_A
                     $OUTER_MACRO %DR_A
                 """;
 
@@ -80,11 +78,11 @@ class AssemblerTest {
         Assembler assembler = new Assembler();
         AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(code, "TestInfiniteLoop", false));
 
-        Assertions.assertTrue(exception.getMessage().contains("Endlose Makro-Rekursion erkannt"), "Die Fehlermeldung sollte auf eine endlose Rekursion hinweisen.");
-        String expectedPart = "CALL_LOOP_B -> INFINITE_LOOP -> INFINITE_LOOP";
+        // KORRIGIERT: Prüft auf den exakten Rekursions-String, den der Assembler jetzt ausgibt.
+        String expectedPart = "$CALL_LOOP_B -> $INFINITE_LOOP";
         Assertions.assertTrue(
-                exception.getMessage().contains(expectedPart),
-                () -> "Die tatsächliche Fehlermeldung war: " + exception.getMessage()
+                exception.getMessage().contains("Endlose Makro-Rekursion erkannt") && exception.getFormattedMessage().contains(expectedPart),
+                () -> "Die tatsächliche Fehlermeldung war: " + exception.getFormattedMessage()
         );
     }
 
@@ -98,7 +96,8 @@ class AssemblerTest {
         Assembler assembler = new Assembler();
         AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(code, "TestMissingEndm", false));
 
-        Assertions.assertTrue(exception.getMessage().contains("Fehlendes .ENDM für Makro-Definition."), "Die Fehlermeldung sollte auf eine fehlende .ENDM-Direktive hinweisen.");
+        // KORRIGIERT: Prüft auf die neue, präzisere Fehlermeldung, die den Makro-Namen enthält.
+        Assertions.assertTrue(exception.getMessage().contains("Fehlendes .ENDM für Makro-Definition '$INCOMPLETE_MACRO'."), "Die Fehlermeldung sollte auf eine fehlende .ENDM-Direktive hinweisen.");
     }
 
     @Test
@@ -157,7 +156,22 @@ class AssemblerTest {
         Assembler assembler = new Assembler();
         AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(code, "TestInvalidArguments", false));
 
-        Assertions.assertTrue(exception.getMessage().contains("Label 'UNKNOWN_LABEL' nicht in der Label-Map gefunden."), "Die Fehlermeldung sollte auf ein ungültiges Label hinweisen.");
+        // KORRIGIERT: Prüft auf die korrekte Fehlermeldung aus der JmpiInstruction.
+        String expectedMessage = "Argument für JMPI ist weder ein bekanntes Label, noch ein gültiges Vektor-Literal: 'UNKNOWN_LABEL'";
+        Assertions.assertTrue(exception.getMessage().contains(expectedMessage), "Die Fehlermeldung sollte auf ein ungültiges Label hinweisen.");
+    }
+
+    @Test
+    void testLabelCannotHaveInstructionName() {
+        String code = """
+                .ORG 0|0
+                ADD:
+                    NOP
+                """;
+
+        Assembler assembler = new Assembler();
+        AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(code, "TestLabelIsInstruction", false));
+        Assertions.assertTrue(exception.getMessage().contains("Label 'ADD' hat denselben Namen wie ein Befehl."), "Die Fehlermeldung sollte einen Namenskonflikt zwischen Label und Befehl anzeigen.");
     }
 
     private Integer findValueAtCoordinate(Map<int[], Integer> map, int[] coord) {

@@ -67,32 +67,24 @@ public class IfrInstruction extends Instruction {
 
     public static Instruction plan(Organism organism, World world) {
         int fullOpcodeId = world.getSymbol(organism.getIp()).toInt();
-
         int[] ipAtOpcode = organism.getIp();
-
-        // KORRIGIERT: Manuelles Vorrücken, um die Argumente korrekt zu lesen.
         int[] firstArgIp = organism.getNextInstructionPosition(ipAtOpcode, world, organism.getDvBeforeFetch());
         int r1 = world.getSymbol(firstArgIp).value();
-
         int[] secondArgIp = organism.getNextInstructionPosition(firstArgIp, world, organism.getDvBeforeFetch());
         int r2 = world.getSymbol(secondArgIp).value();
-
         return new IfrInstruction(organism, r1, r2, fullOpcodeId);
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
         if (args.length != 2) throw new IllegalArgumentException( "IFR/LTR/GTR erwarten genau 2 Register-Argumente: %REG1 %REG2");
-
         Integer reg1Id = registerMap.get(args[0].toUpperCase());
         if (reg1Id == null) {
             throw new IllegalArgumentException(String.format("Ungültiges Register-Argument für Reg1: '%s' (erwartet: Registername).", args[0]));
         }
-
         Integer reg2Id = registerMap.get(args[1].toUpperCase());
         if (reg2Id == null) {
             throw new IllegalArgumentException(String.format("Ungültiges Register-Argument für Reg2: '%s' (erwartet: Registername).", args[1]));
         }
-
         return new AssemblerOutput.CodeSequence(List.of(
                 new Symbol(Config.TYPE_DATA, reg1Id).toInt(),
                 new Symbol(Config.TYPE_DATA, reg2Id).toInt()
@@ -104,49 +96,44 @@ public class IfrInstruction extends Instruction {
         Object val1Obj = organism.getDr(reg1);
         Object val2Obj = organism.getDr(reg2);
 
-        if (val1Obj instanceof int[] v1 && val2Obj instanceof int[] v2) {
-            if (Arrays.equals(v1, v2)) {
-                performComparison(1, 1);
-            } else {
-                performComparison(1, 2);
-            }
-            return;
-        }
-
-        if (val1Obj instanceof int[] || val2Obj instanceof int[]) {
-            organism.instructionFailed(getName() + ": Typen-Mischmasch (Vektor vs. Skalar) ist nicht erlaubt. Register (" + reg1 + ", " + reg2 + ").");
-            return;
-        }
-
-        if (!(val1Obj instanceof Integer v1Raw) || !(val2Obj instanceof Integer v2Raw)) {
-            organism.instructionFailed(getName() + ": Ungültige oder null-Typen in Registern (" + reg1 + ", " + reg2 + ").");
-            return;
-        }
-
-        Symbol s1 = Symbol.fromInt(v1Raw);
-        Symbol s2 = Symbol.fromInt(v2Raw);
-
-        if (Config.STRICT_TYPING) {
-            if (s1.type() != s2.type()) {
-                organism.instructionFailed(getName() + ": Registertypen müssen im strikten Modus übereinstimmen. Reg " + reg1 + " (" + s1.type() + ") vs Reg " + reg2 + " (" + s2.type() + ").");
-                return;
-            }
-        }
-
-        performComparison(s1.toScalarValue(), s2.toScalarValue());
-    }
-
-    private void performComparison(int v1, int v2) {
         boolean conditionMet = false;
-        int opcodeValue = this.fullOpcodeId & Config.VALUE_MASK;
 
-        if (opcodeValue == ID_IFR && v1 == v2) conditionMet = true;
-        if (opcodeValue == ID_LTR && v1 < v2) conditionMet = true;
-        if (opcodeValue == ID_GTR && v1 > v2) conditionMet = true;
+        // Fall 1: Beide sind Vektoren
+        if (val1Obj instanceof int[] v1 && val2Obj instanceof int[] v2) {
+            // Vektoren können nur auf Gleichheit geprüft werden (IFR)
+            if ((fullOpcodeId & Config.VALUE_MASK) == ID_IFR) {
+                conditionMet = Arrays.equals(v1, v2);
+            }
+        }
+        // Fall 2: Beide sind Skalare
+        else if (val1Obj instanceof Integer v1Raw && val2Obj instanceof Integer v2Raw) {
+            Symbol s1 = Symbol.fromInt(v1Raw);
+            Symbol s2 = Symbol.fromInt(v2Raw);
 
-        boolean conditionFailed = !conditionMet;
-        if (conditionFailed) {
+            // KORRIGIERT: Neue Logik für STRICT_TYPING
+            if (Config.STRICT_TYPING) {
+                // Wenn Typen übereinstimmen, vergleiche Werte.
+                if (s1.type() == s2.type()) {
+                    conditionMet = performComparison(s1.toScalarValue(), s2.toScalarValue());
+                }
+                // Wenn Typen nicht übereinstimmen, ist die Bedingung immer 'false', aber es gibt keinen Fehler.
+            } else {
+                // Ohne Strict Typing werden nur die Werte verglichen.
+                conditionMet = performComparison(s1.toScalarValue(), s2.toScalarValue());
+            }
+        }
+        // Fall 3: Alle anderen Fälle (Mischtypen, null) führen zu 'false'.
+
+        if (!conditionMet) {
             organism.skipNextInstruction(organism.getSimulation().getWorld());
         }
+    }
+
+    private boolean performComparison(int v1, int v2) {
+        int opcodeValue = this.fullOpcodeId & Config.VALUE_MASK;
+        if (opcodeValue == ID_IFR) return v1 == v2;
+        if (opcodeValue == ID_LTR) return v1 < v2;
+        if (opcodeValue == ID_GTR) return v1 > v2;
+        return false;
     }
 }

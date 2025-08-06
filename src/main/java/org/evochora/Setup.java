@@ -8,9 +8,6 @@ import org.evochora.world.Symbol;
 import org.evochora.world.World;
 import org.evochora.assembler.AssemblyProgram; // GEÄNDERT: Neuer Importpfad
 
-import javax.lang.model.type.ErrorType;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 
 public class Setup {
@@ -23,14 +20,16 @@ public class Setup {
     public static void run(Simulation simulation) {
 
         // Um den CompleteInstructionTester auszuführen, aktivieren Sie diese Zeile:
-        //CompleteInstructionTester testerProgram = new CompleteInstructionTester();
+        //InstructionTester testerProgram = new InstructionTester();
         //testerProgram.enableDebug();
         //placeProgram(simulation, testerProgram, new int[]{10, 5});
 
         // Um ErrorTester auszuführen, aktivieren Sie diese Zeile:
         EnergySeeker energySeeker = new EnergySeeker();
         energySeeker.enableDebug();
-        placeProgram(simulation, energySeeker, new int[]{1, 10});
+        // KORRIGIERT: Der Organismus wird jetzt an der Koordinate (1,1) platziert,
+        // sodass sein IP korrekt am Anfang des Programms (.ORG 0|0) startet.
+        placeProgram(simulation, energySeeker, new int[]{1, 1});
 
         // Um ErrorTester auszuführen, aktivieren Sie diese Zeile:
         //ErrorTest errorTest = new ErrorTest();

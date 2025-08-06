@@ -88,7 +88,9 @@ public class DiffInstruction extends Instruction {
 
         int[] delta = new int[ip.length];
         for (int i = 0; i < ip.length; i++) {
-            delta[i] = ip[i] - dp[i];
+            // KORRIGIERT: Die Berechnung ist jetzt DP - IP.
+            // Dies erzeugt einen direkten Vektor vom IP zum DP.
+            delta[i] = dp[i] - ip[i];
         }
 
         if (!organism.setDr(reg, delta)) {

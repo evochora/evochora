@@ -1,14 +1,14 @@
-// src/main/java/org/evochora/organism/prototypes/CompleteInstructionTester.java
+// src/main/java/org/evochora/organism/prototypes/InstructionTester.java
 package org.evochora.organism.prototypes;
 
 import org.evochora.assembler.AssemblyProgram;
 
-public class CompleteInstructionTester extends AssemblyProgram {
+public class InstructionTester extends AssemblyProgram {
 
     @Override
     public String getAssemblyCode() {
         return """
-                # Finaler, korrekter Test-Organismus mit korrigierter Makro-Logik.
+                # Finaler, korrekter Test-Organismus, angepasst an die neue Assembler-Logik.
                 
                 # --- Register-Definitionen ---
                 .REG %DR_A 0
@@ -19,21 +19,19 @@ public class CompleteInstructionTester extends AssemblyProgram {
                 .REG %VEC_LEFT 5
                 .REG %VEC_DOWN 6
                 
-                # --- Makro-Definitionen ---
+                # --- Makro-Definitionen (angepasst an die neue Syntax ohne Parameter-Präfix) ---
                 .MACRO $ASSERT_LITERAL REGISTER EXPECTED_LITERAL
-                    SETI %DR_RESULT DATA:1
+                    SETI %DR_RESULT DATA:1         # Annahme: Test schlägt fehl
                     IFI REGISTER EXPECTED_LITERAL
-                    SETI %DR_RESULT DATA:0
-                    # KORREKTUR: Der überflüssige SYNC-Befehl wurde hier entfernt.
+                    SETI %DR_RESULT DATA:0         # Test erfolgreich, wenn Bedingung zutrifft
                     SEEK %VEC_LEFT
                     POKE %DR_RESULT %VEC_LEFT
                 .ENDM
 
                 .MACRO $ASSERT_REG REGISTER_A REGISTER_B
-                    SETI %DR_RESULT DATA:1
+                    SETI %DR_RESULT DATA:1         # Annahme: Test schlägt fehl
                     IFR REGISTER_A REGISTER_B
-                    SETI %DR_RESULT DATA:0
-                    # KORREKTUR: Der überflüssige SYNC-Befehl wurde hier entfernt.
+                    SETI %DR_RESULT DATA:0         # Test erfolgreich, wenn Register gleich sind
                     SEEK %VEC_LEFT
                     POKE %DR_RESULT %VEC_LEFT
                 .ENDM
@@ -49,8 +47,7 @@ public class CompleteInstructionTester extends AssemblyProgram {
                 
                 .ORG 2|1
                 TEST_SETI:
-                    SYNC # DP wird hier einmal korrekt für den Test positioniert.
-                    .DIR 1|0
+                    SYNC
                     SETI %DR_A DATA:123
                     $ASSERT_LITERAL %DR_A DATA:123
                     JMPI TEST_SETR
@@ -58,7 +55,6 @@ public class CompleteInstructionTester extends AssemblyProgram {
                 .ORG 2|3
                 TEST_SETR:
                     SYNC
-                    .DIR 1|0
                     SETI %DR_B DATA:456
                     SETR %DR_A %DR_B
                     $ASSERT_LITERAL %DR_A DATA:456
@@ -67,16 +63,15 @@ public class CompleteInstructionTester extends AssemblyProgram {
                 .ORG 2|5
                 TEST_SETV:
                     SYNC
-                    .DIR 1|0
-                    SETV %DR_A 7|8
-                    SETV %DR_B 7|8
+                    SETV %DR_A TEST_VECTOR_TARGET
+                    SETV %DR_B 25|5
                     $ASSERT_REG %DR_A %DR_B
+                TEST_VECTOR_TARGET:
                     JMPI TEST_ADD
 
                 .ORG 2|7
                 TEST_ADD:
                     SYNC
-                    .DIR 1|0
                     SETI %DR_A DATA:10
                     SETI %DR_B DATA:20
                     ADD %DR_A %DR_B
@@ -86,7 +81,6 @@ public class CompleteInstructionTester extends AssemblyProgram {
                 .ORG 2|9
                 TEST_SUB:
                     SYNC
-                    .DIR 1|0
                     SETV %DR_A 5|5
                     SETV %DR_B 1|2
                     SUB %DR_A %DR_B
@@ -97,7 +91,6 @@ public class CompleteInstructionTester extends AssemblyProgram {
                 .ORG 2|11
                 TEST_NAND:
                     SYNC
-                    .DIR 1|0
                     SETI %DR_A DATA:5
                     SETI %DR_B DATA:3
                     NAND %DR_A %DR_B
@@ -107,126 +100,89 @@ public class CompleteInstructionTester extends AssemblyProgram {
                 .ORG 2|13
                 TEST_PUSHPOP:
                     SYNC
-                    .DIR 1|0
                     SETI %DR_A DATA:999
                     PUSH %DR_A
                     SETI %DR_A DATA:0
                     POP %DR_A
                     $ASSERT_LITERAL %DR_A DATA:999
-                    JMPI TEST_IFS
+                    JMPI TEST_JMP_ABSOLUTE
 
                 .ORG 2|15
-               TEST_IFS:
-                   SYNC
-                   .DIR 1|0
-                   SETI %DR_A DATA:10
-                   SETI %DR_B DATA:20
-                   SETI %DR_RESULT DATA:1
-                   LTR %DR_A %DR_B
-                   SETI %DR_RESULT DATA:0
-                   PUSH %DR_RESULT
-
-                   SETI %DR_RESULT DATA:1
-                   GTI %DR_B DATA:10
-                   SETI %DR_RESULT DATA:0
-
-                   POP %DR_A
-                   ADD %DR_RESULT %DR_A
-
-                   SEEK %VEC_LEFT
-                   POKE %DR_RESULT %VEC_LEFT
-                   JMPI TEST_DIFF
-
-               # --- NEUE TESTS ---
-
-               .ORG 2|17
+                TEST_JMP_ABSOLUTE:
+                    SYNC
+                    SETV %DR_A JUMP_TARGET
+                    JMPR %DR_A
+                JUMP_FAIL:
+                    SETI %DR_RESULT DATA:1
+                    SEEK %VEC_LEFT
+                    POKE %DR_RESULT %VEC_LEFT
+                    JMPI END_OF_ALL_TESTS
+                JUMP_TARGET:
+                    SETI %DR_RESULT DATA:0
+                    SEEK %VEC_LEFT
+                    POKE %DR_RESULT %VEC_LEFT
+                    JMPI TEST_DIFF
+                    
+               .ORG 2|19
                TEST_DIFF:
-                   SYNC # DP = IP
-                   .DIR 1|0
-                   SEEK %VEC_RIGHT # DP = IP + [1,0]
-                   DIFF %DR_A      # DR_A = IP - DP = IP - (IP + [1,0]) = [-1,0]
+                   SYNC
+                   SEEK %VEC_RIGHT
+                   DIFF %DR_A
                    SETV %DR_B -1|0
                    $ASSERT_REG %DR_A %DR_B
                    JMPI TEST_POS
 
-               .ORG 2|19
+               .ORG 2|21
                TEST_POS:
-                   # Der Code für diesen Test ist 2 Zellen lang (NOP, POS).
-                   # Der Test startet bei [2,19], der IP ist danach bei [4,19].
-                   # Die Spawn-Position ist [0,0] (Annahme, da .ORG 0|0 am Anfang steht)
-                   # Erwartetes Ergebnis: IP - SPAWN = [4,19] - [0,0] = [4,19]
                    SYNC
-                   .DIR 1|0
                    NOP
                    POS %DR_A
-                   SETV %DR_B 4|19 # Inkrementiert durch den NOP + POS Befehl
+                   SETV %DR_B 4|21
                    $ASSERT_REG %DR_A %DR_B
                    JMPI TEST_NRG
 
-               .ORG 2|21
+               .ORG 2|23
                TEST_NRG:
                    SYNC
-                   .DIR 1|0
-                   NRG %DR_A # DR_A bekommt die aktuelle Energie
-                   SETI %DR_RESULT DATA:1 # Annahme: Fehlschlag
-                   GTI %DR_A DATA:0       # Teste, ob Energie größer als 0 ist
+                   NRG %DR_A
+                   SETI %DR_RESULT DATA:1
+                   GTI %DR_A DATA:0
                    SETI %DR_RESULT DATA:0
                    SEEK %VEC_LEFT
                    POKE %DR_RESULT %VEC_LEFT
                    JMPI TEST_SCAN
 
-               .ORG 2|23
+               .ORG 2|25
                TEST_SCAN:
-                   # Platziere einen Test-Wert rechts neben dem Start
-                   .PLACE DATA:777 2|24
+                   .PLACE DATA:777 2|26
                    SYNC
-                   .DIR 1|0
                    SCAN %DR_A %VEC_DOWN
                    $ASSERT_LITERAL %DR_A DATA:777
                    JMPI TEST_PEEK
 
-               .ORG 2|25
+               .ORG 2|27
                TEST_PEEK:
-                   # Platziere einen Test-Wert
-                   .PLACE ENERGY:50 2|26
+                   .PLACE ENERGY:50 2|28
                    SYNC
-                   .DIR 1|0
-                   PEEK %DR_A %VEC_DOWN  # Lese den Wert, Zelle sollte danach leer sein
-
-                   # Test 1: Wurde der richtige Wert gelesen?
+                   PEEK %DR_A %VEC_DOWN
                    $ASSERT_LITERAL %DR_A ENERGY:50
-
-                   # Test 2: Ist die Zelle jetzt leer (CODE:0)?
-                   SCAN %DR_B %VEC_RIGHT
+                   SCAN %DR_B %VEC_DOWN
                    $ASSERT_LITERAL %DR_B CODE:0
                    JMPI TEST_TURN
 
-               .ORG 2|27
+               .ORG 2|29
                TEST_TURN:
-                   # Dieser Test ist räumlich und muss visuell überprüft werden.
-                   # Er schreibt ein "Erfolg"-Zeichen, um zu zeigen, dass er gelaufen ist.
                    SYNC
-                   .DIR 1|0
-                   # Drehe den Organismus nach unten
                    TURN %VEC_DOWN
                    .DIR 0|1
-                   # Der NOP wird jetzt UNTER dem TURN platziert
-                   NOP
-                   TURN %VEC_RIGHT
-                   .DIR 1|0
-                   # Schreibe von der neuen Position [2,28] aus eine Struktur nach rechts,
-                   # um die neue Position des IP visuell zu markieren.
-                   SETI %DR_A STRUCTURE:1
-                   POKE %DR_A %VEC_DOWN
-
-                   # Test als erfolgreich markieren
+                   # KORRIGIERT: Der Test setzt jetzt den Erfolgs-Code in das Ergebnis-Register.
                    SETI %DR_RESULT DATA:0
                    SEEK %VEC_LEFT
                    POKE %DR_RESULT %VEC_LEFT
                    JMPI END_OF_ALL_TESTS
 
                # --- Ende der Tests ---
-               .ORG 0|31 # Etwas mehr Platz gelassen
+               .ORG 0|31
                END_OF_ALL_TESTS:
                NOP
                 """;

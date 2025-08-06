@@ -15,10 +15,9 @@ import java.util.Arrays;
 
 /**
  * Die JMPI-Instruktion (Jump Immediate).
- * Springt um einen relativen Delta-Vektor, der direkt im Maschinencode steht.
- * Diese Instruktion ist für den Programmierer nicht direkt sichtbar; sie wird
- * vom Assembler generiert, wenn dieser einen `JUMP LABEL`-Befehl auflöst.
- * Oder kann direkt mit einem Vektor-Literal verwendet werden.
+ * Springt um einen relativen Delta-Vektor, der direkt im Maschinencode steht (als Literal)
+ * oder vom Assembler durch Auflösen eines Labels berechnet wird.
+ * Dieser Befehl ist für positionsunabhängigen Code unerlässlich.
  */
 public class JmpiInstruction extends Instruction {
     public static final int ID = 20;
@@ -32,6 +31,7 @@ public class JmpiInstruction extends Instruction {
 
     static {
         Instruction.registerInstruction(JmpiInstruction.class, ID, "JMPI", 1 + Config.WORLD_DIMENSIONS, JmpiInstruction::plan, JmpiInstruction::assemble);
+        // Argumente sind Koordinaten-Komponenten
         Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.COORDINATE, 1, ArgumentType.COORDINATE));
     }
 
@@ -79,17 +79,20 @@ public class JmpiInstruction extends Instruction {
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
         if (args.length != 1) {
-            throw new IllegalArgumentException("JMPI erwartet 1 Argument (Label oder Vektor).");
+            throw new IllegalArgumentException("JMPI erwartet 1 Argument (Label oder Vektor-Literal).");
         }
         String arg = args[0].toUpperCase();
 
+        // Wenn es ein bekanntes Label ist, wird eine Sprung-Anfrage an den Assembler gestellt.
         if (labelMap.containsKey(arg)) {
             return new AssemblerOutput.JumpInstructionRequest(arg);
-        } else if (arg.contains("|")) {
+        }
+        // Wenn es ein Vektor-Literal ist (z.B. 1|0), wird es direkt verarbeitet.
+        else if (arg.contains("|")) {
             List<Integer> machineCode = new ArrayList<>();
             String[] vectorComponents = arg.split("\\|");
             if (vectorComponents.length != Config.WORLD_DIMENSIONS) {
-                throw new IllegalArgumentException("Vektor hat falsche Dimension für JMPI: " + arg);
+                throw new IllegalArgumentException("Vektor-Literal hat falsche Dimension für JMPI: " + arg);
             }
             for (String component : vectorComponents) {
                 try {
@@ -99,18 +102,20 @@ public class JmpiInstruction extends Instruction {
                 }
             }
             return new AssemblerOutput.CodeSequence(machineCode);
-        } else {
-            // KORREKTUR: Explizite Prüfung, ob das Argument ein Register ist
-            if(registerMap.containsKey(arg)) {
-                throw new IllegalArgumentException(String.format("JMPI kann keine Register als Argumente akzeptieren, verwenden Sie JMPR: " + arg));
-            }
-            // KORREKTUR: Generische Fehlermeldung für unbekanntes Argument
-            throw new IllegalArgumentException(String.format("Label '%s' nicht in der Label-Map gefunden.", arg));
+        }
+        // Fehler, wenn ein Registername verwendet wird. Dafür ist JMPR zuständig.
+        else if (registerMap.containsKey(arg)) {
+            throw new IllegalArgumentException(String.format("JMPI kann keine Register als Argumente akzeptieren. Verwenden Sie JMPR für Sprünge mit Registern. Argument war: %s", arg));
+        }
+        // Allgemeiner Fehler für unbekannte Argumente.
+        else {
+            throw new IllegalArgumentException(String.format("Argument für JMPI ist weder ein bekanntes Label, noch ein gültiges Vektor-Literal: '%s'", arg));
         }
     }
 
     @Override
     public void execute(Simulation simulation) {
+        // Berechnet die Zielkoordinate durch Addition des relativen Deltas zum IP *vor* dem Befehl.
         int[] targetIp = organism.getTargetCoordinate(organism.getIpBeforeFetch(), this.delta, simulation.getWorld());
         organism.setIp(targetIp);
         organism.setSkipIpAdvance(true);

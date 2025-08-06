@@ -84,7 +84,7 @@ public class SetvInstruction extends Instruction {
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
         if (args.length != 2) {
-            throw new IllegalArgumentException("SETV erwartet 2 Argumente: %REG WERT1|WERT2|...");
+            throw new IllegalArgumentException("SETV erwartet 2 Argumente: %REG (WERT1|WERT2|... | LABEL)");
         }
         List<Integer> machineCode = new ArrayList<>();
 
@@ -92,12 +92,12 @@ public class SetvInstruction extends Instruction {
         if (regId == null) {
             throw new IllegalArgumentException("Ungültiges Register-Argument: " + args[0]);
         }
-        // KORRIGIERT: Der Register-Index wird hier nicht zum Maschinencode hinzugefügt
-        // Er wird stattdessen mit dem Label-Namen zusammen in einer Anfrage zurückgegeben
 
         String vectorArg = args[1];
 
-        if (labelMap.containsKey(vectorArg.toUpperCase())) {
+        // NEU: Prüfen, ob das zweite Argument ein Label ist.
+        // Das Label darf nicht von | umgeben sein, um es von Vektoren zu unterscheiden.
+        if (!vectorArg.contains("|") && labelMap.containsKey(vectorArg.toUpperCase())) {
             return new AssemblerOutput.LabelToVectorRequest(vectorArg, regId);
         }
 

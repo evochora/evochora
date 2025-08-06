@@ -66,15 +66,11 @@ public class IfiInstruction extends Instruction {
 
     public static Instruction plan(Organism organism, World world) {
         int fullOpcodeId = world.getSymbol(organism.getIp()).toInt();
-
-        // KORRIGIERT: Manuelles Vorrücken, um die Argumente korrekt zu lesen.
         int[] ipAtOpcode = organism.getIp();
         int[] firstArgIp = organism.getNextInstructionPosition(ipAtOpcode, world, organism.getDvBeforeFetch());
         int r1 = world.getSymbol(firstArgIp).value();
-
         int[] secondArgIp = organism.getNextInstructionPosition(firstArgIp, world, organism.getDvBeforeFetch());
         int literal = world.getSymbol(secondArgIp).toInt();
-
         return new IfiInstruction(organism, r1, literal, fullOpcodeId);
     }
 
@@ -82,12 +78,10 @@ public class IfiInstruction extends Instruction {
         if (args.length != 2) {
             throw new IllegalArgumentException("IFI/LTI/GTI erwarten genau 2 Argumente: %REG TYPE:WERT");
         }
-
         Integer regId = registerMap.get(args[0].toUpperCase());
         if (regId == null) {
             throw new IllegalArgumentException("Ungültiges Register-Argument: " + args[0]);
         }
-
         String[] literalParts = args[1].split(":");
         if (literalParts.length != 2) {
             throw new IllegalArgumentException("Literal muss das Format TYPE:WERT haben: " + args[1]);
@@ -101,9 +95,7 @@ public class IfiInstruction extends Instruction {
             case "STRUCTURE" -> Config.TYPE_STRUCTURE;
             default -> throw new IllegalArgumentException("Unbekannter Typ für Literal: " + typeName);
         };
-
         int fullLiteralValue = new Symbol(type, value).toInt();
-
         return new AssemblerOutput.CodeSequence(List.of(
                 new Symbol(Config.TYPE_DATA, regId).toInt(),
                 fullLiteralValue
@@ -113,41 +105,37 @@ public class IfiInstruction extends Instruction {
     @Override
     public void execute(Simulation simulation) {
         Object val1Obj = organism.getDr(reg1);
+        boolean conditionMet = false;
 
-        if (val1Obj instanceof int[]) {
-            organism.instructionFailed(getName() + ": Register " + reg1 + " enthält einen Vektor, was für Vergleiche nicht erlaubt ist.");
-            return;
-        }
+        // Ein Vektor im Register kann nicht mit einem Skalar-Literal verglichen werden.
+        if (val1Obj instanceof Integer v1Raw) {
+            Symbol s1 = Symbol.fromInt(v1Raw);
+            Symbol s2 = Symbol.fromInt(this.literalValue);
 
-        if (!(val1Obj instanceof Integer v1Raw)) {
-            organism.instructionFailed(getName() + ": Ungültiger oder null-Typ in Register " + reg1 + ".");
-            return;
-        }
-
-        Symbol s1 = Symbol.fromInt(v1Raw);
-        Symbol s2 = Symbol.fromInt(this.literalValue);
-
-        if (Config.STRICT_TYPING) {
-            if (s1.type() != s2.type()) {
-                organism.instructionFailed(getName() + ": Typen stimmen im strikten Modus nicht überein. Reg " + reg1 + " hat Typ " + s1.type() + ", Literal hat Typ " + s2.type() + ".");
-                return;
+            // KORRIGIERT: Neue Logik für STRICT_TYPING
+            if (Config.STRICT_TYPING) {
+                // Wenn Typen übereinstimmen, vergleiche Werte.
+                if (s1.type() == s2.type()) {
+                    conditionMet = performComparison(s1.toScalarValue(), s2.toScalarValue());
+                }
+                // Wenn Typen nicht übereinstimmen, ist die Bedingung immer 'false', aber es gibt keinen Fehler.
+            } else {
+                // Ohne Strict Typing werden nur die Werte verglichen.
+                conditionMet = performComparison(s1.toScalarValue(), s2.toScalarValue());
             }
         }
+        // Fall 2: Alle anderen Fälle (Vektor, null) führen zu 'false'.
 
-        performComparison(s1.toScalarValue(), s2.toScalarValue());
-    }
-
-    private void performComparison(int v1, int v2) {
-        boolean conditionMet = false;
-        int opcodeValue = this.fullOpcodeId & Config.VALUE_MASK;
-
-        if (opcodeValue == ID_IFI && v1 == v2) conditionMet = true;
-        if (opcodeValue == ID_LTI && v1 < v2) conditionMet = true;
-        if (opcodeValue == ID_GTI && v1 > v2) conditionMet = true;
-
-        boolean conditionFailed = !conditionMet;
-        if (conditionFailed) {
+        if (!conditionMet) {
             organism.skipNextInstruction(organism.getSimulation().getWorld());
         }
+    }
+
+    private boolean performComparison(int v1, int v2) {
+        int opcodeValue = this.fullOpcodeId & Config.VALUE_MASK;
+        if (opcodeValue == ID_IFI) return v1 == v2;
+        if (opcodeValue == ID_LTI) return v1 < v2;
+        if (opcodeValue == ID_GTI) return v1 > v2;
+        return false;
     }
 }

@@ -78,7 +78,7 @@ public class PeekInstruction extends Instruction implements IWorldModifyingInstr
             int[] target = organism.getTargetCoordinate(organism.getDp(), v, world);
             return new PeekInstruction(organism, targetReg, vecReg, target);
         } else {
-            organism.instructionFailed("PEEK: Invalid DR type for vector (Reg " + vec + "). Expected int[], found " + (vec != null ? vec.getClass().getSimpleName() : "null") + ".");
+            organism.instructionFailed("PEEK: Invalid DR type for vector (Reg " + vecReg + "). Expected int[], found " + (vec != null ? vec.getClass().getSimpleName() : "null") + ".");
             return new NopInstruction(organism);
         }
     }
@@ -121,7 +121,6 @@ public class PeekInstruction extends Instruction implements IWorldModifyingInstr
             if (s.type() == Config.TYPE_ENERGY) {
                 int energyToTake = Math.min(s.toScalarValue(), Config.MAX_ORGANISM_ENERGY - organism.getEr());
                 organism.addEr(energyToTake);
-                world.setSymbol(new Symbol(Config.TYPE_ENERGY, s.toScalarValue() - energyToTake), targetCoordinate);
 
                 if (!organism.setDr(targetReg, new Symbol(Config.TYPE_ENERGY, energyToTake).toInt())) {
                     organism.instructionFailed("PEEK: Failed to set taken energy to DR " + targetReg + ". Possible invalid register index.");
@@ -131,8 +130,10 @@ public class PeekInstruction extends Instruction implements IWorldModifyingInstr
                 if (!organism.setDr(targetReg, s.toInt())) {
                     organism.instructionFailed("PEEK: Failed to set value to DR " + targetReg + ". Possible invalid register index.");
                 }
-                world.setSymbol(new Symbol(Config.TYPE_CODE, 0), targetCoordinate);
             }
+
+            // KORRIGIERT: Die Zelle wird jetzt in JEDEM Fall geleert (auf CODE:0 gesetzt).
+            world.setSymbol(new Symbol(Config.TYPE_CODE, 0), targetCoordinate);
         }
     }
 

@@ -3,8 +3,8 @@ package org.evochora;
 
 import javafx.application.Application;
 import javafx.stage.Stage;
-// GEÄNDERT: import org.evochora.organism.InstructionSet; -> wird zu:
-import org.evochora.organism.Instruction; // Neuer Import
+import org.evochora.assembler.AssemblerException;
+import org.evochora.organism.Instruction;
 import org.evochora.ui.AppView;
 import org.evochora.world.World;
 
@@ -13,7 +13,6 @@ public class Main extends Application {
     @Override
     public void start(Stage primaryStage) {
         try {
-            // GEÄNDERT: Ruft die neue, saubere init-Methode auf
             Instruction.init();
 
             World world = new World(Config.WORLD_SHAPE, Config.IS_TOROIDAL);
@@ -23,10 +22,18 @@ public class Main extends Application {
 
             AppView appView = new AppView(primaryStage, simulation);
 
+        } catch (AssemblerException e) {
+            // KORRIGIERT: Gibt jetzt BEIDES aus - zuerst die saubere Nachricht, dann den vollen Stack-Trace.
+            System.err.println("Ein Fehler ist beim Assemblieren aufgetreten:");
+            System.err.println(e.getFormattedMessage()); // Unsere formatierte, lesbare Nachricht
+            System.err.println("\n--- VOLLSTÄNDIGER STACK TRACE ---");
+            e.printStackTrace(); // Der Standard-Java-Stack-Trace für detailliertes Debugging
+
         } catch (Exception e) {
+            // Der allgemeine Catch-Block behält das UI-Fenster für unerwartete Fehler bei.
             e.printStackTrace();
             javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.ERROR);
-            alert.setTitle("Ein Fehler ist aufgetreten");
+            alert.setTitle("Ein unerwarteter Fehler ist aufgetreten");
             alert.setHeaderText("Die Anwendung muss beendet werden.");
             alert.setContentText("Fehler: " + e.getMessage());
             alert.showAndWait();
