@@ -11,27 +11,26 @@ import org.evochora.world.World;
 import java.util.List;
 import java.util.Map;
 
-public class SetlInstruction extends Instruction {
+public class SetiInstruction extends Instruction {
     public static final int ID = 1;
 
     private final int registerIndex;
     private final int fullLiteralValue;
 
-    public SetlInstruction(Organism o, int r, int v) {
+    public SetiInstruction(Organism o, int r, int v) {
         super(o);
         this.registerIndex = r;
         this.fullLiteralValue = v;
     }
 
     static {
-        // Die Länge (3) und der Name ("SETL") werden jetzt direkt übergeben
-        Instruction.registerInstruction(SetlInstruction.class, ID, "SETL", 3, SetlInstruction::plan, SetlInstruction::assemble);
+        Instruction.registerInstruction(SetiInstruction.class, ID, "SETI", 3, SetiInstruction::plan, SetiInstruction::assemble);
         Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.LITERAL));
     }
 
     @Override
     public String getName() {
-        return "SETL";
+        return "SETI";
     }
 
     @Override
@@ -51,35 +50,33 @@ public class SetlInstruction extends Instruction {
 
     @Override
     public ArgumentType getArgumentType(int argIndex) {
-        return switch (argIndex) {
-            case 0 -> ArgumentType.REGISTER;
-            case 1 -> ArgumentType.LITERAL;
-            default -> throw new IllegalArgumentException("Ungültiger Argumentindex für SETL: " + argIndex);
-        };
+        if (argIndex == 0) return ArgumentType.REGISTER;
+        if (argIndex == 1) return ArgumentType.LITERAL;
+        throw new IllegalArgumentException("Ungültiger Argumentindex für SETI: " + argIndex);
     }
 
     public static Instruction plan(Organism organism, World world) {
-        // GEÄNDERT: Neue Logik mit FetchResult
-        // Erstes Argument (Register-Index) lesen
-        Organism.FetchResult regResult = organism.fetchArgument(organism.getIp(), world);
-        int regIdx = regResult.value();
+        // Lese das erste Argument (Register-Index)
+        Organism.FetchResult result1 = organism.fetchArgument(organism.getIp(), world);
+        int regIdx = result1.value();
 
-        // Zweites Argument (Literal) lesen.
-        // Wir brauchen den vollen Integer-Wert des Symbols, nicht nur den 12-bit-Wert.
-        // Dafür lesen wir das Symbol an der Position, die uns das erste FetchResult geliefert hat.
-        int[] literalArgIp = regResult.nextIp();
-        int literalValueWithExplicitType = world.getSymbol(literalArgIp).toInt();
+        // KORREKTUR: Berechne die Position des ZWEITEN Arguments, basierend auf der Position des ersten.
+        int[] firstArgIp = result1.nextIp();
+        int[] secondArgIp = organism.getNextInstructionPosition(firstArgIp, world, organism.getDvBeforeFetch());
 
-        return new SetlInstruction(organism, regIdx, literalValueWithExplicitType);
+        // Lese den Literal-Wert von der Position des ZWEITEN Arguments
+        int literalValueWithExplicitType = world.getSymbol(secondArgIp).toInt();
+
+        return new SetiInstruction(organism, regIdx, literalValueWithExplicitType);
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 2) throw new IllegalArgumentException("SETL erwartet 2 Argumente: %REG TYPE:WERT");
+        if (args.length != 2) throw new IllegalArgumentException("SETI erwartet 2 Argumente: %REG TYPE:WERT");
 
         int regId = registerMap.get(args[0].toUpperCase());
         String[] literalParts = args[1].split(":");
         if (literalParts.length != 2) {
-            throw new IllegalArgumentException("SETL-Literal muss das Format TYPE:WERT haben: " + args[1]);
+            throw new IllegalArgumentException("SETI-Literal muss das Format TYPE:WERT haben: " + args[1]);
         }
         String typeName = literalParts[0].toUpperCase();
         int value = Integer.parseInt(literalParts[1]);
@@ -89,10 +86,11 @@ public class SetlInstruction extends Instruction {
             case "DATA" -> Config.TYPE_DATA;
             case "ENERGY" -> Config.TYPE_ENERGY;
             case "STRUCTURE" -> Config.TYPE_STRUCTURE;
-            default -> throw new IllegalArgumentException("Unbekannter Typ für SETL-Literal: " + typeName);
+            default -> throw new IllegalArgumentException("Unbekannter Typ für SETI-Literal: " + typeName);
         };
 
         int fullTypedValue = new Symbol(type, value).toInt();
+        // Argumente sind DATA-Typ, damit sie nicht als Opcodes missinterpretiert werden können.
         int typedRegId = new Symbol(Config.TYPE_DATA, regId).toInt();
 
         return new AssemblerOutput.CodeSequence(List.of(typedRegId, fullTypedValue));
@@ -101,7 +99,7 @@ public class SetlInstruction extends Instruction {
     @Override
     public void execute(Simulation simulation) {
         if (!organism.setDr(registerIndex, this.fullLiteralValue)) {
-            organism.instructionFailed("SETL: Failed to set literal value " + fullLiteralValue + " to DR " + registerIndex + ". Possible invalid register index.");
+            organism.instructionFailed("SETI: Failed to set literal value " + fullLiteralValue + " to DR " + registerIndex + ". Possible invalid register index.");
         }
     }
 }

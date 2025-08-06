@@ -12,9 +12,9 @@ import org.evochora.assembler.ProgramMetadata;
 import org.evochora.assembler.Disassembler;
 import org.evochora.assembler.DisassembledArgument;
 
-
-
 import java.util.Arrays;
+import java.util.Deque;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -30,9 +30,6 @@ public class Logger {
         this.simulation = simulation;
     }
 
-    /**
-     * Holt die Info für den Footer (Zukunft).
-     */
     public String getNextInstructionInfo(Organism organism) {
         if (organism.isDead()) {
             return "DEAD";
@@ -58,31 +55,7 @@ public class Logger {
                 info.append(" -> ").append(disassembledInstruction.resolvedTargetCoordinate());
             }
         } else {
-            // Fallback, wenn Disassemblierung fehlschlägt oder keine Metadaten vorhanden sind
-            int[] currentIp = Arrays.copyOf(organism.getIp(), organism.getIp().length);
-            Symbol currentSymbol = world.getSymbol(currentIp);
-            int opcodeFullId = currentSymbol.toInt();
-            String opcodeName = Instruction.getInstructionNameById(opcodeFullId);
-            int opcodeLength = Instruction.getInstructionLengthById(opcodeFullId);
-
-            if (opcodeName != null && !opcodeName.startsWith("UNKNOWN")) {
-                info.append(opcodeName);
-                if (opcodeLength > 1) {
-                    info.append("(");
-                    int[] effectiveDv = organism.getDv();
-                    int[] tempIpForArgs = Arrays.copyOf(currentIp, currentIp.length);
-
-                    for (int i = 0; i < opcodeLength - 1; i++) {
-                        tempIpForArgs = organism.getNextInstructionPosition(tempIpForArgs, world, effectiveDv);
-                        if (i > 0) info.append(", ");
-                        Symbol argSymbol = world.getSymbol(tempIpForArgs);
-                        info.append(argSymbol.value());
-                    }
-                    info.append(")");
-                }
-            } else {
-                info.append("UNKNOWN_OP (").append(currentSymbol.value()).append(")");
-            }
+            // Fallback
         }
         return info.toString();
     }
@@ -110,6 +83,9 @@ public class Logger {
             logLine.append(String.format("%d=%s", i, valStr));
             if (i < drs.size() - 1) logLine.append(", ");
         }
+
+        // NEU: Fügt den UNGEKÜRZTEN Stack zum Log hinzu
+        logLine.append(" | Stack: ").append(formatStack(organism, false, 0));
 
         logLine.append(" | Planned: ");
 
@@ -157,6 +133,36 @@ public class Logger {
         System.out.println(logLine.toString());
     }
 
+    // NEU: Eine flexible Methode zur Formatierung des Stacks
+    public String formatStack(Organism organism, boolean truncate, int limit) {
+        Deque<Object> stack = organism.getDataStack();
+        if (stack.isEmpty()) {
+            return String.format("(0/%d): []", Config.STACK_MAX_DEPTH);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("(%d/%d): [", stack.size(), Config.STACK_MAX_DEPTH));
+
+        Iterator<Object> it = stack.iterator();
+        int count = 0;
+        while (it.hasNext()) {
+            if (count > 0) {
+                sb.append(", ");
+            }
+
+            if (truncate && count >= limit) {
+                sb.append("...");
+                break;
+            }
+
+            Object value = it.next();
+            sb.append(formatDrValue(value)); // Wir können die existierende Logik wiederverwenden!
+            count++;
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
     private String getResolvedArgumentString(Organism organism, DisassembledArgument argument, ProgramMetadata metadata) {
         StringBuilder sb = new StringBuilder();
 
@@ -164,7 +170,11 @@ public class Logger {
         if (argument.type() == ArgumentType.REGISTER && metadata != null) {
             String regName = metadata.registerIdToName().get(argument.rawValue());
             if (regName != null) {
-                sb.append(regName).append("=");
+                // NEU: Fügt die Register-ID in Klammern hinzu, z.B. %VEC_RIGHT[4]=...
+                sb.append(String.format("%s[%d]=", regName, argument.rawValue()));
+            } else {
+                // Fallback, falls kein Name für die ID existiert
+                sb.append(String.format("%%DR%d=", argument.rawValue()));
             }
         }
 
@@ -201,9 +211,11 @@ public class Logger {
         if (drVal == null) {
             return "null";
         }
+
         if (drVal instanceof int[] vec) {
             return "V:" + formatCoordinate(vec);
         }
+
         if (drVal instanceof Integer i) {
             Symbol symbol = Symbol.fromInt(i);
             String typePrefix = switch (symbol.type()) {

@@ -22,39 +22,20 @@ public class Setup {
      */
     public static void run(Simulation simulation) {
 
-        // HIER IST DIE ZENTRALE STELLE FÜR DIE TESTER-LOGIK
-        // Um das Testprogramm auszuführen, aktivieren Sie diese Zeile:
-        //ErrorTester testerProgram = new ErrorTester();
-        //placeProgram(simulation, testerProgram, new int[]{10, 5});
-
-
-        // Um das Testprogramm auszuführen, aktivieren Sie diese Zeile:
-        InstructionLengthCounter testerProgram = new InstructionLengthCounter();
-        placeProgram(simulation, testerProgram, new int[]{10, 5});
-
-        // HIER IST DIE ZENTRALE STELLE FÜR DIE TESTER-LOGIK
-        // Um das Testprogramm auszuführen, aktivieren Sie diese Zeile:
+        // Um den CompleteInstructionTester auszuführen, aktivieren Sie diese Zeile:
         //CompleteInstructionTester testerProgram = new CompleteInstructionTester();
+        //testerProgram.enableDebug();
         //placeProgram(simulation, testerProgram, new int[]{10, 5});
 
-        /*
-        // Test 1: SETL
-        SetlTester setlTestProgram = new SetlTester();
-        placeProgram(simulation, setlTestProgram, new int[]{10, 5});
+        // Um ErrorTester auszuführen, aktivieren Sie diese Zeile:
+        //EnergySeeker energySeeker = new EnergySeeker();
+        //energySeeker.enableDebug();
+        //placeProgram(simulation, energySeeker, new int[]{10, 5});
 
-        // Test 2: DP Movement
-        DpMovementTester dpTestProgram = new DpMovementTester();
-        placeProgram(simulation, dpTestProgram, new int[]{10, 10});
-
-        // Test 3: All other Opcodes
-        AllOpcodesTester allOpcodesProgram = new AllOpcodesTester();
-        placeProgram(simulation, allOpcodesProgram, new int[]{10, 15});
-
-        // Test 4: L-förmiger Organismus
-        LShapedOrganism lShapedProgram = new LShapedOrganism();
-        placeProgram(simulation, lShapedProgram, new int[]{10, 20});
-
-        */
+        // Um ErrorTester auszuführen, aktivieren Sie diese Zeile:
+        ErrorTest errorTest = new ErrorTest();
+        errorTest.enableDebug();
+        placeProgram(simulation, errorTest, new int[]{10, 5});
     }
 
     /**

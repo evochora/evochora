@@ -10,6 +10,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.BiFunction;
+import java.util.ArrayDeque;
+import java.util.Deque;
+
 
 public class Organism {
     // Hilfsklasse für Fork-Anfragen
@@ -23,6 +26,7 @@ public class Organism {
     private int[] dv;
     private int er;
     private final List<Object> drs;
+    private final Deque<Object> dataStack; // NEU: Das Datenstack-Feld
     private boolean isDead = false;
     private boolean loggingEnabled = false;
     private ForkRequest forkRequestData = null;
@@ -48,6 +52,8 @@ public class Organism {
         for (int i = 0; i < Config.NUM_DATA_REGISTERS; i++) {
             this.drs.add(0);
         }
+        // NEU: Initialisierung des Stacks mit der Kapazität aus der Config
+        this.dataStack = new ArrayDeque<>(Config.STACK_MAX_DEPTH);
         this.ipBeforeFetch = Arrays.copyOf(startIp, startIp.length);
         this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length);
         this.initialPosition = Arrays.copyOf(startIp, startIp.length);
@@ -182,10 +188,35 @@ public class Organism {
     }
 
     void skipNextInstruction(World world) {
-        int[] nextIp = getNextInstructionPosition(this.ip, world, this.dv);
-        int opcodeToSkipFullId = world.getSymbol(nextIp).toInt();
-        int lengthToSkip = Instruction.getInstructionLengthById(Config.TYPE_CODE | opcodeToSkipFullId);
-        advanceIpBy(lengthToSkip, world);
+        // Der IP zeigt aktuell auf den IF-Befehl selbst (z.B. bei Koordinate P1).
+        // Wir müssen den IP auf die Koordinate NACH dem ZU ÜBERSPRINGENDEN Befehl setzen.
+
+        // 1. Finde die Startposition des nächsten Befehls (P2).
+        // Dazu müssen wir vom aktuellen IP (P1) um die Länge des aktuellen IF-Befehls vorrücken.
+        int[] currentInstructionIp = this.getIp();
+        int currentInstructionOpcode = world.getSymbol(currentInstructionIp).toInt();
+        int currentInstructionLength = Instruction.getInstructionLengthById(currentInstructionOpcode);
+
+        int[] nextInstructionIp = currentInstructionIp;
+        for (int i = 0; i < currentInstructionLength; i++) {
+            nextInstructionIp = getNextInstructionPosition(nextInstructionIp, world, this.getDvBeforeFetch());
+        }
+
+        // 2. Finde die Länge des zu überspringenden Befehls (L2), der bei P2 startet.
+        int nextOpcode = world.getSymbol(nextInstructionIp).toInt();
+        int lengthToSkip = Instruction.getInstructionLengthById(nextOpcode);
+
+        // 3. Setze den IP auf die finale Position (P3).
+        // P3 = P2 + L2
+        int[] finalIp = nextInstructionIp;
+        for (int i = 0; i < lengthToSkip; i++) {
+            finalIp = getNextInstructionPosition(finalIp, world, this.getDvBeforeFetch());
+        }
+
+        this.setIp(finalIp);
+
+        // 4. Verhindere das standardmäßige Vorrücken am Ende des Ticks, da wir den IP manuell gesetzt haben.
+        this.setSkipIpAdvance(true);
     }
 
     boolean isUnitVector(int[] vector) {
@@ -233,4 +264,9 @@ public class Organism {
     public int[] getDv() { return Arrays.copyOf(dv, dv.length); }
     public Simulation getSimulation() { return simulation; }
     public int[] getInitialPosition() { return Arrays.copyOf(this.initialPosition, this.initialPosition.length); }
+
+    // NEU: Getter für den Stack, damit die UI und der Logger darauf zugreifen können
+    public Deque<Object> getDataStack() {
+        return this.dataStack;
+    }
 }

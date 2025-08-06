@@ -1,7 +1,6 @@
 // src/main/java/org/evochora/organism/prototypes/CompleteInstructionTester.java
 package org.evochora.organism.prototypes;
 
-import org.evochora.Config;
 import org.evochora.assembler.AssemblyProgram;
 
 public class CompleteInstructionTester extends AssemblyProgram {
@@ -9,245 +8,227 @@ public class CompleteInstructionTester extends AssemblyProgram {
     @Override
     public String getAssemblyCode() {
         return """
-                # Ein umfassendes Testprogramm, das alle Instruktionen testet
-                # Die Ergebnisse werden visuell in der Welt dargestellt.
-                # Marker: 
-                # DATA:1 = Test erfolgreich
-                # DATA:-1 = Test fehlgeschlagen
+                # Finaler, korrekter Test-Organismus mit korrigierter Makro-Logik.
                 
-                .REG %DR_START_TEST 0
-                .REG %DR_END_TEST 1
-                .REG %DR_DELTA 2
+                # --- Register-Definitionen ---
+                .REG %DR_A 0
+                .REG %DR_B 1
+                .REG %DR_C 2
                 .REG %DR_RESULT 3
-                .REG %DR_TEMP 4
-                .REG %DR_TEMP2 5
-                .REG %VEC_UP 6
-                .REG %VEC_RIGHT 7
-                .REG %VEC_DOWN 8
+                .REG %VEC_RIGHT 4
+                .REG %VEC_LEFT 5
+                .REG %VEC_DOWN 6
                 
-                # Lege die Vektoren fest
-                SETV %VEC_UP 0|-1
-                SETV %VEC_RIGHT 1|0
-                SETV %VEC_DOWN 0|1
-                
-                # Beginn der einfachen Tests - pro Zeile ein Test
-                # Der IP bewegt sich horizontal (DV: 1|0)
-                .DIR 1|0
-                
-                JUMP SETUP_JUMP_LOGIC
+                # --- Makro-Definitionen ---
+                .MACRO $ASSERT_LITERAL REGISTER EXPECTED_LITERAL
+                    SETI %DR_RESULT DATA:1
+                    IFI REGISTER EXPECTED_LITERAL
+                    SETI %DR_RESULT DATA:0
+                    # KORREKTUR: Der überflüssige SYNC-Befehl wurde hier entfernt.
+                    SEEK %VEC_LEFT
+                    POKE %DR_RESULT %VEC_LEFT
+                .ENDM
 
-                #################################################################
-                # Test 1: SETL
-                #################################################################
-                TEST_SETL:
-                SETR %DR_START_TEST %DR_START_TEST
-                SETL %DR_TEMP DATA:123
-                IF %DR_TEMP DATA:123
-                JUMP OK_SETL
-                SETL %DR_RESULT DATA:-1
-                JUMP POKE_RESULT
-                OK_SETL:
-                SETL %DR_RESULT DATA:1
-                JUMP POKE_RESULT
+                .MACRO $ASSERT_REG REGISTER_A REGISTER_B
+                    SETI %DR_RESULT DATA:1
+                    IFR REGISTER_A REGISTER_B
+                    SETI %DR_RESULT DATA:0
+                    # KORREKTUR: Der überflüssige SYNC-Befehl wurde hier entfernt.
+                    SEEK %VEC_LEFT
+                    POKE %DR_RESULT %VEC_LEFT
+                .ENDM
+
+                # --- Programmstart & Initialisierung ---
+                .ORG 0|0
+                SETV %VEC_RIGHT 1|0
+                SETV %VEC_LEFT -1|0
+                SETV %VEC_DOWN 0|1
+                JUMP TEST_SETI
+
+                # --- TEST-KETTE ---
                 
-                #################################################################
-                # Test 2: SETR
-                #################################################################
+                .ORG 2|1
+                TEST_SETI:
+                    SYNC # DP wird hier einmal korrekt für den Test positioniert.
+                    .DIR 1|0
+                    SETI %DR_A DATA:123
+                    $ASSERT_LITERAL %DR_A DATA:123
+                    JUMP TEST_SETR
+
+                .ORG 2|3
                 TEST_SETR:
-                SETR %DR_START_TEST %DR_START_TEST
-                SETL %DR_TEMP DATA:456
-                SETR %DR_TEMP2 %DR_TEMP
-                IF %DR_TEMP2 DATA:456
-                JUMP OK_SETR
-                SETL %DR_RESULT DATA:-1
-                JUMP POKE_RESULT
-                OK_SETR:
-                SETL %DR_RESULT DATA:1
-                JUMP POKE_RESULT
+                    SYNC
+                    .DIR 1|0
+                    SETI %DR_B DATA:456
+                    SETR %DR_A %DR_B
+                    $ASSERT_LITERAL %DR_A DATA:456
+                    JUMP TEST_SETV
                 
-                #################################################################
-                # Test 3: SETV
-                #################################################################
+                .ORG 2|5
                 TEST_SETV:
-                SETR %DR_START_TEST %DR_START_TEST
-                SETV %DR_TEMP 5|6
-                SETV %DR_TEMP2 5|6
-                IF %DR_TEMP %DR_TEMP2
-                JUMP OK_SETV
-                SETL %DR_RESULT DATA:-1
-                JUMP POKE_RESULT
-                OK_SETV:
-                SETL %DR_RESULT DATA:1
-                JUMP POKE_RESULT
-                
-                #################################################################
-                # Test 4: ADD
-                #################################################################
+                    SYNC
+                    .DIR 1|0
+                    SETV %DR_A 7|8
+                    SETV %DR_B 7|8
+                    $ASSERT_REG %DR_A %DR_B
+                    JUMP TEST_ADD
+
+                .ORG 2|7
                 TEST_ADD:
-                SETR %DR_START_TEST %DR_START_TEST
-                SETL %DR_TEMP DATA:10
-                SETL %DR_TEMP2 DATA:20
-                ADD %DR_TEMP %DR_TEMP2
-                IF %DR_TEMP DATA:30
-                JUMP OK_ADD
-                SETL %DR_RESULT DATA:-1
-                JUMP POKE_RESULT
-                OK_ADD:
-                SETL %DR_RESULT DATA:1
-                JUMP POKE_RESULT
-                
-                #################################################################
-                # Test 5: SUB
-                #################################################################
+                    SYNC
+                    .DIR 1|0
+                    SETI %DR_A DATA:10
+                    SETI %DR_B DATA:20
+                    ADD %DR_A %DR_B
+                    $ASSERT_LITERAL %DR_A DATA:30
+                    JUMP TEST_SUB
+
+                .ORG 2|9
                 TEST_SUB:
-                SETR %DR_START_TEST %DR_START_TEST
-                SETL %DR_TEMP DATA:30
-                SETL %DR_TEMP2 DATA:15
-                SUB %DR_TEMP %DR_TEMP2
-                IF %DR_TEMP DATA:15
-                JUMP OK_SUB
-                SETL %DR_RESULT DATA:-1
-                JUMP POKE_RESULT
-                OK_SUB:
-                SETL %DR_RESULT DATA:1
-                JUMP POKE_RESULT
-                
-                #################################################################
-                # Test 6: NAND
-                #################################################################
+                    SYNC
+                    .DIR 1|0
+                    SETV %DR_A 5|5
+                    SETV %DR_B 1|2
+                    SUB %DR_A %DR_B
+                    SETV %DR_C 4|3
+                    $ASSERT_REG %DR_A %DR_C
+                    JUMP TEST_NAND
+
+                .ORG 2|11
                 TEST_NAND:
-                SETR %DR_START_TEST %DR_START_TEST
-                SETL %DR_TEMP DATA:5
-                SETL %DR_TEMP2 DATA:3
-                NAND %DR_TEMP %DR_TEMP2
-                # 5 = 0101, 3 = 0011 -> AND = 0001 -> NAND = 1110 = -2
-                IF %DR_TEMP DATA:-2
-                JUMP OK_NAND
-                SETL %DR_RESULT DATA:-1
-                JUMP POKE_RESULT
-                OK_NAND:
-                SETL %DR_RESULT DATA:1
-                JUMP POKE_RESULT
-                
-                #################################################################
-                # Test 7: IF/IFLT/IFGT
-                #################################################################
-                TEST_IF:
-                SETR %DR_START_TEST %DR_START_TEST
-                SETL %DR0 DATA:10
-                SETL %DR1 DATA:10
-                SETL %DR2 DATA:20
-                SETL %DR3 DATA:5
-                
-                # IF
-                IF %DR0 %DR1
-                JUMP TEST_IFLT
-                SETL %DR4 DATA:-1
-                POKE %DR4 %VEC_UP
-                JUMP POKE_RESULT
-                
-                TEST_IFLT:
-                # IFLT
-                IFLT %DR0 %DR2
-                JUMP TEST_IFGT
-                SETL %DR4 DATA:-1
-                POKE %DR4 %VEC_UP
-                JUMP POKE_RESULT
-                
-                TEST_IFGT:
-                # IFGT
-                IFGT %DR0 %DR3
-                JUMP OK_IF
-                SETL %DR4 DATA:-1
-                POKE %DR4 %VEC_UP
-                JUMP POKE_RESULT
-                
-                OK_IF:
-                SETL %DR4 DATA:1
-                POKE %DR4 %VEC_UP
-                JUMP POKE_RESULT
-                
-                #################################################################
-                # Test 8: NRG
-                #################################################################
-                TEST_NRG:
-                SETR %DR_START_TEST %DR_START_TEST
-                NRG %DR_TEMP
-                IF %DR_TEMP DATA:2000
-                JUMP OK_NRG
-                SETL %DR_RESULT DATA:-1
-                JUMP POKE_RESULT
-                OK_NRG:
-                SETL %DR_RESULT DATA:1
-                JUMP POKE_RESULT
-                
-                POKE_RESULT:
-                POKE %DR_RESULT %VEC_UP
-                
-                END_TEST:
-                NOP
-                DIFF %DR_DELTA
-                
-                # Springe zum nächsten Test
-                JUMP -25|1
-                
-                #################################################################
-                # Hier beginnt der Bereich für komplexere Tests
-                #################################################################
-                SETUP_JUMP_LOGIC:
-                # Springe aus der Zeilen-Logik heraus
-                JUMP COMPLEX_TESTS
-                
-                #################################################################
-                # Test 9: TURN
-                # Dieser Test braucht eine separate Zeile, da er den DV ändert
-                #################################################################
-                COMPLEX_TESTS:
-                SETR %DR_START_TEST %DR_START_TEST
-                TURN %VEC_UP
-                NOP
-                DIFF %DR_DELTA
-                SETV %DR_TEMP 0|-1
-                IF %DR_DELTA %DR_TEMP
-                JUMP OK_TURN
-                SETL %DR_RESULT DATA:-1
-                POKE %DR_RESULT %VEC_UP
-                JUMP END_OF_PROGRAM
-                
-                OK_TURN:
-                SETL %DR_RESULT DATA:1
-                POKE %DR_RESULT %VEC_UP
-                
-                #################################################################
-                # Test 10: SYNC/SEEK/PEEK/POKE - Welt-Interaktion
-                # Dieser Test interagiert mit der Welt und braucht Platz
-                #################################################################
-                
-                # Teste POKE
-                .PLACE DATA:0 2|0 # Setze ein leeres DATA-Feld daneben
-                SETR %DR_START_TEST %DR_START_TEST
-                SETL %DR_TEMP DATA:42
-                SEEK %VEC_RIGHT
-                POKE %DR_TEMP %VEC_RIGHT
-                
-                # Teste PEEK
-                SEEK %VEC_RIGHT
-                PEEK %DR_TEMP2 %VEC_UP # Hol den Wert zurück
-                
-                IF %DR_TEMP2 DATA:42
-                JUMP OK_PEEK_POKE
-                SETL %DR_RESULT DATA:-1
-                POKE %DR_RESULT %VEC_DOWN
-                JUMP END_OF_PROGRAM
-                
-                OK_PEEK_POKE:
-                SETL %DR_RESULT DATA:1
-                POKE %DR_RESULT %VEC_DOWN
-                
-                END_OF_PROGRAM:
-                SETL %DR_RESULT DATA:99
-                POKE %DR_RESULT %VEC_DOWN
-                
+                    SYNC
+                    .DIR 1|0
+                    SETI %DR_A DATA:5
+                    SETI %DR_B DATA:3
+                    NAND %DR_A %DR_B
+                    $ASSERT_LITERAL %DR_A DATA:-2
+                    JUMP TEST_PUSHPOP
+
+                .ORG 2|13
+                TEST_PUSHPOP:
+                    SYNC
+                    .DIR 1|0
+                    SETI %DR_A DATA:999
+                    PUSH %DR_A
+                    SETI %DR_A DATA:0
+                    POP %DR_A
+                    $ASSERT_LITERAL %DR_A DATA:999
+                    JUMP TEST_IFS
+
+                .ORG 2|15
+               TEST_IFS:
+                   SYNC
+                   .DIR 1|0
+                   SETI %DR_A DATA:10
+                   SETI %DR_B DATA:20
+                   SETI %DR_RESULT DATA:1
+                   LTR %DR_A %DR_B
+                   SETI %DR_RESULT DATA:0
+                   PUSH %DR_RESULT
+
+                   SETI %DR_RESULT DATA:1
+                   GTI %DR_B DATA:10
+                   SETI %DR_RESULT DATA:0
+
+                   POP %DR_A
+                   ADD %DR_RESULT %DR_A
+
+                   SEEK %VEC_LEFT
+                   POKE %DR_RESULT %VEC_LEFT
+                   JUMP TEST_DIFF
+
+               # --- NEUE TESTS ---
+
+               .ORG 2|17
+               TEST_DIFF:
+                   SYNC # DP = IP
+                   .DIR 1|0
+                   SEEK %VEC_RIGHT # DP = IP + [1,0]
+                   DIFF %DR_A      # DR_A = IP - DP = IP - (IP + [1,0]) = [-1,0]
+                   SETV %DR_B -1|0
+                   $ASSERT_REG %DR_A %DR_B
+                   JUMP TEST_POS
+
+               .ORG 2|19
+               TEST_POS:
+                   # Der Code für diesen Test ist 2 Zellen lang (NOP, POS).
+                   # Der Test startet bei [2,19], der IP ist danach bei [4,19].
+                   # Die Spawn-Position ist [0,0] (Annahme, da .ORG 0|0 am Anfang steht)
+                   # Erwartetes Ergebnis: IP - SPAWN = [4,19] - [0,0] = [4,19]
+                   SYNC
+                   .DIR 1|0
+                   NOP
+                   POS %DR_A
+                   SETV %DR_B 4|19 # Inkrementiert durch den NOP + POS Befehl
+                   $ASSERT_REG %DR_A %DR_B
+                   JUMP TEST_NRG
+
+               .ORG 2|21
+               TEST_NRG:
+                   SYNC
+                   .DIR 1|0
+                   NRG %DR_A # DR_A bekommt die aktuelle Energie
+                   SETI %DR_RESULT DATA:1 # Annahme: Fehlschlag
+                   GTI %DR_A DATA:0       # Teste, ob Energie größer als 0 ist
+                   SETI %DR_RESULT DATA:0
+                   SEEK %VEC_LEFT
+                   POKE %DR_RESULT %VEC_LEFT
+                   JUMP TEST_SCAN
+
+               .ORG 2|23
+               TEST_SCAN:
+                   # Platziere einen Test-Wert rechts neben dem Start
+                   .PLACE DATA:777 2|24
+                   SYNC
+                   .DIR 1|0
+                   SCAN %DR_A %VEC_DOWN
+                   $ASSERT_LITERAL %DR_A DATA:777
+                   JUMP TEST_PEEK
+
+               .ORG 2|25
+               TEST_PEEK:
+                   # Platziere einen Test-Wert
+                   .PLACE ENERGY:50 2|26
+                   SYNC
+                   .DIR 1|0
+                   PEEK %DR_A %VEC_DOWN  # Lese den Wert, Zelle sollte danach leer sein
+
+                   # Test 1: Wurde der richtige Wert gelesen?
+                   $ASSERT_LITERAL %DR_A ENERGY:50
+
+                   # Test 2: Ist die Zelle jetzt leer (CODE:0)?
+                   SCAN %DR_B %VEC_RIGHT
+                   $ASSERT_LITERAL %DR_B CODE:0
+                   JUMP TEST_TURN
+
+               .ORG 2|27
+               TEST_TURN:
+                   # Dieser Test ist räumlich und muss visuell überprüft werden.
+                   # Er schreibt ein "Erfolg"-Zeichen, um zu zeigen, dass er gelaufen ist.
+                   SYNC
+                   .DIR 1|0
+                   # Drehe den Organismus nach unten
+                   TURN %VEC_DOWN
+                   .DIR 0|1
+                   # Der NOP wird jetzt UNTER dem TURN platziert
+                   NOP
+                   TURN %VEC_RIGHT
+                   .DIR 1|0
+                   # Schreibe von der neuen Position [2,28] aus eine Struktur nach rechts,
+                   # um die neue Position des IP visuell zu markieren.
+                   SETI %DR_A STRUCTURE:1
+                   POKE %DR_A %VEC_DOWN
+
+                   # Test als erfolgreich markieren
+                   SETI %DR_RESULT DATA:0
+                   SEEK %VEC_LEFT
+                   POKE %DR_RESULT %VEC_LEFT
+                   JUMP END_OF_ALL_TESTS
+
+               # --- Ende der Tests ---
+               .ORG 0|31 # Etwas mehr Platz gelassen
+               END_OF_ALL_TESTS:
+               NOP
                 """;
     }
 }

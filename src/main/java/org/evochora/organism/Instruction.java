@@ -26,13 +26,13 @@ public abstract class Instruction {
     public static void init() {
         try {
             Class.forName(NopInstruction.class.getName());
-            Class.forName(SetlInstruction.class.getName());
+            Class.forName(SetiInstruction.class.getName());
             Class.forName(SetrInstruction.class.getName());
             Class.forName(SetvInstruction.class.getName());
             Class.forName(AddInstruction.class.getName());
             Class.forName(SubInstruction.class.getName());
             Class.forName(NandInstruction.class.getName());
-            Class.forName(IfInstruction.class.getName());
+            Class.forName(IfiInstruction.class.getName());
             Class.forName(JmpInstruction.class.getName());
             Class.forName(JmprInstruction.class.getName());
             Class.forName(TurnInstruction.class.getName());
@@ -45,6 +45,11 @@ public abstract class Instruction {
             Class.forName(ForkInstruction.class.getName());
             Class.forName(DiffInstruction.class.getName());
             Class.forName(PosInstruction.class.getName());
+            Class.forName(PushInstruction.class.getName());
+            Class.forName(PopInstruction.class.getName());
+            Class.forName(IfiInstruction.class.getName());
+            Class.forName(IfrInstruction.class.getName());
+            Class.forName(IftiInstruction.class.getName());
 
         } catch (ClassNotFoundException e) {
             System.err.println("Fehler beim Initialisieren des Befehlssatzes.");

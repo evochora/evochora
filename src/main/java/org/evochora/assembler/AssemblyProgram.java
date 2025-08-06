@@ -16,7 +16,17 @@ public abstract class AssemblyProgram {
     protected ProgramMetadata metadata;
     protected Map<int[], Symbol> initialWorldObjects;
 
+    // NEU: Ein Flag, um den Debug-Modus für diese spezifische Assemblierung zu steuern
+    private boolean isDebugEnabled = false;
+
     public abstract String getAssemblyCode();
+
+    // NEU: Eine "fluent" Methode, um den Debug-Modus von außen zu aktivieren.
+    // Beispiel: new MyTestProgram().enableDebug().assemble();
+    public AssemblyProgram enableDebug() {
+        this.isDebugEnabled = true;
+        return this;
+    }
 
     public Map<int[], Integer> assemble() {
         if (this.metadata != null) {
@@ -24,7 +34,10 @@ public abstract class AssemblyProgram {
         }
 
         Assembler assembler = new Assembler();
-        this.metadata = assembler.assemble(getAssemblyCode());
+        String programName = this.getClass().getSimpleName();
+
+        // GEÄNDERT: Übergibt den Programmnamen und den Debug-Status an den Assembler
+        this.metadata = assembler.assemble(getAssemblyCode(), programName, this.isDebugEnabled);
 
         if (this.metadata == null) {
             throw new IllegalStateException("Assembler hat null zurückgegeben. Assemblierung fehlgeschlagen.");
@@ -57,12 +70,6 @@ public abstract class AssemblyProgram {
         return programIdToMetadata.get(programId);
     }
 
-    // --- HIER SIND DIE ÄNDERUNGEN ---
-
-    /**
-     * Disassembliert die Instruktion für den NÄCHSTEN Tick (für den Footer).
-     * Verwendet den aktuellen IP/DV.
-     */
     public static DisassembledInstruction getDisassembledInstructionDetailsForNextTick(Organism organism) {
         World world = organism.getSimulation().getWorld();
         int[] ip = organism.getIp();
@@ -80,10 +87,6 @@ public abstract class AssemblyProgram {
         }
     }
 
-    /**
-     * Disassembliert die Instruktion des LETZTEN Ticks (für das Log).
-     * Verwendet ipBeforeFetch/dvBeforeFetch.
-     */
     public static DisassembledInstruction getDisassembledInstructionDetailsForLastTick(Organism organism) {
         World world = organism.getSimulation().getWorld();
         int[] ip = organism.getIpBeforeFetch();

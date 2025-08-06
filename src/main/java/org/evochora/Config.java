@@ -19,7 +19,8 @@ public final class Config {
     public static final boolean STRICT_TYPING = true;
 
     // Organism Settings
-    public static final int NUM_DATA_REGISTERS = 16;
+    public static final int NUM_DATA_REGISTERS = 8; // Geändert von 16 auf 8
+    public static final int STACK_MAX_DEPTH = 1024; // Neu: Maximaltiefe des Stacks als Sicherheitsnetz
 
     // Graphics Settings
     public static final int CELL_SIZE = 22;
@@ -46,8 +47,8 @@ public final class Config {
     public static final Color COLOR_ENERGY_TEXT = Color.rgb(50, 50, 50);
 
     // --- Cell Type Definition (Dynamisch konfigurierbar) ---
-    public static final int VALUE_BITS = 12;
-    public static final int TYPE_BITS = 4;
+    public static final int VALUE_BITS = 8;
+    public static final int TYPE_BITS = 2;
 
     public static final int TYPE_SHIFT = VALUE_BITS;
     public static final int TYPE_MASK = ((1 << TYPE_BITS) - 1) << TYPE_SHIFT;
