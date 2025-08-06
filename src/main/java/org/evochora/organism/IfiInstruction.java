@@ -13,13 +13,12 @@ import java.util.Map;
 
 public class IfiInstruction extends Instruction {
 
-    // Neue IDs für die "Immediate/Literal"-Varianten
     public static final int ID_IFI = 24;
     public static final int ID_LTI = 25;
     public static final int ID_GTI = 26;
 
     private final int reg1;
-    private final int literalValue; // Das zweite Argument ist jetzt ein voller Integer-Wert
+    private final int literalValue;
     private final int fullOpcodeId;
 
     public IfiInstruction(Organism o, int r1, int literal, int fullOpcodeId) {
@@ -30,20 +29,16 @@ public class IfiInstruction extends Instruction {
     }
 
     static {
-        // Registriere alle drei neuen Befehle
         Instruction.registerInstruction(IfiInstruction.class, ID_IFI, "IFI", 3, IfiInstruction::plan, IfiInstruction::assemble);
-        Instruction.registerInstruction(IfiInstruction.class, ID_LTI, "LTI", 3, IfiInstruction::plan, IfiInstruction::assemble);
-        Instruction.registerInstruction(IfiInstruction.class, ID_GTI, "GTI", 3, IfiInstruction::plan, IfiInstruction::assemble);
-
-        // Die Argumenttypen sind für alle drei gleich
         Instruction.registerArgumentTypes(ID_IFI, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.LITERAL));
+        Instruction.registerInstruction(IfiInstruction.class, ID_LTI, "LTI", 3, IfiInstruction::plan, IfiInstruction::assemble);
         Instruction.registerArgumentTypes(ID_LTI, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.LITERAL));
+        Instruction.registerInstruction(IfiInstruction.class, ID_GTI, "GTI", 3, IfiInstruction::plan, IfiInstruction::assemble);
         Instruction.registerArgumentTypes(ID_GTI, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.LITERAL));
     }
 
     @Override
     public String getName() {
-        // Gibt den korrekten Namen basierend auf der ID zurück (IFI, LTI, oder GTI)
         return Instruction.getInstructionNameById(fullOpcodeId);
     }
 
@@ -72,15 +67,12 @@ public class IfiInstruction extends Instruction {
     public static Instruction plan(Organism organism, World world) {
         int fullOpcodeId = world.getSymbol(organism.getIp()).toInt();
 
-        // Lese das erste Argument (Register-Index)
-        Organism.FetchResult result1 = organism.fetchArgument(organism.getIp(), world);
-        int r1 = result1.value();
+        // KORRIGIERT: Manuelles Vorrücken, um die Argumente korrekt zu lesen.
+        int[] ipAtOpcode = organism.getIp();
+        int[] firstArgIp = organism.getNextInstructionPosition(ipAtOpcode, world, organism.getDvBeforeFetch());
+        int r1 = world.getSymbol(firstArgIp).value();
 
-        // KORREKTUR: Berechne die Position des ZWEITEN Arguments
-        int[] firstArgIp = result1.nextIp();
         int[] secondArgIp = organism.getNextInstructionPosition(firstArgIp, world, organism.getDvBeforeFetch());
-
-        // Lese den Literal-Wert von der Position des ZWEITEN Arguments
         int literal = world.getSymbol(secondArgIp).toInt();
 
         return new IfiInstruction(organism, r1, literal, fullOpcodeId);
@@ -122,7 +114,6 @@ public class IfiInstruction extends Instruction {
     public void execute(Simulation simulation) {
         Object val1Obj = organism.getDr(reg1);
 
-        // Fehler, wenn das Register einen Vektor enthält
         if (val1Obj instanceof int[]) {
             organism.instructionFailed(getName() + ": Register " + reg1 + " enthält einen Vektor, was für Vergleiche nicht erlaubt ist.");
             return;
@@ -136,7 +127,6 @@ public class IfiInstruction extends Instruction {
         Symbol s1 = Symbol.fromInt(v1Raw);
         Symbol s2 = Symbol.fromInt(this.literalValue);
 
-        // Beachtung von Config.STRICT_TYPING
         if (Config.STRICT_TYPING) {
             if (s1.type() != s2.type()) {
                 organism.instructionFailed(getName() + ": Typen stimmen im strikten Modus nicht überein. Reg " + reg1 + " hat Typ " + s1.type() + ", Literal hat Typ " + s2.type() + ".");
@@ -144,7 +134,6 @@ public class IfiInstruction extends Instruction {
             }
         }
 
-        // Führe den eigentlichen Vergleich durch
         performComparison(s1.toScalarValue(), s2.toScalarValue());
     }
 

@@ -43,7 +43,7 @@ public class CompleteInstructionTester extends AssemblyProgram {
                 SETV %VEC_RIGHT 1|0
                 SETV %VEC_LEFT -1|0
                 SETV %VEC_DOWN 0|1
-                JUMP TEST_SETI
+                JMPI TEST_SETI
 
                 # --- TEST-KETTE ---
                 
@@ -53,7 +53,7 @@ public class CompleteInstructionTester extends AssemblyProgram {
                     .DIR 1|0
                     SETI %DR_A DATA:123
                     $ASSERT_LITERAL %DR_A DATA:123
-                    JUMP TEST_SETR
+                    JMPI TEST_SETR
 
                 .ORG 2|3
                 TEST_SETR:
@@ -62,7 +62,7 @@ public class CompleteInstructionTester extends AssemblyProgram {
                     SETI %DR_B DATA:456
                     SETR %DR_A %DR_B
                     $ASSERT_LITERAL %DR_A DATA:456
-                    JUMP TEST_SETV
+                    JMPI TEST_SETV
                 
                 .ORG 2|5
                 TEST_SETV:
@@ -71,7 +71,7 @@ public class CompleteInstructionTester extends AssemblyProgram {
                     SETV %DR_A 7|8
                     SETV %DR_B 7|8
                     $ASSERT_REG %DR_A %DR_B
-                    JUMP TEST_ADD
+                    JMPI TEST_ADD
 
                 .ORG 2|7
                 TEST_ADD:
@@ -81,7 +81,7 @@ public class CompleteInstructionTester extends AssemblyProgram {
                     SETI %DR_B DATA:20
                     ADD %DR_A %DR_B
                     $ASSERT_LITERAL %DR_A DATA:30
-                    JUMP TEST_SUB
+                    JMPI TEST_SUB
 
                 .ORG 2|9
                 TEST_SUB:
@@ -92,7 +92,7 @@ public class CompleteInstructionTester extends AssemblyProgram {
                     SUB %DR_A %DR_B
                     SETV %DR_C 4|3
                     $ASSERT_REG %DR_A %DR_C
-                    JUMP TEST_NAND
+                    JMPI TEST_NAND
 
                 .ORG 2|11
                 TEST_NAND:
@@ -102,7 +102,7 @@ public class CompleteInstructionTester extends AssemblyProgram {
                     SETI %DR_B DATA:3
                     NAND %DR_A %DR_B
                     $ASSERT_LITERAL %DR_A DATA:-2
-                    JUMP TEST_PUSHPOP
+                    JMPI TEST_PUSHPOP
 
                 .ORG 2|13
                 TEST_PUSHPOP:
@@ -113,7 +113,7 @@ public class CompleteInstructionTester extends AssemblyProgram {
                     SETI %DR_A DATA:0
                     POP %DR_A
                     $ASSERT_LITERAL %DR_A DATA:999
-                    JUMP TEST_IFS
+                    JMPI TEST_IFS
 
                 .ORG 2|15
                TEST_IFS:
@@ -135,7 +135,7 @@ public class CompleteInstructionTester extends AssemblyProgram {
 
                    SEEK %VEC_LEFT
                    POKE %DR_RESULT %VEC_LEFT
-                   JUMP TEST_DIFF
+                   JMPI TEST_DIFF
 
                # --- NEUE TESTS ---
 
@@ -147,7 +147,7 @@ public class CompleteInstructionTester extends AssemblyProgram {
                    DIFF %DR_A      # DR_A = IP - DP = IP - (IP + [1,0]) = [-1,0]
                    SETV %DR_B -1|0
                    $ASSERT_REG %DR_A %DR_B
-                   JUMP TEST_POS
+                   JMPI TEST_POS
 
                .ORG 2|19
                TEST_POS:
@@ -161,7 +161,7 @@ public class CompleteInstructionTester extends AssemblyProgram {
                    POS %DR_A
                    SETV %DR_B 4|19 # Inkrementiert durch den NOP + POS Befehl
                    $ASSERT_REG %DR_A %DR_B
-                   JUMP TEST_NRG
+                   JMPI TEST_NRG
 
                .ORG 2|21
                TEST_NRG:
@@ -173,7 +173,7 @@ public class CompleteInstructionTester extends AssemblyProgram {
                    SETI %DR_RESULT DATA:0
                    SEEK %VEC_LEFT
                    POKE %DR_RESULT %VEC_LEFT
-                   JUMP TEST_SCAN
+                   JMPI TEST_SCAN
 
                .ORG 2|23
                TEST_SCAN:
@@ -183,7 +183,7 @@ public class CompleteInstructionTester extends AssemblyProgram {
                    .DIR 1|0
                    SCAN %DR_A %VEC_DOWN
                    $ASSERT_LITERAL %DR_A DATA:777
-                   JUMP TEST_PEEK
+                   JMPI TEST_PEEK
 
                .ORG 2|25
                TEST_PEEK:
@@ -199,7 +199,7 @@ public class CompleteInstructionTester extends AssemblyProgram {
                    # Test 2: Ist die Zelle jetzt leer (CODE:0)?
                    SCAN %DR_B %VEC_RIGHT
                    $ASSERT_LITERAL %DR_B CODE:0
-                   JUMP TEST_TURN
+                   JMPI TEST_TURN
 
                .ORG 2|27
                TEST_TURN:
@@ -223,7 +223,7 @@ public class CompleteInstructionTester extends AssemblyProgram {
                    SETI %DR_RESULT DATA:0
                    SEEK %VEC_LEFT
                    POKE %DR_RESULT %VEC_LEFT
-                   JUMP END_OF_ALL_TESTS
+                   JMPI END_OF_ALL_TESTS
 
                # --- Ende der Tests ---
                .ORG 0|31 # Etwas mehr Platz gelassen

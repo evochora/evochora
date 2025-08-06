@@ -151,13 +151,13 @@ class AssemblerTest {
     void testInvalidInstructionArguments() {
         String code = """
                 .ORG 0|0
-                JUMP UNKNOWN_LABEL
+                JMPI UNKNOWN_LABEL
                 """;
 
         Assembler assembler = new Assembler();
         AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(code, "TestInvalidArguments", false));
 
-        Assertions.assertTrue(exception.getMessage().contains("JUMP erwartet ein Register oder Label."), "Die Fehlermeldung sollte auf ungültige Argumente hinweisen.");
+        Assertions.assertTrue(exception.getMessage().contains("Label 'UNKNOWN_LABEL' nicht in der Label-Map gefunden."), "Die Fehlermeldung sollte auf ein ungültiges Label hinweisen.");
     }
 
     private Integer findValueAtCoordinate(Map<int[], Integer> map, int[] coord) {

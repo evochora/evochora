@@ -33,8 +33,8 @@ public abstract class Instruction {
             Class.forName(SubInstruction.class.getName());
             Class.forName(NandInstruction.class.getName());
             Class.forName(IfiInstruction.class.getName());
-            Class.forName(JmpInstruction.class.getName());
-            Class.forName(JmprInstruction.class.getName());
+            Class.forName(JmprInstruction.class.getName()); // GEÄNDERT: Alte JmpInstruction entfernt
+            Class.forName(JmpiInstruction.class.getName()); // GEÄNDERT: Alte JmprInstruction durch JmpiInstruction ersetzt
             Class.forName(TurnInstruction.class.getName());
             Class.forName(SeekInstruction.class.getName());
             Class.forName(SyncInstruction.class.getName());

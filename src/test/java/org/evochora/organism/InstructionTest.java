@@ -9,8 +9,8 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
 import java.util.Arrays;
+import java.util.Map;
 
 public class InstructionTest {
 
@@ -37,14 +37,14 @@ public class InstructionTest {
         organism.setDr(0, new Symbol(Config.TYPE_DATA, 10).toInt());
 
         world.setSymbol(new Symbol(Config.TYPE_CODE, IfiInstruction.ID_IFI), 0, 0);
-        world.setSymbol(new Symbol(Config.TYPE_DATA, 0), 0, 1);
-        world.setSymbol(new Symbol(Config.TYPE_DATA, new Symbol(Config.TYPE_DATA, 10).toInt()), 0, 2);
-        world.setSymbol(new Symbol(Config.TYPE_CODE, NopInstruction.ID), 0, 3);
+        world.setSymbol(new Symbol(Config.TYPE_DATA, 0), 1, 0);
+        world.setSymbol(new Symbol(Config.TYPE_DATA, new Symbol(Config.TYPE_DATA, 10).toInt()), 2, 0);
+        world.setSymbol(new Symbol(Config.TYPE_CODE, NopInstruction.ID), 3, 0);
 
         Instruction ifi = IfiInstruction.plan(organism, world);
         organism.processTickAction(ifi, simulation);
 
-        Assertions.assertArrayEquals(new int[]{0, 3}, organism.getIp());
+        Assertions.assertArrayEquals(new int[]{3, 0}, organism.getIp());
     }
 
     @Test
@@ -52,13 +52,33 @@ public class InstructionTest {
         organism.setDr(0, new Symbol(Config.TYPE_DATA, 10).toInt());
 
         world.setSymbol(new Symbol(Config.TYPE_CODE, IfiInstruction.ID_IFI), 0, 0);
-        world.setSymbol(new Symbol(Config.TYPE_DATA, 0), 0, 1);
-        world.setSymbol(new Symbol(Config.TYPE_DATA, new Symbol(Config.TYPE_DATA, 20).toInt()), 0, 2);
-        world.setSymbol(new Symbol(Config.TYPE_CODE, NopInstruction.ID), 0, 3);
+        world.setSymbol(new Symbol(Config.TYPE_DATA, 0), 1, 0);
+        world.setSymbol(new Symbol(Config.TYPE_DATA, new Symbol(Config.TYPE_DATA, 20).toInt()), 2, 0);
+        world.setSymbol(new Symbol(Config.TYPE_CODE, NopInstruction.ID), 3, 0);
+        world.setSymbol(new Symbol(Config.TYPE_CODE, NopInstruction.ID), 4, 0);
 
         Instruction ifi = IfiInstruction.plan(organism, world);
         organism.processTickAction(ifi, simulation);
 
-        Assertions.assertArrayEquals(new int[]{0, 4}, organism.getIp());
+        Assertions.assertArrayEquals(new int[]{4, 0}, organism.getIp());
+    }
+
+    @Test
+    void testJmprInstruction_JumpWithRegister() {
+        // Platziere JMPR an Koordinate (0,0)
+        world.setSymbol(new Symbol(Config.TYPE_CODE, JmprInstruction.ID), 0, 0);
+        // Argument ist Register 0
+        world.setSymbol(new Symbol(Config.TYPE_DATA, 0), 1, 0);
+
+        // Setze einen Vektor im Register 0, der einen Sprung von 5 Einheiten nach rechts auslöst
+        int[] jumpVector = {5, 0};
+        organism.setDr(0, jumpVector);
+
+        // Führe den JMPR Befehl aus
+        Instruction jmpr = JmprInstruction.plan(organism, world);
+        organism.processTickAction(jmpr, simulation);
+
+        // Erwartete Position nach dem Sprung: ipBeforeFetch (0,0) + jumpVector (5,0) = (5,0)
+        Assertions.assertArrayEquals(new int[]{5, 0}, organism.getIp());
     }
 }

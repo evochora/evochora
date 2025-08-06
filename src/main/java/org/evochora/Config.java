@@ -8,7 +8,7 @@ public final class Config {
     private Config() {}
 
     // World Settings
-    public static final int[] WORLD_SHAPE = {80, 40};
+    public static final int[] WORLD_SHAPE = {200, 40};
     public static final boolean IS_TOROIDAL = true;
     public static final int WORLD_DIMENSIONS = WORLD_SHAPE.length;
 
@@ -47,8 +47,8 @@ public final class Config {
     public static final Color COLOR_ENERGY_TEXT = Color.rgb(50, 50, 50);
 
     // --- Cell Type Definition (Dynamisch konfigurierbar) ---
-    public static final int VALUE_BITS = 8;
-    public static final int TYPE_BITS = 2;
+    public static final int VALUE_BITS = 12;
+    public static final int TYPE_BITS = 4;
 
     public static final int TYPE_SHIFT = VALUE_BITS;
     public static final int TYPE_MASK = ((1 << TYPE_BITS) - 1) << TYPE_SHIFT;

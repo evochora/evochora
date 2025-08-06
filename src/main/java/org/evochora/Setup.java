@@ -23,14 +23,14 @@ public class Setup {
     public static void run(Simulation simulation) {
 
         // Um den CompleteInstructionTester auszuführen, aktivieren Sie diese Zeile:
-        CompleteInstructionTester testerProgram = new CompleteInstructionTester();
-        testerProgram.enableDebug();
-        placeProgram(simulation, testerProgram, new int[]{10, 5});
+        //CompleteInstructionTester testerProgram = new CompleteInstructionTester();
+        //testerProgram.enableDebug();
+        //placeProgram(simulation, testerProgram, new int[]{10, 5});
 
         // Um ErrorTester auszuführen, aktivieren Sie diese Zeile:
-        //EnergySeeker energySeeker = new EnergySeeker();
-        //energySeeker.enableDebug();
-        //placeProgram(simulation, energySeeker, new int[]{10, 5});
+        EnergySeeker energySeeker = new EnergySeeker();
+        energySeeker.enableDebug();
+        placeProgram(simulation, energySeeker, new int[]{1, 10});
 
         // Um ErrorTester auszuführen, aktivieren Sie diese Zeile:
         //ErrorTest errorTest = new ErrorTest();

@@ -83,22 +83,38 @@ public class SetvInstruction extends Instruction {
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 2) throw new IllegalArgumentException("SETV erwartet 2 Argumente: %REG WERT1|WERT2|...");
+        if (args.length != 2) {
+            throw new IllegalArgumentException("SETV erwartet 2 Argumente: %REG WERT1|WERT2|...");
+        }
         List<Integer> machineCode = new ArrayList<>();
 
-        // KORRIGIERT: Typ von regId wurde auf Integer geändert
         Integer regId = registerMap.get(args[0].toUpperCase());
         if (regId == null) {
             throw new IllegalArgumentException("Ungültiges Register-Argument: " + args[0]);
         }
+        // KORRIGIERT: Der Register-Index wird hier nicht zum Maschinencode hinzugefügt
+        // Er wird stattdessen mit dem Label-Namen zusammen in einer Anfrage zurückgegeben
+
+        String vectorArg = args[1];
+
+        if (labelMap.containsKey(vectorArg.toUpperCase())) {
+            return new AssemblerOutput.LabelToVectorRequest(vectorArg, regId);
+        }
+
+        // Bestehende Logik zum Parsen eines Vektor-Literals
+        String[] vectorComponents = vectorArg.split("\\|");
+        if (vectorComponents.length != Config.WORLD_DIMENSIONS) {
+            throw new IllegalArgumentException(String.format("Falsche Vektor-Dimensionalität in '%s'. Erwartet %d, gefunden %d.", vectorArg, Config.WORLD_DIMENSIONS, vectorComponents.length));
+        }
+
         machineCode.add(new Symbol(Config.TYPE_DATA, regId).toInt());
-
-        String[] vectorComponents = args[1].split("\\|");
-        if (vectorComponents.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("Falsche Vektor-Dimensionalität. Erwartet " + Config.WORLD_DIMENSIONS + ", gefunden " + vectorComponents.length + ".");
-
         for (String component : vectorComponents) {
-            int value = Integer.parseInt(component.strip());
-            machineCode.add(new Symbol(Config.TYPE_DATA, value).toInt());
+            try {
+                int value = Integer.parseInt(component.strip());
+                machineCode.add(new Symbol(Config.TYPE_DATA, value).toInt());
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Vektor-Komponente ist keine gültige Zahl: " + component);
+            }
         }
         return new AssemblerOutput.CodeSequence(machineCode);
     }

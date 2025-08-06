@@ -38,7 +38,7 @@ public class NrgInstruction extends Instruction {
 
     @Override
     protected int getFixedBaseCost() {
-        return 0;
+        return 1;
     }
 
     @Override
@@ -55,7 +55,6 @@ public class NrgInstruction extends Instruction {
     }
 
     public static Instruction plan(Organism organism, World world) {
-        // GEÄNDERT: Neue Logik mit FetchResult für ein Argument
         Organism.FetchResult result = organism.fetchArgument(organism.getIp(), world);
         int tr = result.value();
         return new NrgInstruction(organism, tr);
@@ -78,7 +77,9 @@ public class NrgInstruction extends Instruction {
 
     @Override
     public void execute(Simulation simulation) {
-        if (!organism.setDr(targetReg, organism.getEr())) {
+        // KORRIGIERT: Erstellt einen neuen Symbol-Wert mit dem Typ DATA
+        // um Konsistenz mit dem Schwellenwert zu gewährleisten.
+        if (!organism.setDr(targetReg, new Symbol(Config.TYPE_DATA, organism.getEr()).toInt())) {
             organism.instructionFailed("NRG: Failed to set energy to DR " + targetReg + ". Possible invalid register index.");
         }
     }

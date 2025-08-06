@@ -58,14 +58,13 @@ public class SetrInstruction extends Instruction {
     }
 
     public static Instruction plan(Organism organism, World world) {
-        // GEÄNDERT: Neue Logik mit FetchResult
-        // Erstes Argument (Ziel-Register) lesen
-        Organism.FetchResult result1 = organism.fetchArgument(organism.getIp(), world);
-        int dest = result1.value();
+        // KORRIGIERT: Manuelles Vorrücken, um die Argumente korrekt zu lesen.
+        int[] ipAtOpcode = organism.getIp();
+        int[] firstArgIp = organism.getNextInstructionPosition(ipAtOpcode, world, organism.getDvBeforeFetch());
+        int dest = world.getSymbol(firstArgIp).value();
 
-        // Zweites Argument (Quell-Register) lesen, startend bei der Position des ersten Arguments
-        Organism.FetchResult result2 = organism.fetchArgument(result1.nextIp(), world);
-        int src = result2.value();
+        int[] secondArgIp = organism.getNextInstructionPosition(firstArgIp, world, organism.getDvBeforeFetch());
+        int src = world.getSymbol(secondArgIp).value();
 
         return new SetrInstruction(organism, dest, src);
     }

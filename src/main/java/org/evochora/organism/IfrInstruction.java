@@ -14,7 +14,6 @@ import java.util.Arrays;
 
 public class IfrInstruction extends Instruction {
 
-    // Wir verwenden die ursprünglichen IDs der mehrdeutigen IF-Befehle wieder
     public static final int ID_IFR = 7;
     public static final int ID_LTR = 8;
     public static final int ID_GTR = 9;
@@ -31,13 +30,11 @@ public class IfrInstruction extends Instruction {
     }
 
     static {
-        // Registriere die drei Register-Register-Vergleichsbefehle
         Instruction.registerInstruction(IfrInstruction.class, ID_IFR, "IFR", 3, IfrInstruction::plan, IfrInstruction::assemble);
-        Instruction.registerInstruction(IfrInstruction.class, ID_LTR, "LTR", 3, IfrInstruction::plan, IfrInstruction::assemble);
-        Instruction.registerInstruction(IfrInstruction.class, ID_GTR, "GTR", 3, IfrInstruction::plan, IfrInstruction::assemble);
-
         Instruction.registerArgumentTypes(ID_IFR, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER));
+        Instruction.registerInstruction(IfrInstruction.class, ID_LTR, "LTR", 3, IfrInstruction::plan, IfrInstruction::assemble);
         Instruction.registerArgumentTypes(ID_LTR, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER));
+        Instruction.registerInstruction(IfrInstruction.class, ID_GTR, "GTR", 3, IfrInstruction::plan, IfrInstruction::assemble);
         Instruction.registerArgumentTypes(ID_GTR, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER));
     }
 
@@ -71,14 +68,14 @@ public class IfrInstruction extends Instruction {
     public static Instruction plan(Organism organism, World world) {
         int fullOpcodeId = world.getSymbol(organism.getIp()).toInt();
 
-        // Lese das erste Argument
-        Organism.FetchResult result1 = organism.fetchArgument(organism.getIp(), world);
-        int r1 = result1.value();
+        int[] ipAtOpcode = organism.getIp();
 
-        // KORREKTUR: Lese das zweite Argument explizit von der Position nach dem ersten.
-        int[] nextIp = organism.getNextInstructionPosition(result1.nextIp(), world, organism.getDvBeforeFetch());
-        Organism.FetchResult result2 = organism.fetchArgument(nextIp, world);
-        int r2 = result2.value();
+        // KORRIGIERT: Manuelles Vorrücken, um die Argumente korrekt zu lesen.
+        int[] firstArgIp = organism.getNextInstructionPosition(ipAtOpcode, world, organism.getDvBeforeFetch());
+        int r1 = world.getSymbol(firstArgIp).value();
+
+        int[] secondArgIp = organism.getNextInstructionPosition(firstArgIp, world, organism.getDvBeforeFetch());
+        int r2 = world.getSymbol(secondArgIp).value();
 
         return new IfrInstruction(organism, r1, r2, fullOpcodeId);
     }
@@ -87,10 +84,13 @@ public class IfrInstruction extends Instruction {
         if (args.length != 2) throw new IllegalArgumentException( "IFR/LTR/GTR erwarten genau 2 Register-Argumente: %REG1 %REG2");
 
         Integer reg1Id = registerMap.get(args[0].toUpperCase());
-        Integer reg2Id = registerMap.get(args[1].toUpperCase());
+        if (reg1Id == null) {
+            throw new IllegalArgumentException(String.format("Ungültiges Register-Argument für Reg1: '%s' (erwartet: Registername).", args[0]));
+        }
 
-        if (reg1Id == null || reg2Id == null) {
-            throw new IllegalArgumentException(String.format("Ungültiges Register-Argument. Reg1: '%s', Reg2: '%s'", args[0], args[1]));
+        Integer reg2Id = registerMap.get(args[1].toUpperCase());
+        if (reg2Id == null) {
+            throw new IllegalArgumentException(String.format("Ungültiges Register-Argument für Reg2: '%s' (erwartet: Registername).", args[1]));
         }
 
         return new AssemblerOutput.CodeSequence(List.of(
@@ -104,12 +104,11 @@ public class IfrInstruction extends Instruction {
         Object val1Obj = organism.getDr(reg1);
         Object val2Obj = organism.getDr(reg2);
 
-        // KORREKTUR: Vektor-Vergleich erlauben
         if (val1Obj instanceof int[] v1 && val2Obj instanceof int[] v2) {
             if (Arrays.equals(v1, v2)) {
-                performComparison(1, 1); // Simuliert Gleichheit
+                performComparison(1, 1);
             } else {
-                performComparison(1, 2); // Simuliert Ungleichheit
+                performComparison(1, 2);
             }
             return;
         }

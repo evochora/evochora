@@ -1,4 +1,4 @@
-// In einer neuen Datei, z.B. ErrorTest.java
+// src/main/java/org/evochora/organism/prototypes/EnergySeeker.java
 package org.evochora.organism.prototypes;
 
 import org.evochora.assembler.AssemblyProgram;
@@ -15,26 +15,27 @@ public class EnergySeeker extends AssemblyProgram {
                               .REG %DR_THRESHOLD 3
                               .REG %DR_RETURN 4
                 
-                              # --- Makro zum Scannen und Aufnehmen eines Feldes (unverändert) ---
-                              .MACRO $SCAN_AND_PEEK_FIELD %SEARCH_VEC
-                                  SCAN %DR_TMP %SEARCH_VEC
+                              # --- Makro zum Scannen und Aufnehmen eines Feldes (korrigiert) ---
+                              .MACRO $SCAN_AND_PEEK_FIELD %SEARCH_VEC_LITERAL
+                                  SETV %DR_VEC %SEARCH_VEC_LITERAL
+                                  SCAN %DR_TMP %DR_VEC
                                   IFTI %DR_TMP ENERGY:0
-                                  PEEK %DR_TMP %SEARCH_VEC
+                                  PEEK %DR_TMP %DR_VEC
                               .ENDM
                 
-                              # --- Makro zur kontrollierten Bewegung (unverändert) ---
-                              .MACRO $TRY_MOVE_AND_JUMP %MOVE_VEC %JUMP_LABEL
-                                  SETV %DR_VEC %MOVE_VEC
+                              # --- Makro zur kontrollierten Bewegung (korrigiert) ---
+                              .MACRO $TRY_MOVE_AND_JUMP %MOVE_VEC_LITERAL %JUMP_LABEL
+                                  SETV %DR_VEC %MOVE_VEC_LITERAL
                                   SCAN %DR_TMP %DR_VEC
                 
-                                  IFR %DR_TMP CODE:0
-                                  JUMP @@MOVE_IT_IS_EMPTY
+                                  IFI %DR_TMP CODE:0
+                                  JMPI @@MOVE_IT_IS_EMPTY
                 
-                                  JUMP @@CHECK_END
+                                  JMPI @@CHECK_END
                 
                               @@MOVE_IT_IS_EMPTY:
                                   SEEK %DR_VEC
-                                  JUMP %JUMP_LABEL
+                                  JMPI %JUMP_LABEL
                               @@CHECK_END:
                               .ENDM
                 
@@ -46,7 +47,7 @@ public class EnergySeeker extends AssemblyProgram {
                               @@START_LOOP:
                                   NRG %DR_ENERGY
                                   GTR %DR_ENERGY %DR_THRESHOLD
-                                  JUMP %DR_RETURN
+                                  JMPR %DR_RETURN
                 
                                   # Scanne nur die 4 benachbarten Felder mit Vektoren der Länge 1.
                                   $SCAN_AND_PEEK_FIELD 1|0
@@ -61,20 +62,23 @@ public class EnergySeeker extends AssemblyProgram {
                                   $TRY_MOVE_AND_JUMP 0|-1 @@START_LOOP
                 
                                   # Wenn alle 4 Richtungen blockiert sind, starte von vorne.
-                                  JUMP @@START_LOOP
+                                  JMPI @@START_LOOP
                               .ENDM
                 
-                              # --- Hauptprogramm ---
+                              # --- Hauptprogramm (korrigiert) ---
                               MAIN_PROGRAM:
-                                  SETI %DR_TMP ENERGY:100
-                                  PUSH %DR_TMP
+                                  # Rücksprungadresse zuerst auf den Stack legen
                                   SETV %DR_TMP RETURN_POINT
+                                  PUSH %DR_TMP
+                                  
+                                  # Dann den Schwellenwert als DATA-Typ
+                                  SETI %DR_TMP DATA:100  # KORRIGIERT: Typ von ENERGY zu DATA geändert
                                   PUSH %DR_TMP
                 
                                   SYNC
                                   $SEEK_ENERGY
                 
-                                  JUMP MAIN_PROGRAM
+                                  JMPI MAIN_PROGRAM
                 
                               RETURN_POINT:
                                   NOP

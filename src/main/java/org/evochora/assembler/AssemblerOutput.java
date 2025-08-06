@@ -34,4 +34,10 @@ public sealed interface AssemblerOutput {
      * Enthält den Namen des Labels.
      */
     public record VectorInstructionRequest(String labelName) implements AssemblerOutput {}
+
+    /**
+     * NEU: Repräsentiert eine Anfrage, ein Label in eine Koordinate umzuwandeln und als
+     * Vektor im Maschinencode zu speichern. Wird von Anweisungen wie SETV verwendet.
+     */
+    public record LabelToVectorRequest(String labelName, int registerId) implements AssemblerOutput {}
 }
