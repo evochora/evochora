@@ -4,6 +4,7 @@ package org.evochora.ui;
 import javafx.animation.AnimationTimer;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
+import javafx.scene.control.ScrollPane; // NEU: Import hinzufügen
 import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
 import org.evochora.Config;
@@ -29,7 +30,7 @@ public class AppView {
         this.primaryStage = primaryStage;
         this.simulation = simulation;
 
-        // GEÄNDERT: Canvas Größe nur noch für die Welt selbst
+        // GEÄNDERT: Canvas Größe für die gesamte Welt
         Canvas worldCanvas = new Canvas(Config.WORLD_SHAPE[0] * Config.CELL_SIZE,
                 Config.WORLD_SHAPE[1] * Config.CELL_SIZE);
         this.worldRenderer = new WorldRenderer(worldCanvas);
@@ -37,10 +38,15 @@ public class AppView {
         this.headerController = new HeaderController(this.simulation);
         this.footerController = new FooterController(this.simulation.getLogger());
 
+        // NEU: Den Canvas in einen ScrollPane einbetten
+        ScrollPane scrollPane = new ScrollPane();
+        scrollPane.setContent(worldCanvas);
+        scrollPane.setPannable(true); // Ermöglicht Verschieben mit der Maus
+
         root = new BorderPane();
-        root.setCenter(worldCanvas); // Canvas in die Mitte setzen
-        root.setTop(headerController.getView()); // Header oben platzieren
-        root.setBottom(footerController.getView()); // Footer unten platzieren
+        root.setCenter(scrollPane); // ScrollPane in die Mitte setzen
+        root.setTop(headerController.getView());
+        root.setBottom(footerController.getView());
 
         setupPrimaryStage();
         setupCanvasInteraction(worldCanvas);
@@ -49,28 +55,25 @@ public class AppView {
     }
 
     private void setupPrimaryStage() {
-        // GEÄNDERT: Mindestgröße des Fensters basierend auf den Komponenten
-        primaryStage.setMinWidth(Config.WORLD_SHAPE[0] * Config.CELL_SIZE);
-        primaryStage.setMinHeight(Config.WORLD_SHAPE[1] * Config.CELL_SIZE + Config.HEADER_HEIGHT + Config.FOOTER_HEIGHT);
+        // GEÄNDERT: Fenstergröße festlegen, um Scrollbars zu zeigen
         primaryStage.setTitle("Evochora");
-        primaryStage.setScene(new Scene(root));
+        primaryStage.setScene(new Scene(root, 800, 600));
         primaryStage.show();
     }
 
     private void setupCanvasInteraction(Canvas canvas) {
+        // Die Logik für Mausklicks bleibt unverändert, da sie sich auf den Canvas bezieht.
         canvas.setOnMouseClicked(event -> {
             double mouseX = event.getX();
             double mouseY = event.getY();
 
-            // KORRIGIERT: Klick-Logik nur für den reinen Welt-Canvas-Bereich
-            // Es gibt keine Header/Footer-Offsets mehr für den Canvas selbst.
             double worldWidth = Config.WORLD_SHAPE[0] * Config.CELL_SIZE;
             double worldHeight = Config.WORLD_SHAPE[1] * Config.CELL_SIZE;
 
             if (mouseX >= 0 && mouseX < worldWidth && mouseY >= 0 && mouseY < worldHeight) {
 
                 int gridX = (int) (mouseX / Config.CELL_SIZE);
-                int gridY = (int) (mouseY / Config.CELL_SIZE); // KEIN Y-OFFSET MEHR
+                int gridY = (int) (mouseY / Config.CELL_SIZE);
 
                 int[] clickedCoord = {gridX, gridY};
                 this.selectedOrganism = null;
