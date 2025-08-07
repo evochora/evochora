@@ -266,8 +266,7 @@ public class EnergySeeker extends AssemblyProgram {
                     PUSH %REG_COUNTER
                     NOP
 
-                    SETI %REG_TEMP DATA:1
-                    SUB %REG_COUNTER %REG_TEMP
+                    SUBI %REG_COUNTER DATA:1
                     NOP
                     
                     GTI %REG_COUNTER DATA:0
@@ -327,10 +326,8 @@ public class EnergySeeker extends AssemblyProgram {
                 .ORG 0|10
                 TURN_LOGIC:
                     NRG %REG_COUNTER
-                    SETI %REG_TEMP DATA:15 
-                    NAND %REG_COUNTER %REG_TEMP
-                    SETI %REG_TEMP DATA:5
-                    ADD %REG_COUNTER %REG_TEMP
+                    NADI %REG_COUNTER DATA:15
+                    ADDI %REG_COUNTER DATA:5
                     NOP
                     
                     $CALCULATE_RIGHT %VEC_DV %VEC_RIGHT

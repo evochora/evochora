@@ -45,7 +45,7 @@ class AssemblerTest {
                 
                 .MACRO $OUTER_MACRO PARAM2
                     $INNER_MACRO PARAM2
-                    ADD %DR_B %DR_A
+                    ADDR %DR_B %DR_A
                 .ENDM
                 
                 .ORG 0|0
@@ -78,7 +78,6 @@ class AssemblerTest {
         Assembler assembler = new Assembler();
         AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(code, "TestInfiniteLoop", false));
 
-        // KORRIGIERT: Prüft auf den exakten Rekursions-String, den der Assembler jetzt ausgibt.
         String expectedPart = "$CALL_LOOP_B -> $INFINITE_LOOP";
         Assertions.assertTrue(
                 exception.getMessage().contains("Endlose Makro-Rekursion erkannt") && exception.getFormattedMessage().contains(expectedPart),
@@ -96,7 +95,6 @@ class AssemblerTest {
         Assembler assembler = new Assembler();
         AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(code, "TestMissingEndm", false));
 
-        // KORRIGIERT: Prüft auf die neue, präzisere Fehlermeldung, die den Makro-Namen enthält.
         Assertions.assertTrue(exception.getMessage().contains("Fehlendes .ENDM für Makro-Definition '$INCOMPLETE_MACRO'."), "Die Fehlermeldung sollte auf eine fehlende .ENDM-Direktive hinweisen.");
     }
 
@@ -156,7 +154,6 @@ class AssemblerTest {
         Assembler assembler = new Assembler();
         AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(code, "TestInvalidArguments", false));
 
-        // KORRIGIERT: Prüft auf die korrekte Fehlermeldung aus der JmpiInstruction.
         String expectedMessage = "Argument für JMPI ist weder ein bekanntes Label, noch ein gültiges Vektor-Literal: 'UNKNOWN_LABEL'";
         Assertions.assertTrue(exception.getMessage().contains(expectedMessage), "Die Fehlermeldung sollte auf ein ungültiges Label hinweisen.");
     }
@@ -165,13 +162,13 @@ class AssemblerTest {
     void testLabelCannotHaveInstructionName() {
         String code = """
                 .ORG 0|0
-                ADD:
+                ADDR:
                     NOP
                 """;
 
         Assembler assembler = new Assembler();
         AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(code, "TestLabelIsInstruction", false));
-        Assertions.assertTrue(exception.getMessage().contains("Label 'ADD' hat denselben Namen wie ein Befehl."), "Die Fehlermeldung sollte einen Namenskonflikt zwischen Label und Befehl anzeigen.");
+        Assertions.assertTrue(exception.getMessage().contains("Label 'ADDR' hat denselben Namen wie ein Befehl."), "Die Fehlermeldung sollte einen Namenskonflikt zwischen Label und Befehl anzeigen.");
     }
 
     private Integer findValueAtCoordinate(Map<int[], Integer> map, int[] coord) {

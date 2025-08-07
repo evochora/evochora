@@ -67,33 +67,33 @@ public class InstructionTester extends AssemblyProgram {
                     SETV %DR_B 25|5
                     $ASSERT_REG %DR_A %DR_B
                 TEST_VECTOR_TARGET:
-                    JMPI TEST_ADD
+                    JMPI TEST_ADDR
 
                 .ORG 2|7
-                TEST_ADD:
+                TEST_ADDR:
                     SYNC
                     SETI %DR_A DATA:10
                     SETI %DR_B DATA:20
-                    ADD %DR_A %DR_B
+                    ADDR %DR_A %DR_B
                     $ASSERT_LITERAL %DR_A DATA:30
-                    JMPI TEST_SUB
+                    JMPI TEST_SUBR
 
                 .ORG 2|9
-                TEST_SUB:
+                TEST_SUBR:
                     SYNC
                     SETV %DR_A 5|5
                     SETV %DR_B 1|2
-                    SUB %DR_A %DR_B
+                    SUBR %DR_A %DR_B
                     SETV %DR_C 4|3
                     $ASSERT_REG %DR_A %DR_C
-                    JMPI TEST_NAND
+                    JMPI TEST_NANDR
 
                 .ORG 2|11
-                TEST_NAND:
+                TEST_NANDR:
                     SYNC
                     SETI %DR_A DATA:5
                     SETI %DR_B DATA:3
-                    NAND %DR_A %DR_B
+                    NANDR %DR_A %DR_B
                     $ASSERT_LITERAL %DR_A DATA:-2
                     JMPI TEST_PUSHPOP
 

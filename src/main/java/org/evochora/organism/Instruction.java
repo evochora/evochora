@@ -29,12 +29,12 @@ public abstract class Instruction {
             Class.forName(SetiInstruction.class.getName());
             Class.forName(SetrInstruction.class.getName());
             Class.forName(SetvInstruction.class.getName());
-            Class.forName(AddInstruction.class.getName());
-            Class.forName(SubInstruction.class.getName());
-            Class.forName(NandInstruction.class.getName());
+            Class.forName(AddrInstruction.class.getName());
+            Class.forName(SubrInstruction.class.getName());
+            Class.forName(NadrInstruction.class.getName());
             Class.forName(IfiInstruction.class.getName());
-            Class.forName(JmprInstruction.class.getName()); // GEÄNDERT: Alte JmpInstruction entfernt
-            Class.forName(JmpiInstruction.class.getName()); // GEÄNDERT: Alte JmprInstruction durch JmpiInstruction ersetzt
+            Class.forName(JmprInstruction.class.getName());
+            Class.forName(JmpiInstruction.class.getName());
             Class.forName(TurnInstruction.class.getName());
             Class.forName(SeekInstruction.class.getName());
             Class.forName(SyncInstruction.class.getName());
@@ -47,9 +47,12 @@ public abstract class Instruction {
             Class.forName(PosInstruction.class.getName());
             Class.forName(PushInstruction.class.getName());
             Class.forName(PopInstruction.class.getName());
-            Class.forName(IfiInstruction.class.getName());
             Class.forName(IfrInstruction.class.getName());
             Class.forName(IftiInstruction.class.getName());
+            Class.forName(AddiInstruction.class.getName());
+            Class.forName(SubiInstruction.class.getName());
+            Class.forName(NadiInstruction.class.getName());
+            Class.forName(IftrInstruction.class.getName());
 
         } catch (ClassNotFoundException e) {
             System.err.println("Fehler beim Initialisieren des Befehlssatzes.");
@@ -106,11 +109,8 @@ public abstract class Instruction {
         REGISTERED_PLANNERS_BY_ID.put(id, planner);
         REGISTERED_ASSEMBLERS_BY_ID.put(id, assembler);
 
-        // Der Teil, der automatisch die Argumente registrieren sollte, wurde entfernt.
-        // Stattdessen wird jetzt eine neue Methode verwendet.
     }
 
-    // NEU: Statische Registrierungsmethode für die Argumenttypen
     protected static void registerArgumentTypes(int instructionId, Map<Integer, ArgumentType> types) {
         ARGUMENT_TYPES_BY_ID.put(instructionId | Config.TYPE_CODE, types);
     }

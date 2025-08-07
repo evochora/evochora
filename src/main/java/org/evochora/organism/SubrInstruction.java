@@ -1,4 +1,4 @@
-// src/main/java/org/evochora/organism/AddInstruction.java
+// src/main/java/org/evochora/organism/SubrInstruction.java
 package org.evochora.organism;
 
 import org.evochora.Config;
@@ -12,25 +12,26 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-public class AddInstruction extends Instruction {
-    public static final int ID = 4;
+public class SubrInstruction extends Instruction {
+    public static final int ID = 6;
 
-    private final int reg1, reg2;
+    private final int reg1;
+    private final int reg2;
 
-    public AddInstruction(Organism o, int r1, int r2) {
+    public SubrInstruction(Organism o, int r1, int r2) {
         super(o);
         this.reg1 = r1;
         this.reg2 = r2;
     }
 
     static {
-        Instruction.registerInstruction(AddInstruction.class, ID, "ADD", 3, AddInstruction::plan, AddInstruction::assemble);
+        Instruction.registerInstruction(SubrInstruction.class, ID, "SUBR", 3, SubrInstruction::plan, SubrInstruction::assemble);
         Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.REGISTER, 1, ArgumentType.REGISTER));
     }
 
     @Override
     public String getName() {
-        return "ADD";
+        return "SUBR";
     }
 
     @Override
@@ -53,8 +54,9 @@ public class AddInstruction extends Instruction {
         if (argIndex == 0 || argIndex == 1) {
             return ArgumentType.REGISTER;
         }
-        throw new IllegalArgumentException("Ungültiger Argumentindex für ADD: " + argIndex);
+        throw new IllegalArgumentException("Ungültiger Argumentindex für SUBR: " + argIndex);
     }
+
 
     public static Instruction plan(Organism organism, World world) {
         Organism.FetchResult result1 = organism.fetchArgument(organism.getIp(), world);
@@ -63,19 +65,21 @@ public class AddInstruction extends Instruction {
         Organism.FetchResult result2 = organism.fetchArgument(result1.nextIp(), world);
         int r2 = result2.value();
 
-        return new AddInstruction(organism, r1, r2);
+        return new SubrInstruction(organism, r1, r2);
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap) {
-        if (args.length != 2) throw new IllegalArgumentException("ADD erwartet 2 Argumente: %REG1 %REG2");
+        if (args.length != 2) {
+            throw new IllegalArgumentException("SUBR erwartet 2 Argumente: %REG1 %REG2");
+        }
 
         Integer reg1Id = registerMap.get(args[0].toUpperCase());
         if (reg1Id == null) {
-            throw new IllegalArgumentException("Ungültiges Register-Argument: " + args[0]);
+            throw new IllegalArgumentException("Ungültiges Register-Argument für Reg1: " + args[0]);
         }
         Integer reg2Id = registerMap.get(args[1].toUpperCase());
         if (reg2Id == null) {
-            throw new IllegalArgumentException("Ungültiges Register-Argument: " + args[1]);
+            throw new IllegalArgumentException("Ungültiges Register-Argument für Reg2: " + args[1]);
         }
 
         return new AssemblerOutput.CodeSequence(List.of(
@@ -89,29 +93,27 @@ public class AddInstruction extends Instruction {
         Object val1Obj = organism.getDr(reg1);
         Object val2Obj = organism.getDr(reg2);
 
-        // KORREKTUR: Überprüfe, ob beide Argumente Vektoren sind
         if (val1Obj instanceof int[] v1 && val2Obj instanceof int[] v2) {
             if (v1.length != v2.length) {
-                organism.instructionFailed("ADD: Vektor-Dimensionen stimmen nicht überein. Reg " + reg1 + " (" + v1.length + ") vs Reg " + reg2 + " (" + v2.length + ").");
+                organism.instructionFailed("SUBR: Vektor-Dimensionen stimmen nicht überein. Reg " + reg1 + " (" + v1.length + ") vs Reg " + reg2 + " (" + v2.length + ").");
                 return;
             }
             int[] resultVector = new int[v1.length];
             for (int i = 0; i < v1.length; i++) {
-                resultVector[i] = v1[i] + v2[i];
+                resultVector[i] = v1[i] - v2[i];
             }
             organism.setDr(reg1, resultVector);
         }
-        // KORREKTUR: Überprüfe, ob beide Argumente Skalare sind
         else if (val1Obj instanceof Integer v1Raw && val2Obj instanceof Integer v2Raw) {
             int v1Value = Symbol.fromInt(v1Raw).toScalarValue();
             int v2Value = Symbol.fromInt(v2Raw).toScalarValue();
-            int resultValue = v1Value + v2Value;
+            int resultValue = v1Value - v2Value;
 
             if (Config.STRICT_TYPING) {
                 Symbol s1 = Symbol.fromInt(v1Raw);
                 Symbol s2 = Symbol.fromInt(v2Raw);
                 if (s1.type() != s2.type()) {
-                    organism.instructionFailed("ADD: Registertypen müssen übereinstimmen im strikten Modus. Reg " + reg1 + " (" + s1.type() + ") vs Reg " + reg2 + " (" + s2.type() + ").");
+                    organism.instructionFailed("SUBR: Registertypen müssen übereinstimmen im strikten Modus. Reg " + reg1 + " (" + s1.type() + ") vs Reg " + reg2 + " (" + s2.type() + ").");
                     return;
                 }
                 organism.setDr(reg1, new Symbol(s1.type(), resultValue).toInt());
@@ -120,9 +122,8 @@ public class AddInstruction extends Instruction {
                 organism.setDr(reg1, new Symbol(s1.type(), resultValue).toInt());
             }
         }
-        // KORREKTUR: Fehler, wenn nur ein Argument ein Vektor ist
         else {
-            organism.instructionFailed("ADD: Ungültige Argumenttypen. Beide Register müssen entweder Skalare oder Vektoren sein.");
+            organism.instructionFailed("SUBR: Ungültige Argumenttypen. Beide Register müssen entweder Skalare oder Vektoren sein.");
         }
     }
 }

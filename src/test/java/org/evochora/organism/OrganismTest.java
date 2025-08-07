@@ -53,7 +53,7 @@ public class OrganismTest {
         organism.setDr(0, vec1);
         organism.setDr(1, vec2);
 
-        Instruction add = new AddInstruction(organism, 0, 1);
+        Instruction add = new AddrInstruction(organism, 0, 1);
         add.execute(simulation);
 
         int[] result = (int[]) organism.getDr(0);

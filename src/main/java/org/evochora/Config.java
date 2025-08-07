@@ -8,7 +8,7 @@ public final class Config {
     private Config() {}
 
     // World Settings
-    public static final int[] WORLD_SHAPE = {80, 25};
+    public static final int[] WORLD_SHAPE = {80, 40};
     public static final boolean IS_TOROIDAL = true;
     public static final int WORLD_DIMENSIONS = WORLD_SHAPE.length;
 

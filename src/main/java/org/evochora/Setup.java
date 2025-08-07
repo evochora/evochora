@@ -22,13 +22,11 @@ public class Setup {
         // Um den CompleteInstructionTester auszuführen, aktivieren Sie diese Zeile:
         //InstructionTester testerProgram = new InstructionTester();
         //testerProgram.enableDebug();
-        //placeProgram(simulation, testerProgram, new int[]{10, 5});
+        //placeProgram(simulation, testerProgram, new int[]{5, 1});
 
         // Um ErrorTester auszuführen, aktivieren Sie diese Zeile:
         EnergySeeker energySeeker = new EnergySeeker();
         energySeeker.enableDebug();
-        // KORRIGIERT: Der Organismus wird jetzt an der Koordinate (1,1) platziert,
-        // sodass sein IP korrekt am Anfang des Programms (.ORG 0|0) startet.
         placeProgram(simulation, energySeeker, new int[]{1, 1});
 
         // Um ErrorTester auszuführen, aktivieren Sie diese Zeile:
