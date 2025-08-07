@@ -2,7 +2,6 @@
 package org.evochora.organism.prototypes;
 
 import org.evochora.assembler.AssemblyProgram;
-import org.evochora.organism.prototypes.routines.MathRoutines;
 
 import java.util.Map;
 
@@ -11,10 +10,10 @@ public class ErrorTest extends AssemblyProgram {
     public ErrorTest() {
         // Die Math-Routine wird an relativer Position 20|0 eingebunden.
         // Die Platzhalter der Routine werden auf die Register des Hauptprogramms abgebildet.
-        this.includeRoutine("MATH", new MathRoutines(), new int[]{20, 0}, Map.of(
-                "REG_TMP_A", "%DR_A",
-                "REG_TMP_B", "%DR_B"
-        ));
+        //this.includeRoutine("MATH", new MathRoutines(), new int[]{20, 0}, Map.of(
+        //        "REG_TMP_A", "%DR_A",
+        //        "REG_TMP_B", "%DR_B"
+        //));
     }
 
     @Override

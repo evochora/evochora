@@ -1,25 +1,23 @@
-// src/main/java/org/evochora/assembler/AssemblyProgram.java
 package org.evochora.assembler;
 
 import org.evochora.Config;
-import org.evochora.organism.Instruction;
 import org.evochora.organism.Organism;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
-import org.evochora.assembler.Disassembler;
-import org.evochora.assembler.DisassembledInstruction;
-import org.evochora.assembler.ProgramMetadata;
-import org.evochora.assembler.Assembler;
 
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.Arrays;
-import java.util.Collections;
+import java.util.stream.Stream;
 
 public abstract class AssemblyProgram {
 
@@ -28,14 +26,50 @@ public abstract class AssemblyProgram {
 
     protected ProgramMetadata metadata;
     protected Map<int[], Symbol> initialWorldObjects;
-    private final List<RoutineEntry> routines = new ArrayList<>();
     private boolean isDebugEnabled = false;
     private int[] programOrigin = new int[Config.WORLD_DIMENSIONS];
-
-    private record RoutineEntry(String name, AssemblyRoutine routine, int[] relativePosition, Map<String, String> registerMap) {}
+    private final List<String> routineLibraries = new ArrayList<>();
 
     public AssemblyProgram() {
         Arrays.fill(this.programOrigin, 0);
+        loadStandardRoutineLibraries();
+    }
+
+    /**
+     * NEU: Sucht automatisch im Standard-Ressourcenverzeichnis nach .s-Dateien und lädt
+     * deren Inhalt als potenzielle Routine-Bibliotheken.
+     */
+    private void loadStandardRoutineLibraries() {
+        try {
+            String routinesPath = "org/evochora/organism/prototypes/routines/";
+            URL resourceUrl = Thread.currentThread().getContextClassLoader().getResource(routinesPath);
+            if (resourceUrl == null) {
+                // Das Verzeichnis existiert nicht, was in Ordnung ist, wenn keine Routinen vorhanden sind.
+                return;
+            }
+
+            Path path = Paths.get(resourceUrl.toURI());
+            try (Stream<Path> paths = Files.walk(path)) {
+                paths.filter(Files::isRegularFile)
+                        .filter(p -> p.toString().endsWith(".s") || p.toString().endsWith(".asm"))
+                        .forEach(this::addRoutineLibraryFromFile);
+            }
+        } catch (URISyntaxException | IOException e) {
+            System.err.println("Warnung: Konnte Standard-Routinen-Bibliotheken nicht laden: " + e.getMessage());
+        }
+    }
+
+    /**
+     * NEU: Hilfsmethode, um den Inhalt einer einzelnen Bibliotheksdatei zu laden.
+     * @param filePath Der Pfad zur .s-Datei.
+     */
+    private void addRoutineLibraryFromFile(Path filePath) {
+        try {
+            this.routineLibraries.add(Files.readString(filePath));
+        } catch (IOException e) {
+            System.err.println("Fehler beim Lesen der Routine-Bibliothek: " + filePath);
+            e.printStackTrace();
+        }
     }
 
     public void setProgramOrigin(int[] origin) {
@@ -49,35 +83,27 @@ public abstract class AssemblyProgram {
         return Arrays.copyOf(this.programOrigin, this.programOrigin.length);
     }
 
+    /**
+     * Gibt den Assembler-Code des Hauptprogramms zurück.
+     * Muss von abgeleiteten Klassen implementiert werden (oder von anonymen Klassen).
+     */
     public abstract String getProgramCode();
 
-    // NEU: Methode mit Register-Mapping
-    public AssemblyProgram includeRoutine(String name, AssemblyRoutine routine, int[] relativePosition, Map<String, String> registerMap) {
-        if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("Der Name für die Routine darf nicht null oder leer sein.");
-        }
-        if (relativePosition.length != Config.WORLD_DIMENSIONS) {
-            throw new IllegalArgumentException("Die relative Position muss " + Config.WORLD_DIMENSIONS + "-dimensional sein.");
-        }
-        this.routines.add(new RoutineEntry(name.toUpperCase(), routine, relativePosition, registerMap));
-        return this;
-    }
-
-    // Bestehende Methode ohne Register-Mapping (für Routinen, die keine benötigen)
-    public AssemblyProgram includeRoutine(String name, AssemblyRoutine routine, int[] relativePosition) {
-        return includeRoutine(name, routine, relativePosition, Collections.emptyMap());
-    }
-
-    public String getAssemblyCode() {
+    /**
+     * NEU: Baut den vollständigen Code zusammen, indem zuerst alle geladenen
+     * Routine-Bibliotheken und dann das Hauptprogramm angefügt werden.
+     * @return Der komplette String, der an den Assembler übergeben wird.
+     */
+    public String getAssemblyCodeWithLibraries() {
         StringBuilder finalCode = new StringBuilder();
 
-        for (RoutineEntry entry : this.routines) {
-            finalCode.append(entry.routine().getFormattedCode(entry.name(), entry.relativePosition(), entry.registerMap()));
+        // Füge alle geladenen Routine-Bibliotheken an den Anfang
+        for (String libraryCode : this.routineLibraries) {
+            finalCode.append(libraryCode).append("\n");
         }
 
+        // Füge das Hauptprogramm an. Die .s-Datei selbst sollte mit .ORG 0|0 beginnen.
         finalCode.append("\n# --- Hauptprogramm --- \n");
-        String originCoords = Arrays.stream(this.programOrigin).mapToObj(String::valueOf).collect(Collectors.joining("|"));
-        finalCode.append(".ORG ").append(originCoords).append("\n");
         finalCode.append(this.getProgramCode());
 
         return finalCode.toString();
@@ -88,6 +114,10 @@ public abstract class AssemblyProgram {
         return this;
     }
 
+    /**
+     * Startet den Assemblierungsprozess für den gesamten Code.
+     * @return Eine Map, die das Speicherlayout des assemblierten Programms darstellt.
+     */
     public Map<int[], Integer> assemble() {
         if (this.metadata != null) {
             return this.metadata.machineCodeLayout();
@@ -95,8 +125,8 @@ public abstract class AssemblyProgram {
 
         Assembler assembler = new Assembler();
         String programName = this.getClass().getSimpleName();
-
-        this.metadata = assembler.assemble(getAssemblyCode(), programName, this.isDebugEnabled);
+        // Übergibt den kombinierten Code (Bibliotheken + Hauptprogramm) an den Assembler.
+        this.metadata = assembler.assemble(getAssemblyCodeWithLibraries(), programName, this.isDebugEnabled);
 
         if (this.metadata == null) {
             throw new IllegalStateException("Assembler hat null zurückgegeben. Assemblierung fehlgeschlagen.");
