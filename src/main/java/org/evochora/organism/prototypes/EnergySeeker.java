@@ -6,7 +6,7 @@ import org.evochora.assembler.AssemblyProgram;
 public class EnergySeeker extends AssemblyProgram {
 
     @Override
-    public String getAssemblyCode() {
+    public String getProgramCode() {
         return """
                 # ======================================================================
                 # EnergySeeker v9.3 - Final, Robust Prototype

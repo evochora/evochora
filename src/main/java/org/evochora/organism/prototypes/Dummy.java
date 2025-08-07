@@ -6,7 +6,7 @@ import org.evochora.assembler.AssemblyProgram;
 public class Dummy extends AssemblyProgram {
 
     @Override
-    public String getAssemblyCode() {
+    public String getProgramCode() {
         return """
                """;
     }

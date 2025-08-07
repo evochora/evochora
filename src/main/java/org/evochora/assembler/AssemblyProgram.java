@@ -1,12 +1,25 @@
 // src/main/java/org/evochora/assembler/AssemblyProgram.java
 package org.evochora.assembler;
 
+import org.evochora.Config;
+import org.evochora.organism.Instruction;
 import org.evochora.organism.Organism;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
+import org.evochora.assembler.Disassembler;
+import org.evochora.assembler.DisassembledInstruction;
+import org.evochora.assembler.ProgramMetadata;
+import org.evochora.assembler.Assembler;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.Arrays;
+import java.util.Collections;
 
 public abstract class AssemblyProgram {
 
@@ -15,14 +28,61 @@ public abstract class AssemblyProgram {
 
     protected ProgramMetadata metadata;
     protected Map<int[], Symbol> initialWorldObjects;
-
-    // NEU: Ein Flag, um den Debug-Modus für diese spezifische Assemblierung zu steuern
+    private final List<RoutineEntry> routines = new ArrayList<>();
     private boolean isDebugEnabled = false;
+    private int[] programOrigin = new int[Config.WORLD_DIMENSIONS];
 
-    public abstract String getAssemblyCode();
+    private record RoutineEntry(String name, AssemblyRoutine routine, int[] relativePosition, Map<String, String> registerMap) {}
 
-    // NEU: Eine "fluent" Methode, um den Debug-Modus von außen zu aktivieren.
-    // Beispiel: new MyTestProgram().enableDebug().assemble();
+    public AssemblyProgram() {
+        Arrays.fill(this.programOrigin, 0);
+    }
+
+    public void setProgramOrigin(int[] origin) {
+        if (origin.length != Config.WORLD_DIMENSIONS) {
+            throw new IllegalArgumentException("Program origin must have " + Config.WORLD_DIMENSIONS + " dimensions.");
+        }
+        this.programOrigin = origin;
+    }
+
+    public int[] getProgramOrigin() {
+        return Arrays.copyOf(this.programOrigin, this.programOrigin.length);
+    }
+
+    public abstract String getProgramCode();
+
+    // NEU: Methode mit Register-Mapping
+    public AssemblyProgram includeRoutine(String name, AssemblyRoutine routine, int[] relativePosition, Map<String, String> registerMap) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Der Name für die Routine darf nicht null oder leer sein.");
+        }
+        if (relativePosition.length != Config.WORLD_DIMENSIONS) {
+            throw new IllegalArgumentException("Die relative Position muss " + Config.WORLD_DIMENSIONS + "-dimensional sein.");
+        }
+        this.routines.add(new RoutineEntry(name.toUpperCase(), routine, relativePosition, registerMap));
+        return this;
+    }
+
+    // Bestehende Methode ohne Register-Mapping (für Routinen, die keine benötigen)
+    public AssemblyProgram includeRoutine(String name, AssemblyRoutine routine, int[] relativePosition) {
+        return includeRoutine(name, routine, relativePosition, Collections.emptyMap());
+    }
+
+    public String getAssemblyCode() {
+        StringBuilder finalCode = new StringBuilder();
+
+        for (RoutineEntry entry : this.routines) {
+            finalCode.append(entry.routine().getFormattedCode(entry.name(), entry.relativePosition(), entry.registerMap()));
+        }
+
+        finalCode.append("\n# --- Hauptprogramm --- \n");
+        String originCoords = Arrays.stream(this.programOrigin).mapToObj(String::valueOf).collect(Collectors.joining("|"));
+        finalCode.append(".ORG ").append(originCoords).append("\n");
+        finalCode.append(this.getProgramCode());
+
+        return finalCode.toString();
+    }
+
     public AssemblyProgram enableDebug() {
         this.isDebugEnabled = true;
         return this;
@@ -36,7 +96,6 @@ public abstract class AssemblyProgram {
         Assembler assembler = new Assembler();
         String programName = this.getClass().getSimpleName();
 
-        // GEÄNDERT: Übergibt den Programmnamen und den Debug-Status an den Assembler
         this.metadata = assembler.assemble(getAssemblyCode(), programName, this.isDebugEnabled);
 
         if (this.metadata == null) {

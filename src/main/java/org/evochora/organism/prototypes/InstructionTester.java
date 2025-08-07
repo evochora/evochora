@@ -6,7 +6,7 @@ import org.evochora.assembler.AssemblyProgram;
 public class InstructionTester extends AssemblyProgram {
 
     @Override
-    public String getAssemblyCode() {
+    public String getProgramCode() {
         return """
                 # Finaler, korrekter Test-Organismus, angepasst an die neue Assembler-Logik.
                 

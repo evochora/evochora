@@ -3,10 +3,9 @@ package org.evochora;
 
 import org.evochora.organism.Organism;
 import org.evochora.organism.prototypes.*;
-
+import org.evochora.assembler.AssemblyProgram;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
-import org.evochora.assembler.AssemblyProgram; // GEÄNDERT: Neuer Importpfad
 
 import java.util.Map;
 
@@ -25,26 +24,29 @@ public class Setup {
         //placeProgram(simulation, testerProgram, new int[]{5, 1});
 
         // Um ErrorTester auszuführen, aktivieren Sie diese Zeile:
-        EnergySeeker energySeeker = new EnergySeeker();
-        energySeeker.enableDebug();
-        placeProgram(simulation, energySeeker, new int[]{1, 1});
+        //EnergySeeker energySeeker = new EnergySeeker();
+        //energySeeker.enableDebug();
+        //placeProgram(simulation, energySeeker, new int[]{1, 1});
 
         // Um ErrorTester auszuführen, aktivieren Sie diese Zeile:
-        //ErrorTest errorTest = new ErrorTest();
-        //errorTest.enableDebug();
-        //placeProgram(simulation, errorTest, new int[]{10, 5});
+        ErrorTest errorTest = new ErrorTest();
+        errorTest.enableDebug();
+        placeProgram(simulation, errorTest, new int[]{10, 5});
     }
 
     /**
      * Eine private Hilfsmethode, die den kompletten Setup-Prozess für ein assembliertes Programm durchführt.
      */
     private static void placeProgram(Simulation simulation, AssemblyProgram program, int[] startPos) {
+        // Die Startposition wird nur hier festgelegt und dem Programm-Objekt übergeben
+        program.setProgramOrigin(startPos);
+
         // 1. Assembliere den Code, um das Layout und die zusätzlichen Welt-Objekte zu erhalten.
         Map<int[], Integer> layout = program.assemble();
         Map<int[], Symbol> worldObjects = program.getInitialWorldObjects();
 
         // 2. Platziere den Organismus physisch in der Welt.
-        Organism org = placeOrganismWithLayout(simulation, startPos, layout, worldObjects, simulation.getLogger());
+        Organism org = placeOrganismWithLayout(simulation, program.getProgramOrigin(), layout, worldObjects, simulation.getLogger());
 
         // 3. Verknüpfe die laufende Instanz mit den Metadaten des assemblierten Programms.
         program.assignOrganism(org);
