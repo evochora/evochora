@@ -53,6 +53,8 @@ public abstract class Instruction {
             Class.forName(SubiInstruction.class.getName());
             Class.forName(NadiInstruction.class.getName());
             Class.forName(IftrInstruction.class.getName());
+            Class.forName(CallInstruction.class.getName());
+            Class.forName(RetInstruction.class.getName());
 
         } catch (ClassNotFoundException e) {
             System.err.println("Fehler beim Initialisieren des Befehlssatzes.");
