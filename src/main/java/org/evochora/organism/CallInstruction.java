@@ -1,22 +1,17 @@
-// src/main/java/org/evochora/organism/CallInstruction.java
 package org.evochora.organism;
 
 import org.evochora.Config;
 import org.evochora.Simulation;
 import org.evochora.assembler.ArgumentType;
 import org.evochora.assembler.AssemblerOutput;
-import org.evochora.world.Symbol;
 import org.evochora.world.World;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Arrays;
 
 public class CallInstruction extends Instruction {
 
     public static final int ID = 34;
-
     private final int[] delta;
 
     public CallInstruction(Organism o, int[] delta) {
@@ -28,7 +23,6 @@ public class CallInstruction extends Instruction {
         Instruction.registerInstruction(CallInstruction.class, ID, "CALL", 1 + Config.WORLD_DIMENSIONS, CallInstruction::plan, CallInstruction::assemble);
         Instruction.registerArgumentTypes(ID, Map.of(0, ArgumentType.LABEL, 1, ArgumentType.LABEL));
     }
-
 
     @Override
     public String getName() {
@@ -42,7 +36,7 @@ public class CallInstruction extends Instruction {
 
     @Override
     protected int getFixedBaseCost() {
-        return 1;
+        return 2; // Geringfügig teurer als ein normaler Sprung
     }
 
     @Override
@@ -74,32 +68,32 @@ public class CallInstruction extends Instruction {
         if (args.length != 1) {
             throw new IllegalArgumentException("CALL erwartet genau 1 Argument (ein Label).");
         }
-        String arg = args[0].toUpperCase();
-
-        if (labelMap.containsKey(arg)) {
-            return new AssemblerOutput.JumpInstructionRequest(arg);
-        } else {
-            throw new IllegalArgumentException(String.format("Argument für CALL ist kein bekanntes Label: '%s'", arg));
-        }
+        // Die Validierung, ob das Label existiert, erfolgt erst im PlaceholderResolver.
+        return new AssemblerOutput.JumpInstructionRequest(args[0]);
     }
 
     @Override
     public void execute(Simulation simulation) {
-        // 1. Berechne die Rücksprungadresse (IP + Länge des CALL-Befehls)
-        int[] currentIp = organism.getIpBeforeFetch();
-        int currentLength = this.getLength();
-        int[] returnIp = currentIp;
-        for (int i = 0; i < currentLength; i++) {
-            returnIp = organism.getNextInstructionPosition(returnIp, simulation.getWorld(), organism.getDvBeforeFetch());
+        // 1. Berechne die absolute Rücksprungadresse in Weltkoordinaten.
+        int[] absoluteReturnIp = organism.getIpBeforeFetch();
+        for (int i = 0; i < this.getLength(); i++) {
+            absoluteReturnIp = organism.getNextInstructionPosition(absoluteReturnIp, simulation.getWorld(), organism.getDvBeforeFetch());
         }
 
-        // 2. Schiebe die Rücksprungadresse auf den Stack (als Vektor)
-        organism.getDataStack().push(returnIp);
+        // 2. KORREKTUR: Konvertiere die absolute Adresse in eine programm-relative Adresse.
+        int[] initialPosition = organism.getInitialPosition();
+        int[] relativeReturnIp = new int[absoluteReturnIp.length];
+        for (int i = 0; i < absoluteReturnIp.length; i++) {
+            relativeReturnIp[i] = absoluteReturnIp[i] - initialPosition[i];
+        }
 
-        // 3. Berechne die Zielkoordinate für den Sprung
+        // 3. Schiebe die relative Rücksprungadresse auf den Stack.
+        organism.getDataStack().push(relativeReturnIp);
+
+        // 4. Berechne die absolute Zielkoordinate für den Sprung (unverändert).
         int[] targetIp = organism.getTargetCoordinate(organism.getIpBeforeFetch(), this.delta, simulation.getWorld());
 
-        // 4. Setze den IP auf die Zielkoordinate
+        // 5. Setze den IP des Organismus auf die absolute Zielkoordinate.
         organism.setIp(targetIp);
         organism.setSkipIpAdvance(true);
     }

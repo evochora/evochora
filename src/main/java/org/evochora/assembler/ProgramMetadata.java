@@ -5,13 +5,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Erweitert, um die neue Source Map für das Laufzeit-Debugging aufzunehmen.
+ * Ein typsicherer Datencontainer (Record), der alle relevanten Informationen speichert,
+ * die während des Assemblierungsprozesses generiert werden.
+ * Diese Version wurde erweitert, um die neue Source Map für das Laufzeit-Debugging aufzunehmen.
  */
 public record ProgramMetadata(
         String programId,
         Map<int[], Integer> machineCodeLayout,
         Map<int[], Symbol> initialWorldObjects,
-        // NEU: Die Source Map
+        // NEU: Die Source Map, die eine lineare Adresse auf ihren Ursprungsort abbildet.
         Map<Integer, SourceLocation> linearAddressToSourceLocation,
         Map<String, Integer> registerMap,
         Map<Integer, String> registerIdToName,

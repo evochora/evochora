@@ -25,7 +25,7 @@ public final class Config {
     // Graphics Settings
     public static final int CELL_SIZE = 22;
     public static final int HEADER_HEIGHT = 50;
-    public static final int FOOTER_HEIGHT = 90;
+    public static final int FOOTER_HEIGHT = 110;
 
     // Farbdefinitionen
     public static final Color COLOR_BG = Color.rgb(10, 10, 20);

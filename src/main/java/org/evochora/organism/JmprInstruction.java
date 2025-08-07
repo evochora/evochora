@@ -1,4 +1,3 @@
-// src/main/java/org/evochora/organism/JmprInstruction.java
 package org.evochora.organism;
 
 import org.evochora.Simulation;
@@ -11,11 +10,6 @@ import org.evochora.assembler.ArgumentType;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Die JMPR-Instruktion (Jump Register).
- * Springt zu einer neuen, programm-absoluten Position, die durch einen Vektor in einem Register definiert ist.
- * Syntax: JMPR %REG_TARGET
- */
 public class JmprInstruction extends Instruction {
     public static final int ID = 10;
 
@@ -85,25 +79,24 @@ public class JmprInstruction extends Instruction {
     public void execute(Simulation simulation) {
         Object targetObj = organism.getDr(reg);
 
-        if (!(targetObj instanceof int[] programCoord)) {
-            organism.instructionFailed("JMPR: Ungültiger Registertyp für Ziel (Reg " + reg + "). Erwartet Vektor (int[]), gefunden: " + (targetObj != null ? targetObj.getClass().getSimpleName() : "null") + ".");
+        if (!(targetObj instanceof int[] relativeCoord)) {
+            organism.instructionFailed("JMPR: Ungültiger Registertyp für Ziel (Reg " + reg + "). Erwartet Vektor (int[]).");
             return;
         }
 
-        if (programCoord.length != simulation.getWorld().getShape().length) {
-            organism.instructionFailed("JMPR: Dimension des Ziel-Vektors stimmt nicht mit Welt-Dimension überein. Erwartet: " + simulation.getWorld().getShape().length + ", gefunden: " + programCoord.length + ".");
+        if (relativeCoord.length != simulation.getWorld().getShape().length) {
+            organism.instructionFailed("JMPR: Dimension des Ziel-Vektors stimmt nicht mit Welt-Dimension überein.");
             return;
         }
 
-        // KORREKTUR: Die programm-relative Koordinate aus dem Register wird in eine
-        // absolute Welt-Koordinate umgerechnet, indem die Startposition des Organismus addiert wird.
+        // KORREKTUR: Konvertiere die programm-relative Adresse aus dem Register in eine absolute Weltkoordinate.
         int[] initialPosition = organism.getInitialPosition();
-        int[] worldCoord = new int[programCoord.length];
-        for (int i = 0; i < programCoord.length; i++) {
-            worldCoord[i] = initialPosition[i] + programCoord[i];
+        int[] absoluteCoord = new int[relativeCoord.length];
+        for (int i = 0; i < relativeCoord.length; i++) {
+            absoluteCoord[i] = initialPosition[i] + relativeCoord[i];
         }
 
-        organism.setIp(worldCoord);
+        organism.setIp(absoluteCoord);
         organism.setSkipIpAdvance(true);
     }
 }

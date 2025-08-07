@@ -16,7 +16,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public abstract class AssemblyProgram {
@@ -28,23 +27,26 @@ public abstract class AssemblyProgram {
     protected Map<int[], Symbol> initialWorldObjects;
     private boolean isDebugEnabled = false;
     private int[] programOrigin = new int[Config.WORLD_DIMENSIONS];
-    private final List<String> routineLibraries = new ArrayList<>();
+    private final Map<String, String> routineLibraries = new HashMap<>();
+    private final String mainProgramFileName;
 
-    public AssemblyProgram() {
+    public AssemblyProgram(String mainProgramFileName) {
+        this.mainProgramFileName = mainProgramFileName;
         Arrays.fill(this.programOrigin, 0);
         loadStandardRoutineLibraries();
     }
 
-    /**
-     * NEU: Sucht automatisch im Standard-Ressourcenverzeichnis nach .s-Dateien und lädt
-     * deren Inhalt als potenzielle Routine-Bibliotheken.
-     */
+    public AssemblyProgram() {
+        this.mainProgramFileName = this.getClass().getSimpleName() + ".java";
+        Arrays.fill(this.programOrigin, 0);
+        loadStandardRoutineLibraries();
+    }
+
     private void loadStandardRoutineLibraries() {
         try {
             String routinesPath = "org/evochora/organism/prototypes/routines/";
             URL resourceUrl = Thread.currentThread().getContextClassLoader().getResource(routinesPath);
             if (resourceUrl == null) {
-                // Das Verzeichnis existiert nicht, was in Ordnung ist, wenn keine Routinen vorhanden sind.
                 return;
             }
 
@@ -59,13 +61,11 @@ public abstract class AssemblyProgram {
         }
     }
 
-    /**
-     * NEU: Hilfsmethode, um den Inhalt einer einzelnen Bibliotheksdatei zu laden.
-     * @param filePath Der Pfad zur .s-Datei.
-     */
     private void addRoutineLibraryFromFile(Path filePath) {
         try {
-            this.routineLibraries.add(Files.readString(filePath));
+            String content = Files.readString(filePath);
+            String fileName = filePath.getFileName().toString();
+            this.routineLibraries.put(fileName, content);
         } catch (IOException e) {
             System.err.println("Fehler beim Lesen der Routine-Bibliothek: " + filePath);
             e.printStackTrace();
@@ -73,9 +73,6 @@ public abstract class AssemblyProgram {
     }
 
     public void setProgramOrigin(int[] origin) {
-        if (origin.length != Config.WORLD_DIMENSIONS) {
-            throw new IllegalArgumentException("Program origin must have " + Config.WORLD_DIMENSIONS + " dimensions.");
-        }
         this.programOrigin = origin;
     }
 
@@ -83,60 +80,45 @@ public abstract class AssemblyProgram {
         return Arrays.copyOf(this.programOrigin, this.programOrigin.length);
     }
 
-    /**
-     * Gibt den Assembler-Code des Hauptprogramms zurück.
-     * Muss von abgeleiteten Klassen implementiert werden (oder von anonymen Klassen).
-     */
     public abstract String getProgramCode();
 
-    /**
-     * NEU: Baut den vollständigen Code zusammen, indem zuerst alle geladenen
-     * Routine-Bibliotheken und dann das Hauptprogramm angefügt werden.
-     * @return Der komplette String, der an den Assembler übergeben wird.
-     */
-    public String getAssemblyCodeWithLibraries() {
-        StringBuilder finalCode = new StringBuilder();
-
-        // Füge alle geladenen Routine-Bibliotheken an den Anfang
-        for (String libraryCode : this.routineLibraries) {
-            finalCode.append(libraryCode).append("\n");
+    public List<AnnotatedLine> getAnnotatedCode() {
+        List<AnnotatedLine> allLines = new ArrayList<>();
+        for (Map.Entry<String, String> entry : routineLibraries.entrySet()) {
+            String fileName = entry.getKey();
+            String content = entry.getValue();
+            int lineNum = 1;
+            for (String line : content.split("\\r?\\n")) {
+                allLines.add(new AnnotatedLine(line, lineNum++, fileName));
+            }
         }
-
-        // Füge das Hauptprogramm an. Die .s-Datei selbst sollte mit .ORG 0|0 beginnen.
-        finalCode.append("\n# --- Hauptprogramm --- \n");
-        finalCode.append(this.getProgramCode());
-
-        return finalCode.toString();
+        int lineNum = 1;
+        // KORREKTUR: Verwendet den echten Dateinamen.
+        for (String line : getProgramCode().split("\\r?\\n")) {
+            allLines.add(new AnnotatedLine(line, lineNum++, this.mainProgramFileName));
+        }
+        return allLines;
     }
+
 
     public AssemblyProgram enableDebug() {
         this.isDebugEnabled = true;
         return this;
     }
 
-    /**
-     * Startet den Assemblierungsprozess für den gesamten Code.
-     * @return Eine Map, die das Speicherlayout des assemblierten Programms darstellt.
-     */
     public Map<int[], Integer> assemble() {
-        if (this.metadata != null) {
-            return this.metadata.machineCodeLayout();
-        }
-
+        if (this.metadata != null) return this.metadata.machineCodeLayout();
         Assembler assembler = new Assembler();
-        String programName = this.getClass().getSimpleName();
-        // Übergibt den kombinierten Code (Bibliotheken + Hauptprogramm) an den Assembler.
-        this.metadata = assembler.assemble(getAssemblyCodeWithLibraries(), programName, this.isDebugEnabled);
+        String programName = this.mainProgramFileName;
+        this.metadata = assembler.assemble(getAnnotatedCode(), programName, this.isDebugEnabled);
 
-        if (this.metadata == null) {
-            throw new IllegalStateException("Assembler hat null zurückgegeben. Assemblierung fehlgeschlagen.");
-        }
-
+        if (this.metadata == null) throw new IllegalStateException("Assembler hat null zurückgegeben.");
         programIdToMetadata.put(this.metadata.programId(), this.metadata);
         this.initialWorldObjects = this.metadata.initialWorldObjects();
         return this.metadata.machineCodeLayout();
     }
 
+    // Getter und statische Methoden bleiben unverändert
     public Map<int[], Symbol> getInitialWorldObjects() {
         if (this.initialWorldObjects == null) {
             assemble();
@@ -163,12 +145,9 @@ public abstract class AssemblyProgram {
         World world = organism.getSimulation().getWorld();
         int[] ip = organism.getIp();
         int[] currentDv = organism.getDv();
-
         String programId = getProgramIdForOrganism(organism);
         ProgramMetadata metadata = (programId != null) ? programIdToMetadata.get(programId) : null;
-
         Disassembler disassembler = new Disassembler();
-
         if (metadata != null) {
             return disassembler.disassemble(metadata, ip, currentDv, world);
         } else {
@@ -180,12 +159,9 @@ public abstract class AssemblyProgram {
         World world = organism.getSimulation().getWorld();
         int[] ip = organism.getIpBeforeFetch();
         int[] currentDv = organism.getDvBeforeFetch();
-
         String programId = getProgramIdForOrganism(organism);
         ProgramMetadata metadata = (programId != null) ? programIdToMetadata.get(programId) : null;
-
         Disassembler disassembler = new Disassembler();
-
         if (metadata != null) {
             return disassembler.disassemble(metadata, ip, currentDv, world);
         } else {

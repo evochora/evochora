@@ -1,14 +1,13 @@
-// src/main/java/org/evochora/ui/FooterController.java
 package org.evochora.ui;
 
 import javafx.scene.control.TextArea;
-import javafx.scene.control.TextField;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import org.evochora.Config;
 import org.evochora.Logger;
 import org.evochora.organism.Organism;
+import org.evochora.assembler.*;
 
 import java.util.Arrays;
 import java.util.List;
@@ -21,15 +20,12 @@ public class FooterController {
 
     public FooterController(Logger logger) {
         this.logger = logger;
-
         this.fullDetailsTextArea = new TextArea();
-
         setupFullDetailsTextArea();
 
         footerPane = new VBox(0);
         footerPane.setPrefHeight(Config.FOOTER_HEIGHT);
         footerPane.setStyle("-fx-background-color: " + toWebColor(Config.COLOR_HEADER_FOOTER) + "; -fx-padding: 10;");
-
         footerPane.getChildren().addAll(fullDetailsTextArea);
 
         update(null, logger);
@@ -37,32 +33,22 @@ public class FooterController {
 
     private void setupFullDetailsTextArea() {
         Font uiFont = Font.font("Monospaced", 12);
-        Color textColor = Config.COLOR_TEXT;
-
         fullDetailsTextArea.setFont(uiFont);
         fullDetailsTextArea.setEditable(false);
-        fullDetailsTextArea.setWrapText(true);
+        fullDetailsTextArea.setWrapText(false);
         fullDetailsTextArea.setPrefRowCount(5);
         fullDetailsTextArea.setStyle("-fx-control-inner-background: " + toWebColor(Config.COLOR_HEADER_FOOTER) + ";" +
-                "-fx-text-fill: " + toWebColor(textColor) + ";" +
+                "-fx-text-fill: " + toWebColor(Config.COLOR_TEXT) + ";" +
                 "-fx-background-color: transparent; -fx-border-width: 0;");
     }
 
-    /**
-     * Aktualisiert die Anzeige im Footer.
-     * @param selectedOrganism Der aktuell ausgewählte Organismus (kann null sein).
-     * @param logger Die Logger-Instanz.
-     */
     public void update(Organism selectedOrganism, Logger logger) {
         this.logger = logger;
-
         StringBuilder displayText = new StringBuilder();
 
         if (selectedOrganism != null) {
             Color orgColor = selectedOrganism.isDead() ? Config.COLOR_DEAD : Config.COLOR_TEXT;
-            fullDetailsTextArea.setStyle("-fx-control-inner-background: " + toWebColor(Config.COLOR_HEADER_FOOTER) + ";" +
-                    "-fx-text-fill: " + toWebColor(orgColor) + ";" +
-                    "-fx-background-color: transparent; -fx-border-width: 0;");
+            fullDetailsTextArea.setStyle("-fx-text-fill: " + toWebColor(orgColor) + "; -fx-control-inner-background: " + toWebColor(Config.COLOR_HEADER_FOOTER) + ";");
 
             displayText.append(String.format("ID: %d %s | ER: %d | IP: %s | DP: %s | DV: %s\n",
                     selectedOrganism.getId(), selectedOrganism.isDead() ? "(DEAD)" : "",
@@ -72,41 +58,38 @@ public class FooterController {
             List<Object> drs = selectedOrganism.getDrs();
             StringBuilder drsText = new StringBuilder("DRs: ");
             for(int i = 0; i < drs.size(); i++) {
-                Object val = drs.get(i);
-                drsText.append(String.format("%d=%s", i, this.logger.formatDrValue(val)));
-                if (i < drs.size() - 1) {
-                    drsText.append(", ");
-                }
+                drsText.append(String.format("%d=%s", i, this.logger.formatDrValue(drs.get(i))));
+                if (i < drs.size() - 1) drsText.append(", ");
             }
             displayText.append(drsText.toString()).append("\n");
 
-            String stackText = "Stack: " + logger.formatStack(selectedOrganism, true, 8);
-            displayText.append(stackText).append("\n");
+            displayText.append("Stack: ").append(logger.formatStack(selectedOrganism, true, 8)).append("\n");
 
-            displayText.append("Next: ").append(logger.getNextInstructionInfo(selectedOrganism));
+            displayText.append("Next: ").append(logger.getNextInstructionInfo(selectedOrganism)).append("\n");
+
+            String nextSourceInfo = getSourceInfoForNextInstruction(selectedOrganism);
+            displayText.append("Line: ").append(nextSourceInfo);
 
         } else {
-            fullDetailsTextArea.setStyle("-fx-control-inner-background: " + toWebColor(Config.COLOR_HEADER_FOOTER) + ";" +
-                    "-fx-text-fill: " + toWebColor(Config.COLOR_TEXT) + ";" +
-                    "-fx-background-color: transparent; -fx-border-width: 0;");
-
-            displayText.append("No Organism Selected.\nDRs: \nStack: ---\nNext: ---");
+            fullDetailsTextArea.setStyle("-fx-text-fill: " + toWebColor(Config.COLOR_TEXT) + "; -fx-control-inner-background: " + toWebColor(Config.COLOR_HEADER_FOOTER) + ";");
+            displayText.append("Kein Organismus ausgewählt.\nDRs: ---\nStack: ---\nNext: ---\nLine: ---");
         }
         fullDetailsTextArea.setText(displayText.toString());
     }
 
-    public void updateLogger(Logger logger) {
-        this.logger = logger;
+    private String getSourceInfoForNextInstruction(Organism organism) {
+        String fullSourceInfo = logger.getSourceLocationString(organism, organism.getIp());
+        if (fullSourceInfo.isEmpty()) return "N/A";
+
+        // Extrahiere den Teil nach dem ">" für eine saubere Anzeige
+        String[] parts = fullSourceInfo.split(">", 2);
+        if (parts.length > 1) {
+            return parts[0].strip() + ">" + parts[1];
+        }
+        return fullSourceInfo.strip();
     }
 
-    public VBox getView() {
-        return footerPane;
-    }
-
-    private String toWebColor(Color color) {
-        return String.format("#%02X%02X%02X",
-                (int) (color.getRed() * 255),
-                (int) (color.getGreen() * 255),
-                (int) (color.getBlue() * 255));
-    }
+    public void updateLogger(Logger newLogger) { this.logger = newLogger; }
+    public VBox getView() { return footerPane; }
+    private String toWebColor(Color c) { return String.format("#%02X%02X%02X", (int)(c.getRed()*255), (int)(c.getGreen()*255), (int)(c.getBlue()*255)); }
 }

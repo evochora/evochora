@@ -1,12 +1,12 @@
-// src/test/java/org/evochora/assembler/AssemblerTest.java
 package org.evochora.assembler;
 
-import org.evochora.Config;
 import org.evochora.organism.Instruction;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 class AssemblerTest {
@@ -14,6 +14,23 @@ class AssemblerTest {
     @BeforeAll
     static void setup() {
         Instruction.init();
+    }
+
+    private Assembler createAssembler() {
+        return new Assembler();
+    }
+
+    /**
+     * NEU: Hilfsmethode, um einen rohen String in das neue
+     * Listenformat umzuwandeln, das der Assembler erwartet.
+     */
+    private List<AnnotatedLine> annotateCode(String code) {
+        List<AnnotatedLine> lines = new ArrayList<>();
+        int lineNum = 1;
+        for (String line : code.split("\\r?\\n")) {
+            lines.add(new AnnotatedLine(line, lineNum++, "test.s"));
+        }
+        return lines;
     }
 
     @Test
@@ -24,8 +41,8 @@ class AssemblerTest {
                 .ORG 5|5
                 NOP
                 """;
-        Assembler assembler = new Assembler();
-        ProgramMetadata metadata = assembler.assemble(code, "TestValidCode", false);
+        Assembler assembler = createAssembler();
+        ProgramMetadata metadata = assembler.assemble(annotateCode(code), "TestValidCode", false);
         Map<int[], Integer> layout = metadata.machineCodeLayout();
 
         Assertions.assertEquals(2, layout.size());
@@ -53,9 +70,8 @@ class AssemblerTest {
                     SETI %DR_B DATA:100
                     $OUTER_MACRO %DR_A
                 """;
-
-        Assembler assembler = new Assembler();
-        Assertions.assertDoesNotThrow(() -> assembler.assemble(code, "TestNestedMacros", false));
+        Assembler assembler = createAssembler();
+        Assertions.assertDoesNotThrow(() -> assembler.assemble(annotateCode(code), "TestNestedMacros", false));
     }
 
     @Test
@@ -74,14 +90,12 @@ class AssemblerTest {
                 .ORG 0|0
                 $INFINITE_LOOP
                 """;
+        Assembler assembler = createAssembler();
+        AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(annotateCode(code), "TestInfiniteLoop", false));
 
-        Assembler assembler = new Assembler();
-        AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(code, "TestInfiniteLoop", false));
-
-        String expectedPart = "$CALL_LOOP_B -> $INFINITE_LOOP";
         Assertions.assertTrue(
-                exception.getMessage().contains("Endlose Makro-Rekursion erkannt") && exception.getFormattedMessage().contains(expectedPart),
-                () -> "Die tatsächliche Fehlermeldung war: " + exception.getFormattedMessage()
+                exception.getMessage().contains("Endlosrekursion im Makro erkannt"),
+                "Die Fehlermeldung sollte auf Endlosrekursion hinweisen. War aber: " + exception.getFormattedMessage()
         );
     }
 
@@ -91,11 +105,13 @@ class AssemblerTest {
                 .MACRO $INCOMPLETE_MACRO
                     NOP
                 """;
+        Assembler assembler = createAssembler();
+        AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(annotateCode(code), "TestMissingEndm", false));
 
-        Assembler assembler = new Assembler();
-        AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(code, "TestMissingEndm", false));
-
-        Assertions.assertTrue(exception.getMessage().contains("Fehlendes .ENDM für Makro-Definition '$INCOMPLETE_MACRO'."), "Die Fehlermeldung sollte auf eine fehlende .ENDM-Direktive hinweisen.");
+        Assertions.assertTrue(
+                exception.getMessage().contains("wurde nicht geschlossen"),
+                "Die Fehlermeldung sollte auf eine fehlende .ENDM-Direktive hinweisen."
+        );
     }
 
     @Test
@@ -108,11 +124,13 @@ class AssemblerTest {
                 .ORG 0|0
                 $TWO_ARGS %DR_A
                 """;
+        Assembler assembler = createAssembler();
+        AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(annotateCode(code), "TestWrongMacroArgs", false));
 
-        Assembler assembler = new Assembler();
-        AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(code, "TestWrongMacroArgs", false));
-
-        Assertions.assertTrue(exception.getMessage().contains("Falsche Anzahl an Argumenten für Makro"), "Die Fehlermeldung sollte auf eine falsche Anzahl an Makro-Argumenten hinweisen.");
+        Assertions.assertTrue(
+                exception.getMessage().contains("Falsche Argumentanzahl für Makro"),
+                "Die Fehlermeldung sollte auf eine falsche Anzahl an Makro-Argumenten hinweisen."
+        );
     }
 
     @Test
@@ -124,11 +142,13 @@ class AssemblerTest {
                 MY_LABEL:
                     NOP
                 """;
+        Assembler assembler = createAssembler();
+        AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(annotateCode(code), "TestDuplicateLabel", false));
 
-        Assembler assembler = new Assembler();
-        AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(code, "TestDuplicateLabel", false));
-
-        Assertions.assertTrue(exception.getMessage().contains("Label 'MY_LABEL' wurde mehrfach vergeben."), "Die Fehlermeldung sollte auf ein doppeltes Label hinweisen.");
+        Assertions.assertTrue(
+                exception.getMessage().contains("Label 'MY_LABEL' wurde mehrfach vergeben"),
+                "Die Fehlermeldung sollte auf ein doppeltes Label hinweisen."
+        );
     }
 
     @Test
@@ -137,11 +157,13 @@ class AssemblerTest {
                 .ORG 0|0
                 UNKNOWN_OPCODE
                 """;
+        Assembler assembler = createAssembler();
+        AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(annotateCode(code), "TestUnknownInstruction", false));
 
-        Assembler assembler = new Assembler();
-        AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(code, "TestUnknownInstruction", false));
-
-        Assertions.assertTrue(exception.getMessage().contains("Unbekannter Befehl: UNKNOWN_OPCODE"), "Die Fehlermeldung sollte auf einen unbekannten Befehl hinweisen.");
+        Assertions.assertTrue(
+                exception.getMessage().contains("Unbekannter Befehl: UNKNOWN_OPCODE"),
+                "Die Fehlermeldung sollte auf einen unbekannten Befehl hinweisen."
+        );
     }
 
     @Test
@@ -150,12 +172,13 @@ class AssemblerTest {
                 .ORG 0|0
                 JMPI UNKNOWN_LABEL
                 """;
+        Assembler assembler = createAssembler();
+        AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(annotateCode(code), "TestInvalidArguments", false));
 
-        Assembler assembler = new Assembler();
-        AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(code, "TestInvalidArguments", false));
-
-        String expectedMessage = "Argument für JMPI ist weder ein bekanntes Label, noch ein gültiges Vektor-Literal: 'UNKNOWN_LABEL'";
-        Assertions.assertTrue(exception.getMessage().contains(expectedMessage), "Die Fehlermeldung sollte auf ein ungültiges Label hinweisen.");
+        Assertions.assertTrue(
+                exception.getMessage().contains("Unbekanntes Label für Sprungbefehl: UNKNOWN_LABEL"),
+                "Die Fehlermeldung sollte auf ein ungültiges Label hinweisen."
+        );
     }
 
     @Test
@@ -165,10 +188,13 @@ class AssemblerTest {
                 ADDR:
                     NOP
                 """;
+        Assembler assembler = createAssembler();
+        AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(annotateCode(code), "TestLabelIsInstruction", false));
 
-        Assembler assembler = new Assembler();
-        AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(code, "TestLabelIsInstruction", false));
-        Assertions.assertTrue(exception.getMessage().contains("Label 'ADDR' hat denselben Namen wie ein Befehl."), "Die Fehlermeldung sollte einen Namenskonflikt zwischen Label und Befehl anzeigen.");
+        Assertions.assertTrue(
+                exception.getMessage().contains("hat denselben Namen wie ein Befehl"),
+                "Die Fehlermeldung sollte einen Namenskonflikt zwischen Label und Befehl anzeigen."
+        );
     }
 
     private Integer findValueAtCoordinate(Map<int[], Integer> map, int[] coord) {

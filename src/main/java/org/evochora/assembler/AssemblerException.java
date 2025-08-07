@@ -1,33 +1,20 @@
-// src/main/java/org/evochora/assembler/AssemblerException.java
 package org.evochora.assembler;
 
 public class AssemblerException extends RuntimeException {
     private final String programName;
     private final int lineNumber;
+    private final String fileName; // NEU: Der Dateiname, in dem der Fehler auftrat.
     private final String message;
-    private final String offendingLine; // NEU: Feld für die fehlerhafte Zeile
+    private final String offendingLine;
 
-    // NEU: Konstruktor wurde um den Parameter 'offendingLine' erweitert.
-    public AssemblerException(String programName, int lineNumber, String message, String offendingLine) {
-        super(String.format("Assembly Error in '%s' (Line %d): %s", programName, lineNumber, message));
+    public AssemblerException(String programName, String fileName, int lineNumber, String message, String offendingLine) {
+        // Die Standard-Nachricht wird für interne Logs beibehalten.
+        super(String.format("Assembly Error in '%s' [%s:%d]: %s", programName, fileName, lineNumber, message));
         this.programName = programName;
+        this.fileName = fileName;
         this.lineNumber = lineNumber;
         this.message = message;
         this.offendingLine = offendingLine;
-    }
-
-    // Overload für den alten Konstruktor, falls er noch irgendwo verwendet wird (gute Praxis)
-    public AssemblerException(String programName, int lineNumber, String message) {
-        this(programName, lineNumber, message, "");
-    }
-
-
-    public String getProgramName() {
-        return programName;
-    }
-
-    public int getLineNumber() {
-        return lineNumber;
     }
 
     @Override
@@ -36,13 +23,11 @@ public class AssemblerException extends RuntimeException {
     }
 
     /**
-     * NEU: Gibt eine vollständig formatierte Fehlermeldung inklusive der fehlerhaften Codezeile zurück.
+     * NEU: Gibt eine vollständig formatierte, mehrzeilige Fehlermeldung zurück,
+     * die für die Konsolenausgabe optimiert ist.
      */
     public String getFormattedMessage() {
-        if (offendingLine != null && !offendingLine.isBlank()) {
-            return String.format("Assembly Error in '%s' (Line %d): %s\n> %s", programName, lineNumber, message, offendingLine.strip());
-        } else {
-            return String.format("Assembly Error in '%s' (Line %d): %s", programName, lineNumber, message);
-        }
+        return String.format("FATALER FEHLER in '%s' (Zeile %d):\n%s\n> %s",
+                this.fileName, this.lineNumber, this.message, this.offendingLine.strip());
     }
 }
