@@ -3,7 +3,6 @@ package org.evochora.assembler;
 
 import org.evochora.Config;
 import org.evochora.organism.Instruction;
-import org.evochora.organism.Organism;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
 

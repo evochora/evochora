@@ -1,16 +1,14 @@
-// src/test/java/org/evochora/organism/OrganismTest.java
 package org.evochora.organism;
 
 import org.evochora.Config;
 import org.evochora.Simulation;
+import org.evochora.organism.instructions.AddrInstruction;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.util.Arrays;
 
 public class OrganismTest {
 
@@ -53,7 +51,13 @@ public class OrganismTest {
         organism.setDr(0, vec1);
         organism.setDr(1, vec2);
 
-        Instruction add = new AddrInstruction(organism, 0, 1);
+        // KORREKTUR: Wir erstellen die Instruktion über ihre statische 'plan'-Methode,
+        // genau wie es die Simulation tut.
+        world.setSymbol(new Symbol(Config.TYPE_CODE, Instruction.getInstructionIdByName("ADDR")), 0, 0);
+        world.setSymbol(new Symbol(Config.TYPE_DATA, 0), 1, 0);
+        world.setSymbol(new Symbol(Config.TYPE_DATA, 1), 2, 0);
+
+        Instruction add = AddrInstruction.plan(organism, world);
         add.execute(simulation);
 
         int[] result = (int[]) organism.getDr(0);

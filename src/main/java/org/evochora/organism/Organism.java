@@ -1,4 +1,3 @@
-// src/main/java/org/evochora/organism/Organism.java
 package org.evochora.organism;
 
 import org.evochora.Config;
@@ -6,18 +5,17 @@ import org.evochora.Logger;
 import org.evochora.Simulation;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
+import org.evochora.organism.instructions.NopInstruction;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.ArrayDeque;
 import java.util.Deque;
-
+import java.util.Random;
 
 public class Organism {
-    // Hilfsklasse für Fork-Anfragen
     record ForkRequest(int[] childIp, int childEnergy, int[] childDv) {}
-
     public record FetchResult(int value, int[] nextIp) {}
 
     private final int id;
@@ -26,10 +24,9 @@ public class Organism {
     private int[] dv;
     private int er;
     private final List<Object> drs;
-    private final Deque<Object> dataStack; // NEU: Das Datenstack-Feld
+    private final Deque<Object> dataStack;
     private boolean isDead = false;
     private boolean loggingEnabled = false;
-    private ForkRequest forkRequestData = null;
     private boolean instructionFailed = false;
     private String failureReason = null;
     private boolean skipIpAdvance = false;
@@ -38,6 +35,7 @@ public class Organism {
     private final Logger logger;
     private final Simulation simulation;
     private final int[] initialPosition;
+    private final Random random;
 
     Organism(int id, int[] startIp, int initialEnergy, Logger logger, Simulation simulation) {
         this.id = id;
@@ -52,11 +50,11 @@ public class Organism {
         for (int i = 0; i < Config.NUM_DATA_REGISTERS; i++) {
             this.drs.add(0);
         }
-        // NEU: Initialisierung des Stacks mit der Kapazität aus der Config
         this.dataStack = new ArrayDeque<>(Config.STACK_MAX_DEPTH);
         this.ipBeforeFetch = Arrays.copyOf(startIp, startIp.length);
         this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length);
         this.initialPosition = Arrays.copyOf(startIp, startIp.length);
+        this.random = new Random(id);
     }
 
     public static Organism create(Simulation simulation, int[] startIp, int initialEnergy, Logger logger) {
@@ -75,35 +73,27 @@ public class Organism {
         if (Config.STRICT_TYPING) {
             if (symbol.type() != Config.TYPE_CODE && !symbol.isEmpty()) {
                 this.instructionFailed("Illegal cell type (not CODE) at IP");
-                return NopInstruction.plan(this, world);
+                return new NopInstruction(this, world.getSymbol(this.ip).toInt());
             }
         }
         int opcodeId = symbol.value();
-
         BiFunction<Organism, World, Instruction> planner = Instruction.getPlannerById(Config.TYPE_CODE | opcodeId);
-
         if (planner != null) {
             return planner.apply(this, world);
         }
-
         this.instructionFailed("Unknown opcode: " + opcodeId);
-        return NopInstruction.plan(this, world);
+        return new NopInstruction(this, world.getSymbol(this.ip).toInt());
     }
 
     public void processTickAction(Instruction instruction, Simulation simulation) {
         if (isDead) return;
-
         World world = simulation.getWorld();
-
         List<Integer> rawArgs = getRawArgumentsFromWorld(ipBeforeFetch, instruction.getLength(), world);
         this.er -= instruction.getCost(this, world, rawArgs);
-
         instruction.execute(simulation);
-
         if (this.instructionFailed) {
             this.er -= Config.ERROR_PENALTY_COST;
         }
-
         if (this.er <= 0) {
             isDead = true;
             if (!this.instructionFailed) {
@@ -111,17 +101,14 @@ public class Organism {
             }
             return;
         }
-
         if (!this.skipIpAdvance) {
-            int length = instruction.getLength();
-            advanceIpBy(length, world);
+            advanceIpBy(instruction.getLength(), world);
         }
     }
 
     private List<Integer> getRawArgumentsFromWorld(int[] startIp, int instructionLength, World world) {
         List<Integer> rawArgs = new ArrayList<>();
         int[] tempIp = Arrays.copyOf(startIp, startIp.length);
-
         for (int i = 0; i < instructionLength - 1; i++) {
             tempIp = getNextInstructionPosition(tempIp, world, this.dvBeforeFetch);
             rawArgs.add(world.getSymbol(tempIp).toInt());
@@ -129,43 +116,19 @@ public class Organism {
         return rawArgs;
     }
 
-    boolean setDr(int index, Object value) {
-        if (index >= 0 && index < this.drs.size()) {
-            if (value instanceof Integer || value instanceof int[]) {
-                this.drs.set(index, value);
-                return true;
-            }
-            this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to DR " + index);
-            return false;
-        }
-        this.instructionFailed("DR index out of bounds: " + index);
-        return false;
-    }
-
-    public Object getDr(int index) {
-        if (index >= 0 && index < this.drs.size()) {
-            return this.drs.get(index);
-        }
-        this.instructionFailed("DR index out of bounds: " + index);
-        return null;
-    }
-
-    private FetchResult fetchArgumentInternal(int[] currentIp, World world, boolean signed) {
+    public FetchResult fetchArgument(int[] currentIp, World world) {
         int[] nextIp = getNextInstructionPosition(currentIp, world, this.dvBeforeFetch);
         Symbol symbol = world.getSymbol(nextIp);
-        int value = signed ? symbol.toScalarValue() : symbol.value();
-        return new FetchResult(value, nextIp);
-    }
-
-    public FetchResult fetchArgument(int[] currentIp, World world) {
-        return fetchArgumentInternal(currentIp, world, false);
+        return new FetchResult(symbol.value(), nextIp);
     }
 
     public FetchResult fetchSignedArgument(int[] currentIp, World world) {
-        return fetchArgumentInternal(currentIp, world, true);
+        int[] nextIp = getNextInstructionPosition(currentIp, world, this.dvBeforeFetch);
+        Symbol symbol = world.getSymbol(nextIp);
+        return new FetchResult(symbol.toScalarValue(), nextIp);
     }
 
-    void advanceIpBy(int steps, World world) {
+    private void advanceIpBy(int steps, World world) {
         for (int i = 0; i < steps; i++) {
             this.ip = getNextInstructionPosition(this.ip, world, this.dvBeforeFetch);
         }
@@ -179,7 +142,7 @@ public class Organism {
         return world.getNormalizedCoordinate(nextIp);
     }
 
-    int[] getTargetCoordinate(int[] startPos, int[] vector, World world) {
+    public int[] getTargetCoordinate(int[] startPos, int[] vector, World world) {
         int[] targetPos = new int[startPos.length];
         for(int i=0; i<startPos.length; i++) {
             targetPos[i] = startPos[i] + vector[i];
@@ -187,13 +150,9 @@ public class Organism {
         return world.getNormalizedCoordinate(targetPos);
     }
 
-    void skipNextInstruction(World world) {
-        // Der IP zeigt aktuell auf den IF-Befehl selbst (z.B. bei Koordinate P1).
-        // Wir müssen den IP auf die Koordinate NACH dem ZU ÜBERSPRINGENDEN Befehl setzen.
-
-        // 1. Finde die Startposition des nächsten Befehls (P2).
-        // Dazu müssen wir vom aktuellen IP (P1) um die Länge des aktuellen IF-Befehls vorrücken.
-        int[] currentInstructionIp = this.getIp();
+    public void skipNextInstruction(World world) {
+        // KORREKTUR: Die Berechnung muss von der Position des IF-Befehls ausgehen.
+        int[] currentInstructionIp = this.getIpBeforeFetch();
         int currentInstructionOpcode = world.getSymbol(currentInstructionIp).toInt();
         int currentInstructionLength = Instruction.getInstructionLengthById(currentInstructionOpcode);
 
@@ -202,24 +161,18 @@ public class Organism {
             nextInstructionIp = getNextInstructionPosition(nextInstructionIp, world, this.getDvBeforeFetch());
         }
 
-        // 2. Finde die Länge des zu überspringenden Befehls (L2), der bei P2 startet.
         int nextOpcode = world.getSymbol(nextInstructionIp).toInt();
         int lengthToSkip = Instruction.getInstructionLengthById(nextOpcode);
 
-        // 3. Setze den IP auf die finale Position (P3).
-        // P3 = P2 + L2
         int[] finalIp = nextInstructionIp;
         for (int i = 0; i < lengthToSkip; i++) {
             finalIp = getNextInstructionPosition(finalIp, world, this.getDvBeforeFetch());
         }
-
         this.setIp(finalIp);
-
-        // 4. Verhindere das standardmäßige Vorrücken am Ende des Ticks, da wir den IP manuell gesetzt haben.
         this.setSkipIpAdvance(true);
     }
 
-    boolean isUnitVector(int[] vector) {
+    public boolean isUnitVector(int[] vector) {
         if (vector.length != Config.WORLD_DIMENSIONS) {
             this.instructionFailed("Vector has incorrect dimensions: expected " + Config.WORLD_DIMENSIONS + ", got " + vector.length);
             return false;
@@ -230,8 +183,9 @@ public class Organism {
         }
         if (distance != 1) {
             this.instructionFailed("Vector is not a unit vector (sum of abs components is " + distance + ")");
+            return false;
         }
-        return distance == 1;
+        return true;
     }
 
     public void instructionFailed(String reason) {
@@ -239,14 +193,32 @@ public class Organism {
         this.failureReason = reason;
     }
 
-    void setIp(int[] newIp) { this.ip = newIp; }
-    void setDp(int[] newDp) { this.dp = newDp; }
-    void setDv(int[] newDv) { this.dv = newDv; }
-    void addEr(int amount) { this.er = Math.min(this.er + amount, Config.MAX_ORGANISM_ENERGY); }
-    void takeEr(int amount) { this.er -= amount; }
-    void setForkRequestData(int[] childIp, int childEnergy, int[] childDv) { this.forkRequestData = new ForkRequest(childIp, childEnergy, childDv); }
-    void setSkipIpAdvance(boolean skip) { this.skipIpAdvance = skip; }
-
+    // --- Public API für Instruktionen ---
+    public boolean setDr(int index, Object value) {
+        if (index >= 0 && index < this.drs.size()) {
+            if (value instanceof Integer || value instanceof int[]) {
+                this.drs.set(index, value);
+                return true;
+            }
+            this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to DR " + index);
+            return false;
+        }
+        this.instructionFailed("DR index out of bounds: " + index);
+        return false;
+    }
+    public Object getDr(int index) {
+        if (index >= 0 && index < this.drs.size()) {
+            return this.drs.get(index);
+        }
+        this.instructionFailed("DR index out of bounds: " + index);
+        return null;
+    }
+    public void setIp(int[] newIp) { this.ip = newIp; }
+    public void setDp(int[] newDp) { this.dp = newDp; }
+    public void setDv(int[] newDv) { this.dv = newDv; }
+    public void addEr(int amount) { this.er = Math.min(this.er + amount, Config.MAX_ORGANISM_ENERGY); }
+    public void takeEr(int amount) { this.er -= amount; }
+    public void setSkipIpAdvance(boolean skip) { this.skipIpAdvance = skip; }
     public int getId() { return id; }
     public int[] getIp() { return Arrays.copyOf(ip, ip.length); }
     public int[] getIpBeforeFetch() { return Arrays.copyOf(ipBeforeFetch, ipBeforeFetch.length); }
@@ -255,7 +227,6 @@ public class Organism {
     public int getEr() { return er; }
     public List<Object> getDrs() { return new ArrayList<>(drs); }
     public boolean isDead() { return isDead; }
-    public ForkRequest getForkRequestData() { return forkRequestData; }
     public boolean isLoggingEnabled() { return loggingEnabled; }
     public void setLoggingEnabled(boolean loggingEnabled) { this.loggingEnabled = loggingEnabled; }
     public boolean isInstructionFailed() { return instructionFailed; }
@@ -264,9 +235,6 @@ public class Organism {
     public int[] getDv() { return Arrays.copyOf(dv, dv.length); }
     public Simulation getSimulation() { return simulation; }
     public int[] getInitialPosition() { return Arrays.copyOf(this.initialPosition, this.initialPosition.length); }
-
-    // NEU: Getter für den Stack, damit die UI und der Logger darauf zugreifen können
-    public Deque<Object> getDataStack() {
-        return this.dataStack;
-    }
+    public Deque<Object> getDataStack() { return this.dataStack; }
+    public Random getRandom() { return this.random; }
 }
