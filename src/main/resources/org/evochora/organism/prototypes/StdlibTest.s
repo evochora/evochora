@@ -1,70 +1,108 @@
 # =================================================================
-# Hauptprogramm: Test von stdlib.TURN_RIGHT und stdlib.CHECK_CELL
-# - Jede Routine wird in einer eigenen Zeile getestet (Code läuft nach rechts).
-# - Bei Erfolg wird rechts neben die jeweiligen Befehle DATA:0 geschrieben.
+# Prototyp: StdlibTest.s - Testsuite für Standard-Bibliotheken
+#
+# Dieses Programm testet Routinen aus stdlib.s mit einem
+# standardisierten Makro-Schema, das die Teststruktur automatisiert.
 # =================================================================
 
-# --- Register-Aliase ---
-.REG %DV     0   # Richtungsvektor für Tests / TURN_RIGHT (REG_DV)
-.REG %TMP    1   # Temporär für TURN_RIGHT (REG_TMP)
-.REG %TF     2   # In/Out-Flag für CHECK_CELL (REG_TF)
-.REG %VEC    3   # Allgemeine Vektoren (1|0, 0|1, etc.)
-.REG %SYM    4   # Datenliteral für POKE/Vergleiche
+# --- Globale Register-Aliase und Vektoren ---
+.REG %DR_RESULT      0   # Ergebnis-Register für die Assertionen (0=Erfolg, 1=Fehler)
+.REG %VEC_RESULT_POS 1   # Vektor zur Platzierung des Testergebnisses
+.REG %DR0            2   # Richtungsvektor
+.REG %DR1            3   # Temporäres Register
+.REG %DR2            4   # True/False-Flag für Bedingungen
+.REG %DR3            5   # Erwarteter Wert für Vergleiche
+.REG %DR4            6   # Temporäres Symbol-Register
+.REG %DR5            7   # Temporäres Vektor-Register
 
-# Springe zum ersten Test
-JMPI TEST1
+# --- Makro zur Test-Vorbereitung ---
+.MACRO $TEST_START TEST_NUMBER TEST_LINE
+    .PLACE STRUCTURE:TEST_NUMBER 0|TEST_LINE
+    .ORG 2|TEST_LINE
+    TEST_TEST_NUMBER:
+        SYNC
+.ENDM
 
-# === TEST 1: TURN_RIGHT ===
-.PLACE STRUCTURE:1 0|2
-.ORG 2|2
-TEST1:
-SYNC
-SETV %DV 1|0       # Vorbereitung: Richtung Rechts
-CALL TR            # Dreht um 90°
-SETV %TMP 0|1      # Erwarteter Wert: Unten
-IFR %DV %TMP
-JMPI TR_OK
-JMPI TR_END
-TR_OK:
-SETI %SYM DATA:0
-SETV %VEC -1|0
-POKE %SYM %VEC     # rechts neben Erfolg
-TR_END:
-JMPI TEST2
+# --- Makro für die Test-Überprüfung ---
+.MACRO $TEST_ASSERT RESULT_REG EXPECTED_REG NEXT_TEST_NUMBER
+    # Setzt Annahme: Test schlägt fehl (DATA:1)
+    SETI %DR_RESULT DATA:1
+    # Vergleicht das Ergebnis mit dem erwarteten Wert
+    IFR RESULT_REG EXPECTED_REG
+    # Wenn gleich, setze das Ergebnis auf Erfolg (DATA:0)
+    SETI %DR_RESULT DATA:0
 
-# --- zu testende Routine ---
-.ORG 2|3
-.INCLUDE stdlib.TURN_RIGHT AS TR WITH %DV %TMP
+    # Markiere die Zelle links vom Start mit dem Ergebnis
+    SETV %VEC_RESULT_POS -1|0
+    POKE %DR_RESULT %VEC_RESULT_POS
+
+    # Springe zum nächsten Test
+    JMPI TEST_NEXT_TEST_NUMBER
+.ENDM
+
+# ================================================
+# === Hauptprogramm: Testkette
+# ================================================
+.ORG 0|0
+MAIN:
+    SETV %VEC_RESULT_POS 1|0
+    JMPI TEST_1 # Springt zum ersten Test
+
+# ------------------------------------------------
+# --- Test 1: TURN_RIGHT (in Zeile 1)
+# ------------------------------------------------
+$TEST_START 1 1
+    # Testcode:
+    SETV %DR0 1|0          # Startvektor ist Rechts (1|0)
+    CALL R_TEST_1          # Ruft die Routine auf
+    SETV %DR3 0|1          # Erwartetes Ergebnis ist Unten (0|1)
+
+    TEST_1_ASSERTION:
+    # Überprüfung des Ergebnisses und Sprung zum nächsten Test
+    $TEST_ASSERT %DR0 %DR3 2
+
+    # 3 NOPs zur Abgrenzung zwischen Testcode und Routine
+    NOP
+    NOP
+    NOP
+
+    .INCLUDE stdlib.TURN_RIGHT AS R_TEST_1 WITH %DR0 %DR1
 
 
-# === TEST 2: CHECK_CELL ===
-.PLACE STRUCTURE:2 0|5
-.ORG 2|5
-TEST2:
-SYNC
-SETI %SYM DATA:123
-SETV %VEC -1|0
-PEEK %TMP %VEC     # Zielzelle leeren
-POKE %SYM %VEC     # Lege DATA rechts neben Code
-SETV %DV -1|0      # Richtung Rechts prüfen
-SETI %TF DATA:0    # Gesuchter Typ: DATA
-CALL CC            # %TF = 1 bei Erfolg
-SETI %TMP DATA:1
-IFR %TF %TMP
-JMPI CC_OK
-JMPI CC_END
-CC_OK:
-SETV %VEC -1|0
-PEEK %TMP %VEC
-SETI %SYM DATA:0
-POKE %SYM %VEC     # Noch eine Zelle weiter rechts markieren
-CC_END:
-JMPI END
 
-# --- zu testende Routine ---
-.ORG 2|6
-.INCLUDE stdlib.CHECK_CELL AS CC WITH %DV %TF
+# ------------------------------------------------
+# --- Test 2: CHECK_CELL (in Zeile 3)
+# ------------------------------------------------
+$TEST_START 2 3
+    # Testcode:
+    SETI %DR4 DATA:123
+    SETV %DR5 -1|0
+    POKE %DR4 %DR5
+    SETV %DR0 -1|0
+    SETI %DR2 DATA:0
+    CALL R_TEST_2
+    PEEK %DR4 %DR5
+    SETI %DR3 DATA:1
 
-# --- Programmende ---
-END:
-NOP
+    TEST_2_ASSERTION:
+    # Überprüfung des Ergebnisses und Sprung zum nächsten Test
+    $TEST_ASSERT %DR2 %DR3 3
+
+    # 3 NOPs zur Abgrenzung zwischen Testcode und Routine
+    NOP
+    NOP
+    NOP
+
+    .INCLUDE stdlib.CHECK_CELL AS R_TEST_2 WITH %DR0 %DR2
+
+
+
+# ------------------------------------------------
+# --- Test 3: Ende der Testsuite (in Zeile 5)
+# ------------------------------------------------
+$TEST_START 3 5
+    NOP
+    JMPI END_OF_ALL_TESTS
+
+END_OF_ALL_TESTS:
+    NOP

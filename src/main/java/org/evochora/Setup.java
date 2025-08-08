@@ -17,14 +17,14 @@ public class Setup {
 
     public static void run(Simulation simulation) {
         // Lade den Routine-Tester
-        //placeProgramFromFile(simulation, "StdlibTest.s", new int[]{2, 2});
+        placeProgramFromFile(simulation, "StdlibTest.s", new int[]{2, 2});
 
         // Lade den InstructionTester
         // placeProgramFromFile(simulation, "InstructionTester.s", new int[]{5, 1});
 
         // Lade den EnergySeeker
-        EnergySeeker energySeeker = new EnergySeeker();
-        placeProgram(simulation, energySeeker, new int[]{10, 5});
+        //EnergySeeker energySeeker = new EnergySeeker();
+        //placeProgram(simulation, energySeeker, new int[]{10, 5});
     }
 
     private static void placeProgramFromFile(Simulation simulation, String filename, int[] startPos) {
