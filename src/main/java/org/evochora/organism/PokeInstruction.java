@@ -128,7 +128,7 @@ public class PokeInstruction extends Instruction implements IWorldModifyingInstr
                 if (world.getSymbol(targetCoordinate).isEmpty()) {
                     world.setSymbol(new Symbol(sourceSymbol.type(), sourceSymbol.toScalarValue()), targetCoordinate);
                 } else {
-                    organism.instructionFailed("POKE: Zielzelle ist nicht leer bei " + Arrays.toString(targetCoordinate) + ". Aktueller Inhalt: " + world.getSymbol(targetCoordinate).toInt() + ".");
+                    organism.instructionFailed("POKE: Zielzelle ist nicht leer bei " + Arrays.toString(targetCoordinate) + ". Aktueller Inhalt: " + world.getSymbol(targetCoordinate).toString());
                     this.setConflictStatus(ConflictResolutionStatus.LOST_TARGET_OCCUPIED);
                 }
             }

@@ -1,3 +1,4 @@
+// src/main/java/org/evochora/Logger.java
 package org.evochora;
 
 import org.evochora.assembler.*;
@@ -44,6 +45,7 @@ public class Logger {
         return String.format(" [%s:%d] > %s", location.fileName(), location.lineNumber(), location.lineContent().strip());
     }
 
+    // Diese Methode bleibt unverändert, da der FooterController sie für die Anzeige der nächsten Anweisung verwendet
     public String getNextInstructionInfo(Organism organism) {
         if (organism.isDead()) {
             return "DEAD";
@@ -89,7 +91,23 @@ public class Logger {
             if (i < drs.size() - 1) logLine.append(", ");
         }
         logLine.append(" | Stack: ").append(formatStack(organism, false, 0));
-        logLine.append(" | Planned: ").append(getNextInstructionInfo(organism));
+
+        // KORRIGIERT: Holt die Details der soeben ausgeführten Anweisung.
+        DisassembledInstruction disassembled = AssemblyProgram.getDisassembledInstructionDetailsForLastTick(organism);
+        String plannedInstructionInfo = "N/A";
+        if (disassembled != null) {
+            plannedInstructionInfo = disassembled.opcodeName();
+            if (disassembled.arguments() != null && !disassembled.arguments().isEmpty()) {
+                String programId = AssemblyProgram.getProgramIdForOrganism(organism);
+                ProgramMetadata metadata = (programId != null) ? AssemblyProgram.getMetadataForProgram(programId) : null;
+                String args = disassembled.arguments().stream()
+                        .map(arg -> getResolvedArgumentString(organism, arg, metadata))
+                        .collect(Collectors.joining(", "));
+                plannedInstructionInfo += "(" + args + ")";
+            }
+        }
+        logLine.append(" | Planned: ").append(plannedInstructionInfo);
+
 
         if (plannedAction.isExecutedInTick()) {
             logLine.append(" | Executed: YES");
@@ -137,10 +155,17 @@ public class Logger {
 
     private String getResolvedArgumentString(Organism organism, DisassembledArgument argument, ProgramMetadata metadata) {
         if (argument.type() == ArgumentType.REGISTER && metadata != null && metadata.registerIdToName() != null) {
-            String regName = metadata.registerIdToName().get(argument.rawValue());
-            if (regName != null) {
-                return String.format("%s", regName);
+            String regAlias = argument.resolvedValue();
+            int regId = argument.rawValue();
+            String regName = String.format("DR%d", regId);
+            Object regValue = organism.getDr(regId);
+            String formattedValue = formatDrValue(regValue);
+
+            // Verwende den Alias aus dem Disassembler, falls vorhanden, sonst den generierten Namen
+            if (regAlias != null && !regAlias.isEmpty()) {
+                return String.format("%s[%s]=%s", regAlias, regName, formattedValue);
             }
+            return String.format("%s=%s", regName, formattedValue);
         }
         return argument.resolvedValue();
     }

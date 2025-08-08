@@ -3,6 +3,7 @@ package org.evochora;
 import org.evochora.assembler.AssemblerException;
 import org.evochora.assembler.AssemblyProgram;
 import org.evochora.organism.Organism;
+import org.evochora.organism.prototypes.EnergySeeker;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
 
@@ -16,10 +17,14 @@ public class Setup {
 
     public static void run(Simulation simulation) {
         // Lade den Routine-Tester
-        placeProgramFromFile(simulation, "StdlibTest.s", new int[]{2, 2});
+        //placeProgramFromFile(simulation, "StdlibTest.s", new int[]{2, 2});
 
         // Lade den InstructionTester
         // placeProgramFromFile(simulation, "InstructionTester.s", new int[]{5, 1});
+
+        // Lade den EnergySeeker
+        EnergySeeker energySeeker = new EnergySeeker();
+        placeProgram(simulation, energySeeker, new int[]{10, 5});
     }
 
     private static void placeProgramFromFile(Simulation simulation, String filename, int[] startPos) {
@@ -59,6 +64,21 @@ public class Setup {
                 e.printStackTrace();
             }
         }
+    }
+
+    /**
+     * Eine private Hilfsmethode, die den kompletten Setup-Prozess für ein assembliertes Programm durchführt.
+     */
+    private static void placeProgram(Simulation simulation, AssemblyProgram program, int[] startPos) {
+        // 1. Assembliere den Code, um das Layout und die zusätzlichen Welt-Objekte zu erhalten.
+        Map<int[], Integer> layout = program.assemble();
+        Map<int[], Symbol> worldObjects = program.getInitialWorldObjects();
+
+        // 2. Platziere den Organismus physisch in der Welt.
+        Organism org = placeOrganismWithLayout(simulation, startPos, layout, worldObjects, simulation.getLogger());
+
+        // 3. Verknüpfe die laufende Instanz mit den Metadaten des assemblierten Programms.
+        program.assignOrganism(org);
     }
 
     private static Organism placeOrganismWithLayout(

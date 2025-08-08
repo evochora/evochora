@@ -34,4 +34,16 @@ public record Symbol(int type, int value) {
         }
         return new Symbol(type, rawValue);
     }
+
+    @Override
+    public String toString() {
+        String typePrefix = switch (this.type()) {
+            case Config.TYPE_CODE -> "CODE";
+            case Config.TYPE_DATA -> "DATA";
+            case Config.TYPE_ENERGY -> "ENERGY";
+            case Config.TYPE_STRUCTURE -> "STRUCTURE";
+            default -> "UNKNOWN";
+        };
+        return typePrefix + ":" + this.toScalarValue();
+    }
 }

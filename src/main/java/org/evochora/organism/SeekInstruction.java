@@ -93,7 +93,7 @@ public class SeekInstruction extends Instruction {
         if (simulation.getWorld().getSymbol(targetDp).isEmpty()) {
             organism.setDp(targetDp);
         } else {
-            organism.instructionFailed("SEEK: Ziel-DP-Zelle ist nicht leer bei " + Arrays.toString(targetDp) + ". Aktueller Inhalt: " + simulation.getWorld().getSymbol(targetDp).toInt() + ".");
+            organism.instructionFailed("SEEK: Ziel-DP-Zelle ist nicht leer bei " + Arrays.toString(targetDp) + ". Aktueller Inhalt: " + simulation.getWorld().getSymbol(targetDp).toString());
         }
     }
 }

@@ -61,33 +61,7 @@ EXIT:
     RET             # Kehrt zum ursprünglichen Aufrufer zurück.
 .ENDR
 
-# --- Routine: stdlib.CHECK_CELL ---
-#
-# Zweck:
-#   Prüft das Nachbarfeld in gegebener Richtung auf einen bestimmten Typ
-#   und setzt ein Flag-Register auf 1 (gefunden) oder 0 (nicht gefunden).
-#
-# Optimierung V1:
-#   Benötigt nur 3 Register: REG_DIR, REG_TYPE, REG_FLAG.
-#
-# Parameter:
-#   REG_DIR : Register mit Einheits-Vektor zur Zielzelle.
-#   REG_TYPE: Register mit Symboltyp für Vergleich (DATA:n).
-#   REG_FLAG: Register zur Rückgabe des Ergebnis-Flags (DATA:0/1).
-.ROUTINE CHECK_CELL REG_DIR REG_TYPE REG_FLAG
-## --- Logik ---
-#SCAN REG_FLAG REG_DIR            # Liest Typ der Zielzelle in REG_FLAG
-#IFTR REG_FLAG REG_TYPE           # Vergleicht mit REG_TYPE
-#JMPI SET_TRUE                    # Gegebenenfalls zu SET_TRUE springen
-#SETI REG_FLAG DATA:0             # Flag=0 (nicht gefunden)
-#JMPI END_CHECK                   # Springe ans Ende
-## --- Interne Sprungziele ---
-#SET_TRUE:
-#SETI REG_FLAG DATA:1             # Flag=1 (gefunden)
-#END_CHECK:
-## --- Aufräumen & Rücksprung ---
-#RET
-#.ENDR
+
 
 # --- Routine: stdlib.CHECK_CELL ---
 #
