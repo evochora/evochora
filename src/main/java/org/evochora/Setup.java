@@ -16,8 +16,12 @@ import java.util.Map;
 public class Setup {
 
     public static void run(Simulation simulation) {
-        // Lade den Routine-Tester
-        placeProgramFromFile(simulation, "StdlibTest.s", new int[]{2, 2});
+        // Lade den Stdlib-Tester
+        //placeProgramFromFile(simulation, "StdlibTest.s", new int[]{2, 2});
+
+        // Lade den Tactics-Tester
+        placeProgramFromFile(simulation, "TacticsTest.s", new int[]{2, 2});
+
 
         // Lade den InstructionTester
         // placeProgramFromFile(simulation, "InstructionTester.s", new int[]{5, 1});
