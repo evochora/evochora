@@ -21,8 +21,8 @@ class AssemblerTest {
     }
 
     /**
-     * NEU: Hilfsmethode, um einen rohen String in das neue
-     * Listenformat umzuwandeln, das der Assembler erwartet.
+     * NEW: Helper method to convert a raw string into the new
+     * list format expected by the assembler.
      */
     private List<AnnotatedLine> annotateCode(String code) {
         List<AnnotatedLine> lines = new ArrayList<>();
@@ -94,8 +94,8 @@ class AssemblerTest {
         AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(annotateCode(code), "TestInfiniteLoop", false));
 
         Assertions.assertTrue(
-                exception.getMessage().contains("Endlosrekursion im Makro erkannt"),
-                "Die Fehlermeldung sollte auf Endlosrekursion hinweisen. War aber: " + exception.getFormattedMessage()
+                exception.getMessage().contains("Infinite recursion in macro detected"),
+                "The error message should indicate infinite recursion. But was: " + exception.getFormattedMessage()
         );
     }
 
@@ -109,8 +109,8 @@ class AssemblerTest {
         AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(annotateCode(code), "TestMissingEndm", false));
 
         Assertions.assertTrue(
-                exception.getMessage().contains("wurde nicht geschlossen"),
-                "Die Fehlermeldung sollte auf eine fehlende .ENDM-Direktive hinweisen."
+                exception.getMessage().contains("was not closed"),
+                "The error message should indicate a missing .ENDM directive."
         );
     }
 
@@ -128,8 +128,8 @@ class AssemblerTest {
         AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(annotateCode(code), "TestWrongMacroArgs", false));
 
         Assertions.assertTrue(
-                exception.getMessage().contains("Falsche Argumentanzahl für Makro"),
-                "Die Fehlermeldung sollte auf eine falsche Anzahl an Makro-Argumenten hinweisen."
+                exception.getMessage().contains("Wrong number of arguments for macro"),
+                "The error message should indicate a wrong number of macro arguments."
         );
     }
 
@@ -146,8 +146,8 @@ class AssemblerTest {
         AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(annotateCode(code), "TestDuplicateLabel", false));
 
         Assertions.assertTrue(
-                exception.getMessage().contains("Label 'MY_LABEL' wurde mehrfach vergeben"),
-                "Die Fehlermeldung sollte auf ein doppeltes Label hinweisen."
+                exception.getMessage().contains("Label 'MY_LABEL' has been declared more than once"),
+                "The error message should indicate a duplicate label."
         );
     }
 
@@ -161,8 +161,8 @@ class AssemblerTest {
         AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(annotateCode(code), "TestUnknownInstruction", false));
 
         Assertions.assertTrue(
-                exception.getMessage().contains("Unbekannter Befehl: UNKNOWN_OPCODE"),
-                "Die Fehlermeldung sollte auf einen unbekannten Befehl hinweisen."
+                exception.getMessage().contains("Unknown instruction: UNKNOWN_OPCODE"),
+                "The error message should indicate an unknown instruction."
         );
     }
 
@@ -176,8 +176,8 @@ class AssemblerTest {
         AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(annotateCode(code), "TestInvalidArguments", false));
 
         Assertions.assertTrue(
-                exception.getMessage().contains("Unbekanntes Label für Sprungbefehl: UNKNOWN_LABEL"),
-                "Die Fehlermeldung sollte auf ein ungültiges Label hinweisen."
+                exception.getMessage().contains("Unknown label for jump instruction: UNKNOWN_LABEL"),
+                "The error message should indicate an invalid label."
         );
     }
 
@@ -192,8 +192,8 @@ class AssemblerTest {
         AssemblerException exception = Assertions.assertThrows(AssemblerException.class, () -> assembler.assemble(annotateCode(code), "TestLabelIsInstruction", false));
 
         Assertions.assertTrue(
-                exception.getMessage().contains("hat denselben Namen wie ein Befehl"),
-                "Die Fehlermeldung sollte einen Namenskonflikt zwischen Label und Befehl anzeigen."
+                exception.getMessage().contains("has the same name as an instruction"),
+                "The error message should indicate a name conflict between label and instruction."
         );
     }
 

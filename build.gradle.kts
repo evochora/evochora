@@ -19,6 +19,7 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    jvmArgs("-Duser.language=en", "-Duser.country=US")
 }
 
 javafx {
@@ -26,7 +27,7 @@ javafx {
     modules = listOf("javafx.controls", "javafx.fxml")
 }
 
-// Die mainClass gehört in diesen Block.
+// The mainClass belongs in this block.
 application {
     mainClass.set("org.evochora.Main")
 }

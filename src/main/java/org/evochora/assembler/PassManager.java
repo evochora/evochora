@@ -1,6 +1,7 @@
 package org.evochora.assembler;
 
 import org.evochora.Config;
+import org.evochora.Messages;
 import org.evochora.organism.Instruction;
 import org.evochora.world.Symbol;
 
@@ -13,13 +14,13 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Phase 3 & 4 des Assemblers: Führt den klassischen Two-Pass-Prozess durch,
- * um Label-Adressen zu berechnen und Maschinencode zu generieren.
+ * Manages phases 3 &amp; 4 of the assembler: the classic two-pass process
+ * to calculate label addresses and generate machine code.
  */
 public class PassManager {
     private final String programName;
 
-    // Ergebnisse
+    // Results
     private final Map<String, Integer> registerMap = new HashMap<>();
     private final Map<Integer, String> registerIdToNameMap = new HashMap<>();
     private final Map<int[], Symbol> initialWorldObjects = new HashMap<>();
@@ -32,7 +33,7 @@ public class PassManager {
     private final List<PlaceholderResolver.JumpPlaceholder> jumpPlaceholders = new ArrayList<>();
     private final List<PlaceholderResolver.VectorPlaceholder> vectorPlaceholders = new ArrayList<>();
 
-    // Interne Zustände
+    // Internal state
     private int linearAddress;
     private int[] currentPos;
     private int[] currentDv;
@@ -61,7 +62,7 @@ public class PassManager {
                 processLabel(strippedLine, line);
             } else {
                 Integer opcodeId = Instruction.getInstructionIdByName(directive);
-                if (opcodeId == null) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "Unbekannter Befehl: " + directive, line.content());
+                if (opcodeId == null) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("passManager.unknownInstruction", directive), line.content());
 
                 int instructionLength = Instruction.getInstructionLengthById(Config.TYPE_CODE | opcodeId);
                 for (int j = 0; j < instructionLength; j++) {
@@ -116,10 +117,10 @@ public class PassManager {
     private void processLabel(String strippedLine, AnnotatedLine line) {
         String label = strippedLine.substring(0, strippedLine.length() - 1).toUpperCase();
         if (labelMap.containsKey(label)) {
-            throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "Label '" + label + "' wurde mehrfach vergeben.", line.content());
+            throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("passManager.labelRedeclared", label), line.content());
         }
         if (Instruction.getInstructionIdByName(label) != null) {
-            throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "Label '" + label + "' hat denselben Namen wie ein Befehl.", line.content());
+            throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("passManager.labelCollidesWithInstruction", label), line.content());
         }
         labelMap.put(label, linearAddress);
         labelAddressToNameMap.put(linearAddress, label);
@@ -133,7 +134,7 @@ public class PassManager {
 
         try {
             Integer opcodeId = Instruction.getInstructionIdByName(command);
-            if (opcodeId == null) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "Unbekannter Befehl: " + command, line.content());
+            if (opcodeId == null) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("passManager.unknownInstruction", command), line.content());
 
             AssemblerOutput output = Instruction.getAssemblerById(Config.TYPE_CODE | opcodeId).apply(args, registerMap, labelMap);
             int instructionLength = Instruction.getInstructionLengthById(Config.TYPE_CODE | opcodeId);
@@ -160,9 +161,9 @@ public class PassManager {
                     for(int d=0; d<Config.WORLD_DIMENSIONS; d++) nextArgPos[d] += currentDv[d];
                     fillWithPlaceholders(nextArgPos, instructionLength - 2);
                 }
-                // KORREKTUR: Default-Fall hinzugefügt, um alle Möglichkeiten abzudecken.
+                // CORRECTION: Added default case to cover all possibilities.
                 default -> {
-                    throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "Interner Assembler-Fehler: Unerwarteter AssemblerOutput-Typ (" + output.getClass().getSimpleName() + ") in Phase 2.", line.content());
+                    throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("passManager.unexpectedOutputTypeInPass2", output.getClass().getSimpleName()), line.content());
                 }
             }
 
@@ -198,11 +199,11 @@ public class PassManager {
             case "DATA" -> Config.TYPE_DATA;
             case "ENERGY" -> Config.TYPE_ENERGY;
             case "STRUCTURE" -> Config.TYPE_STRUCTURE;
-            default -> throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "Unbekannter Typ: " + typeName, line.content());
+            default -> throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("passManager.unknownType", typeName), line.content());
         };
     }
 
-    // Getter für die Ergebnisse
+    // Getters for the results
     public Map<String, Integer> getRegisterMap() { return registerMap; }
     public Map<Integer, String> getRegisterIdToNameMap() { return registerIdToNameMap; }
     public Map<int[], Symbol> getInitialWorldObjects() { return initialWorldObjects; }

@@ -1,5 +1,6 @@
 package org.evochora.assembler;
 
+import org.evochora.Messages;
 import org.evochora.organism.Instruction;
 
 import java.util.ArrayList;
@@ -39,8 +40,8 @@ public class DefinitionExtractor {
             String directive = parts[0].toUpperCase();
 
             if (directive.equals(".MACRO") || directive.equals(".ROUTINE")) {
-                if (currentBlock != null) throw new AssemblerException(programName, blockStartLine.originalFileName(), blockStartLine.originalLineNumber(), "Verschachtelte Definitionen sind nicht erlaubt.", blockStartLine.content());
-                if (parts.length < 2) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), directive + " benötigt einen Namen.", line.content());
+                if (currentBlock != null) throw new AssemblerException(programName, blockStartLine.originalFileName(), blockStartLine.originalLineNumber(), Messages.get("definitionExtractor.nestedDefinitionsNotAllowed"), blockStartLine.content());
+                if (parts.length < 2) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.directiveNeedsName", directive), line.content());
 
                 currentBlock = directive;
                 blockName = parts[1].toUpperCase();
@@ -50,12 +51,12 @@ public class DefinitionExtractor {
                 if (directive.equals(".ROUTINE")) {
                     for (String param : blockParams) {
                         if (Instruction.getInstructionIdByName(param.toUpperCase()) != null) {
-                            throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "Routinen-Parameter '" + param + "' kollidiert mit einem Befehl.", line.content());
+                            throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.routineParameterCollidesWithInstruction", param), line.content());
                         }
                     }
                 }
             } else if (directive.equals(".ENDM") || directive.equals(".ENDR")) {
-                if (currentBlock == null) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "Unerwartetes " + directive + " außerhalb eines Definitionsblocks.", line.content());
+                if (currentBlock == null) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.unexpectedDirectiveOutsideBlock", directive), line.content());
 
                 String prefix = getPrefixFromFileName(blockStartLine.originalFileName());
 
@@ -65,7 +66,7 @@ public class DefinitionExtractor {
                     String qualifiedName = prefix + "." + blockName;
                     routineMap.put(qualifiedName, new RoutineDefinition(qualifiedName, blockParams, blockBody, blockStartLine.originalFileName()));
                 } else {
-                    throw new AssemblerException(programName, blockStartLine.originalFileName(), blockStartLine.originalLineNumber(), "Block '" + blockName + "' wurde mit dem falschen End-Tag geschlossen.", blockStartLine.content());
+                    throw new AssemblerException(programName, blockStartLine.originalFileName(), blockStartLine.originalLineNumber(), Messages.get("definitionExtractor.blockClosedWithWrongEndTag", blockName), blockStartLine.content());
                 }
                 currentBlock = null;
                 blockBody = new ArrayList<>();
@@ -78,7 +79,7 @@ public class DefinitionExtractor {
             }
         }
         if (currentBlock != null) {
-            throw new AssemblerException(programName, blockStartLine.originalFileName(), blockStartLine.originalLineNumber(), "Block '" + blockName + "' wurde nicht geschlossen.", blockStartLine.content());
+            throw new AssemblerException(programName, blockStartLine.originalFileName(), blockStartLine.originalLineNumber(), Messages.get("definitionExtractor.blockNotClosed", blockName), blockStartLine.content());
         }
         return mainCode;
     }

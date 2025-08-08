@@ -1,4 +1,3 @@
-// src/main/java/org/evochora/ui/AppView.java
 package org.evochora.ui;
 
 import javafx.animation.AnimationTimer;
@@ -8,6 +7,7 @@ import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
 import org.evochora.Config;
+import org.evochora.Messages;
 import org.evochora.Simulation;
 import org.evochora.Setup;
 import org.evochora.world.World;
@@ -59,8 +59,8 @@ public class AppView {
         primaryStage.setTitle("Evochora");
         primaryStage.setScene(new Scene(root, 1800, 1400));
 
-        // KORRIGIERT: Zusätzlicher Puffer für die maximale Größe, um Layout-Unterschiede auszugleichen.
-        // Der Puffer wurde von 20 auf 40 erhöht, um sicherzustellen, dass die Scrollbars nicht sichtbar sind.
+        // CORRECTED: Additional buffer for the maximum size to compensate for layout differences.
+        // The buffer was increased from 20 to 40 to ensure that the scrollbars are not visible.
         double maxWorldWidth = Config.WORLD_SHAPE[0] * Config.CELL_SIZE + 20;
         double maxWorldHeight = Config.WORLD_SHAPE[1] * Config.CELL_SIZE + Config.HEADER_HEIGHT + Config.FOOTER_HEIGHT + 42;
         primaryStage.setMaxWidth(maxWorldWidth);
@@ -153,9 +153,9 @@ public class AppView {
         } catch (Exception e) {
             e.printStackTrace();
             javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.ERROR);
-            alert.setTitle("Neustart Fehler");
-            alert.setHeaderText("Die Simulation konnte nicht neu gestartet werden.");
-            alert.setContentText("Fehler: " + e.getMessage());
+            alert.setTitle(Messages.get("appView.restartError.title"));
+            alert.setHeaderText(Messages.get("appView.restartError.header"));
+            alert.setContentText(Messages.get("appView.restartError.content", e.getMessage()));
             alert.showAndWait();
         }
     }

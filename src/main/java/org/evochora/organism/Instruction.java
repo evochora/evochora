@@ -1,6 +1,7 @@
 package org.evochora.organism;
 
 import org.evochora.Config;
+import org.evochora.Messages;
 import org.evochora.Simulation;
 import org.evochora.assembler.ArgumentType;
 import org.evochora.assembler.AssemblerOutput;
@@ -39,7 +40,7 @@ public abstract class Instruction {
     }
 
     public static void init() {
-        // --- Daten & Speicher ---
+        // --- Data & Memory ---
         register(SetiInstruction.class, 1, "SETI");
         register(SetrInstruction.class, 2, "SETR");
         register(SetvInstruction.class, 3, "SETV");
@@ -47,7 +48,7 @@ public abstract class Instruction {
         register(PopInstruction.class, 23, "POP");
         register(PusiInstruction.class, 58, "PUSI");
 
-        // --- Arithmetik & Logik ---
+        // --- Arithmetic & Logic ---
         register(AddrInstruction.class, 4, "ADDR");
         register(SubrInstruction.class, 6, "SUBR");
         register(AddiInstruction.class, 30, "ADDI");
@@ -59,7 +60,7 @@ public abstract class Instruction {
         register(ModrInstruction.class, 44, "MODR");
         register(ModiInstruction.class, 45, "MODI");
 
-        // --- Bitweise Operationen ---
+        // --- Bitwise Operations ---
         register(NadrInstruction.class, 5, "NADR");
         register(NadiInstruction.class, 32, "NADI");
         register(AndrInstruction.class, 46, "ANDR");
@@ -72,13 +73,13 @@ public abstract class Instruction {
         register(ShliInstruction.class, 53, "SHLI");
         register(ShriInstruction.class, 54, "SHRI");
 
-        // --- Kontrollfluss ---
+        // --- Control Flow ---
         register(JmprInstruction.class, 10, "JMPR");
         register(JmpiInstruction.class, 20, "JMPI");
         register(CallInstruction.class, 34, "CALL");
         register(RetInstruction.class, 35, "RET");
 
-        // --- Bedingungen ---
+        // --- Conditions ---
         register(IfrInstruction.class, 7, "IFR");
         register(IfrInstruction.class, 8, "LTR");
         register(IfrInstruction.class, 9, "GTR");
@@ -88,7 +89,7 @@ public abstract class Instruction {
         register(IftiInstruction.class, 29, "IFTI");
         register(IftrInstruction.class, 33, "IFTR");
 
-        // --- Welt & Zustand ---
+        // --- World & State ---
         register(TurnInstruction.class, 11, "TURN");
         register(SeekInstruction.class, 12, "SEEK");
         register(SyncInstruction.class, 13, "SYNC");
@@ -102,7 +103,7 @@ public abstract class Instruction {
         register(RandInstruction.class, 55, "RAND");
         register(PekiInstruction.class, 56, "PEKI");
         register(PokiInstruction.class, 57, "POKI");
-        register(SekiInstruction.class, 59, "SEKI"); // NEU
+        register(SekiInstruction.class, 59, "SEKI"); // NEW
         register(NopInstruction.class, 0, "NOP");
     }
 
@@ -115,7 +116,7 @@ public abstract class Instruction {
             BiFunction<Organism, World, Instruction> planner = (org, world) -> {
                 try {
                     return (Instruction) planMethod.invoke(null, org, world);
-                } catch (Exception e) { throw new RuntimeException("Fehler beim Aufruf der plan-Methode für " + name, e.getCause()); }
+                } catch (Exception e) { throw new RuntimeException(Messages.get("instruction.errorCallingPlanMethod", name), e.getCause()); }
             };
 
             Method assembleMethod = instructionClass.getMethod("assemble", String[].class, Map.class, Map.class);
@@ -126,14 +127,14 @@ public abstract class Instruction {
                     if (e instanceof InvocationTargetException ite && ite.getTargetException() instanceof IllegalArgumentException) {
                         throw (IllegalArgumentException) ite.getTargetException();
                     }
-                    throw new RuntimeException("Fehler beim Aufruf der assemble-Methode für " + name, e);
+                    throw new RuntimeException(Messages.get("instruction.errorCallingAssembleMethod", name), e);
                 }
             };
 
             registerInstruction(instructionClass, id, name, length, planner, assembler);
 
         } catch (Exception e) {
-            throw new RuntimeException("Fehler beim Registrieren der Instruktion: " + instructionClass.getSimpleName(), e);
+            throw new RuntimeException(Messages.get("instruction.errorRegisteringInstruction", instructionClass.getSimpleName()), e);
         }
     }
 
@@ -142,10 +143,10 @@ public abstract class Instruction {
         String upperCaseName = name.toUpperCase();
         int fullId = id | Config.TYPE_CODE;
         if (REGISTERED_INSTRUCTIONS_BY_ID.containsKey(fullId) && !instructionClass.equals(REGISTERED_INSTRUCTIONS_BY_ID.get(fullId))) {
-            throw new IllegalArgumentException("Instruktions-ID " + id + " bereits registriert für eine andere Klasse.");
+            throw new IllegalArgumentException(Messages.get("instruction.idAlreadyRegistered", id));
         }
         if (NAME_TO_ID.containsKey(upperCaseName) && !NAME_TO_ID.get(upperCaseName).equals(fullId)) {
-            throw new IllegalArgumentException("Instruktions-Name '" + name + "' bereits registriert.");
+            throw new IllegalArgumentException(Messages.get("instruction.nameAlreadyRegistered", name));
         }
         REGISTERED_INSTRUCTIONS_BY_ID.put(fullId, instructionClass);
         NAME_TO_ID.put(upperCaseName, fullId);

@@ -1,5 +1,7 @@
 package org.evochora.assembler;
 
+import org.evochora.Messages;
+
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -22,7 +24,7 @@ public class CodeExpander {
 
     private List<AnnotatedLine> expandRecursively(List<AnnotatedLine> codeToProcess, Deque<String> callStack) {
         if (callStack.size() > 100) {
-            throw new AssemblerException(programName, "main.s", -1, "Maximale Rekursionstiefe für Makros/Includes erreicht: " + String.join(" -> ", callStack), "");
+            throw new AssemblerException(programName, "main.s", -1, Messages.get("codeExpander.maxRecursionDepth", String.join(" -> ", callStack)), "");
         }
 
         List<AnnotatedLine> expandedCode = new ArrayList<>();
@@ -37,7 +39,7 @@ public class CodeExpander {
 
             if (command.startsWith("$") && macroMap.containsKey(command)) {
                 if (callStack.contains(command)) {
-                    throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "Endlosrekursion im Makro erkannt: " + String.join(" -> ", callStack) + " -> " + command, line.content());
+                    throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("codeExpander.infiniteLoopInMacro", String.join(" -> ", callStack), command), line.content());
                 }
                 callStack.push(command);
                 List<AnnotatedLine> expandedMacro = expandMacro(command, parts, line);
@@ -46,7 +48,7 @@ public class CodeExpander {
             } else if (command.equalsIgnoreCase(".INCLUDE")) {
                 String routineName = parts[1].toUpperCase();
                 if (callStack.contains(routineName)) {
-                    throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "Endlosrekursion in Routine erkannt: " + String.join(" -> ", callStack) + " -> " + routineName, line.content());
+                    throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("codeExpander.infiniteLoopInRoutine", String.join(" -> ", callStack), routineName), line.content());
                 }
                 callStack.push(routineName);
                 List<AnnotatedLine> expandedRoutine = expandInclude(parts, line);
@@ -63,7 +65,7 @@ public class CodeExpander {
         DefinitionExtractor.MacroDefinition macro = macroMap.get(name);
         String[] args = Arrays.copyOfRange(parts, 1, parts.length);
         if (macro.parameters().size() != args.length) {
-            throw new AssemblerException(programName, originalLine.originalFileName(), originalLine.originalLineNumber(), "Falsche Argumentanzahl für Makro " + name, originalLine.content());
+            throw new AssemblerException(programName, originalLine.originalFileName(), originalLine.originalLineNumber(), Messages.get("codeExpander.wrongArgumentCountForMacro", name), originalLine.content());
         }
 
         List<AnnotatedLine> expanded = new ArrayList<>();
@@ -82,19 +84,19 @@ public class CodeExpander {
 
     private List<AnnotatedLine> expandInclude(String[] parts, AnnotatedLine originalLine) {
         if (parts.length < 5 || !parts[2].equalsIgnoreCase("AS") || !parts[4].equalsIgnoreCase("WITH")) {
-            throw new AssemblerException(programName, originalLine.originalFileName(), originalLine.originalLineNumber(), "Ungültige .INCLUDE Syntax. Erwartet: .INCLUDE <routine> AS <instance> WITH <args...>", originalLine.content());
+            throw new AssemblerException(programName, originalLine.originalFileName(), originalLine.originalLineNumber(), Messages.get("codeExpander.invalidIncludeSyntax"), originalLine.content());
         }
         String routineName = parts[1].toUpperCase();
         String instanceName = parts[3].toUpperCase();
 
         DefinitionExtractor.RoutineDefinition routine = routineMap.get(routineName);
         if (routine == null) {
-            throw new AssemblerException(programName, originalLine.originalFileName(), originalLine.originalLineNumber(), "Unbekannte Routine: " + routineName, originalLine.content());
+            throw new AssemblerException(programName, originalLine.originalFileName(), originalLine.originalLineNumber(), Messages.get("codeExpander.unknownRoutine", routineName), originalLine.content());
         }
 
         String[] args = Arrays.copyOfRange(parts, 5, parts.length);
         if (routine.parameters().size() != args.length) {
-            throw new AssemblerException(programName, originalLine.originalFileName(), originalLine.originalLineNumber(), "Falsche Argumentanzahl für Routine " + routineName + ". Erwartet " + routine.parameters().size() + ", aber " + args.length + " erhalten.", originalLine.content());
+            throw new AssemblerException(programName, originalLine.originalFileName(), originalLine.originalLineNumber(), Messages.get("codeExpander.wrongArgumentCountForRoutine", routineName, routine.parameters().size(), args.length), originalLine.content());
         }
 
         Map<String, String> replacements = new HashMap<>();

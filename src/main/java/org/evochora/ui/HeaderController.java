@@ -9,6 +9,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import org.evochora.Config;
+import org.evochora.Messages;
 import org.evochora.Simulation;
 import org.evochora.organism.Organism;
 
@@ -21,22 +22,22 @@ public class HeaderController {
     private final Button nextTickButton;
     private final Button restartButton;
     private final Button loggingToggleButton;
-    private final Button zoomToggleButton; // NEU: Zoom-Schalter
+    private final Button zoomToggleButton; // NEW: Zoom toggle button
     private final Label tickLabel;
 
     private Runnable restartCallback;
-    private boolean isZoomedOut = false; // NEU: Zoom-Status
+    private boolean isZoomedOut = false; // NEW: Zoom status
 
     public HeaderController(Simulation simulation) {
         this.simulation = simulation;
         this.selectedOrganism = null;
 
-        this.playPauseButton = new Button("Play/Pause");
-        this.nextTickButton = new Button("Next Tick");
-        this.restartButton = new Button("Restart");
-        this.loggingToggleButton = new Button("Logging: OFF");
-        this.zoomToggleButton = new Button("Zoom: Normal"); // NEU: Initialer Text
-        this.tickLabel = new Label("Tick: 0");
+        this.playPauseButton = new Button(Messages.get("header.button.playPause"));
+        this.nextTickButton = new Button(Messages.get("header.button.nextTick"));
+        this.restartButton = new Button(Messages.get("header.button.restart"));
+        this.loggingToggleButton = new Button(Messages.get("header.button.loggingOff"));
+        this.zoomToggleButton = new Button(Messages.get("header.button.zoomNormal")); // NEW: Initial text
+        this.tickLabel = new Label(Messages.get("header.label.tick", 0));
 
         setupButtons();
 
@@ -54,7 +55,7 @@ public class HeaderController {
         Region spacer3 = new Region();
         HBox.setHgrow(spacer3, Priority.ALWAYS);
 
-        // GEÄNDERT: Zoom-Schalter zum Header hinzufügen
+        // CHANGED: Add zoom toggle to header
         headerPane.getChildren().addAll(playPauseButton, nextTickButton, restartButton, loggingToggleButton, zoomToggleButton, spacer3, tickLabel);
     }
 
@@ -78,10 +79,10 @@ public class HeaderController {
             }
         });
 
-        // NEU: Aktion für den Zoom-Schalter hinzufügen
+        // NEW: Action for the zoom toggle button
         zoomToggleButton.setOnAction(e -> {
             isZoomedOut = !isZoomedOut;
-            zoomToggleButton.setText("Zoom: " + (isZoomedOut ? "Pixel" : "Normal"));
+            zoomToggleButton.setText(isZoomedOut ? Messages.get("header.button.zoomPixel") : Messages.get("header.button.zoomNormal"));
         });
     }
 
@@ -89,17 +90,17 @@ public class HeaderController {
         this.simulation = simulation;
         this.selectedOrganism = selectedOrganism;
 
-        playPauseButton.setText(this.simulation.paused ? "Play" : "Pause");
+        playPauseButton.setText(this.simulation.paused ? Messages.get("header.button.play") : Messages.get("header.button.pause"));
 
         if (selectedOrganism != null) {
-            loggingToggleButton.setText("Logging: " + (selectedOrganism.isLoggingEnabled() ? "ON" : "OFF"));
+            loggingToggleButton.setText(selectedOrganism.isLoggingEnabled() ? Messages.get("header.button.loggingOn") : Messages.get("header.button.loggingOff"));
             loggingToggleButton.setDisable(false);
         } else {
-            loggingToggleButton.setText("Logging: ---");
+            loggingToggleButton.setText(Messages.get("header.button.loggingDisabled"));
             loggingToggleButton.setDisable(true);
         }
 
-        tickLabel.setText("Tick: " + this.simulation.getCurrentTick());
+        tickLabel.setText(Messages.get("header.label.tick", this.simulation.getCurrentTick()));
     }
 
     public void updateSimulation(Simulation simulation) {
@@ -121,7 +122,7 @@ public class HeaderController {
                 (int) (color.getBlue() * 255));
     }
 
-    // NEU: Methode, um den Zoom-Status von außen abzufragen
+    // NEW: Method to query zoom status from outside
     public boolean isZoomedOut() {
         return isZoomedOut;
     }

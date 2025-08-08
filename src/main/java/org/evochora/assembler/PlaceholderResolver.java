@@ -1,6 +1,7 @@
 package org.evochora.assembler;
 
 import org.evochora.Config;
+import org.evochora.Messages;
 import org.evochora.world.Symbol;
 
 import java.util.Arrays;
@@ -8,8 +9,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Phase 5 des Assemblers: Löst alle Sprung- und Vektor-Platzhalter auf (Linker).
- * Füllt die verbleibenden Lücken im Maschinencode.
+ * Phase 5 of the assembler: Resolves all jump and vector placeholders (linker).
+ * Fills the remaining gaps in the machine code.
  */
 public class PlaceholderResolver {
     private final String programName;
@@ -17,7 +18,7 @@ public class PlaceholderResolver {
     private final Map<String, Integer> labelMap;
     private final Map<Integer, int[]> linearAddressToCoordMap;
 
-    // Interne Datenstrukturen für die Platzhalter
+    // Internal data structures for placeholders
     public record JumpPlaceholder(int linearAddress, String labelName, AnnotatedLine line) {}
     public record VectorPlaceholder(int linearAddress, String labelName, int registerId, AnnotatedLine line) {}
 
@@ -40,29 +41,29 @@ public class PlaceholderResolver {
 
             int[] jumpOpcodeCoord = linearAddressToCoordMap.get(jumpOpcodeAddress);
             if (jumpOpcodeCoord == null) {
-                throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(), "Interner Fehler: Koordinate für Sprungbefehl nicht gefunden.", placeholder.line().content());
+                throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(), Messages.get("placeholderResolver.jumpInstructionCoordinateNotFound"), placeholder.line().content());
             }
 
             Integer targetLabelAddress = labelMap.get(targetLabel.toUpperCase());
             if (targetLabelAddress == null) {
-                throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(), "Unbekanntes Label für Sprungbefehl: " + targetLabel, placeholder.line().content());
+                throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(), Messages.get("placeholderResolver.unknownLabelForJump", targetLabel), placeholder.line().content());
             }
 
             int[] targetCoord = linearAddressToCoordMap.get(targetLabelAddress);
             if (targetCoord == null) {
-                throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(), "Interner Fehler: Koordinate für Ziel-Label nicht gefunden: " + targetLabel, placeholder.line().content());
+                throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(), Messages.get("placeholderResolver.targetLabelCoordinateNotFound", targetLabel), placeholder.line().content());
             }
 
-            // Berechne das relative Delta
+            // Calculate the relative delta
             int[] delta = new int[Config.WORLD_DIMENSIONS];
             for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
                 delta[i] = targetCoord[i] - jumpOpcodeCoord[i];
             }
 
-            // Schreibe die Delta-Werte in das machineCodeLayout
+            // Write the delta values to the machine code layout
             int[] argPos = Arrays.copyOf(jumpOpcodeCoord, jumpOpcodeCoord.length);
-            // Annahme: dv ist [1, 0] für die Platzhalter-Auflösung. Dies muss ggf. angepasst werden,
-            // wenn .DIR innerhalb von Sprüngen eine Rolle spielt. Für den Moment ist dies eine Vereinfachung.
+            // Assumption: dv is [1, 0] for placeholder resolution. This may need adjustment
+            // if .DIR plays a role within jumps. For now, this is a simplification.
             argPos[0]++;
 
             for (int component : delta) {
@@ -79,23 +80,23 @@ public class PlaceholderResolver {
 
             Integer targetLabelAddress = labelMap.get(targetLabel.toUpperCase());
             if (targetLabelAddress == null) {
-                throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(), "Unbekanntes Label für Vektor-Zuweisung: " + targetLabel, placeholder.line().content());
+                throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(), Messages.get("placeholderResolver.unknownLabelForVector", targetLabel), placeholder.line().content());
             }
 
             int[] targetCoord = linearAddressToCoordMap.get(targetLabelAddress);
             if (targetCoord == null) {
-                throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(), "Interner Fehler: Koordinate für Ziel-Label nicht gefunden: " + targetLabel, placeholder.line().content());
+                throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(), Messages.get("placeholderResolver.targetLabelCoordinateNotFound", targetLabel), placeholder.line().content());
             }
 
             int[] opcodeCoord = linearAddressToCoordMap.get(opcodeAddress);
             if (opcodeCoord == null) {
-                throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(), "Interner Fehler: Koordinate für Vektor-Befehl nicht gefunden.", placeholder.line().content());
+                throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(), Messages.get("placeholderResolver.vectorInstructionCoordinateNotFound"), placeholder.line().content());
             }
 
-            // Schreibe die Vektor-Werte in das machineCodeLayout
+            // Write the vector values to the machine code layout
             int[] argPos = Arrays.copyOf(opcodeCoord, opcodeCoord.length);
-            argPos[0]++; // Zum Register-Argument
-            argPos[0]++; // Zur ersten Vektor-Komponente
+            argPos[0]++; // To the register argument
+            argPos[0]++; // To the first vector component
 
             for (int component : targetCoord) {
                 machineCodeLayout.put(Arrays.copyOf(argPos, argPos.length), new Symbol(Config.TYPE_DATA, component).toInt());

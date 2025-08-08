@@ -33,7 +33,7 @@ public class WorldRenderer {
         this.cellFont = Font.font("Monospaced", Config.CELL_SIZE * 0.4);
     }
 
-    // GEÄNDERT: Die draw-Methode akzeptiert jetzt einen isZoomedOut-Parameter
+    // CHANGED: The draw method now accepts an isZoomedOut parameter
     public void draw(Simulation simulation, Organism selectedOrganism, boolean isZoomedOut) {
         gc.setFill(Config.COLOR_BG);
         gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
@@ -46,7 +46,7 @@ public class WorldRenderer {
             drawNormal(world, selectedOrganism);
         }
 
-        // Organismen werden in beiden Modi gezeichnet, aber die Details unterscheiden sich.
+        // Organisms are drawn in both modes, but the details differ.
         for (Organism org : simulation.getOrganisms()) {
             drawOrganism(org, selectedOrganism, isZoomedOut);
         }
@@ -70,7 +70,7 @@ public class WorldRenderer {
         for (int x = 0; x < world.getShape()[0]; x++) {
             for (int y = 0; y < world.getShape()[1]; y++) {
                 Symbol symbol = world.getSymbol(x, y);
-                // Zeichne jede Zelle als 1x1 Pixel
+                // Draw each cell as a 1x1 pixel
                 gc.setFill(getBackgroundColorForSymbol(symbol));
                 gc.fillRect(x, y, 1, 1);
             }
@@ -105,34 +105,34 @@ public class WorldRenderer {
                 gc.fillText(text, centerX, cellY + Config.CELL_SIZE / 2.0 + 4);
             }
         } else {
-            // Für alle anderen Typen (DATA, ENERGY, etc.) immer den Wert anzeigen.
+            // For all other types (DATA, ENERGY, etc.), always display the value.
             text = String.valueOf(symbol.value());
             gc.fillText(text, centerX, cellY + Config.CELL_SIZE / 2.0 + 4);
         }
     }
 
-    // GEÄNDERT: Die drawOrganism-Methode akzeptiert nun einen isZoomedOut-Parameter
+    // CHANGED: The drawOrganism method now accepts an isZoomedOut parameter
     private void drawOrganism(Organism org, Organism selectedOrganism, boolean isZoomedOut) {
         Color orgColor = organismColorMap.computeIfAbsent(org.getId(), id -> colorPalette[id % colorPalette.length]);
         int[] ip = org.getIp();
-        double x = ip[0] * (isZoomedOut ? 1 : Config.CELL_SIZE); // Skalierung anpassen
-        double y = ip[1] * (isZoomedOut ? 1 : Config.CELL_SIZE); // Skalierung anpassen
+        double x = ip[0] * (isZoomedOut ? 1 : Config.CELL_SIZE); // Adjust scaling
+        double y = ip[1] * (isZoomedOut ? 1 : Config.CELL_SIZE); // Adjust scaling
 
-        // Umrandung für den Organismus
+        // Border for the organism
         gc.setStroke(org.isDead() ? Config.COLOR_DEAD : orgColor);
         gc.setLineWidth(isZoomedOut ? 1 : 2.5);
         gc.strokeRect(x, y, isZoomedOut ? 1 : Config.CELL_SIZE, isZoomedOut ? 1 : Config.CELL_SIZE);
 
-        // Highlight für den ausgewählten Organismus
+        // Highlight for the selected organism
         if (org == selectedOrganism && !org.isDead()) {
-            // NEU: Nur DP zeichnen, wenn nicht herausgezoomt ist
+            // NEW: Only draw DP if not zoomed out
             if (!isZoomedOut) {
                 int[] dp = org.getDp();
                 double dpX = dp[0] * Config.CELL_SIZE;
                 double dpY = dp[1] * Config.CELL_SIZE;
                 drawDp(new Rectangle2D(dpX, dpY, Config.CELL_SIZE, Config.CELL_SIZE), orgColor);
             }
-            // drawDv-Methode handhabt den Zoom-Status intern
+            // drawDv method handles zoom status internally
             drawDv(x, y, orgColor, org.getDv(), isZoomedOut);
         }
     }
@@ -147,10 +147,10 @@ public class WorldRenderer {
                 radius * 2, radius * 2);
     }
 
-    // GEÄNDERT: Die drawDv-Methode akzeptiert nun einen isZoomedOut-Parameter
+    // CHANGED: The drawDv method now accepts an isZoomedOut parameter
     private void drawDv(double cellX, double cellY, Color color, int[] dv, boolean isZoomedOut) {
         if (isZoomedOut) {
-            return; // Keine DV-Anzeige im Pixel-Modus
+            return; // No DV display in pixel mode
         }
 
         gc.setFill(color);

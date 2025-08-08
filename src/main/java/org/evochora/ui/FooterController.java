@@ -6,6 +6,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import org.evochora.Config;
 import org.evochora.Logger;
+import org.evochora.Messages;
 import org.evochora.organism.Organism;
 import org.evochora.assembler.*;
 
@@ -50,38 +51,38 @@ public class FooterController {
             Color orgColor = selectedOrganism.isDead() ? Config.COLOR_DEAD : Config.COLOR_TEXT;
             fullDetailsTextArea.setStyle("-fx-text-fill: " + toWebColor(orgColor) + "; -fx-control-inner-background: " + toWebColor(Config.COLOR_HEADER_FOOTER) + ";");
 
-            displayText.append(String.format("ID: %d %s | ER: %d | IP: %s | DP: %s | DV: %s\n",
-                    selectedOrganism.getId(), selectedOrganism.isDead() ? "(DEAD)" : "",
+            displayText.append(String.format(Messages.get("footer.organismDetails"),
+                    selectedOrganism.getId(), selectedOrganism.isDead() ? Messages.get("footer.organismStatus.dead") : "",
                     selectedOrganism.getEr(), Arrays.toString(selectedOrganism.getIp()),
                     Arrays.toString(selectedOrganism.getDp()), Arrays.toString(selectedOrganism.getDv())));
 
             List<Object> drs = selectedOrganism.getDrs();
-            StringBuilder drsText = new StringBuilder("DRs: ");
+            StringBuilder drsText = new StringBuilder(Messages.get("footer.label.drs"));
             for(int i = 0; i < drs.size(); i++) {
                 drsText.append(String.format("%d=%s", i, this.logger.formatDrValue(drs.get(i))));
                 if (i < drs.size() - 1) drsText.append(", ");
             }
             displayText.append(drsText.toString()).append("\n");
 
-            displayText.append("Stack: ").append(logger.formatStack(selectedOrganism, true, 8)).append("\n");
+            displayText.append(Messages.get("footer.label.stack")).append(logger.formatStack(selectedOrganism, true, 8)).append("\n");
 
-            displayText.append("Next: ").append(logger.getNextInstructionInfo(selectedOrganism)).append("\n");
+            displayText.append(Messages.get("footer.label.nextInstruction")).append(logger.getNextInstructionInfo(selectedOrganism)).append("\n");
 
             String nextSourceInfo = getSourceInfoForNextInstruction(selectedOrganism);
-            displayText.append("Line: ").append(nextSourceInfo);
+            displayText.append(Messages.get("footer.label.line")).append(nextSourceInfo);
 
         } else {
             fullDetailsTextArea.setStyle("-fx-text-fill: " + toWebColor(Config.COLOR_TEXT) + "; -fx-control-inner-background: " + toWebColor(Config.COLOR_HEADER_FOOTER) + ";");
-            displayText.append("Kein Organismus ausgewählt.\nDRs: ---\nStack: ---\nNext: ---\nLine: ---");
+            displayText.append(Messages.get("footer.noOrganismSelected"));
         }
         fullDetailsTextArea.setText(displayText.toString());
     }
 
     private String getSourceInfoForNextInstruction(Organism organism) {
         String fullSourceInfo = logger.getSourceLocationString(organism, organism.getIp());
-        if (fullSourceInfo.isEmpty()) return "N/A";
+        if (fullSourceInfo.isEmpty()) return Messages.get("footer.notAvailable");
 
-        // Extrahiere den Teil nach dem ">" für eine saubere Anzeige
+        // Extract the part after the ">" for a clean display
         String[] parts = fullSourceInfo.split(">", 2);
         if (parts.length > 1) {
             return parts[0].strip() + ">" + parts[1];
