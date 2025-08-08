@@ -12,6 +12,7 @@ public class DefinitionExtractor {
     private final String programName;
     private final Map<String, RoutineDefinition> routineMap = new HashMap<>();
     private final Map<String, MacroDefinition> macroMap = new HashMap<>();
+    private final Map<String, String> defineMap = new HashMap<>();
 
     record RoutineDefinition(String name, List<String> parameters, List<String> body, String fileName) {}
     record MacroDefinition(String name, List<String> parameters, List<String> body, String fileName) {}
@@ -38,7 +39,10 @@ public class DefinitionExtractor {
             String[] parts = strippedLine.split("\\s+");
             String directive = parts[0].toUpperCase();
 
-            if (directive.equals(".MACRO") || directive.equals(".ROUTINE")) {
+            if (directive.equals(".DEFINE")) {
+                if (parts.length != 3) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), ".DEFINE erwartet genau 2 Argumente: NAME WERT.", line.content());
+                defineMap.put(parts[1].toUpperCase(), parts[2]);
+            } else if (directive.equals(".MACRO") || directive.equals(".ROUTINE")) {
                 if (currentBlock != null) throw new AssemblerException(programName, blockStartLine.originalFileName(), blockStartLine.originalLineNumber(), "Verschachtelte Definitionen sind nicht erlaubt.", blockStartLine.content());
                 if (parts.length < 2) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), directive + " benötigt einen Namen.", line.content());
 
@@ -96,4 +100,5 @@ public class DefinitionExtractor {
 
     public Map<String, RoutineDefinition> getRoutineMap() { return routineMap; }
     public Map<String, MacroDefinition> getMacroMap() { return macroMap; }
+    public Map<String, String> getDefineMap() { return defineMap; }
 }

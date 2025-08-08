@@ -63,4 +63,18 @@ public class OrganismTest {
         int[] result = (int[]) organism.getDr(0);
         Assertions.assertArrayEquals(new int[]{4, 6}, result);
     }
+
+    @Test
+    void testOrganismEnergyConsumption() {
+        // Given
+        int initialEnergy = organism.getEr();
+        world.setSymbol(new Symbol(Config.TYPE_CODE, Instruction.getInstructionIdByName("NOP")), 0, 0);
+
+        // When
+        Instruction instruction = organism.planTick(world);
+        organism.processTickAction(instruction, simulation);
+
+        // Then
+        Assertions.assertTrue(organism.getEr() < initialEnergy);
+    }
 }

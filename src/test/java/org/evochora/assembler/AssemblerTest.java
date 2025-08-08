@@ -1,6 +1,7 @@
 package org.evochora.assembler;
 
 import org.evochora.organism.Instruction;
+import org.evochora.world.Symbol;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -204,5 +205,24 @@ class AssemblerTest {
             }
         }
         return null;
+    }
+
+    @Test
+    void testDefineDirective() {
+        String code = """
+                .DEFINE MY_CONSTANT DATA:42
+                .REG %DR_A 0
+                .ORG 0|0
+                SETI %DR_A MY_CONSTANT
+                """;
+        Assembler assembler = createAssembler();
+        ProgramMetadata metadata = assembler.assemble(annotateCode(code), "TestDefine", false);
+        Map<int[], Integer> layout = metadata.machineCodeLayout();
+        Integer instruction = findValueAtCoordinate(layout, new int[]{0, 0});
+        Integer value = findValueAtCoordinate(layout, new int[]{2, 0});
+
+        Assertions.assertNotNull(instruction);
+        Assertions.assertNotNull(value);
+        Assertions.assertEquals(42, Symbol.fromInt(value).toScalarValue());
     }
 }

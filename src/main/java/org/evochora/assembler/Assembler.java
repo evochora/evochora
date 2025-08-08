@@ -21,7 +21,7 @@ public class Assembler {
         List<AnnotatedLine> processedCode = expander.expand(mainCode);
 
         // Phase 3 & 4: Assemblieren (First & Second Pass)
-        PassManager passManager = new PassManager(programName);
+        PassManager passManager = new PassManager(programName, extractor.getDefineMap());
         passManager.runPasses(processedCode);
 
         // Phase 5: Platzhalter auflösen (Linking)
