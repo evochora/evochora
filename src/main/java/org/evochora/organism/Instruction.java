@@ -134,6 +134,17 @@ public abstract class Instruction {
         register(ShlsSInstruction.class, 80, "SHLS");
         register(ShrsSInstruction.class, 81, "SHRS");
 
+        // --- Stack-based conditionals & jump ---
+        register(IfsSInstruction.class, 85, "IFS");
+        register(GtsSInstruction.class, 86, "GTS");
+        register(LtsSInstruction.class, 87, "LTS");
+        register(IftsSInstruction.class, 88, "IFTS");
+        register(JmpsInstruction.class, 89, "JMPS");
+
+        // --- World/Status (Stack) ---
+        register(PeksInstruction.class, 90, "PEKS");
+        register(PoksInstruction.class, 91, "POKS");
+
         register(NopInstruction.class, 0, "NOP");
     }
 

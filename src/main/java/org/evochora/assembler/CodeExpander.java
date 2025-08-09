@@ -54,7 +54,7 @@ public class CodeExpander {
             } else if (command.equalsIgnoreCase(".IMPORT")) {
                 // .IMPORT library.NAME AS ALIAS
                 if (parts.length < 5 || !parts[2].equalsIgnoreCase("AS")) {
-                    throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "Invalid .IMPORT syntax. Expected: .IMPORT LIB.NAME AS ALIAS", line.content());
+                    throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("codeExpander.invalidImportSyntax"), line.content());
                 }
                 String procName = parts[1].toUpperCase();
                 String alias = parts[3].toUpperCase();
