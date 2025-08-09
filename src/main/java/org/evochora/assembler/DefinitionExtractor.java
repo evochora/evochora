@@ -41,7 +41,7 @@ public class DefinitionExtractor {
             String directive = parts[0].toUpperCase();
 
             if (directive.equals(".DEFINE")) {
-                if (parts.length != 3) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), ".DEFINE erwartet genau 2 Argumente: NAME WERT.", line.content());
+                if (parts.length != 3) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.defineArguments"), line.content());
                 defineMap.put(parts[1].toUpperCase(), parts[2]);
             } else if (directive.equals(".MACRO") || directive.equals(".ROUTINE")) {
                 if (currentBlock != null) throw new AssemblerException(programName, blockStartLine.originalFileName(), blockStartLine.originalLineNumber(), Messages.get("definitionExtractor.nestedDefinitionsNotAllowed"), blockStartLine.content());

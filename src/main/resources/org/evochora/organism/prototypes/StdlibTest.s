@@ -98,9 +98,31 @@ $TEST_START 2 3
 
 
 # ------------------------------------------------
-# --- Test 3: Ende der Testsuite (in Zeile 5)
+# --- Test 3: TURN_LEFT (in Zeile 5)
 # ------------------------------------------------
 $TEST_START 3 5
+    # Testcode:
+    SETV %DR0 1|0          # Startvektor ist Rechts (1|0)
+    CALL R_TEST_3          # Ruft die Routine auf
+    SETV %DR3 0|-1         # Erwartetes Ergebnis ist Oben (0|-1)
+
+    TEST_3_ASSERTION:
+    # Überprüfung des Ergebnisses und Sprung zum nächsten Test
+    $TEST_ASSERT %DR0 %DR3 4
+
+    # 3 NOPs zur Abgrenzung zwischen Testcode und Routine
+    NOP
+    NOP
+    NOP
+
+    .INCLUDE stdlib.TURN_LEFT AS R_TEST_3 WITH %DR0 %DR1
+
+
+
+# ------------------------------------------------
+# --- Test 4: Ende der Testsuite (in Zeile 7)
+# ------------------------------------------------
+$TEST_START 4 7
     NOP
     JMPI END_OF_ALL_TESTS
 
