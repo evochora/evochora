@@ -68,13 +68,16 @@ $TEST_START 1 1
     NOP
     NOP
 
+    # Lege die Routine-Instanz auf eine eigene Welt-Zeile (dedicated line) ab.
+    # Test 1 läuft auf Zeile 1; wir reservieren Zeile 2 für die Routine + nested includes.
+    .ORG 2|2
     .INCLUDE tactics.SCAN_NEIGHBORS_FOR_TYPE AS R_TACTICS_SCAN WITH %TR0 %TR2
 
 
 # ------------------------------------------------
-# --- Test 2: SCAN_NEIGHBORS_FOR_TYPE – Richtung = 1|0 bei Treffer (Zeile 3)
+# --- Test 2: SCAN_NEIGHBORS_FOR_TYPE – Richtung = 1|0 bei Treffer (Zeile 6)
 # ------------------------------------------------
-$TEST_START 2 3
+$TEST_START 2 6
     # Vorbereitung: Energie rechts bleibt vom vorherigen Test platziert.
     # Testcode:
     SETV %TR0 1|0          # Start-Richtung: rechts
@@ -94,9 +97,9 @@ $TEST_START 2 3
 
 
 # ------------------------------------------------
-# --- Test 3: SCAN_NEIGHBORS_FOR_TYPE – Flag = 0 wenn nichts gefunden (Zeile 5)
+# --- Test 3: SCAN_NEIGHBORS_FOR_TYPE – Flag = 0 wenn nichts gefunden (Zeile 8)
 # ------------------------------------------------
-$TEST_START 3 5
+$TEST_START 3 8
     # Vorbereitung: Keine Zielobjekte um den Start (rechts war zuvor belegt; wir setzen dort "leer")
     # Überschreibe rechts mit leerem Wert
     SETI %TR4 DATA:0
@@ -121,9 +124,9 @@ $TEST_START 3 5
 
 
 # ------------------------------------------------
-# --- Test 4: SCAN_NEIGHBORS_FOR_TYPE – DV bleibt Start-Richtung bei Misserfolg (Zeile 7)
+# --- Test 4: SCAN_NEIGHBORS_FOR_TYPE – DV bleibt Start-Richtung bei Misserfolg (Zeile 10)
 # ------------------------------------------------
-$TEST_START 4 7
+$TEST_START 4 10
     # Vorbereitung: Umgebung leer (wie nach Test 3)
     # Testcode:
     SETV %TR0 1|0          # Start-Richtung: rechts
@@ -143,14 +146,12 @@ $TEST_START 4 7
 
 
 # ------------------------------------------------
-# --- Test 5: Ende der Testsuite (in Zeile 9)
+# --- Test 5: Ende der Testsuite (in Zeile 12)
 # ------------------------------------------------
-$TEST_START 5 9
+$TEST_START 5 12
     NOP
     JMPI END_OF_ALL_TACTICS_TESTS
 
 END_OF_ALL_TACTICS_TESTS:
     NOP
 
-#.INCLUDE stdlib.CHECK_CELL AS CHECK_CELL WITH %TR0 %TR2
-#.INCLUDE stdlib.TURN_RIGHT AS TURN_RIGHT WITH %TR0 %TR2

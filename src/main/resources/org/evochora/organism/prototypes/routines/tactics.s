@@ -22,7 +22,15 @@
 #
 # Hinweise:
 #   - Benötigt nur REG_DV und REG_TF. Weitere Zustände werden über den Stack verwaltet.
-#   - Abhängigkeiten: stdlib.CHECK_CELL, stdlib.TURN_RIGHT
+#   - Abhängigkeiten (nested .INCLUDE): stdlib.CHECK_CELL, stdlib.TURN_RIGHT.
+#   - Platzbedarf / Zeilenbedarf:
+#       Diese Routine belegt insgesamt 3 Zeilen relativ zu ihrer Platzierung:
+#         y     : Hauptlogik der Routine
+#         y + 1 : inkludierte stdlib.CHECK_CELL
+#         y + 2 : inkludierte stdlib.TURN_RIGHT
+#       Die .ORG Direktiven innerhalb der Routine sorgen dafür, dass jede Include auf
+#       einer eigenen (relativen) Zeile landet. Der Aufrufer sollte entsprechend Platz
+#       einplanen, indem nachfolgende Anweisungen um 3 Zeilen verschoben werden.
 #
 .ROUTINE SCAN_NEIGHBORS_FOR_TYPE REG_DV REG_TF
 
@@ -79,8 +87,10 @@ FOUND:
     POP REG_TF      # SAVED_DV verwerfen (REG_DV bleibt die Treffer-Richtung)
     SETI REG_TF DATA:1
     RET
-.ENDR
-    NOP
 
-.INCLUDE stdlib.CHECK_CELL AS CHECK_CELL WITH REG_DV REG_TF
-.INCLUDE stdlib.TURN_RIGHT AS TURN_RIGHT WITH REG_DV REG_TF
+    # Jede Include auf einer eigenen relativen Zeile platzieren:
+    .ORG 0|1
+    .INCLUDE stdlib.CHECK_CELL AS CHECK_CELL WITH REG_DV REG_TF
+    .ORG 0|2
+    .INCLUDE stdlib.TURN_RIGHT AS TURN_RIGHT WITH REG_DV REG_TF
+.ENDR
