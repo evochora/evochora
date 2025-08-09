@@ -13,6 +13,7 @@ public class DefinitionExtractor {
     private final String programName;
     private final Map<String, RoutineDefinition> routineMap = new HashMap<>();
     private final Map<String, MacroDefinition> macroMap = new HashMap<>();
+    private final Map<String, String> defineMap = new HashMap<>();
 
     record RoutineDefinition(String name, List<String> parameters, List<String> body, String fileName) {}
     record MacroDefinition(String name, List<String> parameters, List<String> body, String fileName) {}
@@ -39,7 +40,10 @@ public class DefinitionExtractor {
             String[] parts = strippedLine.split("\\s+");
             String directive = parts[0].toUpperCase();
 
-            if (directive.equals(".MACRO") || directive.equals(".ROUTINE")) {
+            if (directive.equals(".DEFINE")) {
+                if (parts.length != 3) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), ".DEFINE erwartet genau 2 Argumente: NAME WERT.", line.content());
+                defineMap.put(parts[1].toUpperCase(), parts[2]);
+            } else if (directive.equals(".MACRO") || directive.equals(".ROUTINE")) {
                 if (currentBlock != null) throw new AssemblerException(programName, blockStartLine.originalFileName(), blockStartLine.originalLineNumber(), Messages.get("definitionExtractor.nestedDefinitionsNotAllowed"), blockStartLine.content());
                 if (parts.length < 2) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.directiveNeedsName", directive), line.content());
 
@@ -51,12 +55,12 @@ public class DefinitionExtractor {
                 if (directive.equals(".ROUTINE")) {
                     for (String param : blockParams) {
                         if (Instruction.getInstructionIdByName(param.toUpperCase()) != null) {
-                            throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.routineParameterCollidesWithInstruction", param), line.content());
+                            throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "Routinen-Parameter '" + param + "' kollidiert mit einem Befehl.", line.content());
                         }
                     }
                 }
             } else if (directive.equals(".ENDM") || directive.equals(".ENDR")) {
-                if (currentBlock == null) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.unexpectedDirectiveOutsideBlock", directive), line.content());
+                if (currentBlock == null) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "Unerwartetes " + directive + " außerhalb eines Definitionsblocks.", line.content());
 
                 String prefix = getPrefixFromFileName(blockStartLine.originalFileName());
 
@@ -66,7 +70,7 @@ public class DefinitionExtractor {
                     String qualifiedName = prefix + "." + blockName;
                     routineMap.put(qualifiedName, new RoutineDefinition(qualifiedName, blockParams, blockBody, blockStartLine.originalFileName()));
                 } else {
-                    throw new AssemblerException(programName, blockStartLine.originalFileName(), blockStartLine.originalLineNumber(), Messages.get("definitionExtractor.blockClosedWithWrongEndTag", blockName), blockStartLine.content());
+                    throw new AssemblerException(programName, blockStartLine.originalFileName(), blockStartLine.originalLineNumber(), "Block '" + blockName + "' wurde mit dem falschen End-Tag geschlossen.", blockStartLine.content());
                 }
                 currentBlock = null;
                 blockBody = new ArrayList<>();
@@ -79,7 +83,7 @@ public class DefinitionExtractor {
             }
         }
         if (currentBlock != null) {
-            throw new AssemblerException(programName, blockStartLine.originalFileName(), blockStartLine.originalLineNumber(), Messages.get("definitionExtractor.blockNotClosed", blockName), blockStartLine.content());
+            throw new AssemblerException(programName, blockStartLine.originalFileName(), blockStartLine.originalLineNumber(), "Block '" + blockName + "' wurde nicht geschlossen.", blockStartLine.content());
         }
         return mainCode;
     }

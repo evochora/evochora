@@ -49,7 +49,7 @@ public class Assembler {
         List<AnnotatedLine> processedCode = expander.expand(mainCode);
 
         // Phase 3 & 4: Assemble (First & Second Pass)
-        PassManager passManager = new PassManager(programName);
+        PassManager passManager = new PassManager(programName, extractor.getDefineMap());
         passManager.runPasses(processedCode);
 
         // Phase 5: Resolve placeholders (Linking)
@@ -61,7 +61,7 @@ public class Assembler {
         );
         resolver.resolve(passManager.getJumpPlaceholders(), passManager.getVectorPlaceholders());
 
-        // Build and return program metadata
+        // Metadaten zusammenbauen und zurückgeben
         return new ProgramMetadata(
                 generateProgramId(passManager.getMachineCodeLayout()),
                 passManager.getMachineCodeLayout(),
@@ -91,7 +91,7 @@ public class Assembler {
             byte[] hashBytes = digest.digest(buffer.array());
             return Base64.getUrlEncoder().withoutPadding().encodeToString(Arrays.copyOf(hashBytes, 12));
         } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(Messages.get("assembler.sha256NotFound"), e);
+            throw new RuntimeException("SHA-256 nicht gefunden", e);
         }
     }
 }

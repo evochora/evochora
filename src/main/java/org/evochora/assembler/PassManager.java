@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
  */
 public class PassManager {
     private final String programName;
+    private final Map<String, String> defineMap;
 
     // Results
     private final Map<String, Integer> registerMap = new HashMap<>();
@@ -38,8 +39,9 @@ public class PassManager {
     private int[] currentPos;
     private int[] currentDv;
 
-    public PassManager(String programName) {
+    public PassManager(String programName, Map<String, String> defineMap) {
         this.programName = programName;
+        this.defineMap = defineMap;
     }
 
     public void runPasses(List<AnnotatedLine> processedCode) {
@@ -131,6 +133,10 @@ public class PassManager {
         String[] parts = strippedLine.split("\\s+", 2);
         String command = parts[0].toUpperCase();
         String[] args = (parts.length > 1) ? parts[1].split("\\s+") : new String[0];
+
+        for (int i = 0; i < args.length; i++) {
+            args[i] = defineMap.getOrDefault(args[i].toUpperCase(), args[i]);
+        }
 
         try {
             Integer opcodeId = Instruction.getInstructionIdByName(command);
