@@ -2,17 +2,15 @@
 # Prototyp: TacticsTest.s - Testsuite für die Taktik-Bibliothek
 # =================================================================
 
-# --- Globale Register-Aliase ---
-.REG %REG_TEST_RESULT      0   # Globales Ergebnis-Register für die Makros (0=Erfolg, 1=Fehler)
-.REG %VEC_RESULT_POS       1   # Vektor zur Platzierung des Testergebnisses
-
-# --- Generische Register für die einzelnen Testfälle ---
-.REG %REG_PARAM_1          2   # Parameter 1 für eine Routine
-.REG %REG_PARAM_2          3   # Parameter 2 für eine Routine
-.REG %REG_PARAM_3          4   # Parameter 3 für eine Routine
-.REG %REG_PARAM_4          5   # Parameter 4 für eine Routine
-.REG %REG_PARAM_5          6   # Parameter 5 für eine Routine
-.REG %REG_EXPECTED         7   # Register für den erwarteten Wert
+# --- Globale Register-Aliase und Vektoren ---
+.REG %TR_RESULT      0   # Ergebnisregister für Assertions (0=Erfolg, 1=Fehler)
+.REG %VEC_RESULT_POS 1   # Vektor zur Platzierung des Testergebnisses
+.REG %TR0            2   # Richtungsvektor (REG_DV)
+.REG %TR1            3   # Temporärregister (ung. nicht verwendet hier)
+.REG %TR2            4   # Flag/Typ (REG_TF)
+.REG %TR3            5   # Erwarteter Wert für Vergleiche
+.REG %TR4            6   # Temporäres Symbol-Register
+.REG %TR5            7   # Temporäres Vektor-Register
 
 # --- Makro zur Test-Vorbereitung ---
 .MACRO $TEST_START TEST_NUMBER TEST_LINE
@@ -23,13 +21,20 @@
 .ENDM
 
 # --- Makro für die Test-Überprüfung ---
-.MACRO $TEST_ASSERT RESULT_REG EXPECTED_REG NEXT_TEST_LABEL
-    SETI %REG_TEST_RESULT DATA:1
+.MACRO $TEST_ASSERT RESULT_REG EXPECTED_REG NEXT_TEST_NUMBER
+    # Setzt Annahme: Test schlägt fehl (DATA:1)
+    SETI %TR_RESULT DATA:1
+    # Vergleicht das Ergebnis mit dem erwarteten Wert
     IFR RESULT_REG EXPECTED_REG
-    SETI %REG_TEST_RESULT DATA:0
+    # Wenn gleich, setze das Ergebnis auf Erfolg (DATA:0)
+    SETI %TR_RESULT DATA:0
+
+    # Markiere die Zelle links vom Start mit dem Ergebnis
     SETV %VEC_RESULT_POS -1|0
-    POKE %REG_TEST_RESULT %VEC_RESULT_POS
-    JMPI NEXT_TEST_LABEL
+    POKE %TR_RESULT %VEC_RESULT_POS
+
+    # Springe zum nächsten Test
+    JMPI TEST_NEXT_TEST_NUMBER
 .ENDM
 
 # ================================================
@@ -37,67 +42,115 @@
 # ================================================
 .ORG 0|0
 MAIN:
-    JMPI TEST_1
+    SETV %VEC_RESULT_POS 1|0
+    JMPI TEST_1 # Springt zum ersten Test
 
 # ------------------------------------------------
-# --- Test 1: tactics.SCAN_SURROUNDINGS (Erfolgsfall)
+# --- Test 1: SCAN_NEIGHBORS_FOR_TYPE – Flag = 1 bei Treffer (Zeile 1)
 # ------------------------------------------------
 $TEST_START 1 1
-    # Vorbereitung: Platziere Energie rechts vom Start (bei 3|1)
-    .PLACE ENERGY:500 1|0
+    # Vorbereitung: Platziere Energie rechts (1|0)
+    SETI %TR4 ENERGY:500
+    SETV %TR5 1|0
+    POKE %TR4 %TR5
 
     # Testcode:
-    SETI %REG_PARAM_1 ENERGY:0      # Wir suchen nach Energie
-    CALL R_SCANNER                 # Rufe die Scan-Routine auf
+    SETV %TR0 1|0          # Start-Richtung: rechts
+    SETI %TR2 ENERGY:0     # Zieltyp: Energie
+    CALL R_TACTICS_SCAN    # Aufruf der Taktik
+    SETI %TR3 DATA:1       # Erwartet: gefunden
 
-    # Überprüfung 1: War die Suche erfolgreich? (Ergebnis in %REG_PARAM_2)
-    SETI %REG_EXPECTED DATA:1
-    IFR %REG_PARAM_2 %REG_EXPECTED
-    JMPI TEST_1_CHECK_DIRECTION
+    TEST_1_ASSERTION:
+    $TEST_ASSERT %TR2 %TR3 2
 
-    # Wenn die erste Prüfung fehlschlägt, Test als fehlgeschlagen markieren und weiter
-    SETI %REG_TEST_RESULT DATA:1
-    SETV %VEC_RESULT_POS -1|0
-    POKE %REG_TEST_RESULT %VEC_RESULT_POS
-    JMPI TEST_2
+    # 3 NOPs Abgrenzung
+    NOP
+    NOP
+    NOP
 
-TEST_1_CHECK_DIRECTION:
-    # Überprüfung 2: Wurde die korrekte Richtung (1|0) gefunden? (Ergebnis in %REG_PARAM_3)
-    SETV %REG_EXPECTED 1|0
-    $TEST_ASSERT %REG_PARAM_3 %REG_EXPECTED TEST_2
+    .INCLUDE tactics.SCAN_NEIGHBORS_FOR_TYPE AS R_TACTICS_SCAN WITH %TR0 %TR2
+
 
 # ------------------------------------------------
-# --- Test 2: tactics.SCAN_SURROUNDINGS (Fehlerfall)
+# --- Test 2: SCAN_NEIGHBORS_FOR_TYPE – Richtung = 1|0 bei Treffer (Zeile 3)
 # ------------------------------------------------
 $TEST_START 2 3
-    # Vorbereitung: Stelle sicher, dass keine Energie in der Nähe ist.
-    # (Wir räumen die Energie aus Test 1 vorsichtshalber weg)
-    SETV %REG_PARAM_4 1|0
-    PEEK %REG_PARAM_5 %REG_PARAM_4
-
+    # Vorbereitung: Energie rechts bleibt vom vorherigen Test platziert.
     # Testcode:
-    SETI %REG_PARAM_1 ENERGY:0
-    CALL R_SCANNER
+    SETV %TR0 1|0          # Start-Richtung: rechts
+    SETI %TR2 ENERGY:0     # Zieltyp: Energie
+    CALL R_TACTICS_SCAN
+    SETV %TR3 1|0          # Erwartete Richtung: rechts
 
-    # Überprüfung: Das Erfolgs-Flag (%REG_PARAM_2) sollte 0 sein.
-    SETI %REG_EXPECTED DATA:0
-    $TEST_ASSERT %REG_PARAM_2 %REG_EXPECTED TEST_3
+    TEST_2_ASSERTION:
+    $TEST_ASSERT %TR0 %TR3 3
+
+    # 3 NOPs
+    NOP
+    NOP
+    NOP
+
+    #.INCLUDE tactics.SCAN_NEIGHBORS_FOR_TYPE AS R_TACTICS_SCAN WITH %TR0 %TR2
+
 
 # ------------------------------------------------
-# --- Test 3: Ende der Testsuite
+# --- Test 3: SCAN_NEIGHBORS_FOR_TYPE – Flag = 0 wenn nichts gefunden (Zeile 5)
 # ------------------------------------------------
 $TEST_START 3 5
+    # Vorbereitung: Keine Zielobjekte um den Start (rechts war zuvor belegt; wir setzen dort "leer")
+    # Überschreibe rechts mit leerem Wert
+    SETI %TR4 DATA:0
+    SETV %TR5 1|0
+    POKE %TR4 %TR5
+
+    # Testcode:
+    SETV %TR0 1|0          # Start-Richtung: rechts
+    SETI %TR2 ENERGY:0     # Zieltyp: Energie
+    CALL R_TACTICS_SCAN
+    SETI %TR3 DATA:0       # Erwartet: nicht gefunden
+
+    TEST_3_ASSERTION:
+    $TEST_ASSERT %TR2 %TR3 4
+
+    # 3 NOPs
     NOP
-    JMPI END_OF_ALL_TESTS
-
-
-# ================================================
-# === Routine-Instanziierung
-# ================================================
-.ORG 30|0 # Sicher abseits platziert
-R_SCANNER:
-    # KORREKTUR: Die Routine wird jetzt mit 'AS' instanziiert.
-    .INCLUDE tactics.SCAN_SURROUNDINGS AS MY_SCANNER WITH %REG_PARAM_1 %REG_PARAM_2 %REG_PARAM_3 %REG_PARAM_4 %REG_PARAM_5
-
-END_OF_ALL_TESTS:
     NOP
+    NOP
+
+    #.INCLUDE tactics.SCAN_NEIGHBORS_FOR_TYPE AS R_TACTICS_SCAN WITH %TR0 %TR2
+
+
+# ------------------------------------------------
+# --- Test 4: SCAN_NEIGHBORS_FOR_TYPE – DV bleibt Start-Richtung bei Misserfolg (Zeile 7)
+# ------------------------------------------------
+$TEST_START 4 7
+    # Vorbereitung: Umgebung leer (wie nach Test 3)
+    # Testcode:
+    SETV %TR0 1|0          # Start-Richtung: rechts
+    SETI %TR2 ENERGY:0     # Zieltyp: Energie
+    CALL R_TACTICS_SCAN
+    SETV %TR3 1|0          # Erwartete DV: unverändert rechts
+
+    TEST_4_ASSERTION:
+    $TEST_ASSERT %TR0 %TR3 5
+
+    # 3 NOPs
+    NOP
+    NOP
+    NOP
+
+    #.INCLUDE tactics.SCAN_NEIGHBORS_FOR_TYPE AS R_TACTICS_SCAN WITH %TR0 %TR2
+
+
+# ------------------------------------------------
+# --- Test 5: Ende der Testsuite (in Zeile 9)
+# ------------------------------------------------
+$TEST_START 5 9
+    NOP
+    JMPI END_OF_ALL_TACTICS_TESTS
+
+END_OF_ALL_TACTICS_TESTS:
+    NOP
+
+#.INCLUDE stdlib.CHECK_CELL AS CHECK_CELL WITH %TR0 %TR2
+#.INCLUDE stdlib.TURN_RIGHT AS TURN_RIGHT WITH %TR0 %TR2

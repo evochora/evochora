@@ -17,10 +17,10 @@ public class Setup {
 
     public static void run(Simulation simulation) {
         // Lade den Stdlib-Tester
-        placeProgramFromFile(simulation, "StdlibTest.s", new int[]{2, 2});
+        //placeProgramFromFile(simulation, "StdlibTest.s", new int[]{2, 2});
 
         // Lade den Tactics-Tester
-        //placeProgramFromFile(simulation, "TacticsTest.s", new int[]{2, 2});
+        placeProgramFromFile(simulation, "TacticsTest.s", new int[]{2, 2});
 
 
         // Lade den InstructionTester

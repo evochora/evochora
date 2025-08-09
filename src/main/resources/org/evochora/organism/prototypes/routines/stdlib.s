@@ -152,3 +152,40 @@ EXIT:
     POP REG_TMP     # Den ursprünglichen Wert von REG_TMP wiederherstellen.
     RET             # Kehrt zum ursprünglichen Aufrufer zurück.
 .ENDR
+
+
+# --- Routine: stdlib.CHECK_EMPTY ---
+#
+# Zweck:
+#   Prüft die Nachbarzelle in gegebener Richtung auf "leer" und setzt ein Flag (1/0).
+#
+# Semantik:
+#   - REG_TF wird am Ende auf DATA:1 gesetzt, wenn die Zielzelle leer ist, sonst DATA:0.
+#   - REG_DIR wird am Ende auf seinen ursprünglichen Wert zurückgesetzt.
+#
+# Parameter:
+#   REG_DIR: Einheits-Vektor zur Zielzelle. (Wird am Ende wiederhergestellt.)
+#   REG_TF : Ausgabe: DATA:1 (leer) / DATA:0 (nicht leer).
+.ROUTINE CHECK_EMPTY REG_DIR REG_TF
+# --- Vorbereitung ---
+PUSH REG_DIR              # Richtung sichern
+
+# --- Logik ---
+# Wir wollen auf den Typ "EMPTY" vergleichen. Dafür benötigen wir den gewünschten Typ
+# beim IFTR in einem Register; analog zu CHECK_CELL nutzen wir den Stack-Trick:
+SETI REG_TF CODE:0        # Gesuchter Typ-Literal: EMPTY
+PUSH REG_TF               # Gesuchten Typ auf den Stack legen
+SCAN REG_TF REG_DIR       # Symbol der Zielzelle in REG_TF laden
+POP REG_DIR               # REG_DIR enthält jetzt den gesuchten Typ-Literal (EMPTY)
+IFTR REG_TF REG_DIR       # Typvergleich REG_TF (gescannter Typ) vs. EMPTY
+JMPI SET_TRUE
+SETI REG_TF DATA:0        # nicht leer
+JMPI EXIT
+SET_TRUE:
+SETI REG_TF DATA:1        # leer
+
+# --- Aufräumen & Rücksprung ---
+EXIT:
+POP REG_DIR               # ursprüngliche Richtung wiederherstellen
+RET
+.ENDR

@@ -120,9 +120,31 @@ $TEST_START 3 5
 
 
 # ------------------------------------------------
-# --- Test 4: Ende der Testsuite (in Zeile 7)
+# --- Test 4: CHECK_EMPTY (in Zeile 7)
 # ------------------------------------------------
 $TEST_START 4 7
+    # Testcode:
+    SETV %DR0 1|0          # Prüfe die Zelle rechts vom Start
+    CALL R_TEST_4          # Ruft CHECK_EMPTY auf
+    SETI %DR3 DATA:1       # Erwartetes Ergebnis: leer → DATA:1
+
+    TEST_4_ASSERTION:
+    # Überprüfung des Ergebnisses und Sprung zum nächsten Test
+    $TEST_ASSERT %DR2 %DR3 5
+
+    # 3 NOPs zur Abgrenzung zwischen Testcode und Routine
+    NOP
+    NOP
+    NOP
+
+    .INCLUDE stdlib.CHECK_EMPTY AS R_TEST_4 WITH %DR0 %DR2
+
+
+
+# ------------------------------------------------
+# --- Test 5: Ende der Testsuite (in Zeile 9)
+# ------------------------------------------------
+$TEST_START 5 9
     NOP
     JMPI END_OF_ALL_TESTS
 

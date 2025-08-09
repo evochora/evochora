@@ -5,64 +5,82 @@
 # einfachen, aber nützlichen Verhaltensmustern kombinieren.
 # =================================================================
 
-# --- Routine: tactics.SCAN_SURROUNDINGS ---
+# --- Routine: tactics.SCAN_NEIGHBORS_FOR_TYPE ---
 #
 # Zweck:
-#   Überprüft alle vier benachbarten Felder (relativ zum aktuellen DV)
-#   auf ein Zielobjekt. Stoppt, sobald das erste Ziel gefunden wurde.
+#   Prüft die 4 Nachbarzellen im Uhrzeigersinn (ausgehend von REG_DV) auf einen Zieltyp.
+#   Stoppt beim ersten Treffer. Gibt Richtung (in REG_DV) und Flag (in REG_TF) zurück.
 #
-# Parameter:
-#   REG_TARGET_TYPE: (Input) Register mit einem Beispiel-Symbol des gesuchten Typs
-#                    (z.B. ein Register, das ENERGY:0 enthält).
-#   REG_SUCCESS:     (Output) Wird auf DATA:1 (gefunden) oder DATA:0 (nicht) gesetzt.
-#   REG_DIR_FOUND:   (Output) Wenn erfolgreich, enthält dieses Register den
-#                    Vektor der Richtung, in der das Ziel gefunden wurde.
-#   REG_TMP_DV:      (Internal) Temporäres Register für den rotierenden Suchvektor.
-#   REG_TMP:         (Internal) Temporäres Register, das von den stdlib-Routinen benötigt wird.
+# Signatur:
+#   .ROUTINE SCAN_NEIGHBORS_FOR_TYPE REG_DV REG_TF
+#   - Eingabe:
+#       REG_DV (In/Out): Start-Richtung (Einheitsvektor).
+#       REG_TF (In):     Zieltyp-Literal (z. B. ENERGY:0).
+#   - Ausgabe:
+#       Bei Erfolg:   REG_TF = DATA:1, REG_DV = gefundene Richtung.
+#       Bei Misserfolg: REG_TF = DATA:0, REG_DV = ursprüngliche Start-Richtung (wiederhergestellt).
 #
+# Hinweise:
+#   - Benötigt nur REG_DV und REG_TF. Weitere Zustände werden über den Stack verwaltet.
+#   - Abhängigkeiten: stdlib.CHECK_CELL, stdlib.TURN_RIGHT
+#
+.ROUTINE SCAN_NEIGHBORS_FOR_TYPE REG_DV REG_TF
 
+    # Startzustand sichern
+    PUSH REG_DV      # [ ... , SAVED_DV ]
+    PUSH REG_TF      # [ ... , SAVED_DV, SAVED_TARGET ]
 
+    # --- Versuch 1 (aktueller REG_DV) ---
+TRY_1:
+    # Zieltyp aus Stack in REG_TF holen und wieder zurücklegen (Stackhöhe konstant halten)
+    POP REG_TF
+    PUSH REG_TF
+    CALL CHECK_CELL
+    IFI REG_TF DATA:1
+    JMPI FOUND
 
+    # --- Versuch 2 (REG_DV nach rechts gedreht) ---
+    CALL TURN_RIGHT
+TRY_2:
+    POP REG_TF
+    PUSH REG_TF
+    CALL CHECK_CELL
+    IFI REG_TF DATA:1
+    JMPI FOUND
 
-#.ROUTINE SCAN_SURROUNDINGS REG_TARGET_TYPE REG_SUCCESS REG_DIR_FOUND REG_TMP_DV REG_TMP#
-#
-#    # --- Vorbereitung ---
-#    POS REG_TMP_DV       # Hole die aktuelle IP-Position (als Platzhalter, da POS relativ ist)
-#    PUSH REG_TMP_DV      # Sichere den ursprünglichen Wert von REG_TMP_DV
-#    TURN REG_TMP_DV      # Lade den aktuellen DV des Organismus in REG_TMP_DV
-#
-#    # Initialisiere Ergebnis-Register auf "nicht gefunden".
-#    SETI REG_SUCCESS DATA:0
-#
-#    # Starte eine Schleife, die vier Mal durchläuft (für jede Himmelsrichtung).
-#    SETI REG_TMP DATA:4
-#SCAN_LOOP:
-#    # Taktik: Nutze die primitive CHECK_CELL Routine
-#    CALL stdlib.CHECK_CELL
-#
-#    # Prüfe das Ergebnis von CHECK_CELL
-#    IFI REG_SUCCESS DATA:1
-#    JMPI FOUND_TARGET   # Wenn gefunden, springe aus der Schleife
-#
-#    # Wenn nichts gefunden wurde, drehe den Suchvektor weiter
-#    CALL stdlib.TURN_RIGHT
-#
-#    # Schleifenzähler dekrementieren und erneut versuchen
-#    SUBI REG_TMP DATA:1
-#    GTI REG_TMP DATA:0
-#    JMPI SCAN_LOOP
-#
-#    # Wenn die Schleife durchläuft, ohne etwas zu finden, springe zum Ende.
-#    JMPI SCAN_EXIT
-#
-#FOUND_TARGET:
-#    # Ziel wurde gefunden. Speichere die erfolgreiche Richtung.
-#    SETR REG_DIR_FOUND REG_TMP_DV
-#
-#SCAN_EXIT:
-#    POP REG_TMP_DV     # Stelle den ursprünglichen Wert von REG_TMP_DV wieder her.
-#    RET
-#.ENDR
-#
-#
-#.INCLUDE stdlib.CHECK_CELL AS R_TEST_2 WITH ??? ???
+    # --- Versuch 3 ---
+    CALL TURN_RIGHT
+TRY_3:
+    POP REG_TF
+    PUSH REG_TF
+    CALL CHECK_CELL
+    IFI REG_TF DATA:1
+    JMPI FOUND
+
+    # --- Versuch 4 ---
+    CALL TURN_RIGHT
+TRY_4:
+    POP REG_TF
+    PUSH REG_TF
+    CALL CHECK_CELL
+    IFI REG_TF DATA:1
+    JMPI FOUND
+
+    # --- Kein Treffer in 4 Richtungen ---
+NOT_FOUND:
+    POP REG_TF      # SAVED_TARGET verwerfen
+    POP REG_DV      # ursprüngliche Richtung wiederherstellen
+    SETI REG_TF DATA:0
+    RET
+
+FOUND:
+    # Stack bereinigen, ohne REG_DV zu ändern
+    POP REG_TF      # SAVED_TARGET verwerfen
+    POP REG_TF      # SAVED_DV verwerfen (REG_DV bleibt die Treffer-Richtung)
+    SETI REG_TF DATA:1
+    RET
+.ENDR
+    NOP
+
+.INCLUDE stdlib.CHECK_CELL AS CHECK_CELL WITH REG_DV REG_TF
+.INCLUDE stdlib.TURN_RIGHT AS TURN_RIGHT WITH REG_DV REG_TF
