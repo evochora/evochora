@@ -7,6 +7,7 @@ import org.evochora.organism.Instruction;
 import org.evochora.organism.Organism;
 import org.evochora.world.World;
 
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 
@@ -37,7 +38,14 @@ public class CallInstruction extends Instruction {
         for (int i = 0; i < absoluteReturnIp.length; i++) {
             relativeReturnIp[i] = absoluteReturnIp[i] - initialPosition[i];
         }
-        organism.getDataStack().push(relativeReturnIp);
+        Deque<Object> rs = organism.getReturnStack();
+        if (rs.size() >= Config.RS_MAX_DEPTH) {
+            organism.instructionFailed("Return stack overflow");
+            return;
+        }
+        // Save PR snapshot along with the return address in a ProcFrame
+        Object[] prSnapshot = organism.getPrs().toArray(new Object[0]);
+        rs.push(new Organism.ProcFrame(relativeReturnIp, prSnapshot));
         int[] targetIp = organism.getTargetCoordinate(organism.getIpBeforeFetch(), this.delta, simulation.getWorld());
         organism.setIp(targetIp);
         organism.setSkipIpAdvance(true);

@@ -24,11 +24,24 @@ public class Organism {
     private int[] dv;
     private int er;
     private final List<Object> drs;
+    private final List<Object> prs;
     private final Deque<Object> dataStack;
+    private final Deque<Object> returnStack;
     private boolean isDead = false;
     private boolean loggingEnabled = false;
     private boolean instructionFailed = false;
     private String failureReason = null;
+
+    // Frame stored on RS for CALL/RET (includes return IP and PR snapshot)
+    public static final class ProcFrame {
+        public final int[] relativeReturnIp;
+        public final Object[] savedPrs;
+
+        public ProcFrame(int[] relativeReturnIp, Object[] savedPrs) {
+            this.relativeReturnIp = relativeReturnIp;
+            this.savedPrs = savedPrs;
+        }
+    }
     private boolean skipIpAdvance = false;
     private int[] ipBeforeFetch;
     private int[] dvBeforeFetch;
@@ -50,7 +63,12 @@ public class Organism {
         for (int i = 0; i < Config.NUM_DATA_REGISTERS; i++) {
             this.drs.add(0);
         }
+        this.prs = new ArrayList<>(Config.NUM_PROC_REGISTERS);
+        for (int i = 0; i < Config.NUM_PROC_REGISTERS; i++) {
+            this.prs.add(0);
+        }
         this.dataStack = new ArrayDeque<>(Config.STACK_MAX_DEPTH);
+        this.returnStack = new ArrayDeque<>(Config.RS_MAX_DEPTH);
         this.ipBeforeFetch = Arrays.copyOf(startIp, startIp.length);
         this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length);
         this.initialPosition = Arrays.copyOf(startIp, startIp.length);
@@ -236,5 +254,38 @@ public class Organism {
     public Simulation getSimulation() { return simulation; }
     public int[] getInitialPosition() { return Arrays.copyOf(this.initialPosition, this.initialPosition.length); }
     public Deque<Object> getDataStack() { return this.dataStack; }
+    public Deque<Object> getReturnStack() { return this.returnStack; }
+
+    // PR register API
+    public List<Object> getPrs() { return new ArrayList<>(this.prs); }
+    public boolean setPr(int index, Object value) {
+        if (index >= 0 && index < this.prs.size()) {
+            if (value instanceof Integer || value instanceof int[]) {
+                this.prs.set(index, value);
+                return true;
+            }
+            this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to PR " + index);
+            return false;
+        }
+        this.instructionFailed("PR index out of bounds: " + index);
+        return false;
+    }
+    public Object getPr(int index) {
+        if (index >= 0 && index < this.prs.size()) {
+            return this.prs.get(index);
+        }
+        this.instructionFailed("PR index out of bounds: " + index);
+        return null;
+    }
+    public void restorePrs(Object[] snapshot) {
+        if (snapshot == null || snapshot.length != this.prs.size()) {
+            this.instructionFailed("Invalid PR snapshot size: expected " + this.prs.size() + ", got " + (snapshot == null ? "null" : snapshot.length));
+            return;
+        }
+        for (int i = 0; i < snapshot.length; i++) {
+            this.prs.set(i, snapshot[i]);
+        }
+    }
+
     public Random getRandom() { return this.random; }
 }

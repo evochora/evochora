@@ -27,22 +27,32 @@ public class RetInstruction extends Instruction {
 
     @Override
     public void execute(Simulation simulation) {
-        Deque<Object> stack = organism.getDataStack();
+        Deque<Object> rs = organism.getReturnStack();
         try {
-            Object poppedValue = stack.pop();
-            if (poppedValue instanceof int[] relativeReturnIp) {
-                int[] initialPosition = organism.getInitialPosition();
-                int[] absoluteReturnIp = new int[relativeReturnIp.length];
-                for (int i = 0; i < relativeReturnIp.length; i++) {
-                    absoluteReturnIp[i] = initialPosition[i] + relativeReturnIp[i];
-                }
-                organism.setIp(absoluteReturnIp);
-                organism.setSkipIpAdvance(true);
+            Object poppedValue = rs.pop();
+            int[] relativeReturnIp = null;
+
+            if (poppedValue instanceof Organism.ProcFrame frame) {
+                // Restore PRs and extract return address
+                organism.restorePrs(frame.savedPrs);
+                relativeReturnIp = frame.relativeReturnIp;
+            } else if (poppedValue instanceof int[] legacyReturnIp) {
+                // Backward-compatibility: legacy frames without PR0/PR1
+                relativeReturnIp = legacyReturnIp;
             } else {
-                organism.instructionFailed("RET: Ungültiger Wert auf dem Stack. Erwartet wurde ein Vektor als Rücksprungadresse.");
+                organism.instructionFailed("RET: Ungültiger Wert auf dem Return-Stack. Erwartet wurde ein Vektor als Rücksprungadresse.");
+                return;
             }
+
+            int[] initialPosition = organism.getInitialPosition();
+            int[] absoluteReturnIp = new int[relativeReturnIp.length];
+            for (int i = 0; i < relativeReturnIp.length; i++) {
+                absoluteReturnIp[i] = initialPosition[i] + relativeReturnIp[i];
+            }
+            organism.setIp(absoluteReturnIp);
+            organism.setSkipIpAdvance(true);
         } catch (NoSuchElementException e) {
-            organism.instructionFailed("Stack Underflow: RET-Befehl auf leerem Stack aufgerufen.");
+            organism.instructionFailed("Return stack underflow: RET auf leerem Return-Stack aufgerufen.");
         }
     }
 

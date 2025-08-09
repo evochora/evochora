@@ -5,35 +5,101 @@ import org.evochora.world.Symbol;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
 
-class AssemblerTest {
+import java.util.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+public class AssemblerTest {
 
     @BeforeAll
     static void setup() {
+        // Initialize instruction registry once for tests that rely on it
         Instruction.init();
+    }
+
+    // ---------- Helpers ----------
+    private static DefinitionExtractor.RoutineDefinition makeRoutine(String name, List<String> params, List<String> body) {
+        return new DefinitionExtractor.RoutineDefinition(name, params, body, "lib.s");
+    }
+
+    private static AnnotatedLine line(String content) {
+        return new AnnotatedLine(content, 1, "main.s");
     }
 
     private Assembler createAssembler() {
         return new Assembler();
     }
 
-    /**
-     * NEW: Helper method to convert a raw string into the new
-     * list format expected by the assembler.
-     */
     private List<AnnotatedLine> annotateCode(String code) {
         List<AnnotatedLine> lines = new ArrayList<>();
         int lineNum = 1;
-        for (String line : code.split("\\r?\\n")) {
-            lines.add(new AnnotatedLine(line, lineNum++, "test.s"));
+        for (String l : code.split("\\r?\\n")) {
+            lines.add(new AnnotatedLine(l, lineNum++, "test.s"));
         }
         return lines;
     }
 
+    private Integer findValueAtCoordinate(Map<int[], Integer> map, int[] coord) {
+        for (Map.Entry<int[], Integer> entry : map.entrySet()) {
+            if (Arrays.equals(entry.getKey(), coord)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    // ---------- Include/Dedup tests ----------
+    @Test
+    void include_sameSignature_isDedupeWithAliasTrampoline() {
+        Map<String, DefinitionExtractor.RoutineDefinition> routines = new HashMap<>();
+        routines.put("LIB.FOO", makeRoutine("LIB.FOO",
+                Arrays.asList("A", "B"),
+                Arrays.asList(
+                        "NOP",
+                        "LABEL_END:"
+                )));
+        Map<String, DefinitionExtractor.MacroDefinition> macros = new HashMap<>();
+        CodeExpander expander = new CodeExpander("prog", routines, macros);
+
+        List<AnnotatedLine> program = Arrays.asList(
+                line(".INCLUDE LIB.FOO AS FOO1 WITH %X %Y"),
+                line(".INCLUDE LIB.FOO AS FOO2 WITH %X %Y")
+        );
+
+        List<AnnotatedLine> out = expander.expand(program);
+
+        String all = String.join("\n", out.stream().map(AnnotatedLine::content).toList());
+        assertTrue(all.contains("FOO1:"), "Primary alias label missing");
+        assertTrue(all.contains("FOO2:"), "Secondary alias label missing");
+        assertTrue(all.contains("JMPI FOO1"), "Alias trampoline missing");
+        long nops = out.stream().filter(l -> l.content().strip().equals("NOP")).count();
+        assertEquals(1, nops, "Routine body should be emitted once");
+    }
+
+    @Test
+    void includeStrict_sameSignature_emitsSecondInstance() {
+        Map<String, DefinitionExtractor.RoutineDefinition> routines = new HashMap<>();
+        routines.put("LIB.BAR", makeRoutine("LIB.BAR",
+                Arrays.asList("P"),
+                Arrays.asList("NOP")));
+        Map<String, DefinitionExtractor.MacroDefinition> macros = new HashMap<>();
+        CodeExpander expander = new CodeExpander("prog", routines, macros);
+
+        List<AnnotatedLine> program = Arrays.asList(
+                line(".INCLUDE LIB.BAR AS BAR1 WITH %R0"),
+                line(".INCLUDE_STRICT LIB.BAR AS BAR2 WITH %R0")
+        );
+
+        List<AnnotatedLine> out = expander.expand(program);
+        String all = String.join("\n", out.stream().map(AnnotatedLine::content).toList());
+
+        assertTrue(all.contains("BAR1:"), "BAR1 label missing");
+        assertTrue(all.contains("BAR2:"), "BAR2 label missing");
+        long nops = out.stream().filter(l -> l.content().strip().equals("NOP")).count();
+        assertEquals(2, nops, "STRICT must emit a second body");
+    }
+
+    // ---------- Assembler pipeline tests ----------
     @Test
     void testAssemblerRecognizesValidCode() {
         String code = """
@@ -56,16 +122,16 @@ class AssemblerTest {
         String code = """
                 .REG %DR_A 0
                 .REG %DR_B 1
-                
+
                 .MACRO $INNER_MACRO PARAM1
                     SETR %DR_A PARAM1
                 .ENDM
-                
+
                 .MACRO $OUTER_MACRO PARAM2
                     $INNER_MACRO PARAM2
                     ADDR %DR_B %DR_A
                 .ENDM
-                
+
                 .ORG 0|0
                 START:
                     SETI %DR_B DATA:100
@@ -82,12 +148,12 @@ class AssemblerTest {
                     NOP
                     $CALL_LOOP_B
                 .ENDM
-                
+
                 .MACRO $CALL_LOOP_B
                     NOP
                     $INFINITE_LOOP
                 .ENDM
-                
+
                 .ORG 0|0
                 $INFINITE_LOOP
                 """;
@@ -121,7 +187,7 @@ class AssemblerTest {
                 .MACRO $TWO_ARGS A B
                     SETR A B
                 .ENDM
-                
+
                 .ORG 0|0
                 $TWO_ARGS %DR_A
                 """;
@@ -196,15 +262,6 @@ class AssemblerTest {
                 exception.getMessage().contains("has the same name as an instruction"),
                 "The error message should indicate a name conflict between label and instruction."
         );
-    }
-
-    private Integer findValueAtCoordinate(Map<int[], Integer> map, int[] coord) {
-        for (Map.Entry<int[], Integer> entry : map.entrySet()) {
-            if (Arrays.equals(entry.getKey(), coord)) {
-                return entry.getValue();
-            }
-        }
-        return null;
     }
 
     @Test

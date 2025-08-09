@@ -91,11 +91,14 @@ public abstract class Instruction {
 
         // --- World & State ---
         register(TurnInstruction.class, 11, "TURN");
-        register(SeekInstruction.class, 12, "SEEK");
+        register(SeekInstruction.class, 12, "SEEK");   // Register-vector
         register(SyncInstruction.class, 13, "SYNC");
         register(PeekInstruction.class, 14, "PEEK");
         register(PokeInstruction.class, 15, "POKE");
-        register(ScanInstruction.class, 16, "SCAN");
+        register(ScanInstruction.class, 16, "SCAN");   // Register-vector
+        // Aliases for readability/back-compat in assembler
+        NAME_TO_ID.put("SCNR", NAME_TO_ID.get("SCAN")); // SCNR as alias for SCAN
+
         register(NrgInstruction.class, 17, "NRG");
         register(ForkInstruction.class, 18, "FORK");
         register(DiffInstruction.class, 19, "DIFF");
@@ -103,7 +106,34 @@ public abstract class Instruction {
         register(RandInstruction.class, 55, "RAND");
         register(PekiInstruction.class, 56, "PEKI");
         register(PokiInstruction.class, 57, "POKI");
-        register(SekiInstruction.class, 59, "SEKI"); // NEW
+        register(SekiInstruction.class, 59, "SEKI");   // SEEK immediate-vector
+        // New SCAN/SEEK variants
+        register(ScniInstruction.class, 82, "SCNI");   // SCAN immediate-vector
+        register(ScnsInstruction.class, 83, "SCNS");   // SCAN stack-vector (S-variant)
+        register(SeksInstruction.class, 84, "SEKS");   // SEEK stack-vector (S-variant)
+
+        // --- Stack basic ops (DS only) ---
+        register(DupInstruction.class, 60, "DUP");
+        register(SwapInstruction.class, 61, "SWAP");
+        register(DropInstruction.class, 62, "DROP");
+        register(RotInstruction.class, 63, "ROT");
+
+        // --- S-variants (stack-based) arithmetic/bitwise/shift ---
+        register(AddsSInstruction.class, 70, "ADDS");
+        register(SubsSInstruction.class, 71, "SUBS");
+        register(MulsSInstruction.class, 72, "MULS");
+        register(DivsSInstruction.class, 73, "DIVS");
+        register(ModsSInstruction.class, 74, "MODS");
+
+        register(AndsSInstruction.class, 75, "ANDS");
+        register(OrsSInstruction.class, 76, "ORS");
+        register(XorsSInstruction.class, 77, "XORS");
+        register(NadsSInstruction.class, 78, "NADS");
+        register(NotsSInstruction.class, 79, "NOTS");
+
+        register(ShlsSInstruction.class, 80, "SHLS");
+        register(ShrsSInstruction.class, 81, "SHRS");
+
         register(NopInstruction.class, 0, "NOP");
     }
 

@@ -3,10 +3,7 @@ package org.evochora.assembler;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import org.evochora.Messages;
 
@@ -47,6 +44,17 @@ public class Assembler {
         // Phase 2: Expand code (routines & macros)
         CodeExpander expander = new CodeExpander(programName, extractor.getRoutineMap(), extractor.getMacroMap());
         List<AnnotatedLine> processedCode = expander.expand(mainCode);
+
+        // Phase 2.5: Validate .REQUIRE declarations against seen .IMPORTs
+        if (!extractor.getProcMetaMap().isEmpty()) {
+            Set<String> allRequires = new java.util.HashSet<>();
+            extractor.getProcMetaMap().forEach((name, meta) -> allRequires.addAll(meta.requires()));
+            Set<String> imported = new java.util.HashSet<>(expander.getImportedProcs());
+            allRequires.removeAll(imported);
+            if (!allRequires.isEmpty()) {
+                throw new AssemblerException(programName, "N/A", -1, "Missing IMPORT for required PROC(s): " + String.join(", ", allRequires), "");
+            }
+        }
 
         // Phase 3 & 4: Assemble (First & Second Pass)
         PassManager passManager = new PassManager(programName, extractor.getDefineMap());

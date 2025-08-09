@@ -20,12 +20,15 @@ public final class Config {
 
     // Organism Settings
     public static final int NUM_DATA_REGISTERS = 8; // Geändert von 16 auf 8
-    public static final int STACK_MAX_DEPTH = 1024; // Neu: Maximaltiefe des Stacks als Sicherheitsnetz
+    public static final int NUM_PROC_REGISTERS = 2; // Anzahl der PROC-lokalen Register (PRs)
+    public static final int DS_MAX_DEPTH = 1024; // Maximaltiefe des Daten-Stacks (DS)
+    public static final int RS_MAX_DEPTH = 1024; // Maximaltiefe des Return-Stacks (RS)
+    public static final int STACK_MAX_DEPTH = DS_MAX_DEPTH; // Back-compat Alias auf DS_MAX_DEPTH
 
     // Graphics Settings
     public static final int CELL_SIZE = 22;
     public static final int HEADER_HEIGHT = 50;
-    public static final int FOOTER_HEIGHT = 110;
+    public static final int FOOTER_HEIGHT = 130;
 
     // Farbdefinitionen
     public static final Color COLOR_BG = Color.rgb(10, 10, 20);

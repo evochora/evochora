@@ -30,7 +30,7 @@ public class PushInstruction extends Instruction {
             return;
         }
         Deque<Object> stack = organism.getDataStack();
-        if (stack.size() >= Config.STACK_MAX_DEPTH) {
+        if (stack.size() >= Config.DS_MAX_DEPTH) {
             organism.instructionFailed("Stack Overflow");
             return;
         }

@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
     public class Disassembler {
+        // Note: VM uses a separate Return-Stack (RS) for CALL/RET; disassembly format remains unchanged.
 
         public DisassembledInstruction disassemble(ProgramMetadata metadata, int[] coord, int[] currentDv, World world) {
             Map<List<Integer>, Integer> relativeCoordToLinearAddress = metadata.relativeCoordToLinearAddress();

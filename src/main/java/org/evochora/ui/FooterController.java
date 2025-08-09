@@ -37,7 +37,7 @@ public class FooterController {
         fullDetailsTextArea.setFont(uiFont);
         fullDetailsTextArea.setEditable(false);
         fullDetailsTextArea.setWrapText(false);
-        fullDetailsTextArea.setPrefRowCount(5);
+        fullDetailsTextArea.setPrefRowCount(10);
         fullDetailsTextArea.setStyle("-fx-control-inner-background: " + toWebColor(Config.COLOR_HEADER_FOOTER) + ";" +
                 "-fx-text-fill: " + toWebColor(Config.COLOR_TEXT) + ";" +
                 "-fx-background-color: transparent; -fx-border-width: 0;");
@@ -56,6 +56,7 @@ public class FooterController {
                     selectedOrganism.getEr(), Arrays.toString(selectedOrganism.getIp()),
                     Arrays.toString(selectedOrganism.getDp()), Arrays.toString(selectedOrganism.getDv())));
 
+            // DRs
             List<Object> drs = selectedOrganism.getDrs();
             StringBuilder drsText = new StringBuilder(Messages.get("footer.label.drs"));
             for(int i = 0; i < drs.size(); i++) {
@@ -64,8 +65,22 @@ public class FooterController {
             }
             displayText.append(drsText.toString()).append("\n");
 
+            // PRs (analog DRs)
+            List<Object> prs = selectedOrganism.getPrs();
+            StringBuilder prsText = new StringBuilder(Messages.get("footer.label.prs"));
+            for(int i = 0; i < prs.size(); i++) {
+                prsText.append(String.format("%d=%s", i, this.logger.formatDrValue(prs.get(i))));
+                if (i < prs.size() - 1) prsText.append(", ");
+            }
+            displayText.append(prsText.toString()).append("\n");
+
+            // DS
             displayText.append(Messages.get("footer.label.stack")).append(logger.formatStack(selectedOrganism, true, 8)).append("\n");
 
+            // RS (analog DS)
+            displayText.append(Messages.get("footer.label.rs")).append(logger.formatReturnStack(selectedOrganism, true, 8)).append("\n");
+
+            // Nächste Instruktion
             displayText.append(Messages.get("footer.label.nextInstruction")).append(logger.getNextInstructionInfo(selectedOrganism)).append("\n");
 
             String nextSourceInfo = getSourceInfoForNextInstruction(selectedOrganism);

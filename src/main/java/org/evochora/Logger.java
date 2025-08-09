@@ -90,7 +90,20 @@ public class Logger {
             logLine.append(String.format("%d=%s", i, valStr));
             if (i < drs.size() - 1) logLine.append(", ");
         }
-        logLine.append(" | Stack: ").append(formatStack(organism, false, 0));
+
+        // PRs im gleichen Format wie DRs
+        logLine.append(" | PRs: ");
+        List<Object> prs = organism.getPrs();
+        for (int i = 0; i < prs.size(); i++) {
+            Object prVal = prs.get(i);
+            String valStr = formatDrValue(prVal);
+            logLine.append(String.format("%d=%s", i, valStr));
+            if (i < prs.size() - 1) logLine.append(", ");
+        }
+
+        // DS und RS im gleichen Format
+        logLine.append(" | DS: ").append(formatStack(organism, false, 0));
+        logLine.append(" | RS: ").append(formatReturnStack(organism, false, 0));
 
         // KORRIGIERT: Holt die Details der soeben ausgeführten Anweisung.
         DisassembledInstruction disassembled = AssemblyProgram.getDisassembledInstructionDetailsForLastTick(organism);
@@ -152,6 +165,35 @@ public class Logger {
         sb.append("]");
         return sb.toString();
     }
+
+    // Neues Pendant für RS
+    public String formatReturnStack(Organism organism, boolean truncate, int limit) {
+        Deque<Object> rs = organism.getReturnStack();
+        if (rs.isEmpty()) {
+            return String.format("(0/%d): []", Config.RS_MAX_DEPTH);
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("(%d/%d): [", rs.size(), Config.RS_MAX_DEPTH));
+        Iterator<Object> it = rs.iterator();
+        int count = 0;
+        while (it.hasNext()) {
+            if (count > 0) sb.append(", ");
+            if (truncate && count >= limit) {
+                sb.append("...");
+                break;
+            }
+            Object entry = it.next();
+            if (entry instanceof Organism.ProcFrame f) {
+                sb.append("RET:").append(formatCoordinate(f.relativeReturnIp));
+            } else {
+                sb.append(formatDrValue(entry));
+            }
+            count++;
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
 
     private String getResolvedArgumentString(Organism organism, DisassembledArgument argument, ProgramMetadata metadata) {
         if (argument.type() == ArgumentType.REGISTER && metadata != null && metadata.registerIdToName() != null) {
