@@ -101,4 +101,5 @@ public class DefinitionExtractor {
 
     public Map<String, RoutineDefinition> getRoutineMap() { return routineMap; }
     public Map<String, MacroDefinition> getMacroMap() { return macroMap; }
+    public Map<String, String> getDefineMap() { return defineMap; }
 }

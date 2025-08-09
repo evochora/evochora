@@ -2,6 +2,7 @@ plugins {
     java
     application
     id("org.openjfx.javafxplugin") version "0.1.0"
+    jacoco
 }
 
 group = "org.evochora"
@@ -44,7 +45,6 @@ javafx {
     modules = listOf("javafx.controls", "javafx.fxml")
 }
 
-// The mainClass belongs in this block.
 application {
     mainClass.set("org.evochora.Main")
 }
