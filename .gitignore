@@ -47,3 +47,4 @@ bin/
 
 # Log files
 *.log
+/docs/
