@@ -169,7 +169,7 @@ public abstract class Instruction {
         registerFamily(StateInstruction.class, Map.of(11, "TURN", 17, "NRG", 19, "DIFF", 21, "POS", 55, "RAND", 12, "SEEK"), List.of(OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(59, "SEKI"), List.of(OperandSource.VECTOR));
         registerFamily(StateInstruction.class, Map.of(84, "SEKS", 83, "SCNS", 90, "PEKS"), List.of(OperandSource.STACK));
-        registerFamily(StateInstruction.class, Map.of(13, "SYNC"), List.of());
+        registerFamily(StateInstruction.class, Map.of(13, "SYNC", 92, "NRGS"), List.of());
 
         // --- NOP ---
         register(NopInstruction.class, 0, "NOP");

@@ -44,6 +44,11 @@ public class StateInstruction extends Instruction {
                     writeOperand(targetReg, new Symbol(Config.TYPE_DATA, organism.getEr()).toInt());
                     break;
                 }
+                case "NRGS": {
+                    // Stack variant: push ER to data stack, no operands
+                    organism.getDataStack().push(new Symbol(Config.TYPE_DATA, organism.getEr()).toInt());
+                    break;
+                }
                 case "FORK": {
                     if (operands.size() != 3) { organism.instructionFailed("Invalid operands for FORK."); return; }
                     int[] delta = (int[]) operands.get(0).value();
@@ -189,6 +194,9 @@ public class StateInstruction extends Instruction {
         switch (name) {
             case "SYNC":
                 if (args.length != 0) throw new IllegalArgumentException("SYNC expects no arguments.");
+                return new AssemblerOutput.CodeSequence(List.of());
+            case "NRGS":
+                if (args.length != 0) throw new IllegalArgumentException("NRGS expects no arguments.");
                 return new AssemblerOutput.CodeSequence(List.of());
             case "TURN", "NRG", "DIFF", "POS", "RAND", "SEEK": {
                 if (args.length != 1) throw new IllegalArgumentException(name + " expects 1 register argument.");

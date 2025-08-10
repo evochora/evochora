@@ -32,119 +32,326 @@ This document describes the syntax, directives, and the complete instruction set
 
 ### 3. Argument Types
 
-* **Register:** `%DR0`…`%DR7`, `%PR0`…`%PR1`.
+Arguments fall into a small, well-defined type system. Many instructions only accept scalars (DATA), while others accept vectors (VEC). Type-sensitive predicates (IFTR/IFTI) compare the dynamic type, not the value.
 
-* **Literal:** `TYPE:VALUE` (e.g., `DATA:123`).
+* **Register:** `%DR0`…`%DR7`, `%PR0`…`%PR1`. These hold values (either scalar DATA or VEC) and are case-insensitive.
 
-* **Vector:** `X|Y` (e.g., `1|0`); dimension equals the world dimensions.
+* **Literal:** `TYPE:VALUE`. Currently supported immediate type:
+  - `DATA:N` — a signed integer scalar. Examples:
+    - `DATA:0`, `DATA:-12`, `DATA:42`
+    - Numeric bases: `DATA:0xFF` (hex), `DATA:0b1010` (binary), `DATA:077` (octal)
+    - Separators: underscores are allowed for readability, e.g. `DATA:1_000_000`
+  Notes:
+  - DATA is the only scalar literal type; vector literals use the Vector syntax (below).
+  - When an instruction requires a scalar and receives a non-scalar, it fails.
 
-* **Label:** A defined label name.
+* **Vector (VEC):** `X|Y[|Z...]` (e.g., `1|0`, `-1|2|0`). Dimensionality must match the world’s dimension. Vectors are used for:
+  - Relative addressing (e.g., `PEEK`, `SEEK`, `JMPI`, `SETV`).
+  - Direction settings (e.g., `TURN` with a unit vector).
+  - Stack variants that pop a vector expect a properly dimensioned VEC on the stack.
+
+* **Label:** A defined label name (case-insensitive). When used in a vector position context (e.g., `JMPI LABEL`, `SETV %DR0 LABEL`), the assembler resolves it to the relative vector delta from the current IP at assemble time.
+
+Type overview:
+- **DATA (scalar):** signed integer payload; used by arithmetic/bitwise/shift/compare.
+- **VEC (vector):** multi-component integer tuple matching world dimensions.
+- Many instructions specify “scalar-only”; passing VEC where DATA is required fails.
+- IFTR/IFTI compare the type tags (DATA vs VEC), not the numeric payload.
+
+Examples:
+- `ADDI %DR0 DATA:1`        ; scalar immediate
+- `SETV %DR1 -1|0`          ; vector literal (2D)
+- `JMPI TARGET_LABEL`       ; label resolved to a relative vector at assembly
+- `PEKI %DR2 0|1|0`         ; vector in 3D world
 
 ### 4. Instruction Set
 
+This section lists each instruction with all of its variants grouped together (Register “R”, Immediate “I”, and Stack “S”). For each instruction you’ll find syntax, operands, effects, side effects, energy cost, errors, and a short example. Unless stated otherwise:
+- Register operands accept `%DRx` and `%PRx`.
+- Stack variants use the Data Stack (DS).
+- Vector arguments use `X|Y` (or more components if the world has higher dimensions).
+- Values are encoded Symbols; arithmetic/bitwise operate on scalar payloads.
+
+Energy model:
+- All energy costs are configurable by the simulator. The “Energy:” line indicates that an instruction consumes or transfers energy according to the configured schedule.
+- Some world interactions may transfer energy instead of strictly consuming it. For example, reading an ENERGY symbol can increase ER; writing symbols may include surcharges depending on the symbol being written.
+
+Energy costs:
+- Energy costs are configurable in the simulator; the values shown here are the default costs intended for balancing. When in doubt, prefer the per-instruction “Energy:” line. Typical defaults:
+  - Moves/sets (SETx), stack data-moves (PUSH/POP/PUSI), arithmetic/bitwise/shifts, simple compares: 1
+  - Control flow (JMPI/JMPR): 1; CALL/RET: 2
+  - World reads (PEEK/SCAN): 2; DP move (SEEK): 3; World writes (POKE): 5
+  - State sync/utility (SYNC, TURN, POS, DIFF): 1; Energy read (NRG/NRGS): 0; RAND: 2
+
 #### Data & Memory
 
-* `SETI %REG_TARGET LITERAL`: Set a register to a literal value.
+- SET family (move/set value)
+  - Variants: SETI (imm), SETR (reg), SETV (vec/label)
+  - Syntax:
+    - SETI %REG_TARGET DATA:N
+    - SETR %REG_TARGET %REG_SOURCE
+    - SETV %REG_TARGET X|Y[|Z...] | LABEL
+  - Operands: target register; source is an immediate DATA, a register, or a vector/label.
+  - Effect:
+    - SETI: REG_TARGET := DATA literal (scalar)
+    - SETR: REG_TARGET := value(%REG_SOURCE) (deep copy)
+    - SETV: REG_TARGET := resolved vector (from literal vector or label delta)
+  - Energy: 1
+  - Errors: invalid literal type/format; wrong vector dimensionality
+  - Example:
+    - SETI %DR0 DATA:42
+    - SETR %PR0 %DR1
+    - SETV %DR2 -1|0
 
-* `SETR %REG_TARGET %REG_SOURCE`: Copy a register value. Supports DRs and PRs.
-
-* `SETV %REG_TARGET VECTOR|LABEL`: Set a register to a vector value.
-
-* `PUSH %REG_SOURCE`: Push a register value onto DS.
-
-* `POP %REG_TARGET`: Pop a value from DS into a register.
-
-* `PUSI LITERAL`: Push a literal value onto DS.
+- PUSH / POP / PUSI
+  - Variants: PUSH, POP, PUSI
+  - Syntax:
+    - PUSH %REG_SOURCE
+    - POP %REG_TARGET
+    - PUSI TYPE:VALUE
+  - Operands: as above
+  - Effect:
+    - PUSH: DS.push(value(%REG_SOURCE))
+    - POP: %REG_TARGET := DS.pop()
+    - PUSI: DS.push(literal)
+  - Energy: configurable
+  - Energy: 1
+  - Errors: POP on empty stack; invalid literal for PUSI
+  - Example: PUSI DATA:7
 
 #### Stack Operations (DS only)
 
-* `DUP`: Duplicate TOS. DS: \[..., A\] → \[..., A, A\].
+- DUP
+  - Syntax: DUP
+  - Effect: [..., A] → [..., A, A]
+  - Energy: 0
+  - Errors: requires at least 1 item
 
-* `SWAP`: Swap top two elements. DS: \[..., A, B\] → \[..., B, A\].
+- SWAP
+  - Syntax: SWAP
+  - Effect: [..., A, B] → [..., B, A]
+  - Energy: 0
+  - Errors: requires at least 2 items
 
-* `DROP`: Remove TOS. DS: \[..., A\] → \[...\].
+- DROP
+  - Syntax: DROP
+  - Effect: [..., A] → [...]
+  - Energy: 0
+  - Errors: requires at least 1 item
 
-* `ROT`: Rotate top three. DS: \[..., A, B, C\] → \[..., B, C, A\].
+- ROT
+  - Syntax: ROT
+  - Effect: [..., A, B, C] → [..., B, C, A]
+  - Energy: 0
+  - Errors: requires at least 3 items
 
-#### Arithmetic & Logic
+#### Arithmetic
 
-* **Register/Immediate variants:** `ADDR`, `SUBR`, `ADDI`, `SUBI`, `MULR`, `MULI`, `DIVR`, `DIVI`, `MODR`, `MODI`.
+Each arithmetic instruction comes in Register (R), Immediate (I), and Stack (S) forms:
+- ADDR, ADDI, ADDS
+- SUBR, SUBI, SUBS
+- MULR, MULI, MULS
+- DIVR, DIVI, DIVS
+- MODR, MODI, MODS
 
-* **Stack (S-) variants:** `ADDS`, `SUBS`, `MULS`, `DIVS`, `MODS`.
+General semantics:
+- R: OPxR %DEST %SRC  → %DEST := %DEST OP %SRC
+- I: OPxI %DEST TYPE:N → %DEST := %DEST OP N
+- S: OPxS              → Pops operands (rightmost is top-of-stack) and pushes result. For binary ops: [..., A, B] → [..., (A OP B)] where B is TOS.
+- Operands: scalar data (DATA type). Non-scalar leads to failure.
+- Energy: configurable
+- Energy: 1 per operation
+- Errors: division by zero; type mismatches.
+- Example: ADDI %DR0 DATA:1
 
-#### Bitwise Operations
+#### Bitwise
 
-* **Register/Immediate variants:** `NADR`, `NADI`, `ANDR`, `ANDI`, `ORR`, `ORI`, `XORR`, `XORI`, `NOT`.
+Bitwise instructions exist as Register (R), Immediate (I), and Stack (S) forms; NOT also has R and S:
+- NADR, NADI (bitwise NAND)
+- ANDR, ANDI; ORR, ORI; XORR, XORI
+- NOT (register), NOTS (stack)
+- NADS, ANDS, ORS, XORS
 
-* **Stack (S-) variants:** `NADS`, `ANDS`, `ORS`, `XORS`, `NOTS`.
+Semantics:
+- Operands treated as unsigned integer scalars on their payload.
+- NOT/NOTS invert all bits of the scalar.
+- Energy: configurable
+- Energy: 1 per operation
+- Errors: type mismatch (non-scalar).
+- Example: XORI %DR1 DATA:255
 
 #### Shifts
 
-* **Register/Immediate variants:** `SHLI %R DATA:N`, `SHRI %R DATA:N`.
+- SHLI, SHRI (Register/Immediate)
+  - Syntax: SHLI %R DATA:N, SHRI %R DATA:N
+  - Effect: logical left/right shift by N
+  - Energy: 1
+  - Energy: configurable
+  - Errors: negative shift; non-scalar
 
-* **Stack (S-) variants:** `SHLS`, `SHRS`.
+- SHLS, SHRS (Stack)
+  - Syntax: SHLS, SHRS
+  - Effect: Pops N, then A; pushes (A << N) or (A >>> N)
+  - Energy: configurable
+  - Energy: 1
+  - Errors: insufficient stack items; non-scalar
 
 #### Control Flow (Jumps & Calls)
 
-* `JMPI LABEL`: Jump to label (relative).
+- JMPI (Jump by Label/Vector)
+  - Syntax: JMPI LABEL
+  - Effect: IP := IP + delta(LABEL)
+  - Energy: 1
 
-* `JMPR %REG_ADDR`: Jump to program-relative address in a register.
+- JMPR (Jump by Register)
+  - Syntax: JMPR %REG_ADDR
+  - Effect: IP := IP + vector in register
+  - Energy: 1
 
-* `CALL LABEL`: Call subroutine. `CALL` pushes return info on RS; callee returns with `RET`.
+- CALL
+  - Syntax: CALL LABEL
+  - Effect: Push return info to RS, save PR/FPR, jump to target
+  - Energy: 2
 
-* `RET`: Return from subroutine. Pops return info from RS and restores PRs and FPRs.
+- RET
+  - Syntax: RET
+  - Effect: Pop return info, restore PR/FPR, return to caller
+  - Energy: 2
+
+Errors:
+- Unbalanced RS (RET without CALL)
+- Invalid label resolution at assembly time
 
 #### Conditional Statements
 
-* `IFR %A %B`: If `A == B`.
+- IFR, IFI, IFTR, IFTI
+  - IFR %A %B: if value(%A) == value(%B) then execute next; else skip
+  - IFI %R LIT: compare with literal
+  - IFTR %A %B: if type(%A) == type(%B)
+  - IFTI %R LIT: compare type(%R) with type(literal)
 
-* `GTR %A %B`: If `A > B` (scalar).
+- GTR, LTR, GTI, LTI
+  - GTR %A %B: if scalar(%A) > scalar(%B)
+  - LTR %A %B: if scalar(%A) < scalar(%B)
+  - GTI/LTI operate against literal
 
-* `LTR %A %B`: If `A < B` (scalar).
+Energy:
+- Configurable per conditional evaluation (the skipped-or-executed next instruction has its own cost, accounted separately).
 
-* `IFI %R LIT`: If `R == LITERAL`.
+Energy:
+- 1 per conditional evaluation. The skipped-or-executed instruction has its own cost and is accounted separately.
 
-* `GTI %R LIT`: If `R > LITERAL` (scalar).
+Errors:
+- Type mismatches for scalar comparisons
+- LIT with invalid format/type
 
-* `LTI %R LIT`: If `R < LITERAL` (scalar).
+Example:
+- IFI %DR0 DATA:0
 
-* `IFTR %A %B`: If `type(A) == type(B)`.
+#### World Interaction
 
-* `IFTI %R LIT`: If `type(R) == type(LITERAL)`.
+These instructions interact with the world grid and therefore participate in the Conflict Resolver system (world reads/writes and DP moves are resolved consistently with other organisms).
 
-#### World Interaction & Organism State
+- PEEK family (read into register/stack)
+  - Variants: PEEK, PEKI, PEKS
+  - Syntax:
+    - PEEK %REG_TARGET %REG_VECTOR
+    - PEKI %REG_TARGET X|Y
+    - PEKS
+  - Operands:
+    - Register variants use a target register and a vector (from register or immediate).
+    - PEKS pops a vector from DS and pushes the read value to DS.
+  - Effect: Read the symbol at DP + vector and store its encoded value in the target (register or stack). Does not modify the world.
+  - Energy: 2
+  - Errors: invalid vector dimensionality; stack underflow (PEKS)
+  - Example: PEKI %DR0 1|0
 
-* `PEEK %REG_TARGET %REG_VECTOR`: Read symbol at `DP + vector`, clear the cell.
+- SCAN family (read into register/stack)
+  - Variants: SCAN, SCNI, SCNS
+  - Syntax:
+    - SCAN %REG_TARGET %REG_VECTOR
+    - SCNI %REG_TARGET X|Y
+    - SCNS
+  - Effect: Same as PEEK family—reads and stores the value at DP + vector without modifying the world.
+  - Energy: 2
+  - Errors: same as PEEK family
+  - Example: SCNS  (expects a vector on stack)
 
-* `PEKI %REG_TARGET X|Y`: Immediate-vector PEEK.
+- POKE family (write to world)
+  - Variants: POKE, POKI, POKS
+  - Syntax:
+    - POKE %REG_SOURCE %REG_VECTOR
+    - POKI %REG_SOURCE X|Y
+    - POKS
+  - Operands:
+    - POKE/POKI use source register and vector (register or immediate).
+    - POKS pops two items from DS: first the VALUE, then the VECTOR (order matters).
+  - Effect: Write the given VALUE into the world cell at DP + vector (if empty). If target is not empty, the instruction fails.
+  - Energy: 5
+  - Errors: attempting to write vectors as value; target occupied; stack underflow (POKS); invalid vector dimensionality
+  - Example: POKI %DR0 0|1
 
-* `POKE %REG_SOURCE %REG_VECTOR`: Write symbol at `DP + vector`.
+- SEEK family (move DP)
+  - Variants: SEEK, SEKI, SEKS
+  - Syntax:
+    - SEEK %REG_VECTOR
+    - SEKI X|Y
+    - SEKS
+  - Effect:
+    - Compute target := DP + vector. If target cell is empty, DP := target; else instruction fails.
+    - SEKS pops vector from DS.
+  - Energy: 3
+  - Errors: invalid vector; target not empty; stack underflow (SEKS)
+  - Example: SEKI -1|0
 
-* `POKI %REG_SOURCE X|Y`: Immediate-vector POKE.
+#### Organism State
 
-* `SCAN %REG_TARGET %REG_VECTOR`: Read symbol at `DP + vector` without clearing.
+These instructions only affect the organism’s internal state (registers, stacks, DP/DV, ER).
 
-* `SCNI %REG_TARGET X|Y`: SCAN with immediate vector.
+- SYNC
+  - Syntax: SYNC
+  - Effect: DP := IP (sets Data Pointer to current Instruction Pointer)
+  - Energy: 1
+  - Errors: none
 
-* `SCNS`: Stack-vector SCAN. Pop vec, push scanned symbol.
+- TURN
+  - Syntax: TURN %REG_VECTOR
+  - Effect: DV := vector (must be a unit vector)
+  - Energy: 1
+  - Errors: non-unit vector
 
-* `SEEK %REG_VECTOR`: Move DP by register vector.
+- POS
+  - Syntax: POS %REG_TARGET
+  - Effect: REG_TARGET := (IP - initial_program_origin) vector
+  - Energy: 1
+  - Errors: none
 
-* `SEKI X|Y`: Move DP by immediate vector.
+- DIFF
+  - Syntax: DIFF %REG_TARGET
+  - Effect: REG_TARGET := (DP - IP), component-wise (current IP)
+  - Energy: 1
+  - Errors: none
+  - Example: DIFF %DR0
 
-* `SEKS`: Stack-vector SEEK. Pop vec; DP += vec.
+- NRG / NRGS
+  - Variants: NRG, NRGS
+  - Syntax:
+    - NRG %REG_TARGET
+    - NRGS
+  - Effect:
+    - NRG writes current energy (ER) into REG_TARGET (as DATA scalar).
+    - NRGS pushes current energy (ER) onto DS.
+  - Energy: 0
+  - Errors: none
+  - Example: NRGS
 
-* `SYNC`: `DP = IP`.
-
-* `TURN %REG_VECTOR`: `DV = vector`.
-
-* `POS %REG_TARGET`: Write program-relative coordinate of IP to the register.
-
-* `DIFF %REG_TARGET`: Write `DP - IP` to the register.
-
-* `NRG %REG_TARGET`: Write energy (ER) to the register.
-
-* `RAND %REG`: `REG = random(0..REG-1)`.
+- RAND
+  - Syntax: RAND %REG
+  - Operands: A register holding a DATA scalar upper bound N
+  - Effect: %REG := random integer in [0, N-1]
+  - Energy: 2
+  - Errors: N <= 0 → writes 0 and fails
+  - Example: RAND %DR3
 
 ### 5. Directives (Detailed)
 
