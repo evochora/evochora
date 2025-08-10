@@ -60,15 +60,16 @@ public class PlaceholderResolver {
                 delta[i] = targetCoord[i] - jumpOpcodeCoord[i];
             }
 
-            // Write the delta values to the machine code layout
-            int[] argPos = Arrays.copyOf(jumpOpcodeCoord, jumpOpcodeCoord.length);
-            // Assumption: dv is [1, 0] for placeholder resolution. This may need adjustment
-            // if .DIR plays a role within jumps. For now, this is a simplification.
-            argPos[0]++;
-
-            for (int component : delta) {
-                machineCodeLayout.put(Arrays.copyOf(argPos, argPos.length), new Symbol(Config.TYPE_DATA, component).toInt());
-                argPos[0]++;
+            // Write the delta values to the machine code layout using the real coordinates
+            // derived from linear addresses (respects .DIR / current DV)
+            for (int i = 0; i < delta.length; i++) {
+                int argLinearAddr = jumpOpcodeAddress + 1 + i;
+                int[] argCoord = linearAddressToCoordMap.get(argLinearAddr);
+                if (argCoord == null) {
+                    throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(),
+                            Messages.get("placeholderResolver.jumpArgumentCoordinateNotFound"), placeholder.line().content());
+                }
+                machineCodeLayout.put(Arrays.copyOf(argCoord, argCoord.length), new Symbol(Config.TYPE_DATA, delta[i]).toInt());
             }
         }
     }

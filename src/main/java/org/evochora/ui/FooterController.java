@@ -25,7 +25,7 @@ public class FooterController {
         setupFullDetailsTextArea();
 
         footerPane = new VBox(0);
-        footerPane.setPrefHeight(Config.FOOTER_HEIGHT);
+        footerPane.setPrefHeight(Config.FOOTER_HEIGHT + 24);
         footerPane.setStyle("-fx-background-color: " + toWebColor(Config.COLOR_HEADER_FOOTER) + "; -fx-padding: 10;");
         footerPane.getChildren().addAll(fullDetailsTextArea);
 
@@ -37,9 +37,10 @@ public class FooterController {
         fullDetailsTextArea.setFont(uiFont);
         fullDetailsTextArea.setEditable(false);
         fullDetailsTextArea.setWrapText(false);
-        fullDetailsTextArea.setPrefRowCount(10);
+        fullDetailsTextArea.setPrefRowCount(12);
         fullDetailsTextArea.setStyle("-fx-control-inner-background: " + toWebColor(Config.COLOR_HEADER_FOOTER) + ";" +
                 "-fx-text-fill: " + toWebColor(Config.COLOR_TEXT) + ";" +
+                "-fx-line-spacing: 15px;" +
                 "-fx-background-color: transparent; -fx-border-width: 0;");
     }
 
@@ -49,39 +50,30 @@ public class FooterController {
 
         if (selectedOrganism != null) {
             Color orgColor = selectedOrganism.isDead() ? Config.COLOR_DEAD : Config.COLOR_TEXT;
-            fullDetailsTextArea.setStyle("-fx-text-fill: " + toWebColor(orgColor) + "; -fx-control-inner-background: " + toWebColor(Config.COLOR_HEADER_FOOTER) + ";");
+            fullDetailsTextArea.setStyle("-fx-text-fill: " + toWebColor(orgColor) + "; -fx-control-inner-background: " + toWebColor(Config.COLOR_HEADER_FOOTER) + "; -fx-line-spacing: 2px;");
 
             displayText.append(String.format(Messages.get("footer.organismDetails"),
                     selectedOrganism.getId(), selectedOrganism.isDead() ? Messages.get("footer.organismStatus.dead") : "",
                     selectedOrganism.getEr(), Arrays.toString(selectedOrganism.getIp()),
                     Arrays.toString(selectedOrganism.getDp()), Arrays.toString(selectedOrganism.getDv())));
 
-            // DRs
+            // Einheitliche Labelbreite für DRs/FPRs/PRs berechnen
+            String drsLabel = Messages.get("footer.label.drs");
+            String prsLabel = Messages.get("footer.label.prs");
+            String fprsLabel = "FPRs:";
+            int labelWidth = Math.max(Math.max(drsLabel.length(), prsLabel.length()), fprsLabel.length());
+
+            // DRs (spaltenbasiert)
             List<Object> drs = selectedOrganism.getDrs();
-            StringBuilder drsText = new StringBuilder(Messages.get("footer.label.drs"));
-            for(int i = 0; i < drs.size(); i++) {
-                drsText.append(String.format("%d=%s", i, this.logger.formatDrValue(drs.get(i))));
-                if (i < drs.size() - 1) drsText.append(", ");
-            }
-            displayText.append(drsText.toString()).append("\n");
+            displayText.append(formatRegisterRow(drsLabel, drs, labelWidth)).append("\n");
 
-            // PRs
-            List<Object> prs = selectedOrganism.getPrs();
-            StringBuilder prsText = new StringBuilder(Messages.get("footer.label.prs"));
-            for(int i = 0; i < prs.size(); i++) {
-                prsText.append(String.format("%d=%s", i, this.logger.formatDrValue(prs.get(i))));
-                if (i < prs.size() - 1) prsText.append(", ");
-            }
-            displayText.append(prsText.toString()).append("\n");
-
-            // NEU: FPRs zur Anzeige hinzufügen
+            // FPRs (spaltenbasiert, vor PRs anzeigen)
             List<Object> fprs = selectedOrganism.getFprs();
-            StringBuilder fprsText = new StringBuilder("FPRs:"); // Hardcoded label for now
-            for(int i = 0; i < fprs.size(); i++) {
-                fprsText.append(String.format(" %d=%s", i, this.logger.formatDrValue(fprs.get(i))));
-                if (i < fprs.size() - 1) fprsText.append(",");
-            }
-            displayText.append(fprsText.toString()).append("\n");
+            displayText.append(formatRegisterRow(fprsLabel, fprs, labelWidth)).append("\n");
+
+            // PRs (spaltenbasiert, nach FPRs)
+            List<Object> prs = selectedOrganism.getPrs();
+            displayText.append(formatRegisterRow(prsLabel, prs, labelWidth)).append("\n");
 
             // DS
             displayText.append(Messages.get("footer.label.stack")).append(logger.formatStack(selectedOrganism, true, 8)).append("\n");
@@ -93,11 +85,11 @@ public class FooterController {
             displayText.append(Messages.get("footer.label.nextInstruction")).append(logger.getNextInstructionInfo(selectedOrganism)).append("\n");
 
             String nextSourceInfo = getSourceInfoForNextInstruction(selectedOrganism);
-            displayText.append(Messages.get("footer.label.line")).append(nextSourceInfo);
+            displayText.append(Messages.get("footer.label.line")).append(nextSourceInfo).append("\n");
 
         } else {
-            fullDetailsTextArea.setStyle("-fx-text-fill: " + toWebColor(Config.COLOR_TEXT) + "; -fx-control-inner-background: " + toWebColor(Config.COLOR_HEADER_FOOTER) + ";");
-            displayText.append(Messages.get("footer.noOrganismSelected"));
+            fullDetailsTextArea.setStyle("-fx-text-fill: " + toWebColor(Config.COLOR_TEXT) + "; -fx-control-inner-background: " + toWebColor(Config.COLOR_HEADER_FOOTER) + "; -fx-line-spacing: 2px;");
+            displayText.append("No Organism selected\nDRs:  ---\nFPRs: ---\nPRs:  ---\nDS: ---\nRS: ---\nNext: ---\nLine: ---");
         }
         fullDetailsTextArea.setText(displayText.toString());
     }
@@ -111,6 +103,30 @@ public class FooterController {
             return parts[0].strip() + ">" + parts[1];
         }
         return fullSourceInfo.strip();
+    }
+
+    // Hilfsmethode: formatiert Registerzeilen (DRs, FPRs, PRs) mit fester Spaltenbreite
+    private String formatRegisterRow(String label, List<Object> regs, int labelWidth) {
+        // Indexbreite (z. B. 0..15 -> 2 Stellen)
+        int indexWidth = Math.max(1, Integer.toString(Math.max(0, regs.size() - 1)).length());
+        // Werte vorbereiten und maximale Breite ermitteln
+        String[] values = new String[regs.size()];
+        int valueWidth = 1;
+        for (int i = 0; i < regs.size(); i++) {
+            String v = this.logger.formatDrValue(regs.get(i));
+            values[i] = v;
+            valueWidth = Math.max(valueWidth, v.length());
+        }
+        // Label auf die gemeinsame Breite padden und genau ein Trennspace anhängen
+        String paddedLabel = String.format("%-" + labelWidth + "s", label);
+        StringBuilder sb = new StringBuilder(paddedLabel);
+        sb.append(" ");
+        // Zellen wie "ii=vvvv" mit Padding, 2 Spaces Abstand
+        for (int i = 0; i < regs.size(); i++) {
+            sb.append(String.format("%" + indexWidth + "d=%-" + valueWidth + "s", i, values[i]));
+            if (i < regs.size() - 1) sb.append("  ");
+        }
+        return sb.toString();
     }
 
     public void updateLogger(Logger newLogger) { this.logger = newLogger; }

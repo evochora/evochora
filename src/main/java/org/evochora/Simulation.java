@@ -71,14 +71,21 @@ public class Simulation {
         for (Instruction instruction : allPlannedInstructions) {
             if (instruction instanceof IWorldModifyingInstruction modInstruction) {
                 List<int[]> targetCoords = modInstruction.getTargetCoordinates();
-                if (targetCoords == null || targetCoords.isEmpty()) {
-                    instruction.setExecutedInTick(false);
-                    instruction.setConflictStatus(Instruction.ConflictResolutionStatus.LOST_OTHER_REASON);
-                    continue;
-                }
-                for (int[] coord : targetCoords) {
-                    List<Integer> coordAsList = Arrays.stream(coord).boxed().collect(Collectors.toList());
-                    actionsByCoordinate.computeIfAbsent(coordAsList, k -> new ArrayList<>()).add(modInstruction);
+                if (targetCoords != null && !targetCoords.isEmpty()) {
+                    for (int[] coord : targetCoords) {
+                        List<Integer> coordAsList = Arrays.stream(coord).boxed().collect(Collectors.toList());
+                        actionsByCoordinate.computeIfAbsent(coordAsList, k -> new ArrayList<>()).add(modInstruction);
+                    }
+                } else {
+                    // This instruction modifies the world but couldn't determine its target.
+                    // It could be a stack-based instruction where the target is unknown until execution.
+                    // For now, let it execute if there's only one organism to avoid stalls.
+                    if (this.organisms.size() == 1) {
+                        instruction.setExecutedInTick(true);
+                    } else {
+                        instruction.setExecutedInTick(false);
+                        instruction.setConflictStatus(Instruction.ConflictResolutionStatus.LOST_OTHER_REASON);
+                    }
                 }
             } else {
                 instruction.setExecutedInTick(true);
@@ -89,20 +96,25 @@ public class Simulation {
             List<IWorldModifyingInstruction> actionsAtCoord = entry.getValue();
             if (actionsAtCoord.isEmpty()) continue;
 
-            // KORREKTUR: Der Cast ist nicht mehr nötig, da getOrganism() jetzt in Instruction ist.
-            actionsAtCoord.sort(Comparator.comparingInt(action -> ((Instruction)action).getOrganism().getId()));
+            if (actionsAtCoord.size() > 1) {
+                actionsAtCoord.sort(Comparator.comparingInt(action -> ((Instruction)action).getOrganism().getId()));
 
-            IWorldModifyingInstruction winningAction = actionsAtCoord.get(0);
-            ((Instruction)winningAction).setExecutedInTick(true);
-            ((Instruction)winningAction).setConflictStatus(Instruction.ConflictResolutionStatus.WON_EXECUTION);
+                IWorldModifyingInstruction winningAction = actionsAtCoord.get(0);
+                ((Instruction)winningAction).setExecutedInTick(true);
+                ((Instruction)winningAction).setConflictStatus(Instruction.ConflictResolutionStatus.WON_EXECUTION);
 
-            for (int i = 1; i < actionsAtCoord.size(); i++) {
-                IWorldModifyingInstruction losingAction = actionsAtCoord.get(i);
-                ((Instruction)losingAction).setExecutedInTick(false);
-                ((Instruction)losingAction).setConflictStatus(Instruction.ConflictResolutionStatus.LOST_LOWER_ID_WON);
+                for (int i = 1; i < actionsAtCoord.size(); i++) {
+                    IWorldModifyingInstruction losingAction = actionsAtCoord.get(i);
+                    ((Instruction)losingAction).setExecutedInTick(false);
+                    ((Instruction)losingAction).setConflictStatus(Instruction.ConflictResolutionStatus.LOST_LOWER_ID_WON);
+                }
+            } else {
+                ((Instruction)actionsAtCoord.get(0)).setExecutedInTick(true);
+                ((Instruction)actionsAtCoord.get(0)).setConflictStatus(Instruction.ConflictResolutionStatus.WON_EXECUTION);
             }
         }
     }
+
 
     public List<Organism> getOrganisms() { return organisms; }
     public World getWorld() { return world; }

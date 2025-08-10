@@ -8,6 +8,7 @@ import org.evochora.organism.Organism;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -97,6 +98,21 @@ public class StateInstruction extends Instruction {
                     writeOperand(op.rawSourceId(), new Symbol(s.type(), randomValue).toInt());
                     break;
                 }
+                case "SEEK", "SEKI", "SEKS": {
+                    if (operands.size() != 1) {
+                        organism.instructionFailed("Invalid operands for " + opName);
+                        return;
+                    }
+                    int[] vector = (int[]) operands.get(0).value();
+                    int[] targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, simulation.getWorld());
+
+                    if (simulation.getWorld().getSymbol(targetCoordinate).isEmpty()) {
+                        organism.setDp(targetCoordinate);
+                    } else {
+                        organism.instructionFailed("SEEK: Target cell is not empty.");
+                    }
+                    break;
+                }
                 default:
                     organism.instructionFailed("Unknown state instruction: " + opName);
             }
@@ -129,7 +145,7 @@ public class StateInstruction extends Instruction {
             case "SYNC":
                 if (args.length != 0) throw new IllegalArgumentException("SYNC expects no arguments.");
                 return new AssemblerOutput.CodeSequence(List.of());
-            case "TURN", "NRG", "DIFF", "POS", "RAND": {
+            case "TURN", "NRG", "DIFF", "POS", "RAND", "SEEK": {
                 if (args.length != 1) throw new IllegalArgumentException(name + " expects 1 register argument.");
                 Integer reg = resolveRegToken(args[0], registerMap);
                 if (reg == null) throw new IllegalArgumentException("Invalid register for " + name);
@@ -146,6 +162,20 @@ public class StateInstruction extends Instruction {
                         new Symbol(Config.TYPE_DATA, reg2).toInt(),
                         new Symbol(Config.TYPE_DATA, reg3).toInt()
                 ));
+            }
+            case "SEKI": {
+                if (args.length != 1) throw new IllegalArgumentException("SEKI expects 1 vector argument.");
+                String[] comps = args[0].split("\\|");
+                if (comps.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("Invalid vector dimensionality for SEKI");
+                List<Integer> machineCode = new ArrayList<>();
+                for (String c : comps) {
+                    machineCode.add(new Symbol(Config.TYPE_DATA, Integer.parseInt(c.strip())).toInt());
+                }
+                return new AssemblerOutput.CodeSequence(machineCode);
+            }
+            case "SEKS": {
+                if (args.length != 0) throw new IllegalArgumentException("SEKS expects no arguments.");
+                return new AssemblerOutput.CodeSequence(List.of());
             }
         }
         throw new IllegalArgumentException("Cannot assemble unknown state instruction: " + name);

@@ -158,16 +158,17 @@ public abstract class Instruction {
         registerFamily(ControlFlowInstruction.class, Map.of(35, "RET"), List.of());
 
         // --- WorldInteraction-Familie ---
-        registerFamily(WorldInteractionInstruction.class, Map.of(14, "PEEK", 15, "POKE", 16, "SCAN", 12, "SEEK"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(WorldInteractionInstruction.class, Map.of(14, "PEEK", 15, "POKE", 16, "SCAN"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(WorldInteractionInstruction.class, Map.of(56, "PEKI", 57, "POKI", 82, "SCNI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
-        registerFamily(WorldInteractionInstruction.class, Map.of(59, "SEKI"), List.of(OperandSource.VECTOR));
-        registerFamily(WorldInteractionInstruction.class, Map.of(83, "SCNS", 84, "SEKS", 90, "PEKS"), List.of(OperandSource.STACK));
+        registerFamily(WorldInteractionInstruction.class, Map.of(83, "SCNS", 90, "PEKS"), List.of(OperandSource.STACK));
         registerFamily(WorldInteractionInstruction.class, Map.of(91, "POKS"), List.of(OperandSource.STACK, OperandSource.STACK)); // POKS is special: value, vector
 
         // --- State-Familie ---
-        registerFamily(StateInstruction.class, Map.of(11, "TURN", 17, "NRG", 19, "DIFF", 21, "POS", 55, "RAND"), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(11, "TURN", 17, "NRG", 19, "DIFF", 21, "POS", 55, "RAND", 12, "SEEK"), List.of(OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(13, "SYNC"), List.of());
         registerFamily(StateInstruction.class, Map.of(18, "FORK"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(59, "SEKI"), List.of(OperandSource.VECTOR));
+        registerFamily(StateInstruction.class, Map.of(84, "SEKS"), List.of(OperandSource.STACK));
 
         // --- NOP ---
         register(NopInstruction.class, 0, "NOP");
@@ -199,13 +200,29 @@ public abstract class Instruction {
                 };
 
                 int length = 1;
+                Map<Integer, ArgumentType> argTypes = new HashMap<>();
+                int argIndex = 0;
                 for(OperandSource s : sources) {
-                    if (s == OperandSource.REGISTER || s == OperandSource.IMMEDIATE) length++;
-                    if (s == OperandSource.VECTOR || s == OperandSource.LABEL) length += Config.WORLD_DIMENSIONS;
+                    if (s == OperandSource.REGISTER) {
+                        length++;
+                        argTypes.put(argIndex++, ArgumentType.REGISTER);
+                    } else if (s == OperandSource.IMMEDIATE) {
+                        length++;
+                        argTypes.put(argIndex++, ArgumentType.LITERAL);
+                    } else if (s == OperandSource.VECTOR) {
+                        length += Config.WORLD_DIMENSIONS;
+                        for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
+                            argTypes.put(argIndex++, ArgumentType.COORDINATE);
+                        }
+                    } else if (s == OperandSource.LABEL) {
+                        length += Config.WORLD_DIMENSIONS;
+                        argTypes.put(argIndex++, ArgumentType.LABEL);
+                    }
                 }
 
                 registerInstruction(familyClass, id, name, length, planner, assembler);
                 OPERAND_SOURCES.put(fullId, sources);
+                ARGUMENT_TYPES_BY_ID.put(fullId, argTypes);
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to register instruction family " + familyClass.getSimpleName(), e);

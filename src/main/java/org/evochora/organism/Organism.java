@@ -142,7 +142,7 @@ public class Organism {
     public FetchResult fetchArgument(int[] currentIp, World world) {
         int[] nextIp = getNextInstructionPosition(currentIp, world, this.dvBeforeFetch);
         Symbol symbol = world.getSymbol(nextIp);
-        return new FetchResult(symbol.value(), nextIp);
+        return new FetchResult(symbol.toInt(), nextIp);
     }
 
     public FetchResult fetchSignedArgument(int[] currentIp, World world) {
