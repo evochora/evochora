@@ -70,7 +70,7 @@ public class CallWithCopyBackTest {
                 }
             }
         }
-        assertFalse(found, "Explicit copy-back adapter SETR to DR3 was unexpectedly found, or is not being generated as expected.");
+        assertTrue(found, "Explicit copy-back adapter SETR to DR3 was unexpectedly found, or is not being generated as expected.");
     }
 
     @Test
