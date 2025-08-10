@@ -124,7 +124,7 @@ public class AssemblerTest {
                 .REG %DR_B 1
 
                 .MACRO $INNER_MACRO PARAM1
-                    SETR %DR_A PARAM1
+                    SETR %DR_A %PARAM1
                 .ENDM
 
                 .MACRO $OUTER_MACRO PARAM2
@@ -135,7 +135,7 @@ public class AssemblerTest {
                 .ORG 0|0
                 START:
                     SETI %DR_B DATA:100
-                    $OUTER_MACRO %DR_A
+                    $OUTER_MACRO DR_A
                 """;
         Assembler assembler = createAssembler();
         Assertions.assertDoesNotThrow(() -> assembler.assemble(annotateCode(code), "TestNestedMacros", false));

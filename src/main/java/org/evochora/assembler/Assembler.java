@@ -57,7 +57,12 @@ public class Assembler {
         }
 
         // Phase 3 & 4: Assemble (First & Second Pass)
-        PassManager passManager = new PassManager(programName, extractor.getDefineMap());
+        PassManager passManager = new PassManager(
+                programName,
+                extractor.getDefineMap(),
+                extractor.getProcMetaMap(),
+                expander.getImportAliasToProcName()
+        );
         passManager.runPasses(processedCode);
 
         // Phase 5: Resolve placeholders (Linking)

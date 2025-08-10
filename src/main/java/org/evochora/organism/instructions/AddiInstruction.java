@@ -44,8 +44,11 @@ public class AddiInstruction extends Instruction {
 
     public static Instruction plan(Organism organism, World world) {
         int fullOpcodeId = world.getSymbol(organism.getIp()).toInt();
+        // First arg is a DATA-encoded register id; decode to scalar register index
         Organism.FetchResult result1 = organism.fetchArgument(organism.getIp(), world);
-        int r1 = result1.value();
+        int r1Raw = result1.value();
+        int r1 = Symbol.fromInt(r1Raw).toScalarValue();
+        // Second arg is the encoded literal; pass through as-is
         int[] secondArgIp = organism.getNextInstructionPosition(result1.nextIp(), world, organism.getDvBeforeFetch());
         int literal = world.getSymbol(secondArgIp).toInt();
         return new AddiInstruction(organism, r1, literal, fullOpcodeId);

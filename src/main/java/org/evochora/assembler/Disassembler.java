@@ -14,6 +14,8 @@ import java.util.stream.Collectors;
 
     public class Disassembler {
         // Note: VM uses a separate Return-Stack (RS) for CALL/RET; disassembly format remains unchanged.
+        // Optional debug annotation of CALL .WITH adapters (copy-in/out SETR). Set to false to disable.
+        private static final boolean DEBUG_ANNOTATE_ADAPTERS = true;
 
         public DisassembledInstruction disassemble(ProgramMetadata metadata, int[] coord, int[] currentDv, World world) {
             Map<List<Integer>, Integer> relativeCoordToLinearAddress = metadata.relativeCoordToLinearAddress();
@@ -51,8 +53,17 @@ import java.util.stream.Collectors;
                         ArgumentType argType = Instruction.getArgumentTypeFor(opcodeFullId, i);
                         int rawValue = argSymbol.value();
 
-                        if (argType == ArgumentType.REGISTER && registerIdToName != null && registerIdToName.containsKey(rawValue)) {
-                            argResolvedValue = registerIdToName.get(rawValue);
+                        if (argType == ArgumentType.REGISTER) {
+                            // Prefer metadata alias when available
+                            if (registerIdToName != null && registerIdToName.containsKey(rawValue)) {
+                                argResolvedValue = registerIdToName.get(rawValue);
+                            } else if (rawValue >= 1000) {
+                                // Recognize PR pseudo-ids used by assembler adapters (%PR0=1000, %PR1=1001)
+                                argResolvedValue = "%PR" + (rawValue - 1000);
+                            } else {
+                                // Default DR presentation
+                                argResolvedValue = "%DR" + rawValue;
+                            }
                         } else if (opcodeName.equals("JMPR") && linearAddress != null && linearAddressToRelativeCoord != null && relativeCoordToLinearAddress != null) {
                             int jumpToLinearAddress = linearAddress + 1;
                             int[] targetCoord = new int[Config.WORLD_DIMENSIONS];
@@ -83,6 +94,21 @@ import java.util.stream.Collectors;
                 String typeStr = getInstructionTypeString(symbol);
                 String resolvedValue = typeStr + ":" + symbol.value();
                 arguments.add(new DisassembledArgument(symbol.value(), resolvedValue, ArgumentType.LITERAL));
+            }
+
+            // Optional: annotate adapter SETR (copy-in/out around CALL .WITH) for easier debugging
+            if (DEBUG_ANNOTATE_ADAPTERS && "SETR".equalsIgnoreCase(opcodeName) && arguments.size() == 2) {
+                boolean bothRegisterArgs = arguments.stream().allMatch(a -> a.type() == ArgumentType.REGISTER);
+                if (bothRegisterArgs) {
+                    int raw0 = arguments.get(0).rawValue();
+                    int raw1 = arguments.get(1).rawValue();
+                    boolean involvesPr = (raw0 >= 1000) || (raw1 >= 1000); // PR pseudo-ids (%PR0=1000, %PR1=1001)
+                    boolean smallDrToDr = (raw0 >= 0 && raw0 < Config.NUM_DATA_REGISTERS) &&
+                                          (raw1 >= 0 && raw1 < Config.NUM_DATA_REGISTERS);
+                    if (involvesPr || smallDrToDr) {
+                        opcodeName = opcodeName + " [adapter]";
+                    }
+                }
             }
 
             return new DisassembledInstruction(opcodeName, arguments, resolvedTargetCoordinate, instructionType);

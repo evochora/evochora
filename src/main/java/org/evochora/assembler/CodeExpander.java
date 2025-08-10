@@ -13,6 +13,8 @@ public class CodeExpander {
     private final Random random = new Random();
 
     private final Set<String> importedProcs = new HashSet<>();
+    // New: map alias -> proc name for imported procs
+    private final Map<String, String> importAliasToProcName = new HashMap<>();
 
     // Tracks the primary alias per (routineName + args) signature for .INCLUDE deduplication
     // Key format: ROUTINE_NAME|ARG1,ARG2,...
@@ -53,12 +55,13 @@ public class CodeExpander {
                 callStack.pop();
             } else if (command.equalsIgnoreCase(".IMPORT")) {
                 // .IMPORT library.NAME AS ALIAS
-                if (parts.length < 5 || !parts[2].equalsIgnoreCase("AS")) {
+                if (parts.length < 4 || !parts[2].equalsIgnoreCase("AS")) {
                     throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("codeExpander.invalidImportSyntax"), line.content());
                 }
                 String procName = parts[1].toUpperCase();
                 String alias = parts[3].toUpperCase();
                 importedProcs.add(procName);
+                importAliasToProcName.put(alias, procName);
                 List<AnnotatedLine> aliasOnly = new ArrayList<>();
                 aliasOnly.add(new AnnotatedLine(alias + ":", line.originalLineNumber(), line.originalFileName()));
                 aliasOnly.add(new AnnotatedLine("    JMPI " + procName, line.originalLineNumber(), line.originalFileName()));
@@ -120,13 +123,27 @@ public class CodeExpander {
 
     private List<AnnotatedLine> expandMacro(String name, String[] parts, AnnotatedLine originalLine) {
         DefinitionExtractor.MacroDefinition macro = macroMap.get(name);
-        String[] args = Arrays.copyOfRange(parts, 1, parts.length);
-        if (macro.parameters().size() != args.length) {
+        int expected = macro.parameters().size();
+
+        String[] args;
+        if (expected == 1) {
+            // For single-parameter macros, treat the whole remainder (up to comment) as one argument.
+            String codePart = originalLine.content().split("#", 2)[0].strip();
+            // Remove the macro name at the start and trim the rest
+            String remainder = codePart.length() > name.length() ? codePart.substring(name.length()).strip() : "";
+            args = new String[]{ remainder };
+        } else {
+            // Default: split by whitespace for multi-arg macros
+            args = Arrays.copyOfRange(parts, 1, parts.length);
+        }
+
+        if (expected != args.length) {
             throw new AssemblerException(programName, originalLine.originalFileName(), originalLine.originalLineNumber(), Messages.get("codeExpander.wrongArgumentCountForMacro", name), originalLine.content());
         }
 
         List<AnnotatedLine> expanded = new ArrayList<>();
-        String prefix = name.substring(1).toUpperCase() + "_" + random.nextInt(9999) + "_";
+        String macroBase = name.startsWith("$") ? name.substring(1) : name;
+        String prefix = macroBase.toUpperCase() + "_" + random.nextInt(9999) + "_";
 
         for (String bodyLine : macro.body()) {
             String expandedLine = bodyLine;
@@ -140,6 +157,7 @@ public class CodeExpander {
     }
 
     public Set<String> getImportedProcs() { return Collections.unmodifiableSet(importedProcs); }
+    public Map<String, String> getImportAliasToProcName() { return Collections.unmodifiableMap(importAliasToProcName); }
 
     private List<AnnotatedLine> expandInclude(String[] parts, AnnotatedLine originalLine) {
         if (parts.length < 5 || !parts[2].equalsIgnoreCase("AS") || !parts[4].equalsIgnoreCase("WITH")) {

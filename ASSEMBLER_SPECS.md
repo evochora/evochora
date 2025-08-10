@@ -22,7 +22,9 @@ This document describes the syntax, directives, and the complete instruction set
 - RS (Return Stack): Used exclusively by CALL/RET for return addresses and PROC frames.
   - Limit: RS_MAX_DEPTH (default 1024). Over-/Underflow fails the current instruction.
 - PRs (PROC Registers): PROC-local temporaries saved/restored automatically per CALL/RET frame.
-  - Count: Configurable (default 2, e.g., PR0, PR1). Not directly part of instruction encodings.
+  - Count: Configurable (default 2, e.g., PR0, PR1).
+  - Addressing: In PROC bodies, PRs are usable as register operands via %PR0/%PR1 or via PROC-local aliases declared with `.PREG %NAME 0|1`.
+  - Lifetime: Frame-local; each CALL creates a new PR frame (auto-saved/restored on RET).
 
 ---
 
@@ -194,22 +196,25 @@ This section describes all assembler directives with syntax, semantics, and exam
 5) .MACRO … .ENDM – Macros
 - Syntax:
   ```
-  .MACRO $NAME PARAM1 [PARAM2 ...]
+  .MACRO NAME PARAM1 [PARAM2 ...]
     # macro body
   .ENDM
   ```
 - Semantics: Textual expansion with parameter substitution.
+- Invocation:
+  - Use the macro name directly: `NAME ARG1 ARG2`
+  - (Optional compatibility) If you previously used `$NAME`, invocations without `$` are accepted as well.
 - Example:
   ```
   .REG %A 0
   .REG %B 1
-  .MACRO $ADD_TO_A VAL
+  .MACRO ADD_TO_A VAL
       ADDI %A VAL
   .ENDM
 
   .ORG 0|0
-  $ADD_TO_A DATA:5
-  $ADD_TO_A DATA:3
+  ADD_TO_A DATA:5
+  ADD_TO_A DATA:3
   ```
 
 6) .ROUTINE … .ENDR – Routine Templates
@@ -256,27 +261,93 @@ This section describes all assembler directives with syntax, semantics, and exam
   .INCLUDE_STRICT UTIL.ID2 AS ID2_C WITH %DR0  # second, independent emission
   ```
 
-9) .PROC … .ENDP – Procedures (Linkable)
-- Syntax:
-  ```
-  .PROC LIB.NAME
-      .EXPORT LIB.NAME
-      .REQUIRE OTHER.LIB.NAME
-      # PROC body (uses CALL/RET; DS-ABI recommended)
-  .ENDP
-  ```
-- Semantics:
-  - Defines a callable procedure with optional export and runtime requirements.
-  - PROC-local registers (PRs) are saved/restored automatically per CALL/RET frame.
-- Example (pure DS-ABI):
-  ```
-  .PROC LIB.MATH.SUM2
-      .EXPORT LIB.MATH.SUM2
-      # [a, b] -> [sum]
-      ADDS
-      RET
-  .ENDP
-  ```
+9) .PROC … .ENDP – Procedures (Linkable; DS-ABI or Register-ABI)
+- Two forms:
+  1) DS-ABI (stack-based):
+     - Syntax:
+       ```
+       .PROC LIB.NAME
+           .EXPORT LIB.NAME
+           [.REQUIRE OTHER.LIB.NAME]
+           # Body uses DS; arguments/results on the data stack
+       .ENDP
+       ```
+     - Semantics: No formal registers; CALL sites must pass arguments via DS (push/push/CALL). `.WITH` is not permitted for DS-ABI procs.
+  2) Register-ABI (WITH formals):
+     - Syntax:
+       ```
+       .PROC LIB.NAME WITH A [B ...]
+           .EXPORT LIB.NAME
+           [.REQUIRE OTHER.LIB.NAME]
+           [.PREG %NAME 0|1]   # optional PROC-local aliases for PR0/PR1
+           # Body uses A/B as register operands (formals) and optional %PR0/%PR1 via .PREG
+       .ENDP
+       ```
+     - Formals (A, B, …) behave like register operands inside the body. CALL sites bind actual registers at the call via `.WITH`.
+     - `.PREG %NAME 0|1` defines PROC-local aliases for PR0/PR1, usable as register operands within the PROC.
+- .ENDP auto-RET:
+  - If no `RET` appears in the body, a `RET` is implicitly appended at `.ENDP`.
+- CALL binding (Register-ABI only):
+  - Syntax: `CALL TARGET .WITH %ACT1 [%ACT2 ...]`
+    - TARGET can be an import alias or the direct kernel label (e.g., `LIB.NAME`).
+    - Arity: Number of actuals must equal number of formals declared by `.PROC ... WITH`.
+    - Actuals: DRs (e.g., `%DR3` or `.REG` alias) or PRs (via `%PR0/%PR1` or `.PREG` alias).
+  - Execution model (reference semantics):
+    1) Copy-in: for each i, formal[i] := actual[i].
+    2) CALL kernel (uses RS; PRs are auto-saved/restored).
+    3) Copy-back: for each i, actual[i] := formal[i].
+  - Aliasing: If the same actual is bound to multiple formals, the last formal’s copy-back wins (deterministic left-to-right).
+  - Enforcement:
+    - Register-ABI procs (declared WITH) must be called with `.WITH`.
+    - `.WITH` is rejected for DS-ABI procs.
+- Examples:
+  - Register-ABI with formals and PR alias:
+    ```
+    .PROC LIB.TACTICS.SCAN2 WITH DV TY
+        .EXPORT LIB.TACTICS.SCAN2
+        .PREG %TMP 0            # %TMP aliases PR0 (frame-local temp)
+        SCAN TY DV
+        RET
+    .ENDP
+
+    .IMPORT LIB.TACTICS.SCAN2 AS SCAN2
+
+    # Use two DRs
+    CALL SCAN2 .WITH %DR2 %DR4
+
+    # Use a PR as actual (in/out)
+    .PREG %P0 0
+    CALL SCAN2 .WITH %P0 %DR4
+    ```
+  - DS-ABI (no WITH):
+    ```
+    .PROC LIB.MATH.SUM2
+        .EXPORT LIB.MATH.SUM2
+        ADDS
+        RET
+    .ENDP
+
+    # CALL via DS (push/push/CALL); .WITH not allowed
+
+    ---
+
+    ### Best Practices
+
+    - Prefer formal names over raw %DRn in PROC bodies that declare WITH:
+      - The assembler maps formals A, B, … to internal %DR0, %DR1, … slots. Using naked %DRn in such bodies can accidentally overlap with those slots.
+      - Use the formals (A/B/…) consistently to avoid unintended aliasing.
+    - Use .PREG PRs for temporaries that must survive sub-calls:
+      - Declare `.PREG %NAME 0|1` and use %NAME (or %PR0/%PR1) as frame-local temps. PRs are auto-saved/restored by CALL/RET.
+      - If you pass a PR as an actual via `.WITH`, copy-in/out semantics apply and the caller’s PR will reflect callee changes after return.
+    - DS-ABI vs Register-ABI:
+      - DS-ABI (no WITH): pass via DS (push/push/CALL). `.WITH` is not permitted.
+      - Register-ABI (WITH): bind actuals via `CALL … .WITH …` to formals, which act as in/out references (copy-in/out around the call).
+    - Aliasing behavior for `.WITH`:
+      - Binding the same actual register to multiple formals is allowed; the last formal’s copy-back wins deterministically (left-to-right).
+    - Macro naming:
+      - Define macros without `$` (e.g., `.MACRO NAME …`), and invoke them by name (e.g., `NAME ARG`).
+      - Avoid name collisions between macros, procs, routines, and labels for readability.
+    ```
 
 10) .EXPORT – Mark PROC as Public
 - Syntax: `.EXPORT LIB.NAME`
@@ -306,17 +377,30 @@ This section describes all assembler directives with syntax, semantics, and exam
 
 12) .IMPORT – Bind Exported PROC under Alias
 - Syntax: `.IMPORT LIB.NAME AS ALIAS`
-- Semantics: Defines ALIAS label that jumps to the exported LIB.NAME implementation.
+- Semantics:
+  - Emits a single, parameter-independent kernel instance of the PROC (if not emitted yet).
+  - Maps ALIAS to the kernel entry (no body duplication per alias).
 - Example:
   ```
   .IMPORT LIB.MATH.SUM2 AS SUM2
-  # call site:
-  PUSI DATA:5
-  PUSI DATA:7
-  CALL SUM2
   ```
 
-13) .PLACE – Place a Symbol at a Relative Coordinate
+13) CALL … .WITH – Register-ABI binding (copy-in/out semantics)
+- Syntax: `CALL TARGET .WITH %ACT1 [%ACT2 ...]`
+  - TARGET: an import alias or the direct kernel label (e.g., `LIB.NAME`).
+  - Only valid for procs declared with `.PROC ... WITH`.
+- Semantics:
+  - Validation:
+    - Arity equals the number of formals.
+    - Actuals: DRs (`%DR...` or `.REG` aliases) or PRs (`%PR0/%PR1` or `.PREG` aliases in the current PROC).
+  - Execution model (reference semantics):
+    1) Copy-in: for each i, formal[i] := actual[i].
+    2) CALL kernel (uses RS; PRs are auto-saved/restored).
+    3) Copy-back: for each i, actual[i] := formal[i].
+  - Aliasing: If the same actual is bound to multiple formals, the last formal’s copy-back wins (deterministic left-to-right).
+  - DS-ABI: `.WITH` is not permitted for procs without a WITH list.
+
+14) .PLACE – Place a Symbol at a Relative Coordinate
 - Syntax: `.PLACE TYPE:VALUE X|Y`
 - Semantics: Places an initial symbol (CODE/DATA/ENERGY/STRUCTURE) at the given relative coordinate.
 - Example:
