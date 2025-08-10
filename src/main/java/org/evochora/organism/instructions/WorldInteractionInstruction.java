@@ -129,7 +129,24 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
 
     public static Instruction plan(Organism organism, World world) {
         int fullOpcodeId = world.getSymbol(organism.getIp()).toInt();
-        return new WorldInteractionInstruction(organism, fullOpcodeId);
+        WorldInteractionInstruction instruction = new WorldInteractionInstruction(organism, fullOpcodeId);
+        try {
+            List<Operand> operands = instruction.resolveOperands(world);
+            String opName = instruction.getName();
+            int[] vector;
+            if (opName.endsWith("S")) { // SCNS, SEKS, PEKS, POKS
+                vector = (int[]) operands.get(0).value();
+            } else if (opName.equals("SEKI") || opName.equals("SEEK")) {
+                vector = (int[]) operands.get(0).value();
+            } else { // PEEK, POKE, SCAN mit Register + Vektor
+                vector = (int[]) operands.get(1).value();
+            }
+            instruction.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, world);
+        } catch (Exception ignored) {
+            // Falls Operanden beim Planen nicht auflösbar sind, bleibt das Ziel leer;
+            // die Ausführung behandelt das entsprechend.
+        }
+        return instruction;
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap, String instructionName) {
@@ -161,12 +178,30 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
             }
             return new AssemblerOutput.CodeSequence(machineCode);
         } else { // PEEK, POKE, SCAN, SEEK
-            if (args.length != 2) throw new IllegalArgumentException(name + " expects two register arguments.");
-            Integer reg1 = resolveRegToken(args[0], registerMap);
-            Integer reg2 = resolveRegToken(args[1], registerMap);
-            if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for " + name);
-            return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg1).toInt(), new Symbol(Config.TYPE_DATA, reg2).toInt()));
+            if (name.equals("SEEK")) {
+                if (args.length != 1) throw new IllegalArgumentException("SEEK expects 1 vector register argument.");
+                Integer vecReg = resolveRegToken(args[0], registerMap);
+                if (vecReg == null) throw new IllegalArgumentException("Invalid register for SEEK");
+                return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, vecReg).toInt()));
+            } else {
+                if (args.length != 2) throw new IllegalArgumentException(name + " expects two register arguments.");
+                Integer reg1 = resolveRegToken(args[0], registerMap);
+                Integer reg2 = resolveRegToken(args[1], registerMap);
+                if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for " + name);
+                return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg1).toInt(), new Symbol(Config.TYPE_DATA, reg2).toInt()));
+            }
         }
+    }
+
+    @Override
+    public int getLength() {
+        String name = getName();
+        return switch (name) {
+            case "SEEK" -> 1;                           // ein Vektor-Register
+            case "SEKI" -> Config.WORLD_DIMENSIONS;     // unmittelbarer Vektor (x|y|…)
+            case "PEEK", "POKE", "SCAN" -> 2;           // Register + Vektor-Register
+            default -> super.getLength();
+        };
     }
 
     @Override
