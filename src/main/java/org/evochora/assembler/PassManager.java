@@ -2,6 +2,11 @@ package org.evochora.assembler;
 
 import org.evochora.Config;
 import org.evochora.Messages;
+import org.evochora.assembler.directives.DirDirectiveHandler;
+import org.evochora.assembler.directives.IDirectiveHandler;
+import org.evochora.assembler.directives.OrgDirectiveHandler;
+import org.evochora.assembler.directives.PlaceDirectiveHandler;
+import org.evochora.assembler.directives.RegDirectiveHandler;
 import org.evochora.organism.Instruction;
 import org.evochora.world.Symbol;
 
@@ -15,13 +20,12 @@ import java.util.stream.Collectors;
 
 /**
  * Manages phases 3 & 4 of the assembler: the classic two-pass process
- * to calculate label addresses and generate machine code.
+ * to calculate label addresses and generate machine code. This refactored
+ * version uses the Strategy pattern to delegate directive handling.
  */
 public class PassManager {
     private final String programName;
     private final Map<String, String> defineMap;
-
-    // New: proc metadata and import alias mapping (alias -> proc name)
     private final Map<String, DefinitionExtractor.ProcMeta> procMetaMap;
     private final Map<String, String> importAliasToProcName;
 
@@ -42,10 +46,10 @@ public class PassManager {
     private int linearAddress;
     private int[] currentPos;
     private int[] currentDv;
+    private String currentProcLabel = null;
 
-    public PassManager(String programName, Map<String, String> defineMap) {
-        this(programName, defineMap, Map.of(), Map.of());
-    }
+    // Strategy Pattern: Map of directive handlers
+    private final Map<String, IDirectiveHandler> directiveHandlers = new HashMap<>();
 
     public PassManager(String programName, Map<String, String> defineMap,
                        Map<String, DefinitionExtractor.ProcMeta> procMetaMap,
@@ -54,6 +58,12 @@ public class PassManager {
         this.defineMap = defineMap;
         this.procMetaMap = procMetaMap != null ? procMetaMap : Map.of();
         this.importAliasToProcName = importAliasToProcName != null ? importAliasToProcName : Map.of();
+
+        // Register all directive handlers for the first pass
+        directiveHandlers.put(".ORG", new OrgDirectiveHandler());
+        directiveHandlers.put(".DIR", new DirDirectiveHandler());
+        directiveHandlers.put(".REG", new RegDirectiveHandler());
+        directiveHandlers.put(".PLACE", new PlaceDirectiveHandler());
     }
 
     public void runPasses(List<AnnotatedLine> processedCode) {
@@ -63,6 +73,13 @@ public class PassManager {
 
     private void performFirstPass(List<AnnotatedLine> annotatedLines) {
         resetState();
+        PassManagerContext context = new PassManagerContext(
+                this.currentPos, this.currentDv, this.linearAddress,
+                this.registerMap, this.registerIdToNameMap, this.initialWorldObjects,
+                this.labelMap, this.labelAddressToNameMap, this.linearAddressToCoordMap,
+                this.coordToLinearAddressMap, this.sourceMap, this.programName
+        );
+
         for (AnnotatedLine line : annotatedLines) {
             String strippedLine = line.content().split("#", 2)[0].strip();
             if (strippedLine.isEmpty()) continue;
@@ -71,7 +88,10 @@ public class PassManager {
             String directive = parts[0].toUpperCase();
 
             if (directive.startsWith(".")) {
-                processDirectiveFirstPass(directive, parts, line);
+                IDirectiveHandler handler = directiveHandlers.get(directive);
+                if (handler != null) {
+                    handler.handle(line, context);
+                }
             } else if (strippedLine.endsWith(":")) {
                 processLabel(strippedLine, line);
             } else {
@@ -92,7 +112,17 @@ public class PassManager {
         }
     }
 
-    private String currentProcLabel = null;
+    private void processLabel(String strippedLine, AnnotatedLine line) {
+        String label = strippedLine.substring(0, strippedLine.length() - 1).toUpperCase();
+        if (labelMap.containsKey(label)) {
+            throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("passManager.labelRedeclared", label), line.content());
+        }
+        if (Instruction.getInstructionIdByName(label) != null) {
+            throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("passManager.labelCollidesWithInstruction", label), line.content());
+        }
+        labelMap.put(label, linearAddress);
+        labelAddressToNameMap.put(linearAddress, label);
+    }
 
     private void performSecondPass(List<AnnotatedLine> annotatedLines) {
         resetState();
@@ -126,37 +156,6 @@ public class PassManager {
         }
     }
 
-    private void processDirectiveFirstPass(String directive, String[] parts, AnnotatedLine line) {
-        switch (directive) {
-            case ".ORG" -> currentPos = Arrays.stream(parts[1].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
-            case ".DIR" -> currentDv = Arrays.stream(parts[1].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
-            case ".PLACE" -> {
-                String[] typeAndValue = parts[1].split(":");
-                int type = getTypeFromString(typeAndValue[0], line);
-                int value = Integer.parseInt(typeAndValue[1]);
-                int[] relativePos = Arrays.stream(parts[2].split("\\|")).map(String::strip).mapToInt(Integer::parseInt).toArray();
-                initialWorldObjects.put(relativePos, new Symbol(type, value));
-            }
-            case ".REG" -> {
-                registerMap.put(parts[1].toUpperCase(), Integer.parseInt(parts[2]));
-                registerIdToNameMap.put(Integer.parseInt(parts[2]), parts[1].toUpperCase());
-            }
-        }
-    }
-
-    private void processLabel(String strippedLine, AnnotatedLine line) {
-        String label = strippedLine.substring(0, strippedLine.length() - 1).toUpperCase();
-        if (labelMap.containsKey(label)) {
-            throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("passManager.labelRedeclared", label), line.content());
-        }
-        if (Instruction.getInstructionIdByName(label) != null) {
-            throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("passManager.labelCollidesWithInstruction", label), line.content());
-        }
-        labelMap.put(label, linearAddress);
-        labelAddressToNameMap.put(linearAddress, label);
-    }
-
-    // KORRIGIERT: Neue Hilfsmethode zur Erstellung einer kontextabhängigen Register-Map.
     private Map<String, Integer> buildRegisterMapForCurrentContext() {
         Map<String, Integer> regMap = new HashMap<>(this.registerMap);
         if (currentProcLabel != null && procMetaMap != null) {
@@ -344,6 +343,7 @@ public class PassManager {
         };
     }
 
+    // --- GETTERS ---
     public Map<String, Integer> getRegisterMap() { return registerMap; }
     public Map<Integer, String> getRegisterIdToNameMap() { return registerIdToNameMap; }
     public Map<int[], Symbol> getInitialWorldObjects() { return initialWorldObjects; }

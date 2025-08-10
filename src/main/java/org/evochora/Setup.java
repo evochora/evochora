@@ -20,11 +20,11 @@ public class Setup {
         //placeProgramFromFile(simulation, "StdlibTest.s", new int[]{2, 2});
 
         // Lade den Tactics-Tester
-        placeProgramFromFile(simulation, "TacticsTest.s", new int[]{2, 2});
+        //placeProgramFromFile(simulation, "TacticsTest.s", new int[]{2, 2});
 
 
         // Lade den InstructionTester
-        // placeProgramFromFile(simulation, "InstructionTester.s", new int[]{5, 1});
+        placeProgramFromFile(simulation, "InstructionTester.s", new int[]{5, 1});
 
         // Lade den EnergySeeker
         //EnergySeeker energySeeker = new EnergySeeker();
