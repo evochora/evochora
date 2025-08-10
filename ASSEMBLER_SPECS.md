@@ -26,27 +26,7 @@ This document describes the syntax, directives, and the complete instruction set
 
 ---
 
-### 3. Directives
-
-- `.ORG X|Y`: Sets the program origin (relative to program start).
-- `.DIR X|Y`: Sets the assembly direction vector for argument placement and linearization.
-- `.REG %NAME ID`: Assigns an alias to a data register (0–7).
-- `.DEFINE NAME VALUE`: Defines a textual constant (used in assembly).
-- `.MACRO $NAME [params...]` … `.ENDM`: Defines a macro.
-- `.ROUTINE NAME [params...]` … `.ENDR`: Defines a routine template (inline expansion).
-- `.INCLUDE LIB.ROUTINE AS INSTANCE WITH [args...]`: Expands a routine template.
-  - Signature-based deduplication: first usage emits code; subsequent equal signatures produce aliases to the first instance.
-- `.INCLUDE_STRICT LIB.ROUTINE AS INSTANCE WITH [args...]`: Forces a new instance (no dedup).
-- `.PROC LIB.NAME` … `.ENDP`: Defines a procedure body (linkable, callable via CALL).
-  - Inside a PROC:
-    - `.EXPORT LIB.NAME`: Marks the PROC as exported and importable by other modules.
-    - `.REQUIRE OTHER.LIB.NAME`: Declares a dependency that must be imported by the program.
-- `.IMPORT LIB.NAME AS ALIAS`: Binds an exported PROC under the given ALIAS at the call site.
-- `.PLACE TYPE:VALUE X|Y`: Places a Symbol at a relative coordinate.
-
----
-
-### 4. Argument Types
+### 3. Argument Types
 
 - Register: `%DR0` … `%DR7`.
 - Literal: `TYPE:VALUE` (e.g., `DATA:123`).
@@ -55,7 +35,7 @@ This document describes the syntax, directives, and the complete instruction set
 
 ---
 
-### 5. Instruction Set
+### 4. Instruction Set
 
 #### Data & Memory
 
@@ -162,3 +142,188 @@ Stack (S-) variants:
 - `RAND %REG`: `REG = random(0..REG-1)`.
 
 ---
+
+### 5. Directives (Detailed)
+
+This section describes all assembler directives with syntax, semantics, and examples.
+
+1) .ORG – Set Program Origin
+- Syntax: `.ORG X|Y`
+- Semantics: Sets the origin for placing the next instruction and its arguments; coordinates are program-relative.
+- Example:
+  ```
+  .ORG 0|0
+  NOP
+  .ORG 5|5
+  NOP
+  ```
+
+2) .DIR – Set Assembly Direction Vector
+- Syntax: `.DIR X|Y`
+- Semantics: Controls how subsequent instruction arguments are laid out relative to the opcode cell; also used for linearization during assembly.
+- Example:
+  ```
+  .ORG 0|0
+  .DIR 1|0     # arguments placed to the right
+  SETI %DR0 DATA:42
+  .DIR 0|1     # arguments placed below
+  SETI %DR1 DATA:7
+  ```
+
+3) .REG – Define Register Alias
+- Syntax: `.REG %NAME ID`
+- Semantics: Binds a symbolic name to a data register index (0–7).
+- Example:
+  ```
+  .REG %ACC 0
+  .REG %TMP 1
+  SETI %ACC DATA:10
+  SETR %TMP %ACC
+  ```
+
+4) .DEFINE – Textual Constant
+- Syntax: `.DEFINE NAME VALUE`
+- Semantics: Replaces NAME with VALUE during assembly (after extraction).
+- Example:
+  ```
+  .DEFINE TEN DATA:10
+  .ORG 0|0
+  SETI %DR0 TEN
+  ```
+
+5) .MACRO … .ENDM – Macros
+- Syntax:
+  ```
+  .MACRO $NAME PARAM1 [PARAM2 ...]
+    # macro body
+  .ENDM
+  ```
+- Semantics: Textual expansion with parameter substitution.
+- Example:
+  ```
+  .REG %A 0
+  .REG %B 1
+  .MACRO $ADD_TO_A VAL
+      ADDI %A VAL
+  .ENDM
+
+  .ORG 0|0
+  $ADD_TO_A DATA:5
+  $ADD_TO_A DATA:3
+  ```
+
+6) .ROUTINE … .ENDR – Routine Templates
+- Syntax:
+  ```
+  .ROUTINE LIB.NAME P1 [P2 ...]
+      # template body using P1/P2...
+  .ENDR
+  ```
+- Semantics: Defines a parameterized template expanded by .INCLUDE/.INCLUDE_STRICT.
+- Example:
+  ```
+  .ROUTINE UTIL.INC REG
+      ADDI REG DATA:1
+  .ENDR
+
+  .INCLUDE UTIL.INC AS INC0 WITH %DR0
+  .INCLUDE UTIL.INC AS INC1 WITH %DR1   # same signature -> alias to first
+  ```
+
+7) .INCLUDE – Expand Routine Template (Signature-Dedup)
+- Syntax: `.INCLUDE LIB.ROUTINE AS INSTANCE WITH [args...]`
+- Semantics:
+  - First use of a given (routine + args) emits code labeled INSTANCE.
+  - Subsequent identical signatures define INSTANCE as an alias (trampoline) to the first.
+- Example:
+  ```
+  .ROUTINE UTIL.ID2 R
+      NOP
+      ID2_END:
+      NOP
+  .ENDR
+
+  .INCLUDE UTIL.ID2 AS ID2_A WITH %DR0
+  .INCLUDE UTIL.ID2 AS ID2_B WITH %DR0   # alias to ID2_A (no second emission)
+  ```
+
+8) .INCLUDE_STRICT – Force Fresh Instance
+- Syntax: `.INCLUDE_STRICT LIB.ROUTINE AS INSTANCE WITH [args...]`
+- Semantics: Always emits a new instance, even for identical signatures.
+- Example:
+  ```
+  .INCLUDE UTIL.ID2 AS ID2_A WITH %DR0
+  .INCLUDE_STRICT UTIL.ID2 AS ID2_C WITH %DR0  # second, independent emission
+  ```
+
+9) .PROC … .ENDP – Procedures (Linkable)
+- Syntax:
+  ```
+  .PROC LIB.NAME
+      .EXPORT LIB.NAME
+      .REQUIRE OTHER.LIB.NAME
+      # PROC body (uses CALL/RET; DS-ABI recommended)
+  .ENDP
+  ```
+- Semantics:
+  - Defines a callable procedure with optional export and runtime requirements.
+  - PROC-local registers (PRs) are saved/restored automatically per CALL/RET frame.
+- Example (pure DS-ABI):
+  ```
+  .PROC LIB.MATH.SUM2
+      .EXPORT LIB.MATH.SUM2
+      # [a, b] -> [sum]
+      ADDS
+      RET
+  .ENDP
+  ```
+
+10) .EXPORT – Mark PROC as Public
+- Syntax: `.EXPORT LIB.NAME`
+- Semantics: Inside a PROC, marks it importable from other modules/programs.
+- Example:
+  ```
+  .PROC LIB.UTIL.ID
+      .EXPORT LIB.UTIL.ID
+      # identity on DS
+      RET
+  .ENDP
+  ```
+
+11) .REQUIRE – Declare Dependencies
+- Syntax: `.REQUIRE OTHER.LIB.NAME`
+- Semantics: Inside a PROC, declares a dependency that must be imported somewhere in the program; assembler validates presence of .IMPORT.
+- Example:
+  ```
+  .PROC LIB.TASK.DO
+      .EXPORT LIB.TASK.DO
+      .REQUIRE LIB.HELPER.CHECK
+      # body...
+  .ENDP
+  # elsewhere:
+  .IMPORT LIB.HELPER.CHECK AS CHECK
+  ```
+
+12) .IMPORT – Bind Exported PROC under Alias
+- Syntax: `.IMPORT LIB.NAME AS ALIAS`
+- Semantics: Defines ALIAS label that jumps to the exported LIB.NAME implementation.
+- Example:
+  ```
+  .IMPORT LIB.MATH.SUM2 AS SUM2
+  # call site:
+  PUSI DATA:5
+  PUSI DATA:7
+  CALL SUM2
+  ```
+
+13) .PLACE – Place a Symbol at a Relative Coordinate
+- Syntax: `.PLACE TYPE:VALUE X|Y`
+- Semantics: Places an initial symbol (CODE/DATA/ENERGY/STRUCTURE) at the given relative coordinate.
+- Example:
+  ```
+  .ORG 0|0
+  .PLACE DATA:99  2|0
+  .PLACE ENERGY:5 0|1
+  ```
+
+Putting it all together:
