@@ -32,31 +32,40 @@ This document describes the syntax, directives, and the complete instruction set
 
 ### 3. Argument Types
 
-Arguments fall into a small, well-defined type system. Many instructions only accept scalars (DATA), while others accept vectors (VEC). Type-sensitive predicates (IFTR/IFTI) compare the dynamic type, not the value.
+Arguments use a small, strict type system. Operands are dynamically typed values carried in registers or on the Data Stack (DS). Many instructions accept only scalars (DATA), while others require vectors (VEC). Type-sensitive predicates (IFTR/IFTI) compare the dynamic type tag, not the numeric payload.
 
-* **Register:** `%DR0`…`%DR7`, `%PR0`…`%PR1`. These hold values (either scalar DATA or VEC) and are case-insensitive.
+Value model:
+- Every value is a tagged entity: TYPE:payload.
+- No implicit conversions occur. If an instruction requires a scalar DATA and receives a VEC, it fails.
+- Equality in IFR/IFI compares payloads; IFTR/IFTI compare the TYPE tags only.
 
-* **Literal:** `TYPE:VALUE`. Currently supported immediate type:
-  - `DATA:N` — a signed integer scalar. Examples:
-    - `DATA:0`, `DATA:-12`, `DATA:42`
-    - Numeric bases: `DATA:0xFF` (hex), `DATA:0b1010` (binary), `DATA:077` (octal)
-    - Separators: underscores are allowed for readability, e.g. `DATA:1_000_000`
-  Notes:
-  - DATA is the only scalar literal type; vector literals use the Vector syntax (below).
-  - When an instruction requires a scalar and receives a non-scalar, it fails.
+Supported operand kinds:
+- Register: `%DR0`…`%DR7`, `%PR0`…`%PR1` (case-insensitive). Registers store a complete tagged value (either DATA or VEC).
+- Literal: `TYPE:VALUE` immediate.
+  - DATA:N — signed integer scalar.
+    - Examples: `DATA:0`, `DATA:-12`, `DATA:42`
+    - Bases: `DATA:0xFF` (hex), `DATA:0b1010` (bin), `DATA:077` (octal)
+    - Readability: underscores allowed, e.g. `DATA:1_000_000`
+  - Notes:
+    - DATA is the only scalar literal type; vectors are provided using the Vector literal syntax (below).
+    - Literal type must match the instruction’s expected type.
+- Vector (VEC): `X|Y[|Z...]` (e.g., `1|0`, `-1|2|0`). The number of components must match the world dimension.
+  - Usage:
+    - Relative addressing (PEEK/SCAN/POKE/SEEK).
+    - Control flow offsets (JMPI).
+    - Direction settings (TURN requires a unit vector).
+  - Stack variants that pop a vector expect a dimension-correct VEC on the stack.
+- Label: a defined label (case-insensitive). In vector-position contexts (e.g., `JMPI LABEL`, `SETV %DR0 LABEL`), the assembler resolves LABEL to the relative vector delta from the current IP at assembly time.
 
-* **Vector (VEC):** `X|Y[|Z...]` (e.g., `1|0`, `-1|2|0`). Dimensionality must match the world’s dimension. Vectors are used for:
-  - Relative addressing (e.g., `PEEK`, `SEEK`, `JMPI`, `SETV`).
-  - Direction settings (e.g., `TURN` with a unit vector).
-  - Stack variants that pop a vector expect a properly dimensioned VEC on the stack.
+Type summary:
+- DATA (scalar): signed integer; used by arithmetic, bitwise, shifts, scalar compares, NRG/RAND.
+- VEC (vector): multi-component integer tuple; used by addressing, motion, direction, and control-flow deltas.
+- Many instructions specify “scalar-only”; passing VEC where DATA is required causes failure.
+- IFTR/IFTI compare type tags (DATA vs VEC), not the payload.
 
-* **Label:** A defined label name (case-insensitive). When used in a vector position context (e.g., `JMPI LABEL`, `SETV %DR0 LABEL`), the assembler resolves it to the relative vector delta from the current IP at assemble time.
-
-Type overview:
-- **DATA (scalar):** signed integer payload; used by arithmetic/bitwise/shift/compare.
-- **VEC (vector):** multi-component integer tuple matching world dimensions.
-- Many instructions specify “scalar-only”; passing VEC where DATA is required fails.
-- IFTR/IFTI compare the type tags (DATA vs VEC), not the numeric payload.
+Stack and registers:
+- DS stores tagged values. PUSH/POP move complete values with their tags.
+- `%PR0`/`%PR1` and `%DRx` can hold either DATA or VEC; the instruction semantics determine validity.
 
 Examples:
 - `ADDI %DR0 DATA:1`        ; scalar immediate
@@ -114,7 +123,6 @@ Energy costs:
     - PUSH: DS.push(value(%REG_SOURCE))
     - POP: %REG_TARGET := DS.pop()
     - PUSI: DS.push(literal)
-  - Energy: configurable
   - Energy: 1
   - Errors: POP on empty stack; invalid literal for PUSI
   - Example: PUSI DATA:7
@@ -159,7 +167,6 @@ General semantics:
 - I: OPxI %DEST TYPE:N → %DEST := %DEST OP N
 - S: OPxS              → Pops operands (rightmost is top-of-stack) and pushes result. For binary ops: [..., A, B] → [..., (A OP B)] where B is TOS.
 - Operands: scalar data (DATA type). Non-scalar leads to failure.
-- Energy: configurable
 - Energy: 1 per operation
 - Errors: division by zero; type mismatches.
 - Example: ADDI %DR0 DATA:1
@@ -175,7 +182,6 @@ Bitwise instructions exist as Register (R), Immediate (I), and Stack (S) forms; 
 Semantics:
 - Operands treated as unsigned integer scalars on their payload.
 - NOT/NOTS invert all bits of the scalar.
-- Energy: configurable
 - Energy: 1 per operation
 - Errors: type mismatch (non-scalar).
 - Example: XORI %DR1 DATA:255
@@ -186,13 +192,11 @@ Semantics:
   - Syntax: SHLI %R DATA:N, SHRI %R DATA:N
   - Effect: logical left/right shift by N
   - Energy: 1
-  - Energy: configurable
   - Errors: negative shift; non-scalar
 
 - SHLS, SHRS (Stack)
   - Syntax: SHLS, SHRS
   - Effect: Pops N, then A; pushes (A << N) or (A >>> N)
-  - Energy: configurable
   - Energy: 1
   - Errors: insufficient stack items; non-scalar
 
@@ -234,9 +238,6 @@ Errors:
   - GTR %A %B: if scalar(%A) > scalar(%B)
   - LTR %A %B: if scalar(%A) < scalar(%B)
   - GTI/LTI operate against literal
-
-Energy:
-- Configurable per conditional evaluation (the skipped-or-executed next instruction has its own cost, accounted separately).
 
 Energy:
 - 1 per conditional evaluation. The skipped-or-executed instruction has its own cost and is accounted separately.
@@ -355,97 +356,157 @@ These instructions only affect the organism’s internal state (registers, stack
 
 ### 5. Directives (Detailed)
 
-This section describes all assembler directives with syntax, semantics, and examples.
+This section documents all assembler directives with syntax, semantics, and examples.
 
-#### .PROC … .ENDP – Procedures
+#### Simple Directives
 
-Procedures are reusable blocks of code that can be called from anywhere.
+- .REG — Register aliasing
+  - Syntax: `.REG %ALIAS N`
+  - Semantics: Binds `%ALIAS` to `%DRN` where N is 0–7 (global data registers).
+  - Example:
+    ```
+    .REG %ACC 0
+    SETI %ACC DATA:5
+    ```
 
-* **Syntax (with parameters):**
+- .ORG — Set origin
+  - Syntax: `.ORG X|Y[|Z...]`
+  - Semantics: Sets the origin for placing the next instruction or data.
+  - Example:
+    ```
+    .ORG 10|0
+    ```
 
+- .DIR — Assembly direction
+  - Syntax: `.DIR X|Y[|Z...]`
+  - Semantics: Sets the direction vector used when placing subsequent instructions/arguments.
+  - Example:
+    ```
+    .DIR 1|0
+    ```
+
+- .PLACE — Place initial world symbol
+  - Syntax: `.PLACE TYPE:VALUE X|Y[|Z...]`
+  - Semantics: Emits/places the given symbol at the relative offset from current origin.
+  - Example:
+    ```
+    .PLACE DATA:7 0|1
+    ```
+
+- .DEFINE — Compile-time substitution
+  - Syntax: `.DEFINE NAME VALUE`
+  - Semantics: Replaces every token `NAME` with `VALUE` during assembly (textual macro).
+  - Example:
+    ```
+    .DEFINE STEP 1|0
+    SETV %DR0 STEP
+    ```
+
+#### .MACRO … .ENDM — Macros
+
+Macros expand inline at assembly time.
+
+- Syntax:
   ```
-  .PROC LIB.NAME WITH PARAM1 [PARAM2 ...]
+  .MACRO NAME [ARG1 [ARG2 ...]]
+      # body can use ARG1, ARG2 … as textual parameters
+      # use \@ to create unique labels if needed
+  .ENDM
+  ```
+
+- Use:
+  - Invoke by writing `NAME actual1 actual2`.
+  - Arguments are substituted textually before parsing/evaluation.
+
+- Example:
+  ```
+  .MACRO INC REG
+      ADDI REG DATA:1
+  .ENDM
+
+  .REG %X 0
+  SETI %X DATA:3
+  INC %X       # expands to: ADDI %X DATA:1
+  ```
+
+#### .ROUTINE … .ENDR — Reusable inline routines
+
+Routines are named, inline-expandable blocks that can be included or required across files.
+
+- Syntax:
+  ```
+  .ROUTINE NAME [ARG1 [ARG2 ...]]
+      # body (can reference ARGs; treated like a macro but namespaced)
+  .ENDR
+  ```
+
+- Including code:
+  - `.INCLUDE "path/to/file.asm"` — includes the file if present; fails if unreadable.
+  - `.INCLUDE_STRICT "path/to/file.asm"` — like INCLUDE but enforces single inclusion and strict path checks.
+  - `.REQUIRE SYMBOL` — asserts that SYMBOL (e.g., a public `.PROC` or routine name) must be available after all includes/imports; assembler fails otherwise.
+
+- Example:
+  ```
+  .ROUTINE BUMP REG
+      ADDI REG DATA:1
+  .ENDR
+
+  .INCLUDE "lib/math.asm"
+  .REQUIRE UTIL.INCREMENT
+  BUMP %DR0
+  ```
+
+#### .PROC … .ENDP — Procedures
+
+Procedures are reusable code blocks invoked at runtime via CALL.
+
+- Syntax (with parameters):
+  ```
+  .PROC LIB.NAME WITH P1 [P2 ...]
       .EXPORT LIB.NAME
-      [.PREG %ALIAS 0|1]
-      # Body uses PARAM1, PARAM2 as if they were registers.
-      # %PR0, %PR1 can be used as temporary registers.
+      [.PREG %TMP 0|1]   # optional alias for %PR0 or %PR1
+      # body can use P1, P2 as formal parameter registers
   .ENDP
-  
   ```
 
-* **Syntax (without parameters):**
-
+- Syntax (without parameters):
   ```
   .PROC LIB.NAME
-      # Body (typically uses the Data Stack for parameters)
+      # body (often uses DS or globals for data exchange)
   .ENDP
-  
   ```
 
-* **Semantics of `.WITH`:**
+- CALL with parameters (copy-in/copy-out via FPRs):
+  - Syntax: `CALL TARGET .WITH %R1 [%R2 ...]`
+  - Semantics:
+    1. Before CALL, values from the actual registers are copied into internal Formal Parameter Registers (FPRs).
+    2. Procedure executes using its formal names bound to those FPRs.
+    3. On RET, final FPR values are copied back into the caller’s actual registers (by reference semantics).
+  - The number of actuals must match the number of formals.
 
-    * `WITH` declares **formal parameters** (`PARAM1`, `PARAM2`, etc.). Inside the procedure, these names are used just like registers.
+- IMPORT/EXPORT:
+  - `.EXPORT LIB.NAME` inside a `.PROC` marks it publicly importable.
+  - `.IMPORT LIB.NAME AS ALIAS` makes the exported procedure available under a local alias.
+  - Example:
+    ```
+    # Definition
+    .PROC UTIL.INCREMENT WITH VAL
+        .EXPORT UTIL.INCREMENT
+        ADDI VAL DATA:1
+    .ENDP
 
-    * Calling is done via `CALL LIB.NAME .WITH %ACTUAL_REG1 %ACTUAL_REG2`.
+    # Use
+    .IMPORT UTIL.INCREMENT AS INC
+    .REG %CNT 3
+    SETI %CNT DATA:9
+    CALL INC .WITH %CNT
+    # %CNT == 10
+    ```
 
-    * The assembler implements this using a **Copy-In/Copy-Out** mechanism:
+- .PREG — Local alias for PR registers:
+  - Syntax: `.PREG %ALIAS 0|1`
+  - Semantics: Creates a local alias for `%PR0` or `%PR1`. These are safe temporaries automatically saved/restored across CALL/RET.
 
-        1. **Copy-In:** Before the `CALL`, the value from each actual register (e.g., `%ACTUAL_REG1`) is copied into a dedicated, internal Formal Parameter Register (FPR).
-
-        2. **Execution:** The procedure executes, operating on these internal FPRs.
-
-        3. **Copy-Out:** After the procedure returns (`RET`), the final value from each FPR is copied back into the corresponding actual register.
-
-    * This ensures that changes made to parameters inside the procedure are reflected in the caller's registers, simulating **Call-by-Reference** behavior safely.
-
-* **`.PREG %ALIAS 0|1`:**
-
-    * Creates a local alias for the procedure-local registers `%PR0` or `%PR1`. These registers are ideal for temporary calculations as their values are automatically preserved across `CALL`/`RET` boundaries.
-
-#### CALL … .WITH – Calling a Procedure with Parameters
-
-* **Syntax:** `CALL TARGET .WITH %ACTUAL_REG1 [%ACTUAL_REG2 ...]`
-
-    * `TARGET`: The label of the procedure (or an import alias).
-
-    * `%ACTUAL_REG1`: The caller's register (DR or PR) passed as the first argument.
-
-* The number of actual registers in the `CALL` must exactly match the number of formal parameters in the `.PROC` definition.
-
-* **Example:**
-
-  ```
-  # Procedure definition
-  .PROC UTIL.INCREMENT WITH VAL
-      .EXPORT UTIL.INCREMENT
-      ADDI VAL DATA:1
-      RET  # RET is optional, it's added implicitly at .ENDP
-  .ENDP
-  
-  # Main program
-  .IMPORT UTIL.INCREMENT AS INC
-  .REG %MY_COUNTER 3
-  
-  SETI %MY_COUNTER DATA:9
-  CALL INC .WITH %MY_COUNTER
-  # After this, %MY_COUNTER will hold the value 10.
-  
-  ```
-
-#### Other Directives
-
-* **.ORG X|Y:** Sets the origin for placing the next instruction.
-
-* **.DIR X|Y:** Sets the assembly direction for instruction arguments.
-
-* **.REG %NAME ID:** Binds a symbolic name to a data register (`%DR0`–`%DR7`).
-
-* **.DEFINE NAME VALUE:** Replaces `NAME` with `VALUE` during assembly.
-
-* **.EXPORT LIB.NAME:** Inside a `.PROC`, marks it as publicly importable.
-
-* **.IMPORT LIB.NAME AS ALIAS:** Makes a public procedure available under a local alias.
-
-* **.PLACE TYPE:VALUE X|Y:** Places an initial symbol in the world.
-
-* **.MACRO / .ROUTINE:** Advanced templating features (see full documentation for details).
+Notes:
+- All directives are case-insensitive.
+- Labels used by directives are resolved at assembly time.
