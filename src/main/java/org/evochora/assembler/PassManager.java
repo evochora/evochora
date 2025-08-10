@@ -210,6 +210,8 @@ public class PassManager {
                 DefinitionExtractor.ProcMeta meta = procMetaMap.get(procName);
                 boolean hasFormParams = meta != null && meta.formalParams() != null && !meta.formalParams().isEmpty();
 
+                System.out.println("procName: " + procName + ", hasFormParams: " + hasFormParams + ", withIdx: " + withIdx);
+
                 if (hasFormParams) {
                     if (withIdx < 0) {
                         throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("call.with.requiresWithProc"), line.content());

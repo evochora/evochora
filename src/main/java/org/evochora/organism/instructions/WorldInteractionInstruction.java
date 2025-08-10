@@ -40,6 +40,8 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
                 if (opName.equals("POKS")) {
                     valueToWrite = operands.get(1).value();
                 }
+            } else if (opName.equals("SEKI")) {
+                vector = (int[]) operands.get(0).value();
             } else { // Register- und Immediate-Varianten
                 targetReg = operands.get(0).rawSourceId();
                 vector = (int[]) operands.get(1).value();
@@ -169,8 +171,25 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
 
     @Override
     public List<int[]> getTargetCoordinates() {
-        // This needs to be calculated during planning/execution, as it depends on runtime DP.
-        // The `execute` method now sets this field.
-        return (targetCoordinate != null) ? List.of(targetCoordinate) : List.of();
+        if (targetCoordinate == null) {
+            try {
+                List<Operand> operands = resolveOperands(organism.getSimulation().getWorld());
+                String opName = getName();
+                int[] vector;
+
+                if (opName.endsWith("S")) {
+                    vector = (int[]) operands.get(0).value();
+                } else if (opName.equals("SEKI")) {
+                    vector = (int[]) operands.get(0).value();
+                } else {
+                    vector = (int[]) operands.get(1).value();
+                }
+                this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, organism.getSimulation().getWorld());
+            } catch (Exception e) {
+                // Return empty list if operands can't be resolved yet.
+                return List.of();
+            }
+        }
+        return List.of(targetCoordinate);
     }
 }

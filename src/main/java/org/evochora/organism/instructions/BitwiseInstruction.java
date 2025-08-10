@@ -58,7 +58,12 @@ public class BitwiseInstruction extends Instruction {
 
             if (op1.value() instanceof Integer i1 && op2.value() instanceof Integer i2) {
                 Symbol s1 = Symbol.fromInt(i1);
-                Symbol s2 = Symbol.fromInt(i2);
+                Symbol s2;
+                if (op2.rawSourceId() == -1) { // Immediate
+                    s2 = new Symbol(s1.type(), i2);
+                } else { // Register
+                    s2 = Symbol.fromInt(i2);
+                }
 
                 if (Config.STRICT_TYPING && s1.type() != s2.type()) {
                     organism.instructionFailed("Operand types must match in strict mode for bitwise operations.");

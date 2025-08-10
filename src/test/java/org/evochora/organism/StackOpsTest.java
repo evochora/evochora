@@ -4,7 +4,7 @@ import org.evochora.Config;
 import org.evochora.Simulation;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
-import org.evochora.organism.instructions.DataInstruction;
+import org.evochora.organism.instructions.StackInstruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,7 +38,7 @@ public class StackOpsTest {
         int dupId = Instruction.getInstructionIdByName("DUP");
         world.setSymbol(new Symbol(Config.TYPE_CODE, dupId), 0, 0);
 
-        Instruction dup = DataInstruction.plan(organism, world);
+        Instruction dup = StackInstruction.plan(organism, world);
         dup.execute(simulation);
 
         assertFalse(organism.isInstructionFailed(), "DUP should succeed with 1 element");
@@ -48,7 +48,7 @@ public class StackOpsTest {
 
         // overflow
         for (int i = 0; i < Config.DS_MAX_DEPTH; i++) ds.push(0);
-        dup = DataInstruction.plan(organism, world);
+        dup = StackInstruction.plan(organism, world);
         dup.execute(simulation);
         assertTrue(organism.isInstructionFailed(), "DUP should fail on overflow");
     }
@@ -57,7 +57,7 @@ public class StackOpsTest {
     void dup_underflow() {
         int dupId = Instruction.getInstructionIdByName("DUP");
         world.setSymbol(new Symbol(Config.TYPE_CODE, dupId), 0, 0);
-        Instruction dup = DataInstruction.plan(organism, world);
+        Instruction dup = StackInstruction.plan(organism, world);
         dup.execute(simulation);
         assertTrue(organism.isInstructionFailed(), "DUP should fail on empty stack");
     }
@@ -69,14 +69,14 @@ public class StackOpsTest {
         ds.push(20); // B (top)
         int swapId = Instruction.getInstructionIdByName("SWAP");
         world.setSymbol(new Symbol(Config.TYPE_CODE, swapId), 0, 0);
-        Instruction swap = DataInstruction.plan(organism, world);
+        Instruction swap = StackInstruction.plan(organism, world);
         swap.execute(simulation);
         assertFalse(organism.isInstructionFailed());
         assertEquals(10, ds.pop()); // A now top after swap
         assertEquals(20, ds.pop()); // B below
         // underflow
         ds.push(1);
-        swap = DataInstruction.plan(organism, world);
+        swap = StackInstruction.plan(organism, world);
         swap.execute(simulation);
         assertTrue(organism.isInstructionFailed(), "SWAP should fail with only 1 element");
     }
@@ -87,7 +87,7 @@ public class StackOpsTest {
         int dropId = Instruction.getInstructionIdByName("DROP");
         world.setSymbol(new Symbol(Config.TYPE_CODE, dropId), 0, 0);
         // underflow first
-        Instruction drop = DataInstruction.plan(organism, world);
+        Instruction drop = StackInstruction.plan(organism, world);
         drop.execute(simulation);
         assertTrue(organism.isInstructionFailed());
 
@@ -96,7 +96,7 @@ public class StackOpsTest {
         ds = organism.getDataStack();
         world.setSymbol(new Symbol(Config.TYPE_CODE, dropId), 0, 0);
         ds.push(7);
-        drop = DataInstruction.plan(organism, world);
+        drop = StackInstruction.plan(organism, world);
         drop.execute(simulation);
         assertFalse(organism.isInstructionFailed());
         assertEquals(0, ds.size());
@@ -111,7 +111,7 @@ public class StackOpsTest {
         ds.push(300); // C (top)
         int rotId = Instruction.getInstructionIdByName("ROT");
         world.setSymbol(new Symbol(Config.TYPE_CODE, rotId), 0, 0);
-        Instruction rot = DataInstruction.plan(organism, world);
+        Instruction rot = StackInstruction.plan(organism, world);
         rot.execute(simulation);
         assertFalse(organism.isInstructionFailed());
         assertEquals(100, ds.pop()); // A becomes top after rotation
@@ -121,7 +121,7 @@ public class StackOpsTest {
         // underflow (<3 elements)
         ds.push(1);
         ds.push(2);
-        rot = DataInstruction.plan(organism, world);
+        rot = StackInstruction.plan(organism, world);
         rot.execute(simulation);
         assertTrue(organism.isInstructionFailed(), "ROT should fail with less than 3 elements");
     }

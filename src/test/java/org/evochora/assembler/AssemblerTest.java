@@ -138,7 +138,12 @@ public class AssemblerTest {
                     $OUTER_MACRO DR_A
                 """;
         Assembler assembler = createAssembler();
-        Assertions.assertDoesNotThrow(() -> assembler.assemble(annotateCode(code), "TestNestedMacros", false));
+        try {
+            assembler.assemble(annotateCode(code), "TestNestedMacros", false);
+        } catch (AssemblerException e) {
+            System.out.println("AssemblerException: " + e.getFormattedMessage());
+            throw e;
+        }
     }
 
     @Test
