@@ -92,8 +92,13 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
                 organism.instructionFailed("POKE: Cannot write vectors to the world.");
                 return;
             }
+            // Charge energy equal to the absolute payload of the symbol being written
+            Symbol toWrite = Symbol.fromInt((Integer) valueToWrite);
+            int cost = Math.abs(toWrite.toScalarValue());
+            if (cost > 0) organism.takeEr(cost);
+
             if (world.getSymbol(targetCoordinate).isEmpty()) {
-                world.setSymbol(Symbol.fromInt((Integer)valueToWrite), targetCoordinate);
+                world.setSymbol(toWrite, targetCoordinate);
             } else {
                 organism.instructionFailed("POKE: Target cell is not empty.");
                 if (getConflictStatus() != ConflictResolutionStatus.NOT_APPLICABLE) setConflictStatus(ConflictResolutionStatus.LOST_TARGET_OCCUPIED);
