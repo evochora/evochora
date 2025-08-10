@@ -4,8 +4,7 @@ import org.evochora.Config;
 import org.evochora.Simulation;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
-import org.evochora.organism.instructions.PeksInstruction;
-import org.evochora.organism.instructions.PoksInstruction;
+import org.evochora.organism.instructions.DataInstruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,7 +42,7 @@ public class PeksPoksTest {
 
         Deque<Object> ds = organism.getDataStack();
         ds.push(vec);
-        Instruction peks = PeksInstruction.plan(organism, world);
+        Instruction peks = DataInstruction.plan(organism, world);
         peks.execute(simulation);
 
         assertFalse(organism.isInstructionFailed());
@@ -67,7 +66,7 @@ public class PeksPoksTest {
         ds.push(new Symbol(Config.TYPE_DATA, 42).toInt());
         ds.push(vec);
 
-        Instruction poks = PoksInstruction.plan(organism, world);
+        Instruction poks = DataInstruction.plan(organism, world);
         poks.execute(simulation);
         assertFalse(organism.isInstructionFailed());
         Symbol written = world.getSymbol(target);

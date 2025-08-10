@@ -2,7 +2,7 @@ package org.evochora.organism;
 
 import org.evochora.Config;
 import org.evochora.Simulation;
-import org.evochora.organism.instructions.AddrInstruction;
+import org.evochora.organism.instructions.ArithmeticInstruction;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
 import org.junit.jupiter.api.Assertions;
@@ -57,7 +57,7 @@ public class OrganismTest {
         world.setSymbol(new Symbol(Config.TYPE_DATA, 0), 1, 0);
         world.setSymbol(new Symbol(Config.TYPE_DATA, 1), 2, 0);
 
-        Instruction add = AddrInstruction.plan(organism, world);
+        Instruction add = ArithmeticInstruction.plan(organism, world);
         add.execute(simulation);
 
         int[] result = (int[]) organism.getDr(0);

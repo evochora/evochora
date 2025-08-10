@@ -4,8 +4,7 @@ import org.evochora.Config;
 import org.evochora.Simulation;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
-import org.evochora.organism.instructions.CallInstruction;
-import org.evochora.organism.instructions.RetInstruction;
+import org.evochora.organism.instructions.ControlFlowInstruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,7 +49,7 @@ public class PRProcRegisterFrameTest {
         organism.setPr(1, 222);
 
         // CALL
-        Instruction call = CallInstruction.plan(organism, world);
+        Instruction call = ControlFlowInstruction.plan(organism, world);
         call.execute(simulation);
         assertFalse(organism.isInstructionFailed(), "CALL should succeed");
         assertArrayEquals(new int[]{4,0}, organism.getIp(), "IP should jump to target");
@@ -60,7 +59,7 @@ public class PRProcRegisterFrameTest {
         organism.setPr(1, 888);
 
         // RET
-        Instruction ret = RetInstruction.plan(organism, world);
+        Instruction ret = ControlFlowInstruction.plan(organism, world);
         ret.execute(simulation);
         assertFalse(organism.isInstructionFailed(), "RET should succeed");
 

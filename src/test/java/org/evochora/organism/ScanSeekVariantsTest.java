@@ -4,8 +4,7 @@ import org.evochora.Config;
 import org.evochora.Simulation;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
-import org.evochora.organism.instructions.ScnsInstruction;
-import org.evochora.organism.instructions.SeksInstruction;
+import org.evochora.organism.instructions.WorldInteractionInstruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,7 +44,7 @@ public class ScanSeekVariantsTest {
         Deque<Object> ds = organism.getDataStack();
         ds.push(vec);
 
-        Instruction scns = ScnsInstruction.plan(organism, world);
+        Instruction scns = WorldInteractionInstruction.plan(organism, world);
         scns.execute(simulation);
 
         assertFalse(organism.isInstructionFailed());
@@ -66,7 +65,7 @@ public class ScanSeekVariantsTest {
         int[] vec = new int[]{0, 1};
         Deque<Object> ds = organism.getDataStack();
         ds.push(vec);
-        Instruction seks = SeksInstruction.plan(organism, world);
+        Instruction seks = WorldInteractionInstruction.plan(organism, world);
         seks.execute(simulation);
         assertFalse(organism.isInstructionFailed());
         int[] expectedDp = organism.getTargetCoordinate(new int[]{5, 5}, vec, world);
@@ -78,7 +77,7 @@ public class ScanSeekVariantsTest {
         ds = organism.getDataStack();
         ds.push(new int[]{0, 1});
         world.setSymbol(new Symbol(Config.TYPE_CODE, seksId), 5, 5);
-        seks = SeksInstruction.plan(organism, world);
+        seks = WorldInteractionInstruction.plan(organism, world);
         seks.execute(simulation);
         assertTrue(organism.isInstructionFailed(), "SEKS should fail when target cell is not empty");
     }

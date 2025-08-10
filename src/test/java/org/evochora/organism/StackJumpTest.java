@@ -4,7 +4,7 @@ import org.evochora.Config;
 import org.evochora.Simulation;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
-import org.evochora.organism.instructions.JmpsInstruction;
+import org.evochora.organism.instructions.ControlFlowInstruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,7 +37,7 @@ public class StackJumpTest {
         world.setSymbol(new Symbol(Config.TYPE_CODE, jmpsId), 0, 0);
         Deque<Object> ds = organism.getDataStack();
         ds.push(new int[]{3, 0});
-        Instruction jmps = JmpsInstruction.plan(organism, world);
+        Instruction jmps = ControlFlowInstruction.plan(organism, world);
         jmps.execute(simulation);
         assertArrayEquals(new int[]{3,0}, organism.getIp());
     }

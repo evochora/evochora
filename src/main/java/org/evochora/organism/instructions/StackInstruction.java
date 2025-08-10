@@ -1,0 +1,76 @@
+package org.evochora.organism.instructions;
+
+import org.evochora.Config;
+import org.evochora.Simulation;
+import org.evochora.assembler.AssemblerOutput;
+import org.evochora.organism.Instruction;
+import org.evochora.organism.Organism;
+import org.evochora.world.World;
+
+import java.util.Deque;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+
+public class StackInstruction extends Instruction {
+
+    public StackInstruction(Organism organism, int fullOpcodeId) {
+        super(organism, fullOpcodeId);
+    }
+
+    @Override
+    public void execute(Simulation simulation) {
+        Deque<Object> ds = organism.getDataStack();
+        String opName = getName();
+
+        try {
+            switch (opName) {
+                case "DUP":
+                    if (ds.isEmpty()) { organism.instructionFailed("Stack Underflow for DUP."); return; }
+                    if (ds.size() >= Config.DS_MAX_DEPTH) { organism.instructionFailed("Stack Overflow for DUP."); return; }
+                    ds.push(ds.peek());
+                    break;
+
+                case "SWAP":
+                    if (ds.size() < 2) { organism.instructionFailed("Stack Underflow for SWAP."); return; }
+                    Object a = ds.pop();
+                    Object b = ds.pop();
+                    ds.push(a);
+                    ds.push(b);
+                    break;
+
+                case "DROP":
+                    if (ds.isEmpty()) { organism.instructionFailed("Stack Underflow for DROP."); return; }
+                    ds.pop();
+                    break;
+
+                case "ROT":
+                    if (ds.size() < 3) { organism.instructionFailed("Stack Underflow for ROT."); return; }
+                    Object c = ds.pop();
+                    Object b_rot = ds.pop();
+                    Object a_rot = ds.pop();
+                    ds.push(b_rot);
+                    ds.push(c);
+                    ds.push(a_rot);
+                    break;
+
+                default:
+                    organism.instructionFailed("Unknown stack instruction: " + opName);
+            }
+        } catch (NoSuchElementException e) {
+            organism.instructionFailed("Stack underflow during " + opName);
+        }
+    }
+
+    public static Instruction plan(Organism organism, World world) {
+        int fullOpcodeId = world.getSymbol(organism.getIp()).toInt();
+        return new StackInstruction(organism, fullOpcodeId);
+    }
+
+    public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap, String instructionName) {
+        if (args.length != 0) {
+            throw new IllegalArgumentException(instructionName.toUpperCase() + " expects no arguments.");
+        }
+        return new AssemblerOutput.CodeSequence(List.of());
+    }
+}

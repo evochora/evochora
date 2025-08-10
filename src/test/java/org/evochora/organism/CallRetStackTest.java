@@ -4,8 +4,7 @@ import org.evochora.Config;
 import org.evochora.Simulation;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
-import org.evochora.organism.instructions.CallInstruction;
-import org.evochora.organism.instructions.RetInstruction;
+// KORRIGIERT: Veraltete Imports entfernt
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,7 +39,8 @@ public class CallRetStackTest {
         // RS vorab auf Max-Tiefe füllen
         Deque<Object> rs = organism.getReturnStack();
         for (int i = 0; i < Config.RS_MAX_DEPTH; i++) {
-            rs.push(new int[]{0, 0});
+            // KORRIGIERT: Pushed einen korrekten ProcFrame
+            rs.push(new Organism.ProcFrame(new int[]{0,0}, new Object[Config.NUM_PROC_REGISTERS]));
         }
 
         // CALL am Start platzieren: delta (1,0) ist egal – es soll wegen RS-Overflow fehlschlagen
@@ -49,7 +49,8 @@ public class CallRetStackTest {
         world.setSymbol(new Symbol(Config.TYPE_DATA, 1), 1, 0); // delta.x = 1
         world.setSymbol(new Symbol(Config.TYPE_DATA, 0), 2, 0); // delta.y = 0
 
-        Instruction call = CallInstruction.plan(organism, world);
+        // KORRIGIERT: Befehl wird jetzt über die VM geplant
+        Instruction call = organism.planTick(world);
         call.execute(simulation);
 
         assertTrue(organism.isInstructionFailed(), "CALL sollte bei RS-Überlauf fehlschlagen");
@@ -61,7 +62,8 @@ public class CallRetStackTest {
         int retId = Instruction.getInstructionIdByName("RET");
         world.setSymbol(new Symbol(Config.TYPE_CODE, retId), 0, 0);
 
-        Instruction ret = RetInstruction.plan(organism, world);
+        // KORRIGIERT: Befehl wird jetzt über die VM geplant
+        Instruction ret = organism.planTick(world);
         ret.execute(simulation);
 
         assertTrue(organism.isInstructionFailed(), "RET sollte bei RS-Unterlauf fehlschlagen");
@@ -86,7 +88,7 @@ public class CallRetStackTest {
         world.setSymbol(new Symbol(Config.TYPE_CODE, nopId), 3, 0);
 
         // CALL ausführen
-        Instruction call = CallInstruction.plan(organism, world);
+        Instruction call = organism.planTick(world);
         call.execute(simulation);
 
         // Nach CALL: IP sollte am Ziel stehen und RS eine Adresse enthalten
@@ -96,7 +98,7 @@ public class CallRetStackTest {
         assertFalse(organism.isInstructionFailed(), "CALL sollte erfolgreich sein");
 
         // RET am Ziel ausführen
-        Instruction ret = RetInstruction.plan(organism, world);
+        Instruction ret = organism.planTick(world);
         ret.execute(simulation);
         assertFalse(organism.isInstructionFailed(), "RET sollte erfolgreich sein");
 

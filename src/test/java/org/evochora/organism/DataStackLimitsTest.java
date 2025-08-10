@@ -4,8 +4,7 @@ import org.evochora.Config;
 import org.evochora.Simulation;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
-import org.evochora.organism.instructions.PopInstruction;
-import org.evochora.organism.instructions.PushInstruction;
+import org.evochora.organism.instructions.DataInstruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,7 +40,7 @@ public class DataStackLimitsTest {
         world.setSymbol(new Symbol(Config.TYPE_CODE, popId), 0, 0);
         world.setSymbol(new Symbol(Config.TYPE_DATA, 0), 1, 0);
 
-        Instruction pop = PopInstruction.plan(organism, world);
+        Instruction pop = DataInstruction.plan(organism, world);
         pop.execute(simulation);
 
         assertTrue(organism.isInstructionFailed(), "POP should fail on empty DS (underflow)");
@@ -61,7 +60,7 @@ public class DataStackLimitsTest {
         world.setSymbol(new Symbol(Config.TYPE_DATA, 0), 1, 0);
         organism.setDr(0, 123);
 
-        Instruction push = PushInstruction.plan(organism, world);
+        Instruction push = DataInstruction.plan(organism, world);
         push.execute(simulation);
 
         assertTrue(organism.isInstructionFailed(), "PUSH should fail on DS overflow");

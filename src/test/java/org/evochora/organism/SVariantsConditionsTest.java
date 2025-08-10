@@ -4,10 +4,7 @@ import org.evochora.Config;
 import org.evochora.Simulation;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
-import org.evochora.organism.instructions.IfsSInstruction;
-import org.evochora.organism.instructions.GtsSInstruction;
-import org.evochora.organism.instructions.LtsSInstruction;
-import org.evochora.organism.instructions.IftsSInstruction;
+import org.evochora.organism.instructions.ConditionalInstruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,7 +42,7 @@ public class SVariantsConditionsTest {
         Deque<Object> ds = organism.getDataStack();
         ds.push(new Symbol(Config.TYPE_DATA, 3).toInt());
         ds.push(new Symbol(Config.TYPE_DATA, 3).toInt());
-        Instruction ifs = IfsSInstruction.plan(organism, world);
+        Instruction ifs = ConditionalInstruction.plan(organism, world);
         ifs.execute(simulation);
         assertFalse(organism.isInstructionFailed());
         assertArrayEquals(new int[]{0,0}, organism.getIp(), "IP unchanged on true");
@@ -57,7 +54,7 @@ public class SVariantsConditionsTest {
         ds = organism.getDataStack();
         ds.push(new Symbol(Config.TYPE_DATA, 1).toInt());
         ds.push(new Symbol(Config.TYPE_DATA, 2).toInt());
-        ifs = IfsSInstruction.plan(organism, world);
+        ifs = ConditionalInstruction.plan(organism, world);
         ifs.execute(simulation);
         assertArrayEquals(new int[]{2,0}, organism.getIp(), "IP should skip next instruction on false");
     }
@@ -75,7 +72,7 @@ public class SVariantsConditionsTest {
         Deque<Object> ds = organism.getDataStack();
         ds.push(new Symbol(Config.TYPE_DATA, 3).toInt());
         ds.push(new Symbol(Config.TYPE_DATA, 5).toInt());
-        Instruction gts = GtsSInstruction.plan(organism, world);
+        Instruction gts = ConditionalInstruction.plan(organism, world);
         gts.execute(simulation);
         assertArrayEquals(new int[]{0,0}, organism.getIp());
 
@@ -86,7 +83,7 @@ public class SVariantsConditionsTest {
         ds = organism.getDataStack();
         ds.push(new Symbol(Config.TYPE_DATA, 4).toInt());
         ds.push(new Symbol(Config.TYPE_DATA, 7).toInt());
-        Instruction lts = LtsSInstruction.plan(organism, world);
+        Instruction lts = ConditionalInstruction.plan(organism, world);
         lts.execute(simulation);
         assertArrayEquals(new int[]{2,0}, organism.getIp());
     }
@@ -103,7 +100,7 @@ public class SVariantsConditionsTest {
         Deque<Object> ds = organism.getDataStack();
         ds.push(new Symbol(Config.TYPE_DATA, 1).toInt());
         ds.push(new Symbol(Config.TYPE_DATA, 2).toInt());
-        Instruction ifts = IftsSInstruction.plan(organism, world);
+        Instruction ifts = ConditionalInstruction.plan(organism, world);
         ifts.execute(simulation);
         assertArrayEquals(new int[]{0,0}, organism.getIp());
 
@@ -114,7 +111,7 @@ public class SVariantsConditionsTest {
         ds = organism.getDataStack();
         ds.push(new Symbol(Config.TYPE_DATA, 1).toInt());
         ds.push(new Symbol(Config.TYPE_CODE, 0).toInt());
-        ifts = IftsSInstruction.plan(organism, world);
+        ifts = ConditionalInstruction.plan(organism, world);
         ifts.execute(simulation);
         assertArrayEquals(new int[]{2,0}, organism.getIp());
     }

@@ -12,109 +12,102 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-    public class Disassembler {
-        // Note: VM uses a separate Return-Stack (RS) for CALL/RET; disassembly format remains unchanged.
-        // Optional debug annotation of CALL .WITH adapters (copy-in/out SETR). Set to false to disable.
-        private static final boolean DEBUG_ANNOTATE_ADAPTERS = true;
+public class Disassembler {
+    private static final boolean DEBUG_ANNOTATE_ADAPTERS = true;
 
-        public DisassembledInstruction disassemble(ProgramMetadata metadata, int[] coord, int[] currentDv, World world) {
-            Map<List<Integer>, Integer> relativeCoordToLinearAddress = metadata.relativeCoordToLinearAddress();
-            Map<Integer, int[]> linearAddressToRelativeCoord = metadata.linearAddressToRelativeCoord();
-            Map<Integer, String> registerIdToName = metadata.registerIdToName();
-            Map<Integer, String> labelAddressToName = metadata.labelAddressToName();
+    public DisassembledInstruction disassemble(ProgramMetadata metadata, int[] coord, int[] currentDv, World world) {
+        Map<List<Integer>, Integer> relativeCoordToLinearAddress = metadata.relativeCoordToLinearAddress();
+        Map<Integer, int[]> linearAddressToRelativeCoord = metadata.linearAddressToRelativeCoord();
+        Map<Integer, String> registerIdToName = metadata.registerIdToName();
+        Map<Integer, String> labelAddressToName = metadata.labelAddressToName();
 
-            Integer linearAddress = relativeCoordToLinearAddress != null ? relativeCoordToLinearAddress.get(Arrays.stream(coord).boxed().collect(Collectors.toList())) : null;
+        Integer linearAddress = relativeCoordToLinearAddress != null ? relativeCoordToLinearAddress.get(Arrays.stream(coord).boxed().collect(Collectors.toList())) : null;
 
-            Symbol symbol = world.getSymbol(coord);
-            String instructionType = getInstructionTypeString(symbol);
-            String opcodeName = "N/A";
-            List<DisassembledArgument> arguments = new ArrayList<>();
-            String resolvedTargetCoordinate = null;
+        Symbol symbol = world.getSymbol(coord);
+        String instructionType = getInstructionTypeString(symbol);
+        String opcodeName = "N/A";
+        List<DisassembledArgument> arguments = new ArrayList<>();
+        String resolvedTargetCoordinate = null;
 
-            if (symbol.type() == Config.TYPE_CODE) {
-                int opcodeFullId = symbol.toInt();
-                opcodeName = Instruction.getInstructionNameById(opcodeFullId);
+        if (symbol.type() == Config.TYPE_CODE) {
+            int opcodeFullId = symbol.toInt();
+            opcodeName = Instruction.getInstructionNameById(opcodeFullId);
 
-                if (opcodeName != null && !opcodeName.startsWith("UNKNOWN")) {
-                    int instructionLength = Instruction.getInstructionLengthById(opcodeFullId);
-                    int[] assemblyDv = currentDv;
-                    int[] currentArgCoord = Arrays.copyOf(coord, coord.length);
+            if (opcodeName != null && !opcodeName.startsWith("UNKNOWN")) {
+                int instructionLength = Instruction.getInstructionLengthById(opcodeFullId);
+                int[] assemblyDv = currentDv;
+                int[] currentArgCoord = Arrays.copyOf(coord, coord.length);
 
-                    for (int i = 0; i < instructionLength - 1; i++) {
-                        for(int d=0; d<Config.WORLD_DIMENSIONS; d++) {
-                            currentArgCoord[d] += assemblyDv[d];
-                        }
-                        currentArgCoord = world.getNormalizedCoordinate(currentArgCoord);
-
-                        Symbol argSymbol = world.getSymbol(currentArgCoord);
-                        String argResolvedValue;
-
-                        // KORRIGIERT: Verwende die neue statische Methode, um den ArgumentType zu bekommen
-                        ArgumentType argType = Instruction.getArgumentTypeFor(opcodeFullId, i);
-                        int rawValue = argSymbol.value();
-
-                        if (argType == ArgumentType.REGISTER) {
-                            // Prefer metadata alias when available
-                            if (registerIdToName != null && registerIdToName.containsKey(rawValue)) {
-                                argResolvedValue = registerIdToName.get(rawValue);
-                            } else if (rawValue >= 1000) {
-                                // Recognize PR pseudo-ids used by assembler adapters (%PR0=1000, %PR1=1001)
-                                argResolvedValue = "%PR" + (rawValue - 1000);
-                            } else {
-                                // Default DR presentation
-                                argResolvedValue = "%DR" + rawValue;
-                            }
-                        } else if (opcodeName.equals("JMPR") && linearAddress != null && linearAddressToRelativeCoord != null && relativeCoordToLinearAddress != null) {
-                            int jumpToLinearAddress = linearAddress + 1;
-                            int[] targetCoord = new int[Config.WORLD_DIMENSIONS];
-                            for(int d=0; d<Config.WORLD_DIMENSIONS; d++) {
-                                targetCoord[d] = coord[d] + rawValue;
-                            }
-                            targetCoord = world.getNormalizedCoordinate(targetCoord);
-                            Integer targetLinearAddress = relativeCoordToLinearAddress.get(Arrays.stream(targetCoord).boxed().collect(Collectors.toList()));
-
-                            if(targetLinearAddress != null && labelAddressToName.containsKey(targetLinearAddress)) {
-                                argResolvedValue = labelAddressToName.get(targetLinearAddress);
-                                argType = ArgumentType.LABEL;
-                            } else {
-                                argResolvedValue = getInstructionTypeString(argSymbol) + ":" + argSymbol.toScalarValue();
-                            }
-                        } else {
-                            String typeStr = getInstructionTypeString(argSymbol);
-                            argResolvedValue = typeStr + ":" + argSymbol.toScalarValue();
-                        }
-
-                        arguments.add(new DisassembledArgument(rawValue, argResolvedValue, argType));
+                for (int i = 0; i < instructionLength - 1; i++) {
+                    for(int d=0; d<Config.WORLD_DIMENSIONS; d++) {
+                        currentArgCoord[d] += assemblyDv[d];
                     }
-                } else {
-                    opcodeName = "UNKNOWN_OP";
-                    arguments.add(new DisassembledArgument(symbol.value(), String.valueOf(symbol.value()), ArgumentType.LITERAL));
+                    currentArgCoord = world.getNormalizedCoordinate(currentArgCoord);
+
+                    Symbol argSymbol = world.getSymbol(currentArgCoord);
+                    String argResolvedValue;
+
+                    ArgumentType argType = Instruction.getArgumentTypeFor(opcodeFullId, i);
+                    int rawValue = argSymbol.value();
+
+                    if (argType == ArgumentType.REGISTER) {
+                        // Bevorzugt den Alias aus den Metadaten, falls vorhanden
+                        if (registerIdToName != null && registerIdToName.containsKey(rawValue)) {
+                            argResolvedValue = registerIdToName.get(rawValue);
+                        } else if (rawValue >= 2000) { // NEU: FPRs erkennen
+                            argResolvedValue = "%FPR" + (rawValue - 2000);
+                        } else if (rawValue >= 1000) {
+                            argResolvedValue = "%PR" + (rawValue - 1000);
+                        } else {
+                            argResolvedValue = "%DR" + rawValue;
+                        }
+                    } else if (opcodeName.equals("JMPR") && linearAddress != null && linearAddressToRelativeCoord != null && relativeCoordToLinearAddress != null) {
+                        int[] targetCoord = new int[Config.WORLD_DIMENSIONS];
+                        for(int d=0; d<Config.WORLD_DIMENSIONS; d++) {
+                            targetCoord[d] = coord[d] + rawValue;
+                        }
+                        targetCoord = world.getNormalizedCoordinate(targetCoord);
+                        Integer targetLinearAddress = relativeCoordToLinearAddress.get(Arrays.stream(targetCoord).boxed().collect(Collectors.toList()));
+
+                        if(targetLinearAddress != null && labelAddressToName.containsKey(targetLinearAddress)) {
+                            argResolvedValue = labelAddressToName.get(targetLinearAddress);
+                            argType = ArgumentType.LABEL;
+                        } else {
+                            argResolvedValue = getInstructionTypeString(argSymbol) + ":" + argSymbol.toScalarValue();
+                        }
+                    } else {
+                        String typeStr = getInstructionTypeString(argSymbol);
+                        argResolvedValue = typeStr + ":" + argSymbol.toScalarValue();
+                    }
+
+                    arguments.add(new DisassembledArgument(rawValue, argResolvedValue, argType));
                 }
             } else {
-                String typeStr = getInstructionTypeString(symbol);
-                String resolvedValue = typeStr + ":" + symbol.value();
-                arguments.add(new DisassembledArgument(symbol.value(), resolvedValue, ArgumentType.LITERAL));
+                opcodeName = "UNKNOWN_OP";
+                arguments.add(new DisassembledArgument(symbol.value(), String.valueOf(symbol.value()), ArgumentType.LITERAL));
             }
-
-            // Optional: annotate adapter SETR (copy-in/out around CALL .WITH) for easier debugging
-            if (DEBUG_ANNOTATE_ADAPTERS && "SETR".equalsIgnoreCase(opcodeName) && arguments.size() == 2) {
-                boolean bothRegisterArgs = arguments.stream().allMatch(a -> a.type() == ArgumentType.REGISTER);
-                if (bothRegisterArgs) {
-                    int raw0 = arguments.get(0).rawValue();
-                    int raw1 = arguments.get(1).rawValue();
-                    boolean involvesPr = (raw0 >= 1000) || (raw1 >= 1000); // PR pseudo-ids (%PR0=1000, %PR1=1001)
-                    boolean smallDrToDr = (raw0 >= 0 && raw0 < Config.NUM_DATA_REGISTERS) &&
-                                          (raw1 >= 0 && raw1 < Config.NUM_DATA_REGISTERS);
-                    if (involvesPr || smallDrToDr) {
-                        opcodeName = opcodeName + " [adapter]";
-                    }
-                }
-            }
-
-            return new DisassembledInstruction(opcodeName, arguments, resolvedTargetCoordinate, instructionType);
+        } else {
+            String typeStr = getInstructionTypeString(symbol);
+            String resolvedValue = typeStr + ":" + symbol.value();
+            arguments.add(new DisassembledArgument(symbol.value(), resolvedValue, ArgumentType.LITERAL));
         }
 
-        public DisassembledInstruction disassembleGeneric(int[] coord, World world) {
+        if (DEBUG_ANNOTATE_ADAPTERS && "SETR".equalsIgnoreCase(opcodeName) && arguments.size() == 2) {
+            boolean bothRegisterArgs = arguments.stream().allMatch(a -> a.type() == ArgumentType.REGISTER);
+            if (bothRegisterArgs) {
+                int raw0 = arguments.get(0).rawValue();
+                int raw1 = arguments.get(1).rawValue();
+                boolean involvesPrOrFpr = (raw0 >= 1000) || (raw1 >= 1000); // PRs oder FPRs
+                if (involvesPrOrFpr) {
+                    opcodeName = opcodeName + " [adapter]";
+                }
+            }
+        }
+
+        return new DisassembledInstruction(opcodeName, arguments, resolvedTargetCoordinate, instructionType);
+    }
+
+    public DisassembledInstruction disassembleGeneric(int[] coord, World world) {
         Symbol symbol = world.getSymbol(coord);
         String instructionType = getInstructionTypeString(symbol);
         String opcodeName = "N/A";

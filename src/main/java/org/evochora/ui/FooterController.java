@@ -65,7 +65,7 @@ public class FooterController {
             }
             displayText.append(drsText.toString()).append("\n");
 
-            // PRs (analog DRs)
+            // PRs
             List<Object> prs = selectedOrganism.getPrs();
             StringBuilder prsText = new StringBuilder(Messages.get("footer.label.prs"));
             for(int i = 0; i < prs.size(); i++) {
@@ -74,10 +74,19 @@ public class FooterController {
             }
             displayText.append(prsText.toString()).append("\n");
 
+            // NEU: FPRs zur Anzeige hinzufügen
+            List<Object> fprs = selectedOrganism.getFprs();
+            StringBuilder fprsText = new StringBuilder("FPRs:"); // Hardcoded label for now
+            for(int i = 0; i < fprs.size(); i++) {
+                fprsText.append(String.format(" %d=%s", i, this.logger.formatDrValue(fprs.get(i))));
+                if (i < fprs.size() - 1) fprsText.append(",");
+            }
+            displayText.append(fprsText.toString()).append("\n");
+
             // DS
             displayText.append(Messages.get("footer.label.stack")).append(logger.formatStack(selectedOrganism, true, 8)).append("\n");
 
-            // RS (analog DS)
+            // RS
             displayText.append(Messages.get("footer.label.rs")).append(logger.formatReturnStack(selectedOrganism, true, 8)).append("\n");
 
             // Nächste Instruktion
@@ -97,7 +106,6 @@ public class FooterController {
         String fullSourceInfo = logger.getSourceLocationString(organism, organism.getIp());
         if (fullSourceInfo.isEmpty()) return Messages.get("footer.notAvailable");
 
-        // Extract the part after the ">" for a clean display
         String[] parts = fullSourceInfo.split(">", 2);
         if (parts.length > 1) {
             return parts[0].strip() + ">" + parts[1];

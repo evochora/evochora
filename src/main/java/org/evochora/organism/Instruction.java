@@ -6,14 +6,17 @@ import org.evochora.Simulation;
 import org.evochora.assembler.ArgumentType;
 import org.evochora.assembler.AssemblerOutput;
 import org.evochora.organism.instructions.*;
+import org.evochora.world.Symbol;
 import org.evochora.world.World;
 
-import java.lang.reflect.Field;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.function.BiFunction;
 
 public abstract class Instruction {
@@ -21,161 +24,202 @@ public abstract class Instruction {
     protected final Organism organism;
     protected final int fullOpcodeId;
 
+    public enum OperandSource { REGISTER, IMMEDIATE, STACK, VECTOR, LABEL }
+    public record Operand(Object value, int rawSourceId) {}
+
     private static final Map<Integer, Class<? extends Instruction>> REGISTERED_INSTRUCTIONS_BY_ID = new HashMap<>();
     private static final Map<String, Integer> NAME_TO_ID = new HashMap<>();
     private static final Map<Integer, String> ID_TO_NAME = new HashMap<>();
     private static final Map<Integer, Integer> ID_TO_LENGTH = new HashMap<>();
     private static final Map<Integer, BiFunction<Organism, World, Instruction>> REGISTERED_PLANNERS_BY_ID = new HashMap<>();
     private static final Map<Integer, AssemblerPlanner> REGISTERED_ASSEMBLERS_BY_ID = new HashMap<>();
+    private static final Map<Integer, List<OperandSource>> OPERAND_SOURCES = new HashMap<>();
     private static final Map<Integer, Map<Integer, ArgumentType>> ARGUMENT_TYPES_BY_ID = new HashMap<>();
+
+
+    protected static final int PR_BASE = 1000;
+    protected static final int FPR_BASE = 2000;
 
     public Instruction(Organism organism, int fullOpcodeId) {
         this.organism = organism;
         this.fullOpcodeId = fullOpcodeId;
     }
 
-    public Instruction(Organism organism) {
-        this.organism = organism;
-        this.fullOpcodeId = -1;
+    protected Object readOperand(int id) {
+        if (id >= FPR_BASE) return organism.getFpr(id - FPR_BASE);
+        if (id >= PR_BASE) return organism.getPr(id - PR_BASE);
+        return organism.getDr(id);
+    }
+
+    protected boolean writeOperand(int id, Object value) {
+        if (id >= FPR_BASE) return organism.setFpr(id - FPR_BASE, value);
+        if (id >= PR_BASE) return organism.setPr(id - PR_BASE, value);
+        return organism.setDr(id, value);
+    }
+
+    protected List<Operand> resolveOperands(World world) {
+        List<Operand> resolved = new ArrayList<>();
+        List<OperandSource> sources = OPERAND_SOURCES.get(fullOpcodeId);
+        if (sources == null) return resolved;
+
+        int[] currentIp = organism.getIpBeforeFetch();
+
+        try {
+            for (OperandSource source : sources) {
+                switch (source) {
+                    case STACK -> {
+                        Object val = organism.getDataStack().pop();
+                        resolved.add(new Operand(val, -1));
+                    }
+                    case REGISTER -> {
+                        Organism.FetchResult arg = organism.fetchArgument(currentIp, world);
+                        int regId = Symbol.fromInt(arg.value()).toScalarValue();
+                        resolved.add(new Operand(readOperand(regId), regId));
+                        currentIp = arg.nextIp();
+                    }
+                    case IMMEDIATE -> {
+                        Organism.FetchResult arg = organism.fetchArgument(currentIp, world);
+                        resolved.add(new Operand(arg.value(), -1));
+                        currentIp = arg.nextIp();
+                    }
+                    case VECTOR -> {
+                        int[] vec = new int[Config.WORLD_DIMENSIONS];
+                        for(int i=0; i<Config.WORLD_DIMENSIONS; i++) {
+                            Organism.FetchResult res = organism.fetchSignedArgument(currentIp, world);
+                            vec[i] = res.value();
+                            currentIp = res.nextIp();
+                        }
+                        resolved.add(new Operand(vec, -1));
+                    }
+                    case LABEL -> { // Identisch zu VECTOR für JMPI/CALL
+                        int[] delta = new int[Config.WORLD_DIMENSIONS];
+                        for(int i=0; i<Config.WORLD_DIMENSIONS; i++) {
+                            Organism.FetchResult res = organism.fetchSignedArgument(currentIp, world);
+                            delta[i] = res.value();
+                            currentIp = res.nextIp();
+                        }
+                        resolved.add(new Operand(delta, -1));
+                    }
+                }
+            }
+        } catch(NoSuchElementException e) {
+            organism.instructionFailed("Stack underflow resolving operands for " + getName());
+        }
+        return resolved;
+    }
+
+    public static Integer resolveRegToken(String token, Map<String, Integer> registerMap) {
+        String u = token.toUpperCase();
+        if (u.startsWith("%DR")) {
+            try { return Integer.parseInt(u.substring(3)); } catch (NumberFormatException ignore) {}
+        }
+        if (u.startsWith("%PR")) {
+            try { return PR_BASE + Integer.parseInt(u.substring(3)); } catch (NumberFormatException ignore) {}
+        }
+        if (u.startsWith("%FPR")) {
+            try { return FPR_BASE + Integer.parseInt(u.substring(4)); } catch (NumberFormatException ignore) {}
+        }
+        return registerMap.get(u);
     }
 
     public static void init() {
-        // --- Data & Memory ---
-        register(SetiInstruction.class, 1, "SETI");
-        register(SetrInstruction.class, 2, "SETR");
-        register(SetvInstruction.class, 3, "SETV");
-        register(PushInstruction.class, 22, "PUSH");
-        register(PopInstruction.class, 23, "POP");
-        register(PusiInstruction.class, 58, "PUSI");
+        // --- Arithmetik-Familie ---
+        registerFamily(ArithmeticInstruction.class, Map.of(4, "ADDR", 6, "SUBR", 40, "MULR", 42, "DIVR", 44, "MODR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ArithmeticInstruction.class, Map.of(30, "ADDI", 31, "SUBI", 41, "MULI", 43, "DIVI", 45, "MODI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(ArithmeticInstruction.class, Map.of(70, "ADDS", 71, "SUBS", 72, "MULS", 73, "DIVS", 74, "MODS"), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // --- Arithmetic & Logic ---
-        register(AddrInstruction.class, 4, "ADDR");
-        register(SubrInstruction.class, 6, "SUBR");
-        register(AddiInstruction.class, 30, "ADDI");
-        register(SubiInstruction.class, 31, "SUBI");
-        register(MulrInstruction.class, 40, "MULR");
-        register(MuliInstruction.class, 41, "MULI");
-        register(DivrInstruction.class, 42, "DIVR");
-        register(DiviInstruction.class, 43, "DIVI");
-        register(ModrInstruction.class, 44, "MODR");
-        register(ModiInstruction.class, 45, "MODI");
+        // --- Bitwise-Familie ---
+        registerFamily(BitwiseInstruction.class, Map.of(5, "NADR", 46, "ANDR", 48, "ORR", 50, "XORR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(BitwiseInstruction.class, Map.of(32, "NADI", 47, "ANDI", 49, "ORI", 51, "XORI", 53, "SHLI", 54, "SHRI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(BitwiseInstruction.class, Map.of(78, "NADS", 75, "ANDS", 76, "ORS", 77, "XORS", 80, "SHLS", 81, "SHRS"), List.of(OperandSource.STACK, OperandSource.STACK));
+        registerFamily(BitwiseInstruction.class, Map.of(52, "NOT"), List.of(OperandSource.REGISTER));
+        registerFamily(BitwiseInstruction.class, Map.of(79, "NOTS"), List.of(OperandSource.STACK));
 
-        // --- Bitwise Operations ---
-        register(NadrInstruction.class, 5, "NADR");
-        register(NadiInstruction.class, 32, "NADI");
-        register(AndrInstruction.class, 46, "ANDR");
-        register(AndiInstruction.class, 47, "ANDI");
-        register(OrrInstruction.class, 48, "ORR");
-        register(OriInstruction.class, 49, "ORI");
-        register(XorrInstruction.class, 50, "XORR");
-        register(XoriInstruction.class, 51, "XORI");
-        register(NotInstruction.class, 52, "NOT");
-        register(ShliInstruction.class, 53, "SHLI");
-        register(ShriInstruction.class, 54, "SHRI");
+        // --- Data-Familie ---
+        registerFamily(DataInstruction.class, Map.of(1, "SETI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(DataInstruction.class, Map.of(2, "SETR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(DataInstruction.class, Map.of(3, "SETV"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
+        registerFamily(DataInstruction.class, Map.of(22, "PUSH"), List.of(OperandSource.REGISTER));
+        registerFamily(DataInstruction.class, Map.of(23, "POP"), List.of(OperandSource.REGISTER));
+        registerFamily(DataInstruction.class, Map.of(58, "PUSI"), List.of(OperandSource.IMMEDIATE));
 
-        // --- Control Flow ---
-        register(JmprInstruction.class, 10, "JMPR");
-        register(JmpiInstruction.class, 20, "JMPI");
-        register(CallInstruction.class, 34, "CALL");
-        register(RetInstruction.class, 35, "RET");
+        // --- Stack-Familie ---
+        registerFamily(StackInstruction.class, Map.of(60, "DUP", 61, "SWAP", 62, "DROP", 63, "ROT"), List.of());
 
-        // --- Conditions ---
-        register(IfrInstruction.class, 7, "IFR");
-        register(IfrInstruction.class, 8, "LTR");
-        register(IfrInstruction.class, 9, "GTR");
-        register(IfiInstruction.class, 24, "IFI");
-        register(IfiInstruction.class, 25, "LTI");
-        register(IfiInstruction.class, 26, "GTI");
-        register(IftiInstruction.class, 29, "IFTI");
-        register(IftrInstruction.class, 33, "IFTR");
+        // --- Conditional-Familie ---
+        registerFamily(ConditionalInstruction.class, Map.of(7, "IFR", 8, "LTR", 9, "GTR", 33, "IFTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(24, "IFI", 25, "LTI", 26, "GTI", 29, "IFTI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(ConditionalInstruction.class, Map.of(85, "IFS", 86, "GTS", 87, "LTS", 88, "IFTS"), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // --- World & State ---
-        register(TurnInstruction.class, 11, "TURN");
-        register(SeekInstruction.class, 12, "SEEK");   // Register-vector
-        register(SyncInstruction.class, 13, "SYNC");
-        register(PeekInstruction.class, 14, "PEEK");
-        register(PokeInstruction.class, 15, "POKE");
-        register(ScanInstruction.class, 16, "SCAN");   // Register-vector
-        // Aliases for readability/back-compat in assembler
-        NAME_TO_ID.put("SCNR", NAME_TO_ID.get("SCAN")); // SCNR as alias for SCAN
+        // --- ControlFlow-Familie ---
+        registerFamily(ControlFlowInstruction.class, Map.of(20, "JMPI", 34, "CALL"), List.of(OperandSource.LABEL));
+        registerFamily(ControlFlowInstruction.class, Map.of(10, "JMPR"), List.of(OperandSource.REGISTER));
+        registerFamily(ControlFlowInstruction.class, Map.of(89, "JMPS"), List.of(OperandSource.STACK));
+        registerFamily(ControlFlowInstruction.class, Map.of(35, "RET"), List.of());
 
-        register(NrgInstruction.class, 17, "NRG");
-        register(ForkInstruction.class, 18, "FORK");
-        register(DiffInstruction.class, 19, "DIFF");
-        register(PosInstruction.class, 21, "POS");
-        register(RandInstruction.class, 55, "RAND");
-        register(PekiInstruction.class, 56, "PEKI");
-        register(PokiInstruction.class, 57, "POKI");
-        register(SekiInstruction.class, 59, "SEKI");   // SEEK immediate-vector
-        // New SCAN/SEEK variants
-        register(ScniInstruction.class, 82, "SCNI");   // SCAN immediate-vector
-        register(ScnsInstruction.class, 83, "SCNS");   // SCAN stack-vector (S-variant)
-        register(SeksInstruction.class, 84, "SEKS");   // SEEK stack-vector (S-variant)
+        // --- WorldInteraction-Familie ---
+        registerFamily(WorldInteractionInstruction.class, Map.of(14, "PEEK", 15, "POKE", 16, "SCAN", 12, "SEEK"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(WorldInteractionInstruction.class, Map.of(56, "PEKI", 57, "POKI", 82, "SCNI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
+        registerFamily(WorldInteractionInstruction.class, Map.of(59, "SEKI"), List.of(OperandSource.VECTOR));
+        registerFamily(WorldInteractionInstruction.class, Map.of(83, "SCNS", 84, "SEKS", 90, "PEKS"), List.of(OperandSource.STACK));
+        registerFamily(WorldInteractionInstruction.class, Map.of(91, "POKS"), List.of(OperandSource.STACK, OperandSource.STACK)); // POKS is special: value, vector
 
-        // --- Stack basic ops (DS only) ---
-        register(DupInstruction.class, 60, "DUP");
-        register(SwapInstruction.class, 61, "SWAP");
-        register(DropInstruction.class, 62, "DROP");
-        register(RotInstruction.class, 63, "ROT");
+        // --- State-Familie ---
+        registerFamily(StateInstruction.class, Map.of(11, "TURN", 17, "NRG", 19, "DIFF", 21, "POS", 55, "RAND"), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(13, "SYNC"), List.of());
+        registerFamily(StateInstruction.class, Map.of(18, "FORK"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
 
-        // --- S-variants (stack-based) arithmetic/bitwise/shift ---
-        register(AddsSInstruction.class, 70, "ADDS");
-        register(SubsSInstruction.class, 71, "SUBS");
-        register(MulsSInstruction.class, 72, "MULS");
-        register(DivsSInstruction.class, 73, "DIVS");
-        register(ModsSInstruction.class, 74, "MODS");
-
-        register(AndsSInstruction.class, 75, "ANDS");
-        register(OrsSInstruction.class, 76, "ORS");
-        register(XorsSInstruction.class, 77, "XORS");
-        register(NadsSInstruction.class, 78, "NADS");
-        register(NotsSInstruction.class, 79, "NOTS");
-
-        register(ShlsSInstruction.class, 80, "SHLS");
-        register(ShrsSInstruction.class, 81, "SHRS");
-
-        // --- Stack-based conditionals & jump ---
-        register(IfsSInstruction.class, 85, "IFS");
-        register(GtsSInstruction.class, 86, "GTS");
-        register(LtsSInstruction.class, 87, "LTS");
-        register(IftsSInstruction.class, 88, "IFTS");
-        register(JmpsInstruction.class, 89, "JMPS");
-
-        // --- World/Status (Stack) ---
-        register(PeksInstruction.class, 90, "PEKS");
-        register(PoksInstruction.class, 91, "POKS");
-
+        // --- NOP ---
         register(NopInstruction.class, 0, "NOP");
+    }
+
+    private static void registerFamily(Class<? extends Instruction> familyClass, Map<Integer, String> variants, List<OperandSource> sources) {
+        try {
+            Constructor<? extends Instruction> constructor = familyClass.getConstructor(Organism.class, int.class);
+            Method assembleMethod = familyClass.getMethod("assemble", String[].class, Map.class, Map.class, String.class);
+
+            for (Map.Entry<Integer, String> entry : variants.entrySet()) {
+                int id = entry.getKey();
+                String name = entry.getValue();
+                int fullId = id | Config.TYPE_CODE;
+
+                BiFunction<Organism, World, Instruction> planner = (org, world) -> {
+                    try {
+                        return constructor.newInstance(org, world.getSymbol(org.getIp()).toInt());
+                    } catch (Exception e) { throw new RuntimeException("Failed to plan instruction " + name, e); }
+                };
+
+                AssemblerPlanner assembler = (args, regMap, lblMap) -> {
+                    try {
+                        return (AssemblerOutput) assembleMethod.invoke(null, args, regMap, lblMap, name);
+                    } catch (Exception e) {
+                        if (e instanceof InvocationTargetException ite && ite.getTargetException() instanceof RuntimeException) throw (RuntimeException)ite.getTargetException();
+                        throw new RuntimeException("Failed to assemble " + name, e);
+                    }
+                };
+
+                int length = 1;
+                for(OperandSource s : sources) {
+                    if (s == OperandSource.REGISTER || s == OperandSource.IMMEDIATE) length++;
+                    if (s == OperandSource.VECTOR || s == OperandSource.LABEL) length += Config.WORLD_DIMENSIONS;
+                }
+
+                registerInstruction(familyClass, id, name, length, planner, assembler);
+                OPERAND_SOURCES.put(fullId, sources);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to register instruction family " + familyClass.getSimpleName(), e);
+        }
     }
 
     private static void register(Class<? extends Instruction> instructionClass, int id, String name) {
         try {
-            Field lengthField = instructionClass.getField("LENGTH");
-            int length = lengthField.getInt(null);
-
-            Method planMethod = instructionClass.getMethod("plan", Organism.class, World.class);
-            BiFunction<Organism, World, Instruction> planner = (org, world) -> {
-                try {
-                    return (Instruction) planMethod.invoke(null, org, world);
-                } catch (Exception e) { throw new RuntimeException(Messages.get("instruction.errorCallingPlanMethod", name), e.getCause()); }
-            };
-
-            Method assembleMethod = instructionClass.getMethod("assemble", String[].class, Map.class, Map.class);
-            AssemblerPlanner assembler = (args, regMap, lblMap) -> {
-                try {
-                    return (AssemblerOutput) assembleMethod.invoke(null, args, regMap, lblMap);
-                } catch (Exception e) {
-                    if (e instanceof InvocationTargetException ite && ite.getTargetException() instanceof IllegalArgumentException) {
-                        throw (IllegalArgumentException) ite.getTargetException();
-                    }
-                    throw new RuntimeException(Messages.get("instruction.errorCallingAssembleMethod", name), e);
-                }
-            };
-
+            int length = 1; // NOP
+            BiFunction<Organism, World, Instruction> planner = (org, world) -> new NopInstruction(org, 0);
+            AssemblerPlanner assembler = (args, regMap, lblMap) -> new AssemblerOutput.CodeSequence(List.of());
             registerInstruction(instructionClass, id, name, length, planner, assembler);
-
         } catch (Exception e) {
-            throw new RuntimeException(Messages.get("instruction.errorRegisteringInstruction", instructionClass.getSimpleName()), e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -183,18 +227,19 @@ public abstract class Instruction {
                                             BiFunction<Organism, World, Instruction> planner, AssemblerPlanner assembler) {
         String upperCaseName = name.toUpperCase();
         int fullId = id | Config.TYPE_CODE;
-        if (REGISTERED_INSTRUCTIONS_BY_ID.containsKey(fullId) && !instructionClass.equals(REGISTERED_INSTRUCTIONS_BY_ID.get(fullId))) {
-            throw new IllegalArgumentException(Messages.get("instruction.idAlreadyRegistered", id));
-        }
-        if (NAME_TO_ID.containsKey(upperCaseName) && !NAME_TO_ID.get(upperCaseName).equals(fullId)) {
-            throw new IllegalArgumentException(Messages.get("instruction.nameAlreadyRegistered", name));
-        }
         REGISTERED_INSTRUCTIONS_BY_ID.put(fullId, instructionClass);
         NAME_TO_ID.put(upperCaseName, fullId);
         ID_TO_NAME.put(fullId, name);
         ID_TO_LENGTH.put(fullId, length);
         REGISTERED_PLANNERS_BY_ID.put(fullId, planner);
         REGISTERED_ASSEMBLERS_BY_ID.put(fullId, assembler);
+    }
+
+    public abstract void execute(Simulation simulation);
+    public int getCost(Organism organism, World world, List<Integer> rawArguments) { return 1; }
+
+    public int getLength() {
+        return getInstructionLengthById(this.fullOpcodeId);
     }
 
     public final Organism getOrganism() {
@@ -205,29 +250,19 @@ public abstract class Instruction {
         return ID_TO_NAME.getOrDefault(this.fullOpcodeId, "UNKNOWN");
     }
 
-    public final int getLength() {
-        return ID_TO_LENGTH.getOrDefault(this.fullOpcodeId, 1);
-    }
-
-    public abstract void execute(Simulation simulation);
-    public int getCost(Organism organism, World world, List<Integer> rawArguments) { return 1; }
-
     public static String getInstructionNameById(int id) { return ID_TO_NAME.getOrDefault(id, "UNKNOWN"); }
     public static int getInstructionLengthById(int id) { return ID_TO_LENGTH.getOrDefault(id, 1); }
     public static Integer getInstructionIdByName(String name) { return NAME_TO_ID.get(name.toUpperCase()); }
     public static BiFunction<Organism, World, Instruction> getPlannerById(int id) { return REGISTERED_PLANNERS_BY_ID.get(id); }
     public static AssemblerPlanner getAssemblerById(int id) { return REGISTERED_ASSEMBLERS_BY_ID.get(id); }
-    protected static void registerArgumentTypes(int instructionId, Map<Integer, ArgumentType> types) { ARGUMENT_TYPES_BY_ID.put(instructionId | Config.TYPE_CODE, types); }
     public static ArgumentType getArgumentTypeFor(int opcodeFullId, int argIndex) { return ARGUMENT_TYPES_BY_ID.getOrDefault(opcodeFullId, Map.of()).getOrDefault(argIndex, ArgumentType.LITERAL); }
 
-    @FunctionalInterface
-    public interface AssemblerPlanner {
-        AssemblerOutput apply(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap);
-    }
+    @FunctionalInterface public interface AssemblerPlanner { AssemblerOutput apply(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap); }
 
     protected boolean executedInTick = false;
     public enum ConflictResolutionStatus { NOT_APPLICABLE, WON_EXECUTION, LOST_TARGET_OCCUPIED, LOST_TARGET_EMPTY, LOST_LOWER_ID_WON, LOST_OTHER_REASON }
     protected ConflictResolutionStatus conflictStatus = ConflictResolutionStatus.NOT_APPLICABLE;
+
     public boolean isExecutedInTick() { return executedInTick; }
     public void setExecutedInTick(boolean executedInTick) { this.executedInTick = executedInTick; }
     public ConflictResolutionStatus getConflictStatus() { return conflictStatus; }

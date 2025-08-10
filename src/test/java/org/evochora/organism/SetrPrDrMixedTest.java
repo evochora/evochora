@@ -4,7 +4,7 @@ import org.evochora.Config;
 import org.evochora.Simulation;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
-import org.evochora.organism.instructions.SetrInstruction;
+// KORRIGIERT: Veralteter Import entfernt
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,8 +16,6 @@ public class SetrPrDrMixedTest {
     private World world;
     private Simulation simulation;
     private Organism organism;
-
-    private static final int SETR_ID = 2 | Config.TYPE_CODE;
 
     @BeforeAll
     static void init() {
@@ -34,17 +32,26 @@ public class SetrPrDrMixedTest {
     private Object dataVal(int v) { return new Symbol(Config.TYPE_DATA, v).toInt(); }
     private Object vecVal(int x, int y) { return new int[]{x, y}; }
 
+    private void setupSetrInstruction(int destId, int srcId) {
+        int setrOpcode = Instruction.getInstructionIdByName("SETR");
+        world.setSymbol(new Symbol(Config.TYPE_CODE, setrOpcode), 0, 0);
+        world.setSymbol(new Symbol(Config.TYPE_DATA, destId), 1, 0);
+        world.setSymbol(new Symbol(Config.TYPE_DATA, srcId), 2, 0);
+    }
+
     @Test
     void setr_dr_to_pr_and_back_scalar() {
         // DR0 := DATA:7
         assertTrue(organism.setDr(0, dataVal(7)));
 
         // PR0 := DR0
-        Instruction i1 = new SetrInstruction(organism, 1000, 0, SETR_ID); // 1000 encodes PR0 as dest
+        setupSetrInstruction(1000, 0); // 1000 kodiert PR0 als Ziel
+        Instruction i1 = organism.planTick(world);
         i1.execute(simulation);
 
         // DR1 := PR0
-        Instruction i2 = new SetrInstruction(organism, 1, 1000, SETR_ID);
+        setupSetrInstruction(1, 1000); // 1000 kodiert PR0 als Quelle
+        Instruction i2 = organism.planTick(world);
         i2.execute(simulation);
 
         Object dr1 = organism.getDr(1);
@@ -58,11 +65,13 @@ public class SetrPrDrMixedTest {
         assertTrue(organism.setDr(2, vecVal(3, 4)));
 
         // PR1 := DR2
-        Instruction i1 = new SetrInstruction(organism, 1001, 2, SETR_ID); // PR1 dest
+        setupSetrInstruction(1001, 2); // 1001 kodiert PR1 als Ziel
+        Instruction i1 = organism.planTick(world);
         i1.execute(simulation);
 
         // DR3 := PR1
-        Instruction i2 = new SetrInstruction(organism, 3, 1001, SETR_ID);
+        setupSetrInstruction(3, 1001); // 1001 kodiert PR1 als Quelle
+        Instruction i2 = organism.planTick(world);
         i2.execute(simulation);
 
         Object dr3 = organism.getDr(3);
@@ -73,17 +82,20 @@ public class SetrPrDrMixedTest {
 
     @Test
     void setr_pr_to_pr_scalar() {
-        // Put a scalar into PR0 via DR move
+        // Lege einen Skalar in PR0 ab, indem wir ihn erst in DR0 legen und dann kopieren
         assertTrue(organism.setDr(0, dataVal(42)));
-        Instruction toPr0 = new SetrInstruction(organism, 1000, 0, SETR_ID);
+        setupSetrInstruction(1000, 0);
+        Instruction toPr0 = organism.planTick(world);
         toPr0.execute(simulation);
 
         // PR1 := PR0
-        Instruction prToPr = new SetrInstruction(organism, 1001, 1000, SETR_ID);
+        setupSetrInstruction(1001, 1000);
+        Instruction prToPr = organism.planTick(world);
         prToPr.execute(simulation);
 
-        // Move PR1 back to DR4 and assert
-        Instruction back = new SetrInstruction(organism, 4, 1001, SETR_ID);
+        // Kopiere PR1 zurück nach DR4 und überprüfe
+        setupSetrInstruction(4, 1001);
+        Instruction back = organism.planTick(world);
         back.execute(simulation);
 
         Object dr4 = organism.getDr(4);

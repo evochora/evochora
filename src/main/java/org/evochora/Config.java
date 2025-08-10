@@ -19,11 +19,12 @@ public final class Config {
     public static final boolean STRICT_TYPING = true;
 
     // Organism Settings
-    public static final int NUM_DATA_REGISTERS = 8; // Geändert von 16 auf 8
-    public static final int NUM_PROC_REGISTERS = 2; // Anzahl der PROC-lokalen Register (PRs)
-    public static final int DS_MAX_DEPTH = 1024; // Maximaltiefe des Daten-Stacks (DS)
-    public static final int RS_MAX_DEPTH = 1024; // Maximaltiefe des Return-Stacks (RS)
-    public static final int STACK_MAX_DEPTH = DS_MAX_DEPTH; // Back-compat Alias auf DS_MAX_DEPTH
+    public static final int NUM_DATA_REGISTERS = 8;
+    public static final int NUM_PROC_REGISTERS = 2;
+    public static final int NUM_FORMAL_PARAM_REGISTERS = 8; // NEU: Register für Prozedur-Parameter
+    public static final int DS_MAX_DEPTH = 1024;
+    public static final int RS_MAX_DEPTH = 1024;
+    public static final int STACK_MAX_DEPTH = DS_MAX_DEPTH;
 
     // Graphics Settings
     public static final int CELL_SIZE = 22;

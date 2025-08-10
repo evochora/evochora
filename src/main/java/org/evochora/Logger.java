@@ -45,7 +45,6 @@ public class Logger {
         return String.format(" [%s:%d] > %s", location.fileName(), location.lineNumber(), location.lineContent().strip());
     }
 
-    // Diese Methode bleibt unverändert, da der FooterController sie für die Anzeige der nächsten Anweisung verwendet
     public String getNextInstructionInfo(Organism organism) {
         if (organism.isDead()) {
             return "DEAD";
@@ -91,7 +90,6 @@ public class Logger {
             if (i < drs.size() - 1) logLine.append(", ");
         }
 
-        // PRs im gleichen Format wie DRs
         logLine.append(" | PRs: ");
         List<Object> prs = organism.getPrs();
         for (int i = 0; i < prs.size(); i++) {
@@ -101,11 +99,18 @@ public class Logger {
             if (i < prs.size() - 1) logLine.append(", ");
         }
 
-        // DS und RS im gleichen Format
+        logLine.append(" | FPRs: ");
+        List<Object> fprs = organism.getFprs();
+        for (int i = 0; i < fprs.size(); i++) {
+            Object fprVal = fprs.get(i);
+            String valStr = formatDrValue(fprVal);
+            logLine.append(String.format("%d=%s", i, valStr));
+            if (i < fprs.size() - 1) logLine.append(", ");
+        }
+
         logLine.append(" | DS: ").append(formatStack(organism, false, 0));
         logLine.append(" | RS: ").append(formatReturnStack(organism, false, 0));
 
-        // KORRIGIERT: Holt die Details der soeben ausgeführten Anweisung.
         DisassembledInstruction disassembled = AssemblyProgram.getDisassembledInstructionDetailsForLastTick(organism);
         String plannedInstructionInfo = "N/A";
         if (disassembled != null) {
@@ -166,7 +171,6 @@ public class Logger {
         return sb.toString();
     }
 
-    // Neues Pendant für RS
     public String formatReturnStack(Organism organism, boolean truncate, int limit) {
         Deque<Object> rs = organism.getReturnStack();
         if (rs.isEmpty()) {
@@ -203,7 +207,6 @@ public class Logger {
             Object regValue = organism.getDr(regId);
             String formattedValue = formatDrValue(regValue);
 
-            // Verwende den Alias aus dem Disassembler, falls vorhanden, sonst den generierten Namen
             if (regAlias != null && !regAlias.isEmpty()) {
                 return String.format("%s[%s]=%s", regAlias, regName, formattedValue);
             }

@@ -4,11 +4,7 @@ import org.evochora.Config;
 import org.evochora.Simulation;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
-import org.evochora.organism.instructions.AddsSInstruction;
-import org.evochora.organism.instructions.SubsSInstruction;
-import org.evochora.organism.instructions.AndsSInstruction;
-import org.evochora.organism.instructions.NotsSInstruction;
-import org.evochora.organism.instructions.ShlsSInstruction;
+import org.evochora.organism.instructions.BitwiseInstruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,7 +38,7 @@ public class SVariantsArithmeticTest {
         Deque<Object> ds = organism.getDataStack();
         ds.push(new Symbol(Config.TYPE_DATA, 3).toInt());
         ds.push(new Symbol(Config.TYPE_DATA, 4).toInt());
-        Instruction adds = AddsSInstruction.plan(organism, world);
+        Instruction adds = BitwiseInstruction.plan(organism, world);
         adds.execute(simulation);
         assertFalse(organism.isInstructionFailed());
         Object res = ds.pop();
@@ -57,7 +53,7 @@ public class SVariantsArithmeticTest {
         Deque<Object> ds = organism.getDataStack();
         ds.push(new Symbol(Config.TYPE_DATA, 10).toInt());
         ds.push(new Symbol(Config.TYPE_DATA, 4).toInt());
-        Instruction subs = SubsSInstruction.plan(organism, world);
+        Instruction subs = BitwiseInstruction.plan(organism, world);
         subs.execute(simulation);
         assertFalse(organism.isInstructionFailed());
         Object res = ds.pop();
@@ -71,7 +67,7 @@ public class SVariantsArithmeticTest {
         Deque<Object> ds = organism.getDataStack();
         ds.push(new Symbol(Config.TYPE_DATA, 0b1100).toInt());
         ds.push(new Symbol(Config.TYPE_DATA, 0b1010).toInt());
-        Instruction ands = AndsSInstruction.plan(organism, world);
+        Instruction ands = BitwiseInstruction.plan(organism, world);
         ands.execute(simulation);
         assertFalse(organism.isInstructionFailed());
         Object res = ds.pop();
@@ -84,7 +80,7 @@ public class SVariantsArithmeticTest {
         world.setSymbol(new Symbol(Config.TYPE_CODE, notsId), 0, 0);
         Deque<Object> ds = organism.getDataStack();
         ds.push(new Symbol(Config.TYPE_DATA, 0).toInt());
-        Instruction nots = NotsSInstruction.plan(organism, world);
+        Instruction nots = BitwiseInstruction.plan(organism, world);
         nots.execute(simulation);
         assertFalse(organism.isInstructionFailed());
         Object res = ds.pop();
@@ -99,7 +95,7 @@ public class SVariantsArithmeticTest {
         Deque<Object> ds = organism.getDataStack();
         ds.push(new Symbol(Config.TYPE_DATA, 2).toInt());   // count
         ds.push(new Symbol(Config.TYPE_DATA, 3).toInt());   // value
-        Instruction shls = ShlsSInstruction.plan(organism, world);
+        Instruction shls = BitwiseInstruction.plan(organism, world);
         shls.execute(simulation);
         assertFalse(organism.isInstructionFailed());
         Object res = ds.pop();

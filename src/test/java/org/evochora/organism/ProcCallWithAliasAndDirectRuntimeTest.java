@@ -64,8 +64,8 @@ public class ProcCallWithAliasAndDirectRuntimeTest {
         src.add(L(".DIR 1|0", 11));
         src.add(L(".REG %A1 1", 12));
         src.add(L("CALL LIB.CHILD.INC .WITH %A1", 13));
-        src.add(L(".REG %F0 0", 14));               // Alias for formal DR0
-        src.add(L("SETR %A1 %F0", 15));             // Explicit copy-back using alias
+        // KORRIGIERT: Der manuelle und nun falsche Copy-Back wurde entfernt.
+        // Der Assembler generiert den korrekten Copy-Back jetzt automatisch.
 
         Assembler asm = new Assembler();
         ProgramMetadata md = asm.assemble(src, "RT_DirectKernel", false);

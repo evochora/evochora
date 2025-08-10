@@ -2,6 +2,7 @@ package org.evochora.assembler;
 
 import org.evochora.Messages;
 import org.evochora.organism.Instruction;
+import org.evochora.Config;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -18,7 +19,7 @@ public class DefinitionExtractor {
 
     record RoutineDefinition(String name, List<String> parameters, List<String> body, String fileName) {}
     record MacroDefinition(String name, List<String> parameters, List<String> body, String fileName) {}
-    // Extended ProcMeta: keep existing components (exported, requires, fileName, lineNumber) and append new ones to preserve existing accessors like requires()
+    // ERWEITERT: ProcMeta speichert jetzt die Liste der formalen Parameter.
     record ProcMeta(boolean exported, List<String> requires, String fileName, int lineNumber,
                     List<String> formalParams, Map<String, Integer> pregAliases) {}
 
@@ -66,8 +67,6 @@ public class DefinitionExtractor {
                 blockStartLine = line;
 
                 if (directive.equals(".PROC")) {
-                    // Optional WITH formals: .PROC NAME WITH X [Y ...]
-                    // parts: [0]=.PROC, [1]=NAME, [2]=WITH?, [3...]=formals
                     if (parts.length >= 3 && parts[2].equalsIgnoreCase("WITH")) {
                         if (parts.length < 4) {
                             throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.directiveNeedsName", "FORMALS"), line.content());
@@ -81,7 +80,6 @@ public class DefinitionExtractor {
                         }
                     }
                 } else if (directive.equals(".ROUTINE")) {
-                    // Validate routine parameters don't collide with instruction names
                     for (int i = 2; i < parts.length; i++) {
                         String param = parts[i];
                         if (Instruction.getInstructionIdByName(param.toUpperCase()) != null) {
@@ -96,9 +94,7 @@ public class DefinitionExtractor {
 
                 if (currentBlock.equals(".MACRO") && directive.equals(".ENDM")) {
                     MacroDefinition def = new MacroDefinition(blockName, blockParams, blockBody, blockStartLine.originalFileName());
-                    // Store macro by its raw name
                     macroMap.put(blockName, def);
-                    // Also store by stripped name if it starts with '$' to support calls without '$'
                     if (blockName.startsWith("$")) {
                         String stripped = blockName.substring(1);
                         macroMap.put(stripped, def);
@@ -107,38 +103,30 @@ public class DefinitionExtractor {
                     String qualifiedName = prefix + "." + blockName;
                     routineMap.put(qualifiedName, new RoutineDefinition(qualifiedName, blockParams, blockBody, blockStartLine.originalFileName()));
                 } else if (currentBlock.equals(".PROC") && directive.equals(".ENDP")) {
-                    // Append implicit RET if none present
                     boolean hasRet = blockBody.stream()
                             .map(s -> s.split("#", 2)[0].strip())
                             .anyMatch(s -> s.equalsIgnoreCase("RET"));
                     if (!hasRet) {
                         blockBody.add("RET");
-                        // Warning: auto-RET appended
                         System.out.println(Messages.get("definitionExtractor.autoRetAppended",
                                 blockName, blockStartLine.originalFileName(), String.valueOf(blockStartLine.originalLineNumber())));
                     }
 
-                    // Emit the PROC body as code labeled with the given name, record extended meta
-                    String procLabel = blockName; // assume fully-qualified name is provided (LIB.NAME)
+                    String procLabel = blockName;
                     mainCode.add(new AnnotatedLine(procLabel + ":", blockStartLine.originalLineNumber(), blockStartLine.originalFileName()));
 
-                    // Build a simple rewrite map: formal -> %DR<i> (in declaration order)
-                    Map<String, String> formalToDr = new HashMap<>();
-                    for (int i = 0; i < currentProcFormals.size(); i++) {
-                        formalToDr.put(currentProcFormals.get(i), "%DR" + i);
-                    }
-
-                    // Emit PROC body lines unchanged; resolution of formals/.PREG happens during second pass
+                    // Der Body wird unverändert weitergegeben. Die Auflösung der Parameter geschieht im PassManager.
                     for (String bodyLine : blockBody) {
                         mainCode.add(new AnnotatedLine(bodyLine, blockStartLine.originalLineNumber(), blockStartLine.originalFileName()));
                     }
 
+                    // HIER PASSIERT DIE MAGIE: Wir speichern die ausgelesenen formalen Parameter im Metadaten-Objekt.
                     procMetaMap.put(procLabel, new ProcMeta(
                             currentProcExported,
                             new ArrayList<>(currentProcRequires),
                             blockStartLine.originalFileName(),
                             blockStartLine.originalLineNumber(),
-                            new ArrayList<>(currentProcFormals),
+                            new ArrayList<>(currentProcFormals), // WICHTIG: formalParams werden hier gespeichert
                             new HashMap<>(currentPregAliases)
                     ));
                 } else {
@@ -148,16 +136,12 @@ public class DefinitionExtractor {
                 blockBody = new ArrayList<>();
             } else {
                 if (currentBlock == null) {
-                    // Outside of any definition block
                     if (directive.equals(".PREG")) {
-                        // .PREG is only valid inside a .PROC block
                         throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.pregInvalidContext"), line.content());
                     }
                     mainCode.add(line);
                 } else {
-                    // Inside a definition block
                     if (currentBlock.equals(".PROC")) {
-                        // Handle PROC-local directives, not emitted as code
                         if (directive.equals(".EXPORT")) {
                             currentProcExported = true;
                         } else if (directive.equals(".REQUIRE")) {
@@ -165,26 +149,20 @@ public class DefinitionExtractor {
                                 currentProcRequires.add(parts[1].toUpperCase());
                             }
                         } else if (directive.equals(".PREG")) {
-                            // .PREG %NAME 0|1
-                            if (parts.length != 3) {
-                                throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.pregInvalidSyntax"), line.content());
-                            }
+                            if (parts.length != 3) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.pregInvalidSyntax"), line.content());
                             String alias = parts[1].toUpperCase();
-                            if (!alias.startsWith("%")) {
-                                throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.pregNameMustStartPercent", alias), line.content());
-                            }
+                            if (!alias.startsWith("%")) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.pregNameMustStartPercent", alias), line.content());
                             int index;
                             try {
                                 index = Integer.parseInt(parts[2]);
                             } catch (NumberFormatException nfe) {
                                 throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.pregInvalidIndex", parts[2]), line.content());
                             }
-                            if (index != 0 && index != 1) {
+                            if (index < 0 || index >= Config.NUM_PROC_REGISTERS) {
                                 throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.pregInvalidIndex", parts[2]), line.content());
                             }
                             currentPregAliases.put(alias, index);
                         } else {
-                            // Not a PROC-local directive: treat as code
                             blockBody.add(line.content());
                         }
                     } else {
