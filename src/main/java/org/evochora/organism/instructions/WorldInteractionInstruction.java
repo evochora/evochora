@@ -29,29 +29,26 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
             List<Operand> operands = resolveOperands(simulation.getWorld());
             String opName = getName();
             World world = simulation.getWorld();
-            Object valueToWrite = null;
+            Object valueToWrite;
             int[] vector;
-            int targetReg = -1;
 
-            if (opName.endsWith("S")) {
-                vector = (int[]) operands.get(0).value();
-                if (opName.equals("POKS")) {
-                    valueToWrite = operands.get(1).value();
-                }
-            } else {
-                targetReg = operands.get(0).rawSourceId();
+            if ("POKS".equals(opName)) {
+                Object value = operands.get(0).value();
                 vector = (int[]) operands.get(1).value();
-                if (opName.startsWith("POKE")) {
-                    valueToWrite = readOperand(targetReg);
-                }
+                valueToWrite = value;
+            } else if ("POKE".equals(opName) || "POKI".equals(opName)) {
+                int targetReg = operands.get(0).rawSourceId();
+                vector = (int[]) operands.get(1).value();
+                valueToWrite = readOperand(targetReg);
+            } else {
+                organism.instructionFailed("Unknown world interaction: " + opName);
+                return;
             }
 
             this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, world);
 
             switch (opName) {
-                case "PEEK", "PEKI", "PEKS" -> handlePeek(world, targetReg);
                 case "POKE", "POKI", "POKS" -> handlePoke(world, valueToWrite);
-                case "SCAN", "SCNI", "SCNS" -> handleScan(world, targetReg);
                 default -> organism.instructionFailed("Unknown world interaction: " + opName);
             }
 
@@ -120,13 +117,13 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap, String instructionName) {
         String name = instructionName.toUpperCase();
-        if (name.endsWith("S")) {
-            if (args.length != 0) throw new IllegalArgumentException(name + " expects no arguments.");
+        if (name.equals("POKS")) {
+            if (args.length != 0) throw new IllegalArgumentException("POKS expects no arguments.");
             return new AssemblerOutput.CodeSequence(List.of());
-        } else if (name.endsWith("I")) {
-            if (args.length != 2) throw new IllegalArgumentException(name + " expects a register and a vector.");
+        } else if (name.equals("POKI")) {
+            if (args.length != 2) throw new IllegalArgumentException("POKI expects a register and a vector.");
             Integer reg = resolveRegToken(args[0], registerMap);
-            if (reg == null) throw new IllegalArgumentException("Invalid register for " + name);
+            if (reg == null) throw new IllegalArgumentException("Invalid register for POKI");
             String[] comps = args[1].split("\\|");
             if (comps.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("Invalid vector dimensionality.");
             List<Integer> machineCode = new ArrayList<>();
@@ -135,13 +132,17 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
                 machineCode.add(new Symbol(Config.TYPE_DATA, Integer.parseInt(c.strip())).toInt());
             }
             return new AssemblerOutput.CodeSequence(machineCode);
-        } else {
-            if (args.length != 2) throw new IllegalArgumentException(name + " expects two register arguments.");
+        } else if (name.equals("POKE")) {
+            if (args.length != 2) throw new IllegalArgumentException("POKE expects two register arguments.");
             Integer reg1 = resolveRegToken(args[0], registerMap);
             Integer reg2 = resolveRegToken(args[1], registerMap);
-            if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for " + name);
-            return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg1).toInt(), new Symbol(Config.TYPE_DATA, reg2).toInt()));
+            if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for POKE");
+            return new AssemblerOutput.CodeSequence(List.of(
+                    new Symbol(Config.TYPE_DATA, reg1).toInt(),
+                    new Symbol(Config.TYPE_DATA, reg2).toInt()
+            ));
         }
+        throw new IllegalArgumentException("Unknown world interaction instruction for assembler: " + name);
     }
 
     @Override
@@ -152,14 +153,15 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
                 List<Operand> operands = resolveOperands(organism.getSimulation().getWorld());
                 if (operands.isEmpty()) return List.of();
                 Object vectorOperandValue = null;
-                if (getName().endsWith("S")) {
-                    if (!operands.isEmpty()) vectorOperandValue = operands.get(0).value();
+                String op = getName();
+                if ("POKS".equals(op)) {
+                    if (operands.size() > 1) vectorOperandValue = operands.get(1).value(); // value, then vector
                 } else if (operands.size() > 1) {
                     vectorOperandValue = operands.get(1).value();
                 }
 
                 if (vectorOperandValue instanceof int[]) {
-                    this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), (int[])vectorOperandValue, organism.getSimulation().getWorld());
+                    this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), (int[]) vectorOperandValue, organism.getSimulation().getWorld());
                 }
             } catch (Exception e) {
                 return List.of();

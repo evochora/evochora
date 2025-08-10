@@ -158,17 +158,18 @@ public abstract class Instruction {
         registerFamily(ControlFlowInstruction.class, Map.of(35, "RET"), List.of());
 
         // --- WorldInteraction-Familie ---
-        registerFamily(WorldInteractionInstruction.class, Map.of(14, "PEEK", 15, "POKE", 16, "SCAN"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(WorldInteractionInstruction.class, Map.of(56, "PEKI", 57, "POKI", 82, "SCNI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
-        registerFamily(WorldInteractionInstruction.class, Map.of(83, "SCNS", 90, "PEKS"), List.of(OperandSource.STACK));
+        registerFamily(WorldInteractionInstruction.class, Map.of(15, "POKE"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(WorldInteractionInstruction.class, Map.of(57, "POKI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
         registerFamily(WorldInteractionInstruction.class, Map.of(91, "POKS"), List.of(OperandSource.STACK, OperandSource.STACK)); // POKS is special: value, vector
 
         // --- State-Familie ---
-        registerFamily(StateInstruction.class, Map.of(11, "TURN", 17, "NRG", 19, "DIFF", 21, "POS", 55, "RAND", 12, "SEEK"), List.of(OperandSource.REGISTER));
-        registerFamily(StateInstruction.class, Map.of(13, "SYNC"), List.of());
         registerFamily(StateInstruction.class, Map.of(18, "FORK"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(14, "PEEK", 16, "SCAN"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(56, "PEKI", 82, "SCNI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
+        registerFamily(StateInstruction.class, Map.of(11, "TURN", 17, "NRG", 19, "DIFF", 21, "POS", 55, "RAND", 12, "SEEK"), List.of(OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(59, "SEKI"), List.of(OperandSource.VECTOR));
-        registerFamily(StateInstruction.class, Map.of(84, "SEKS"), List.of(OperandSource.STACK));
+        registerFamily(StateInstruction.class, Map.of(84, "SEKS", 83, "SCNS", 90, "PEKS"), List.of(OperandSource.STACK));
+        registerFamily(StateInstruction.class, Map.of(13, "SYNC"), List.of());
 
         // --- NOP ---
         register(NopInstruction.class, 0, "NOP");

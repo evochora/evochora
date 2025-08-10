@@ -132,7 +132,7 @@ TEST_DIFF:
     SYNC
     SEEK %VEC_RIGHT
     DIFF %DR_A
-    SETV %DR_B -1|0
+    SETV %DR_B -3|0
     $ASSERT_REG %DR_A %DR_B
     JMPI TEST_POS
 
@@ -142,7 +142,7 @@ TEST_POS:
     SYNC
     NOP
     POS %DR_A
-    SETV %DR_B 4|21
+    SETV %DR_B 5|19
     $ASSERT_REG %DR_A %DR_B
     JMPI TEST_NRG
 

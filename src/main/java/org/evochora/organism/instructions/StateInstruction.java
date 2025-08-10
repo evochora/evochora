@@ -113,6 +113,51 @@ public class StateInstruction extends Instruction {
                     }
                     break;
                 }
+                case "PEEK", "PEKI", "PEKS": {
+                    int targetReg;
+                    int[] vector;
+                    if (opName.endsWith("S")) {
+                        if (operands.size() != 1) { organism.instructionFailed("Invalid operands for " + opName); return; }
+                        vector = (int[]) operands.get(0).value();
+                        targetReg = -1;
+                    } else {
+                        if (operands.size() != 2) { organism.instructionFailed("Invalid operands for " + opName); return; }
+                        targetReg = operands.get(0).rawSourceId();
+                        vector = (int[]) operands.get(1).value();
+                    }
+                    World world = simulation.getWorld();
+                    int[] target = organism.getTargetCoordinate(organism.getDp(), vector, world);
+                    Symbol s = world.getSymbol(target);
+                    Object valueToStore = s.toInt();
+                    if (opName.endsWith("S")) {
+                        organism.getDataStack().push(valueToStore);
+                    } else {
+                        writeOperand(targetReg, valueToStore);
+                    }
+                    break;
+                }
+                case "SCAN", "SCNI", "SCNS": {
+                    int targetReg;
+                    int[] vector;
+                    if (opName.endsWith("S")) {
+                        if (operands.size() != 1) { organism.instructionFailed("Invalid operands for " + opName); return; }
+                        vector = (int[]) operands.get(0).value();
+                        targetReg = -1;
+                    } else {
+                        if (operands.size() != 2) { organism.instructionFailed("Invalid operands for " + opName); return; }
+                        targetReg = operands.get(0).rawSourceId();
+                        vector = (int[]) operands.get(1).value();
+                    }
+                    World world = simulation.getWorld();
+                    int[] target = organism.getTargetCoordinate(organism.getDp(), vector, world);
+                    Symbol s = world.getSymbol(target);
+                    if (opName.endsWith("S")) {
+                        organism.getDataStack().push(s.toInt());
+                    } else {
+                        writeOperand(targetReg, s.toInt());
+                    }
+                    break;
+                }
                 default:
                     organism.instructionFailed("Unknown state instruction: " + opName);
             }
@@ -175,6 +220,37 @@ public class StateInstruction extends Instruction {
             }
             case "SEKS": {
                 if (args.length != 0) throw new IllegalArgumentException("SEKS expects no arguments.");
+                return new AssemblerOutput.CodeSequence(List.of());
+            }
+            // PEEK/SCAN gehören zur StateInstruction
+            case "PEEK":
+            case "SCAN": {
+                if (args.length != 2) throw new IllegalArgumentException(name + " expects two register arguments.");
+                Integer reg1 = resolveRegToken(args[0], registerMap);
+                Integer reg2 = resolveRegToken(args[1], registerMap);
+                if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for " + name);
+                return new AssemblerOutput.CodeSequence(List.of(
+                        new Symbol(Config.TYPE_DATA, reg1).toInt(),
+                        new Symbol(Config.TYPE_DATA, reg2).toInt()
+                ));
+            }
+            case "PEKI":
+            case "SCNI": {
+                if (args.length != 2) throw new IllegalArgumentException(name + " expects a register and a vector.");
+                Integer reg = resolveRegToken(args[0], registerMap);
+                if (reg == null) throw new IllegalArgumentException("Invalid register for " + name);
+                String[] comps = args[1].split("\\|");
+                if (comps.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("Invalid vector dimensionality.");
+                List<Integer> machineCode = new ArrayList<>();
+                machineCode.add(new Symbol(Config.TYPE_DATA, reg).toInt());
+                for (String c : comps) {
+                    machineCode.add(new Symbol(Config.TYPE_DATA, Integer.parseInt(c.strip())).toInt());
+                }
+                return new AssemblerOutput.CodeSequence(machineCode);
+            }
+            case "PEKS":
+            case "SCNS": {
+                if (args.length != 0) throw new IllegalArgumentException(name + " expects no arguments.");
                 return new AssemblerOutput.CodeSequence(List.of());
             }
         }
