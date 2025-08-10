@@ -148,7 +148,10 @@ public class CodeExpander {
         for (String bodyLine : macro.body()) {
             String expandedLine = bodyLine;
             for (int j = 0; j < args.length; j++) {
-                expandedLine = expandedLine.replace(macro.parameters().get(j), args[j]);
+                String param = macro.parameters().get(j);
+                String arg = args[j];
+                // KORRIGIERT: Verwenden Sie Wortgrenzen, um eine versehentliche Ersetzung von Teilstrings zu vermeiden.
+                expandedLine = expandedLine.replaceAll("\\b" + Pattern.quote(param) + "\\b", Matcher.quoteReplacement(arg));
             }
             expandedLine = expandedLine.replace("@@", prefix);
             expanded.add(new AnnotatedLine(expandedLine, originalLine.originalLineNumber(), macro.fileName()));

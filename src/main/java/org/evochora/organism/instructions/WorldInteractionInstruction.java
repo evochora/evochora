@@ -40,9 +40,9 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
                 if (opName.equals("POKS")) {
                     valueToWrite = operands.get(1).value();
                 }
-            } else if (opName.equals("SEEK")) { // Register-Variante von SEEK hat nur einen Vektor-Operand
+            } else if (opName.equals("SEKI") || opName.equals("SEEK")) {
                 vector = (int[]) operands.get(0).value();
-            } else { // Register- und Immediate-Varianten (mit Ziel-/Quell-Register)
+            } else { // Register- und Immediate-Varianten
                 targetReg = operands.get(0).rawSourceId();
                 vector = (int[]) operands.get(1).value();
                 if (opName.startsWith("POKE")) {
@@ -161,18 +161,11 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
             }
             return new AssemblerOutput.CodeSequence(machineCode);
         } else { // PEEK, POKE, SCAN, SEEK
-            if (name.equals("SEEK")) {
-                if (args.length != 1) throw new IllegalArgumentException("SEEK expects 1 vector register argument.");
-                Integer vecReg = resolveRegToken(args[0], registerMap);
-                if (vecReg == null) throw new IllegalArgumentException("Invalid register for SEEK");
-                return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, vecReg).toInt()));
-            } else {
-                if (args.length != 2) throw new IllegalArgumentException(name + " expects a register and a vector register.");
-                Integer reg1 = resolveRegToken(args[0], registerMap);
-                Integer reg2 = resolveRegToken(args[1], registerMap);
-                if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for " + name);
-                return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg1).toInt(), new Symbol(Config.TYPE_DATA, reg2).toInt()));
-            }
+            if (args.length != 2) throw new IllegalArgumentException(name + " expects two register arguments.");
+            Integer reg1 = resolveRegToken(args[0], registerMap);
+            Integer reg2 = resolveRegToken(args[1], registerMap);
+            if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for " + name);
+            return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg1).toInt(), new Symbol(Config.TYPE_DATA, reg2).toInt()));
         }
     }
 

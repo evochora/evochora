@@ -4,6 +4,7 @@ import org.evochora.Config;
 import org.evochora.Simulation;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
+import org.evochora.organism.instructions.ArithmeticInstruction;
 import org.evochora.organism.instructions.BitwiseInstruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,7 +39,7 @@ public class SVariantsArithmeticTest {
         Deque<Object> ds = organism.getDataStack();
         ds.push(new Symbol(Config.TYPE_DATA, 3).toInt());
         ds.push(new Symbol(Config.TYPE_DATA, 4).toInt());
-        Instruction adds = BitwiseInstruction.plan(organism, world);
+        Instruction adds = ArithmeticInstruction.plan(organism, world);
         adds.execute(simulation);
         assertFalse(organism.isInstructionFailed());
         Object res = ds.pop();
@@ -51,9 +52,9 @@ public class SVariantsArithmeticTest {
         int subsId = Instruction.getInstructionIdByName("SUBS");
         world.setSymbol(new Symbol(Config.TYPE_CODE, subsId), 0, 0);
         Deque<Object> ds = organism.getDataStack();
-        ds.push(new Symbol(Config.TYPE_DATA, 10).toInt());
         ds.push(new Symbol(Config.TYPE_DATA, 4).toInt());
-        Instruction subs = BitwiseInstruction.plan(organism, world);
+        ds.push(new Symbol(Config.TYPE_DATA, 10).toInt());
+        Instruction subs = ArithmeticInstruction.plan(organism, world);
         subs.execute(simulation);
         assertFalse(organism.isInstructionFailed());
         Object res = ds.pop();

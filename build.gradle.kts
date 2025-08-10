@@ -24,6 +24,10 @@ tasks.test {
     useJUnitPlatform()
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     finalizedBy(tasks.jacocoTestReport)
+    testLogging {
+        events("passed", "skipped", "failed")
+        showStandardStreams = true
+    }
 }
 
 tasks.jacocoTestReport {

@@ -125,7 +125,7 @@ public class InstructionTestSuite {
         world.setSymbol(new Symbol(Config.TYPE_DATA, 1), 7, 5);
         simulation.tick();
         Assertions.assertTrue(organism.isInstructionFailed());
-        Assertions.assertTrue(organism.getFailureReason().contains("Division durch Null"));
+        Assertions.assertTrue(organism.getFailureReason().contains("Division by zero."));
     }
 
     @Test
