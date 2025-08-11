@@ -1,7 +1,6 @@
 package org.evochora.organism;
 
 import org.evochora.Config;
-import org.evochora.Messages;
 import org.evochora.Simulation;
 import org.evochora.assembler.ArgumentType;
 import org.evochora.assembler.AssemblerOutput;
@@ -14,6 +13,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -33,7 +33,7 @@ public abstract class Instruction {
     private static final Map<Integer, Integer> ID_TO_LENGTH = new HashMap<>();
     private static final Map<Integer, BiFunction<Organism, World, Instruction>> REGISTERED_PLANNERS_BY_ID = new HashMap<>();
     private static final Map<Integer, AssemblerPlanner> REGISTERED_ASSEMBLERS_BY_ID = new HashMap<>();
-    private static final Map<Integer, List<OperandSource>> OPERAND_SOURCES = new HashMap<>();
+    protected static final Map<Integer, List<OperandSource>> OPERAND_SOURCES = new HashMap<>();
     private static final Map<Integer, Map<Integer, ArgumentType>> ARGUMENT_TYPES_BY_ID = new HashMap<>();
 
 
@@ -67,22 +67,24 @@ public abstract class Instruction {
         try {
             for (OperandSource source : sources) {
                 switch (source) {
-                    case STACK -> {
+                    case STACK:
                         Object val = organism.getDataStack().pop();
                         resolved.add(new Operand(val, -1));
-                    }
-                    case REGISTER -> {
+                        break;
+                    case REGISTER: {
                         Organism.FetchResult arg = organism.fetchArgument(currentIp, world);
                         int regId = Symbol.fromInt(arg.value()).toScalarValue();
                         resolved.add(new Operand(readOperand(regId), regId));
                         currentIp = arg.nextIp();
+                        break;
                     }
-                    case IMMEDIATE -> {
+                    case IMMEDIATE: {
                         Organism.FetchResult arg = organism.fetchArgument(currentIp, world);
                         resolved.add(new Operand(arg.value(), -1));
                         currentIp = arg.nextIp();
+                        break;
                     }
-                    case VECTOR -> {
+                    case VECTOR: {
                         int[] vec = new int[Config.WORLD_DIMENSIONS];
                         for(int i=0; i<Config.WORLD_DIMENSIONS; i++) {
                             Organism.FetchResult res = organism.fetchSignedArgument(currentIp, world);
@@ -90,8 +92,9 @@ public abstract class Instruction {
                             currentIp = res.nextIp();
                         }
                         resolved.add(new Operand(vec, -1));
+                        break;
                     }
-                    case LABEL -> { // Identisch zu VECTOR für JMPI/CALL
+                    case LABEL: {
                         int[] delta = new int[Config.WORLD_DIMENSIONS];
                         for(int i=0; i<Config.WORLD_DIMENSIONS; i++) {
                             Organism.FetchResult res = organism.fetchSignedArgument(currentIp, world);
@@ -99,6 +102,7 @@ public abstract class Instruction {
                             currentIp = res.nextIp();
                         }
                         resolved.add(new Operand(delta, -1));
+                        break;
                     }
                 }
             }
@@ -157,18 +161,22 @@ public abstract class Instruction {
         registerFamily(ControlFlowInstruction.class, Map.of(89, "JMPS"), List.of(OperandSource.STACK));
         registerFamily(ControlFlowInstruction.class, Map.of(35, "RET"), List.of());
 
-        // --- WorldInteraction-Familie ---
-        registerFamily(WorldInteractionInstruction.class, Map.of(15, "POKE"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(WorldInteractionInstruction.class, Map.of(57, "POKI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
-        registerFamily(WorldInteractionInstruction.class, Map.of(91, "POKS"), List.of(OperandSource.STACK, OperandSource.STACK)); // POKS is special: value, vector
+        // --- KORRIGIERTE REGISTRIERUNG ---
+        // WorldInteraction (POKE & PEEK)
+        registerFamily(WorldInteractionInstruction.class, Map.of(15, "POKE", 14, "PEEK"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(WorldInteractionInstruction.class, Map.of(57, "POKI", 56, "PEKI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
+        registerFamily(WorldInteractionInstruction.class, Map.of(91, "POKS"), List.of(OperandSource.STACK, OperandSource.STACK)); // POKS braucht 2
+        registerFamily(WorldInteractionInstruction.class, Map.of(90, "PEKS"), List.of(OperandSource.STACK)); // PEKS braucht 1
 
-        // --- State-Familie ---
-        registerFamily(StateInstruction.class, Map.of(18, "FORK"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(StateInstruction.class, Map.of(14, "PEEK", 16, "SCAN"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(StateInstruction.class, Map.of(56, "PEKI", 82, "SCNI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
-        registerFamily(StateInstruction.class, Map.of(11, "TURN", 17, "NRG", 19, "DIFF", 21, "POS", 55, "RAND", 12, "SEEK"), List.of(OperandSource.REGISTER));
+        // State (SCAN, SEEK & Rest)
+        registerFamily(StateInstruction.class, Map.of(16, "SCAN"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(82, "SCNI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
+        registerFamily(StateInstruction.class, Map.of(83, "SCNS"), List.of(OperandSource.STACK));
+        registerFamily(StateInstruction.class, Map.of(12, "SEEK"), List.of(OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(59, "SEKI"), List.of(OperandSource.VECTOR));
-        registerFamily(StateInstruction.class, Map.of(84, "SEKS", 83, "SCNS", 90, "PEKS"), List.of(OperandSource.STACK));
+        registerFamily(StateInstruction.class, Map.of(84, "SEKS"), List.of(OperandSource.STACK));
+        registerFamily(StateInstruction.class, Map.of(11, "TURN", 17, "NRG", 19, "DIFF", 21, "POS", 55, "RAND"), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(18, "FORK"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(13, "SYNC", 92, "NRGS"), List.of());
 
         // --- NOP ---

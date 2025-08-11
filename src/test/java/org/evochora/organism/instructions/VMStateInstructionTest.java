@@ -42,7 +42,6 @@ public class VMStateInstructionTest {
         }
     }
 
-    // Helper: Instruktion mit Register + Vektor-Argument (z. B. PEKI, SCNI)
     private void placeInstructionWithVector(String name, int reg, int[] vector) {
         int opcode = Instruction.getInstructionIdByName(name);
         world.setSymbol(new Symbol(Config.TYPE_CODE, opcode), org.getIp());
@@ -55,7 +54,6 @@ public class VMStateInstructionTest {
         }
     }
 
-    // Helper: Instruktion mit nur Vektor-Argument (z. B. SEKI)
     private void placeInstructionWithVectorOnly(String name, int[] vector) {
         int opcode = Instruction.getInstructionIdByName(name);
         world.setSymbol(new Symbol(Config.TYPE_CODE, opcode), org.getIp());
@@ -102,7 +100,6 @@ public class VMStateInstructionTest {
 
     @Test
     void testDiff() {
-        // dp = ip -> Delta sollte [0,0] sein
         org.setDp(org.getIp());
         placeInstruction("DIFF", 0);
         sim.tick();
@@ -113,12 +110,11 @@ public class VMStateInstructionTest {
     void testPos() {
         placeInstruction("POS", 0);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new int[]{0,0}); // Relative to initial position
+        assertThat(org.getDr(0)).isEqualTo(new int[]{0,0});
     }
 
     @Test
     void testRand() {
-        // Obergrenze 10
         org.setDr(0, new Symbol(Config.TYPE_DATA, 10).toInt());
         placeInstruction("RAND", 0);
         sim.tick();
@@ -128,7 +124,6 @@ public class VMStateInstructionTest {
 
     @Test
     void testSeek() {
-        // dp als Ausgangspunkt setzen
         org.setDp(org.getIp());
         int[] vec = new int[]{0, 1};
         org.setDr(0, vec);
@@ -160,52 +155,6 @@ public class VMStateInstructionTest {
     }
 
     @Test
-    void testPeek() {
-        // Ziel vorbereiten
-        org.setDp(org.getIp());
-        int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-        int payload = new Symbol(Config.TYPE_DATA, 7).toInt();
-        world.setSymbol(Symbol.fromInt(payload), target);
-
-        org.setDr(1, vec); // Vektor in Reg1
-        placeInstruction("PEEK", 0, 1);
-        sim.tick();
-
-        assertThat(org.getDr(0)).isEqualTo(payload);
-        // Zelle wurde geleert (optional nicht geprüft)
-    }
-
-    @Test
-    void testPeki() {
-        org.setDp(org.getIp());
-        int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-        int payload = new Symbol(Config.TYPE_DATA, 11).toInt();
-        world.setSymbol(Symbol.fromInt(payload), target);
-
-        placeInstructionWithVector("PEKI", 0, vec);
-        sim.tick();
-
-        assertThat(org.getDr(0)).isEqualTo(payload);
-    }
-
-    @Test
-    void testPeks() {
-        org.setDp(org.getIp());
-        int[] vec = new int[]{-1, 0};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-        int payload = new Symbol(Config.TYPE_DATA, 9).toInt();
-        world.setSymbol(Symbol.fromInt(payload), target);
-
-        org.getDataStack().push(vec);
-        placeInstruction("PEKS");
-        sim.tick();
-
-        assertThat(org.getDataStack().pop()).isEqualTo(payload);
-    }
-
-    @Test
     void testScan() {
         org.setDp(org.getIp());
         int[] vec = new int[]{0, 1};
@@ -218,7 +167,6 @@ public class VMStateInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(payload);
-        // Zelle bleibt unverändert
         assertThat(world.getSymbol(target).toInt()).isEqualTo(payload);
     }
 

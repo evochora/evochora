@@ -118,6 +118,59 @@ public class AssemblerWorldInteractionInstructionTest {
     }
 
     @Test
+    void testPeek() {
+        Organism org = Organism.create(sim, new int[]{0,0}, 2000, sim.getLogger());
+        org.setDp(org.getIp());
+        int[] vec = new int[]{0, 1};
+        int[] target = new int[]{0, 1};
+        int payload = new Symbol(Config.TYPE_DATA, 7).toInt();
+        world.setSymbol(Symbol.fromInt(payload), target);
+
+        org.setDr(1, vec);
+        List<String> code = List.of("PEEK %DR0 %DR1");
+        Organism res = runAssembly(code, org, 1);
+
+        assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
+        assertThat(res.getDr(0)).isEqualTo(payload);
+        // target cell should be cleared
+        assertThat(world.getSymbol(target).isEmpty()).isTrue();
+    }
+
+    @Test
+    void testPeki() {
+        Organism org = Organism.create(sim, new int[]{0,0}, 2000, sim.getLogger());
+        org.setDp(org.getIp());
+        int[] target = new int[]{0, 1};
+        int payload = new Symbol(Config.TYPE_DATA, 11).toInt();
+        world.setSymbol(Symbol.fromInt(payload), target);
+
+        List<String> code = List.of("PEKI %DR0 0|1");
+        Organism res = runAssembly(code, org, 1);
+
+        assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
+        assertThat(res.getDr(0)).isEqualTo(payload);
+        assertThat(world.getSymbol(target).isEmpty()).isTrue();
+    }
+
+    @Test
+    void testPeks() {
+        Organism org = Organism.create(sim, new int[]{0,0}, 2000, sim.getLogger());
+        org.setDp(org.getIp());
+        int[] vec = new int[]{-1, 0};
+        int[] target = new int[]{-1, 0};
+        int payload = new Symbol(Config.TYPE_DATA, 9).toInt();
+        world.setSymbol(Symbol.fromInt(payload), target);
+
+        org.getDataStack().push(vec);
+        List<String> code = List.of("PEKS");
+        Organism res = runAssembly(code, org, 1);
+
+        assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
+        assertThat(res.getDataStack().pop()).isEqualTo(payload);
+        assertThat(world.getSymbol(target).isEmpty()).isTrue();
+    }
+
+    @Test
     void testPoke_TargetOccupied_NoOverwrite_EnergyCharged() {
         Organism org = Organism.create(sim, new int[]{0,0}, 2000, sim.getLogger());
         int[] vec = {0, 1}; // unit vector orthogonal to DIR

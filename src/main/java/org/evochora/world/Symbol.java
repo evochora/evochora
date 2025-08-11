@@ -35,6 +35,23 @@ public record Symbol(int type, int value) {
         return new Symbol(type, rawValue);
     }
 
+    // Ownership helpers: zero ownerId means unowned
+    public int getOwnerFrom(World world, int... coord) {
+        return world.getOwnerId(coord);
+    }
+
+    public void setOwnerIn(World world, int ownerId, int... coord) {
+        world.setOwnerId(ownerId, coord);
+    }
+
+    public static int getOwner(World world, int... coord) {
+        return world.getOwnerId(coord);
+    }
+
+    public static void setOwner(World world, int ownerId, int... coord) {
+        world.setOwnerId(ownerId, coord);
+    }
+
     @Override
     public String toString() {
         String typePrefix = switch (this.type()) {

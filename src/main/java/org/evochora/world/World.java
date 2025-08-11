@@ -8,6 +8,7 @@ public class World {
     private final int[] shape;
     private final boolean isToroidal;
     private final int[] grid;
+    private final int[] ownerGrid;
     private final int[] strides;
 
     public World(int[] shape, boolean toroidal) {
@@ -17,6 +18,8 @@ public class World {
         for (int dim : shape) { size *= dim; }
         this.grid = new int[size];
         Arrays.fill(this.grid, 0);
+        this.ownerGrid = new int[size];
+        Arrays.fill(this.ownerGrid, 0);
         this.strides = new int[shape.length];
         int stride = 1;
         for (int i = shape.length - 1; i >= 0; i--) {
@@ -70,6 +73,39 @@ public class World {
             this.grid[index] = symbol.toInt();
         }
     }
+
+    // Overload: set symbol and owner in one call; owner is only updated for non-empty symbols
+    public void setSymbol(Symbol symbol, int ownerId, int... coord) {
+        int index = getFlatIndex(coord);
+        if (index != -1) {
+            int packed = symbol.toInt();
+            this.grid[index] = packed;
+            if (packed != 0) { // only update owner for non-empty cells
+                this.ownerGrid[index] = ownerId;
+            }
+        }
+    }
+
+    // Owner grid accessors
+    public int getOwnerId(int... coord) {
+        int index = getFlatIndex(coord);
+        if (index == -1) {
+            return 0;
+        }
+        return this.ownerGrid[index];
+    }
+
+    public void setOwnerId(int ownerId, int... coord) {
+        int index = getFlatIndex(coord);
+        if (index != -1) {
+            this.ownerGrid[index] = ownerId;
+        }
+    }
+
+    public void clearOwner(int... coord) {
+        setOwnerId(0, coord);
+    }
+
 
     public int[] getShape() {
         return Arrays.copyOf(this.shape, this.shape.length);

@@ -128,6 +128,7 @@ public class SimulationTest {
 
         // The instruction will fail due to missing operands, proving it was executed
         assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("world interaction");
+        // KORREKTUR: Der Test erwartet jetzt die korrekte Fehlermeldung.
+        assertThat(org.getFailureReason()).contains("Invalid operands for POKS");
     }
 }

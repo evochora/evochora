@@ -46,6 +46,19 @@ public class VMWorldInteractionInstructionTest {
         }
     }
 
+    // Helper für Instruktionen mit Register + Vektor-Argument (z. B. PEKI)
+    private void placeInstructionWithVector(String name, int reg, int[] vector) {
+        int opcode = Instruction.getInstructionIdByName(name);
+        world.setSymbol(new Symbol(Config.TYPE_CODE, opcode), org.getIp());
+        int[] currentPos = org.getIp();
+        currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
+        world.setSymbol(new Symbol(Config.TYPE_DATA, reg), currentPos);
+        for (int val : vector) {
+            currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
+            world.setSymbol(new Symbol(Config.TYPE_DATA, val), currentPos);
+        }
+    }
+
     @Test
     void testPoke() {
         int[] vec = new int[]{0, 1};
@@ -53,16 +66,12 @@ public class VMWorldInteractionInstructionTest {
         org.setDr(0, payload);
         org.setDr(1, vec);
 
-        // Place single POKE with (value reg, vector reg)
         placeInstruction("POKE", 0, 1);
-
-        // Expected target is DP + vec
         int[] targetPos = org.getTargetCoordinate(org.getDp(), vec, world);
 
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
-
         assertThat(world.getSymbol(targetPos).toInt()).isEqualTo(payload);
         assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 77 - 1);
     }
@@ -72,16 +81,13 @@ public class VMWorldInteractionInstructionTest {
         int payload = new Symbol(Config.TYPE_DATA, 88).toInt();
         org.setDr(0, payload);
 
-        // Register + unit vector components (0,1)
         placeInstruction("POKI", 0, 0, 1);
-
         int[] vec = new int[]{0, 1};
         int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
 
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
-
         assertThat(world.getSymbol(target).toInt()).isEqualTo(payload);
         assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 88 - 1);
     }
@@ -89,22 +95,68 @@ public class VMWorldInteractionInstructionTest {
     @Test
     void testPoks() {
         int payload = new Symbol(Config.TYPE_DATA, 33).toInt();
-        int[] vec = new int[]{0, 1}; // unit vector orthogonal to DIR
-        // Push vector first, then value so top is value
+        int[] vec = new int[]{0, 1};
         org.getDataStack().push(vec);
         org.getDataStack().push(payload);
 
         placeInstruction("POKS");
-
-        int[] vecTarget = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vecTarget, world);
+        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
 
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
-
         assertThat(world.getSymbol(target).toInt()).isEqualTo(payload);
         assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 33 - 1);
+    }
+
+    // --- HIER BEGINNEN DIE VERSCHOBENEN TESTS ---
+
+    @Test
+    void testPeek() {
+        org.setDp(org.getIp());
+        int[] vec = new int[]{0, 1};
+        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
+        int payload = new Symbol(Config.TYPE_DATA, 7).toInt();
+        world.setSymbol(Symbol.fromInt(payload), target);
+
+        org.setDr(1, vec);
+        placeInstruction("PEEK", 0, 1);
+        sim.tick();
+
+        assertThat(org.getDr(0)).isEqualTo(payload);
+        // Zelle sollte geleert sein
+        assertThat(world.getSymbol(target).isEmpty()).isTrue();
+    }
+
+    @Test
+    void testPeki() {
+        org.setDp(org.getIp());
+        int[] vec = new int[]{0, 1};
+        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
+        int payload = new Symbol(Config.TYPE_DATA, 11).toInt();
+        world.setSymbol(Symbol.fromInt(payload), target);
+
+        placeInstructionWithVector("PEKI", 0, vec);
+        sim.tick();
+
+        assertThat(org.getDr(0)).isEqualTo(payload);
+        assertThat(world.getSymbol(target).isEmpty()).isTrue();
+    }
+
+    @Test
+    void testPeks() {
+        org.setDp(org.getIp());
+        int[] vec = new int[]{-1, 0};
+        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
+        int payload = new Symbol(Config.TYPE_DATA, 9).toInt();
+        world.setSymbol(Symbol.fromInt(payload), target);
+
+        org.getDataStack().push(vec);
+        placeInstruction("PEKS");
+        sim.tick();
+
+        assertThat(org.getDataStack().pop()).isEqualTo(payload);
+        assertThat(world.getSymbol(target).isEmpty()).isTrue();
     }
 
     @org.junit.jupiter.api.AfterEach
