@@ -2,6 +2,10 @@ package org.evochora.assembler;
 
 import org.evochora.Messages;
 
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -128,11 +132,41 @@ public class CodeExpander {
                     aliasOnly.add(new AnnotatedLine("    JMPI " + primaryAlias, line.originalLineNumber(), line.originalFileName()));
                     expandedCode.addAll(aliasOnly);
                 }
+            } else if (command.equalsIgnoreCase(".FILE")) {
+                if (parts.length != 2) {
+                    throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "Invalid .FILE syntax. Expected: .FILE \"path/to/file.s\"", line.content());
+                }
+                String libFileName = parts[1].replace("\"", "");
+                List<AnnotatedLine> libraryCode = loadLibraryFile(libFileName, line);
+                // Wichtig: Die geladene Bibliothek muss ebenfalls expandiert werden.
+                expandedCode.addAll(expandRecursively(libraryCode, callStack));
             } else {
                 expandedCode.add(line);
             }
         }
         return expandedCode;
+    }
+
+    private List<AnnotatedLine> loadLibraryFile(String fileName, AnnotatedLine contextLine) {
+        try {
+            String routinesPath = "org/evochora/organism/prototypes/";
+            // Annahme: Pfade in .FILE sind relativ zum routines-Verzeichnis
+            URL resourceUrl = Thread.currentThread().getContextClassLoader().getResource(routinesPath + fileName);
+            if (resourceUrl == null) {
+                throw new AssemblerException(programName, contextLine.originalFileName(), contextLine.originalLineNumber(), "Library file not found: " + fileName, contextLine.content());
+            }
+            Path path = Paths.get(resourceUrl.toURI());
+            String content = Files.readString(path);
+
+            List<AnnotatedLine> lines = new ArrayList<>();
+            int lineNum = 1;
+            for (String line : content.split("\\r?\\n")) {
+                lines.add(new AnnotatedLine(line, lineNum++, fileName));
+            }
+            return lines;
+        } catch (Exception e) {
+            throw new AssemblerException(programName, contextLine.originalFileName(), contextLine.originalLineNumber(), "Error loading library file: " + fileName, e.getMessage());
+        }
     }
 
     private List<AnnotatedLine> expandMacro(String name, String[] parts, AnnotatedLine originalLine) {
