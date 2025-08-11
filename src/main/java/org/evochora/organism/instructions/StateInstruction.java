@@ -152,10 +152,15 @@ public class StateInstruction extends Instruction {
         int[] vector = (int[]) operands.get(0).value();
         int[] targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, world);
 
-        if (world.getSymbol(targetCoordinate).isEmpty()) {
+        Symbol symbolAtTarget = world.getSymbol(targetCoordinate);
+        // Allow seeking if the cell is empty OR owned by this organism; otherwise fail.
+        int ownerIdAtTarget = world.getOwnerId(targetCoordinate[0], targetCoordinate[1]);
+        boolean ownedBySelf = ownerIdAtTarget == organism.getId();
+
+        if (symbolAtTarget.isEmpty() || ownedBySelf) {
             organism.setDp(targetCoordinate);
         } else {
-            organism.instructionFailed("SEEK: Target cell is not empty.");
+            organism.instructionFailed("SEEK: Target cell is owned by another organism.");
         }
     }
 
