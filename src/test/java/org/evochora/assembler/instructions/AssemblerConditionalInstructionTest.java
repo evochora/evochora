@@ -1,7 +1,8 @@
-package org.evochora.assembler;
+package org.evochora.assembler.instructions;
 
 import org.evochora.Config;
 import org.evochora.Simulation;
+import org.evochora.assembler.AssemblyProgram;
 import org.evochora.organism.Instruction;
 import org.evochora.organism.Organism;
 import org.evochora.world.Symbol;
@@ -59,6 +60,8 @@ public class AssemblerConditionalInstructionTest {
         for (int i = 0; i < ticks; i++) {
             sim.tick();
         }
+        // Ensure no instruction failed during this run
+        assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
         return org;
     }
 

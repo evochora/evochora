@@ -28,8 +28,7 @@ tasks.test {
         events("passed", "skipped", "failed")
         showStandardStreams = true
     }
-    include("org/evochora/assembler/**")
-    include("org/evochora/organism/**")
+    include("org/evochora/**")
 }
 
 tasks.jacocoTestReport {

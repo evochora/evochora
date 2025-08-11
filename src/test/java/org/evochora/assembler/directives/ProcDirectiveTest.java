@@ -9,7 +9,6 @@ import org.evochora.world.Symbol;
 import org.evochora.world.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -17,7 +16,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-public class ProcDirectivesTest {
+public class ProcDirectiveTest {
 
     private static class TestProgram extends AssemblyProgram {
         private final String code;
@@ -82,5 +81,30 @@ public class ProcDirectivesTest {
 
         // DR1 was bound to EPR0; PROC increments A, copy-back on RET updates DR1 to 101.
         assertThat(finalOrg.getDr(1)).isEqualTo(new Symbol(Config.TYPE_DATA, 101).toInt());
+    }
+
+    @Test
+    void testPregWithinProc() {
+        // Use .PREG to alias a PR register inside PROC and copy its value into the formal (EPR) A
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org.setDr(1, new Symbol(Config.TYPE_DATA, 0).toInt());
+
+        List<String> code = List.of(
+            ".PROC USE_PREG WITH A",
+            "  .PREG %P0 0",
+            // Write DATA:7 into PR0 via its alias
+            "  SETI %P0 DATA:7",
+            // Copy PR0 value to formal A (EPR0)
+            "  SETR A %P0",
+            "  RET",
+            ".ENDP",
+            ".IMPORT USE_PREG AS U",
+            "CALL U .WITH %DR1"
+        );
+
+        Organism finalOrg = runAssembly(code, org, 5);
+
+        // DR1 receives the value from EPR0 after copy-back on RET
+        assertThat(finalOrg.getDr(1)).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
     }
 }

@@ -90,4 +90,9 @@ public class VMStackInstructionTest {
         assertThat(org.getDataStack().pop()).isEqualTo(b);
         assertThat(org.getDataStack().isEmpty()).isTrue();
     }
+
+    @org.junit.jupiter.api.AfterEach
+    void assertNoInstructionFailure() {
+        assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+    }
 }

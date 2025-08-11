@@ -366,6 +366,11 @@ public class VMConditionalInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
     }
 
+        @org.junit.jupiter.api.AfterEach
+        void assertNoInstructionFailure() {
+            assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+        }
+
     @Test
     void testIfts_FalseCondition_SkipsNext() {
         org.getDataStack().push(new Symbol(Config.TYPE_DATA, 1).toInt());

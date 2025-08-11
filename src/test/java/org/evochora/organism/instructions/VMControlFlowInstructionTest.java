@@ -101,6 +101,11 @@ public class VMControlFlowInstructionTest {
         assertThat(org.getIp()).isEqualTo(expectedIp);
     }
 
+        @org.junit.jupiter.api.AfterEach
+        void assertNoInstructionFailure() {
+            assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+        }
+
     @Test
     void testRet() {
         // Einen Return-Frame vorbereiten, der auf InitialPosition + 3 zurückspringt

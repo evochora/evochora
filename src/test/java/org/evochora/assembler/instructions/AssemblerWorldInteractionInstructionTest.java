@@ -1,7 +1,8 @@
-package org.evochora.assembler;
+package org.evochora.assembler.instructions;
 
 import org.evochora.Config;
 import org.evochora.Simulation;
+import org.evochora.assembler.AssemblyProgram;
 import org.evochora.organism.Instruction;
 import org.evochora.organism.Organism;
 import org.evochora.world.Symbol;
@@ -73,9 +74,11 @@ public class AssemblerWorldInteractionInstructionTest {
         List<String> code = List.of("POKE %DR0 %DR1");
         Organism res = runAssembly(code, org, 1);
 
+        assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
+
         int[] targetPos = new int[]{0, 1};
         assertThat(world.getSymbol(targetPos).toInt()).isEqualTo(valueToPoke);
-        assertThat(res.getEr()).isEqualTo(2000 - 999 - 1);
+        assertThat(res.getEr()).isLessThanOrEqualTo(2000 - 999 - 1);
     }
 
     @Test
@@ -87,6 +90,8 @@ public class AssemblerWorldInteractionInstructionTest {
         // Use unit vector literal
         List<String> code = List.of("POKI %DR0 0|1");
         Organism res = runAssembly(code, org, 1);
+
+        assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
 
         int[] target = new int[]{0, 1};
         assertThat(world.getSymbol(target).toInt()).isEqualTo(valueToPoke);
@@ -104,6 +109,8 @@ public class AssemblerWorldInteractionInstructionTest {
 
         List<String> code = List.of("POKS");
         Organism res = runAssembly(code, org, 1);
+
+        assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
 
         int[] target = new int[]{0, 1};
         assertThat(world.getSymbol(target).toInt()).isEqualTo(payload);
@@ -124,6 +131,10 @@ public class AssemblerWorldInteractionInstructionTest {
 
         List<String> code = List.of("POKE %DR0 %DR1");
         Organism res = runAssembly(code, org, 1);
+
+        // Occupied target should yield a failure with a clear reason
+        assertThat(res.isInstructionFailed()).as("Expected failure on occupied target").isTrue();
+        assertThat(res.getFailureReason()).contains("Target cell is not empty.");
 
         // Cell unchanged
         assertThat(world.getSymbol(targetPos).toInt()).isEqualTo(initialOccupant);

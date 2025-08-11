@@ -52,6 +52,11 @@ public class SimpleDirectivesTest {
         for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
             world.setSymbol(Symbol.fromInt(entry.getValue()), entry.getKey());
         }
+        // Also place initial world objects emitted by directives like .PLACE
+        Map<int[], Symbol> initialObjects = program.getInitialWorldObjects();
+        for (Map.Entry<int[], Symbol> entry : initialObjects.entrySet()) {
+            world.setSymbol(entry.getValue(), entry.getKey());
+        }
 
         if (org == null) {
             org = Organism.create(sim, startPos, 1000, sim.getLogger());
@@ -88,11 +93,14 @@ public class SimpleDirectivesTest {
     void testOrg() {
         List<String> code = List.of(
                 ".ORG 7|9",
-                "NOP"
+                "SETI %DR0 DATA:1"
         );
-        // Run with 0 ticks to keep IP at origin
-        Organism finalOrg = runAssembly(code, null, 0);
-        assertThat(finalOrg.getIp()).isEqualTo(new int[]{7, 9});
+        // Assemble and load program into world (no execution)
+        runAssembly(code, null, 0);
+        // Verify that the opcode at the origin matches SETI
+        int[] origin = new int[]{7, 9};
+        int setiOpcode = Instruction.getInstructionIdByName("SETI");
+        assertThat(world.getSymbol(origin).toInt()).isEqualTo(new Symbol(Config.TYPE_CODE, setiOpcode).toInt());
     }
 
     @Test

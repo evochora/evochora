@@ -220,4 +220,9 @@ public class VMArithmeticInstructionTest {
         assertThat(r0).isInstanceOf(int[].class);
         assertThat((int[]) r0).containsExactly(3, 4);
     }
+
+    @org.junit.jupiter.api.AfterEach
+    void assertNoInstructionFailure() {
+        assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+    }
 }

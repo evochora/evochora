@@ -59,13 +59,13 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
                     // Skip opcode cell
                     int[] next = organism.getNextInstructionPosition(ip, world, organism.getDvBeforeFetch());
                     // First arg: register id for value
-                    int regId = world.getSymbol(next).toInt();
+                    int regId = Symbol.fromInt(world.getSymbol(next).toInt()).toScalarValue();
                     valueToWrite = readOperand(regId);
 
                     if ("POKE".equals(opName)) {
                         // Second arg: register id holding vector
                         next = organism.getNextInstructionPosition(next, world, organism.getDvBeforeFetch());
-                        int vecRegId = world.getSymbol(next).toInt();
+                        int vecRegId = Symbol.fromInt(world.getSymbol(next).toInt()).toScalarValue();
                         Object vecObj = readOperand(vecRegId);
                         if (!(vecObj instanceof int[])) {
                             organism.instructionFailed("POKE requires vector in register.");
@@ -203,54 +203,38 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
         if (this.targetCoordinate == null) {
             try {
                 World world = organism.getSimulation().getWorld();
-                List<Operand> operands = resolveOperands(world);
                 String op = getName();
                 int[] vec = null;
 
                 if ("POKS".equals(op)) {
-                    if (operands.size() >= 2) {
-                        Object v = operands.get(1).value();
-                        if (v instanceof int[]) vec = (int[]) v;
-                    } else {
-                        // Fallback: peek vector from stack (next item under top)
-                        java.util.Iterator<Object> it = organism.getDataStack().iterator();
+                    // Non-destructive peek: top=value, next=vector
+                    java.util.Iterator<Object> it = organism.getDataStack().iterator();
+                    if (it.hasNext()) {
+                        it.next(); // skip top (value)
                         if (it.hasNext()) {
-                            it.next(); // skip top (value)
-                            if (it.hasNext()) {
-                                Object nxt = it.next();
-                                if (nxt instanceof int[]) vec = (int[]) nxt;
-                            }
+                            Object nxt = it.next();
+                            if (nxt instanceof int[]) vec = (int[]) nxt;
                         }
                     }
                 } else if ("POKE".equals(op)) {
-                    if (operands.size() >= 2) {
-                        Object v = operands.get(1).value();
-                        if (v instanceof int[]) vec = (int[]) v;
-                    } else {
-                        // Fallback: decode from world args: regId(value), regId(vector)
-                        int[] ip = organism.getIpBeforeFetch();
-                        int[] a1 = organism.getNextInstructionPosition(ip, world, organism.getDvBeforeFetch());
-                        int[] a2 = organism.getNextInstructionPosition(a1, world, organism.getDvBeforeFetch());
-                        int vecRegId = world.getSymbol(a2).toInt();
-                        Object regVal = readOperand(vecRegId);
-                        if (regVal instanceof int[]) vec = (int[]) regVal;
-                    }
+                    // Decode from instruction arguments: [regId(value), regId(vector)]
+                    int[] ip = organism.getIpBeforeFetch();
+                    int[] a1 = organism.getNextInstructionPosition(ip, world, organism.getDvBeforeFetch()); // regId(value) - unused here
+                    int[] a2 = organism.getNextInstructionPosition(a1, world, organism.getDvBeforeFetch()); // regId(vector)
+                        int vecRegId = Symbol.fromInt(world.getSymbol(a2).toInt()).toScalarValue();
+                    Object regVal = readOperand(vecRegId);
+                    if (regVal instanceof int[]) vec = (int[]) regVal;
                 } else if ("POKI".equals(op)) {
-                    if (operands.size() >= 2 && operands.get(1).value() instanceof int[]) {
-                        vec = (int[]) operands.get(1).value();
-                    } else {
-                        // Fallback: decode from world args: regId, then vector components
-                        int dims = world.getShape().length;
-                        int[] ip = organism.getIpBeforeFetch();
-                        int[] a1 = organism.getNextInstructionPosition(ip, world, organism.getDvBeforeFetch()); // reg id (unused here)
-                        int[] cur = a1;
-                        int[] tmp = new int[dims];
-                        for (int d = 0; d < dims; d++) {
-                            cur = organism.getNextInstructionPosition(cur, world, organism.getDvBeforeFetch());
-                            tmp[d] = org.evochora.world.Symbol.fromInt(world.getSymbol(cur).toInt()).toScalarValue();
-                        }
-                        vec = tmp;
+                    // Decode from instruction args: [regId(value), v0, v1, ...]
+                    int dims = world.getShape().length;
+                    int[] ip = organism.getIpBeforeFetch();
+                    int[] cur = organism.getNextInstructionPosition(ip, world, organism.getDvBeforeFetch()); // skip regId
+                    int[] tmp = new int[dims];
+                    for (int d = 0; d < dims; d++) {
+                        cur = organism.getNextInstructionPosition(cur, world, organism.getDvBeforeFetch());
+                        tmp[d] = org.evochora.world.Symbol.fromInt(world.getSymbol(cur).toInt()).toScalarValue();
                     }
+                    vec = tmp;
                 } else {
                     return List.of();
                 }
@@ -258,7 +242,7 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
                 if (vec != null && organism.isUnitVector(vec)) {
                     this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vec, world);
                 } else {
-                    // Not a unit vector or cannot determine -> no target to claim
+                    // Not a unit vector or cannot determine -> no target
                     return List.of();
                 }
             } catch (Exception e) {

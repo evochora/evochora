@@ -55,9 +55,14 @@ public class VMWorldInteractionInstructionTest {
 
         // Place single POKE with (value reg, vector reg)
         placeInstruction("POKE", 0, 1);
+
+        // Expected target is DP + vec
+        int[] targetPos = org.getTargetCoordinate(org.getDp(), vec, world);
+
         sim.tick();
 
-        int[] targetPos = new int[]{0, 1};
+        assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+
         assertThat(world.getSymbol(targetPos).toInt()).isEqualTo(payload);
         assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 77 - 1);
     }
@@ -69,9 +74,14 @@ public class VMWorldInteractionInstructionTest {
 
         // Register + unit vector components (0,1)
         placeInstruction("POKI", 0, 0, 1);
+
+        int[] vec = new int[]{0, 1};
+        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
+
         sim.tick();
 
-        int[] target = new int[]{0, 1};
+        assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+
         assertThat(world.getSymbol(target).toInt()).isEqualTo(payload);
         assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 88 - 1);
     }
@@ -85,10 +95,20 @@ public class VMWorldInteractionInstructionTest {
         org.getDataStack().push(payload);
 
         placeInstruction("POKS");
+
+        int[] vecTarget = new int[]{0, 1};
+        int[] target = org.getTargetCoordinate(org.getDp(), vecTarget, world);
+
         sim.tick();
 
-        int[] target = new int[]{0, 1};
+        assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+
         assertThat(world.getSymbol(target).toInt()).isEqualTo(payload);
         assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 33 - 1);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void assertNoInstructionFailure() {
+        assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
     }
 }

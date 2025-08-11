@@ -252,4 +252,9 @@ public class VMStateInstructionTest {
         assertThat(org.getDataStack().pop()).isEqualTo(payload);
         assertThat(world.getSymbol(target).toInt()).isEqualTo(payload);
     }
+
+    @org.junit.jupiter.api.AfterEach
+    void assertNoInstructionFailure() {
+        assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+    }
 }
