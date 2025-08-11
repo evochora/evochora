@@ -243,7 +243,8 @@ public class StateInstruction extends Instruction {
                 if (comps.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("Invalid vector dimensionality for SEKI");
                 List<Integer> machineCode = new ArrayList<>();
                 for (String c : comps) {
-                    machineCode.add(new Symbol(Config.TYPE_DATA, Integer.parseInt(c.strip())).toInt());
+                    int v = org.evochora.assembler.NumericParser.parseInt(c.strip());
+                    machineCode.add(new Symbol(Config.TYPE_DATA, v).toInt());
                 }
                 return new AssemblerOutput.CodeSequence(machineCode);
             }
@@ -273,7 +274,8 @@ public class StateInstruction extends Instruction {
                 List<Integer> machineCode = new ArrayList<>();
                 machineCode.add(new Symbol(Config.TYPE_DATA, reg).toInt());
                 for (String c : comps) {
-                    machineCode.add(new Symbol(Config.TYPE_DATA, Integer.parseInt(c.strip())).toInt());
+                    int v = org.evochora.assembler.NumericParser.parseInt(c.strip());
+                    machineCode.add(new Symbol(Config.TYPE_DATA, v).toInt());
                 }
                 return new AssemblerOutput.CodeSequence(machineCode);
             }

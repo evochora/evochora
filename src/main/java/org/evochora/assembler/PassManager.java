@@ -137,9 +137,9 @@ public class PassManager {
                     String label = strippedLine.substring(0, strippedLine.length() - 1).toUpperCase();
                     currentProcLabel = (procMetaMap != null && procMetaMap.containsKey(label)) ? label : currentProcLabel;
                 } else if (head.equals(".ORG")) {
-                    currentPos = Arrays.stream(parts[1].split("\\|")).mapToInt(Integer::parseInt).toArray();
+                    currentPos = Arrays.stream(parts[1].split("\\|")).mapToInt(org.evochora.assembler.NumericParser::parseInt).toArray();
                 } else if (head.equals(".DIR")) {
-                    currentDv = Arrays.stream(parts[1].split("\\|")).mapToInt(Integer::parseInt).toArray();
+                    currentDv = Arrays.stream(parts[1].split("\\|")).mapToInt(org.evochora.assembler.NumericParser::parseInt).toArray();
                 } else if (head.equals(".PROC")) {
                     if (parts.length >= 2) {
                         String procName = parts[1].toUpperCase();
@@ -215,7 +215,24 @@ public class PassManager {
                     if (withIdx < 0) {
                         throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("call.with.requiresWithProc"), line.content());
                     }
-                    handleCallWith(args, withIdx, line, resolveTargetProc);
+                    // Resolve actual DR register IDs for VM-internal binding
+                    String[] actuals = java.util.Arrays.copyOfRange(args, withIdx + 1, args.length);
+                    int formalCount = meta.formalParams().size();
+                    if (actuals.length != formalCount) {
+                        throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(),
+                                "CALL .WITH argument count mismatch: expected " + formalCount + " but got " + actuals.length, line.content());
+                    }
+                    int[] drIds = new int[formalCount];
+                    for (int i = 0; i < formalCount; i++) {
+                        drIds[i] = resolveToRegisterId(actuals[i], line);
+                    }
+                    // Capture CALL opcode coordinate before emission
+                    int[] callCoord = java.util.Arrays.copyOf(currentPos, currentPos.length);
+                    // Emit the actual call (no extra machine code for binding)
+                    AssemblerOutput call = new AssemblerOutput.JumpInstructionRequest(target);
+                    emitInstruction(call, Instruction.getInstructionIdByName("CALL"), line);
+                    // Register binding for VM to use at runtime
+                    org.evochora.organism.instructions.ControlFlowInstruction.registerCallBindingForCoord(callCoord, drIds);
                 } else {
                     if (withIdx >= 0) {
                         throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("call.with.usedOnDsProc"), line.content());

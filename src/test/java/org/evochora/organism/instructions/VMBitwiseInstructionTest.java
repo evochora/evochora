@@ -65,10 +65,86 @@ public class VMBitwiseInstructionTest {
     }
 
     @Test
+    void testAndi() {
+        org.setDr(0, new Symbol(Config.TYPE_DATA, 0b1010).toInt());
+        placeInstruction("ANDI", 0, 0b1100);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0b1000).toInt());
+    }
+
+    @Test
+    void testAndr() {
+        org.setDr(0, new Symbol(Config.TYPE_DATA, 0b1010).toInt());
+        org.setDr(1, new Symbol(Config.TYPE_DATA, 0b1100).toInt());
+        placeInstruction("ANDR", 0, 1);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0b1000).toInt());
+    }
+
+    @Test
+    void testOrs() {
+        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 0b1010).toInt());
+        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 0b1100).toInt());
+        placeInstruction("ORS");
+        sim.tick();
+        assertThat(org.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 0b1110).toInt());
+    }
+
+    @Test
+    void testOri() {
+        org.setDr(0, new Symbol(Config.TYPE_DATA, 0b1010).toInt());
+        placeInstruction("ORI", 0, 0b0101);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0b1111).toInt());
+    }
+
+    @Test
+    void testOrr() {
+        org.setDr(0, new Symbol(Config.TYPE_DATA, 0b1010).toInt());
+        org.setDr(1, new Symbol(Config.TYPE_DATA, 0b0101).toInt());
+        placeInstruction("ORR", 0, 1);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0b1111).toInt());
+    }
+
+    @Test
+    void testXors() {
+        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 0b1010).toInt());
+        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 0b1100).toInt());
+        placeInstruction("XORS");
+        sim.tick();
+        assertThat(org.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 0b0110).toInt());
+    }
+    @Test
+    void testXori() {
+        org.setDr(0, new Symbol(Config.TYPE_DATA, 0b1010).toInt());
+        placeInstruction("XORI", 0, 0b0110);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0b1100).toInt());
+    }
+
+    @Test
+    void testXorr() {
+        org.setDr(0, new Symbol(Config.TYPE_DATA, 0b1010).toInt());
+        org.setDr(1, new Symbol(Config.TYPE_DATA, 0b0110).toInt());
+        placeInstruction("XORR", 0, 1);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0b1100).toInt());
+    }
+
+    @Test
     void testNot() {
         org.setDr(0, new Symbol(Config.TYPE_DATA, 0b1010).toInt());
         placeInstruction("NOT", 0);
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, ~0b1010).toInt());
+    }
+
+    @Test
+    void testNots() {
+        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 0b1010).toInt());
+        placeInstruction("NOTS");
+        sim.tick();
+        assertThat(org.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, ~0b1010).toInt());
     }
 }

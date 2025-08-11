@@ -39,7 +39,7 @@ public class AssemblerDataInstructionTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{100}, true);
+        world = new World(new int[]{100, 100}, true);
         sim = new Simulation(world);
     }
 
@@ -52,7 +52,7 @@ public class AssemblerDataInstructionTest {
         }
 
         if (org == null) {
-            org = Organism.create(sim, new int[]{0}, 1000, sim.getLogger());
+            org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
         }
         sim.addOrganism(org);
         for (int i=0; i<cycles; i++) {
@@ -66,5 +66,51 @@ public class AssemblerDataInstructionTest {
         List<String> code = List.of("SETI %DR0 DATA:123");
         Organism finalOrg = runAssembly(code, null, 1);
         assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 123).toInt());
+    }
+
+    @Test
+    void testSetr() {
+        Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
+        int v = new Symbol(Config.TYPE_DATA, 456).toInt();
+        org.setDr(1, v);
+        List<String> code = List.of("SETR %DR0 %DR1");
+        Organism res = runAssembly(code, org, 1);
+        assertThat(res.getDr(0)).isEqualTo(v);
+    }
+
+    @Test
+    void testSetv() {
+        List<String> code = List.of("SETV %DR0 3|4");
+        Organism res = runAssembly(code, null, 1);
+        Object r0 = res.getDr(0);
+        assertThat(r0).isInstanceOf(int[].class);
+        assertThat((int[]) r0).containsExactly(3, 4);
+    }
+
+    @Test
+    void testPush() {
+        Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
+        int v = new Symbol(Config.TYPE_DATA, 789).toInt();
+        org.setDr(0, v);
+        List<String> code = List.of("PUSH %DR0");
+        Organism res = runAssembly(code, org, 1);
+        assertThat(res.getDataStack().pop()).isEqualTo(v);
+    }
+
+    @Test
+    void testPop() {
+        Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
+        int v = new Symbol(Config.TYPE_DATA, 321).toInt();
+        org.getDataStack().push(v);
+        List<String> code = List.of("POP %DR0");
+        Organism res = runAssembly(code, org, 1);
+        assertThat(res.getDr(0)).isEqualTo(v);
+    }
+
+    @Test
+    void testPusi() {
+        List<String> code = List.of("PUSI DATA:42");
+        Organism res = runAssembly(code, null, 1);
+        assertThat(res.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 42).toInt());
     }
 }

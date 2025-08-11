@@ -31,7 +31,7 @@ public class AssemblerStateInstructionTest {
 
     private World world;
     private Simulation sim;
-    private final int[] startPos = new int[]{5, 5};
+    private final int[] startPos = new int[]{0, 0};
 
     @BeforeAll
     static void init() {

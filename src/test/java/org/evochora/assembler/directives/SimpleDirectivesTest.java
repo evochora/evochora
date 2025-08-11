@@ -67,10 +67,58 @@ public class SimpleDirectivesTest {
     @Test
     void testDefine() {
         List<String> code = List.of(
-            ".DEFINE MY_VAL 5",
-            "SETI %DR0 DATA:MY_VAL"
+            ".DEFINE MY_VAL DATA:5",
+            "SETI %DR0 MY_VAL"
         );
         Organism finalOrg = runAssembly(code, null, 1);
         assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 5).toInt());
+    }
+
+    @Test
+    void testReg() {
+        List<String> code = List.of(
+                ".REG %X 0",
+                "SETI %X DATA:123"
+        );
+        Organism finalOrg = runAssembly(code, null, 1);
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 123).toInt());
+    }
+
+    @Test
+    void testOrg() {
+        List<String> code = List.of(
+                ".ORG 7|9",
+                "NOP"
+        );
+        // Run with 0 ticks to keep IP at origin
+        Organism finalOrg = runAssembly(code, null, 0);
+        assertThat(finalOrg.getIp()).isEqualTo(new int[]{7, 9});
+    }
+
+    @Test
+    void testDir() {
+        // Lay out code along Y and fetch along Y by setting organism DV to 0|1
+        List<String> code = List.of(
+                ".DIR 0|1",
+                "SETI %DR0 DATA:1",
+                "ADDI %DR0 DATA:2"
+        );
+        Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
+        org.setDv(new int[]{0, 1});
+        Organism finalOrg = runAssembly(code, org, 2);
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 3).toInt());
+    }
+
+    @Test
+    void testPlace() {
+        // Place a DATA value and verify the world content
+        List<String> code = List.of(
+                ".PLACE DATA:5 3|4",
+                ".PLACE STRUCTURE:9 10|1",
+                "NOP"
+        );
+        runAssembly(code, null, 0);
+        assertThat(world.getSymbol(new int[]{3, 4}).toInt()).isEqualTo(new Symbol(Config.TYPE_DATA, 5).toInt());
+        assertThat(world.getSymbol(new int[]{10, 1}).toInt()).isEqualTo(new Symbol(Config.TYPE_STRUCTURE, 9).toInt());
     }
 }

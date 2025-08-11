@@ -92,7 +92,7 @@ public class ConditionalInstruction extends Instruction {
             String[] literalParts = args[1].split(":");
             if (literalParts.length != 2) throw new IllegalArgumentException("Immediate argument must be in TYPE:VALUE format.");
             int type = getTypeFromString(literalParts[0]);
-            int value = Integer.parseInt(literalParts[1]);
+            int value = org.evochora.assembler.NumericParser.parseInt(literalParts[1]);
             return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg1).toInt(), new Symbol(type, value).toInt()));
         } else if (name.endsWith("S")) { // IFS, GTS, LTS, IFTS
             if (args.length != 0) throw new IllegalArgumentException(name + " expects no arguments.");

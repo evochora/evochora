@@ -40,7 +40,7 @@ public class MacroDirectiveTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{100}, true);
+        world = new World(new int[]{100, 100}, true);
         sim = new Simulation(world);
     }
 
@@ -53,7 +53,7 @@ public class MacroDirectiveTest {
         }
 
         if (org == null) {
-            org = Organism.create(sim, new int[]{0}, 1000, sim.getLogger());
+            org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
         }
         sim.addOrganism(org);
         for(int i=0; i<cycles; i++) {
@@ -64,7 +64,7 @@ public class MacroDirectiveTest {
 
     @Test
     void testSimpleMacro() {
-        Organism org = Organism.create(sim, new int[]{0}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
         org.setDr(0, new Symbol(Config.TYPE_DATA, 10).toInt());
 
         List<String> code = List.of(

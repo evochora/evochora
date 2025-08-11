@@ -47,4 +47,47 @@ public class VMStackInstructionTest {
         assertThat(org.getDataStack().pop()).isEqualTo(value);
         assertThat(org.getDataStack().isEmpty()).isTrue();
     }
+
+    @Test
+    void testSwap() {
+        int a = new Symbol(Config.TYPE_DATA, 1).toInt();
+        int b = new Symbol(Config.TYPE_DATA, 2).toInt();
+        org.getDataStack().push(a);
+        org.getDataStack().push(b);
+        placeInstruction("SWAP");
+        sim.tick();
+        assertThat(org.getDataStack().pop()).isEqualTo(a);
+        assertThat(org.getDataStack().pop()).isEqualTo(b);
+        assertThat(org.getDataStack().isEmpty()).isTrue();
+    }
+
+    @Test
+    void testDrop() {
+        int a = new Symbol(Config.TYPE_DATA, 1).toInt();
+        int b = new Symbol(Config.TYPE_DATA, 2).toInt();
+        org.getDataStack().push(a);
+        org.getDataStack().push(b);
+        placeInstruction("DROP");
+        sim.tick();
+        // b wurde gedroppt, a bleibt oben
+        assertThat(org.getDataStack().pop()).isEqualTo(a);
+        assertThat(org.getDataStack().isEmpty()).isTrue();
+    }
+
+    @Test
+    void testRot() {
+        int a = new Symbol(Config.TYPE_DATA, 1).toInt();
+        int b = new Symbol(Config.TYPE_DATA, 2).toInt();
+        int c = new Symbol(Config.TYPE_DATA, 3).toInt();
+        org.getDataStack().push(a);
+        org.getDataStack().push(b);
+        org.getDataStack().push(c);
+        placeInstruction("ROT");
+        sim.tick();
+        // Erwartete Reihenfolge (unten->oben): b, c, a
+        assertThat(org.getDataStack().pop()).isEqualTo(a);
+        assertThat(org.getDataStack().pop()).isEqualTo(c);
+        assertThat(org.getDataStack().pop()).isEqualTo(b);
+        assertThat(org.getDataStack().isEmpty()).isTrue();
+    }
 }

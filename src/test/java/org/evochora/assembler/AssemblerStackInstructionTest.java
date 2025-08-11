@@ -39,7 +39,7 @@ public class AssemblerStackInstructionTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{100}, true);
+        world = new World(new int[]{100, 100}, true);
         sim = new Simulation(world);
     }
 
@@ -52,7 +52,7 @@ public class AssemblerStackInstructionTest {
         }
 
         if (org == null) {
-            org = Organism.create(sim, new int[]{0}, 1000, sim.getLogger());
+            org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
         }
         sim.addOrganism(org);
         for (int i=0; i<cycles; i++) {
@@ -62,16 +62,55 @@ public class AssemblerStackInstructionTest {
     }
 
     @Test
+    void testDup() {
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        int v = new Symbol(Config.TYPE_DATA, 123).toInt();
+        org.getDataStack().push(v);
+        List<String> code = List.of("DUP");
+        Organism res = runAssembly(code, org, 1);
+        assertThat(res.getDataStack().pop()).isEqualTo(v);
+        assertThat(res.getDataStack().pop()).isEqualTo(v);
+    }
+
+    @Test
     void testSwap() {
-        Organism org = Organism.create(sim, new int[]{0}, 1000, sim.getLogger());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 1).toInt());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 2).toInt());
-
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        int a = new Symbol(Config.TYPE_DATA, 1).toInt();
+        int b = new Symbol(Config.TYPE_DATA, 2).toInt();
+        org.getDataStack().push(a);
+        org.getDataStack().push(b);
         List<String> code = List.of("SWAP");
+        Organism res = runAssembly(code, org, 1);
+        assertThat(res.getDataStack().pop()).isEqualTo(a);
+        assertThat(res.getDataStack().pop()).isEqualTo(b);
+    }
 
-        Organism finalOrg = runAssembly(code, org, 1);
+    @Test
+    void testDrop() {
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        int a = new Symbol(Config.TYPE_DATA, 1).toInt();
+        int b = new Symbol(Config.TYPE_DATA, 2).toInt();
+        org.getDataStack().push(a);
+        org.getDataStack().push(b);
+        List<String> code = List.of("DROP");
+        Organism res = runAssembly(code, org, 1);
+        assertThat(res.getDataStack().pop()).isEqualTo(a);
+    }
 
-        assertThat(finalOrg.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
-        assertThat(finalOrg.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 2).toInt());
+    @Test
+    void testRot() {
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        int a = new Symbol(Config.TYPE_DATA, 1).toInt();
+        int b = new Symbol(Config.TYPE_DATA, 2).toInt();
+        int c = new Symbol(Config.TYPE_DATA, 3).toInt();
+        org.getDataStack().push(a);
+        org.getDataStack().push(b);
+        org.getDataStack().push(c);
+        List<String> code = List.of("ROT");
+        Organism res = runAssembly(code, org, 1);
+        // After ROT (a b c) -> (b c a) bottom..top
+        assertThat(res.getDataStack().pop()).isEqualTo(a);
+        assertThat(res.getDataStack().pop()).isEqualTo(c);
+        assertThat(res.getDataStack().pop()).isEqualTo(b);
     }
 }

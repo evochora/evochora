@@ -93,10 +93,13 @@ public class ProcDirectiveHandler implements IBlockDirectiveHandler {
                     procName, startLine.originalFileName(), String.valueOf(startLine.originalLineNumber())));
         }
 
-        extractor.getMainCode().add(new AnnotatedLine(procName + ":", startLine.originalLineNumber(), startLine.originalFileName()));
+        // Defer emission of PROC label and body until after main code
+        List<AnnotatedLine> procLines = new ArrayList<>();
+        procLines.add(new AnnotatedLine(procName + ":", startLine.originalLineNumber(), startLine.originalFileName()));
         for (String bodyLine : body) {
-            extractor.getMainCode().add(new AnnotatedLine(bodyLine, startLine.originalLineNumber(), startLine.originalFileName()));
+            procLines.add(new AnnotatedLine(bodyLine, startLine.originalLineNumber(), startLine.originalFileName()));
         }
+        extractor.addDeferredProcBody(procLines);
 
         extractor.getProcMetaMap().put(procName, new DefinitionExtractor.ProcMeta(
                 isExported,

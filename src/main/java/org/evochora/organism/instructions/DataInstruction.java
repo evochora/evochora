@@ -83,7 +83,7 @@ public class DataInstruction extends Instruction {
                 String[] literalParts = args[1].split(":");
                 if (literalParts.length != 2) throw new IllegalArgumentException("Literal must be in TYPE:VALUE format.");
                 int type = getTypeFromString(literalParts[0]);
-                int value = Integer.parseInt(literalParts[1]);
+                int value = org.evochora.assembler.NumericParser.parseInt(literalParts[1]);
                 return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg).toInt(), new Symbol(type, value).toInt()));
             }
             case "SETR": {
@@ -106,7 +106,8 @@ public class DataInstruction extends Instruction {
                 List<Integer> machineCode = new ArrayList<>();
                 machineCode.add(new Symbol(Config.TYPE_DATA, reg).toInt());
                 for (String c : comps) {
-                    machineCode.add(new Symbol(Config.TYPE_DATA, Integer.parseInt(c.strip())).toInt());
+                    int v = org.evochora.assembler.NumericParser.parseInt(c.strip());
+                    machineCode.add(new Symbol(Config.TYPE_DATA, v).toInt());
                 }
                 return new AssemblerOutput.CodeSequence(machineCode);
             }
@@ -127,7 +128,7 @@ public class DataInstruction extends Instruction {
                 String[] literalParts = args[0].split(":");
                 if (literalParts.length != 2) throw new IllegalArgumentException("Literal must be in TYPE:VALUE format.");
                 int type = getTypeFromString(literalParts[0]);
-                int value = Integer.parseInt(literalParts[1]);
+                int value = org.evochora.assembler.NumericParser.parseInt(literalParts[1]);
                 return new AssemblerOutput.CodeSequence(List.of(new Symbol(type, value).toInt()));
             }
         }

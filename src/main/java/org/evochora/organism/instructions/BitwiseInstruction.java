@@ -143,7 +143,7 @@ public class BitwiseInstruction extends Instruction {
             String[] literalParts = args[1].split(":");
             if (literalParts.length != 2) throw new IllegalArgumentException("Immediate argument must be in TYPE:VALUE format.");
             String typeName = literalParts[0].toUpperCase();
-            int value = Integer.parseInt(literalParts[1]);
+            int value = org.evochora.assembler.NumericParser.parseInt(literalParts[1]);
             int type = switch (typeName) {
                 case "CODE" -> Config.TYPE_CODE;
                 case "DATA" -> Config.TYPE_DATA;

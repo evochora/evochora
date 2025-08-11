@@ -15,6 +15,8 @@ public class CodeExpander {
     private final Set<String> importedProcs = new HashSet<>();
     // New: map alias -> proc name for imported procs
     private final Map<String, String> importAliasToProcName = new HashMap<>();
+    // Defer alias trampolines to the end so CALL sites appear before them
+    private final List<AnnotatedLine> deferredImportAliasLines = new ArrayList<>();
 
     // Tracks the primary alias per (routineName + args) signature for .INCLUDE deduplication
     // Key format: ROUTINE_NAME|ARG1,ARG2,...
@@ -27,7 +29,10 @@ public class CodeExpander {
     }
 
     public List<AnnotatedLine> expand(List<AnnotatedLine> initialCode) {
-        return expandRecursively(initialCode, new LinkedList<>());
+        List<AnnotatedLine> expanded = expandRecursively(initialCode, new LinkedList<>());
+        // Append any deferred import alias trampolines at the end
+        expanded.addAll(deferredImportAliasLines);
+        return expanded;
     }
 
     private List<AnnotatedLine> expandRecursively(List<AnnotatedLine> codeToProcess, Deque<String> callStack) {
@@ -53,6 +58,16 @@ public class CodeExpander {
                 List<AnnotatedLine> expandedMacro = expandMacro(command, parts, line);
                 expandedCode.addAll(expandRecursively(expandedMacro, callStack));
                 callStack.pop();
+            } else if (macroMap.containsKey(command.toUpperCase())) {
+                // Expand macros without $ prefix (e.g., INC)
+                String macroName = command.toUpperCase();
+                if (callStack.contains(macroName)) {
+                    throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("codeExpander.infiniteLoopInMacro", String.join(" -> ", callStack), macroName), line.content());
+                }
+                callStack.push(macroName);
+                List<AnnotatedLine> expandedMacro = expandMacro(macroName, parts, line);
+                expandedCode.addAll(expandRecursively(expandedMacro, callStack));
+                callStack.pop();
             } else if (command.equalsIgnoreCase(".IMPORT")) {
                 // .IMPORT library.NAME AS ALIAS
                 if (parts.length < 4 || !parts[2].equalsIgnoreCase("AS")) {
@@ -62,10 +77,9 @@ public class CodeExpander {
                 String alias = parts[3].toUpperCase();
                 importedProcs.add(procName);
                 importAliasToProcName.put(alias, procName);
-                List<AnnotatedLine> aliasOnly = new ArrayList<>();
-                aliasOnly.add(new AnnotatedLine(alias + ":", line.originalLineNumber(), line.originalFileName()));
-                aliasOnly.add(new AnnotatedLine("    JMPI " + procName, line.originalLineNumber(), line.originalFileName()));
-                expandedCode.addAll(aliasOnly);
+                // Defer alias trampoline so CALL remains the first executed instruction
+                deferredImportAliasLines.add(new AnnotatedLine(alias + ":", line.originalLineNumber(), line.originalFileName()));
+                deferredImportAliasLines.add(new AnnotatedLine("    JMPI " + procName, line.originalLineNumber(), line.originalFileName()));
             } else if (command.equalsIgnoreCase(".INCLUDE_STRICT")) {
                 // Always create a fresh instance, even if the same signature was used before.
                 if (parts.length < 5 || !parts[2].equalsIgnoreCase("AS") || !parts[4].equalsIgnoreCase("WITH")) {

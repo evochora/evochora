@@ -42,11 +42,74 @@ public class VMControlFlowInstructionTest {
         }
     }
 
+    private void placeInstruction(String name, Integer... args) {
+        int opcode = Instruction.getInstructionIdByName(name);
+        world.setSymbol(new Symbol(Config.TYPE_CODE, opcode), org.getIp());
+        int[] currentPos = org.getIp();
+        for (int arg : args) {
+            currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
+            world.setSymbol(new Symbol(Config.TYPE_DATA, arg), currentPos);
+        }
+    }
+
     @Test
     void testJmpi() {
         int[] jumpDelta = new int[]{10};
         int[] expectedIp = org.getTargetCoordinate(org.getIp(), jumpDelta, world);
         placeInstructionWithVector("JMPI", jumpDelta);
+
+        sim.tick();
+
+        assertThat(org.getIp()).isEqualTo(expectedIp);
+    }
+
+    @Test
+    void testCall() {
+        int[] jumpDelta = new int[]{7};
+        int[] expectedIp = org.getTargetCoordinate(org.getIp(), jumpDelta, world);
+        placeInstructionWithVector("CALL", jumpDelta);
+
+        sim.tick();
+
+        assertThat(org.getIp()).isEqualTo(expectedIp);
+        assertThat(org.getReturnStack().peek()).isInstanceOf(Organism.ProcFrame.class);
+    }
+
+    @Test
+    void testJmpr() {
+        // JMPR interpretiert den Operanden als relative Koordinate zum initialen Start
+        int[] relative = new int[]{12};
+        int[] expectedIp = new int[]{org.getInitialPosition()[0] + relative[0]};
+        org.setDr(0, relative);
+        placeInstruction("JMPR", 0);
+
+        sim.tick();
+
+        assertThat(org.getIp()).isEqualTo(expectedIp);
+    }
+
+    @Test
+    void testJmps() {
+        int[] jumpDelta = new int[]{8};
+        int[] expectedIp = org.getTargetCoordinate(org.getIp(), jumpDelta, world);
+        // Vektor oben auf den Stack legen
+        org.getDataStack().push(jumpDelta);
+        placeInstruction("JMPS");
+
+        sim.tick();
+
+        assertThat(org.getIp()).isEqualTo(expectedIp);
+    }
+
+    @Test
+    void testRet() {
+        // Einen Return-Frame vorbereiten, der auf InitialPosition + 3 zurückspringt
+        int[] relativeReturn = new int[]{3};
+        int[] expectedIp = new int[]{org.getInitialPosition()[0] + relativeReturn[0]};
+        Object[] prsSnapshot = org.getPrs().toArray(new Object[0]);
+        org.getReturnStack().push(new Organism.ProcFrame(relativeReturn, prsSnapshot));
+
+        placeInstruction("RET");
 
         sim.tick();
 

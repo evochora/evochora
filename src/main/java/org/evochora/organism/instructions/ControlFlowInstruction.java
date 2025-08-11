@@ -16,6 +16,36 @@ import java.util.NoSuchElementException;
 
 public class ControlFlowInstruction extends Instruction {
 
+    // VM-internal registry for DR<->FPR bindings at CALL sites and return sites
+    private static final class CoordKey {
+        private final int[] coord;
+        CoordKey(int[] c) { this.coord = java.util.Arrays.copyOf(c, c.length); }
+        @Override public boolean equals(Object o) {
+            return (this == o) || (o instanceof CoordKey k && java.util.Arrays.equals(this.coord, k.coord));
+        }
+        @Override public int hashCode() { return java.util.Arrays.hashCode(coord); }
+    }
+    private static final java.util.Map<CoordKey, int[]> CALL_BINDINGS_BY_CALL_COORD = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Map<CoordKey, int[]> CALL_BINDINGS_BY_RETURN_COORD = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public static void registerCallBindingForCoord(int[] callCoord, int[] drIds) {
+        CALL_BINDINGS_BY_CALL_COORD.put(new CoordKey(callCoord), java.util.Arrays.copyOf(drIds, drIds.length));
+    }
+
+    private static int[] getBindingForCallCoord(int[] callCoord) {
+        int[] ids = CALL_BINDINGS_BY_CALL_COORD.get(new CoordKey(callCoord));
+        return ids == null ? null : java.util.Arrays.copyOf(ids, ids.length);
+    }
+
+    private static void registerReturnBinding(int[] returnCoord, int[] drIds) {
+        CALL_BINDINGS_BY_RETURN_COORD.put(new CoordKey(returnCoord), java.util.Arrays.copyOf(drIds, drIds.length));
+    }
+
+    private static int[] getBindingForReturnCoord(int[] returnCoord) {
+        int[] ids = CALL_BINDINGS_BY_RETURN_COORD.remove(new CoordKey(returnCoord));
+        return ids == null ? null : java.util.Arrays.copyOf(ids, ids.length);
+    }
+
     public ControlFlowInstruction(Organism organism, int fullOpcodeId) {
         super(organism, fullOpcodeId);
     }
@@ -28,9 +58,27 @@ public class ControlFlowInstruction extends Instruction {
                 case "JMPI", "CALL" -> {
                     List<Operand> operands = resolveOperands(simulation.getWorld());
                     int[] delta = (int[]) operands.get(0).value();
-                    int[] targetIp = organism.getTargetCoordinate(organism.getIpBeforeFetch(), delta, simulation.getWorld());
+                    int[] callIp = organism.getIpBeforeFetch();
+                    int[] targetIp = organism.getTargetCoordinate(callIp, delta, simulation.getWorld());
 
                     if (opName.equals("CALL")) {
+                        // Copy-in: DR -> FPR based on binding registered for this CALL coordinate
+                        int[] binding = getBindingForCallCoord(callIp);
+                        if (binding != null) {
+                            for (int i = 0; i < binding.length; i++) {
+                                Object val = readOperand(binding[i]);
+                                organism.setFpr(i, val);
+                            }
+                        }
+                        // Compute absolute return IP to enable copy-back on RET
+                        int[] absoluteReturnIp = callIp;
+                        for (int i = 0; i < getLength(); i++) {
+                            absoluteReturnIp = organism.getNextInstructionPosition(absoluteReturnIp, simulation.getWorld(), organism.getDvBeforeFetch());
+                        }
+                        if (binding != null) {
+                            registerReturnBinding(absoluteReturnIp, binding);
+                        }
+                        // Push return frame (restores PRs on RET)
                         pushReturnStackFrame(simulation.getWorld());
                     }
                     organism.setIp(targetIp);
@@ -55,7 +103,39 @@ public class ControlFlowInstruction extends Instruction {
                     organism.setSkipIpAdvance(true);
                 }
                 case "RET" -> {
-                    popReturnStackFrame();
+                    // Pop frame (restores PRs) and determine return IP for copy-back
+                    Deque<Object> rs = organism.getReturnStack();
+                    Object poppedValue = rs.pop();
+                    int[] relativeReturnIp;
+
+                    if (poppedValue instanceof Organism.ProcFrame frame) {
+                        organism.restorePrs(frame.savedPrs);
+                        relativeReturnIp = frame.relativeReturnIp;
+                    } else if (poppedValue instanceof int[] legacyReturnIp) {
+                        relativeReturnIp = legacyReturnIp;
+                    } else {
+                        organism.instructionFailed("Invalid value on return stack.");
+                        return;
+                    }
+
+                    int[] initialPosition = organism.getInitialPosition();
+                    int[] absoluteReturnIp = new int[relativeReturnIp.length];
+                    for (int i = 0; i < relativeReturnIp.length; i++) {
+                        absoluteReturnIp[i] = initialPosition[i] + relativeReturnIp[i];
+                    }
+
+                    // Copy-back: FPR -> DR for the binding registered for this return coordinate
+                    int[] binding = getBindingForReturnCoord(absoluteReturnIp);
+                    if (binding != null) {
+                        for (int i = 0; i < binding.length; i++) {
+                            Object val = organism.getFpr(i);
+                            // writeOperand routes to the correct register file based on id
+                            writeOperand(binding[i], val);
+                        }
+                    }
+
+                    organism.setIp(absoluteReturnIp);
+                    organism.setSkipIpAdvance(true);
                 }
                 default -> organism.instructionFailed("Unknown control flow instruction: " + opName);
             }
@@ -91,6 +171,7 @@ public class ControlFlowInstruction extends Instruction {
         int[] relativeReturnIp;
 
         if (poppedValue instanceof Organism.ProcFrame frame) {
+            // Restore PRs on return as required by calling convention
             organism.restorePrs(frame.savedPrs);
             relativeReturnIp = frame.relativeReturnIp;
         } else if (poppedValue instanceof int[] legacyReturnIp) {

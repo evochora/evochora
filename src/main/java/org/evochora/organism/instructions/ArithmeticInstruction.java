@@ -55,10 +55,16 @@ public class ArithmeticInstruction extends Instruction {
             // --- Skalar-Arithmetik ---
             else if (op1.value() instanceof Integer i1 && op2.value() instanceof Integer i2) {
                 Symbol s1 = Symbol.fromInt(i1);
+
+                // Determine proper decoding for op2 based on instruction variant
+                String instrName = getName();
                 Symbol s2;
-                if (op2.rawSourceId() == -1) { // Immediate
-                    s2 = new Symbol(s1.type(), i2);
-                } else { // Register
+                if (instrName.endsWith("I")) {
+                    // Immediate operand: decode stored symbol to get scalar, then rewrap with s1.type
+                    Symbol imm = Symbol.fromInt(i2);
+                    s2 = new Symbol(s1.type(), imm.toScalarValue());
+                } else {
+                    // Register or Stack operand: decode as-is
                     s2 = Symbol.fromInt(i2);
                 }
 
@@ -68,7 +74,7 @@ public class ArithmeticInstruction extends Instruction {
                 }
 
                 long scalarResult;
-                String opName = getName().substring(0, 3); // "ADDR" -> "ADD"
+                String opName = instrName.substring(0, 3); // "ADDR" -> "ADD"
 
                 switch (opName) {
                     case "ADD" -> scalarResult = (long) s1.toScalarValue() + s2.toScalarValue();
@@ -83,7 +89,7 @@ public class ArithmeticInstruction extends Instruction {
                         scalarResult = (long) s1.toScalarValue() % s2.toScalarValue();
                     }
                     default -> {
-                        organism.instructionFailed("Unknown scalar operation: " + getName());
+                        organism.instructionFailed("Unknown scalar operation: " + instrName);
                         return;
                     }
                 }

@@ -64,15 +64,69 @@ public class AssemblerWorldInteractionInstructionTest {
     @Test
     void testPoke() {
         Organism org = Organism.create(sim, new int[]{0,0}, 2000, sim.getLogger());
-        int[] targetPos = {10, 10};
+        int[] vec = {0, 1}; // unit vector orthogonal to DIR
         int valueToPoke = new Symbol(Config.TYPE_DATA, 999).toInt();
 
         org.setDr(0, valueToPoke);
-        org.setDr(1, targetPos);
+        org.setDr(1, vec);
 
         List<String> code = List.of("POKE %DR0 %DR1");
-        runAssembly(code, org, 1);
+        Organism res = runAssembly(code, org, 1);
 
+        int[] targetPos = new int[]{0, 1};
         assertThat(world.getSymbol(targetPos).toInt()).isEqualTo(valueToPoke);
+        assertThat(res.getEr()).isEqualTo(2000 - 999 - 1);
+    }
+
+    @Test
+    void testPoki() {
+        Organism org = Organism.create(sim, new int[]{0,0}, 2000, sim.getLogger());
+        int valueToPoke = new Symbol(Config.TYPE_DATA, 123).toInt();
+        org.setDr(0, valueToPoke);
+
+        // Use unit vector literal
+        List<String> code = List.of("POKI %DR0 0|1");
+        Organism res = runAssembly(code, org, 1);
+
+        int[] target = new int[]{0, 1};
+        assertThat(world.getSymbol(target).toInt()).isEqualTo(valueToPoke);
+        assertThat(res.getEr()).isEqualTo(2000 - 123 - 1);
+    }
+
+    @Test
+    void testPoks() {
+        Organism org = Organism.create(sim, new int[]{0,0}, 2000, sim.getLogger());
+        int payload = new Symbol(Config.TYPE_DATA, 55).toInt();
+        int[] vec = new int[]{0, 1}; // unit vector
+        // For POKS, operand 0 is value (top), operand 1 is vector (next). Push vector first, then value.
+        org.getDataStack().push(vec);
+        org.getDataStack().push(payload);
+
+        List<String> code = List.of("POKS");
+        Organism res = runAssembly(code, org, 1);
+
+        int[] target = new int[]{0, 1};
+        assertThat(world.getSymbol(target).toInt()).isEqualTo(payload);
+        assertThat(res.getEr()).isEqualTo(2000 - 55 - 1);
+    }
+
+    @Test
+    void testPoke_TargetOccupied_NoOverwrite_EnergyCharged() {
+        Organism org = Organism.create(sim, new int[]{0,0}, 2000, sim.getLogger());
+        int[] vec = {0, 1}; // unit vector orthogonal to DIR
+        int[] targetPos = new int[]{0, 1};
+        int initialOccupant = new Symbol(Config.TYPE_DATA, 777).toInt();
+        world.setSymbol(Symbol.fromInt(initialOccupant), targetPos);
+
+        int valueToPoke = new Symbol(Config.TYPE_DATA, 42).toInt();
+        org.setDr(0, valueToPoke);
+        org.setDr(1, vec);
+
+        List<String> code = List.of("POKE %DR0 %DR1");
+        Organism res = runAssembly(code, org, 1);
+
+        // Cell unchanged
+        assertThat(world.getSymbol(targetPos).toInt()).isEqualTo(initialOccupant);
+        assertThat(res.getEr()).isLessThanOrEqualTo(2000 - 42 - 1);
     }
 }

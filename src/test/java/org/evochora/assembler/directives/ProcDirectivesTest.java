@@ -17,7 +17,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-public class ComplexDirectivesTest {
+public class ProcDirectivesTest {
 
     private static class TestProgram extends AssemblyProgram {
         private final String code;
@@ -41,7 +41,7 @@ public class ComplexDirectivesTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{100}, true);
+        world = new World(new int[]{100, 100}, true);
         sim = new Simulation(world);
     }
 
@@ -54,7 +54,7 @@ public class ComplexDirectivesTest {
         }
 
         if (org == null) {
-            org = Organism.create(sim, new int[]{0}, 1000, sim.getLogger());
+            org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
         }
         sim.addOrganism(org);
         for(int i=0; i<cycles; i++) {
@@ -64,13 +64,8 @@ public class ComplexDirectivesTest {
     }
 
     @Test
-    @Disabled("Routines and includes seem to depend on a file provider which is not available in the test setup.")
-    void testRoutineAndInclude() {
-    }
-
-    @Test
     void testProc() {
-        Organism org = Organism.create(sim, new int[]{0}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
         org.setDr(1, new Symbol(Config.TYPE_DATA, 100).toInt());
 
         List<String> code = List.of(
@@ -83,8 +78,9 @@ public class ComplexDirectivesTest {
             "CALL P .WITH %DR1"
         );
 
-        Organism finalOrg = runAssembly(code, org, 3);
+        Organism finalOrg = runAssembly(code, org, 4);
 
+        // DR1 was bound to EPR0; PROC increments A, copy-back on RET updates DR1 to 101.
         assertThat(finalOrg.getDr(1)).isEqualTo(new Symbol(Config.TYPE_DATA, 101).toInt());
     }
 }
