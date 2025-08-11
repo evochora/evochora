@@ -107,7 +107,8 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
         }
     }
 
-    private void handlePeek(World world, int targetReg) {
+
+    /*private void handlePeek(World world, int targetReg) {
         if (getConflictStatus() == ConflictResolutionStatus.WON_EXECUTION || getConflictStatus() == ConflictResolutionStatus.NOT_APPLICABLE) {
             Symbol s = world.getSymbol(targetCoordinate);
             if (s.isEmpty()) {
@@ -132,7 +133,7 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
             }
             world.setSymbol(new Symbol(Config.TYPE_CODE, 0), targetCoordinate);
         }
-    }
+    }*/
 
     private void handlePoke(World world, Object valueToWrite) {
         if (getConflictStatus() == ConflictResolutionStatus.WON_EXECUTION || getConflictStatus() == ConflictResolutionStatus.NOT_APPLICABLE) {
@@ -154,14 +155,14 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
         }
     }
 
-    private void handleScan(World world, int targetReg) {
+    /*private void handleScan(World world, int targetReg) {
         Symbol s = world.getSymbol(targetCoordinate);
         if (getName().endsWith("S")) {
             organism.getDataStack().push(s.toInt());
         } else {
             writeOperand(targetReg, s.toInt());
         }
-    }
+    }*/
 
     public static Instruction plan(Organism organism, World world) {
         int fullOpcodeId = world.getSymbol(organism.getIp()).toInt();
