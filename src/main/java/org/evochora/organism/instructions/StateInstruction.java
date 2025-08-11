@@ -133,12 +133,33 @@ public class StateInstruction extends Instruction {
                     World world = simulation.getWorld();
                     int[] target = organism.getTargetCoordinate(organism.getDp(), vector, world);
                     Symbol s = world.getSymbol(target);
-                    Object valueToStore = s.toInt();
+
+                    if (s.isEmpty()) {
+                        organism.instructionFailed("PEEK: Target cell is empty.");
+                        return;
+                    }
+
+                    Object valueToStore;
+                    if (s.type() == Config.TYPE_ENERGY) {
+                        // Award energy when peeking ENERGY
+                        int energyToTake = Math.min(s.toScalarValue(), Config.MAX_ORGANISM_ENERGY - organism.getEr());
+                        organism.addEr(energyToTake);
+                        valueToStore = new Symbol(Config.TYPE_ENERGY, energyToTake).toInt();
+                    } else {
+                        // Charge energy equal to absolute value of the payload for non-ENERGY types
+                        int cost = Math.abs(s.toScalarValue());
+                        if (cost > 0) organism.takeEr(cost);
+                        valueToStore = s.toInt();
+                    }
+
                     if (opName.endsWith("S")) {
                         organism.getDataStack().push(valueToStore);
                     } else {
                         writeOperand(targetReg, valueToStore);
                     }
+
+                    // Destructive read: clear the cell
+                    world.setSymbol(new Symbol(Config.TYPE_CODE, 0), target);
                     break;
                 }
                 case "SCAN", "SCNI", "SCNS": {

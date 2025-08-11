@@ -6,6 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
 import org.evochora.Messages;
+import org.evochora.organism.Instruction;
 
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
@@ -36,6 +37,9 @@ public class Assembler {
      * @throws AssemblerException if any error occurs during assembly.
      */
     public ProgramMetadata assemble(List<AnnotatedLine> allLines, String programName, boolean isDebugMode) {
+
+        // Ensure instruction registry is initialized
+        Instruction.init();
 
         // Phase 1: Extract definitions (macros, routines)
         DefinitionExtractor extractor = new DefinitionExtractor(programName);

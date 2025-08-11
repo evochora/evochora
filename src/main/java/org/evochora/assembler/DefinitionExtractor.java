@@ -79,6 +79,10 @@ public class DefinitionExtractor {
                         if (parts.length != 3) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.defineArguments"), line.content());
                         defineMap.put(parts[1].toUpperCase(), parts[2]);
                     }
+                    case ".PREG" -> {
+                        // .PREG is only valid inside a .PROC block
+                        throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "Invalid .PREG outside .PROC", line.content());
+                    }
                     case ".ENDP", ".ENDM", ".ENDR" -> {
                         throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("definitionExtractor.unexpectedDirectiveOutsideBlock", directive), line.content());
                     }
