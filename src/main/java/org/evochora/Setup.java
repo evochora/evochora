@@ -16,6 +16,10 @@ import java.util.Map;
 public class Setup {
 
     public static void run(Simulation simulation) {
+
+        // Lade den visuellen Stdlib-Tester
+        placeProgramFromFile(simulation, "StdlibTest.s", new int[]{10, 10});
+
         // Lade den Stdlib-Tester
         //placeProgramFromFile(simulation, "StdlibTest.s", new int[]{2, 2});
 
@@ -24,7 +28,7 @@ public class Setup {
 
 
         // Lade den InstructionTester
-        placeProgramFromFile(simulation, "InstructionTester.s", new int[]{5, 1});
+        //placeProgramFromFile(simulation, "InstructionTester.s", new int[]{5, 1});
 
         // Lade den EnergySeeker
         //EnergySeeker energySeeker = new EnergySeeker();

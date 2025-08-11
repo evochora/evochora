@@ -33,18 +33,18 @@ public abstract class AssemblyProgram {
     public AssemblyProgram(String mainProgramFileName) {
         this.mainProgramFileName = mainProgramFileName;
         Arrays.fill(this.programOrigin, 0);
-        loadStandardRoutineLibraries();
+        //loadStandardRoutineLibraries();
     }
 
     public AssemblyProgram() {
         this.mainProgramFileName = this.getClass().getSimpleName() + ".java";
         Arrays.fill(this.programOrigin, 0);
-        loadStandardRoutineLibraries();
+        //loadStandardRoutineLibraries();
     }
 
     private void loadStandardRoutineLibraries() {
         try {
-            String routinesPath = "org/evochora/organism/prototypes/routines/";
+            String routinesPath = "org/evochora/organism/prototypes/routines.old/";
             URL resourceUrl = Thread.currentThread().getContextClassLoader().getResource(routinesPath);
             if (resourceUrl == null) {
                 return;

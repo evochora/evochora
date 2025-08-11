@@ -401,6 +401,15 @@ This section documents all assembler directives with syntax, semantics, and exam
     .DEFINE STEP 1|0
     SETV %DR0 STEP
     ```
+    
+- .FILE — Compile-time substitution
+    - Syntax: `.FILE "<path/to/file.s>"`
+    - Semantics: loads a file from prototypes directory into the current assembly file
+    - Example:
+      ```
+      .FILE "lib/stdlib.s"
+      ```
+
 
 #### .MACRO … .ENDM — Macros
 

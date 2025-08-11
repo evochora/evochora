@@ -7,6 +7,7 @@ import org.evochora.organism.Instruction;
 import org.evochora.organism.Organism;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
+import org.evochora.assembler.AssemblerException;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class SimpleDirectivesTest {
 
@@ -45,28 +47,35 @@ public class SimpleDirectivesTest {
     }
 
     private Organism runAssembly(List<String> code, Organism org, int cycles) {
-        TestProgram program = new TestProgram(code);
-        Map<int[], Integer> machineCode = program.assemble();
+        try{
+            TestProgram program = new TestProgram(code);
+            Map<int[], Integer> machineCode = program.assemble();
 
-        int[] startPos = program.getProgramOrigin();
-        for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-            world.setSymbol(Symbol.fromInt(entry.getValue()), entry.getKey());
-        }
-        // Also place initial world objects emitted by directives like .PLACE
-        Map<int[], Symbol> initialObjects = program.getInitialWorldObjects();
-        for (Map.Entry<int[], Symbol> entry : initialObjects.entrySet()) {
-            world.setSymbol(entry.getValue(), entry.getKey());
-        }
+            int[] startPos = program.getProgramOrigin();
+            for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
+                world.setSymbol(Symbol.fromInt(entry.getValue()), entry.getKey());
+            }
+            // Also place initial world objects emitted by directives like .PLACE
+            Map<int[], Symbol> initialObjects = program.getInitialWorldObjects();
+            for (Map.Entry<int[], Symbol> entry : initialObjects.entrySet()) {
+                world.setSymbol(entry.getValue(), entry.getKey());
+            }
 
-        if (org == null) {
-            org = Organism.create(sim, startPos, 1000, sim.getLogger());
-        }
-        sim.addOrganism(org);
+            if (org == null) {
+                org = Organism.create(sim, startPos, 1000, sim.getLogger());
+            }
+            sim.addOrganism(org);
 
-        for(int i=0; i<cycles; i++) {
-            sim.tick();
+            for(int i=0; i<cycles; i++) {
+                sim.tick();
+            }
+            return org;
+        } catch (AssemblerException e) {
+            // 1. Gib die formatierte, detaillierte Fehlermeldung aus.
+            System.err.println(e.getFormattedMessage());
+            // 2. Wirf die Exception erneut, damit JUnit den Test korrekt als FEHLGESCHLAGEN markiert.
+            throw e;
         }
-        return org;
     }
 
     @Test
@@ -128,5 +137,32 @@ public class SimpleDirectivesTest {
         runAssembly(code, null, 0);
         assertThat(world.getSymbol(new int[]{3, 4}).toInt()).isEqualTo(new Symbol(Config.TYPE_DATA, 5).toInt());
         assertThat(world.getSymbol(new int[]{10, 1}).toInt()).isEqualTo(new Symbol(Config.TYPE_STRUCTURE, 9).toInt());
+    }
+
+    @Test
+    void testFileDirective_Success() {
+        // Testet, ob das Laden einer Bibliothek über den korrekten Pfad funktioniert.
+        List<String> code = List.of(
+                ".FILE \"lib/test_lib.s\"", // Korrekter Pfad relativ zum Prototypen-Verzeichnis
+                "SETI %MY_LIB_REG DATA:999"
+        );
+        Organism finalOrg = runAssembly(code, null, 1);
+        assertThat(finalOrg.getDr(5)).isEqualTo(new Symbol(Config.TYPE_DATA, 999).toInt());
+    }
+
+    @Test
+    void testFileDirective_FileNotFound() {
+        // Testet, ob eine aussagekräftige Fehlermeldung geworfen wird,
+        // wenn die Datei nicht existiert.
+        List<String> code = List.of(
+                ".FILE \"non_existent_file.s\""
+        );
+
+        TestProgram program = new TestProgram(code);
+
+        // Wir erwarten eine AssemblerException mit einer spezifischen Nachricht.
+        assertThatThrownBy(program::assemble)
+                .isInstanceOf(AssemblerException.class)
+                .hasMessageContaining("Error loading library file: non_existent_file.s");
     }
 }

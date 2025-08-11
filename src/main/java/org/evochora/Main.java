@@ -25,10 +25,9 @@ public class Main extends Application {
         } catch (AssemblerException e) {
             // KORRIGIERT: Gibt jetzt BEIDES aus - zuerst die saubere Nachricht, dann den vollen Stack-Trace.
             System.err.println("Ein Fehler ist beim Assemblieren aufgetreten:");
-            System.err.println(e.getFormattedMessage()); // Unsere formatierte, lesbare Nachricht
+            System.err.println(e.getFormattedMessage());
             System.err.println("\n--- VOLLSTÄNDIGER STACK TRACE ---");
             e.printStackTrace(); // Der Standard-Java-Stack-Trace für detailliertes Debugging
-
         } catch (Exception e) {
             // Der allgemeine Catch-Block behält das UI-Fenster für unerwartete Fehler bei.
             e.printStackTrace();
