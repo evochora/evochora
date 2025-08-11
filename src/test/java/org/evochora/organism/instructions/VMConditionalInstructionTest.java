@@ -28,6 +28,8 @@ public class VMConditionalInstructionTest {
     void setUp() {
         world = new World(new int[]{100, 100}, true);
         sim = new Simulation(world);
+        // Create a dummy organism to ensure the main test organism does not have ID 0
+        Organism.create(sim, new int[]{-1, -1}, 1, sim.getLogger());
         org = Organism.create(sim, startPos, 1000, sim.getLogger());
         sim.addOrganism(org);
         org.setDr(0, new Symbol(Config.TYPE_DATA, 0).toInt());
@@ -40,6 +42,16 @@ public class VMConditionalInstructionTest {
         for (int arg : args) {
             currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
             world.setSymbol(new Symbol(Config.TYPE_DATA, arg), currentPos);
+        }
+    }
+
+    private void placeInstructionWithVector(String name, int... vector) {
+        int opcode = Instruction.getInstructionIdByName(name);
+        world.setSymbol(new Symbol(Config.TYPE_CODE, opcode), org.getIp());
+        int[] currentPos = org.getIp();
+        for (int val : vector) {
+            currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
+            world.setSymbol(new Symbol(Config.TYPE_DATA, val), currentPos);
         }
     }
 
@@ -57,6 +69,10 @@ public class VMConditionalInstructionTest {
         world.setSymbol(new Symbol(Config.TYPE_DATA, 1), arg2Ip);
     }
 
+    private void assertNoInstructionFailure() {
+        assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+    }
+
     // IFR: True then False
     @Test
     void testIfr_TrueCondition_ExecutesNext() {
@@ -69,6 +85,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
     }
 
     @Test
@@ -82,6 +99,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
     }
 
     // IFI: True then False
@@ -95,6 +113,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
     }
 
     @Test
@@ -107,6 +126,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
     }
 
     // IFS: True then False
@@ -121,6 +141,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
     }
 
     @Test
@@ -134,6 +155,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
     }
 
     // LTR: True then False
@@ -148,6 +170,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 2).toInt());
+        assertNoInstructionFailure();
     }
 
     @Test
@@ -161,6 +184,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 2).toInt());
+        assertNoInstructionFailure();
     }
 
     // LTI: True then False
@@ -174,6 +198,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 2).toInt());
+        assertNoInstructionFailure();
     }
 
     @Test
@@ -186,6 +211,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 2).toInt());
+        assertNoInstructionFailure();
     }
 
     // LTS: True then False
@@ -201,6 +227,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
     }
 
     @Test
@@ -215,6 +242,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
     }
 
     // GTR: True then False
@@ -229,6 +257,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 4).toInt());
+        assertNoInstructionFailure();
     }
 
     @Test
@@ -242,6 +271,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
     }
 
     // GTI: True then False
@@ -255,6 +285,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 3).toInt());
+        assertNoInstructionFailure();
     }
 
     @Test
@@ -267,6 +298,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
     }
 
     // GTS: True then False
@@ -282,6 +314,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
     }
 
     @Test
@@ -296,6 +329,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
     }
 
     // IFTR: True then False
@@ -310,6 +344,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 8).toInt());
+        assertNoInstructionFailure();
     }
 
     @Test
@@ -323,6 +358,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
     }
 
     // IFTI: True then False
@@ -337,6 +373,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
     }
 
     @Test
@@ -350,6 +387,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_CODE, 5).toInt());
+        assertNoInstructionFailure();
     }
 
     // IFTS: True then False
@@ -364,12 +402,62 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
     }
 
-        @org.junit.jupiter.api.AfterEach
-        void assertNoInstructionFailure() {
-            assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
-        }
+    @Test
+    void testIfmr_NotOwned_SkipsNext() {
+        org.setDr(1, new int[]{0, 1}); // unit vector
+        placeInstruction("IFMR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMR")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    void testIfmr_Owned_ExecutesNext() {
+        org.setDr(1, new int[]{0, 1}); // unit vector
+        int[] target = org.getTargetCoordinate(org.getDp(), new int[]{0, 1}, world);
+        world.setOwnerId(org.getId(), target);
+        placeInstruction("IFMR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMR")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    void testIfmi_NotOwned_SkipsNext() {
+        placeInstructionWithVector("IFMI", 0, 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMI")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    void testIfms_NotOwned_SkipsNext() {
+        org.getDataStack().push(new int[]{0, 1});
+        placeInstruction("IFMS");
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMS")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    void testIfmr_InvalidVector_Fails() {
+        org.setDr(1, new int[]{1, 1}); // not a unit vector
+        placeInstruction("IFMR", 1);
+        sim.tick();
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("not a unit vector");
+    }
 
     @Test
     void testIfts_FalseCondition_SkipsNext() {
@@ -382,5 +470,6 @@ public class VMConditionalInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
     }
 }

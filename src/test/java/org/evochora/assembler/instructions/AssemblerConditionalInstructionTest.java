@@ -42,6 +42,8 @@ public class AssemblerConditionalInstructionTest {
     void setUp() {
         world = new World(new int[]{100, 100}, true);
         sim = new Simulation(world);
+        // Create a dummy organism to ensure the main test organism does not have ID 0
+        Organism.create(sim, new int[]{-1, -1}, 1, sim.getLogger());
     }
 
     private Organism runAssembly(List<String> code, Organism org, int cycles) {
@@ -274,5 +276,70 @@ public class AssemblerConditionalInstructionTest {
         orgF.getDataStack().push(new Symbol(Config.TYPE_CODE, 2).toInt());
         Organism resF = runAssembly(List.of("IFTS", "ADDI %DR0 DATA:1"), orgF, 1);
         assertThat(resF.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0).toInt());
+    }
+
+    // IFMR/IFMI/IFMS
+    @Test
+    void testIfmr_NotOwned_Skips() {
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org.setDr(1, new int[]{0, 1}); // unit vector
+        org.setDr(0, new Symbol(Config.TYPE_DATA, 5).toInt());
+        // Cell at [0, 1] is unowned (ownerId=0), org.getId() is >= 1.
+        List<String> code = List.of("IFMR %DR1", "ADDI %DR0 DATA:1");
+        Organism finalOrg = runAssembly(code, org, 2);
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 5).toInt());
+    }
+
+    @Test
+    void testIfmr_Owned_Executes() {
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org.setDr(1, new int[]{0, 1}); // unit vector
+        org.setDr(0, new Symbol(Config.TYPE_DATA, 5).toInt());
+        world.setOwnerId(org.getId(), 0, 1); // Set owner to current organism
+        List<String> code = List.of("IFMR %DR1", "ADDI %DR0 DATA:1");
+        Organism finalOrg = runAssembly(code, org, 2);
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 6).toInt());
+    }
+
+    @Test
+    void testIfmi_NotOwned_Skips() {
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org.setDr(0, new Symbol(Config.TYPE_DATA, 5).toInt());
+        // Cell at [0, 1] is unowned (ownerId=0), org.getId() is >= 1.
+        List<String> code = List.of("IFMI 0|1", "ADDI %DR0 DATA:1");
+        Organism finalOrg = runAssembly(code, org, 2);
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 5).toInt());
+    }
+
+    @Test
+    void testIfmi_Owned_Executes() {
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org.setDr(0, new Symbol(Config.TYPE_DATA, 5).toInt());
+        world.setOwnerId(org.getId(), 0, 1); // Set owner to current organism
+        List<String> code = List.of("IFMI 0|1", "ADDI %DR0 DATA:1");
+        Organism finalOrg = runAssembly(code, org, 2);
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 6).toInt());
+    }
+
+    @Test
+    void testIfms_NotOwned_Skips() {
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org.setDr(0, new Symbol(Config.TYPE_DATA, 5).toInt());
+        org.getDataStack().push(new int[]{0, 1});
+        // Cell at [0, 1] is unowned (ownerId=0), org.getId() is >= 1.
+        List<String> code = List.of("IFMS", "ADDI %DR0 DATA:1");
+        Organism finalOrg = runAssembly(code, org, 2);
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 5).toInt());
+    }
+
+    @Test
+    void testIfms_Owned_Executes() {
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org.setDr(0, new Symbol(Config.TYPE_DATA, 5).toInt());
+        org.getDataStack().push(new int[]{0, 1});
+        world.setOwnerId(org.getId(), 0, 1); // Set owner to current organism
+        List<String> code = List.of("IFMS", "ADDI %DR0 DATA:1");
+        Organism finalOrg = runAssembly(code, org, 2);
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 6).toInt());
     }
 }

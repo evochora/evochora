@@ -115,8 +115,16 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
             organism.addEr(energyToTake);
             valueToStore = new Symbol(Config.TYPE_ENERGY, energyToTake).toInt();
         } else {
-            int cost = Math.abs(s.toScalarValue());
-            if (cost > 0) organism.takeEr(cost);
+            if (s.type() == Config.TYPE_STRUCTURE) {
+                int ownerId = world.getOwnerId(targetCoordinate);
+                if (ownerId != organism.getId()) {
+                    int cost = Math.abs(s.toScalarValue());
+                    if (cost > 0) organism.takeEr(cost);
+                }
+            } else {
+                int cost = Math.abs(s.toScalarValue());
+                if (cost > 0) organism.takeEr(cost);
+            }
             valueToStore = s.toInt();
         }
 

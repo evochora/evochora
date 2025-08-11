@@ -8,6 +8,7 @@ import org.evochora.organism.Organism;
 import org.evochora.world.Symbol;
 import org.evochora.world.World;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +23,29 @@ public class ConditionalInstruction extends Instruction {
     @Override
     public void execute(Simulation simulation) {
         try {
+            String opName = getName();
+            if (opName.startsWith("IFM")) {
+                List<Operand> operands = resolveOperands(simulation.getWorld());
+                if (operands.size() != 1) {
+                    organism.instructionFailed("Invalid operand count for " + opName);
+                    return;
+                }
+                Operand op = operands.get(0);
+                if (!(op.value() instanceof int[])) {
+                    organism.instructionFailed(opName + " requires a vector argument.");
+                    return;
+                }
+                int[] vector = (int[]) op.value();
+                if (!organism.isUnitVector(vector)) {
+                    return;
+                }
+                int[] targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, simulation.getWorld());
+                int ownerId = simulation.getWorld().getOwnerId(targetCoordinate);
+                if (ownerId != organism.getId()) {
+                    organism.skipNextInstruction(simulation.getWorld());
+                }
+                return;
+            }
             List<Operand> operands = resolveOperands(simulation.getWorld());
             if (operands.size() != 2) {
                 organism.instructionFailed("Invalid operand count for conditional operation.");
@@ -32,7 +56,6 @@ public class ConditionalInstruction extends Instruction {
             Operand op2 = operands.get(1);
             boolean conditionMet = false;
 
-            String opName = getName();
 
             if (opName.startsWith("IFT")) { // Type comparison
                 int type1 = (op1.value() instanceof Integer i) ? Symbol.fromInt(i).type() : -1; // -1 for vectors
@@ -78,13 +101,13 @@ public class ConditionalInstruction extends Instruction {
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap, String instructionName) {
         String name = instructionName.toUpperCase();
 
-        if (name.endsWith("R")) { // IFR, GTR, LTR, IFTR
+        if (name.endsWith("R") && !name.equals("IFMR")) { // IFR, GTR, LTR, IFTR
             if (args.length != 2) throw new IllegalArgumentException(name + " expects 2 register arguments.");
             Integer reg1 = resolveRegToken(args[0], registerMap);
             Integer reg2 = resolveRegToken(args[1], registerMap);
             if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for " + name);
             return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg1).toInt(), new Symbol(Config.TYPE_DATA, reg2).toInt()));
-        } else if (name.endsWith("I")) { // IFI, GTI, LTI, IFTI
+        } else if (name.endsWith("I") && !name.equals("IFMI")) { // IFI, GTI, LTI, IFTI
             if (args.length != 2) throw new IllegalArgumentException(name + " expects a register and an immediate value.");
             Integer reg1 = resolveRegToken(args[0], registerMap);
             if (reg1 == null) throw new IllegalArgumentException("Invalid register for " + name);
@@ -94,10 +117,30 @@ public class ConditionalInstruction extends Instruction {
             int type = getTypeFromString(literalParts[0]);
             int value = org.evochora.assembler.NumericParser.parseInt(literalParts[1]);
             return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg1).toInt(), new Symbol(type, value).toInt()));
-        } else if (name.endsWith("S")) { // IFS, GTS, LTS, IFTS
+        } else if (name.endsWith("S") && !name.equals("IFMS")) { // IFS, GTS, LTS, IFTS
             if (args.length != 0) throw new IllegalArgumentException(name + " expects no arguments.");
             return new AssemblerOutput.CodeSequence(List.of());
+        } else if (name.equals("IFMR")) {
+            if (args.length != 1) throw new IllegalArgumentException("IFMR expects 1 register argument.");
+            Integer reg = resolveRegToken(args[0], registerMap);
+            if (reg == null) throw new IllegalArgumentException("Invalid register for IFMR.");
+            return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg).toInt()));
+        } else if (name.equals("IFMI")) {
+            if (args.length != 1) throw new IllegalArgumentException("IFMI expects 1 vector argument.");
+            String[] comps = args[0].split("\\|");
+            if (comps.length != Config.WORLD_DIMENSIONS)
+                throw new IllegalArgumentException("Invalid vector dimensionality for IFMI");
+            List<Integer> machineCode = new ArrayList<>();
+            for (String c : comps) {
+                int v = org.evochora.assembler.NumericParser.parseInt(c.strip());
+                machineCode.add(new Symbol(Config.TYPE_DATA, v).toInt());
+            }
+            return new AssemblerOutput.CodeSequence(machineCode);
+        } else if (name.equals("IFMS")) {
+            if (args.length != 0) throw new IllegalArgumentException("IFMS expects no arguments.");
+            return new AssemblerOutput.CodeSequence(List.of());
         }
+
 
         throw new IllegalArgumentException("Cannot assemble unknown conditional instruction variant: " + name);
     }
