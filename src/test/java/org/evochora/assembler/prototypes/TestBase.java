@@ -1,13 +1,13 @@
 package org.evochora.assembler.prototypes;
 
-import org.evochora.Config;
-import org.evochora.Simulation;
-import org.evochora.assembler.AssemblerException;
-import org.evochora.assembler.AssemblyProgram;
-import org.evochora.organism.Instruction;
-import org.evochora.organism.Organism;
-import org.evochora.world.Symbol;
-import org.evochora.world.World;
+import org.evochora.app.setup.Config;
+import org.evochora.app.Simulation;
+import org.evochora.compiler.internal.legacy.AssemblerException;
+import org.evochora.compiler.internal.legacy.AssemblyProgram;
+import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.Symbol;
+import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 
@@ -59,7 +59,7 @@ public abstract class TestBase {
         } catch (AssemblerException e) {
             // HIER IST DIE LÖSUNG:
             // 1. Wir geben die detaillierte, formatierte Fehlermeldung auf der Konsole aus.
-            System.err.println(e.getFormattedMessage());
+            System.err.println(e.getMessage());
 
             // 2. Wir werfen die Exception erneut, damit JUnit den Test korrekt als FAILED markiert.
             throw e;

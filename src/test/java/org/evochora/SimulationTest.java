@@ -1,10 +1,11 @@
 package org.evochora;
 
-import org.evochora.Config;
-import org.evochora.organism.Instruction;
-import org.evochora.organism.Organism;
-import org.evochora.world.Symbol;
-import org.evochora.world.World;
+import org.evochora.app.setup.Config;
+import org.evochora.app.Simulation;
+import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.Symbol;
+import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

@@ -1,0 +1,113 @@
+package org.evochora.compiler.internal.legacy.directives;
+
+import org.evochora.app.setup.Config;
+import org.evochora.app.Simulation;
+import org.evochora.compiler.internal.legacy.AssemblyProgram;
+import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.Symbol;
+import org.evochora.runtime.model.World;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+public class ProcDirectiveTest {
+
+    private static class TestProgram extends AssemblyProgram {
+        private final String code;
+        public TestProgram(List<String> codeLines) {
+            super("TestProgram.s");
+            this.code = String.join("\n", codeLines);
+        }
+        @Override
+        public String getProgramCode() {
+            return code;
+        }
+    }
+
+    private World world;
+    private Simulation sim;
+
+    @BeforeAll
+    static void init() {
+        Instruction.init();
+    }
+
+    @BeforeEach
+    void setUp() {
+        world = new World(new int[]{100, 100}, true);
+        sim = new Simulation(world);
+    }
+
+    private Organism runAssembly(List<String> code, Organism org, int cycles) {
+        TestProgram program = new TestProgram(code);
+        Map<int[], Integer> machineCode = program.assemble();
+
+        for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
+            world.setSymbol(Symbol.fromInt(entry.getValue()), entry.getKey());
+        }
+
+        if (org == null) {
+            org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        }
+        // Associate organism with the assembled program so runtime can fetch ProgramMetadata
+        program.assignOrganism(org);
+
+        sim.addOrganism(org);
+        for(int i=0; i<cycles; i++) {
+            sim.tick();
+        }
+        return org;
+    }
+
+    @Test
+    void testProc() {
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org.setDr(1, new Symbol(Config.TYPE_DATA, 100).toInt());
+
+        List<String> code = List.of(
+            ".PROC MY_PROC WITH A",
+            ".EXPORT MY_PROC",
+            "  ADDI A DATA:1",
+            "  RET",
+            ".ENDP",
+            ".IMPORT MY_PROC AS P",
+            "CALL P .WITH %DR1"
+        );
+
+        Organism finalOrg = runAssembly(code, org, 4);
+
+        // DR1 was bound to EPR0; PROC increments A, copy-back on RET updates DR1 to 101.
+        assertThat(finalOrg.getDr(1)).isEqualTo(new Symbol(Config.TYPE_DATA, 101).toInt());
+    }
+
+    @Test
+    void testPregWithinProc() {
+        // Use .PREG to alias a PR register inside PROC and copy its value into the formal (EPR) A
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org.setDr(1, new Symbol(Config.TYPE_DATA, 0).toInt());
+
+        List<String> code = List.of(
+            ".PROC USE_PREG WITH A",
+            "  .PREG %P0 0",
+            // Write DATA:7 into PR0 via its alias
+            "  SETI %P0 DATA:7",
+            // Copy PR0 value to formal A (EPR0)
+            "  SETR A %P0",
+            "  RET",
+            ".ENDP",
+            ".IMPORT USE_PREG AS U",
+            "CALL U .WITH %DR1"
+        );
+
+        Organism finalOrg = runAssembly(code, org, 5);
+
+        // DR1 receives the value from EPR0 after copy-back on RET
+        assertThat(finalOrg.getDr(1)).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
+    }
+}

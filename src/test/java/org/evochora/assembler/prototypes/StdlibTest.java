@@ -1,6 +1,6 @@
 package org.evochora.assembler.prototypes;
 
-import org.evochora.organism.Organism;
+import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

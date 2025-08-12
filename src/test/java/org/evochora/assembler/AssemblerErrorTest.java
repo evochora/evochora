@@ -1,7 +1,9 @@
 package org.evochora.assembler;
 
-import org.evochora.organism.Instruction;
-import org.evochora.world.World;
+import org.evochora.compiler.internal.legacy.AssemblerException;
+import org.evochora.compiler.internal.legacy.AssemblyProgram;
+import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

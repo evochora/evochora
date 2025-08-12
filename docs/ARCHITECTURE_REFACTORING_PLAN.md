@@ -19,142 +19,271 @@ Dieses Dokument beschreibt einen umfassenden Refactoring-Plan für die Evochora-
 - **Testaufwand**: Komplexe Setup-Logik für jeden Test erforderlich
 
 ## 2. Zielarchitektur
+Die Zielarchitektur basiert auf einer strikten Trennung zwischen **Compile-Zeit** und **Laufzeit**. Alle Verantwortlichkeiten werden klar einem der beiden neuen Top-Level-Packages zugeordnet: `compiler` und `runtime`. Diese Aufteilung löst die Kernprobleme der Kopplung und vermischten Zuständigkeiten und schafft eine saubere, moderne Grundlage für zukünftige Entwicklungen.
+
 ### 2.1 Neue Package-Struktur
 ``` 
 src/main/java/org/evochora/
-├── execution/                      # Laufzeit-Execution-Services
-│   ├── ExecutionContext.java          # Kapselung von Laufzeitinformationen
-│   ├── ProcedureCallHandler.java      # CALL/RET Copy-In/Copy-Out-Logik
-│   └── CallBindingResolver.java       # Parameterbindungs-Strategien
-├── assembler/
-│   ├── ast/                           # Abstract Syntax Tree
-│   │   ├── AssemblerSymbolTable.java     # Unveränderliche Symbol-Verwaltung
-│   │   ├── AstNode.java
-│   │   ├── InstructionNode.java
-│   │   ├── LabelNode.java
-│   │   └── DirectiveNode.java
-│   ├── pipeline/                      # Unveränderliche Pass-Pipeline
-│   │   ├── AssemblyPipeline.java         # Pipeline-Orchestrator
-│   │   ├── PassContext.java              # Unveränderlicher Kontext
-│   │   └── passes/
-│   │       ├── ParsePass.java            # Source → AST
-│   │       ├── SymbolResolutionPass.java # Symbol-Auflösung
-│   │       ├── CallBindingPass.java      # CALL .WITH Analyse
-│   │       ├── LayoutPass.java           # Adresszuweisung
-│   │       └── CodeGenPass.java          # AST → Maschinencode
-│   └── // Bestehende Klassen (vereinfacht)
-├── organism/
-│   ├── Organism.java                  # Reines Zustandsmanagement
-│   ├── Instruction.java               # Vereinfachte Basisklasse
-│   └── instructions/
-│       └── ControlFlowInstruction.java   # Drastisch vereinfacht
-└── world/                             # Unverändert
+├── app/
+│   ├── ui/
+│   │   ├── AppView.java
+│   │   ├── FooterController.java
+│   │   ├── HeaderController.java
+│   │   └── WorldRenderer.java
+│   ├── Main.java
+│   ├── Messages.java
+│   ├── Simulation.java
+│   └── setup/
+│       ├── Config.java
+│       ├── Setup.java
+│       └── SimulationFactory.java 
+├── compiler/
+│   ├── api/
+│   │   ├── Compiler.java
+│   │   └── ProgramArtifact.java
+│   └── internal/
+│       ├── ast/
+│       │   ├── SymbolTable.java
+│       │   ├── AstNode.java
+│       │   ├── DirectiveNode.java
+│       │   ├── InstructionNode.java
+│       │   └── LabelNode.java
+│       ├── pipeline/
+│       │   ├── CompilerPipeline.java
+│       │   ├── PassContext.java
+│       │   └── passes/
+│       │       ├── CallBindingPass.java
+│       │       ├── CodeGenPass.java
+│       │       ├── LayoutPass.java
+│       │       ├── ParsePass.java
+│       │       └── SymbolResolutionPass.java
+│       └── legacy/
+│           ├── Assembler.java
+│           ├── ...
+│           └── directives/
+│               └── ...
+├── decompiler/
+│   ├── api/
+│   │   └── Decompiler.java
+│   └── internal/
+└── runtime/
+    ├── api/
+    │    └── VirtualMachine.java
+    ├── internal/
+    │    └── services
+    │       ├── CallBindingResolver.java
+    │       ├── ExecutionContext.java
+    │       └── ProcedureCallHandler.java
+    ├── isa/
+    │   ├── IWorldModifyingInstruction.java
+    │   ├── Instruction.java
+    │   └── instructions/
+    │       ├── ArithmeticInstruction.java
+    │       ├── BitwiseInstruction.java
+    │       ├── ConditionalInstruction.java
+    │       ├── ControlFlowInstruction.java
+    │       ├── DataInstruction.java
+    │       ├── NopInstruction.java
+    │       ├── StackInstruction.java
+    │       ├── StateInstruction.java
+    │       └── WorldInteractionInstruction.java
+    └── model/
+        ├── Organism.java
+        ├── Entity.java
+        └── World.java
+
 ```
 ### 2.2 Kernkomponenten der neuen Architektur
-#### ExecutionContext
-- Kapselt alle Laufzeitinformationen und Metadaten-Zugriff
-- Macht alle Abhängigkeiten explizit und testbar
-- Trennt Laufzeit- von Compile-Zeit-Belangen
+Die neue Architektur führt mehrere Schlüsselkomponenten ein, die die Probleme der Kopplung und der vermischten Verantwortlichkeiten lösen, gruppiert nach ihrer Zuständigkeit.
 
-#### CallBindingResolver
-- Isoliert die Parameterbindungslogik mit verschiedenen Auflösungsstrategien
-- Strategy Pattern für erweiterbare Bindungslogik
-- Testbar ohne komplexe Metadaten-Setup
+#### Compiler-Komponenten
 
-#### ProcedureCallHandler
-- Implementiert das Copy-In/Copy-Out-Pattern für Prozeduraufrufe
-- Kapselt die gesamte CALL/RET-Komplexität
-- Wiederverwendbar und isoliert testbar
+*   **CompilerPipeline:**
+    *   Ersetzt den monolithischen `PassManager` durch eine Kette von reinen, funktionalen Pässen (z.B. `ParsePass`, `SymbolResolutionPass`, `CodeGenPass`).
+    *   Jeder Pass nimmt einen unveränderlichen Kontext entgegen und erzeugt einen neuen, was den Prozess zustandslos, testbar und parallelisierbar macht.
+    *   Orchestriert den gesamten Übersetzungsprozess von Quellcode zum `ProgramArtifact`.
 
-#### AssemblerSymbolTable (AST)
-- Unveränderliche Symboltabelle mit hierarchischen Scopes
-- Ersetzt das mutable State-Management im PassManager
-- Builder-Pattern für schrittweise Konstruktion
+*   **SymbolTable:**
+    *   Eine unveränderliche Datenstruktur zur Verwaltung von Symbolen (Labels, Variablen) mit hierarchischen Geltungsbereichen (Scopes).
+    *   Wird schrittweise über einen Builder aufgebaut und zwischen den Pässem weitergereicht, was das komplexe, veränderliche Zustandsmanagement des alten Systems eliminiert.
 
-#### AssemblyPipeline
-- Funktionale Pipeline mit klaren Phasen
-- Jeder Pass ist eine reine Funktion
-- Unveränderlicher PassContext zwischen den Pässen
+*   **ProgramArtifact:**
+    *   Das standardisierte, unveränderliche Austauschformat, das vom Compiler erzeugt wird.
+    *   Enthält alles, was die Runtime zur Ausführung benötigt: den kompilierten Code, Metadaten (z.B. ISA-Version) und optionale Debug-Informationen.
+    *   Dient als klar definierter Vertrag zwischen `compiler` und `runtime`.
 
-## 3. Migrationsplan
-### 3.1 Phase 1: Grundlagen (Wochen 1-2)
-**Ziel**: Neue Architektur parallel zum bestehenden System etablieren
+#### Architektur-übergreifende Konzepte
+
+*   **SourceMap (im ProgramArtifact):**
+    *   Löst das "Decompiler"-Problem, ohne die Architektur zu verletzen.
+    *   Wird vom `compiler` erzeugt und bildet jede ausführbare Instruktion auf ihre ursprüngliche Quellcode-Zeile ab.
+    *   Wird von der `app`-Schicht zur Laufzeit gelesen, um die aktuell von der `VirtualMachine` ausgeführte Zeile im UI hervorzuheben.
+
+#### Runtime-Komponenten
+
+*   **VirtualMachine (VM):**
+    *   Die öffentliche API der `runtime`-Bibliothek.
+    *   Nimmt ein `ProgramArtifact` entgegen und führt es auf einem Zieldatenmodell (z.B. einem `Organism`) aus.
+    *   Kapselt die Komplexität der Ausführung und verwaltet den Lebenszyklus interner Services.
+
+*   **Interne Runtime-Services (Beispiele):**
+    *   **ExecutionContext:** Kapselt alle zur Laufzeit benötigten Informationen (z.B. Zugriff auf `World` und `Organism`) und wird per Dependency Injection an die ausführenden Einheiten übergeben.
+    *   **ProcedureCallHandler:** Isoliert die komplexe Logik für Prozeduraufrufe (CALL/RET) nach dem "Copy-In/Copy-Out"-Muster.
+    *   **CallBindingResolver:** Entkoppelt die Strategien zur Auflösung von Parameterbindungen.
+
+### 2.3 Ergänzungen aus dem Architektur-Review
+
+1) Module und API-Grenzen schärfen
+- Multi-Module (Gradle) mit ausschließlich zwei Top-Level-Packages in der Codebasis:
+  - compiler.frontend, compiler.core, compiler.passes, compiler.artifact
+  - runtime.api (inkl. ISA-Deskriptoren), runtime.exec, runtime.vm, runtime.syscall
+  - optionale Apps/CLIs als Module unter compiler.cli und runtime.cli
+- Keine Abhängigkeiten von runtime.* nach compiler.*; Austausch ausschließlich über neutrale Verträge:
+  - ProgramArtifact (compiler.artifact) als Übergabeformat von Compile- nach Laufzeit.
+  - ISA-Deskriptoren (runtime.api.isa) als stabile, versionierte Beschreibung der Instruktionssemantik.
+
+2) ISA/VM-Grenze und Versionierung
+- Versionierte ISA-Deskriptoren (SemVer) mit Opcode, Operanden, Seiteneffekten, Feature-Flags und Capability-Set (heap, io, fp).
+- Kompatibilitätsmatrix: vom Compiler erzeugte ISA-Version → von der VM unterstützte Versionen.
+- Laufzeit-Fähigkeitsprüfung: VM validiert ProgramArtifact gegen aktivierte ISA/Capabilities (deterministischer Fail early).
+- Instruktions-Plugin-Mechanismus: Registrierungen aus Deskriptoren (keine statischen Singletons).
+
+3) IR und ProgramArtifact
+- Stabiles IR nach Symbol-/Binding-Auflösung (Instruktions-Stream, Konstanten, Layouts).
+- ProgramArtifact:
+  - **Header:** ISA-Version, Compiler-Version, Build-Metadaten.
+  - **Code-Sektion:** Der kompilierte, ausführbare Code (IR).
+  - **Source-Map-Sektion:** Eine detaillierte Zuordnung von jeder kompilierten Instruktion zurück zu ihrem Ursprung im Quellcode (Datei und Zeilennummer). **Dies ist der Schlüssel zum Debugging und zur Anzeige der aktuellen Codezeile.**
+  - **Diagnostics-Sektion:** Eine Zusammenfassung aller Warnungen und Fehler, die während der Kompilierung aufgetreten sind.
+- Binäres Artefaktformat plus optionaler textueller Dump; Compiler produziert, Runtime lädt/validiert/führt aus.
+
+4) DiagnosticsEngine mit Fehlercodes
+- Strukturierte Diagnostics mit stabilen Codes, Source-Ranges, Schweregraden und Hints.
+- Konsistente Emission über alle Passes; keine Logger in Passes, nur Diagnostics.
+- First-class Source-Maps: präzise Lokationen in jeder Phase.
+
+5) Deterministische, sichere Runtime
+- Explizite Syscall-/Host-Interfaces (Sandbox), injizier- und mockbar.
+- Ressourcenbudgets (Schritte, Speicher, Call-Tiefe) mit Trap-Codes statt unkontrollierter Exceptions.
+- Reproduzierbarkeit: deterministische Seeds/Clocks; keine versteckten globalen Uhren/Zufälle.
+
+6) Konfiguration und Dependency Injection
+- Keine Singletons/Global State; Konfiguration (Limits, Features, ISA) als explizite Objekte.
+- Konstruktorinjektion mit klaren Composition-Roots in CLI/Runtime-Entrypoints.
+- Service-Locator maximal als Adapter an der Peripherie.
+
+7) Observability by design (Logging, Metriken, Tracing)
+- **Logging**: Es wird eine Logging-Fassade (z.B. SLF4J) verwendet.
+  - Die `compiler`- und `runtime`-Module hängen **ausschließlich** von der `slf4j-api` ab.
+  - Das `app`-Modul liefert die konkrete Implementierung (z.B. Logback) und deren Konfiguration (z.B. in `src/main/resources/logback.xml`). Dies stellt eine vollständige Entkopplung sicher.
+- **Strukturierte Logs**: Alle Log-Ausgaben erfolgen in einem strukturierten Format (z.B. JSON), um die maschinelle Auswertung zu erleichtern.
+- **Metriken & Tracing**: Klare Hooks für Metriken (Zähler, Latenzen) und verteiltes Tracing (z.B. OpenTelemetry) werden in der `CompilerPipeline` und der `VirtualMachine` vorgesehen.
+- **Debug-Dumps**: Die Möglichkeit, Zustände (AST, IR, Artefakt) auf Wunsch auszugeben, wird über Feature-Flags gesteuert.
+
+8) Teststrategie
+- Compiler:
+  - Golden-File-Tests (Source → IR/Artifact), Source-Maps verifizieren.
+  - Property-based Tests (z. B. Operanden-Bindungen, Symbol-Scopes).
+  - Grammar-Fuzzing (Parser).
+- Runtime:
+  - Differentialtests (Interpreter-VM vs. Referenz).
+  - Contract-Tests für ISA-Deskriptoren (jede Instruktion vs. definierte Semantik).
+  - Ressourcengrenztests (Budget-/Trap-Pfade).
+- End-to-End:
+  - Fixtures mit bekannten Side-Effects.
+  - Strict determinism checks (gleicher Seed ⇒ gleicher Output).
+
+9) Performance und Speicher
+- Pipeline: rein funktionale Passes, String/Identifier-Interning, Immutable-Collections.
+- Caching: inkrementelles Parsen/Codegen, Artifact-Cache mit Content-Hash.
+- Arena-/Pool-Allocator für kurzlebige Compiler-Objekte.
+- Microbenchmarks (z. B. JMH) für Passes und VM-Hotpaths.
+- Performance-Budgets je Phase; Regression-Guardrails in CI.
+
+10) Migrationsleitplanken
+- **Compiler-Fassade und Adapter**: Die neue `Compiler`-API-Fassade kapselt den gesamten Prozess. Zunächst delegiert sie an einen Adapter, der den alten `PassManager` umhüllt, um eine schrittweise Ablösung zu ermöglichen (Strangler-Fig-Pattern).
+- **Feature-Toggles**: Pro Pass/Instruktionsfamilie, schrittweises Aktivieren der neuen Logik.
+- **Legacy-Code-Freeze**: Nur Bugfixes im alten Code, keine neuen Features. Alle Änderungen werden in der neuen Architektur umgesetzt.
+- **Automatisierte Codemods**: Helfen bei der schrittweisen Ablösung von API-Brüchen und statischen Registries.
+- **Kontinuierliches Benchmarking**: Performance- und Coverage-Gates (>90% für neue Komponenten) stellen sicher, dass keine Regressionen eingeführt werden.
+
+11) Offene Architekturentscheidungen (ADR-Kandidaten)
+- IR-Level (flach vs. blockbasiert), Source-Map-Format, Syscall-Modell (sync vs. Yield), Trap-Politik, ISA-Kompatibilität.
+
+12) Konkrete Checkliste (Start)
+- [ ] ProgramArtifact-Spezifikation (Header, IR, Debug, Versionierung).
+- [ ] ISA-Deskriptoren mit Validator und Capability-Matrix.
+- [ ] DiagnosticsEngine: Codes, Ranges, Renderer.
+- [ ] PassContext/CompilerPipeline finalisieren, „pure function“-Kontrakt dokumentieren.
+- [ ] Runtime-API minimal definieren; Syscall-Interfaces mockbar.
+- [ ] Observability: Log-/Metrics-/Trace-Hooks; Debug-Dumps mit Feature-Flag.
+- [ ] CI: Fuzzing-Job, Performance-Gates, Golden-File-Diffs.
+
+## 3. Migrationsplan (Inkrementell & Sicher)
+Dieser Plan ist darauf ausgelegt, das System nach jedem kleinen Schritt in einem lauffähigen und testbaren Zustand zu halten.
+
+### Phase 0: Grundgerüst und Struktur
+**Ziel**: Die neue Paketstruktur anlegen, ohne die Logik zu verändern.
 **Lieferungen**:
-- Erstelle `execution` Package mit Kern-Services
-- Implementiere `ExecutionContext` als Metadaten-Zugriffsschicht
-- Erstelle `CallBindingResolver` mit Strategy Pattern
-- Implementiere `ProcedureCallHandler` für CALL/RET-Logik
-- Erhalte 100% Rückwärtskompatibilität
+- Erstelle die vollständige Ziel-Paketstruktur (`app`, `compiler/api`, `compiler/internal`, `runtime/api`, etc.).
+- Verschiebe alle existierenden Klassen grob in ihre zukünftigen Pakete (z.B. alter Compiler-Code nach `compiler/internal/legacy`).
+- **Ändere keine Logik.**
 
 **Erfolgskriterien**:
-- Alle bestehenden Tests bestehen weiterhin
-- Neue Klassen haben >90% Testabdeckung
-- Performance-Impact < 5%
+- Das Projekt ist nach der Umstrukturierung kompilier- und lauffähig.
+- **Alle bestehenden Tests sind erfolgreich.**
 
-### 3.2 Phase 2: Instruction-Refactoring (Wochen 3-4)
-**Ziel**: Migriere Instruction-Klassen zu neuen Services
+### Phase 1: Runtime-Services entkoppeln (Strangler-Fig-Muster)
+**Ziel**: Die komplexe Logik aus den `Instruction`-Klassen in neue, testbare Services auslagern, ohne die Aufrufer zu beeinflussen.
 **Lieferungen**:
-- Refaktoriere zur Nutzung der Execution-Services `ControlFlowInstruction`
-- Erstelle vereinfachtes Instruction-Ausführungsmuster
-- Migriere andere Instruction-Familien schrittweise
-- Aktualisiere Instruction-Tests zur Nutzung gemockter Services
+- Implementiere die neuen Runtime-Services (`ProcedureCallHandler`, `CallBindingResolver`, `ExecutionContext`) in `runtime/internal/services`.
+- **Ändere die `execute()`-Methoden in den `Instruction`-Klassen:** Statt die Logik selbst zu enthalten, instanziieren und delegieren sie die Arbeit an die neuen Services. Die Signatur und das Verhalten der `execute()`-Methode bleiben für die Aufrufer identisch.
 
 **Erfolgskriterien**:
-- reduziert von ~250 auf ~80 Zeilen `ControlFlowInstruction`
-- Alle Instruction-Tests nutzen Dependency Injection
-- Keine statischen Aufrufe zu aus Instructions `AssemblyProgram`
+- Die neuen Services haben eine hohe Testabdeckung (>95%).
+- **Alle bestehenden Tests sind erfolgreich.**
+- Die Komplexität der `Instruction`-Klassen ist signifikant reduziert.
 
-### 3.3 Phase 3: AST-Grundlagen (Wochen 5-6)
-**Ziel**: Implementiere unveränderlichen AST und Symboltabelle
+### Phase 2: Compiler-Fassade mit Legacy-Adapter
+**Ziel**: Den gesamten alten Compiler-Prozess hinter einer neuen, sauberen Fassade verstecken.
 **Lieferungen**:
-- Erstelle `AssemblerSymbolTable` mit unveränderlichem Design
-- Implementiere AST-Node-Hierarchie
-- Erstelle AST-Builder-Utilities
-- Entwickle AST → bestehendes Format Konverter für Kompatibilität
+- Erstelle die öffentliche Compiler-API: `compiler.api.Compiler` und `compiler.api.ProgramArtifact`.
+- Erstelle einen **`LegacyCompilerAdapter`**. Dieser Adapter ruft intern den alten `PassManager` auf und wandelt dessen Ergebnis in das neue `ProgramArtifact`-Format um.
+- Die `Compiler.compile()`-Methode delegiert ihre Aufrufe 1:1 an diesen Adapter.
+- Ändere die `app`-Schicht (`SimulationFactory`) so, dass sie **nur noch** die neue `Compiler.compile()`-Fassade aufruft.
 
 **Erfolgskriterien**:
-- AST kann alle aktuellen Assembly-Konstrukte repräsentieren
-- Symboltabelle unterstützt hierarchische Scopes
-- Konvertierung zwischen AST und aktuellem Format ist verlustfrei
+- Die gesamte Anwendung ist vom alten `PassManager` entkoppelt. Alle Aufrufe laufen über die neue Fassade.
+- **Alle bestehenden Tests sind erfolgreich.**
 
-### 3.4 Phase 4: Pipeline-Implementierung (Wochen 7-8)
-**Ziel**: Implementiere unveränderliche Pass-Pipeline
+### Phase 3: Schrittweise Pipeline-Implementierung (Pass für Pass)
+**Ziel**: Den Legacy-Compiler von innen nach außen durch die neue Pipeline ersetzen, wobei das System jederzeit lauffähig bleibt.
 **Lieferungen**:
-- Erstelle `AssemblyPipeline` mit funktionalen Pässen
-- Implementiere `PassContext` für unveränderliches State-Threading
-- Erstelle initiale Pass-Implementierungen (Parse, SymbolResolution)
-- Implementiere `CallBindingPass` für Parameter-Analyse
+- **3a: ParsePass:**
+    - Implementiere die `CompilerPipeline` und den `ParsePass`. Die Pipeline kann nun `Source -> AST`.
+    - Erstelle einen **`AstToLegacyFormatConverter`**, der einen AST in die alten Datenstrukturen des `PassManager` zurückverwandelt.
+    - Ändere den `LegacyCompilerAdapter`: Er nutzt jetzt den `ParsePass` und füttert das Ergebnis via Konverter an den *restlichen* alten `PassManager`.
+- **3b: Weitere Pässe:**
+    - Implementiere den `SymbolResolutionPass`. Der Adapter nutzt jetzt `ParsePass` -> `SymbolResolutionPass` und konvertiert das Ergebnis zurück.
+    - Wiederhole diesen Prozess für jeden weiteren Pass (`LayoutPass`, `CodeGenPass` etc.).
 
 **Erfolgskriterien**:
-- Pipeline kann einfache Programme assemblieren
-- Jeder Pass ist eine reine Funktion
-- Pipeline-Zustand ist zwischen Pässen inspizierbar
+- Nach der Implementierung jedes Passes ist das System lauffähig.
+- **Alle bestehenden Tests sind nach jedem Unterschritt erfolgreich.**
+- Die Logik im `LegacyCompilerAdapter` wird schrittweise durch die neue Pipeline ersetzt.
 
-### 3.5 Phase 5: Schrittweise Migration (Wochen 9-10)
-**Ziel**: Migriere Assembler-Funktionalität zur neuen Pipeline
+### Phase 4: Finale Umstellung und Bereinigung
+**Ziel**: Den Umbau abschließen und allen alten Code entfernen.
 **Lieferungen**:
-- Implementiere verbleibende Pässe (Layout, CodeGen)
-- Erstelle Kompatibilitätsschicht für bestehende -Aufrufe `PassManager`
-- Migriere komplexe Assembly-Features (Makros, Includes, etc.)
-- Aktualisiere Assembler-Tests zur Nutzung der neuen Pipeline
+- Sobald die `CompilerPipeline` vollständig ist und ein `ProgramArtifact` erzeugen kann, wird die `Compiler`-Fassade umkonfiguriert: Sie ruft jetzt direkt die `CompilerPipeline` auf.
+- Der `LegacyCompilerAdapter` und der `AstToLegacyFormatConverter` werden nicht mehr benötigt und können gelöscht werden.
+- Lösche das gesamte `legacy`-Paket im Compiler.
+- Entferne alle weiteren veralteten Klassen und räume die Codebasis final auf.
 
 **Erfolgskriterien**:
-- Neue Pipeline assembliert alle bestehenden Test-Programme
-- Performance entspricht aktueller Implementierung oder übertrifft sie
-- Fehlerberichterstattung ist mit besseren Source-Locations verbessert
-
-### 3.6 Phase 6: Legacy-Bereinigung (Wochen 11-12)
-**Ziel**: Entferne veraltete Komponenten und optimiere
-**Lieferungen**:
-- Entferne alten und `PassManager``CodeExpander`
-- Bereinige statische Registries in Instruction-Klassen
-- Optimiere Pipeline-Performance
-- Aktualisiere Dokumentation und Beispiele
-
-**Erfolgskriterien**:
-- Codebasis ist 30-40% kleiner
-- Build-Zeit um 20% verbessert
-- Alle Deprecation-Warnungen aufgelöst
+- Die Kompilierung läuft vollständig über die neue Architektur.
+- **Alle bestehenden Tests sind erfolgreich.**
+- Die Codebasis ist signifikant kleiner und frei von Legacy-Code.
 
 ## 4. Erwartete Vorteile
 ### 4.1 Code-Qualitätsverbesserungen
@@ -184,11 +313,11 @@ manager.processSomethingElse(); // Mehr versteckte Komplexität
 AssemblyPipeline pipeline = new AssemblyPipeline();  
 ProgramMetadata result = pipeline.assemble(sourceLines, programName);
 ```
-### 4.2 Performance-Vorteile
+### 4.2 Qualitäts- und Performance-Vorteile
 - **Assembly-Zeit**: 15-25% schneller durch unveränderliche Optimierungen
 - **Speicherverbrauch**: 20% Reduktion durch besseren Object-Lifecycle
 - **Debugging**: Pipeline-Zustandsinspektionsfähigkeiten
-- **Fehlerberichterstattung**: Bessere Source-Location-Verfolgung
+- **Fehlerberichterstattung**: Hochpräzise und kontextbezogene Fehlermeldungen durch die zentrale `DiagnosticsEngine`, die exakte Datei- und Zeileninformationen über alle Assembler-Phasen hinweg verfolgt.
 
 ### 4.3 Entwicklererfahrung
 - **Onboarding**: Klarere Architektur für neue Entwickler

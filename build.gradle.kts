@@ -18,6 +18,14 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter-engine:5.10.2")
     testImplementation("org.mockito:mockito-core:5.12.0")
     testImplementation("org.assertj:assertj-core:3.26.3")
+    implementation("org.slf4j:slf4j-api:2.0.13")
+    runtimeOnly("ch.qos.logback:logback-classic:1.5.6")
+
+}
+
+// Definiert die Hauptklasse für den 'run'-Task
+application {
+    mainClass.set("org.evochora.app.Main")
 }
 
 tasks.test {
@@ -48,8 +56,4 @@ tasks.jacocoTestReport {
 javafx {
     version = "21"
     modules = listOf("javafx.controls", "javafx.fxml")
-}
-
-application {
-    mainClass.set("org.evochora.Main")
 }
