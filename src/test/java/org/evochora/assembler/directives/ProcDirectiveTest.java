@@ -55,6 +55,9 @@ public class ProcDirectiveTest {
         if (org == null) {
             org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
         }
+        // Associate organism with the assembled program so runtime can fetch ProgramMetadata
+        program.assignOrganism(org);
+
         sim.addOrganism(org);
         for(int i=0; i<cycles; i++) {
             sim.tick();

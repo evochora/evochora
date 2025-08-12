@@ -27,21 +27,27 @@ public class Organism {
     private final List<Object> prs;
     private final List<Object> fprs;
     private final Deque<Object> dataStack;
-    private final Deque<Object> returnStack;
+    private final Deque<ProcFrame> callStack;
     private boolean isDead = false;
     private boolean loggingEnabled = false;
     private boolean instructionFailed = false;
     private String failureReason = null;
-    private Deque<Object> failureCallStack;
+    private Deque<ProcFrame> failureCallStack;
 
     // KORRIGIERT: Der ProcFrame sichert jetzt nur noch die PRs.
     public static final class ProcFrame {
+        public final String procName;
         public final int[] relativeReturnIp;
         public final Object[] savedPrs;
+        public final Object[] savedFprs;
+        public final java.util.Map<Integer, Integer> fprBindings;
 
-        public ProcFrame(int[] relativeReturnIp, Object[] savedPrs) {
+        public ProcFrame(String procName, int[] relativeReturnIp, Object[] savedPrs, Object[] savedFprs, java.util.Map<Integer, Integer> fprBindings) {
+            this.procName = procName;
             this.relativeReturnIp = relativeReturnIp;
             this.savedPrs = savedPrs;
+            this.savedFprs = savedFprs;
+            this.fprBindings = fprBindings;
         }
     }
     private boolean skipIpAdvance = false;
@@ -74,7 +80,7 @@ public class Organism {
             this.fprs.add(0);
         }
         this.dataStack = new ArrayDeque<>(Config.STACK_MAX_DEPTH);
-        this.returnStack = new ArrayDeque<>(Config.RS_MAX_DEPTH);
+        this.callStack = new ArrayDeque<>(Config.CALL_STACK_MAX_DEPTH);
         this.ipBeforeFetch = Arrays.copyOf(startIp, startIp.length);
         this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length);
         this.initialPosition = Arrays.copyOf(startIp, startIp.length);
@@ -217,8 +223,8 @@ public class Organism {
             this.instructionFailed = true;
             this.failureReason = reason;
             // NEU: Speichere eine Kopie des Return Stacks im Fehlerfall
-            if (this.returnStack != null && !this.returnStack.isEmpty()) {
-                this.failureCallStack = new ArrayDeque<>(this.returnStack);
+            if (this.callStack != null && !this.callStack.isEmpty()) {
+                this.failureCallStack = new ArrayDeque<>(this.callStack);
             }
         }
     }
@@ -266,7 +272,7 @@ public class Organism {
     public Simulation getSimulation() { return simulation; }
     public int[] getInitialPosition() { return Arrays.copyOf(this.initialPosition, this.initialPosition.length); }
     public Deque<Object> getDataStack() { return this.dataStack; }
-    public Deque<Object> getReturnStack() { return this.returnStack; }
+    public Deque<ProcFrame> getCallStack() { return this.callStack; }
 
     // PR register API
     public List<Object> getPrs() { return new ArrayList<>(this.prs); }
@@ -307,22 +313,22 @@ public class Organism {
                 this.fprs.set(index, value);
                 return true;
             }
-            this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to FPR " + index);
+            instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to FPR " + index);
             return false;
         }
-        this.instructionFailed("FPR index out of bounds: " + index);
+        instructionFailed("FPR index out of bounds: " + index);
         return false;
     }
     public Object getFpr(int index) {
         if (index >= 0 && index < this.fprs.size()) {
             return this.fprs.get(index);
         }
-        this.instructionFailed("FPR index out of bounds: " + index);
+        instructionFailed("FPR index out of bounds: " + index);
         return null;
     }
     public void restoreFprs(Object[] snapshot) {
-        if (snapshot == null || snapshot.length != this.fprs.size()) {
-            this.instructionFailed("Invalid FPR snapshot size: expected " + this.fprs.size() + ", got " + (snapshot == null ? "null" : snapshot.length));
+        if (snapshot == null || snapshot.length > this.fprs.size()) {
+            instructionFailed("Invalid FPR snapshot for restore");
             return;
         }
         for (int i = 0; i < snapshot.length; i++) {
@@ -332,5 +338,5 @@ public class Organism {
 
     public Random getRandom() { return this.random; }
 
-    public Deque<Object> getFailureCallStack() { return this.failureCallStack; }
+    public Deque<ProcFrame> getFailureCallStack() { return this.failureCallStack; }
 }

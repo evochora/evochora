@@ -86,7 +86,9 @@ public class Assembler {
                 passManager.getLabelMap(),
                 passManager.getLabelAddressToNameMap(),
                 passManager.getLinearAddressToCoordMap(),
-                passManager.getCoordToLinearAddressMap()
+                passManager.getCoordToLinearAddressMap(),
+                passManager.getCallSiteBindings(),
+                extractor.getProcMetaMap()
         );
     }
 

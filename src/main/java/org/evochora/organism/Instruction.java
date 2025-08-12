@@ -11,12 +11,7 @@ import org.evochora.world.World;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.NoSuchElementException;
+import java.util.*;
 import java.util.function.BiFunction;
 
 public abstract class Instruction {
@@ -37,8 +32,8 @@ public abstract class Instruction {
     private static final Map<Integer, Map<Integer, ArgumentType>> ARGUMENT_TYPES_BY_ID = new HashMap<>();
 
 
-    protected static final int PR_BASE = 1000;
-    protected static final int FPR_BASE = 2000;
+    public static final int PR_BASE = 1000;
+    public static final int FPR_BASE = 2000;
 
     public Instruction(Organism organism, int fullOpcodeId) {
         this.organism = organism;
@@ -63,56 +58,63 @@ public abstract class Instruction {
         if (sources == null) return resolved;
 
         int[] currentIp = organism.getIpBeforeFetch();
-        Iterator<Object> stackIterator = organism.getDataStack().iterator();
 
-        try {
-            for (OperandSource source : sources) {
-                switch (source) {
-                    case STACK:
-                        Object val = stackIterator.next();
-                        resolved.add(new Operand(val, -1));
-                        break;
-                    case REGISTER: {
-                        Organism.FetchResult arg = organism.fetchArgument(currentIp, world);
-                        int regId = Symbol.fromInt(arg.value()).toScalarValue();
-                        resolved.add(new Operand(readOperand(regId), regId));
-                        currentIp = arg.nextIp();
-                        break;
+        for (OperandSource source : sources) {
+            switch (source) {
+                case STACK:
+                    Object val = organism.getDataStack().pop();
+                    resolved.add(new Operand(val, -1));
+                    break;
+                case REGISTER: {
+                    Organism.FetchResult arg = organism.fetchArgument(currentIp, world);
+                    int regId = Symbol.fromInt(arg.value()).toScalarValue();
+                    resolved.add(new Operand(readOperand(regId), regId));
+                    currentIp = arg.nextIp();
+                    break;
+                }
+                case IMMEDIATE: {
+                    Organism.FetchResult arg = organism.fetchArgument(currentIp, world);
+                    resolved.add(new Operand(arg.value(), -1));
+                    currentIp = arg.nextIp();
+                    break;
+                }
+                case VECTOR: {
+                    int[] vec = new int[Config.WORLD_DIMENSIONS];
+                    for(int i=0; i<Config.WORLD_DIMENSIONS; i++) {
+                        Organism.FetchResult res = organism.fetchSignedArgument(currentIp, world);
+                        vec[i] = res.value();
+                        currentIp = res.nextIp();
                     }
-                    case IMMEDIATE: {
-                        Organism.FetchResult arg = organism.fetchArgument(currentIp, world);
-                        resolved.add(new Operand(arg.value(), -1));
-                        currentIp = arg.nextIp();
-                        break;
+                    resolved.add(new Operand(vec, -1));
+                    break;
+                }
+                case LABEL: {
+                    int[] delta = new int[Config.WORLD_DIMENSIONS];
+                    for(int i=0; i<Config.WORLD_DIMENSIONS; i++) {
+                        Organism.FetchResult res = organism.fetchSignedArgument(currentIp, world);
+                        delta[i] = res.value();
+                        currentIp = res.nextIp();
                     }
-                    case VECTOR: {
-                        int[] vec = new int[Config.WORLD_DIMENSIONS];
-                        for(int i=0; i<Config.WORLD_DIMENSIONS; i++) {
-                            Organism.FetchResult res = organism.fetchSignedArgument(currentIp, world);
-                            vec[i] = res.value();
-                            currentIp = res.nextIp();
-                        }
-                        resolved.add(new Operand(vec, -1));
-                        break;
-                    }
-                    case LABEL: {
-                        int[] delta = new int[Config.WORLD_DIMENSIONS];
-                        for(int i=0; i<Config.WORLD_DIMENSIONS; i++) {
-                            Organism.FetchResult res = organism.fetchSignedArgument(currentIp, world);
-                            delta[i] = res.value();
-                            currentIp = res.nextIp();
-                        }
-                        resolved.add(new Operand(delta, -1));
-                        break;
-                    }
+                    resolved.add(new Operand(delta, -1));
+                    break;
                 }
             }
-        } catch(NoSuchElementException e) {
-            // In der Planungsphase ist ein leeres Ergebnis in Ordnung, die execute-Methode wird es dann korrekt behandeln.
-            // Die execute-Methode wird beim Versuch zu pop-en fehlschlagen, was korrekt ist.
-            return new ArrayList<>();
         }
         return resolved;
+    }
+
+    protected List<Object> peekFromDataStack(int count) {
+        if (organism.getDataStack().size() < count) {
+            return new java.util.ArrayList<>();
+        }
+        List<Object> peeked = new java.util.ArrayList<>(count);
+        java.util.Iterator<Object> it = organism.getDataStack().iterator();
+        int i = 0;
+        while (it.hasNext() && i < count) {
+            peeked.add(it.next());
+            i++;
+        }
+        return peeked;
     }
 
     public static Integer resolveRegToken(String token, Map<String, Integer> registerMap) {
@@ -186,7 +188,8 @@ public abstract class Instruction {
         registerFamily(StateInstruction.class, Map.of(13, "SYNC", 92, "NRGS"), List.of());
 
         // --- NOP ---
-        register(NopInstruction.class, 0, "NOP");
+        // Use registerFamily so the assembler planner is wired via reflection
+        registerFamily(NopInstruction.class, Map.of(0, "NOP"), List.of());
     }
 
     private static void registerFamily(Class<? extends Instruction> familyClass, Map<Integer, String> variants, List<OperandSource> sources) {
@@ -245,14 +248,52 @@ public abstract class Instruction {
     }
 
     private static void register(Class<? extends Instruction> instructionClass, int id, String name) {
-        try {
-            int length = 1; // NOP
-            BiFunction<Organism, World, Instruction> planner = (org, world) -> new NopInstruction(org, 0);
-            AssemblerPlanner assembler = (args, regMap, lblMap) -> new AssemblerOutput.CodeSequence(List.of());
-            registerInstruction(instructionClass, id, name, length, planner, assembler);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+        // This is now just for NOP
+        BiFunction<Organism, World, Instruction> planner = (org, world) -> new NopInstruction(org, 0);
+        registerInstruction(instructionClass, id, name, 1, planner, null);
+    }
+
+    protected static void register(String name, Class<? extends Instruction> instructionClass, int id, List<OperandSource> sources,
+                                 TargetCoordLambda targetLambda) {
+
+        BiFunction<Organism, World, Instruction> planner = (org, world) -> {
+            try {
+                Instruction inst = instructionClass.getConstructor(Organism.class, int.class)
+                        .newInstance(org, world.getSymbol(org.getIp()).toInt());
+                if (targetLambda != null) {
+                    inst.setTargetCoordLambda(targetLambda);
+                }
+                return inst;
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to plan instruction " + name, e);
+            }
+        };
+
+        // Determine length and arg types from sources
+        int length = 1;
+        Map<Integer, ArgumentType> argTypes = new HashMap<>();
+        int argIndex = 0;
+        for (OperandSource s : sources) {
+            if (s == OperandSource.STACK) {
+                // Stack operands don't increase instruction length
+            } else if (s == OperandSource.IMMEDIATE) {
+                length++;
+                argTypes.put(argIndex++, ArgumentType.LITERAL);
+            } else if (s == OperandSource.VECTOR) {
+                length += Config.WORLD_DIMENSIONS;
+                for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) argTypes.put(argIndex++, ArgumentType.COORDINATE);
+            } else if (s == OperandSource.LABEL) {
+                length += Config.WORLD_DIMENSIONS;
+                argTypes.put(argIndex++, ArgumentType.LABEL);
+            } else { // REGISTER
+                length++;
+                argTypes.put(argIndex++, ArgumentType.REGISTER);
+            }
         }
+
+        OPERAND_SOURCES.put(id | Config.TYPE_CODE, sources);
+        ARGUMENT_TYPES_BY_ID.put(id | Config.TYPE_CODE, argTypes);
+        registerInstruction(instructionClass, id, name, length, planner, null);
     }
 
     private static void registerInstruction(Class<? extends Instruction> instructionClass, int id, String name, int length,
@@ -290,7 +331,9 @@ public abstract class Instruction {
     public static ArgumentType getArgumentTypeFor(int opcodeFullId, int argIndex) { return ARGUMENT_TYPES_BY_ID.getOrDefault(opcodeFullId, Map.of()).getOrDefault(argIndex, ArgumentType.LITERAL); }
 
     @FunctionalInterface public interface AssemblerPlanner { AssemblerOutput apply(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap); }
+    @FunctionalInterface public interface TargetCoordLambda { List<int[]> apply(Organism organism, World world); }
 
+    protected TargetCoordLambda targetCoordLambda;
     protected boolean executedInTick = false;
     public enum ConflictResolutionStatus { NOT_APPLICABLE, WON_EXECUTION, LOST_TARGET_OCCUPIED, LOST_TARGET_EMPTY, LOST_LOWER_ID_WON, LOST_OTHER_REASON }
     protected ConflictResolutionStatus conflictStatus = ConflictResolutionStatus.NOT_APPLICABLE;
@@ -299,4 +342,11 @@ public abstract class Instruction {
     public void setExecutedInTick(boolean executedInTick) { this.executedInTick = executedInTick; }
     public ConflictResolutionStatus getConflictStatus() { return conflictStatus; }
     public void setConflictStatus(ConflictResolutionStatus conflictStatus) { this.conflictStatus = conflictStatus; }
+    public void setTargetCoordLambda(TargetCoordLambda lambda) { this.targetCoordLambda = lambda; }
+    public List<int[]> getTargetCoordinates(World world) {
+        if (this.targetCoordLambda != null) {
+            return this.targetCoordLambda.apply(this.organism, world);
+        }
+        return Collections.emptyList();
+    }
 }

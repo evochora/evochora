@@ -37,6 +37,9 @@ public class PassManager {
     private final List<PlaceholderResolver.JumpPlaceholder> jumpPlaceholders = new ArrayList<>();
     private final List<PlaceholderResolver.VectorPlaceholder> vectorPlaceholders = new ArrayList<>();
 
+    // Neu: CALL-Site Bindings (linear address -> Quellregister-IDs)
+    private final Map<Integer, int[]> callSiteBindings = new HashMap<>();
+
     // Internal state
     private int linearAddress;
     private int[] currentPos;
@@ -215,10 +218,10 @@ public class PassManager {
                 for (int i = 0; i < formalCount; i++) {
                     drIds[i] = resolveToRegisterId(actuals[i], line);
                 }
-                int[] callCoord = Arrays.copyOf(currentPos, currentPos.length);
+                int callLinearAddress = this.linearAddress;
                 AssemblerOutput call = new AssemblerOutput.JumpInstructionRequest(target);
                 emitInstruction(call, Instruction.getInstructionIdByName("CALL"), line);
-                org.evochora.organism.instructions.ControlFlowInstruction.registerCallBindingForCoord(callCoord, drIds);
+                org.evochora.organism.instructions.ControlFlowInstruction.registerCallBindingForLinearAddress(callLinearAddress, drIds);
             } else {
                 if (withIdx >= 0) {
                     throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("call.with.usedOnDsProc"), line.content());
@@ -313,4 +316,54 @@ public class PassManager {
     public Map<Integer, SourceLocation> getSourceMap() { return sourceMap; }
     public List<PlaceholderResolver.JumpPlaceholder> getJumpPlaceholders() { return jumpPlaceholders; }
     public List<PlaceholderResolver.VectorPlaceholder> getVectorPlaceholders() { return vectorPlaceholders; }
+
+    public Map<Integer, int[]> getCallSiteBindings() {
+        if (callSiteBindings.isEmpty()) {
+            computeCallSiteBindings();
+        }
+        return callSiteBindings;
+    }
+
+    private void computeCallSiteBindings() {
+        // Build bindings by parsing CALL lines that contain a .WITH clause
+        for (Map.Entry<Integer, SourceLocation> e : sourceMap.entrySet()) {
+            Integer linear = e.getKey();
+            SourceLocation loc = e.getValue();
+            if (loc == null) continue;
+            String content = loc.lineContent();
+            if (content == null) continue;
+            String stripped = content.split("#", 2)[0].strip();
+            if (stripped.isEmpty()) continue;
+
+            String upper = stripped.toUpperCase(java.util.Locale.ROOT);
+            if (!upper.startsWith("CALL ") || !(upper.contains(".WITH") || upper.contains(" WITH"))) continue;
+
+            int withIdx = upper.indexOf(".WITH");
+            int tokenLen = ".WITH".length();
+            if (withIdx < 0) {
+                withIdx = upper.indexOf(" WITH");
+                tokenLen = " WITH".length();
+            }
+
+            String afterWith = stripped.substring(withIdx + tokenLen).trim();
+            if (afterWith.isEmpty()) continue;
+
+            String[] tokens = afterWith.split("\\s+");
+            int[] ids = new int[tokens.length];
+            boolean ok = true;
+            for (int i = 0; i < tokens.length; i++) {
+                Integer id = org.evochora.organism.Instruction.resolveRegToken(tokens[i], registerMap);
+                if (id == null) { ok = false; break; }
+                ids[i] = id;
+            }
+            if (ok) {
+                callSiteBindings.put(linear, ids);
+                // Also register by absolute coordinate so runtime can resolve without metadata
+                int[] absCoord = linearAddressToCoordMap.get(linear);
+                if (absCoord != null) {
+                    org.evochora.organism.instructions.ControlFlowInstruction.registerCallBindingForAbsoluteCoord(absCoord, ids);
+                }
+            }
+        }
+    }
 }

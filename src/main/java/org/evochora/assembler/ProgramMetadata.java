@@ -20,5 +20,8 @@ public record ProgramMetadata(
         Map<String, Integer> labelMap,
         Map<Integer, String> labelAddressToName,
         Map<Integer, int[]> linearAddressToRelativeCoord,
-        Map<List<Integer>, Integer> relativeCoordToLinearAddress
+        Map<List<Integer>, Integer> relativeCoordToLinearAddress,
+        // Neu: Bindings pro CALL-Site (linear address -> Quellregister-IDs)
+        Map<Integer, int[]> callSiteBindings,
+        Map<String, DefinitionExtractor.ProcMeta> procMetaMap
 ) {}

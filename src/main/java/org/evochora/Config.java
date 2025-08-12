@@ -21,9 +21,9 @@ public final class Config {
     // Organism Settings
     public static final int NUM_DATA_REGISTERS = 8;
     public static final int NUM_PROC_REGISTERS = 2;
-    public static final int NUM_FORMAL_PARAM_REGISTERS = 8; // NEU: Register für Prozedur-Parameter
+    public static final int NUM_FORMAL_PARAM_REGISTERS = 8;
     public static final int DS_MAX_DEPTH = 1024;
-    public static final int RS_MAX_DEPTH = 1024;
+    public static final int CALL_STACK_MAX_DEPTH = 1024;
     public static final int STACK_MAX_DEPTH = DS_MAX_DEPTH;
 
     // Graphics Settings

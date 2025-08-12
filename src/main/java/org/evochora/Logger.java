@@ -99,17 +99,10 @@ public class Logger {
             if (i < prs.size() - 1) logLine.append(", ");
         }
 
-        logLine.append(" | FPRs: ");
-        List<Object> fprs = organism.getFprs();
-        for (int i = 0; i < fprs.size(); i++) {
-            Object fprVal = fprs.get(i);
-            String valStr = formatDrValue(fprVal);
-            logLine.append(String.format("%d=%s", i, valStr));
-            if (i < fprs.size() - 1) logLine.append(", ");
-        }
+        logLine.append(" | FPRs: ").append(formatFprLine(organism));
 
         logLine.append(" | DS: ").append(formatStack(organism, false, 0));
-        logLine.append(" | RS: ").append(formatReturnStack(organism, false, 0));
+        logLine.append(" | CS: ").append(formatCallStack(organism));
 
         DisassembledInstruction disassembled = AssemblyProgram.getDisassembledInstructionDetailsForLastTick(organism);
         String plannedInstructionInfo = "N/A";
@@ -151,14 +144,66 @@ public class Logger {
         if (organism.isInstructionFailed() && organism.getFailureCallStack() != null) {
             logLine.append("\n  CALL STACK TRACE:");
             int frame = 0;
-            for (Object stackEntry : organism.getFailureCallStack()) {
-                if (stackEntry instanceof Organism.ProcFrame procFrame) {
-                    int[] relativeIp = procFrame.relativeReturnIp;
-                    String frameSourceInfo = getSourceLocationStringForRelativeCoord(organism, relativeIp);
-                    logLine.append(String.format("\n    %d: at %s", frame++, frameSourceInfo));
-                }
+            for (Organism.ProcFrame procFrame : organism.getFailureCallStack()) {
+                int[] relativeIp = procFrame.relativeReturnIp;
+                String frameSourceInfo = getSourceLocationStringForRelativeCoord(organism, relativeIp);
+                logLine.append(String.format("\n    %d: at %s", frame++, frameSourceInfo));
             }
         }
+    }
+
+    public String formatCallStack(Organism organism) {
+        Deque<Organism.ProcFrame> stack = organism.getCallStack();
+        if (stack.isEmpty()) {
+            return "(0): []";
+        }
+        int depth = stack.size();
+        Organism.ProcFrame topFrame = stack.peek();
+        String nextRet = (topFrame != null) ? formatCoordinate(topFrame.relativeReturnIp) : "N/A";
+        return String.format("(%d): [RET: %s, ...]", depth, nextRet);
+    }
+
+    private String formatFprLine(Organism organism) {
+        if (organism.getCallStack().isEmpty()) {
+            return "---";
+        }
+
+        Organism.ProcFrame topFrame = organism.getCallStack().peek();
+        if (topFrame == null || topFrame.procName == null || topFrame.procName.equals("UNKNOWN")) {
+            return "---";
+        }
+
+        String programId = AssemblyProgram.getProgramIdForOrganism(organism);
+        if (programId == null) return "---";
+        ProgramMetadata metadata = AssemblyProgram.getMetadataForProgram(programId);
+        if (metadata == null) return "---";
+
+        String procName = topFrame.procName;
+        DefinitionExtractor.ProcMeta procMeta = metadata.procMetaMap().get(procName);
+        if (procMeta == null || procMeta.formalParams().isEmpty()) return "---";
+        List<String> paramNames = procMeta.formalParams();
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < paramNames.size(); i++) {
+            String name = paramNames.get(i).toUpperCase();
+            Object value = organism.getFpr(i);
+            Integer boundRegId = topFrame.fprBindings.get(Instruction.FPR_BASE + i);
+
+            String boundName = "??";
+            if (boundRegId != null) {
+                if (boundRegId < Instruction.PR_BASE) {
+                    boundName = "DR" + boundRegId;
+                } else if (boundRegId < Instruction.FPR_BASE) {
+                    boundName = "PR" + (boundRegId - Instruction.PR_BASE);
+                } else {
+                    boundName = "FPR" + (boundRegId - Instruction.FPR_BASE);
+                }
+            }
+
+            sb.append(String.format("%s[%s]=%s", name, boundName, formatDrValue(value)));
+            if (i < paramNames.size() - 1) sb.append(", ");
+        }
+        return sb.toString();
     }
 
     private String getSourceLocationStringForRelativeCoord(Organism organism, int[] relativeCoord) {
@@ -211,40 +256,28 @@ public class Logger {
         return sb.toString();
     }
 
-    public String formatReturnStack(Organism organism, boolean truncate, int limit) {
-        Deque<Object> rs = organism.getReturnStack();
-        if (rs.isEmpty()) {
-            return String.format("(0/%d): []", Config.RS_MAX_DEPTH);
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append(String.format("(%d/%d): [", rs.size(), Config.RS_MAX_DEPTH));
-        Iterator<Object> it = rs.iterator();
-        int count = 0;
-        while (it.hasNext()) {
-            if (count > 0) sb.append(", ");
-            if (truncate && count >= limit) {
-                sb.append("...");
-                break;
-            }
-            Object entry = it.next();
-            if (entry instanceof Organism.ProcFrame f) {
-                sb.append("RET:").append(formatCoordinate(f.relativeReturnIp));
-            } else {
-                sb.append(formatDrValue(entry));
-            }
-            count++;
-        }
-        sb.append("]");
-        return sb.toString();
-    }
-
 
     private String getResolvedArgumentString(Organism organism, DisassembledArgument argument, ProgramMetadata metadata) {
         if (argument.type() == ArgumentType.REGISTER && metadata != null && metadata.registerIdToName() != null) {
             String regAlias = argument.resolvedValue();
             int regId = argument.rawValue();
-            String regName = String.format("DR%d", regId);
-            Object regValue = organism.getDr(regId);
+
+            String regName;
+            Object regValue;
+
+            if (regId >= Instruction.FPR_BASE) {
+                int fprIndex = regId - Instruction.FPR_BASE;
+                regName = "FPR" + fprIndex;
+                regValue = organism.getFpr(fprIndex);
+            } else if (regId >= Instruction.PR_BASE) {
+                int prIndex = regId - Instruction.PR_BASE;
+                regName = "PR" + prIndex;
+                regValue = organism.getPr(prIndex);
+            } else {
+                regName = "DR" + regId;
+                regValue = organism.getDr(regId);
+            }
+
             String formattedValue = formatDrValue(regValue);
 
             if (regAlias != null && !regAlias.isEmpty()) {

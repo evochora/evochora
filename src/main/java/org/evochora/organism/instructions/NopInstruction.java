@@ -32,4 +32,9 @@ public class NopInstruction extends Instruction {
         if (args.length != 0) throw new IllegalArgumentException("NOP erwartet keine Argumente.");
         return new AssemblerOutput.CodeSequence(Collections.emptyList());
     }
+
+    // Overload used by registerFamily; instructionName is ignored for NOP
+    public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap, String instructionName) {
+        return assemble(args, registerMap, labelMap);
+    }
 }

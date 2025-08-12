@@ -39,7 +39,7 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
             }
 
         } catch (NoSuchElementException e) {
-            organism.instructionFailed("Stack underflow during world interaction.");
+            organism.instructionFailed("Invalid operands for " + getName());
         } catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
             organism.instructionFailed("Invalid operand types for world interaction.");
         }

@@ -72,7 +72,7 @@ public class VMControlFlowInstructionTest {
         sim.tick();
 
         assertThat(org.getIp()).isEqualTo(expectedIp);
-        assertThat(org.getReturnStack().peek()).isInstanceOf(Organism.ProcFrame.class);
+        assertThat(org.getCallStack().peek()).isInstanceOf(Organism.ProcFrame.class);
     }
 
     @Test
@@ -112,7 +112,9 @@ public class VMControlFlowInstructionTest {
         int[] relativeReturn = new int[]{3};
         int[] expectedIp = new int[]{org.getInitialPosition()[0] + relativeReturn[0]};
         Object[] prsSnapshot = org.getPrs().toArray(new Object[0]);
-        org.getReturnStack().push(new Organism.ProcFrame(relativeReturn, prsSnapshot));
+        // KORREKTUR: Verwende den neuen Konstruktor und den Call-Stack
+        Object[] fprsSnapshot = org.getFprs().toArray(new Object[0]);
+        org.getCallStack().push(new Organism.ProcFrame("TEST_PROC", relativeReturn, prsSnapshot, fprsSnapshot, java.util.Collections.emptyMap()));
 
         placeInstruction("RET");
 

@@ -68,8 +68,7 @@ public class FooterController {
             displayText.append(formatRegisterRow(drsLabel, drs, labelWidth)).append("\n");
 
             // FPRs (spaltenbasiert, vor PRs anzeigen)
-            List<Object> fprs = selectedOrganism.getFprs();
-            displayText.append(formatRegisterRow(fprsLabel, fprs, labelWidth)).append("\n");
+            displayText.append(formatFprRow(selectedOrganism, fprsLabel, labelWidth)).append("\n");
 
             // PRs (spaltenbasiert, nach FPRs)
             List<Object> prs = selectedOrganism.getPrs();
@@ -78,8 +77,8 @@ public class FooterController {
             // DS
             displayText.append(Messages.get("footer.label.stack")).append(logger.formatStack(selectedOrganism, true, 8)).append("\n");
 
-            // RS
-            displayText.append(Messages.get("footer.label.rs")).append(logger.formatReturnStack(selectedOrganism, true, 8)).append("\n");
+            // CS
+            displayText.append(String.format("%-" + labelWidth + "s", "CS:")).append(logger.formatCallStack(selectedOrganism)).append("\n");
 
             // Nächste Instruktion
             displayText.append(Messages.get("footer.label.nextInstruction")).append(logger.getNextInstructionInfo(selectedOrganism)).append("\n");
@@ -89,7 +88,7 @@ public class FooterController {
 
         } else {
             fullDetailsTextArea.setStyle("-fx-text-fill: " + toWebColor(Config.COLOR_TEXT) + "; -fx-control-inner-background: " + toWebColor(Config.COLOR_HEADER_FOOTER) + "; -fx-line-spacing: 2px;");
-            displayText.append("No Organism selected\nDRs:  ---\nFPRs: ---\nPRs:  ---\nDS: ---\nRS: ---\nNext: ---\nLine: ---");
+            displayText.append("No Organism selected\nDRs:  ---\nFPRs: ---\nPRs:  ---\nDS: ---\nCS: ---\nNext: ---\nLine: ---");
         }
         fullDetailsTextArea.setText(displayText.toString());
     }
@@ -104,6 +103,60 @@ public class FooterController {
         }
         return fullSourceInfo.strip();
     }
+
+    private String formatFprRow(Organism organism, String label, int labelWidth) {
+        final String paddedLabel = String.format("%-" + labelWidth + "s", label);
+        final String emptyResult = paddedLabel + " ---";
+
+        if (organism.getCallStack().isEmpty()) {
+            return emptyResult;
+        }
+
+        // 1. Metadaten und obersten Frame abrufen
+        String programId = AssemblyProgram.getProgramIdForOrganism(organism);
+        if (programId == null) return emptyResult;
+        ProgramMetadata metadata = AssemblyProgram.getMetadataForProgram(programId);
+        if (metadata == null) return emptyResult;
+
+        Organism.ProcFrame topFrame = organism.getCallStack().peek();
+        if (topFrame == null) return emptyResult;
+
+        // 2. Prozedurnamen direkt aus dem Frame holen
+        String procName = topFrame.procName;
+        if (procName == null || procName.equals("UNKNOWN")) return emptyResult;
+
+        // 3. Formale Parameternamen holen
+        DefinitionExtractor.ProcMeta procMeta = metadata.procMetaMap().get(procName);
+        if (procMeta == null || procMeta.formalParams().isEmpty()) return emptyResult;
+        List<String> paramNames = procMeta.formalParams();
+
+        // 4. Werte und Bindungen abrufen und formatieren
+        StringBuilder sb = new StringBuilder(paddedLabel);
+        sb.append(" ");
+        for (int i = 0; i < paramNames.size(); i++) {
+            String name = paramNames.get(i).toUpperCase();
+            Object value = organism.getFpr(i);
+            Integer boundRegId = topFrame.fprBindings.get(org.evochora.organism.Instruction.FPR_BASE + i);
+
+            String boundName = "??";
+            if (boundRegId != null) {
+                if (boundRegId < org.evochora.organism.Instruction.PR_BASE) {
+                    boundName = "DR" + boundRegId;
+                } else if (boundRegId < org.evochora.organism.Instruction.FPR_BASE) {
+                    boundName = "PR" + (boundRegId - org.evochora.organism.Instruction.PR_BASE);
+                } else {
+                    // Für verschachtelte Aufrufe ist die Auflösung des Namens zu komplex für die UI.
+                    // Wir zeigen den FPR-Index des Aufrufers an.
+                    boundName = "FPR" + (boundRegId - org.evochora.organism.Instruction.FPR_BASE);
+                }
+            }
+
+            sb.append(String.format("%s[%s]=%s", name, boundName, logger.formatDrValue(value)));
+            if (i < paramNames.size() - 1) sb.append("  ");
+        }
+        return sb.toString();
+    }
+
 
     // Hilfsmethode: formatiert Registerzeilen (DRs, FPRs, PRs) mit fester Spaltenbreite
     private String formatRegisterRow(String label, List<Object> regs, int labelWidth) {
