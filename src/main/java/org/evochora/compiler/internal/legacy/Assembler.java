@@ -81,12 +81,10 @@ public class Assembler {
                 passManager.getInitialWorldObjects(),
                 passManager.getSourceMap(),
                 passManager.getRegisterMap(),
-                passManager.getRegisterIdToNameMap(),
-                passManager.getLabelMap(),
-                passManager.getLabelAddressToNameMap(),
-                passManager.getLinearAddressToCoordMap(),
-                passManager.getCoordToLinearAddressMap(),
                 passManager.getCallSiteBindings(),
+                passManager.getCoordToLinearAddressMap(), // In der Definition relativeCoordToLinearAddress genannt
+                passManager.getLinearAddressToCoordMap(), // In der Definition linearAddressToCoord genannt
+                passManager.getLabelAddressToNameMap(),
                 extractor.getProcMetaMap()
         );
     }

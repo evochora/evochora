@@ -5,8 +5,8 @@ import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.compiler.internal.legacy.NumericParser;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 
 import java.util.List;
@@ -33,9 +33,9 @@ public class BitwiseInstruction extends Instruction {
                 }
                 Operand op1 = operands.get(0);
                 if (op1.value() instanceof Integer i1) {
-                    Symbol s1 = Symbol.fromInt(i1);
+                    Molecule s1 = org.evochora.runtime.model.Molecule.fromInt(i1);
                     int resultValue = ~s1.toScalarValue();
-                    Object result = new Symbol(s1.type(), resultValue).toInt();
+                    Object result = new Molecule(s1.type(), resultValue).toInt();
 
                     if (op1.rawSourceId() != -1) {
                         writeOperand(op1.rawSourceId(), result);
@@ -58,12 +58,12 @@ public class BitwiseInstruction extends Instruction {
             Operand op2 = operands.get(1);
 
             if (op1.value() instanceof Integer i1 && op2.value() instanceof Integer i2) {
-                Symbol s1 = Symbol.fromInt(i1);
-                Symbol s2;
+                Molecule s1 = org.evochora.runtime.model.Molecule.fromInt(i1);
+                Molecule s2;
                 if (op2.rawSourceId() == -1) { // Immediate
-                    s2 = new Symbol(s1.type(), i2);
+                    s2 = new Molecule(s1.type(), i2);
                 } else { // Register
-                    s2 = Symbol.fromInt(i2);
+                    s2 = org.evochora.runtime.model.Molecule.fromInt(i2);
                 }
 
                 if (Config.STRICT_TYPING && s1.type() != s2.type()) {
@@ -92,7 +92,7 @@ public class BitwiseInstruction extends Instruction {
                         return;
                     }
                 }
-                Object result = new Symbol(s1.type(), (int)scalarResult).toInt();
+                Object result = new Molecule(s1.type(), (int)scalarResult).toInt();
 
                 if (op1.rawSourceId() != -1) {
                     writeOperand(op1.rawSourceId(), result);
@@ -110,7 +110,7 @@ public class BitwiseInstruction extends Instruction {
     }
 
     public static Instruction plan(Organism organism, World world) {
-        int fullOpcodeId = world.getSymbol(organism.getIp()).toInt();
+        int fullOpcodeId = world.getMolecule(organism.getIp()).toInt();
         return new BitwiseInstruction(organism, fullOpcodeId);
     }
 
@@ -125,7 +125,7 @@ public class BitwiseInstruction extends Instruction {
                 if (args.length != 1) throw new IllegalArgumentException(name + " expects 1 register argument.");
                 Integer reg = resolveRegToken(args[0], registerMap);
                 if (reg == null) throw new IllegalArgumentException("Invalid register for " + name);
-                return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg).toInt()));
+                return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg).toInt()));
             }
         }
 
@@ -134,7 +134,7 @@ public class BitwiseInstruction extends Instruction {
             Integer reg1 = resolveRegToken(args[0], registerMap);
             Integer reg2 = resolveRegToken(args[1], registerMap);
             if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for " + name);
-            return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg1).toInt(), new Symbol(Config.TYPE_DATA, reg2).toInt()));
+            return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg1).toInt(), new Molecule(Config.TYPE_DATA, reg2).toInt()));
 
         } else if (name.endsWith("I")) {
             if (args.length != 2) throw new IllegalArgumentException(name + " expects a register and an immediate value.");
@@ -152,7 +152,7 @@ public class BitwiseInstruction extends Instruction {
                 case "STRUCTURE" -> Config.TYPE_STRUCTURE;
                 default -> throw new IllegalArgumentException("Unknown type for literal: " + typeName);
             };
-            return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg1).toInt(), new Symbol(type, value).toInt()));
+            return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg1).toInt(), new Molecule(type, value).toInt()));
 
         } else if (name.endsWith("S")) {
             if (args.length != 0) throw new IllegalArgumentException(name + " expects no arguments.");

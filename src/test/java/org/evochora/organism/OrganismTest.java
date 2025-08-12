@@ -3,8 +3,8 @@ package org.evochora.organism;
 import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,7 +35,7 @@ public class OrganismTest {
         Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
         sim.addOrganism(org);
         // Place a DATA symbol at IP to violate strict typing
-        world.setSymbol(new Symbol(Config.TYPE_DATA, 1), org.getIp());
+        world.setMolecule(new Molecule(Config.TYPE_DATA, 1), org.getIp());
 
         Instruction planned = org.planTick(world);
         assertThat(planned).isNotNull();
@@ -50,7 +50,7 @@ public class OrganismTest {
         Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
         sim.addOrganism(org);
         // Place a CODE opcode that doesn't exist (e.g., 999)
-        world.setSymbol(new Symbol(Config.TYPE_CODE, 999), org.getIp());
+        world.setMolecule(new Molecule(Config.TYPE_CODE, 999), org.getIp());
 
         Instruction planned = org.planTick(world);
         assertThat(planned).isNotNull();
@@ -66,7 +66,7 @@ public class OrganismTest {
         Organism org = Organism.create(sim, new int[]{0, 0}, 2, sim.getLogger());
         sim.addOrganism(org);
         int nopId = Instruction.getInstructionIdByName("NOP");
-        world.setSymbol(new Symbol(Config.TYPE_CODE, nopId), org.getIp());
+        world.setMolecule(new Molecule(Config.TYPE_CODE, nopId), org.getIp());
 
         // Two ticks should drain energy to <= 0 and mark dead
         sim.tick();
@@ -85,8 +85,8 @@ public class OrganismTest {
         org.setDv(new int[]{1, 0});
         int nopId = Instruction.getInstructionIdByName("NOP");
         // Place NOP at [0,0] and [1,0]
-        world.setSymbol(new Symbol(Config.TYPE_CODE, nopId), new int[]{0, 0});
-        world.setSymbol(new Symbol(Config.TYPE_CODE, nopId), new int[]{1, 0});
+        world.setMolecule(new Molecule(Config.TYPE_CODE, nopId), new int[]{0, 0});
+        world.setMolecule(new Molecule(Config.TYPE_CODE, nopId), new int[]{1, 0});
 
         assertThat(org.getIp()).isEqualTo(new int[]{0, 0});
         sim.tick();
@@ -109,8 +109,8 @@ public class OrganismTest {
     void testDataStackPushPopOrder() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
         Deque<Object> ds = org.getDataStack();
-        int a = new Symbol(Config.TYPE_DATA, 1).toInt();
-        int b = new Symbol(Config.TYPE_DATA, 2).toInt();
+        int a = new Molecule(Config.TYPE_DATA, 1).toInt();
+        int b = new Molecule(Config.TYPE_DATA, 2).toInt();
 
         ds.push(a);
         ds.push(b);
@@ -125,7 +125,7 @@ public class OrganismTest {
         Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
 
         // DR
-        int dataVal = new Symbol(Config.TYPE_DATA, 42).toInt();
+        int dataVal = new Molecule(Config.TYPE_DATA, 42).toInt();
         org.setDr(0, dataVal);
         assertThat(org.getDr(0)).isEqualTo(dataVal);
 

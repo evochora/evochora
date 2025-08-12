@@ -1,8 +1,9 @@
 package org.evochora.compiler.internal.legacy;
 
 import org.evochora.app.setup.Config;
+import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 
 import java.io.IOException;
@@ -24,7 +25,7 @@ public abstract class AssemblyProgram {
     protected static final Map<Integer, String> organismIdToProgramId = new HashMap<>();
 
     protected ProgramMetadata metadata;
-    protected Map<int[], Symbol> initialWorldObjects;
+    protected Map<int[], Molecule> initialWorldObjects;
     private boolean isDebugEnabled = false;
     private int[] programOrigin = new int[Config.WORLD_DIMENSIONS];
     private final Map<String, String> routineLibraries = new HashMap<>();
@@ -119,7 +120,7 @@ public abstract class AssemblyProgram {
     }
 
     // Getter und statische Methoden bleiben unverändert
-    public Map<int[], Symbol> getInitialWorldObjects() {
+    public Map<int[], Molecule> getInitialWorldObjects() {
         if (this.initialWorldObjects == null) {
             assemble();
         }
@@ -167,5 +168,16 @@ public abstract class AssemblyProgram {
         } else {
             return disassembler.disassembleGeneric(ip, world);
         }
+    }
+
+    /**
+     * TODO: [Phase 2] Temporäre Brückenmethode, damit Tests, die die neue Compiler-API
+     *  verwenden, weiterhin das alte, statische Metadaten-System füttern können.
+     *  Wird entfernt, sobald die Runtime direkt mit dem ProgramArtifact arbeitet.
+     */
+    public static void registerProgram(ProgramArtifact artifact, Organism organism) {
+        ProgramMetadata legacyMetadata = ProgramMetadata.fromArtifact(artifact);
+        programIdToMetadata.put(artifact.programId(), legacyMetadata);
+        organismIdToProgramId.put(organism.getId(), artifact.programId());
     }
 }

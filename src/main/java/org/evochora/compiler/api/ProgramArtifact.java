@@ -29,7 +29,7 @@ import java.util.Map;
 public record ProgramArtifact(
         String programId,
         Map<int[], Integer> machineCodeLayout,
-        Map<int[], PlacedSymbol> initialWorldObjects,
+        Map<int[], PlacedMolecule> initialWorldObjects,
         Map<Integer, SourceInfo> sourceMap,
         Map<Integer, int[]> callSiteBindings,
         Map<List<Integer>, Integer> relativeCoordToLinearAddress,

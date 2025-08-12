@@ -5,8 +5,8 @@ import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.ArgumentType;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.runtime.isa.instructions.*;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 
 import java.lang.reflect.Constructor;
@@ -64,7 +64,7 @@ public abstract class Instruction {
                     break;
                 case REGISTER: {
                     Organism.FetchResult arg = organism.fetchArgument(currentIp, world);
-                    int regId = Symbol.fromInt(arg.value()).toScalarValue();
+                    int regId = Molecule.fromInt(arg.value()).toScalarValue();
                     resolved.add(new Operand(readOperand(regId), regId));
                     currentIp = arg.nextIp();
                     break;
@@ -201,7 +201,7 @@ public abstract class Instruction {
 
                 BiFunction<Organism, World, Instruction> planner = (org, world) -> {
                     try {
-                        return constructor.newInstance(org, world.getSymbol(org.getIp()).toInt());
+                        return constructor.newInstance(org, world.getMolecule(org.getIp()).toInt());
                     } catch (Exception e) { throw new RuntimeException("Failed to plan instruction " + name, e); }
                 };
 
@@ -256,7 +256,7 @@ public abstract class Instruction {
         BiFunction<Organism, World, Instruction> planner = (org, world) -> {
             try {
                 Instruction inst = instructionClass.getConstructor(Organism.class, int.class)
-                        .newInstance(org, world.getSymbol(org.getIp()).toInt());
+                        .newInstance(org, world.getMolecule(org.getIp()).toInt());
                 if (targetLambda != null) {
                     inst.setTargetCoordLambda(targetLambda);
                 }

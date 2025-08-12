@@ -83,7 +83,7 @@ This section lists each instruction with all of its variants grouped together (R
 
 Energy model:
 - All energy costs are configurable by the simulator. The “Energy:” line indicates that an instruction consumes or transfers energy according to the configured schedule.
-- Some world interactions may transfer energy instead of strictly consuming it. For example, reading an ENERGY symbol can increase ER; writing symbols may include surcharges depending on the symbol being written.
+- Some world interactions may transfer energy instead of strictly consuming it. For example, reading an ENERGY molecule can increase ER; writing symbols may include surcharges depending on the molecule being written.
 
 Energy costs:
 - Energy costs are configurable in the simulator; the values shown here are the default costs intended for balancing. When in doubt, prefer the per-instruction “Energy:” line. Typical defaults:
@@ -262,7 +262,7 @@ These instructions interact with the world grid and therefore participate in the
   - Operands:
     - Register variants use a target register and a vector (from register or immediate).
     - PEKS pops a vector from DS and pushes the read value to DS.
-  - Effect: Read the symbol at DP + vector and store its encoded value in the target (register or stack). Does not modify the world.
+  - Effect: Read the molecule at DP + vector and store its encoded value in the target (register or stack). Does not modify the world.
   - Energy: 2
   - Errors: invalid vector dimensionality; stack underflow (PEKS)
   - Example: PEKI %DR0 1|0
@@ -385,9 +385,9 @@ This section documents all assembler directives with syntax, semantics, and exam
     .DIR 1|0
     ```
 
-- .PLACE — Place initial world symbol
+- .PLACE — Place initial world molecule
   - Syntax: `.PLACE TYPE:VALUE X|Y[|Z...]`
-  - Semantics: Emits/places the given symbol at the relative offset from current origin.
+  - Semantics: Emits/places the given molecule at the relative offset from current origin.
   - Example:
     ```
     .PLACE DATA:7 0|1

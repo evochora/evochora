@@ -4,8 +4,8 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,7 +49,7 @@ public class AssemblerBitwiseInstructionTest {
         Map<int[], Integer> machineCode = program.assemble();
 
         for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-            world.setSymbol(Symbol.fromInt(entry.getValue()), entry.getKey());
+            world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
         }
 
         if (org == null) {
@@ -68,108 +68,108 @@ public class AssemblerBitwiseInstructionTest {
     @Test
     void testAndi() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 0b1010).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         List<String> code = List.of("ANDI %DR0 DATA:0b1100");
         Organism finalOrg = runAssembly(code, org, 1);
-        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0b1000).toInt());
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1000).toInt());
     }
 
     @Test
     void testOri() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 0b1010).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         List<String> code = List.of("ORI %DR0 DATA:0b0101");
         Organism finalOrg = runAssembly(code, org, 1);
-        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0b1111).toInt());
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1111).toInt());
     }
 
     @Test
     void testXori() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 0b1010).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         List<String> code = List.of("XORI %DR0 DATA:0b0110");
         Organism finalOrg = runAssembly(code, org, 1);
-        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0b1100).toInt());
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
     }
 
     // Register variants
     @Test
     void testAndr() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 0b1010).toInt());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 0b1100).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b1100).toInt());
         List<String> code = List.of("ANDR %DR0 %DR1");
         Organism finalOrg = runAssembly(code, org, 1);
-        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0b1000).toInt());
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1000).toInt());
     }
 
     @Test
     void testOrr() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 0b1010).toInt());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 0b0101).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b0101).toInt());
         List<String> code = List.of("ORR %DR0 %DR1");
         Organism finalOrg = runAssembly(code, org, 1);
-        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0b1111).toInt());
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1111).toInt());
     }
 
     @Test
     void testXorr() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 0b1010).toInt());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 0b0110).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b0110).toInt());
         List<String> code = List.of("XORR %DR0 %DR1");
         Organism finalOrg = runAssembly(code, org, 1);
-        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 0b1100).toInt());
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
     }
 
     // Stack variants
     @Test
     void testAnds() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 0b1010).toInt());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 0b1100).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
         List<String> code = List.of("ANDS");
         Organism finalOrg = runAssembly(code, org, 1);
-        assertThat(finalOrg.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 0b1000).toInt());
+        assertThat(finalOrg.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1000).toInt());
     }
 
     @Test
     void testOrs() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 0b1010).toInt());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 0b1100).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
         List<String> code = List.of("ORS");
         Organism finalOrg = runAssembly(code, org, 1);
-        assertThat(finalOrg.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 0b1110).toInt());
+        assertThat(finalOrg.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1110).toInt());
     }
 
     @Test
     void testXors() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 0b1010).toInt());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 0b1100).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
         List<String> code = List.of("XORS");
         Organism finalOrg = runAssembly(code, org, 1);
-        assertThat(finalOrg.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 0b0110).toInt());
+        assertThat(finalOrg.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 0b0110).toInt());
     }
 
     // NOT
     @Test
     void testNot() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 0b1010).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         List<String> code = List.of("NOT %DR0");
         Organism finalOrg = runAssembly(code, org, 1);
-        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, ~0b1010).toInt());
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1010).toInt());
     }
 
     @Test
     void testNots() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 0b1010).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         List<String> code = List.of("NOTS");
         Organism finalOrg = runAssembly(code, org, 1);
-        assertThat(finalOrg.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, ~0b1010).toInt());
+        assertThat(finalOrg.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1010).toInt());
     }
 }

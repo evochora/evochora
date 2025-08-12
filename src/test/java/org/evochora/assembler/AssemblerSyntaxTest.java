@@ -4,8 +4,8 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,17 +18,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class AssemblerSyntaxTest {
 
-    private static class TestProgram extends AssemblyProgram {
-        private final String code;
-        public TestProgram(List<String> codeLines) {
-            super("SyntaxTest.s");
-            this.code = String.join("\n", codeLines);
-        }
-        @Override
-        public String getProgramCode() {
-            return code;
-        }
-    }
+    // KORRIGIERT: Diese Helferklasse wird nicht mehr benötigt, da wir die
+    // Compiler-API direkt verwenden.
+    // private static class TestProgram extends AssemblyProgram { ... }
 
     private World world;
     private Simulation sim;
@@ -45,21 +37,30 @@ public class AssemblerSyntaxTest {
     }
 
     private Organism runAssembly(List<String> code, Organism org, int cycles) {
-        TestProgram program = new TestProgram(code);
-        Map<int[], Integer> machineCode = program.assemble();
-        for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-            world.setSymbol(Symbol.fromInt(entry.getValue()), entry.getKey());
-        }
-        if (org == null) {
-            org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        }
-            // Associate organism with the assembled program so runtime can fetch ProgramMetadata
-            program.assignOrganism(org);
+        // Verwende die neue Compiler-API
+        org.evochora.compiler.api.Compiler compiler = new org.evochora.compiler.internal.LegacyCompilerAdapter();
+        try {
+            org.evochora.compiler.api.ProgramArtifact artifact = compiler.compile(code, "SyntaxTest.s");
 
-        // Link the organism to the assembled program so runtime can retrieve ProgramMetadata
-        program.assignOrganism(org);
+            // Platziere den Maschinencode in der Welt
+            for (Map.Entry<int[], Integer> entry : artifact.machineCodeLayout().entrySet()) {
+                world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
+            }
 
-        sim.addOrganism(org);
+            if (org == null) {
+                org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
+            }
+
+            // TODO: [Phase 3] In der Zukunft wird der Organismus direkt mit dem Artefakt
+            //  verbunden, nicht mehr über die AssemblyProgram-Registry.
+            //  Für jetzt müssen wir das alte System noch füttern.
+            AssemblyProgram.registerProgram(artifact, org);
+
+            sim.addOrganism(org);
+
+        } catch (org.evochora.compiler.api.CompilationException e) {
+            throw new RuntimeException("Test setup failed due to compilation error", e);
+        }
         for (int i = 0; i < cycles; i++) sim.tick();
         return org;
     }
@@ -75,11 +76,11 @@ public class AssemblerSyntaxTest {
             "CALL P .WITH %DR0"
         );
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 0).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
 
         Organism res = runAssembly(code, org, 5);
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
     @Test
@@ -92,13 +93,13 @@ public class AssemblerSyntaxTest {
             ".INCLUDE SYNTAXTEST.BUMP AS B1 WITH %DR0 %DR1"
         );
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 0).toInt());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 0).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 0).toInt());
 
         Organism res = runAssembly(code, org, 2);
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
-        assertThat(res.getDr(1)).isEqualTo(new Symbol(Config.TYPE_DATA, 2).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(res.getDr(1)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
     }
 
     @Test
@@ -113,11 +114,11 @@ public class AssemblerSyntaxTest {
             ".INCLUDE SYNTAXTEST.R AS R0 WITH %DR0"
         );
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 5).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 5).toInt());
 
         Organism res = runAssembly(code, org, 1);
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 6).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 6).toInt());
     }
 
     // --- Additional positive syntax coverage ---
@@ -134,7 +135,7 @@ public class AssemblerSyntaxTest {
         Organism res = runAssembly(code, org, 4);
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
         // SETI -> ADDI -> JMPI (back to L1) -> ADDI again => 2
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 2).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
     }
 
     @Test
@@ -147,10 +148,10 @@ public class AssemblerSyntaxTest {
         );
         // Ensure DR0 is DATA-typed before ADDI so result is DATA:1
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 0).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         Organism res = runAssembly(code, org, 2);
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
     @Test
@@ -163,7 +164,7 @@ public class AssemblerSyntaxTest {
         );
         Organism res = runAssembly(code, null, 4);
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 2).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
     }
 
     @Test
@@ -177,7 +178,7 @@ public class AssemblerSyntaxTest {
         );
         Organism res = runAssembly(code, null, 2);
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 3).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 3).toInt());
     }
 
     @Test
@@ -192,6 +193,6 @@ public class AssemblerSyntaxTest {
         org.setDv(new int[]{0, 1});
         Organism res = runAssembly(code, org, 2);
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 5).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 5).toInt());
     }
 }

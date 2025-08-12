@@ -3,8 +3,8 @@ package org.evochora.organism;
 import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,28 +30,28 @@ public class OwnershipTests {
 
     private void placeInstruction(Organism org, String name, Integer... args) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setSymbol(new Symbol(Config.TYPE_CODE, opcode), org.getIp());
+        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int arg : args) {
             currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-            world.setSymbol(new Symbol(Config.TYPE_DATA, arg), currentPos);
+            world.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
 
     private void placeInstructionWithVector(Organism org, String name, int[] vector) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setSymbol(new Symbol(Config.TYPE_CODE, opcode), org.getIp());
+        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int val : vector) {
             currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-            world.setSymbol(new Symbol(Config.TYPE_DATA, val), currentPos);
+            world.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }
 
     @Test
     void testSeekVariants_SucceedOnOwnedNonEmptyCell() {
         int[] vec = new int[]{0, 1};
-        int payload = new Symbol(Config.TYPE_DATA, 42).toInt();
+        int payload = new Molecule(Config.TYPE_DATA, 42).toInt();
 
         // SEEK (register-based vector)
         {
@@ -60,7 +60,7 @@ public class OwnershipTests {
             org.setDp(org.getIp());
 
             int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-            world.setSymbol(Symbol.fromInt(payload), target);
+            world.setMolecule(Molecule.fromInt(payload), target);
             world.setOwnerId(org.getId(), target[0], target[1]);
 
             org.setDr(1, vec);
@@ -79,7 +79,7 @@ public class OwnershipTests {
             org.setDp(org.getIp());
 
             int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-            world.setSymbol(Symbol.fromInt(payload), target);
+            world.setMolecule(Molecule.fromInt(payload), target);
             world.setOwnerId(org.getId(), target[0], target[1]);
 
             placeInstructionWithVector(org, "SEKI", vec);
@@ -97,7 +97,7 @@ public class OwnershipTests {
             org.setDp(org.getIp());
 
             int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-            world.setSymbol(Symbol.fromInt(payload), target);
+            world.setMolecule(Molecule.fromInt(payload), target);
             world.setOwnerId(org.getId(), target[0], target[1]);
 
             org.getDataStack().push(vec);
@@ -113,7 +113,7 @@ public class OwnershipTests {
     @Test
     void testSeekVariants_FailOnForeignOwnedCell() {
         int[] vec = new int[]{0, 1};
-        int payload = new Symbol(Config.TYPE_DATA, 77).toInt();
+        int payload = new Molecule(Config.TYPE_DATA, 77).toInt();
 
         // SEEK failure on foreign-owned
         {
@@ -122,7 +122,7 @@ public class OwnershipTests {
             org.setDp(org.getIp());
 
             int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-            world.setSymbol(Symbol.fromInt(payload), target);
+            world.setMolecule(Molecule.fromInt(payload), target);
             // Set foreign owner (different from org.getId())
             world.setOwnerId(org.getId() + 1, target[0], target[1]);
 
@@ -142,7 +142,7 @@ public class OwnershipTests {
             org.setDp(org.getIp());
 
             int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-            world.setSymbol(Symbol.fromInt(payload), target);
+            world.setMolecule(Molecule.fromInt(payload), target);
             world.setOwnerId(org.getId() + 2, target[0], target[1]);
 
             placeInstructionWithVector(org, "SEKI", vec);
@@ -160,7 +160,7 @@ public class OwnershipTests {
             org.setDp(org.getIp());
 
             int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-            world.setSymbol(Symbol.fromInt(payload), target);
+            world.setMolecule(Molecule.fromInt(payload), target);
             world.setOwnerId(org.getId() + 3, target[0], target[1]);
 
             org.getDataStack().push(vec);

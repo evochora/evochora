@@ -102,20 +102,20 @@ public class Organism {
         this.ipBeforeFetch = Arrays.copyOf(this.ip, this.ip.length);
         this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length);
 
-        Symbol symbol = world.getSymbol(this.ip);
+        Molecule molecule = world.getMolecule(this.ip);
         if (Config.STRICT_TYPING) {
-            if (symbol.type() != Config.TYPE_CODE && !symbol.isEmpty()) {
+            if (molecule.type() != Config.TYPE_CODE && !molecule.isEmpty()) {
                 this.instructionFailed("Illegal cell type (not CODE) at IP");
-                return new NopInstruction(this, world.getSymbol(this.ip).toInt());
+                return new NopInstruction(this, world.getMolecule(this.ip).toInt());
             }
         }
-        int opcodeId = symbol.value();
+        int opcodeId = molecule.value();
         BiFunction<Organism, World, Instruction> planner = Instruction.getPlannerById(Config.TYPE_CODE | opcodeId);
         if (planner != null) {
             return planner.apply(this, world);
         }
         this.instructionFailed("Unknown opcode: " + opcodeId);
-        return new NopInstruction(this, world.getSymbol(this.ip).toInt());
+        return new NopInstruction(this, world.getMolecule(this.ip).toInt());
     }
 
     public void processTickAction(Instruction instruction, Simulation simulation) {
@@ -144,21 +144,21 @@ public class Organism {
         int[] tempIp = Arrays.copyOf(startIp, startIp.length);
         for (int i = 0; i < instructionLength - 1; i++) {
             tempIp = getNextInstructionPosition(tempIp, world, this.dvBeforeFetch);
-            rawArgs.add(world.getSymbol(tempIp).toInt());
+            rawArgs.add(world.getMolecule(tempIp).toInt());
         }
         return rawArgs;
     }
 
     public FetchResult fetchArgument(int[] currentIp, World world) {
         int[] nextIp = getNextInstructionPosition(currentIp, world, this.dvBeforeFetch);
-        Symbol symbol = world.getSymbol(nextIp);
-        return new FetchResult(symbol.toInt(), nextIp);
+        Molecule molecule = world.getMolecule(nextIp);
+        return new FetchResult(molecule.toInt(), nextIp);
     }
 
     public FetchResult fetchSignedArgument(int[] currentIp, World world) {
         int[] nextIp = getNextInstructionPosition(currentIp, world, this.dvBeforeFetch);
-        Symbol symbol = world.getSymbol(nextIp);
-        return new FetchResult(symbol.toScalarValue(), nextIp);
+        Molecule molecule = world.getMolecule(nextIp);
+        return new FetchResult(molecule.toScalarValue(), nextIp);
     }
 
     private void advanceIpBy(int steps, World world) {
@@ -185,7 +185,7 @@ public class Organism {
 
     public void skipNextInstruction(World world) {
         int[] currentInstructionIp = this.getIpBeforeFetch();
-        int currentInstructionOpcode = world.getSymbol(currentInstructionIp).toInt();
+        int currentInstructionOpcode = world.getMolecule(currentInstructionIp).toInt();
         int currentInstructionLength = Instruction.getInstructionLengthById(currentInstructionOpcode);
 
         int[] nextInstructionIp = currentInstructionIp;
@@ -193,7 +193,7 @@ public class Organism {
             nextInstructionIp = getNextInstructionPosition(nextInstructionIp, world, this.getDvBeforeFetch());
         }
 
-        int nextOpcode = world.getSymbol(nextInstructionIp).toInt();
+        int nextOpcode = world.getMolecule(nextInstructionIp).toInt();
         int lengthToSkip = Instruction.getInstructionLengthById(nextOpcode);
 
         int[] finalIp = nextInstructionIp;

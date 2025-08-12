@@ -3,8 +3,8 @@ package org.evochora.app.setup;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerException;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.slf4j.Logger;
 
@@ -60,7 +60,7 @@ public class Setup {
             // program.enableDebug();
 
             Map<int[], Integer> layout = program.assemble();
-            Map<int[], Symbol> worldObjects = program.getInitialWorldObjects();
+            Map<int[], Molecule> worldObjects = program.getInitialWorldObjects();
 
             Organism org = placeOrganismWithLayout(simulation, program.getProgramOrigin(), layout, worldObjects, simulation.getLogger());
             program.assignOrganism(org);
@@ -81,7 +81,7 @@ public class Setup {
     private static void placeProgram(Simulation simulation, AssemblyProgram program, int[] startPos) {
         // 1. Assembliere den Code, um das Layout und die zusätzlichen Welt-Objekte zu erhalten.
         Map<int[], Integer> layout = program.assemble();
-        Map<int[], Symbol> worldObjects = program.getInitialWorldObjects();
+        Map<int[], Molecule> worldObjects = program.getInitialWorldObjects();
 
         // 2. Platziere den Organismus physisch in der Welt.
         Organism org = placeOrganismWithLayout(simulation, startPos, layout, worldObjects, simulation.getLogger());
@@ -92,7 +92,7 @@ public class Setup {
 
     private static Organism placeOrganismWithLayout(
             Simulation simulation, int[] startPos, Map<int[], Integer> layout,
-            Map<int[], Symbol> worldObjects, Logger logger) {
+            Map<int[], Molecule> worldObjects, Logger logger) {
 
         World world = simulation.getWorld();
 
@@ -102,16 +102,16 @@ public class Setup {
             for (int i = 0; i < startPos.length; i++) {
                 absolutePos[i] = startPos[i] + relativePos[i];
             }
-            world.setSymbol(Symbol.fromInt(entry.getValue()), absolutePos);
+            world.setMolecule(org.evochora.runtime.model.Molecule.fromInt(entry.getValue()), absolutePos);
         }
 
-        for (Map.Entry<int[], Symbol> entry : worldObjects.entrySet()) {
+        for (Map.Entry<int[], Molecule> entry : worldObjects.entrySet()) {
             int[] relativePos = entry.getKey();
             int[] absolutePos = new int[startPos.length];
             for (int i = 0; i < startPos.length; i++) {
                 absolutePos[i] = startPos[i] + relativePos[i];
             }
-            world.setSymbol(entry.getValue(), absolutePos);
+            world.setMolecule(entry.getValue(), absolutePos);
         }
 
         Organism org = Organism.create(simulation, startPos, Config.INITIAL_ORGANISM_ENERGY, logger);

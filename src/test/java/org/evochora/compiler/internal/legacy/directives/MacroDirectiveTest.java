@@ -4,8 +4,8 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,7 +49,7 @@ public class MacroDirectiveTest {
         Map<int[], Integer> machineCode = program.assemble();
 
         for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-            world.setSymbol(Symbol.fromInt(entry.getValue()), entry.getKey());
+            world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
         }
 
         if (org == null) {
@@ -65,7 +65,7 @@ public class MacroDirectiveTest {
     @Test
     void testSimpleMacro() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 10).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
 
         List<String> code = List.of(
             ".MACRO INC REG",
@@ -75,6 +75,6 @@ public class MacroDirectiveTest {
         );
 
         Organism finalOrg = runAssembly(code, org, 1);
-        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 11).toInt());
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 11).toInt());
     }
 }

@@ -58,26 +58,26 @@ public class World {
         return flatIndex;
     }
 
-    public Symbol getSymbol(int... coord) {
+    public Molecule getMolecule(int... coord) {
         int index = getFlatIndex(coord);
         if (index == -1) {
-            return Symbol.fromInt(0);
+            return org.evochora.runtime.model.Molecule.fromInt(0);
         }
-        return Symbol.fromInt(this.grid[index]);
+        return org.evochora.runtime.model.Molecule.fromInt(this.grid[index]);
     }
 
-    public void setSymbol(Symbol symbol, int... coord) {
+    public void setMolecule(Molecule molecule, int... coord) {
         int index = getFlatIndex(coord);
         if (index != -1) {
-            this.grid[index] = symbol.toInt();
+            this.grid[index] = molecule.toInt();
         }
     }
 
-    // Overload: set symbol and owner in one call; owner is only updated for non-empty symbols
-    public void setSymbol(Symbol symbol, int ownerId, int... coord) {
+    // Overload: set molecule and owner in one call; owner is only updated for non-empty symbols
+    public void setMolecule(Molecule molecule, int ownerId, int... coord) {
         int index = getFlatIndex(coord);
         if (index != -1) {
-            int packed = symbol.toInt();
+            int packed = molecule.toInt();
             this.grid[index] = packed;
             if (packed != 0) { // only update owner for non-empty cells
                 this.ownerGrid[index] = ownerId;

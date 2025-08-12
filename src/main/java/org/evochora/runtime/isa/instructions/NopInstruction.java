@@ -23,7 +23,7 @@ public class NopInstruction extends Instruction {
     }
 
     public static Instruction plan(Organism organism, World world) {
-        int fullOpcodeId = world.getSymbol(organism.getIp()).toInt();
+        int fullOpcodeId = world.getMolecule(organism.getIp()).toInt();
         return new NopInstruction(organism, fullOpcodeId);
     }
 

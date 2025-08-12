@@ -4,8 +4,8 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.evochora.compiler.internal.legacy.AssemblerException;
 import org.junit.jupiter.api.BeforeAll;
@@ -53,12 +53,12 @@ public class SimpleDirectivesTest {
 
             int[] startPos = program.getProgramOrigin();
             for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-                world.setSymbol(Symbol.fromInt(entry.getValue()), entry.getKey());
+                world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
             }
             // Also place initial world objects emitted by directives like .PLACE
-            Map<int[], Symbol> initialObjects = program.getInitialWorldObjects();
-            for (Map.Entry<int[], Symbol> entry : initialObjects.entrySet()) {
-                world.setSymbol(entry.getValue(), entry.getKey());
+            Map<int[], Molecule> initialObjects = program.getInitialWorldObjects();
+            for (Map.Entry<int[], Molecule> entry : initialObjects.entrySet()) {
+                world.setMolecule(entry.getValue(), entry.getKey());
             }
 
             if (org == null) {
@@ -85,7 +85,7 @@ public class SimpleDirectivesTest {
             "SETI %DR0 MY_VAL"
         );
         Organism finalOrg = runAssembly(code, null, 1);
-        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 5).toInt());
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 5).toInt());
     }
 
     @Test
@@ -95,7 +95,7 @@ public class SimpleDirectivesTest {
                 "SETI %X DATA:123"
         );
         Organism finalOrg = runAssembly(code, null, 1);
-        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 123).toInt());
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 123).toInt());
     }
 
     @Test
@@ -109,7 +109,7 @@ public class SimpleDirectivesTest {
         // Verify that the opcode at the origin matches SETI
         int[] origin = new int[]{7, 9};
         int setiOpcode = Instruction.getInstructionIdByName("SETI");
-        assertThat(world.getSymbol(origin).toInt()).isEqualTo(new Symbol(Config.TYPE_CODE, setiOpcode).toInt());
+        assertThat(world.getMolecule(origin).toInt()).isEqualTo(new Molecule(Config.TYPE_CODE, setiOpcode).toInt());
     }
 
     @Test
@@ -123,7 +123,7 @@ public class SimpleDirectivesTest {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
         org.setDv(new int[]{0, 1});
         Organism finalOrg = runAssembly(code, org, 2);
-        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 3).toInt());
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 3).toInt());
     }
 
     @Test
@@ -135,8 +135,8 @@ public class SimpleDirectivesTest {
                 "NOP"
         );
         runAssembly(code, null, 0);
-        assertThat(world.getSymbol(new int[]{3, 4}).toInt()).isEqualTo(new Symbol(Config.TYPE_DATA, 5).toInt());
-        assertThat(world.getSymbol(new int[]{10, 1}).toInt()).isEqualTo(new Symbol(Config.TYPE_STRUCTURE, 9).toInt());
+        assertThat(world.getMolecule(new int[]{3, 4}).toInt()).isEqualTo(new Molecule(Config.TYPE_DATA, 5).toInt());
+        assertThat(world.getMolecule(new int[]{10, 1}).toInt()).isEqualTo(new Molecule(Config.TYPE_STRUCTURE, 9).toInt());
     }
 
     @Test
@@ -147,7 +147,7 @@ public class SimpleDirectivesTest {
                 "SETI %MY_LIB_REG DATA:999"
         );
         Organism finalOrg = runAssembly(code, null, 1);
-        assertThat(finalOrg.getDr(5)).isEqualTo(new Symbol(Config.TYPE_DATA, 999).toInt());
+        assertThat(finalOrg.getDr(5)).isEqualTo(new Molecule(Config.TYPE_DATA, 999).toInt());
     }
 
     @Test

@@ -3,8 +3,8 @@ package org.evochora;
 import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,11 +32,11 @@ public class SimulationTest {
     private void placeInstruction(Organism org, String name, Integer... args) {
         int opcode = Instruction.getInstructionIdByName(name);
         int[] pos = org.getIp();
-        world.setSymbol(new Symbol(Config.TYPE_CODE, opcode), pos);
+        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), pos);
         int[] cur = pos;
         for (int arg : args) {
             cur = org.getNextInstructionPosition(cur, world, org.getDv());
-            world.setSymbol(new Symbol(Config.TYPE_DATA, arg), cur);
+            world.setMolecule(new Molecule(Config.TYPE_DATA, arg), cur);
         }
     }
 
@@ -51,13 +51,13 @@ public class SimulationTest {
         Organism orgLow = Organism.create(sim, new int[]{0, 0}, 2000, sim.getLogger());
         orgLow.setDv(new int[]{1, 0});
         orgLow.setDp(new int[]{0, 0});
-        int payloadLow = new Symbol(Config.TYPE_DATA, 11).toInt();
+        int payloadLow = new Molecule(Config.TYPE_DATA, 11).toInt();
         orgLow.setDr(0, payloadLow);
 
         Organism orgHigh = Organism.create(sim, new int[]{10, 0}, 2000, sim.getLogger());
         orgHigh.setDv(new int[]{1, 0});
         orgHigh.setDp(new int[]{0, 0});
-        int payloadHigh = new Symbol(Config.TYPE_DATA, 22).toInt();
+        int payloadHigh = new Molecule(Config.TYPE_DATA, 22).toInt();
         orgHigh.setDr(0, payloadHigh);
 
         sim.addOrganism(orgLow);
@@ -73,7 +73,7 @@ public class SimulationTest {
         sim.tick();
 
         // Lower ID organism should win and write its payload
-        assertThat(world.getSymbol(target).toInt()).isEqualTo(payloadLow);
+        assertThat(world.getMolecule(target).toInt()).isEqualTo(payloadLow);
         // Loser should not be executed (no base cost nor payload energy taken)
         assertThat(orgHigh.getEr()).isEqualTo(2000);
         // Winner's energy decreased by at least payload + base cost
@@ -88,13 +88,13 @@ public class SimulationTest {
         Organism o1 = Organism.create(sim, new int[]{0, 0}, 2000, sim.getLogger());
         o1.setDv(new int[]{1, 0});
         o1.setDp(new int[]{0, 0});
-        int v1 = new Symbol(Config.TYPE_DATA, 5).toInt();
+        int v1 = new Molecule(Config.TYPE_DATA, 5).toInt();
         o1.setDr(0, v1);
 
         Organism o2 = Organism.create(sim, new int[]{10, 0}, 2000, sim.getLogger());
         o2.setDv(new int[]{1, 0});
         o2.setDp(new int[]{1, 0}); // Different DP to avoid same target
-        int v2 = new Symbol(Config.TYPE_DATA, 7).toInt();
+        int v2 = new Molecule(Config.TYPE_DATA, 7).toInt();
         o2.setDr(0, v2);
 
         sim.addOrganism(o1);
@@ -108,8 +108,8 @@ public class SimulationTest {
 
         sim.tick();
 
-        assertThat(world.getSymbol(t1).toInt()).isEqualTo(v1);
-        assertThat(world.getSymbol(t2).toInt()).isEqualTo(v2);
+        assertThat(world.getMolecule(t1).toInt()).isEqualTo(v1);
+        assertThat(world.getMolecule(t2).toInt()).isEqualTo(v2);
         assertThat(o1.isInstructionFailed()).as("o1 failed: " + o1.getFailureReason()).isFalse();
         assertThat(o2.isInstructionFailed()).as("o2 failed: " + o2.getFailureReason()).isFalse();
     }

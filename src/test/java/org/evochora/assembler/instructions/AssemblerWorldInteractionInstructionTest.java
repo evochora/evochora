@@ -4,8 +4,8 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,7 +49,7 @@ public class AssemblerWorldInteractionInstructionTest {
         Map<int[], Integer> machineCode = program.assemble();
 
         for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-            world.setSymbol(Symbol.fromInt(entry.getValue()), entry.getKey());
+            world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
         }
 
         if (org == null) {
@@ -66,7 +66,7 @@ public class AssemblerWorldInteractionInstructionTest {
     void testPoke() {
         Organism org = Organism.create(sim, new int[]{0,0}, 2000, sim.getLogger());
         int[] vec = {0, 1}; // unit vector orthogonal to DIR
-        int valueToPoke = new Symbol(Config.TYPE_DATA, 999).toInt();
+        int valueToPoke = new Molecule(Config.TYPE_DATA, 999).toInt();
 
         org.setDr(0, valueToPoke);
         org.setDr(1, vec);
@@ -77,14 +77,14 @@ public class AssemblerWorldInteractionInstructionTest {
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
 
         int[] targetPos = new int[]{0, 1};
-        assertThat(world.getSymbol(targetPos).toInt()).isEqualTo(valueToPoke);
+        assertThat(world.getMolecule(targetPos).toInt()).isEqualTo(valueToPoke);
         assertThat(res.getEr()).isLessThanOrEqualTo(2000 - 999 - 1);
     }
 
     @Test
     void testPoki() {
         Organism org = Organism.create(sim, new int[]{0,0}, 2000, sim.getLogger());
-        int valueToPoke = new Symbol(Config.TYPE_DATA, 123).toInt();
+        int valueToPoke = new Molecule(Config.TYPE_DATA, 123).toInt();
         org.setDr(0, valueToPoke);
 
         // Use unit vector literal
@@ -94,14 +94,14 @@ public class AssemblerWorldInteractionInstructionTest {
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
 
         int[] target = new int[]{0, 1};
-        assertThat(world.getSymbol(target).toInt()).isEqualTo(valueToPoke);
+        assertThat(world.getMolecule(target).toInt()).isEqualTo(valueToPoke);
         assertThat(res.getEr()).isEqualTo(2000 - 123 - 1);
     }
 
     @Test
     void testPoks() {
         Organism org = Organism.create(sim, new int[]{0,0}, 2000, sim.getLogger());
-        int payload = new Symbol(Config.TYPE_DATA, 55).toInt();
+        int payload = new Molecule(Config.TYPE_DATA, 55).toInt();
         int[] vec = new int[]{0, 1}; // unit vector
         // For POKS, operand 0 is value (top), operand 1 is vector (next). Push vector first, then value.
         org.getDataStack().push(vec);
@@ -113,7 +113,7 @@ public class AssemblerWorldInteractionInstructionTest {
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
 
         int[] target = new int[]{0, 1};
-        assertThat(world.getSymbol(target).toInt()).isEqualTo(payload);
+        assertThat(world.getMolecule(target).toInt()).isEqualTo(payload);
         assertThat(res.getEr()).isEqualTo(2000 - 55 - 1);
     }
 
@@ -123,8 +123,8 @@ public class AssemblerWorldInteractionInstructionTest {
         org.setDp(org.getIp());
         int[] vec = new int[]{0, 1};
         int[] target = new int[]{0, 1};
-        int payload = new Symbol(Config.TYPE_DATA, 7).toInt();
-        world.setSymbol(Symbol.fromInt(payload), target);
+        int payload = new Molecule(Config.TYPE_DATA, 7).toInt();
+        world.setMolecule(Molecule.fromInt(payload), target);
 
         org.setDr(1, vec);
         List<String> code = List.of("PEEK %DR0 %DR1");
@@ -133,7 +133,7 @@ public class AssemblerWorldInteractionInstructionTest {
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
         assertThat(res.getDr(0)).isEqualTo(payload);
         // target cell should be cleared
-        assertThat(world.getSymbol(target).isEmpty()).isTrue();
+        assertThat(world.getMolecule(target).isEmpty()).isTrue();
     }
 
     @Test
@@ -141,15 +141,15 @@ public class AssemblerWorldInteractionInstructionTest {
         Organism org = Organism.create(sim, new int[]{0,0}, 2000, sim.getLogger());
         org.setDp(org.getIp());
         int[] target = new int[]{0, 1};
-        int payload = new Symbol(Config.TYPE_DATA, 11).toInt();
-        world.setSymbol(Symbol.fromInt(payload), target);
+        int payload = new Molecule(Config.TYPE_DATA, 11).toInt();
+        world.setMolecule(Molecule.fromInt(payload), target);
 
         List<String> code = List.of("PEKI %DR0 0|1");
         Organism res = runAssembly(code, org, 1);
 
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
         assertThat(res.getDr(0)).isEqualTo(payload);
-        assertThat(world.getSymbol(target).isEmpty()).isTrue();
+        assertThat(world.getMolecule(target).isEmpty()).isTrue();
     }
 
     @Test
@@ -158,8 +158,8 @@ public class AssemblerWorldInteractionInstructionTest {
         org.setDp(org.getIp());
         int[] vec = new int[]{-1, 0};
         int[] target = new int[]{-1, 0};
-        int payload = new Symbol(Config.TYPE_DATA, 9).toInt();
-        world.setSymbol(Symbol.fromInt(payload), target);
+        int payload = new Molecule(Config.TYPE_DATA, 9).toInt();
+        world.setMolecule(Molecule.fromInt(payload), target);
 
         org.getDataStack().push(vec);
         List<String> code = List.of("PEKS");
@@ -167,7 +167,7 @@ public class AssemblerWorldInteractionInstructionTest {
 
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
         assertThat(res.getDataStack().pop()).isEqualTo(payload);
-        assertThat(world.getSymbol(target).isEmpty()).isTrue();
+        assertThat(world.getMolecule(target).isEmpty()).isTrue();
     }
 
     @Test
@@ -175,10 +175,10 @@ public class AssemblerWorldInteractionInstructionTest {
         Organism org = Organism.create(sim, new int[]{0,0}, 2000, sim.getLogger());
         int[] vec = {0, 1}; // unit vector orthogonal to DIR
         int[] targetPos = new int[]{0, 1};
-        int initialOccupant = new Symbol(Config.TYPE_DATA, 777).toInt();
-        world.setSymbol(Symbol.fromInt(initialOccupant), targetPos);
+        int initialOccupant = new Molecule(Config.TYPE_DATA, 777).toInt();
+        world.setMolecule(Molecule.fromInt(initialOccupant), targetPos);
 
-        int valueToPoke = new Symbol(Config.TYPE_DATA, 42).toInt();
+        int valueToPoke = new Molecule(Config.TYPE_DATA, 42).toInt();
         org.setDr(0, valueToPoke);
         org.setDr(1, vec);
 
@@ -190,7 +190,7 @@ public class AssemblerWorldInteractionInstructionTest {
         assertThat(res.getFailureReason()).contains("Target cell is not empty.");
 
         // Cell unchanged
-        assertThat(world.getSymbol(targetPos).toInt()).isEqualTo(initialOccupant);
+        assertThat(world.getMolecule(targetPos).toInt()).isEqualTo(initialOccupant);
         assertThat(res.getEr()).isLessThanOrEqualTo(2000 - 42 - 1);
     }
 }

@@ -3,16 +3,12 @@ package org.evochora.runtime.isa.instructions;
 import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
-import org.evochora.compiler.internal.legacy.AssemblyProgram;
-import org.evochora.compiler.internal.legacy.ProgramMetadata;
-import org.evochora.compiler.internal.legacy.SourceLocation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 
 import java.util.Collections;
-import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -98,7 +94,7 @@ public class ControlFlowInstruction extends Instruction {
     }
 
     public static Instruction plan(Organism organism, World world) {
-        int fullOpcodeId = world.getSymbol(organism.getIp()).toInt();
+        int fullOpcodeId = world.getMolecule(organism.getIp()).toInt();
         return new ControlFlowInstruction(organism, fullOpcodeId);
     }
 
@@ -113,7 +109,7 @@ public class ControlFlowInstruction extends Instruction {
                 if (args.length != 1) throw new IllegalArgumentException("JMPR expects 1 register argument.");
                 Integer regId = resolveRegToken(args[0], registerMap);
                 if (regId == null) throw new IllegalArgumentException("Invalid register for JMPR.");
-                return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, regId).toInt()));
+                return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, regId).toInt()));
             case "JMPS":
             case "RET":
                 if (args.length != 0) throw new IllegalArgumentException(name + " expects no arguments.");

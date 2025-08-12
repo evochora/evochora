@@ -3,8 +3,8 @@ package org.evochora.organism.instructions;
 import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +34,7 @@ public class VMArithmeticInstructionTest {
 
     private void placeInstruction(String name) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setSymbol(new Symbol(Config.TYPE_CODE, opcode), org.getIp());
+        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
     }
 
     private void placeInstruction(String name, Integer... args) {
@@ -42,7 +42,7 @@ public class VMArithmeticInstructionTest {
         int[] currentPos = org.getIp();
         for (int arg : args) {
             currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-            world.setSymbol(new Symbol(Config.TYPE_DATA, arg), currentPos);
+            world.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
 
@@ -50,146 +50,146 @@ public class VMArithmeticInstructionTest {
         placeInstruction(name);
         int[] currentPos = org.getIp();
         currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-        world.setSymbol(new Symbol(Config.TYPE_DATA, reg), currentPos);
+        world.setMolecule(new Molecule(Config.TYPE_DATA, reg), currentPos);
         currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-        world.setSymbol(new Symbol(Config.TYPE_DATA, immediateValue), currentPos);
+        world.setMolecule(new Molecule(Config.TYPE_DATA, immediateValue), currentPos);
     }
 
     // --- ADD ---
     @Test
     void testAddi() {
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 10).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
         placeInstruction("ADDI", 0, 5);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 15).toInt());
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 15).toInt());
     }
 
     @Test
     void testAddr() {
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 3).toInt());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 4).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 3).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 4).toInt());
         placeInstruction("ADDR", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     @Test
     void testAdds() {
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 3).toInt());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 4).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 3).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 4).toInt());
         placeInstruction("ADDS");
         sim.tick();
-        assertThat(org.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     // --- SUB ---
     @Test
     void testSubi() {
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 10).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
         placeInstruction("SUBI", 0, 3);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     @Test
     void testSubr() {
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 10).toInt());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 6).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 6).toInt());
         placeInstruction("SUBR", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 4).toInt());
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 4).toInt());
     }
 
     @Test
     void testSubs() {
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 3).toInt());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 10).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 3).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 10).toInt());
         placeInstruction("SUBS");
         sim.tick();
-        assertThat(org.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     // --- MUL ---
     @Test
     void testMuli() {
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 7).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 7).toInt());
         placeInstruction("MULI", 0, 6);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 42).toInt());
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
     }
 
     @Test
     void testMulr() {
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 7).toInt());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 6).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 7).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 6).toInt());
         placeInstruction("MULR", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 42).toInt());
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
     }
 
     @Test
     void testMuls() {
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 7).toInt());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 6).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 7).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 6).toInt());
         placeInstruction("MULS");
         sim.tick();
-        assertThat(org.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 42).toInt());
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
     }
 
     // --- DIV ---
     @Test
     void testDivi() {
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 42).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 42).toInt());
         placeInstruction("DIVI", 0, 6);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     @Test
     void testDivr() {
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 42).toInt());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 6).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 42).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 6).toInt());
         placeInstruction("DIVR", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     @Test
     void testDivs() {
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 6).toInt());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 42).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 6).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 42).toInt());
         placeInstruction("DIVS");
         sim.tick();
-        assertThat(org.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     // --- MOD ---
     @Test
     void testModi() {
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 43).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 43).toInt());
         placeInstruction("MODI", 0, 6);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
     @Test
     void testModr() {
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 43).toInt());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 6).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 43).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 6).toInt());
         placeInstruction("MODR", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
     @Test
     void testMods() {
         // Top is operand1 (dividend), next is operand2 (divisor): compute 43 % 6
         // Top is operand1 (dividend), next is operand2 (divisor): compute 43 % 6
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 6).toInt());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 43).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 6).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 43).toInt());
         placeInstruction("MODS");
         sim.tick();
-        assertThat(org.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
     // --- Vector arithmetic (register variants only) ---

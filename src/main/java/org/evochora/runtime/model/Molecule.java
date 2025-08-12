@@ -1,9 +1,9 @@
-// src/main/java/org/evochora/world/Symbol.java
+// src/main/java/org/evochora/world/Molecule.java
 package org.evochora.runtime.model;
 
 import org.evochora.app.setup.Config;
 
-public record Symbol(int type, int value) {
+public record Molecule(int type, int value) {
 
     public int toInt() {
         // GEÄNDERT: Diese Logik verhindert, dass DATA:0 oder STRUCTURE:0 fälschlicherweise
@@ -23,16 +23,16 @@ public record Symbol(int type, int value) {
         return this.type() == Config.TYPE_CODE && this.value() == 0;
     }
 
-    public static Symbol fromInt(int fullValue) {
+    public static Molecule fromInt(int fullValue) {
         if (fullValue == 0) {
-            return new Symbol(Config.TYPE_CODE, 0);
+            return new Molecule(Config.TYPE_CODE, 0);
         }
         int type = fullValue & Config.TYPE_MASK;
         int rawValue = fullValue & Config.VALUE_MASK;
         if ((rawValue & (1 << (Config.VALUE_BITS - 1))) != 0) {
             rawValue |= ~((1 << Config.VALUE_BITS) - 1);
         }
-        return new Symbol(type, rawValue);
+        return new Molecule(type, rawValue);
     }
 
     // Ownership helpers: zero ownerId means unowned

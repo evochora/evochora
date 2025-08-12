@@ -5,8 +5,8 @@ import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.compiler.internal.legacy.NumericParser;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 
 import java.util.ArrayList;
@@ -69,7 +69,7 @@ public class DataInstruction extends Instruction {
     }
 
     public static Instruction plan(Organism organism, World world) {
-        int fullOpcodeId = world.getSymbol(organism.getIp()).toInt();
+        int fullOpcodeId = world.getMolecule(organism.getIp()).toInt();
         return new DataInstruction(organism, fullOpcodeId);
     }
 
@@ -85,14 +85,14 @@ public class DataInstruction extends Instruction {
                 if (literalParts.length != 2) throw new IllegalArgumentException("Literal must be in TYPE:VALUE format.");
                 int type = getTypeFromString(literalParts[0]);
                 int value = NumericParser.parseInt(literalParts[1]);
-                return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg).toInt(), new Symbol(type, value).toInt()));
+                return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg).toInt(), new Molecule(type, value).toInt()));
             }
             case "SETR": {
                 if (args.length != 2) throw new IllegalArgumentException("SETR expects two register arguments.");
                 Integer dest = resolveRegToken(args[0], registerMap);
                 Integer src = resolveRegToken(args[1], registerMap);
                 if (dest == null || src == null) throw new IllegalArgumentException("Invalid register for SETR.");
-                return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, dest).toInt(), new Symbol(Config.TYPE_DATA, src).toInt()));
+                return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, dest).toInt(), new Molecule(Config.TYPE_DATA, src).toInt()));
             }
             case "SETV": {
                 if (args.length != 2) throw new IllegalArgumentException("SETV expects a register and a vector/label.");
@@ -105,10 +105,10 @@ public class DataInstruction extends Instruction {
                 String[] comps = vectorArg.split("\\|");
                 if (comps.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("Invalid vector dimensionality.");
                 List<Integer> machineCode = new ArrayList<>();
-                machineCode.add(new Symbol(Config.TYPE_DATA, reg).toInt());
+                machineCode.add(new Molecule(Config.TYPE_DATA, reg).toInt());
                 for (String c : comps) {
                     int v = NumericParser.parseInt(c.strip());
-                    machineCode.add(new Symbol(Config.TYPE_DATA, v).toInt());
+                    machineCode.add(new Molecule(Config.TYPE_DATA, v).toInt());
                 }
                 return new AssemblerOutput.CodeSequence(machineCode);
             }
@@ -116,13 +116,13 @@ public class DataInstruction extends Instruction {
                 if (args.length != 1) throw new IllegalArgumentException("PUSH expects one register argument.");
                 Integer reg = resolveRegToken(args[0], registerMap);
                 if (reg == null) throw new IllegalArgumentException("Invalid register for PUSH.");
-                return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg).toInt()));
+                return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg).toInt()));
             }
             case "POP": {
                 if (args.length != 1) throw new IllegalArgumentException("POP expects one register argument.");
                 Integer reg = resolveRegToken(args[0], registerMap);
                 if (reg == null) throw new IllegalArgumentException("Invalid register for POP.");
-                return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg).toInt()));
+                return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg).toInt()));
             }
             case "PUSI": {
                 if (args.length != 1) throw new IllegalArgumentException("PUSI expects one literal argument.");
@@ -130,7 +130,7 @@ public class DataInstruction extends Instruction {
                 if (literalParts.length != 2) throw new IllegalArgumentException("Literal must be in TYPE:VALUE format.");
                 int type = getTypeFromString(literalParts[0]);
                 int value = NumericParser.parseInt(literalParts[1]);
-                return new AssemblerOutput.CodeSequence(List.of(new Symbol(type, value).toInt()));
+                return new AssemblerOutput.CodeSequence(List.of(new Molecule(type, value).toInt()));
             }
         }
         throw new IllegalArgumentException("Cannot assemble unknown data instruction variant: " + name);

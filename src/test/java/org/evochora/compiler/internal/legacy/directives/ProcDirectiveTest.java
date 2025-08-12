@@ -4,8 +4,8 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,7 +49,7 @@ public class ProcDirectiveTest {
         Map<int[], Integer> machineCode = program.assemble();
 
         for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-            world.setSymbol(Symbol.fromInt(entry.getValue()), entry.getKey());
+            world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
         }
 
         if (org == null) {
@@ -68,7 +68,7 @@ public class ProcDirectiveTest {
     @Test
     void testProc() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 100).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 100).toInt());
 
         List<String> code = List.of(
             ".PROC MY_PROC WITH A",
@@ -83,14 +83,14 @@ public class ProcDirectiveTest {
         Organism finalOrg = runAssembly(code, org, 4);
 
         // DR1 was bound to EPR0; PROC increments A, copy-back on RET updates DR1 to 101.
-        assertThat(finalOrg.getDr(1)).isEqualTo(new Symbol(Config.TYPE_DATA, 101).toInt());
+        assertThat(finalOrg.getDr(1)).isEqualTo(new Molecule(Config.TYPE_DATA, 101).toInt());
     }
 
     @Test
     void testPregWithinProc() {
         // Use .PREG to alias a PR register inside PROC and copy its value into the formal (EPR) A
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 0).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 0).toInt());
 
         List<String> code = List.of(
             ".PROC USE_PREG WITH A",
@@ -108,6 +108,6 @@ public class ProcDirectiveTest {
         Organism finalOrg = runAssembly(code, org, 5);
 
         // DR1 receives the value from EPR0 after copy-back on RET
-        assertThat(finalOrg.getDr(1)).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
+        assertThat(finalOrg.getDr(1)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 }

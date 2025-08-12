@@ -9,8 +9,7 @@ import org.evochora.compiler.internal.legacy.directives.OrgDirectiveHandler;
 import org.evochora.compiler.internal.legacy.directives.PlaceDirectiveHandler;
 import org.evochora.compiler.internal.legacy.directives.RegDirectiveHandler;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.instructions.ControlFlowInstruction;
-import org.evochora.runtime.model.Symbol;
+import org.evochora.runtime.model.Molecule;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -29,7 +28,7 @@ public class PassManager {
     // Results
     private final Map<String, Integer> registerMap = new HashMap<>();
     private final Map<Integer, String> registerIdToNameMap = new HashMap<>();
-    private final Map<int[], Symbol> initialWorldObjects = new HashMap<>();
+    private final Map<int[], Molecule> initialWorldObjects = new HashMap<>();
     private final Map<String, Integer> labelMap = new HashMap<>();
     private final Map<Integer, String> labelAddressToNameMap = new LinkedHashMap<>();
     private final Map<Integer, int[]> linearAddressToCoordMap = new LinkedHashMap<>();
@@ -261,14 +260,14 @@ public class PassManager {
             }
             case AssemblerOutput.JumpInstructionRequest req -> {
                 for (int i = 0; i < instructionLength - 1; i++) {
-                    placeSymbol(new Symbol(Config.TYPE_DATA, 0).toInt(), line);
+                    placeSymbol(new Molecule(Config.TYPE_DATA, 0).toInt(), line);
                 }
                 jumpPlaceholders.add(new PlaceholderResolver.JumpPlaceholder(opcodeLinear, req.labelName(), line));
             }
             case AssemblerOutput.LabelToVectorRequest req -> {
-                placeSymbol(new Symbol(Config.TYPE_DATA, req.registerId()).toInt(), line);
+                placeSymbol(new Molecule(Config.TYPE_DATA, req.registerId()).toInt(), line);
                 for (int i = 0; i < instructionLength - 2; i++) {
-                    placeSymbol(new Symbol(Config.TYPE_DATA, 0).toInt(), line);
+                    placeSymbol(new Molecule(Config.TYPE_DATA, 0).toInt(), line);
                 }
                 vectorPlaceholders.add(new PlaceholderResolver.VectorPlaceholder(opcodeLinear, req.labelName(), req.registerId(), line));
             }
@@ -309,7 +308,7 @@ public class PassManager {
 
     public Map<String, Integer> getRegisterMap() { return registerMap; }
     public Map<Integer, String> getRegisterIdToNameMap() { return registerIdToNameMap; }
-    public Map<int[], Symbol> getInitialWorldObjects() { return initialWorldObjects; }
+    public Map<int[], Molecule> getInitialWorldObjects() { return initialWorldObjects; }
     public Map<String, Integer> getLabelMap() { return labelMap; }
     public Map<Integer, String> getLabelAddressToNameMap() { return labelAddressToNameMap; }
     public Map<Integer, int[]> getLinearAddressToCoordMap() { return linearAddressToCoordMap; }

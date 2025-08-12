@@ -4,8 +4,8 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,7 +49,7 @@ public class AssemblerStackInstructionTest {
         Map<int[], Integer> machineCode = program.assemble();
 
         for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-            world.setSymbol(Symbol.fromInt(entry.getValue()), entry.getKey());
+            world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
         }
 
         if (org == null) {
@@ -67,7 +67,7 @@ public class AssemblerStackInstructionTest {
     @Test
     void testDup() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        int v = new Symbol(Config.TYPE_DATA, 123).toInt();
+        int v = new Molecule(Config.TYPE_DATA, 123).toInt();
         org.getDataStack().push(v);
         List<String> code = List.of("DUP");
         Organism res = runAssembly(code, org, 1);
@@ -78,8 +78,8 @@ public class AssemblerStackInstructionTest {
     @Test
     void testSwap() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        int a = new Symbol(Config.TYPE_DATA, 1).toInt();
-        int b = new Symbol(Config.TYPE_DATA, 2).toInt();
+        int a = new Molecule(Config.TYPE_DATA, 1).toInt();
+        int b = new Molecule(Config.TYPE_DATA, 2).toInt();
         org.getDataStack().push(a);
         org.getDataStack().push(b);
         List<String> code = List.of("SWAP");
@@ -91,8 +91,8 @@ public class AssemblerStackInstructionTest {
     @Test
     void testDrop() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        int a = new Symbol(Config.TYPE_DATA, 1).toInt();
-        int b = new Symbol(Config.TYPE_DATA, 2).toInt();
+        int a = new Molecule(Config.TYPE_DATA, 1).toInt();
+        int b = new Molecule(Config.TYPE_DATA, 2).toInt();
         org.getDataStack().push(a);
         org.getDataStack().push(b);
         List<String> code = List.of("DROP");
@@ -103,9 +103,9 @@ public class AssemblerStackInstructionTest {
     @Test
     void testRot() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        int a = new Symbol(Config.TYPE_DATA, 1).toInt();
-        int b = new Symbol(Config.TYPE_DATA, 2).toInt();
-        int c = new Symbol(Config.TYPE_DATA, 3).toInt();
+        int a = new Molecule(Config.TYPE_DATA, 1).toInt();
+        int b = new Molecule(Config.TYPE_DATA, 2).toInt();
+        int c = new Molecule(Config.TYPE_DATA, 3).toInt();
         org.getDataStack().push(a);
         org.getDataStack().push(b);
         org.getDataStack().push(c);

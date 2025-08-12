@@ -10,8 +10,8 @@ import javafx.scene.text.TextAlignment;
 import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 
 import java.util.HashMap;
@@ -55,13 +55,13 @@ public class WorldRenderer {
     private void drawNormal(World world, Organism selectedOrganism) {
         for (int x = 0; x < world.getShape()[0]; x++) {
             for (int y = 0; y < world.getShape()[1]; y++) {
-                Symbol symbol = world.getSymbol(x, y);
+                Molecule molecule = world.getMolecule(x, y);
                 double cellX = x * Config.CELL_SIZE;
                 double cellY = y * Config.CELL_SIZE;
 
-                gc.setFill(getBackgroundColorForSymbol(symbol));
+                gc.setFill(getBackgroundColorForSymbol(molecule));
                 gc.fillRect(cellX, cellY, Config.CELL_SIZE, Config.CELL_SIZE);
-                drawCellText(symbol, cellX, cellY);
+                drawCellText(molecule, cellX, cellY);
             }
         }
     }
@@ -69,21 +69,21 @@ public class WorldRenderer {
     private void drawZoomedOut(World world, Organism selectedOrganism) {
         for (int x = 0; x < world.getShape()[0]; x++) {
             for (int y = 0; y < world.getShape()[1]; y++) {
-                Symbol symbol = world.getSymbol(x, y);
+                Molecule molecule = world.getMolecule(x, y);
                 // Draw each cell as a 1x1 pixel
-                gc.setFill(getBackgroundColorForSymbol(symbol));
+                gc.setFill(getBackgroundColorForSymbol(molecule));
                 gc.fillRect(x, y, 1, 1);
             }
         }
     }
 
 
-    private void drawCellText(Symbol symbol, double cellX, double cellY) {
-        if (symbol.type() == Config.TYPE_CODE && symbol.value() == 0) {
+    private void drawCellText(Molecule molecule, double cellX, double cellY) {
+        if (molecule.type() == Config.TYPE_CODE && molecule.value() == 0) {
             return;
         }
 
-        gc.setFill(getTextColorForSymbol(symbol));
+        gc.setFill(getTextColorForSymbol(molecule));
         gc.setFont(cellFont);
         gc.setTextAlign(TextAlignment.CENTER);
 
@@ -92,8 +92,8 @@ public class WorldRenderer {
         double y1 = cellY + Config.CELL_SIZE * 0.4;
         double y2 = cellY + Config.CELL_SIZE * 0.8;
 
-        if (symbol.type() == Config.TYPE_CODE) {
-            String fullName = Instruction.getInstructionNameById(symbol.toInt());
+        if (molecule.type() == Config.TYPE_CODE) {
+            String fullName = Instruction.getInstructionNameById(molecule.toInt());
 
             if (fullName != null && !fullName.startsWith("UNKNOWN")) {
                 String line1 = fullName.length() >= 2 ? fullName.substring(0, 2) : fullName;
@@ -101,12 +101,12 @@ public class WorldRenderer {
                 gc.fillText(line1, centerX, y1);
                 gc.fillText(line2, centerX, y2);
             } else {
-                text = String.valueOf(symbol.value());
+                text = String.valueOf(molecule.value());
                 gc.fillText(text, centerX, cellY + Config.CELL_SIZE / 2.0 + 4);
             }
         } else {
             // For all other types (DATA, ENERGY, etc.), always display the value.
-            text = String.valueOf(symbol.value());
+            text = String.valueOf(molecule.value());
             gc.fillText(text, centerX, cellY + Config.CELL_SIZE / 2.0 + 4);
         }
     }
@@ -161,10 +161,10 @@ public class WorldRenderer {
         gc.fillOval(centerX + dv[0] * offset - size / 2, centerY + dv[1] * offset - size / 2, size, size);
     }
 
-    private Color getBackgroundColorForSymbol(Symbol symbol) {
-        return switch (symbol.type()) {
+    private Color getBackgroundColorForSymbol(Molecule molecule) {
+        return switch (molecule.type()) {
             case Config.TYPE_CODE -> {
-                if (symbol.value() == 0) yield Config.COLOR_EMPTY_BG;
+                if (molecule.value() == 0) yield Config.COLOR_EMPTY_BG;
                 else yield Config.COLOR_CODE_BG;
             }
             case Config.TYPE_DATA -> Config.COLOR_DATA_BG;
@@ -174,8 +174,8 @@ public class WorldRenderer {
         };
     }
 
-    private Color getTextColorForSymbol(Symbol symbol) {
-        return switch (symbol.type()) {
+    private Color getTextColorForSymbol(Molecule molecule) {
+        return switch (molecule.type()) {
             case Config.TYPE_STRUCTURE -> Config.COLOR_STRUCTURE_TEXT;
             case Config.TYPE_ENERGY -> Config.COLOR_ENERGY_TEXT;
             case Config.TYPE_DATA -> Config.COLOR_DATA_TEXT;

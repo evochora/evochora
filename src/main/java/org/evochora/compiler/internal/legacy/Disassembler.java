@@ -3,7 +3,7 @@ package org.evochora.compiler.internal.legacy;
 
 import org.evochora.app.setup.Config;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.model.Symbol;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.World;
 
 import java.util.ArrayList;
@@ -17,20 +17,23 @@ public class Disassembler {
 
     public DisassembledInstruction disassemble(ProgramMetadata metadata, int[] coord, int[] currentDv, World world) {
         Map<List<Integer>, Integer> relativeCoordToLinearAddress = metadata.relativeCoordToLinearAddress();
-        Map<Integer, int[]> linearAddressToRelativeCoord = metadata.linearAddressToRelativeCoord();
-        Map<Integer, String> registerIdToName = metadata.registerIdToName();
+        Map<Integer, int[]> linearAddressToRelativeCoord = metadata.linearAddressToCoord();
+        Map<String, Integer> registerNameToId = metadata.registerMap();
+        // Invert the map for efficient lookup
+        Map<Integer, String> registerIdToName = registerNameToId.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
         Map<Integer, String> labelAddressToName = metadata.labelAddressToName();
 
         Integer linearAddress = relativeCoordToLinearAddress != null ? relativeCoordToLinearAddress.get(Arrays.stream(coord).boxed().collect(Collectors.toList())) : null;
 
-        Symbol symbol = world.getSymbol(coord);
-        String instructionType = getInstructionTypeString(symbol);
+        Molecule molecule = world.getMolecule(coord);
+        String instructionType = getInstructionTypeString(molecule);
         String opcodeName = "N/A";
         List<DisassembledArgument> arguments = new ArrayList<>();
         String resolvedTargetCoordinate = null;
 
-        if (symbol.type() == Config.TYPE_CODE) {
-            int opcodeFullId = symbol.toInt();
+        if (molecule.type() == Config.TYPE_CODE) {
+            int opcodeFullId = molecule.toInt();
             opcodeName = Instruction.getInstructionNameById(opcodeFullId);
 
             if (opcodeName != null && !opcodeName.startsWith("UNKNOWN")) {
@@ -44,11 +47,11 @@ public class Disassembler {
                     }
                     currentArgCoord = world.getNormalizedCoordinate(currentArgCoord);
 
-                    Symbol argSymbol = world.getSymbol(currentArgCoord);
+                    Molecule argMolecule = world.getMolecule(currentArgCoord);
                     String argResolvedValue;
 
                     ArgumentType argType = Instruction.getArgumentTypeFor(opcodeFullId, i);
-                    int rawValue = argSymbol.value();
+                    int rawValue = argMolecule.value();
 
                     if (argType == ArgumentType.REGISTER) {
                         // Bevorzugt den Alias aus den Metadaten, falls vorhanden
@@ -73,23 +76,23 @@ public class Disassembler {
                             argResolvedValue = labelAddressToName.get(targetLinearAddress);
                             argType = ArgumentType.LABEL;
                         } else {
-                            argResolvedValue = getInstructionTypeString(argSymbol) + ":" + argSymbol.toScalarValue();
+                            argResolvedValue = getInstructionTypeString(argMolecule) + ":" + argMolecule.toScalarValue();
                         }
                     } else {
-                        String typeStr = getInstructionTypeString(argSymbol);
-                        argResolvedValue = typeStr + ":" + argSymbol.toScalarValue();
+                        String typeStr = getInstructionTypeString(argMolecule);
+                        argResolvedValue = typeStr + ":" + argMolecule.toScalarValue();
                     }
 
                     arguments.add(new DisassembledArgument(rawValue, argResolvedValue, argType));
                 }
             } else {
                 opcodeName = "UNKNOWN_OP";
-                arguments.add(new DisassembledArgument(symbol.value(), String.valueOf(symbol.value()), ArgumentType.LITERAL));
+                arguments.add(new DisassembledArgument(molecule.value(), String.valueOf(molecule.value()), ArgumentType.LITERAL));
             }
         } else {
-            String typeStr = getInstructionTypeString(symbol);
-            String resolvedValue = typeStr + ":" + symbol.value();
-            arguments.add(new DisassembledArgument(symbol.value(), resolvedValue, ArgumentType.LITERAL));
+            String typeStr = getInstructionTypeString(molecule);
+            String resolvedValue = typeStr + ":" + molecule.value();
+            arguments.add(new DisassembledArgument(molecule.value(), resolvedValue, ArgumentType.LITERAL));
         }
 
         if (DEBUG_ANNOTATE_ADAPTERS && "SETR".equalsIgnoreCase(opcodeName) && arguments.size() == 2) {
@@ -108,13 +111,13 @@ public class Disassembler {
     }
 
     public DisassembledInstruction disassembleGeneric(int[] coord, World world) {
-        Symbol symbol = world.getSymbol(coord);
-        String instructionType = getInstructionTypeString(symbol);
+        Molecule molecule = world.getMolecule(coord);
+        String instructionType = getInstructionTypeString(molecule);
         String opcodeName = "N/A";
         List<DisassembledArgument> arguments = new ArrayList<>();
 
-        if (symbol.type() == Config.TYPE_CODE) {
-            int opcodeFullId = symbol.toInt();
+        if (molecule.type() == Config.TYPE_CODE) {
+            int opcodeFullId = molecule.toInt();
             opcodeName = Instruction.getInstructionNameById(opcodeFullId);
 
             if (opcodeName != null && !opcodeName.startsWith("UNKNOWN")) {
@@ -128,11 +131,11 @@ public class Disassembler {
                         tempArgCoord[j] += defaultDv[j];
                     }
                     tempArgCoord = world.getNormalizedCoordinate(tempArgCoord);
-                    Symbol argSymbol = world.getSymbol(tempArgCoord);
+                    Molecule argMolecule = world.getMolecule(tempArgCoord);
 
-                    String typeStr = getInstructionTypeString(argSymbol);
-                    String resolvedValue = typeStr + ":" + argSymbol.value();
-                    arguments.add(new DisassembledArgument(argSymbol.value(), resolvedValue, ArgumentType.LITERAL));
+                    String typeStr = getInstructionTypeString(argMolecule);
+                    String resolvedValue = typeStr + ":" + argMolecule.value();
+                    arguments.add(new DisassembledArgument(argMolecule.value(), resolvedValue, ArgumentType.LITERAL));
                 }
             } else {
                 opcodeName = "UNKNOWN_OP";
@@ -142,8 +145,8 @@ public class Disassembler {
         return new DisassembledInstruction(opcodeName, arguments, null, instructionType);
     }
 
-    private String getInstructionTypeString(Symbol symbol) {
-        return switch (symbol.type()) {
+    private String getInstructionTypeString(Molecule molecule) {
+        return switch (molecule.type()) {
             case Config.TYPE_CODE -> "CODE";
             case Config.TYPE_DATA -> "DATA";
             case Config.TYPE_ENERGY -> "ENERGY";

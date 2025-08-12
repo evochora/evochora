@@ -5,7 +5,7 @@ import org.evochora.compiler.internal.legacy.AssemblerException;
 import org.evochora.compiler.internal.legacy.PassManagerContext;
 import org.evochora.app.setup.Config;
 import org.evochora.compiler.internal.i18n.Messages;
-import org.evochora.runtime.model.Symbol;
+import org.evochora.runtime.model.Molecule;
 
 public class PlaceDirectiveHandler implements IDirectiveHandler {
     @Override
@@ -43,7 +43,7 @@ public class PlaceDirectiveHandler implements IDirectiveHandler {
             throw new AssemblerException(context.programName(), line.originalFileName(), line.originalLineNumber(),
                     "Invalid .PLACE vector component: " + nfe.getMessage(), line.content());
         }
-        context.initialWorldObjects().put(relativePos, new Symbol(type, value));
+        context.initialWorldObjects().put(relativePos, new Molecule(type, value));
     }
 
     private int getTypeFromString(String typeName, AnnotatedLine line, String programName) {

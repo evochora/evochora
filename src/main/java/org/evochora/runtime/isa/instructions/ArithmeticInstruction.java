@@ -4,8 +4,8 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 
 import java.util.List;
@@ -54,18 +54,18 @@ public class ArithmeticInstruction extends Instruction {
             }
             // --- Skalar-Arithmetik ---
             else if (op1.value() instanceof Integer i1 && op2.value() instanceof Integer i2) {
-                Symbol s1 = Symbol.fromInt(i1);
+                Molecule s1 = org.evochora.runtime.model.Molecule.fromInt(i1);
 
                 // Determine proper decoding for op2 based on instruction variant
                 String instrName = getName();
-                Symbol s2;
+                Molecule s2;
                 if (instrName.endsWith("I")) {
                     // Immediate operand: decode stored symbol to get scalar, then rewrap with s1.type
-                    Symbol imm = Symbol.fromInt(i2);
-                    s2 = new Symbol(s1.type(), imm.toScalarValue());
+                    Molecule imm = org.evochora.runtime.model.Molecule.fromInt(i2);
+                    s2 = new Molecule(s1.type(), imm.toScalarValue());
                 } else {
                     // Register or Stack operand: decode as-is
-                    s2 = Symbol.fromInt(i2);
+                    s2 = org.evochora.runtime.model.Molecule.fromInt(i2);
                 }
 
                 if (Config.STRICT_TYPING && s1.type() != s2.type()) {
@@ -93,7 +93,7 @@ public class ArithmeticInstruction extends Instruction {
                         return;
                     }
                 }
-                result = new Symbol(s1.type(), (int)scalarResult).toInt();
+                result = new Molecule(s1.type(), (int)scalarResult).toInt();
             } else {
                 organism.instructionFailed("Mismatched or invalid operand types for arithmetic operation.");
                 return;
@@ -112,7 +112,7 @@ public class ArithmeticInstruction extends Instruction {
     }
 
     public static Instruction plan(Organism organism, World world) {
-        int fullOpcodeId = world.getSymbol(organism.getIp()).toInt();
+        int fullOpcodeId = world.getMolecule(organism.getIp()).toInt();
         return new ArithmeticInstruction(organism, fullOpcodeId);
     }
 
@@ -124,7 +124,7 @@ public class ArithmeticInstruction extends Instruction {
             Integer reg1 = resolveRegToken(args[0], registerMap);
             Integer reg2 = resolveRegToken(args[1], registerMap);
             if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for " + name);
-            return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg1).toInt(), new Symbol(Config.TYPE_DATA, reg2).toInt()));
+            return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg1).toInt(), new Molecule(Config.TYPE_DATA, reg2).toInt()));
 
         } else if (name.endsWith("I")) { // z.B. ADDI
             if (args.length != 2) throw new IllegalArgumentException(name + " expects a register and an immediate value.");
@@ -142,7 +142,7 @@ public class ArithmeticInstruction extends Instruction {
                 case "STRUCTURE" -> Config.TYPE_STRUCTURE;
                 default -> throw new IllegalArgumentException("Unknown type for literal: " + typeName);
             };
-            return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg1).toInt(), new Symbol(type, value).toInt()));
+            return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg1).toInt(), new Molecule(type, value).toInt()));
 
         } else if (name.endsWith("S")) { // z.B. ADDS
             if (args.length != 0) throw new IllegalArgumentException(name + " expects no arguments.");

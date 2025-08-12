@@ -3,8 +3,8 @@ package org.evochora.organism.instructions;
 import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,12 +34,12 @@ public class VMStackInstructionTest {
 
     private void placeInstruction(String name) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setSymbol(new Symbol(Config.TYPE_CODE, opcode), org.getIp());
+        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
     }
 
     @Test
     void testDup() {
-        int value = new Symbol(Config.TYPE_DATA, 123).toInt();
+        int value = new Molecule(Config.TYPE_DATA, 123).toInt();
         org.getDataStack().push(value);
         placeInstruction("DUP");
         sim.tick();
@@ -50,8 +50,8 @@ public class VMStackInstructionTest {
 
     @Test
     void testSwap() {
-        int a = new Symbol(Config.TYPE_DATA, 1).toInt();
-        int b = new Symbol(Config.TYPE_DATA, 2).toInt();
+        int a = new Molecule(Config.TYPE_DATA, 1).toInt();
+        int b = new Molecule(Config.TYPE_DATA, 2).toInt();
         org.getDataStack().push(a);
         org.getDataStack().push(b);
         placeInstruction("SWAP");
@@ -63,8 +63,8 @@ public class VMStackInstructionTest {
 
     @Test
     void testDrop() {
-        int a = new Symbol(Config.TYPE_DATA, 1).toInt();
-        int b = new Symbol(Config.TYPE_DATA, 2).toInt();
+        int a = new Molecule(Config.TYPE_DATA, 1).toInt();
+        int b = new Molecule(Config.TYPE_DATA, 2).toInt();
         org.getDataStack().push(a);
         org.getDataStack().push(b);
         placeInstruction("DROP");
@@ -76,9 +76,9 @@ public class VMStackInstructionTest {
 
     @Test
     void testRot() {
-        int a = new Symbol(Config.TYPE_DATA, 1).toInt();
-        int b = new Symbol(Config.TYPE_DATA, 2).toInt();
-        int c = new Symbol(Config.TYPE_DATA, 3).toInt();
+        int a = new Molecule(Config.TYPE_DATA, 1).toInt();
+        int b = new Molecule(Config.TYPE_DATA, 2).toInt();
+        int c = new Molecule(Config.TYPE_DATA, 3).toInt();
         org.getDataStack().push(a);
         org.getDataStack().push(b);
         org.getDataStack().push(c);

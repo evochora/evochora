@@ -4,8 +4,8 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,7 +49,7 @@ public class AssemblerDataInstructionTest {
         Map<int[], Integer> machineCode = program.assemble();
 
         for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-            world.setSymbol(Symbol.fromInt(entry.getValue()), entry.getKey());
+            world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
         }
 
         if (org == null) {
@@ -68,13 +68,13 @@ public class AssemblerDataInstructionTest {
     void testSeti() {
         List<String> code = List.of("SETI %DR0 DATA:123");
         Organism finalOrg = runAssembly(code, null, 1);
-        assertThat(finalOrg.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 123).toInt());
+        assertThat(finalOrg.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 123).toInt());
     }
 
     @Test
     void testSetr() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        int v = new Symbol(Config.TYPE_DATA, 456).toInt();
+        int v = new Molecule(Config.TYPE_DATA, 456).toInt();
         org.setDr(1, v);
         List<String> code = List.of("SETR %DR0 %DR1");
         Organism res = runAssembly(code, org, 1);
@@ -93,7 +93,7 @@ public class AssemblerDataInstructionTest {
     @Test
     void testPush() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        int v = new Symbol(Config.TYPE_DATA, 789).toInt();
+        int v = new Molecule(Config.TYPE_DATA, 789).toInt();
         org.setDr(0, v);
         List<String> code = List.of("PUSH %DR0");
         Organism res = runAssembly(code, org, 1);
@@ -103,7 +103,7 @@ public class AssemblerDataInstructionTest {
     @Test
     void testPop() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        int v = new Symbol(Config.TYPE_DATA, 321).toInt();
+        int v = new Molecule(Config.TYPE_DATA, 321).toInt();
         org.getDataStack().push(v);
         List<String> code = List.of("POP %DR0");
         Organism res = runAssembly(code, org, 1);
@@ -114,6 +114,6 @@ public class AssemblerDataInstructionTest {
     void testPusi() {
         List<String> code = List.of("PUSI DATA:42");
         Organism res = runAssembly(code, null, 1);
-        assertThat(res.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 42).toInt());
+        assertThat(res.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
     }
 }

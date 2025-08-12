@@ -1,6 +1,7 @@
 package org.evochora.compiler.internal.legacy;
 
-import org.evochora.runtime.model.Symbol;
+import org.evochora.runtime.model.Molecule;
+
 import java.util.List;
 import java.util.Map;
 
@@ -16,7 +17,7 @@ public record PassManagerContext(
         // Maps zum Befüllen
         Map<String, Integer> registerMap,
         Map<Integer, String> registerIdToNameMap,
-        Map<int[], Symbol> initialWorldObjects,
+        Map<int[], Molecule> initialWorldObjects,
         Map<String, Integer> labelMap,
         Map<Integer, String> labelAddressToNameMap,
         Map<Integer, int[]> linearAddressToCoordMap,

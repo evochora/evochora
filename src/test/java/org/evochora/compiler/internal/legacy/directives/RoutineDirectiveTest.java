@@ -4,8 +4,8 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,7 +49,7 @@ public class RoutineDirectiveTest {
         Map<int[], Integer> machineCode = program.assemble();
 
         for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-            world.setSymbol(Symbol.fromInt(entry.getValue()), entry.getKey());
+            world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
         }
 
         if (org == null) {
@@ -75,11 +75,11 @@ public class RoutineDirectiveTest {
             ".INCLUDE ROUTINETEST.INC AS I1 WITH %DR0"
         );
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 0).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
 
         Organism res = runAssembly(code, org, 1);
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
     @Test
@@ -93,11 +93,11 @@ public class RoutineDirectiveTest {
             ".INCLUDE_STRICT ROUTINETEST.INC AS I2 WITH %DR0"
         );
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 0).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
 
         Organism res = runAssembly(code, org, 2);
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 2).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
     }
 
     @Test
@@ -111,12 +111,12 @@ public class RoutineDirectiveTest {
             ".INCLUDE ROUTINETEST.INC AS A1 WITH %DR1"
         );
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 0).toInt());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 0).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 0).toInt());
 
         Organism res = runAssembly(code, org, 2);
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
-        assertThat(res.getDr(1)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(res.getDr(1)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 }

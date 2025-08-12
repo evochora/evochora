@@ -3,8 +3,8 @@ package org.evochora.organism.instructions;
 import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,21 +34,21 @@ public class VMControlFlowInstructionTest {
 
     private void placeInstructionWithVector(String name, int[] vector) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setSymbol(new Symbol(Config.TYPE_CODE, opcode), org.getIp());
+        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int val : vector) {
             currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-            world.setSymbol(new Symbol(Config.TYPE_DATA, val), currentPos);
+            world.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }
 
     private void placeInstruction(String name, Integer... args) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setSymbol(new Symbol(Config.TYPE_CODE, opcode), org.getIp());
+        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int arg : args) {
             currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-            world.setSymbol(new Symbol(Config.TYPE_DATA, arg), currentPos);
+            world.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
 

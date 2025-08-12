@@ -5,8 +5,8 @@ import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.compiler.internal.legacy.NumericParser;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 
 import java.util.ArrayList;
@@ -83,18 +83,18 @@ public class StateInstruction extends Instruction {
 
     private void handleNrg(String opName, List<Operand> operands) {
         if ("NRGS".equals(opName)) {
-            organism.getDataStack().push(new Symbol(Config.TYPE_DATA, organism.getEr()).toInt());
+            organism.getDataStack().push(new Molecule(Config.TYPE_DATA, organism.getEr()).toInt());
         } else {
             if (operands.size() != 1) { organism.instructionFailed("Invalid operands for NRG."); return; }
             int targetReg = operands.get(0).rawSourceId();
-            writeOperand(targetReg, new Symbol(Config.TYPE_DATA, organism.getEr()).toInt());
+            writeOperand(targetReg, new Molecule(Config.TYPE_DATA, organism.getEr()).toInt());
         }
     }
 
     private void handleFork(List<Operand> operands, Simulation simulation) {
         if (operands.size() != 3) { organism.instructionFailed("Invalid operands for FORK."); return; }
         int[] delta = (int[]) operands.get(0).value();
-        int energy = Symbol.fromInt((Integer) operands.get(1).value()).toScalarValue();
+        int energy = org.evochora.runtime.model.Molecule.fromInt((Integer) operands.get(1).value()).toScalarValue();
         int[] childDv = (int[]) operands.get(2).value();
         int totalCost = getCost(organism, simulation.getWorld(), null);
         if (energy > 0 && organism.getEr() >= totalCost) {
@@ -133,16 +133,16 @@ public class StateInstruction extends Instruction {
     private void handleRand(List<Operand> operands) {
         if (operands.size() != 1) { organism.instructionFailed("Invalid operands for RAND."); return; }
         Operand op = operands.get(0);
-        Symbol s = Symbol.fromInt((Integer)op.value());
+        Molecule s = org.evochora.runtime.model.Molecule.fromInt((Integer)op.value());
         int upperBound = s.toScalarValue();
         if (upperBound <= 0) {
             organism.instructionFailed("RAND upper bound must be > 0.");
-            writeOperand(op.rawSourceId(), new Symbol(s.type(), 0).toInt());
+            writeOperand(op.rawSourceId(), new Molecule(s.type(), 0).toInt());
             return;
         }
         Random random = organism.getRandom();
         int randomValue = random.nextInt(upperBound);
-        writeOperand(op.rawSourceId(), new Symbol(s.type(), randomValue).toInt());
+        writeOperand(op.rawSourceId(), new Molecule(s.type(), randomValue).toInt());
     }
 
     private void handleSeek(List<Operand> operands, World world) {
@@ -153,12 +153,12 @@ public class StateInstruction extends Instruction {
         int[] vector = (int[]) operands.get(0).value();
         int[] targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, world);
 
-        Symbol symbolAtTarget = world.getSymbol(targetCoordinate);
+        Molecule moleculeAtTarget = world.getMolecule(targetCoordinate);
         // Allow seeking if the cell is empty OR owned by this organism; otherwise fail.
         int ownerIdAtTarget = world.getOwnerId(targetCoordinate[0], targetCoordinate[1]);
         boolean ownedBySelf = ownerIdAtTarget == organism.getId();
 
-        if (symbolAtTarget.isEmpty() || ownedBySelf) {
+        if (moleculeAtTarget.isEmpty() || ownedBySelf) {
             organism.setDp(targetCoordinate);
         } else {
             organism.instructionFailed("SEEK: Target cell is owned by another organism.");
@@ -178,7 +178,7 @@ public class StateInstruction extends Instruction {
             vector = (int[]) operands.get(1).value();
         }
         int[] target = organism.getTargetCoordinate(organism.getDp(), vector, world);
-        Symbol s = world.getSymbol(target);
+        Molecule s = world.getMolecule(target);
         if (opName.endsWith("S")) {
             organism.getDataStack().push(s.toInt());
         } else {
@@ -191,7 +191,7 @@ public class StateInstruction extends Instruction {
         if (getName().equals("FORK")) {
             List<Operand> operands = resolveOperands(world);
             if (operands.size() == 3 && operands.get(1).value() instanceof Integer) {
-                return 10 + Symbol.fromInt((Integer)operands.get(1).value()).toScalarValue();
+                return 10 + org.evochora.runtime.model.Molecule.fromInt((Integer)operands.get(1).value()).toScalarValue();
             }
             return 10;
         }
@@ -208,7 +208,7 @@ public class StateInstruction extends Instruction {
                 if (args.length != 1) throw new IllegalArgumentException(name + " expects 1 register argument.");
                 Integer reg = resolveRegToken(args[0], registerMap);
                 if (reg == null) throw new IllegalArgumentException("Invalid register for " + name);
-                return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg).toInt()));
+                return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg).toInt()));
             }
             case "FORK": {
                 if (args.length != 3) throw new IllegalArgumentException("FORK expects 3 register arguments.");
@@ -217,9 +217,9 @@ public class StateInstruction extends Instruction {
                 Integer reg3 = resolveRegToken(args[2], registerMap);
                 if (reg1 == null || reg2 == null || reg3 == null) throw new IllegalArgumentException("Invalid register for FORK.");
                 return new AssemblerOutput.CodeSequence(List.of(
-                        new Symbol(Config.TYPE_DATA, reg1).toInt(),
-                        new Symbol(Config.TYPE_DATA, reg2).toInt(),
-                        new Symbol(Config.TYPE_DATA, reg3).toInt()
+                        new Molecule(Config.TYPE_DATA, reg1).toInt(),
+                        new Molecule(Config.TYPE_DATA, reg2).toInt(),
+                        new Molecule(Config.TYPE_DATA, reg3).toInt()
                 ));
             }
             case "SEKI": {
@@ -229,7 +229,7 @@ public class StateInstruction extends Instruction {
                 List<Integer> machineCode = new ArrayList<>();
                 for (String c : comps) {
                     int v = NumericParser.parseInt(c.strip());
-                    machineCode.add(new Symbol(Config.TYPE_DATA, v).toInt());
+                    machineCode.add(new Molecule(Config.TYPE_DATA, v).toInt());
                 }
                 return new AssemblerOutput.CodeSequence(machineCode);
             }
@@ -242,8 +242,8 @@ public class StateInstruction extends Instruction {
                 Integer reg2 = resolveRegToken(args[1], registerMap);
                 if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for " + name);
                 return new AssemblerOutput.CodeSequence(List.of(
-                        new Symbol(Config.TYPE_DATA, reg1).toInt(),
-                        new Symbol(Config.TYPE_DATA, reg2).toInt()
+                        new Molecule(Config.TYPE_DATA, reg1).toInt(),
+                        new Molecule(Config.TYPE_DATA, reg2).toInt()
                 ));
             }
             case "SCNI": {
@@ -253,10 +253,10 @@ public class StateInstruction extends Instruction {
                 String[] comps = args[1].split("\\|");
                 if (comps.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("Invalid vector dimensionality.");
                 List<Integer> machineCode = new ArrayList<>();
-                machineCode.add(new Symbol(Config.TYPE_DATA, reg).toInt());
+                machineCode.add(new Molecule(Config.TYPE_DATA, reg).toInt());
                 for (String c : comps) {
                     int v = NumericParser.parseInt(c.strip());
-                    machineCode.add(new Symbol(Config.TYPE_DATA, v).toInt());
+                    machineCode.add(new Molecule(Config.TYPE_DATA, v).toInt());
                 }
                 return new AssemblerOutput.CodeSequence(machineCode);
             }

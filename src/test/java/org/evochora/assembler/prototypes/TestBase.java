@@ -5,8 +5,8 @@ import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerException;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,9 +41,9 @@ public abstract class TestBase {
             Map<int[], Integer> machineCode = program.assemble();
 
             // Dieser Teil wird nur bei erfolgreicher Assemblierung ausgeführt
-            Map<int[], Symbol> initialObjects = program.getInitialWorldObjects();
-            for (Map.Entry<int[], Symbol> entry : initialObjects.entrySet()) {
-                world.setSymbol(entry.getValue(), entry.getKey());
+            Map<int[], Molecule> initialObjects = program.getInitialWorldObjects();
+            for (Map.Entry<int[], Molecule> entry : initialObjects.entrySet()) {
+                world.setMolecule(entry.getValue(), entry.getKey());
             }
 
             Organism org = Organism.create(sim, program.getProgramOrigin(), 2000, sim.getLogger());
@@ -67,6 +67,6 @@ public abstract class TestBase {
     }
 
     protected int toData(int value) {
-        return new Symbol(Config.TYPE_DATA, value).toInt();
+        return new Molecule(Config.TYPE_DATA, value).toInt();
     }
 }

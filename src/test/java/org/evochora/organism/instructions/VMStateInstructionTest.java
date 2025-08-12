@@ -3,8 +3,8 @@ package org.evochora.organism.instructions;
 import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,33 +34,33 @@ public class VMStateInstructionTest {
 
     private void placeInstruction(String name, Integer... args) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setSymbol(new Symbol(Config.TYPE_CODE, opcode), org.getIp());
+        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int arg : args) {
             currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-            world.setSymbol(new Symbol(Config.TYPE_DATA, arg), currentPos);
+            world.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
 
     private void placeInstructionWithVector(String name, int reg, int[] vector) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setSymbol(new Symbol(Config.TYPE_CODE, opcode), org.getIp());
+        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-        world.setSymbol(new Symbol(Config.TYPE_DATA, reg), currentPos);
+        world.setMolecule(new Molecule(Config.TYPE_DATA, reg), currentPos);
         for (int val : vector) {
             currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-            world.setSymbol(new Symbol(Config.TYPE_DATA, val), currentPos);
+            world.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }
 
     private void placeInstructionWithVectorOnly(String name, int[] vector) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setSymbol(new Symbol(Config.TYPE_CODE, opcode), org.getIp());
+        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int val : vector) {
             currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-            world.setSymbol(new Symbol(Config.TYPE_DATA, val), currentPos);
+            world.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }
 
@@ -87,7 +87,7 @@ public class VMStateInstructionTest {
         sim.tick();
         int er = org.getEr();
         int regVal = (Integer) org.getDr(0);
-        assertThat(Symbol.fromInt(regVal).toScalarValue()).isEqualTo(er);
+        assertThat(Molecule.fromInt(regVal).toScalarValue()).isEqualTo(er);
     }
 
     @Test
@@ -95,7 +95,7 @@ public class VMStateInstructionTest {
         placeInstruction("NRGS");
         sim.tick();
         int val = (Integer) org.getDataStack().pop();
-        assertThat(Symbol.fromInt(val).toScalarValue()).isEqualTo(org.getEr());
+        assertThat(Molecule.fromInt(val).toScalarValue()).isEqualTo(org.getEr());
     }
 
     @Test
@@ -115,10 +115,10 @@ public class VMStateInstructionTest {
 
     @Test
     void testRand() {
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 10).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
         placeInstruction("RAND", 0);
         sim.tick();
-        int val = Symbol.fromInt((Integer) org.getDr(0)).toScalarValue();
+        int val = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
         assertThat(val).isGreaterThanOrEqualTo(0).isLessThan(10);
     }
 
@@ -159,15 +159,15 @@ public class VMStateInstructionTest {
         org.setDp(org.getIp());
         int[] vec = new int[]{0, 1};
         int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-        int payload = new Symbol(Config.TYPE_STRUCTURE, 3).toInt();
-        world.setSymbol(Symbol.fromInt(payload), target);
+        int payload = new Molecule(Config.TYPE_STRUCTURE, 3).toInt();
+        world.setMolecule(Molecule.fromInt(payload), target);
 
         org.setDr(1, vec);
         placeInstruction("SCAN", 0, 1);
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(payload);
-        assertThat(world.getSymbol(target).toInt()).isEqualTo(payload);
+        assertThat(world.getMolecule(target).toInt()).isEqualTo(payload);
     }
 
     @Test
@@ -175,14 +175,14 @@ public class VMStateInstructionTest {
         org.setDp(org.getIp());
         int[] vec = new int[]{0, 1};
         int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-        int payload = new Symbol(Config.TYPE_CODE, 42).toInt();
-        world.setSymbol(Symbol.fromInt(payload), target);
+        int payload = new Molecule(Config.TYPE_CODE, 42).toInt();
+        world.setMolecule(Molecule.fromInt(payload), target);
 
         placeInstructionWithVector("SCNI", 0, vec);
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(payload);
-        assertThat(world.getSymbol(target).toInt()).isEqualTo(payload);
+        assertThat(world.getMolecule(target).toInt()).isEqualTo(payload);
     }
 
     @Test
@@ -190,15 +190,15 @@ public class VMStateInstructionTest {
         org.setDp(org.getIp());
         int[] vec = new int[]{-1, 0};
         int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-        int payload = new Symbol(Config.TYPE_ENERGY, 5).toInt();
-        world.setSymbol(Symbol.fromInt(payload), target);
+        int payload = new Molecule(Config.TYPE_ENERGY, 5).toInt();
+        world.setMolecule(Molecule.fromInt(payload), target);
 
         org.getDataStack().push(vec);
         placeInstruction("SCNS");
         sim.tick();
 
         assertThat(org.getDataStack().pop()).isEqualTo(payload);
-        assertThat(world.getSymbol(target).toInt()).isEqualTo(payload);
+        assertThat(world.getMolecule(target).toInt()).isEqualTo(payload);
     }
 
     @org.junit.jupiter.api.AfterEach

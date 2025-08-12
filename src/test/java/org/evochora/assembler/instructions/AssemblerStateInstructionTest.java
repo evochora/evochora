@@ -4,8 +4,8 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,7 +50,7 @@ public class AssemblerStateInstructionTest {
         Map<int[], Integer> machineCode = program.assemble();
 
         for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-            world.setSymbol(Symbol.fromInt(entry.getValue()), entry.getKey());
+            world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
         }
 
         if (org == null) {
@@ -97,7 +97,7 @@ public class AssemblerStateInstructionTest {
 
         int er = res.getEr();
         int regVal = (Integer) res.getDr(0);
-        assertThat(Symbol.fromInt(regVal).toScalarValue()).isEqualTo(er);
+        assertThat(Molecule.fromInt(regVal).toScalarValue()).isEqualTo(er);
     }
 
     @Test
@@ -108,7 +108,7 @@ public class AssemblerStateInstructionTest {
         Organism res = runAssembly(code, org, 1);
 
         int val = (Integer) res.getDataStack().pop();
-        assertThat(Symbol.fromInt(val).toScalarValue()).isEqualTo(res.getEr());
+        assertThat(Molecule.fromInt(val).toScalarValue()).isEqualTo(res.getEr());
     }
 
     @Test
@@ -132,12 +132,12 @@ public class AssemblerStateInstructionTest {
     @Test
     void testRand() {
         Organism org = Organism.create(sim, startPos, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 10).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
 
         List<String> code = List.of("RAND %DR0");
         Organism res = runAssembly(code, org, 1);
 
-        int val = Symbol.fromInt((Integer) res.getDr(0)).toScalarValue();
+        int val = Molecule.fromInt((Integer) res.getDr(0)).toScalarValue();
         assertThat(val).isGreaterThanOrEqualTo(0).isLessThan(10);
     }
 
@@ -188,8 +188,8 @@ public class AssemblerStateInstructionTest {
         org.setDp(org.getIp());
         int[] vec = new int[]{0, 1};
         int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-        int payload = new Symbol(Config.TYPE_STRUCTURE, 3).toInt();
-        world.setSymbol(Symbol.fromInt(payload), target);
+        int payload = new Molecule(Config.TYPE_STRUCTURE, 3).toInt();
+        world.setMolecule(Molecule.fromInt(payload), target);
 
         org.setDr(1, vec);
         List<String> code = List.of("SCAN %DR0 %DR1");
@@ -197,7 +197,7 @@ public class AssemblerStateInstructionTest {
 
         assertThat(res.getDr(0)).isEqualTo(payload);
         // cell not consumed
-        assertThat(world.getSymbol(target).toInt()).isEqualTo(payload);
+        assertThat(world.getMolecule(target).toInt()).isEqualTo(payload);
     }
 
     @Test
@@ -206,14 +206,14 @@ public class AssemblerStateInstructionTest {
         org.setDp(org.getIp());
         int[] vec = new int[]{0, 1};
         int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-        int payload = new Symbol(Config.TYPE_CODE, 42).toInt();
-        world.setSymbol(Symbol.fromInt(payload), target);
+        int payload = new Molecule(Config.TYPE_CODE, 42).toInt();
+        world.setMolecule(Molecule.fromInt(payload), target);
 
         List<String> code = List.of("SCNI %DR0 0|1");
         Organism res = runAssembly(code, org, 1);
 
         assertThat(res.getDr(0)).isEqualTo(payload);
-        assertThat(world.getSymbol(target).toInt()).isEqualTo(payload);
+        assertThat(world.getMolecule(target).toInt()).isEqualTo(payload);
     }
 
     @Test
@@ -222,14 +222,14 @@ public class AssemblerStateInstructionTest {
         org.setDp(org.getIp());
         int[] vec = new int[]{-1, 0};
         int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-        int payload = new Symbol(Config.TYPE_ENERGY, 5).toInt();
-        world.setSymbol(Symbol.fromInt(payload), target);
+        int payload = new Molecule(Config.TYPE_ENERGY, 5).toInt();
+        world.setMolecule(Molecule.fromInt(payload), target);
 
         org.getDataStack().push(vec);
         List<String> code = List.of("SCNS");
         Organism res = runAssembly(code, org, 1);
 
         assertThat(res.getDataStack().pop()).isEqualTo(payload);
-        assertThat(world.getSymbol(target).toInt()).isEqualTo(payload);
+        assertThat(world.getMolecule(target).toInt()).isEqualTo(payload);
     }
 }

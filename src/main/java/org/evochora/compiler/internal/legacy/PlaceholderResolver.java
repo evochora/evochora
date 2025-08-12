@@ -3,7 +3,7 @@ package org.evochora.compiler.internal.legacy;
 import org.evochora.compiler.internal.i18n.Messages;
 
 import org.evochora.app.setup.Config;
-import org.evochora.runtime.model.Symbol;
+import org.evochora.runtime.model.Molecule;
 
 import java.util.Arrays;
 import java.util.List;
@@ -70,7 +70,7 @@ public class PlaceholderResolver {
                     throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(),
                             Messages.get("placeholderResolver.jumpArgumentCoordinateNotFound"), placeholder.line().content());
                 }
-                machineCodeLayout.put(Arrays.copyOf(argCoord, argCoord.length), new Symbol(Config.TYPE_DATA, delta[i]).toInt());
+                machineCodeLayout.put(Arrays.copyOf(argCoord, argCoord.length), new Molecule(Config.TYPE_DATA, delta[i]).toInt());
             }
         }
     }
@@ -101,7 +101,7 @@ public class PlaceholderResolver {
             argPos[0]++; // To the first vector component
 
             for (int component : targetCoord) {
-                machineCodeLayout.put(Arrays.copyOf(argPos, argPos.length), new Symbol(Config.TYPE_DATA, component).toInt());
+                machineCodeLayout.put(Arrays.copyOf(argPos, argPos.length), new Molecule(Config.TYPE_DATA, component).toInt());
                 argPos[0]++;
             }
         }

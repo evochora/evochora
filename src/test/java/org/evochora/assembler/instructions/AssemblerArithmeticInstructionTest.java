@@ -4,8 +4,8 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,7 +49,7 @@ public class AssemblerArithmeticInstructionTest {
         Map<int[], Integer> machineCode = program.assemble();
 
         for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-            world.setSymbol(Symbol.fromInt(entry.getValue()), entry.getKey());
+            world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
         }
 
         if (org == null) {
@@ -69,138 +69,138 @@ public class AssemblerArithmeticInstructionTest {
     @Test
     void testAddi() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 10).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
         Organism res = runAssembly(List.of("ADDI %DR0 DATA:5"), org, 1);
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 15).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 15).toInt());
     }
 
     @Test
     void testAddr() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 3).toInt());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 4).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 3).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 4).toInt());
         Organism res = runAssembly(List.of("ADDR %DR0 %DR1"), org, 1);
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     @Test
     void testAdds() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 3).toInt());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 4).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 3).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 4).toInt());
         Organism res = runAssembly(List.of("ADDS"), org, 1);
-        assertThat(res.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
+        assertThat(res.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     // SUB
     @Test
     void testSubi() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 10).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
         Organism res = runAssembly(List.of("SUBI %DR0 DATA:3"), org, 1);
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     @Test
     void testSubr() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 10).toInt());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 6).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 6).toInt());
         Organism res = runAssembly(List.of("SUBR %DR0 %DR1"), org, 1);
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 4).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 4).toInt());
     }
 
     @Test
     void testSubs() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
         // Stack top is operand1, next is operand2 -> push 3 first, then 10 to compute 10 - 3
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 3).toInt());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 10).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 3).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 10).toInt());
         Organism res = runAssembly(List.of("SUBS"), org, 1);
-        assertThat(res.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
+        assertThat(res.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     // MUL
     @Test
     void testMuli() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 7).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 7).toInt());
         Organism res = runAssembly(List.of("MULI %DR0 DATA:6"), org, 1);
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 42).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
     }
 
     @Test
     void testMulr() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 7).toInt());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 6).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 7).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 6).toInt());
         Organism res = runAssembly(List.of("MULR %DR0 %DR1"), org, 1);
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 42).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
     }
 
     @Test
     void testMuls() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 7).toInt());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 6).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 7).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 6).toInt());
         Organism res = runAssembly(List.of("MULS"), org, 1);
-        assertThat(res.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 42).toInt());
+        assertThat(res.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
     }
 
     // DIV
     @Test
     void testDivi() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 42).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 42).toInt());
         Organism res = runAssembly(List.of("DIVI %DR0 DATA:6"), org, 1);
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     @Test
     void testDivr() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 42).toInt());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 6).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 42).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 6).toInt());
         Organism res = runAssembly(List.of("DIVR %DR0 %DR1"), org, 1);
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     @Test
     void testDivs() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
         // Stack top is operand1 (dividend), next is operand2 (divisor) -> push 6 then 42 to compute 42 / 6
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 6).toInt());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 42).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 6).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 42).toInt());
         Organism res = runAssembly(List.of("DIVS"), org, 1);
-        assertThat(res.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 7).toInt());
+        assertThat(res.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     // MOD
     @Test
     void testModi() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 43).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 43).toInt());
         Organism res = runAssembly(List.of("MODI %DR0 DATA:6"), org, 1);
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
     @Test
     void testModr() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-        org.setDr(0, new Symbol(Config.TYPE_DATA, 43).toInt());
-        org.setDr(1, new Symbol(Config.TYPE_DATA, 6).toInt());
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 43).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 6).toInt());
         Organism res = runAssembly(List.of("MODR %DR0 %DR1"), org, 1);
-        assertThat(res.getDr(0)).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertThat(res.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
     @Test
     void testMods() {
         Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
         // Stack top is operand1 (dividend), next is operand2 (divisor) -> push 6 then 43 to compute 43 % 6
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 6).toInt());
-        org.getDataStack().push(new Symbol(Config.TYPE_DATA, 43).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 6).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 43).toInt());
         Organism res = runAssembly(List.of("MODS"), org, 1);
-        assertThat(res.getDataStack().pop()).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertThat(res.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
     // Vector arithmetic (register variants only)

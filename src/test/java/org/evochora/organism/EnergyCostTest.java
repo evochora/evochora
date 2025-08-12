@@ -3,8 +3,8 @@ package org.evochora.organism;
 import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,11 +30,11 @@ public class EnergyCostTest {
 
     private void placeInstruction(Organism org, String name, Integer... args) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setSymbol(new Symbol(Config.TYPE_CODE, opcode), org.getIp());
+        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int arg : args) {
             currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-            world.setSymbol(new Symbol(Config.TYPE_DATA, arg), currentPos);
+            world.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
 
@@ -48,9 +48,9 @@ public class EnergyCostTest {
         int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
 
         // ensure target is empty
-        world.setSymbol(new Symbol(Config.TYPE_CODE, 0), target);
+        world.setMolecule(new Molecule(Config.TYPE_CODE, 0), target);
 
-        int payload = new Symbol(Config.TYPE_DATA, 50).toInt();
+        int payload = new Molecule(Config.TYPE_DATA, 50).toInt();
         org.setDr(0, payload);      // value register
         org.setDr(1, vec);          // vector register
 
@@ -60,7 +60,7 @@ public class EnergyCostTest {
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("POKE should succeed on empty cell").isFalse();
-        assertThat(world.getSymbol(target).toInt()).isEqualTo(payload);
+        assertThat(world.getMolecule(target).toInt()).isEqualTo(payload);
         // Energy must be reduced by at least abs(payload scalar); allow extra per-tick overhead.
         assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 50);
     }
@@ -75,9 +75,9 @@ public class EnergyCostTest {
         int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
 
         // Make target occupied
-        world.setSymbol(new Symbol(Config.TYPE_DATA, 1), target);
+        world.setMolecule(new Molecule(Config.TYPE_DATA, 1), target);
 
-        int payload = new Symbol(Config.TYPE_DATA, 60).toInt();
+        int payload = new Molecule(Config.TYPE_DATA, 60).toInt();
         org.setDr(0, payload);
         org.setDr(1, vec);
 
@@ -90,7 +90,7 @@ public class EnergyCostTest {
         // Energy should have been consumed despite failure
         assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 60);
         // Target content should remain unchanged due to failure
-        assertThat(world.getSymbol(target).toInt()).isEqualTo(new Symbol(Config.TYPE_DATA, 1).toInt());
+        assertThat(world.getMolecule(target).toInt()).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
     @Test
@@ -102,8 +102,8 @@ public class EnergyCostTest {
         int[] vec = new int[]{0, 1};
         int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
 
-        int dataVal = new Symbol(Config.TYPE_DATA, 33).toInt();
-        world.setSymbol(Symbol.fromInt(dataVal), target);
+        int dataVal = new Molecule(Config.TYPE_DATA, 33).toInt();
+        world.setMolecule(Molecule.fromInt(dataVal), target);
 
         org.setDr(1, vec); // vector register
         int initialEr = org.getEr();
@@ -126,8 +126,8 @@ public class EnergyCostTest {
         int[] vec = new int[]{0, 1};
         int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
 
-        int structVal = new Symbol(Config.TYPE_STRUCTURE, 10).toInt();
-        world.setSymbol(Symbol.fromInt(structVal), target);
+        int structVal = new Molecule(Config.TYPE_STRUCTURE, 10).toInt();
+        world.setMolecule(Molecule.fromInt(structVal), target);
         world.setOwnerId(org.getId(), target[0], target[1]);
 
         org.setDr(1, vec);
@@ -152,8 +152,8 @@ public class EnergyCostTest {
         int[] vec = new int[]{0, 1};
         int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
 
-        int structVal = new Symbol(Config.TYPE_STRUCTURE, 12).toInt();
-        world.setSymbol(Symbol.fromInt(structVal), target);
+        int structVal = new Molecule(Config.TYPE_STRUCTURE, 12).toInt();
+        world.setMolecule(Molecule.fromInt(structVal), target);
         world.setOwnerId(org.getId() + 999, target[0], target[1]); // foreign owner
 
         org.setDr(1, vec);
@@ -178,7 +178,7 @@ public class EnergyCostTest {
         int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
 
         int energyAvailable = 80;
-        world.setSymbol(new Symbol(Config.TYPE_ENERGY, energyAvailable), target);
+        world.setMolecule(new Molecule(Config.TYPE_ENERGY, energyAvailable), target);
 
         org.setDr(1, vec);
         int initialEr = org.getEr();

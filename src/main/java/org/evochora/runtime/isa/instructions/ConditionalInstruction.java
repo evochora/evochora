@@ -5,8 +5,8 @@ import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.compiler.internal.legacy.NumericParser;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 
 import java.util.ArrayList;
@@ -59,15 +59,15 @@ public class ConditionalInstruction extends Instruction {
 
 
             if (opName.startsWith("IFT")) { // Type comparison
-                int type1 = (op1.value() instanceof Integer i) ? Symbol.fromInt(i).type() : -1; // -1 for vectors
-                int type2 = (op2.value() instanceof Integer i) ? Symbol.fromInt(i).type() : -1;
+                int type1 = (op1.value() instanceof Integer i) ? org.evochora.runtime.model.Molecule.fromInt(i).type() : -1; // -1 for vectors
+                int type2 = (op2.value() instanceof Integer i) ? Molecule.fromInt(i).type() : -1;
                 conditionMet = (type1 == type2);
             } else { // Value comparison
                 if (op1.value() instanceof int[] v1 && op2.value() instanceof int[] v2) {
                     conditionMet = Arrays.equals(v1, v2);
                 } else if (op1.value() instanceof Integer i1 && op2.value() instanceof Integer i2) {
-                    Symbol s1 = Symbol.fromInt(i1);
-                    Symbol s2 = Symbol.fromInt(i2);
+                    Molecule s1 = org.evochora.runtime.model.Molecule.fromInt(i1);
+                    Molecule s2 = org.evochora.runtime.model.Molecule.fromInt(i2);
                     if (Config.STRICT_TYPING && s1.type() != s2.type()) {
                         // Condition is false if types don't match in strict mode
                     } else {
@@ -95,7 +95,7 @@ public class ConditionalInstruction extends Instruction {
     }
 
     public static Instruction plan(Organism organism, World world) {
-        int fullOpcodeId = world.getSymbol(organism.getIp()).toInt();
+        int fullOpcodeId = world.getMolecule(organism.getIp()).toInt();
         return new ConditionalInstruction(organism, fullOpcodeId);
     }
 
@@ -107,7 +107,7 @@ public class ConditionalInstruction extends Instruction {
             Integer reg1 = resolveRegToken(args[0], registerMap);
             Integer reg2 = resolveRegToken(args[1], registerMap);
             if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for " + name);
-            return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg1).toInt(), new Symbol(Config.TYPE_DATA, reg2).toInt()));
+            return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg1).toInt(), new Molecule(Config.TYPE_DATA, reg2).toInt()));
         } else if (name.endsWith("I") && !name.equals("IFMI")) { // IFI, GTI, LTI, IFTI
             if (args.length != 2) throw new IllegalArgumentException(name + " expects a register and an immediate value.");
             Integer reg1 = resolveRegToken(args[0], registerMap);
@@ -117,7 +117,7 @@ public class ConditionalInstruction extends Instruction {
             if (literalParts.length != 2) throw new IllegalArgumentException("Immediate argument must be in TYPE:VALUE format.");
             int type = getTypeFromString(literalParts[0]);
             int value = NumericParser.parseInt(literalParts[1]);
-            return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg1).toInt(), new Symbol(type, value).toInt()));
+            return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg1).toInt(), new Molecule(type, value).toInt()));
         } else if (name.endsWith("S") && !name.equals("IFMS")) { // IFS, GTS, LTS, IFTS
             if (args.length != 0) throw new IllegalArgumentException(name + " expects no arguments.");
             return new AssemblerOutput.CodeSequence(List.of());
@@ -125,7 +125,7 @@ public class ConditionalInstruction extends Instruction {
             if (args.length != 1) throw new IllegalArgumentException("IFMR expects 1 register argument.");
             Integer reg = resolveRegToken(args[0], registerMap);
             if (reg == null) throw new IllegalArgumentException("Invalid register for IFMR.");
-            return new AssemblerOutput.CodeSequence(List.of(new Symbol(Config.TYPE_DATA, reg).toInt()));
+            return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg).toInt()));
         } else if (name.equals("IFMI")) {
             if (args.length != 1) throw new IllegalArgumentException("IFMI expects 1 vector argument.");
             String[] comps = args[0].split("\\|");
@@ -134,7 +134,7 @@ public class ConditionalInstruction extends Instruction {
             List<Integer> machineCode = new ArrayList<>();
             for (String c : comps) {
                 int v = NumericParser.parseInt(c.strip());
-                machineCode.add(new Symbol(Config.TYPE_DATA, v).toInt());
+                machineCode.add(new Molecule(Config.TYPE_DATA, v).toInt());
             }
             return new AssemblerOutput.CodeSequence(machineCode);
         } else if (name.equals("IFMS")) {

@@ -6,8 +6,8 @@ import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.compiler.internal.legacy.NumericParser;
 import org.evochora.runtime.isa.IWorldModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Symbol;
 import org.evochora.runtime.model.World;
 
 import java.util.ArrayList;
@@ -70,12 +70,12 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
                 organism.instructionFailed("POKE: Cannot write vectors to the world.");
                 return;
             }
-            Symbol toWrite = Symbol.fromInt((Integer) valueToWrite);
+            Molecule toWrite = org.evochora.runtime.model.Molecule.fromInt((Integer) valueToWrite);
             int cost = Math.abs(toWrite.toScalarValue());
             if (cost > 0) organism.takeEr(cost);
 
-            if (simulation.getWorld().getSymbol(targetCoordinate).isEmpty()) {
-                simulation.getWorld().setSymbol(toWrite, targetCoordinate);
+            if (simulation.getWorld().getMolecule(targetCoordinate).isEmpty()) {
+                simulation.getWorld().setMolecule(toWrite, targetCoordinate);
             } else {
                 organism.instructionFailed("POKE: Target cell is not empty.");
                 if (getConflictStatus() != ConflictResolutionStatus.NOT_APPLICABLE) setConflictStatus(ConflictResolutionStatus.LOST_TARGET_OCCUPIED);
@@ -103,7 +103,7 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
             this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, world);
         }
 
-        Symbol s = world.getSymbol(targetCoordinate);
+        Molecule s = world.getMolecule(targetCoordinate);
 
         if (s.isEmpty()) {
             organism.instructionFailed("PEEK: Target cell is empty.");
@@ -114,7 +114,7 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
         if (s.type() == Config.TYPE_ENERGY) {
             int energyToTake = Math.min(s.toScalarValue(), Config.MAX_ORGANISM_ENERGY - organism.getEr());
             organism.addEr(energyToTake);
-            valueToStore = new Symbol(Config.TYPE_ENERGY, energyToTake).toInt();
+            valueToStore = new Molecule(Config.TYPE_ENERGY, energyToTake).toInt();
         } else {
             if (s.type() == Config.TYPE_STRUCTURE) {
                 int ownerId = world.getOwnerId(targetCoordinate);
@@ -135,7 +135,7 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
             organism.getDataStack().push(valueToStore);
         }
 
-        world.setSymbol(new Symbol(Config.TYPE_CODE, 0), targetCoordinate);
+        world.setMolecule(new Molecule(Config.TYPE_CODE, 0), targetCoordinate);
     }
 
     @Override
@@ -172,7 +172,7 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
             } else { // POKE, PEEK
                 int[] ip = organism.getNextInstructionPosition(currentIp, world, organism.getDvBeforeFetch());
                 Organism.FetchResult vecRegArg = organism.fetchArgument(ip, world);
-                int vecRegId = Symbol.fromInt(vecRegArg.value()).toScalarValue();
+                int vecRegId = org.evochora.runtime.model.Molecule.fromInt(vecRegArg.value()).toScalarValue();
                 Object vecObj = readOperand(vecRegId);
                 if (vecObj instanceof int[]) {
                     vector = (int[]) vecObj;
@@ -206,10 +206,10 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
                 String[] comps = args[1].split("\\|");
                 if (comps.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("Invalid vector dimensionality.");
                 List<Integer> machineCode = new ArrayList<>();
-                machineCode.add(new Symbol(Config.TYPE_DATA, reg).toInt());
+                machineCode.add(new Molecule(Config.TYPE_DATA, reg).toInt());
                 for (String c : comps) {
                     int v = NumericParser.parseInt(c.strip());
-                    machineCode.add(new Symbol(Config.TYPE_DATA, v).toInt());
+                    machineCode.add(new Molecule(Config.TYPE_DATA, v).toInt());
                 }
                 return new AssemblerOutput.CodeSequence(machineCode);
             }
@@ -221,8 +221,8 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
                 Integer reg2 = resolveRegToken(args[1], registerMap);
                 if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for " + name);
                 return new AssemblerOutput.CodeSequence(List.of(
-                        new Symbol(Config.TYPE_DATA, reg1).toInt(),
-                        new Symbol(Config.TYPE_DATA, reg2).toInt()
+                        new Molecule(Config.TYPE_DATA, reg1).toInt(),
+                        new Molecule(Config.TYPE_DATA, reg2).toInt()
                 ));
             }
         }
