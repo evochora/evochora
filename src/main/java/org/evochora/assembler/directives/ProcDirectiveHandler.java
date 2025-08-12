@@ -5,7 +5,6 @@ import org.evochora.Messages;
 import org.evochora.assembler.AnnotatedLine;
 import org.evochora.assembler.AssemblerException;
 import org.evochora.assembler.DefinitionExtractor;
-import org.evochora.organism.Instruction;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -15,7 +14,8 @@ import java.util.Map;
 public class ProcDirectiveHandler implements IBlockDirectiveHandler {
 
     private String procName;
-    private List<String> body = new ArrayList<>();
+    // KORREKTUR: Speichert die gesamten AnnotatedLine-Objekte, nicht nur Strings.
+    private final List<AnnotatedLine> body = new ArrayList<>();
     private boolean isExported = false;
     private final List<String> requires = new ArrayList<>();
     private final List<String> formalParams = new ArrayList<>();
@@ -36,7 +36,6 @@ public class ProcDirectiveHandler implements IBlockDirectiveHandler {
         }
         this.procName = parts[1].toUpperCase();
 
-        // Parse formal parameters if they exist
         if (parts.length >= 4 && parts[2].equalsIgnoreCase("WITH")) {
             for (int i = 3; i < parts.length; i++) {
                 String formal = parts[i].toUpperCase();
@@ -52,7 +51,7 @@ public class ProcDirectiveHandler implements IBlockDirectiveHandler {
     public void processLine(AnnotatedLine line) {
         String strippedLine = line.content().split("#", 2)[0].strip();
         if (strippedLine.isEmpty()) {
-            body.add(line.content());
+            body.add(line); // Leere Zeilen auch als AnnotatedLine speichern
             return;
         }
         String[] parts = strippedLine.split("\\s+");
@@ -78,27 +77,27 @@ public class ProcDirectiveHandler implements IBlockDirectiveHandler {
                 }
                 pregAliases.put(alias, index);
             }
-            default -> body.add(line.content());
+            default -> body.add(line); // Komplette Zeile mit Metadaten hinzufügen
         }
     }
 
     @Override
     public void endBlock(DefinitionExtractor extractor) {
         boolean hasRet = body.stream()
-                .map(s -> s.split("#", 2)[0].strip())
+                .map(line -> line.content().split("#", 2)[0].strip())
                 .anyMatch(s -> s.equalsIgnoreCase("RET"));
+
         if (!hasRet) {
-            body.add("RET");
+            // Füge eine künstliche RET-Zeile hinzu, die Metadaten der .ENDP-Zeile erhält (oder der Startzeile als Fallback)
+            body.add(new AnnotatedLine("RET", startLine.originalLineNumber(), startLine.originalFileName()));
             System.out.println(Messages.get("definitionExtractor.autoRetAppended",
                     procName, startLine.originalFileName(), String.valueOf(startLine.originalLineNumber())));
         }
 
-        // Defer emission of PROC label and body until after main code
         List<AnnotatedLine> procLines = new ArrayList<>();
         procLines.add(new AnnotatedLine(procName + ":", startLine.originalLineNumber(), startLine.originalFileName()));
-        for (String bodyLine : body) {
-            procLines.add(new AnnotatedLine(bodyLine, startLine.originalLineNumber(), startLine.originalFileName()));
-        }
+        // KORREKTUR: Füge die originalen AnnotatedLine-Objekte aus dem Body hinzu.
+        procLines.addAll(body);
         extractor.addDeferredProcBody(procLines);
 
         extractor.getProcMetaMap().put(procName, new DefinitionExtractor.ProcMeta(

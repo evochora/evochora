@@ -63,12 +63,13 @@ public abstract class Instruction {
         if (sources == null) return resolved;
 
         int[] currentIp = organism.getIpBeforeFetch();
+        Iterator<Object> stackIterator = organism.getDataStack().iterator();
 
         try {
             for (OperandSource source : sources) {
                 switch (source) {
                     case STACK:
-                        Object val = organism.getDataStack().pop();
+                        Object val = stackIterator.next();
                         resolved.add(new Operand(val, -1));
                         break;
                     case REGISTER: {
@@ -107,7 +108,9 @@ public abstract class Instruction {
                 }
             }
         } catch(NoSuchElementException e) {
-            organism.instructionFailed("Stack underflow resolving operands for " + getName());
+            // In der Planungsphase ist ein leeres Ergebnis in Ordnung, die execute-Methode wird es dann korrekt behandeln.
+            // Die execute-Methode wird beim Versuch zu pop-en fehlschlagen, was korrekt ist.
+            return new ArrayList<>();
         }
         return resolved;
     }

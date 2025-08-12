@@ -2,10 +2,6 @@ package org.evochora.assembler;
 
 import org.evochora.Messages;
 
-import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -17,13 +13,8 @@ public class CodeExpander {
     private final Random random = new Random();
 
     private final Set<String> importedProcs = new HashSet<>();
-    // New: map alias -> proc name for imported procs
     private final Map<String, String> importAliasToProcName = new HashMap<>();
-    // Defer alias trampolines to the end so CALL sites appear before them
     private final List<AnnotatedLine> deferredImportAliasLines = new ArrayList<>();
-
-    // Tracks the primary alias per (routineName + args) signature for .INCLUDE deduplication
-    // Key format: ROUTINE_NAME|ARG1,ARG2,...
     private final Map<String, String> includeSignaturePrimaryAlias = new HashMap<>();
 
     public CodeExpander(String programName, Map<String, DefinitionExtractor.RoutineDefinition> routineMap, Map<String, DefinitionExtractor.MacroDefinition> macroMap) {
@@ -34,7 +25,6 @@ public class CodeExpander {
 
     public List<AnnotatedLine> expand(List<AnnotatedLine> initialCode) {
         List<AnnotatedLine> expanded = expandRecursively(initialCode, new LinkedList<>());
-        // Append any deferred import alias trampolines at the end
         expanded.addAll(deferredImportAliasLines);
         return expanded;
     }
@@ -63,7 +53,6 @@ public class CodeExpander {
                 expandedCode.addAll(expandRecursively(expandedMacro, callStack));
                 callStack.pop();
             } else if (macroMap.containsKey(command.toUpperCase())) {
-                // Expand macros without $ prefix (e.g., INC)
                 String macroName = command.toUpperCase();
                 if (callStack.contains(macroName)) {
                     throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("codeExpander.infiniteLoopInMacro", String.join(" -> ", callStack), macroName), line.content());
@@ -73,7 +62,6 @@ public class CodeExpander {
                 expandedCode.addAll(expandRecursively(expandedMacro, callStack));
                 callStack.pop();
             } else if (command.equalsIgnoreCase(".IMPORT")) {
-                // .IMPORT library.NAME AS ALIAS
                 if (parts.length < 4 || !parts[2].equalsIgnoreCase("AS")) {
                     throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("codeExpander.invalidImportSyntax"), line.content());
                 }
@@ -81,11 +69,9 @@ public class CodeExpander {
                 String alias = parts[3].toUpperCase();
                 importedProcs.add(procName);
                 importAliasToProcName.put(alias, procName);
-                // Defer alias trampoline so CALL remains the first executed instruction
                 deferredImportAliasLines.add(new AnnotatedLine(alias + ":", line.originalLineNumber(), line.originalFileName()));
                 deferredImportAliasLines.add(new AnnotatedLine("    JMPI " + procName, line.originalLineNumber(), line.originalFileName()));
             } else if (command.equalsIgnoreCase(".INCLUDE_STRICT")) {
-                // Always create a fresh instance, even if the same signature was used before.
                 if (parts.length < 5 || !parts[2].equalsIgnoreCase("AS") || !parts[4].equalsIgnoreCase("WITH")) {
                     throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("codeExpander.invalidIncludeStrictSyntax"), line.content());
                 }
@@ -99,12 +85,10 @@ public class CodeExpander {
                 }
                 callStack.push(routineName);
                 List<AnnotatedLine> expandedRoutine = expandInclude(parts, line);
-                // Only set primary alias if none exists for this signature (first one wins)
                 includeSignaturePrimaryAlias.putIfAbsent(signatureKey, instanceName);
                 expandedCode.addAll(expandRecursively(expandedRoutine, callStack));
                 callStack.pop();
             } else if (command.equalsIgnoreCase(".INCLUDE")) {
-                // Signature-based deduplication: first include expands, subsequent includes bind alias via trampoline.
                 if (parts.length < 5 || !parts[2].equalsIgnoreCase("AS") || !parts[4].equalsIgnoreCase("WITH")) {
                     throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("codeExpander.invalidIncludeSyntax"), line.content());
                 }
@@ -115,7 +99,6 @@ public class CodeExpander {
 
                 String primaryAlias = includeSignaturePrimaryAlias.get(signatureKey);
                 if (primaryAlias == null) {
-                    // First time this signature is included: expand and remember the primary alias.
                     if (callStack.contains(routineName)) {
                         throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), Messages.get("codeExpander.infiniteLoopInRoutine", String.join(" -> ", callStack), routineName), line.content());
                     }
@@ -125,48 +108,16 @@ public class CodeExpander {
                     expandedCode.addAll(expandRecursively(expandedRoutine, callStack));
                     callStack.pop();
                 } else {
-                    // Signature already present: bind alias to existing instance by emitting a tiny trampoline.
-                    // This keeps CALL <ALIAS> working without re-emitting the body.
                     List<AnnotatedLine> aliasOnly = new ArrayList<>();
                     aliasOnly.add(new AnnotatedLine(instanceName + ":", line.originalLineNumber(), line.originalFileName()));
                     aliasOnly.add(new AnnotatedLine("    JMPI " + primaryAlias, line.originalLineNumber(), line.originalFileName()));
                     expandedCode.addAll(aliasOnly);
                 }
-            } else if (command.equalsIgnoreCase(".FILE")) {
-                if (parts.length != 2) {
-                    throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "Invalid .FILE syntax. Expected: .FILE \"path/to/file.s\"", line.content());
-                }
-                String libFileName = parts[1].replace("\"", "");
-                List<AnnotatedLine> libraryCode = loadLibraryFile(libFileName, line);
-                // Wichtig: Die geladene Bibliothek muss ebenfalls expandiert werden.
-                expandedCode.addAll(expandRecursively(libraryCode, callStack));
             } else {
                 expandedCode.add(line);
             }
         }
         return expandedCode;
-    }
-
-    private List<AnnotatedLine> loadLibraryFile(String fileName, AnnotatedLine contextLine) {
-        try {
-            String routinesPath = "org/evochora/organism/prototypes/";
-            // Annahme: Pfade in .FILE sind relativ zum routines-Verzeichnis
-            URL resourceUrl = Thread.currentThread().getContextClassLoader().getResource(routinesPath + fileName);
-            if (resourceUrl == null) {
-                throw new AssemblerException(programName, contextLine.originalFileName(), contextLine.originalLineNumber(), "Library file not found: " + fileName, contextLine.content());
-            }
-            Path path = Paths.get(resourceUrl.toURI());
-            String content = Files.readString(path);
-
-            List<AnnotatedLine> lines = new ArrayList<>();
-            int lineNum = 1;
-            for (String line : content.split("\\r?\\n")) {
-                lines.add(new AnnotatedLine(line, lineNum++, fileName));
-            }
-            return lines;
-        } catch (Exception e) {
-            throw new AssemblerException(programName, contextLine.originalFileName(), contextLine.originalLineNumber(), "Error loading library file: " + fileName, e.getMessage());
-        }
     }
 
     private List<AnnotatedLine> expandMacro(String name, String[] parts, AnnotatedLine originalLine) {
@@ -175,13 +126,10 @@ public class CodeExpander {
 
         String[] args;
         if (expected == 1) {
-            // For single-parameter macros, treat the whole remainder (up to comment) as one argument.
             String codePart = originalLine.content().split("#", 2)[0].strip();
-            // Remove the macro name at the start and trim the rest
             String remainder = codePart.length() > name.length() ? codePart.substring(name.length()).strip() : "";
             args = new String[]{ remainder };
         } else {
-            // Default: split by whitespace for multi-arg macros
             args = Arrays.copyOfRange(parts, 1, parts.length);
         }
 
@@ -198,7 +146,6 @@ public class CodeExpander {
             for (int j = 0; j < args.length; j++) {
                 String param = macro.parameters().get(j);
                 String arg = args[j];
-                // KORRIGIERT: Verwenden Sie Wortgrenzen, um eine versehentliche Ersetzung von Teilstrings zu vermeiden.
                 expandedLine = expandedLine.replaceAll("\\b" + Pattern.quote(param) + "\\b", Matcher.quoteReplacement(arg));
             }
             expandedLine = expandedLine.replace("@@", prefix);

@@ -8,14 +8,6 @@ import java.util.*;
 import org.evochora.Messages;
 import org.evochora.organism.Instruction;
 
-import java.nio.ByteBuffer;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.List;
-import java.util.Map;
-
 /**
  * The main assembler class that orchestrates the entire assembly process.
  * It takes a list of source code lines and produces a fully linked program.
@@ -25,12 +17,13 @@ public class Assembler {
     /**
      * Assembles the given source code into a program.
      * The process is divided into several phases:
+     * 0. File Preprocessing: Resolves all .FILE directives recursively.
      * 1. Definition Extraction: Extracts macros and routines.
      * 2. Code Expansion: Expands all macro and routine calls.
      * 3. Two-Pass Assembly: Resolves symbols and generates machine code.
      * 4. Placeholder Resolution: Links all jumps and vector references.
      *
-     * @param allLines The list of annotated source code lines.
+     * @param allLines The list of annotated source code lines from the main file.
      * @param programName The name of the program being assembled.
      * @param isDebugMode A flag to enable or disable debug features.
      * @return The metadata of the assembled program.
@@ -38,12 +31,16 @@ public class Assembler {
      */
     public ProgramMetadata assemble(List<AnnotatedLine> allLines, String programName, boolean isDebugMode) {
 
+        // NEU: Phase 0 - .FILE Direktiven mit dem Preprocessor auflösen
+        FilePreprocessor preprocessor = new FilePreprocessor(programName);
+        List<AnnotatedLine> flattenedCode = preprocessor.process(allLines);
+
         // Ensure instruction registry is initialized
         Instruction.init();
 
-        // Phase 1: Extract definitions (macros, routines)
+        // Phase 1: Extract definitions (macros, routines) from the flattened code
         DefinitionExtractor extractor = new DefinitionExtractor(programName);
-        List<AnnotatedLine> mainCode = extractor.extractFrom(allLines);
+        List<AnnotatedLine> mainCode = extractor.extractFrom(flattenedCode);
 
         // Phase 2: Expand code (routines & macros)
         CodeExpander expander = new CodeExpander(programName, extractor.getRoutineMap(), extractor.getMacroMap());

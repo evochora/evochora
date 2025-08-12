@@ -32,6 +32,7 @@ public class Organism {
     private boolean loggingEnabled = false;
     private boolean instructionFailed = false;
     private String failureReason = null;
+    private Deque<Object> failureCallStack;
 
     // KORRIGIERT: Der ProcFrame sichert jetzt nur noch die PRs.
     public static final class ProcFrame {
@@ -88,6 +89,7 @@ public class Organism {
     public Instruction planTick(World world) {
         this.instructionFailed = false;
         this.failureReason = null;
+        this.failureCallStack = null;
         this.skipIpAdvance = false;
         this.ipBeforeFetch = Arrays.copyOf(this.ip, this.ip.length);
         this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length);
@@ -211,8 +213,14 @@ public class Organism {
     }
 
     public void instructionFailed(String reason) {
-        this.instructionFailed = true;
-        this.failureReason = reason;
+        if (!this.instructionFailed) { // Nur beim ersten Fehler den Stack speichern
+            this.instructionFailed = true;
+            this.failureReason = reason;
+            // NEU: Speichere eine Kopie des Return Stacks im Fehlerfall
+            if (this.returnStack != null && !this.returnStack.isEmpty()) {
+                this.failureCallStack = new ArrayDeque<>(this.returnStack);
+            }
+        }
     }
 
     // --- Public API für Instruktionen ---
@@ -323,4 +331,6 @@ public class Organism {
     }
 
     public Random getRandom() { return this.random; }
+
+    public Deque<Object> getFailureCallStack() { return this.failureCallStack; }
 }

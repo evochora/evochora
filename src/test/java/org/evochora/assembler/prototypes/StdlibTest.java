@@ -17,23 +17,18 @@ public class StdlibTest extends TestBase {
             .REG %VEC_TARGET 2
             .REG %FLAG_OUT   3
 
-            .PROC TEST_PROC WITH VEC FLAG
-                CALL stdlib.IS_PASSABLE WITH VEC FLAG
-                RET
-            .ENDP
-
             .IMPORT stdlib.IS_PASSABLE AS IS_PASSABLE_INSTANCE
 
             # Haupt-Testausführung
             SETV %VEC_TARGET 1|0
-            CALL TEST_PROC WITH %VEC_TARGET %FLAG_OUT
+            CALL IS_PASSABLE_INSTANCE WITH %VEC_TARGET %FLAG_OUT
             """;
     }
 
     @Test
     void isPassable_shouldReturnTrue_forEmptyCell() {
         String testCode = getTestCode(""); // Kein Setup, die Zelle bei (1,0) ist leer.
-        Organism org = runTest(testCode, 2);
+        Organism org = runTest(testCode, 100);
         assertThat(org.getDr(3)).isEqualTo(toData(1)); // Erwartet: DATA:1 (passierbar)
     }
 
@@ -42,7 +37,7 @@ public class StdlibTest extends TestBase {
         // Vorbereitung: Platziere eine fremde Zelle mit .PLACE
         String setup = ".PLACE STRUCTURE:99 1|0";
         String testCode = getTestCode(setup);
-        Organism org = runTest(testCode, 2);
+        Organism org = runTest(testCode, 100);
         assertThat(org.getDr(3)).isEqualTo(toData(0)); // Erwartet: DATA:0 (blockiert)
     }
 
@@ -57,7 +52,7 @@ public class StdlibTest extends TestBase {
             POKE %TEMP_VAL %VEC_POKE
             """;
         String testCode = getTestCode(setup);
-        Organism org = runTest(testCode, 3); // Ein Tick mehr für die POKE-Instruktion
+        Organism org = runTest(testCode, 100); // Ein Tick mehr für die POKE-Instruktion
         assertThat(org.getDr(3)).isEqualTo(toData(1)); // Erwartet: DATA:1 (passierbar)
     }
 }

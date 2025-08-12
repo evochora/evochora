@@ -147,6 +147,46 @@ public class Logger {
         }
 
         System.out.println(logLine.toString());
+
+        if (organism.isInstructionFailed() && organism.getFailureCallStack() != null) {
+            logLine.append("\n  CALL STACK TRACE:");
+            int frame = 0;
+            for (Object stackEntry : organism.getFailureCallStack()) {
+                if (stackEntry instanceof Organism.ProcFrame procFrame) {
+                    int[] relativeIp = procFrame.relativeReturnIp;
+                    String frameSourceInfo = getSourceLocationStringForRelativeCoord(organism, relativeIp);
+                    logLine.append(String.format("\n    %d: at %s", frame++, frameSourceInfo));
+                }
+            }
+        }
+    }
+
+    private String getSourceLocationStringForRelativeCoord(Organism organism, int[] relativeCoord) {
+        String programId = AssemblyProgram.getProgramIdForOrganism(organism);
+        if (programId == null) return "N/A";
+        ProgramMetadata metadata = AssemblyProgram.getMetadataForProgram(programId);
+        if (metadata == null) return "N/A";
+
+        List<Integer> coordAsList = Arrays.stream(relativeCoord).boxed().collect(Collectors.toList());
+        Integer linearAddress = metadata.relativeCoordToLinearAddress().get(coordAsList);
+
+        if (linearAddress != null) {
+            // Finde den Namen der Prozedur, die an dieser Adresse beginnt
+            String procName = metadata.labelAddressToName().get(linearAddress);
+            if (procName != null && metadata.labelMap().containsKey(procName)) {
+                SourceLocation location = metadata.linearAddressToSourceLocation().get(linearAddress);
+                if(location != null) {
+                    return String.format("%s (%s:%d)", procName, location.fileName(), location.lineNumber());
+                }
+                return procName;
+            }
+
+            SourceLocation location = metadata.linearAddressToSourceLocation().get(linearAddress);
+            if (location != null) {
+                return String.format("%s:%d > %s", location.fileName(), location.lineNumber(), location.lineContent().strip());
+            }
+        }
+        return "address " + Arrays.toString(relativeCoord);
     }
 
     public String formatStack(Organism organism, boolean truncate, int limit) {
