@@ -249,13 +249,17 @@ public class SemanticAnalyzerTest {
                 "JMPI MY_CONST  # Fehler: MY_CONST ist eine Konstante, kein Label"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        // ... (restlicher Test-Code)
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        // Act
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        analyzer.analyze(ast);
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
         // Der Test muss jetzt auf die neue, spezifischere Fehlermeldung prüfen
         assertThat(diagnostics.getDiagnostics().get(0).message())
-                .isEqualTo("Symbol 'MY_CONST' is a CONSTANT and cannot be used as a jump target.");
+                .isEqualTo("Argument 1 for instruction 'JMPI' has the wrong type. Expected LABEL, but got CONSTANT.");
     }
 
     @Test
