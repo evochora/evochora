@@ -3,8 +3,8 @@ package org.evochora.compiler.internal.legacy;
 
 import org.evochora.app.setup.Config;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
-import org.evochora.runtime.model.World;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 public class Disassembler {
     private static final boolean DEBUG_ANNOTATE_ADAPTERS = true;
 
-    public DisassembledInstruction disassemble(ProgramMetadata metadata, int[] coord, int[] currentDv, World world) {
+    public DisassembledInstruction disassemble(ProgramMetadata metadata, int[] coord, int[] currentDv, Environment environment) {
         Map<List<Integer>, Integer> relativeCoordToLinearAddress = metadata.relativeCoordToLinearAddress();
         Map<Integer, int[]> linearAddressToRelativeCoord = metadata.linearAddressToCoord();
         Map<String, Integer> registerNameToId = metadata.registerMap();
@@ -26,7 +26,7 @@ public class Disassembler {
 
         Integer linearAddress = relativeCoordToLinearAddress != null ? relativeCoordToLinearAddress.get(Arrays.stream(coord).boxed().collect(Collectors.toList())) : null;
 
-        Molecule molecule = world.getMolecule(coord);
+        Molecule molecule = environment.getMolecule(coord);
         String instructionType = getInstructionTypeString(molecule);
         String opcodeName = "N/A";
         List<DisassembledArgument> arguments = new ArrayList<>();
@@ -45,9 +45,9 @@ public class Disassembler {
                     for(int d=0; d<Config.WORLD_DIMENSIONS; d++) {
                         currentArgCoord[d] += assemblyDv[d];
                     }
-                    currentArgCoord = world.getNormalizedCoordinate(currentArgCoord);
+                    currentArgCoord = environment.getNormalizedCoordinate(currentArgCoord);
 
-                    Molecule argMolecule = world.getMolecule(currentArgCoord);
+                    Molecule argMolecule = environment.getMolecule(currentArgCoord);
                     String argResolvedValue;
 
                     ArgumentType argType = Instruction.getArgumentTypeFor(opcodeFullId, i);
@@ -69,7 +69,7 @@ public class Disassembler {
                         for(int d=0; d<Config.WORLD_DIMENSIONS; d++) {
                             targetCoord[d] = coord[d] + rawValue;
                         }
-                        targetCoord = world.getNormalizedCoordinate(targetCoord);
+                        targetCoord = environment.getNormalizedCoordinate(targetCoord);
                         Integer targetLinearAddress = relativeCoordToLinearAddress.get(Arrays.stream(targetCoord).boxed().collect(Collectors.toList()));
 
                         if(targetLinearAddress != null && labelAddressToName.containsKey(targetLinearAddress)) {
@@ -110,8 +110,8 @@ public class Disassembler {
         return new DisassembledInstruction(opcodeName, arguments, resolvedTargetCoordinate, instructionType);
     }
 
-    public DisassembledInstruction disassembleGeneric(int[] coord, World world) {
-        Molecule molecule = world.getMolecule(coord);
+    public DisassembledInstruction disassembleGeneric(int[] coord, Environment environment) {
+        Molecule molecule = environment.getMolecule(coord);
         String instructionType = getInstructionTypeString(molecule);
         String opcodeName = "N/A";
         List<DisassembledArgument> arguments = new ArrayList<>();
@@ -130,8 +130,8 @@ public class Disassembler {
                     for(int j=0; j<Config.WORLD_DIMENSIONS; j++) {
                         tempArgCoord[j] += defaultDv[j];
                     }
-                    tempArgCoord = world.getNormalizedCoordinate(tempArgCoord);
-                    Molecule argMolecule = world.getMolecule(tempArgCoord);
+                    tempArgCoord = environment.getNormalizedCoordinate(tempArgCoord);
+                    Molecule argMolecule = environment.getMolecule(tempArgCoord);
 
                     String typeStr = getInstructionTypeString(argMolecule);
                     String resolvedValue = typeStr + ":" + argMolecule.value();

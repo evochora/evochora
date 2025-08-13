@@ -1,46 +1,90 @@
 package org.evochora.runtime;
 
-import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.runtime.model.Agent;
+import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
 
 /**
- * TODO: [Phase 3] Dies ist der zukünftige Kern der Ausführungsumgebung.
- *  Diese Klasse wird für die Orchestrierung der Ausführung von Agenten-Code
- *  innerhalb einer Umgebung verantwortlich sein. Sie wird die Logik kapseln,
- *  die derzeit in der {@code Simulation.tick()}-Methode verstreut ist.
- *  <p>
- *  In ihrer finalen Form wird sie einen Agenten und sein zugehöriges
- *  Programmartefakt nehmen und einen einzelnen Tick oder eine bestimmte Anzahl
- *  von Instruktionen ausführen.
+ * TODO: [Phase 3] Dies ist der Kern der Ausführungsumgebung.
+ *  Diese Klasse ist für die Orchestrierung der Ausführung von Organismus-Code
+ *  innerhalb einer Umgebung verantwortlich. Sie respektiert die Trennung von
+ *  Planung und Ausführung, um zukünftiges Multithreading zu ermöglichen.
  */
 public class VirtualMachine {
 
     private final Environment environment;
+    private final org.evochora.app.Simulation simulation; // TODO: In Phase 3 entfernen
 
     /**
      * Erstellt eine neue VM, die an eine bestimmte Umgebung gebunden ist.
      *
-     * @param environment Die Umgebung, in der die Ausführung stattfindet.
+     * @param simulation Die Simulation, die den Kontext für die Ausführung bereitstellt.
      */
-    public VirtualMachine(Environment environment) {
-        this.environment = environment;
+    public VirtualMachine(org.evochora.app.Simulation simulation) {
+        this.simulation = simulation;
+        this.environment = simulation.getEnvironment();
     }
 
     /**
-     * Führt einen einzelnen Ausführungs-Tick für den gegebenen Agenten durch.
-     * <p>
-     * TODO: Die Implementierung wird die Logik aus Simulation.tick() übernehmen:
-     * 1. Instruktion am IP des Agenten planen (planTick).
-     * 2. Kosten für die Instruktion abziehen.
-     * 3. Instruktion ausführen (instruction.execute).
-     * 4. IP des Agenten vorrücken.
+     * Phase 1: Plant die nächste Instruktion für einen Organismus.
+     * Liest den Opcode an der aktuellen Position des Organismus und verwendet
+     * die Instruction-Registry, um die entsprechende Instruktions-Klasse zu instanziieren.
      *
-     * @param agent Der Agent, dessen Code ausgeführt werden soll.
-     * @param artifact Das kompilierte Programmartefakt, das zum Agenten gehört.
+     * @param organism Der Organismus, für den die Instruktion geplant werden soll.
+     * @return Die geplante, aber noch nicht ausgeführte Instruktion.
      */
-    public void executeTick(Agent agent, ProgramArtifact artifact) {
-        // Diese Methode wird in den nächsten Schritten implementiert.
-        // Vorerst bleibt sie leer.
+    public Instruction plan(Organism organism) {
+        organism.resetTickState();
+        Molecule molecule = this.environment.getMolecule(organism.getIp());
+
+        if (org.evochora.app.setup.Config.STRICT_TYPING) {
+            if (molecule.type() != org.evochora.app.setup.Config.TYPE_CODE && !molecule.isEmpty()) {
+                organism.instructionFailed("Illegal cell type (not CODE) at IP");
+                return new org.evochora.runtime.isa.instructions.NopInstruction(organism, molecule.toInt());
+            }
+        }
+
+        int opcodeId = molecule.toInt();
+        java.util.function.BiFunction<Organism, Environment, Instruction> planner = Instruction.getPlannerById(opcodeId);
+        if (planner != null) {
+            return planner.apply(organism, this.environment);
+        }
+
+        organism.instructionFailed("Unknown opcode: " + opcodeId);
+        return new org.evochora.runtime.isa.instructions.NopInstruction(organism, opcodeId);
+    }
+
+    /**
+     * Phase 2: Führt eine bereits geplante Instruktion aus.
+     * Diese Methode modifiziert potenziell den Zustand des Organismus und der Umgebung.
+     *
+     * @param instruction Die geplante Instruktion, die ausgeführt werden soll.
+     */
+    public void execute(Instruction instruction) {
+        Organism organism = instruction.getOrganism();
+        if (organism.isDead()) {
+            return;
+        }
+
+        // Logik wurde aus Organism.processTickAction() hierher verschoben
+        java.util.List<Integer> rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(), this.environment);
+        organism.takeEr(instruction.getCost(organism, this.environment, rawArgs));
+
+        // TODO: [Phase 3] Diese Methode sollte die Simulation nicht direkt durchreichen.
+        instruction.execute(this.simulation);
+
+        if (organism.isInstructionFailed()) {
+            organism.takeEr(org.evochora.app.setup.Config.ERROR_PENALTY_COST);
+        }
+
+        if (organism.getEr() <= 0) {
+            organism.kill("Ran out of energy");
+            return;
+        }
+
+        if (!organism.shouldSkipIpAdvance()) {
+            organism.advanceIpBy(instruction.getLength(), this.environment);
+        }
     }
 }

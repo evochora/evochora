@@ -8,7 +8,7 @@ import java.util.List;
  * Sie enthält keine eigenen Methoden mehr, da alle benötigten Methoden
  * von der Instruction-Basisklasse geerbt werden.
  */
-public interface IWorldModifyingInstruction {
+public interface IEnvironmentModifyingInstruction {
 
     /**
      * Gibt eine Liste der n-dimensionalen Koordinaten zurück, die diese Instruktion

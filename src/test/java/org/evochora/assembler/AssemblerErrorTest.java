@@ -3,7 +3,7 @@ package org.evochora.assembler;
 import org.evochora.compiler.internal.legacy.AssemblerException;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.model.World;
+import org.evochora.runtime.model.Environment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,7 +26,7 @@ public class AssemblerErrorTest {
         }
     }
 
-    private World world;
+    private Environment environment;
 
     @BeforeAll
     static void init() {
@@ -35,7 +35,7 @@ public class AssemblerErrorTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{10, 10}, true);
+        environment = new Environment(new int[]{10, 10}, true);
     }
 
     private void runAssemblyExpectingErrorExact(List<String> code, String messageContains) {

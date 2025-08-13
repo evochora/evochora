@@ -3,9 +3,9 @@ package org.evochora.organism.instructions;
 import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class VMDataInstructionTest {
 
-    private World world;
+    private Environment environment;
     private Organism org;
     private Simulation sim;
     private final int[] startPos = new int[]{5, 5};
@@ -26,34 +26,34 @@ public class VMDataInstructionTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{100, 100}, true);
-        sim = new Simulation(world);
+        environment = new Environment(new int[]{100, 100}, true);
+        sim = new Simulation(environment);
         org = Organism.create(sim, startPos, 1000, sim.getLogger());
         sim.addOrganism(org);
     }
 
     private void placeInstruction(String name, Integer... args) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int arg : args) {
-            currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-            world.setMolecule(Molecule.fromInt(arg), currentPos);
+            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            environment.setMolecule(Molecule.fromInt(arg), currentPos);
         }
     }
 
     // Helper für Instruktionen mit Vektor-Argument (z. B. SETV)
     private void placeInstructionWithVector(String name, int reg, int[] vector) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         // Ziel-Register
-        currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-        world.setMolecule(new Molecule(Config.TYPE_DATA, reg), currentPos);
+        currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, reg), currentPos);
         // Vektor-Komponenten
         for (int val : vector) {
-            currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-            world.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
+            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }
 

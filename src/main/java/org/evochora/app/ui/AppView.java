@@ -11,7 +11,7 @@ import org.evochora.app.i18n.LocalizationProvider;
 import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.app.setup.Setup;
-import org.evochora.runtime.model.World;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 
 import java.util.Arrays;
@@ -140,8 +140,8 @@ public class AppView {
 
     private void restartSimulation() {
         try {
-            World newWorld = new World(Config.WORLD_SHAPE, Config.IS_TOROIDAL);
-            this.simulation = new Simulation(newWorld);
+            Environment newEnvironment = new Environment(Config.WORLD_SHAPE, Config.IS_TOROIDAL);
+            this.simulation = new Simulation(newEnvironment);
             Setup.run(this.simulation);
             this.selectedOrganism = null;
             this.simulation.paused = true;

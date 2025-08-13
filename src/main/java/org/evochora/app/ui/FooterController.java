@@ -12,7 +12,6 @@ import org.evochora.compiler.internal.legacy.DefinitionExtractor;
 import org.evochora.compiler.internal.legacy.ProgramMetadata;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
-import org.slf4j.Logger;
 
 import java.util.Arrays;
 import java.util.List;
@@ -22,6 +21,7 @@ public class FooterController {
     private final VBox footerPane;
     private final TextArea fullDetailsTextArea;
     private Simulation simulation; // Hinzugefügt, um den Welt-Kontext für planTick zu haben
+    private org.evochora.runtime.VirtualMachine vm;
 
     public FooterController() {
         this.fullDetailsTextArea = new TextArea();
@@ -49,6 +49,8 @@ public class FooterController {
 
     public void update(Simulation simulation, Organism selectedOrganism) {
         this.simulation = simulation;
+        this.vm = (simulation != null) ? simulation.getVirtualMachine() : null; // NEU
+
         StringBuilder displayText = new StringBuilder();
 
         if (selectedOrganism != null) {
@@ -123,13 +125,12 @@ public class FooterController {
     }
 
     private String getNextInstructionInfo(Organism org) {
-        if (org == null || org.isDead() || this.simulation == null) {
+        if (org == null || org.isDead() || this.vm == null) {
             return "N/A";
         }
         try {
-            // Dies ist eine vereinfachte Darstellung.
-            // Die Logik muss möglicherweise angepasst werden, um den "Planner" auszuführen.
-            Instruction nextInstruction = org.planTick(this.simulation.getWorld());
+            // KORREKTUR: Wir verwenden die VirtualMachine, um die nächste Instruktion zu planen.
+            Instruction nextInstruction = this.vm.plan(org);
             return nextInstruction.getName();
         } catch (Exception e) {
             return "ERROR";

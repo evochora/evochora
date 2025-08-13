@@ -3,9 +3,9 @@ package org.evochora.organism;
 import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class OwnershipTests {
 
-    private World world;
+    private Environment environment;
     private Simulation sim;
 
     @BeforeAll
@@ -24,27 +24,27 @@ public class OwnershipTests {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{100, 100}, true);
-        sim = new Simulation(world);
+        environment = new Environment(new int[]{100, 100}, true);
+        sim = new Simulation(environment);
     }
 
     private void placeInstruction(Organism org, String name, Integer... args) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int arg : args) {
-            currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-            world.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
+            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
 
     private void placeInstructionWithVector(Organism org, String name, int[] vector) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int val : vector) {
-            currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-            world.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
+            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }
 
@@ -59,9 +59,9 @@ public class OwnershipTests {
             sim.addOrganism(org);
             org.setDp(org.getIp());
 
-            int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-            world.setMolecule(Molecule.fromInt(payload), target);
-            world.setOwnerId(org.getId(), target[0], target[1]);
+            int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+            environment.setMolecule(Molecule.fromInt(payload), target);
+            environment.setOwnerId(org.getId(), target[0], target[1]);
 
             org.setDr(1, vec);
             placeInstruction(org, "SEEK", 1);
@@ -78,9 +78,9 @@ public class OwnershipTests {
             sim.addOrganism(org);
             org.setDp(org.getIp());
 
-            int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-            world.setMolecule(Molecule.fromInt(payload), target);
-            world.setOwnerId(org.getId(), target[0], target[1]);
+            int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+            environment.setMolecule(Molecule.fromInt(payload), target);
+            environment.setOwnerId(org.getId(), target[0], target[1]);
 
             placeInstructionWithVector(org, "SEKI", vec);
 
@@ -96,9 +96,9 @@ public class OwnershipTests {
             sim.addOrganism(org);
             org.setDp(org.getIp());
 
-            int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-            world.setMolecule(Molecule.fromInt(payload), target);
-            world.setOwnerId(org.getId(), target[0], target[1]);
+            int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+            environment.setMolecule(Molecule.fromInt(payload), target);
+            environment.setOwnerId(org.getId(), target[0], target[1]);
 
             org.getDataStack().push(vec);
             placeInstruction(org, "SEKS");
@@ -121,10 +121,10 @@ public class OwnershipTests {
             sim.addOrganism(org);
             org.setDp(org.getIp());
 
-            int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-            world.setMolecule(Molecule.fromInt(payload), target);
+            int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+            environment.setMolecule(Molecule.fromInt(payload), target);
             // Set foreign owner (different from org.getId())
-            world.setOwnerId(org.getId() + 1, target[0], target[1]);
+            environment.setOwnerId(org.getId() + 1, target[0], target[1]);
 
             org.setDr(1, vec);
             placeInstruction(org, "SEEK", 1);
@@ -141,9 +141,9 @@ public class OwnershipTests {
             sim.addOrganism(org);
             org.setDp(org.getIp());
 
-            int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-            world.setMolecule(Molecule.fromInt(payload), target);
-            world.setOwnerId(org.getId() + 2, target[0], target[1]);
+            int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+            environment.setMolecule(Molecule.fromInt(payload), target);
+            environment.setOwnerId(org.getId() + 2, target[0], target[1]);
 
             placeInstructionWithVector(org, "SEKI", vec);
 
@@ -159,9 +159,9 @@ public class OwnershipTests {
             sim.addOrganism(org);
             org.setDp(org.getIp());
 
-            int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
-            world.setMolecule(Molecule.fromInt(payload), target);
-            world.setOwnerId(org.getId() + 3, target[0], target[1]);
+            int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+            environment.setMolecule(Molecule.fromInt(payload), target);
+            environment.setOwnerId(org.getId() + 3, target[0], target[1]);
 
             org.getDataStack().push(vec);
             placeInstruction(org, "SEKS");

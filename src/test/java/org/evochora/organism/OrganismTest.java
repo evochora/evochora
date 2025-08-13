@@ -5,7 +5,7 @@ import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
+import org.evochora.runtime.model.Environment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class OrganismTest {
 
-    private World world;
+    private Environment environment;
     private Simulation sim;
 
     @BeforeAll
@@ -26,8 +26,8 @@ public class OrganismTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{100, 100}, true);
-        sim = new Simulation(world);
+        environment = new Environment(new int[]{100, 100}, true);
+        sim = new Simulation(environment);
     }
 
     @Test
@@ -35,9 +35,10 @@ public class OrganismTest {
         Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
         sim.addOrganism(org);
         // Place a DATA symbol at IP to violate strict typing
-        world.setMolecule(new Molecule(Config.TYPE_DATA, 1), org.getIp());
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 1), org.getIp());
 
-        Instruction planned = org.planTick(world);
+        // KORREKTUR: Verwende die VM, um die Instruktion zu planen.
+        Instruction planned = sim.getVirtualMachine().plan(org);
         assertThat(planned).isNotNull();
         // Planner yields a no-op placeholder with name "UNKNOWN" for illegal type
         assertThat(planned.getName()).isEqualTo("UNKNOWN");
@@ -50,9 +51,10 @@ public class OrganismTest {
         Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
         sim.addOrganism(org);
         // Place a CODE opcode that doesn't exist (e.g., 999)
-        world.setMolecule(new Molecule(Config.TYPE_CODE, 999), org.getIp());
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, 999), org.getIp());
 
-        Instruction planned = org.planTick(world);
+        // KORREKTUR: Verwende die VM, um die Instruktion zu planen.
+        Instruction planned = sim.getVirtualMachine().plan(org);
         assertThat(planned).isNotNull();
         // Planner yields a no-op placeholder with name "UNKNOWN" for unknown opcode
         assertThat(planned.getName()).isEqualTo("UNKNOWN");
@@ -66,7 +68,7 @@ public class OrganismTest {
         Organism org = Organism.create(sim, new int[]{0, 0}, 2, sim.getLogger());
         sim.addOrganism(org);
         int nopId = Instruction.getInstructionIdByName("NOP");
-        world.setMolecule(new Molecule(Config.TYPE_CODE, nopId), org.getIp());
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, nopId), org.getIp());
 
         // Two ticks should drain energy to <= 0 and mark dead
         sim.tick();
@@ -85,8 +87,8 @@ public class OrganismTest {
         org.setDv(new int[]{1, 0});
         int nopId = Instruction.getInstructionIdByName("NOP");
         // Place NOP at [0,0] and [1,0]
-        world.setMolecule(new Molecule(Config.TYPE_CODE, nopId), new int[]{0, 0});
-        world.setMolecule(new Molecule(Config.TYPE_CODE, nopId), new int[]{1, 0});
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, nopId), new int[]{0, 0});
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, nopId), new int[]{1, 0});
 
         assertThat(org.getIp()).isEqualTo(new int[]{0, 0});
         sim.tick();
@@ -101,7 +103,7 @@ public class OrganismTest {
         sim.addOrganism(org);
         // Set DP to somewhere else to ensure DP is used
         org.setDp(new int[]{5, 5});
-        int[] target = org.getTargetCoordinate(org.getDp(), new int[]{0, 1}, world);
+        int[] target = org.getTargetCoordinate(org.getDp(), new int[]{0, 1}, environment);
         assertThat(target).isEqualTo(new int[]{5, 6});
     }
 

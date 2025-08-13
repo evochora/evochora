@@ -1,7 +1,7 @@
 package org.evochora.runtime.internal.services;
 
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 
 /**
  * Kapselt alle zur Laufzeit einer Instruktion benötigten Informationen und Abhängigkeiten.
@@ -11,18 +11,18 @@ import org.evochora.runtime.model.World;
 public class ExecutionContext {
 
     private final Organism organism;
-    private final World world;
+    private final Environment environment;
 
-    public ExecutionContext(Organism organism, World world) {
+    public ExecutionContext(Organism organism, Environment environment) {
         this.organism = organism;
-        this.world = world;
+        this.environment = environment;
     }
 
     public Organism getOrganism() {
         return organism;
     }
 
-    public World getWorld() {
-        return world;
+    public Environment getWorld() {
+        return environment;
     }
 }

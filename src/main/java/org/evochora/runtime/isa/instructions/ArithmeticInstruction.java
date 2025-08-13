@@ -4,9 +4,9 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 
 import java.util.List;
 import java.util.Map;
@@ -22,7 +22,7 @@ public class ArithmeticInstruction extends Instruction {
     public void execute(Simulation simulation) {
         try {
             // Die Basisklasse holt die Operanden, egal ob von Registern, Stack oder als Immediate.
-            List<Operand> operands = resolveOperands(simulation.getWorld());
+            List<Operand> operands = resolveOperands(simulation.getEnvironment());
             if (operands.size() != 2) {
                 organism.instructionFailed("Invalid operand count for arithmetic operation.");
                 return;
@@ -111,8 +111,8 @@ public class ArithmeticInstruction extends Instruction {
         }
     }
 
-    public static Instruction plan(Organism organism, World world) {
-        int fullOpcodeId = world.getMolecule(organism.getIp()).toInt();
+    public static Instruction plan(Organism organism, Environment environment) {
+        int fullOpcodeId = environment.getMolecule(organism.getIp()).toInt();
         return new ArithmeticInstruction(organism, fullOpcodeId);
     }
 

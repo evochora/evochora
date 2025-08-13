@@ -1,16 +1,16 @@
-// src/main/java/org/evochora/world/World.java
+// src/main/java/org/evochora/world/Environment.java
 package org.evochora.runtime.model;
 
 import java.util.Arrays;
 
-public class World {
+public class Environment {
     private final int[] shape;
     private final boolean isToroidal;
     private final int[] grid;
     private final int[] ownerGrid;
     private final int[] strides;
 
-    public World(int[] shape, boolean toroidal) {
+    public Environment(int[] shape, boolean toroidal) {
         this.shape = shape;
         this.isToroidal = toroidal;
         int size = 1;

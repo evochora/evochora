@@ -6,7 +6,7 @@ import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
+import org.evochora.runtime.model.Environment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,7 +30,7 @@ public class AssemblerControlFlowInstructionTest {
         }
     }
 
-    private World world;
+    private Environment environment;
     private Simulation sim;
 
     @BeforeAll
@@ -40,8 +40,8 @@ public class AssemblerControlFlowInstructionTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{100, 100}, true);
-        sim = new Simulation(world);
+        environment = new Environment(new int[]{100, 100}, true);
+        sim = new Simulation(environment);
     }
 
     private Organism runAssembly(List<String> code, Organism org, int cycles) {
@@ -49,7 +49,7 @@ public class AssemblerControlFlowInstructionTest {
         Map<int[], Integer> machineCode = program.assemble();
 
         for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-            world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
+            environment.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
         }
 
         if (org == null) {

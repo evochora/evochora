@@ -6,7 +6,7 @@ import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
+import org.evochora.runtime.model.Environment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,7 +30,7 @@ public class AssemblerStateInstructionTest {
         }
     }
 
-    private World world;
+    private Environment environment;
     private Simulation sim;
     private final int[] startPos = new int[]{0, 0};
 
@@ -41,8 +41,8 @@ public class AssemblerStateInstructionTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{100, 100}, true);
-        sim = new Simulation(world);
+        environment = new Environment(new int[]{100, 100}, true);
+        sim = new Simulation(environment);
     }
 
     private Organism runAssembly(List<String> code, Organism org, int cycles) {
@@ -50,7 +50,7 @@ public class AssemblerStateInstructionTest {
         Map<int[], Integer> machineCode = program.assemble();
 
         for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-            world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
+            environment.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
         }
 
         if (org == null) {
@@ -147,7 +147,7 @@ public class AssemblerStateInstructionTest {
         org.setDp(org.getIp());
         int[] vec = new int[]{0, 1};
         org.setDr(0, vec);
-        int[] expected = org.getTargetCoordinate(org.getDp(), vec, world);
+        int[] expected = org.getTargetCoordinate(org.getDp(), vec, environment);
 
         List<String> code = List.of("SEEK %DR0");
         Organism res = runAssembly(code, org, 1);
@@ -160,7 +160,7 @@ public class AssemblerStateInstructionTest {
         Organism org = Organism.create(sim, startPos, 1000, sim.getLogger());
         org.setDp(org.getIp());
         int[] vec = new int[]{0, 1};
-        int[] expected = org.getTargetCoordinate(org.getDp(), vec, world);
+        int[] expected = org.getTargetCoordinate(org.getDp(), vec, environment);
 
         List<String> code = List.of("SEKI 0|1");
         Organism res = runAssembly(code, org, 1);
@@ -173,7 +173,7 @@ public class AssemblerStateInstructionTest {
         Organism org = Organism.create(sim, startPos, 1000, sim.getLogger());
         org.setDp(org.getIp());
         int[] vec = new int[]{-1, 0};
-        int[] expected = org.getTargetCoordinate(org.getDp(), vec, world);
+        int[] expected = org.getTargetCoordinate(org.getDp(), vec, environment);
         org.getDataStack().push(vec);
 
         List<String> code = List.of("SEKS");
@@ -187,9 +187,9 @@ public class AssemblerStateInstructionTest {
         Organism org = Organism.create(sim, startPos, 1000, sim.getLogger());
         org.setDp(org.getIp());
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
+        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
         int payload = new Molecule(Config.TYPE_STRUCTURE, 3).toInt();
-        world.setMolecule(Molecule.fromInt(payload), target);
+        environment.setMolecule(Molecule.fromInt(payload), target);
 
         org.setDr(1, vec);
         List<String> code = List.of("SCAN %DR0 %DR1");
@@ -197,7 +197,7 @@ public class AssemblerStateInstructionTest {
 
         assertThat(res.getDr(0)).isEqualTo(payload);
         // cell not consumed
-        assertThat(world.getMolecule(target).toInt()).isEqualTo(payload);
+        assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
     }
 
     @Test
@@ -205,15 +205,15 @@ public class AssemblerStateInstructionTest {
         Organism org = Organism.create(sim, startPos, 1000, sim.getLogger());
         org.setDp(org.getIp());
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
+        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
         int payload = new Molecule(Config.TYPE_CODE, 42).toInt();
-        world.setMolecule(Molecule.fromInt(payload), target);
+        environment.setMolecule(Molecule.fromInt(payload), target);
 
         List<String> code = List.of("SCNI %DR0 0|1");
         Organism res = runAssembly(code, org, 1);
 
         assertThat(res.getDr(0)).isEqualTo(payload);
-        assertThat(world.getMolecule(target).toInt()).isEqualTo(payload);
+        assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
     }
 
     @Test
@@ -221,15 +221,15 @@ public class AssemblerStateInstructionTest {
         Organism org = Organism.create(sim, startPos, 1000, sim.getLogger());
         org.setDp(org.getIp());
         int[] vec = new int[]{-1, 0};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
+        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
         int payload = new Molecule(Config.TYPE_ENERGY, 5).toInt();
-        world.setMolecule(Molecule.fromInt(payload), target);
+        environment.setMolecule(Molecule.fromInt(payload), target);
 
         org.getDataStack().push(vec);
         List<String> code = List.of("SCNS");
         Organism res = runAssembly(code, org, 1);
 
         assertThat(res.getDataStack().pop()).isEqualTo(payload);
-        assertThat(world.getMolecule(target).toInt()).isEqualTo(payload);
+        assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
     }
 }

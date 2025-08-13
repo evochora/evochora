@@ -1,9 +1,9 @@
 package org.evochora.app;
 
-import org.evochora.runtime.isa.IWorldModifyingInstruction;
+import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,17 +12,19 @@ import java.util.stream.Collectors;
 
 public class Simulation {
     private static final Logger LOG = LoggerFactory.getLogger(Simulation.class);
-    private final World world;
+    private final Environment environment;
+    private final org.evochora.runtime.VirtualMachine vm; // NEU
     private final List<Organism> organisms;
     private int currentTick = 0;
     public boolean paused = true;
     private final List<Organism> newOrganismsThisTick = new ArrayList<>();
     private int nextOrganismId = 0;
 
-    public Simulation(World world) {
-        this.world = world;
+    public Simulation(Environment environment) {
+        this.environment = environment;
         this.organisms = new ArrayList<>();
-        // LOG.info("Eine neue Simulation wurde für die Welt erstellt: {}", world.getName()); // Beispiel für Logging
+            this.vm = new org.evochora.runtime.VirtualMachine(this); // NEU
+        // LOG.info("Eine neue Simulation wurde für die Welt erstellt: {}", environment.getName()); // Beispiel für Logging
     }
 
     public void addOrganism(Organism organism) {
@@ -40,28 +42,27 @@ public class Simulation {
     public void tick() {
         newOrganismsThisTick.clear();
 
-        // Phase 1: Planning
+        // Phase 1: Planung durch die VM
         List<Instruction> plannedInstructions = new ArrayList<>();
         for (Organism organism : this.organisms) {
             if (!organism.isDead()) {
-                Instruction instruction = organism.planTick(this.world);
-                instruction.setExecutedInTick(false);
+                Instruction instruction = vm.plan(organism);
+                instruction.setExecutedInTick(false); // Initialisiere Status für Konfliktauflösung
                 instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
                 plannedInstructions.add(instruction);
             }
         }
 
-        // Phase 2: Conflict Resolution
+        // Phase 2: Konfliktauflösung (bleibt vorerst in der Simulation)
         resolveConflicts(plannedInstructions);
 
-        // Phase 3: Execution & Logging
+        // Phase 3: Ausführung durch die VM
         for (Instruction instruction : plannedInstructions) {
-            // Die getOrganism() Methode wird hier korrekt aufgerufen.
-            Organism organism = instruction.getOrganism();
             if (instruction.isExecutedInTick()) {
-                organism.processTickAction(instruction, this);
+                vm.execute(instruction);
             }
-            // Ersetzt die alte Methode durch strukturiertes Logging
+            // Logging
+            Organism organism = instruction.getOrganism();
             if (organism.isLoggingEnabled()) {
                 LOG.debug("Tick[{}], Organism[{}], Instruction[{}], Status[{}]",
                         currentTick,
@@ -76,10 +77,10 @@ public class Simulation {
     }
 
     private void resolveConflicts(List<Instruction> allPlannedInstructions) {
-        Map<List<Integer>, List<IWorldModifyingInstruction>> actionsByCoordinate = new HashMap<>();
+        Map<List<Integer>, List<IEnvironmentModifyingInstruction>> actionsByCoordinate = new HashMap<>();
 
         for (Instruction instruction : allPlannedInstructions) {
-            if (instruction instanceof IWorldModifyingInstruction modInstruction) {
+            if (instruction instanceof IEnvironmentModifyingInstruction modInstruction) {
                 List<int[]> targetCoords = modInstruction.getTargetCoordinates();
                 if (targetCoords != null && !targetCoords.isEmpty()) {
                     for (int[] coord : targetCoords) {
@@ -87,7 +88,7 @@ public class Simulation {
                         actionsByCoordinate.computeIfAbsent(coordAsList, k -> new ArrayList<>()).add(modInstruction);
                     }
                 } else {
-                    // This instruction modifies the world but couldn't determine its target.
+                    // This instruction modifies the environment but couldn't determine its target.
                     // It could be a stack-based instruction where the target is unknown until execution.
                     // For now, let it execute if there's only one organism to avoid stalls.
                     if (this.organisms.size() == 1) {
@@ -102,19 +103,19 @@ public class Simulation {
             }
         }
 
-        for (Map.Entry<List<Integer>, List<IWorldModifyingInstruction>> entry : actionsByCoordinate.entrySet()) {
-            List<IWorldModifyingInstruction> actionsAtCoord = entry.getValue();
+        for (Map.Entry<List<Integer>, List<IEnvironmentModifyingInstruction>> entry : actionsByCoordinate.entrySet()) {
+            List<IEnvironmentModifyingInstruction> actionsAtCoord = entry.getValue();
             if (actionsAtCoord.isEmpty()) continue;
 
             if (actionsAtCoord.size() > 1) {
                 actionsAtCoord.sort(Comparator.comparingInt(action -> ((Instruction)action).getOrganism().getId()));
 
-                IWorldModifyingInstruction winningAction = actionsAtCoord.get(0);
+                IEnvironmentModifyingInstruction winningAction = actionsAtCoord.get(0);
                 ((Instruction)winningAction).setExecutedInTick(true);
                 ((Instruction)winningAction).setConflictStatus(Instruction.ConflictResolutionStatus.WON_EXECUTION);
 
                 for (int i = 1; i < actionsAtCoord.size(); i++) {
-                    IWorldModifyingInstruction losingAction = actionsAtCoord.get(i);
+                    IEnvironmentModifyingInstruction losingAction = actionsAtCoord.get(i);
                     ((Instruction)losingAction).setExecutedInTick(false);
                     ((Instruction)losingAction).setConflictStatus(Instruction.ConflictResolutionStatus.LOST_LOWER_ID_WON);
                 }
@@ -127,7 +128,8 @@ public class Simulation {
 
 
     public List<Organism> getOrganisms() { return organisms; }
-    public World getWorld() { return world; }
+    public Environment getEnvironment() { return environment; }
+    public org.evochora.runtime.VirtualMachine getVirtualMachine() { return vm; } // NEU
     public int getCurrentTick() { return currentTick; }
     public void addNewOrganism(Organism organism) {
         this.newOrganismsThisTick.add(organism);

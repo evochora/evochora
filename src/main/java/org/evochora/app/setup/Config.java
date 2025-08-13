@@ -7,7 +7,7 @@ public final class Config {
 
     private Config() {}
 
-    // World Settings
+    // Environment Settings
     public static final int[] WORLD_SHAPE = {120, 50};
     public static final boolean IS_TOROIDAL = true;
     public static final int WORLD_DIMENSIONS = WORLD_SHAPE.length;

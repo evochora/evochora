@@ -4,9 +4,9 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,7 +16,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-public class AssemblerWorldInteractionInstructionTest {
+public class AssemblerEnvironmentInteractionInstructionTest {
 
     private static class TestProgram extends AssemblyProgram {
         private final String code;
@@ -30,7 +30,7 @@ public class AssemblerWorldInteractionInstructionTest {
         }
     }
 
-    private World world;
+    private Environment environment;
     private Simulation sim;
 
     @BeforeAll
@@ -40,8 +40,8 @@ public class AssemblerWorldInteractionInstructionTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{100, 100}, true);
-        sim = new Simulation(world);
+        environment = new Environment(new int[]{100, 100}, true);
+        sim = new Simulation(environment);
     }
 
     private Organism runAssembly(List<String> code, Organism org, int cycles) {
@@ -49,7 +49,7 @@ public class AssemblerWorldInteractionInstructionTest {
         Map<int[], Integer> machineCode = program.assemble();
 
         for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-            world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
+            environment.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
         }
 
         if (org == null) {
@@ -77,7 +77,7 @@ public class AssemblerWorldInteractionInstructionTest {
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
 
         int[] targetPos = new int[]{0, 1};
-        assertThat(world.getMolecule(targetPos).toInt()).isEqualTo(valueToPoke);
+        assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(valueToPoke);
         assertThat(res.getEr()).isLessThanOrEqualTo(2000 - 999 - 1);
     }
 
@@ -94,7 +94,7 @@ public class AssemblerWorldInteractionInstructionTest {
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
 
         int[] target = new int[]{0, 1};
-        assertThat(world.getMolecule(target).toInt()).isEqualTo(valueToPoke);
+        assertThat(environment.getMolecule(target).toInt()).isEqualTo(valueToPoke);
         assertThat(res.getEr()).isEqualTo(2000 - 123 - 1);
     }
 
@@ -113,7 +113,7 @@ public class AssemblerWorldInteractionInstructionTest {
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
 
         int[] target = new int[]{0, 1};
-        assertThat(world.getMolecule(target).toInt()).isEqualTo(payload);
+        assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
         assertThat(res.getEr()).isEqualTo(2000 - 55 - 1);
     }
 
@@ -124,7 +124,7 @@ public class AssemblerWorldInteractionInstructionTest {
         int[] vec = new int[]{0, 1};
         int[] target = new int[]{0, 1};
         int payload = new Molecule(Config.TYPE_DATA, 7).toInt();
-        world.setMolecule(Molecule.fromInt(payload), target);
+        environment.setMolecule(Molecule.fromInt(payload), target);
 
         org.setDr(1, vec);
         List<String> code = List.of("PEEK %DR0 %DR1");
@@ -133,7 +133,7 @@ public class AssemblerWorldInteractionInstructionTest {
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
         assertThat(res.getDr(0)).isEqualTo(payload);
         // target cell should be cleared
-        assertThat(world.getMolecule(target).isEmpty()).isTrue();
+        assertThat(environment.getMolecule(target).isEmpty()).isTrue();
     }
 
     @Test
@@ -142,14 +142,14 @@ public class AssemblerWorldInteractionInstructionTest {
         org.setDp(org.getIp());
         int[] target = new int[]{0, 1};
         int payload = new Molecule(Config.TYPE_DATA, 11).toInt();
-        world.setMolecule(Molecule.fromInt(payload), target);
+        environment.setMolecule(Molecule.fromInt(payload), target);
 
         List<String> code = List.of("PEKI %DR0 0|1");
         Organism res = runAssembly(code, org, 1);
 
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
         assertThat(res.getDr(0)).isEqualTo(payload);
-        assertThat(world.getMolecule(target).isEmpty()).isTrue();
+        assertThat(environment.getMolecule(target).isEmpty()).isTrue();
     }
 
     @Test
@@ -159,7 +159,7 @@ public class AssemblerWorldInteractionInstructionTest {
         int[] vec = new int[]{-1, 0};
         int[] target = new int[]{-1, 0};
         int payload = new Molecule(Config.TYPE_DATA, 9).toInt();
-        world.setMolecule(Molecule.fromInt(payload), target);
+        environment.setMolecule(Molecule.fromInt(payload), target);
 
         org.getDataStack().push(vec);
         List<String> code = List.of("PEKS");
@@ -167,7 +167,7 @@ public class AssemblerWorldInteractionInstructionTest {
 
         assertThat(res.isInstructionFailed()).as("Instruction failed: " + res.getFailureReason()).isFalse();
         assertThat(res.getDataStack().pop()).isEqualTo(payload);
-        assertThat(world.getMolecule(target).isEmpty()).isTrue();
+        assertThat(environment.getMolecule(target).isEmpty()).isTrue();
     }
 
     @Test
@@ -176,7 +176,7 @@ public class AssemblerWorldInteractionInstructionTest {
         int[] vec = {0, 1}; // unit vector orthogonal to DIR
         int[] targetPos = new int[]{0, 1};
         int initialOccupant = new Molecule(Config.TYPE_DATA, 777).toInt();
-        world.setMolecule(Molecule.fromInt(initialOccupant), targetPos);
+        environment.setMolecule(Molecule.fromInt(initialOccupant), targetPos);
 
         int valueToPoke = new Molecule(Config.TYPE_DATA, 42).toInt();
         org.setDr(0, valueToPoke);
@@ -190,7 +190,7 @@ public class AssemblerWorldInteractionInstructionTest {
         assertThat(res.getFailureReason()).contains("Target cell is not empty.");
 
         // Cell unchanged
-        assertThat(world.getMolecule(targetPos).toInt()).isEqualTo(initialOccupant);
+        assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(initialOccupant);
         assertThat(res.getEr()).isLessThanOrEqualTo(2000 - 42 - 1);
     }
 }

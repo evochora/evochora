@@ -3,7 +3,7 @@ package org.evochora.runtime.internal.services;
 import org.evochora.app.setup.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
+import org.evochora.runtime.model.Environment;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -33,7 +33,7 @@ public class ProcedureCallHandler {
      */
     public void executeCall(int[] targetDelta) {
         Organism organism = context.getOrganism();
-        World world = context.getWorld();
+        Environment environment = context.getWorld();
 
         if (organism.getCallStack().size() >= Config.CALL_STACK_MAX_DEPTH) {
             organism.instructionFailed("Call stack overflow");
@@ -61,7 +61,7 @@ public class ProcedureCallHandler {
         int instructionLength = 1 + Config.WORLD_DIMENSIONS;
         int[] returnIp = ipBeforeFetch;
         for (int i = 0; i < instructionLength; i++) {
-            returnIp = organism.getNextInstructionPosition(returnIp, world, organism.getDvBeforeFetch());
+            returnIp = organism.getNextInstructionPosition(returnIp, environment, organism.getDvBeforeFetch());
         }
 
         Object[] prsSnapshot = organism.getPrs().toArray();
@@ -82,7 +82,7 @@ public class ProcedureCallHandler {
         }
 
         // 4. Zum Prozedur-Einsprungspunkt springen
-        int[] targetIp = organism.getTargetCoordinate(ipBeforeFetch, targetDelta, world);
+        int[] targetIp = organism.getTargetCoordinate(ipBeforeFetch, targetDelta, environment);
         organism.setIp(targetIp);
         organism.setSkipIpAdvance(true);
     }

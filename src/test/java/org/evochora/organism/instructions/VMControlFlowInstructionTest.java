@@ -3,9 +3,9 @@ package org.evochora.organism.instructions;
 import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class VMControlFlowInstructionTest {
 
-    private World world;
+    private Environment environment;
     private Organism org;
     private Simulation sim;
     private final int[] startPos = new int[]{5};
@@ -26,36 +26,36 @@ public class VMControlFlowInstructionTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{100}, true);
-        sim = new Simulation(world);
+        environment = new Environment(new int[]{100}, true);
+        sim = new Simulation(environment);
         org = Organism.create(sim, startPos, 1000, sim.getLogger());
         sim.addOrganism(org);
     }
 
     private void placeInstructionWithVector(String name, int[] vector) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int val : vector) {
-            currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-            world.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
+            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }
 
     private void placeInstruction(String name, Integer... args) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int arg : args) {
-            currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-            world.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
+            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
 
     @Test
     void testJmpi() {
         int[] jumpDelta = new int[]{10};
-        int[] expectedIp = org.getTargetCoordinate(org.getIp(), jumpDelta, world);
+        int[] expectedIp = org.getTargetCoordinate(org.getIp(), jumpDelta, environment);
         placeInstructionWithVector("JMPI", jumpDelta);
 
         sim.tick();
@@ -66,7 +66,7 @@ public class VMControlFlowInstructionTest {
     @Test
     void testCall() {
         int[] jumpDelta = new int[]{7};
-        int[] expectedIp = org.getTargetCoordinate(org.getIp(), jumpDelta, world);
+        int[] expectedIp = org.getTargetCoordinate(org.getIp(), jumpDelta, environment);
         placeInstructionWithVector("CALL", jumpDelta);
 
         sim.tick();
@@ -91,7 +91,7 @@ public class VMControlFlowInstructionTest {
     @Test
     void testJmps() {
         int[] jumpDelta = new int[]{8};
-        int[] expectedIp = org.getTargetCoordinate(org.getIp(), jumpDelta, world);
+        int[] expectedIp = org.getTargetCoordinate(org.getIp(), jumpDelta, environment);
         // Vektor oben auf den Stack legen
         org.getDataStack().push(jumpDelta);
         placeInstruction("JMPS");

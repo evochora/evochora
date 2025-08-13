@@ -7,7 +7,7 @@ import org.evochora.compiler.internal.legacy.NumericParser;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
+import org.evochora.runtime.model.Environment;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,7 +23,7 @@ public class StateInstruction extends Instruction {
     @Override
     public void execute(Simulation simulation) {
         String opName = getName();
-        List<Operand> operands = resolveOperands(simulation.getWorld());
+        List<Operand> operands = resolveOperands(simulation.getEnvironment());
 
         try {
             switch (opName) {
@@ -52,12 +52,12 @@ public class StateInstruction extends Instruction {
                 case "SEEK":
                 case "SEKI":
                 case "SEKS":
-                    handleSeek(operands, simulation.getWorld());
+                    handleSeek(operands, simulation.getEnvironment());
                     break;
                 case "SCAN":
                 case "SCNI":
                 case "SCNS":
-                    handleScan(opName, operands, simulation.getWorld());
+                    handleScan(opName, operands, simulation.getEnvironment());
                     break;
                 default:
                     organism.instructionFailed("Unknown state instruction: " + opName);
@@ -96,9 +96,9 @@ public class StateInstruction extends Instruction {
         int[] delta = (int[]) operands.get(0).value();
         int energy = org.evochora.runtime.model.Molecule.fromInt((Integer) operands.get(1).value()).toScalarValue();
         int[] childDv = (int[]) operands.get(2).value();
-        int totalCost = getCost(organism, simulation.getWorld(), null);
+        int totalCost = getCost(organism, simulation.getEnvironment(), null);
         if (energy > 0 && organism.getEr() >= totalCost) {
-            int[] childIp = organism.getTargetCoordinate(organism.getIpBeforeFetch(), delta, simulation.getWorld());
+            int[] childIp = organism.getTargetCoordinate(organism.getIpBeforeFetch(), delta, simulation.getEnvironment());
             organism.takeEr(totalCost);
             Organism child = Organism.create(simulation, childIp, energy, organism.getLogger());
             child.setDv(childDv);
@@ -145,17 +145,17 @@ public class StateInstruction extends Instruction {
         writeOperand(op.rawSourceId(), new Molecule(s.type(), randomValue).toInt());
     }
 
-    private void handleSeek(List<Operand> operands, World world) {
+    private void handleSeek(List<Operand> operands, Environment environment) {
         if (operands.size() != 1) {
             organism.instructionFailed("Invalid operands for SEEK variant.");
             return;
         }
         int[] vector = (int[]) operands.get(0).value();
-        int[] targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, world);
+        int[] targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, environment);
 
-        Molecule moleculeAtTarget = world.getMolecule(targetCoordinate);
+        Molecule moleculeAtTarget = environment.getMolecule(targetCoordinate);
         // Allow seeking if the cell is empty OR owned by this organism; otherwise fail.
-        int ownerIdAtTarget = world.getOwnerId(targetCoordinate[0], targetCoordinate[1]);
+        int ownerIdAtTarget = environment.getOwnerId(targetCoordinate[0], targetCoordinate[1]);
         boolean ownedBySelf = ownerIdAtTarget == organism.getId();
 
         if (moleculeAtTarget.isEmpty() || ownedBySelf) {
@@ -165,7 +165,7 @@ public class StateInstruction extends Instruction {
         }
     }
 
-    private void handleScan(String opName, List<Operand> operands, World world) {
+    private void handleScan(String opName, List<Operand> operands, Environment environment) {
         int targetReg;
         int[] vector;
         if (opName.endsWith("S")) {
@@ -177,8 +177,8 @@ public class StateInstruction extends Instruction {
             targetReg = operands.get(0).rawSourceId();
             vector = (int[]) operands.get(1).value();
         }
-        int[] target = organism.getTargetCoordinate(organism.getDp(), vector, world);
-        Molecule s = world.getMolecule(target);
+        int[] target = organism.getTargetCoordinate(organism.getDp(), vector, environment);
+        Molecule s = environment.getMolecule(target);
         if (opName.endsWith("S")) {
             organism.getDataStack().push(s.toInt());
         } else {
@@ -187,15 +187,15 @@ public class StateInstruction extends Instruction {
     }
 
     @Override
-    public int getCost(Organism organism, World world, List<Integer> rawArguments) {
+    public int getCost(Organism organism, Environment environment, List<Integer> rawArguments) {
         if (getName().equals("FORK")) {
-            List<Operand> operands = resolveOperands(world);
+            List<Operand> operands = resolveOperands(environment);
             if (operands.size() == 3 && operands.get(1).value() instanceof Integer) {
                 return 10 + org.evochora.runtime.model.Molecule.fromInt((Integer)operands.get(1).value()).toScalarValue();
             }
             return 10;
         }
-        return super.getCost(organism, world, rawArguments);
+        return super.getCost(organism, environment, rawArguments);
     }
 
     public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap, String instructionName) {

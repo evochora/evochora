@@ -5,11 +5,10 @@ import javafx.application.Application;
 import javafx.stage.Stage;
 import org.evochora.app.setup.Config;
 import org.evochora.app.setup.Setup;
-import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerException;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.app.ui.AppView;
-import org.evochora.runtime.model.World;
+import org.evochora.runtime.model.Environment;
 
 public class Main extends Application {
 
@@ -18,8 +17,8 @@ public class Main extends Application {
         try {
             Instruction.init();
 
-            World world = new World(Config.WORLD_SHAPE, Config.IS_TOROIDAL);
-            Simulation simulation = new Simulation(world);
+            Environment environment = new Environment(Config.WORLD_SHAPE, Config.IS_TOROIDAL);
+            Simulation simulation = new Simulation(environment);
 
             Setup.run(simulation);
 

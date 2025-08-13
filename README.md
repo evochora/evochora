@@ -1,6 +1,6 @@
 # Evochora Simulation
 
-Evochora is a digital playground for simulating the evolution of simple, programmable organisms in an n-dimensional world. It provides a custom assembly language that allows organisms to interact with their environment, reproduce, and compete for resources.
+Evochora is a digital playground for simulating the evolution of simple, programmable organisms in an n-dimensional environment. It provides a custom assembly language that allows organisms to interact with their environment, reproduce, and compete for resources.
 
 ## Project Purpose
 
@@ -13,7 +13,7 @@ The simulation is built in Java and consists of several key components:
 -   **World**: An n-dimensional grid where organisms live and interact. It contains energy sources and other symbols that organisms can manipulate.
 -   **Organism**: An entity with a simple CPU, registers, and a program written in a custom assembly language. Organisms can move, execute instructions, and reproduce.
 -   **Assembler**: A multi-pass assembler that translates human-readable assembly code into machine code that organisms can execute. It supports macros, routines, and labels.
--   **Simulation**: The main engine that manages the world, orchestrates organism actions, and advances the simulation tick by tick.
+-   **Simulation**: The main engine that manages the environment, orchestrates organism actions, and advances the simulation tick by tick.
 -   **UI**: A JavaFX-based graphical user interface for visualizing the simulation, inspecting organisms, and controlling the simulation flow.
 
 ## How to Build & Test

@@ -4,7 +4,7 @@ import org.evochora.app.setup.Config;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
+import org.evochora.runtime.model.Environment;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -143,30 +143,30 @@ public abstract class AssemblyProgram {
     }
 
     public static DisassembledInstruction getDisassembledInstructionDetailsForNextTick(Organism organism) {
-        World world = organism.getSimulation().getWorld();
+        Environment environment = organism.getSimulation().getEnvironment();
         int[] ip = organism.getIp();
         int[] currentDv = organism.getDv();
         String programId = getProgramIdForOrganism(organism);
         ProgramMetadata metadata = (programId != null) ? programIdToMetadata.get(programId) : null;
         Disassembler disassembler = new Disassembler();
         if (metadata != null) {
-            return disassembler.disassemble(metadata, ip, currentDv, world);
+            return disassembler.disassemble(metadata, ip, currentDv, environment);
         } else {
-            return disassembler.disassembleGeneric(ip, world);
+            return disassembler.disassembleGeneric(ip, environment);
         }
     }
 
     public static DisassembledInstruction getDisassembledInstructionDetailsForLastTick(Organism organism) {
-        World world = organism.getSimulation().getWorld();
+        Environment environment = organism.getSimulation().getEnvironment();
         int[] ip = organism.getIpBeforeFetch();
         int[] currentDv = organism.getDvBeforeFetch();
         String programId = getProgramIdForOrganism(organism);
         ProgramMetadata metadata = (programId != null) ? programIdToMetadata.get(programId) : null;
         Disassembler disassembler = new Disassembler();
         if (metadata != null) {
-            return disassembler.disassemble(metadata, ip, currentDv, world);
+            return disassembler.disassemble(metadata, ip, currentDv, environment);
         } else {
-            return disassembler.disassembleGeneric(ip, world);
+            return disassembler.disassembleGeneric(ip, environment);
         }
     }
 

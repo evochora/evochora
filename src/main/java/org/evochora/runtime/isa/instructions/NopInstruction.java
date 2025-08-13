@@ -4,7 +4,7 @@ import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
+import org.evochora.runtime.model.Environment;
 
 import java.util.Collections;
 import java.util.Map;
@@ -22,8 +22,8 @@ public class NopInstruction extends Instruction {
         // Diese Instruktion tut absichtlich nichts.
     }
 
-    public static Instruction plan(Organism organism, World world) {
-        int fullOpcodeId = world.getMolecule(organism.getIp()).toInt();
+    public static Instruction plan(Organism organism, Environment environment) {
+        int fullOpcodeId = environment.getMolecule(organism.getIp()).toInt();
         return new NopInstruction(organism, fullOpcodeId);
     }
 

@@ -297,7 +297,7 @@ public void execute() {
 
 // Nachher: Sauber, fokussiert  
 public void execute() {
-    ExecutionContext context = new ExecutionContext(organism, world);
+    ExecutionContext context = new ExecutionContext(organism, environment);
     ProcedureCallHandler handler = new ProcedureCallHandler(context);
     handler.executeCall(callSite, target, simulation);
 }

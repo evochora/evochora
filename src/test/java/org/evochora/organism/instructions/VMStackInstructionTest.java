@@ -5,7 +5,7 @@ import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
+import org.evochora.runtime.model.Environment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class VMStackInstructionTest {
 
-    private World world;
+    private Environment environment;
     private Organism org;
     private Simulation sim;
     private final int[] startPos = new int[]{5, 5};
@@ -26,15 +26,15 @@ public class VMStackInstructionTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{100, 100}, true);
-        sim = new Simulation(world);
+        environment = new Environment(new int[]{100, 100}, true);
+        sim = new Simulation(environment);
         org = Organism.create(sim, startPos, 1000, sim.getLogger());
         sim.addOrganism(org);
     }
 
     private void placeInstruction(String name) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
     }
 
     @Test

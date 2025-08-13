@@ -12,9 +12,9 @@ This document describes the syntax, directives, and the complete instruction set
 
 ### 2. Organism State (CPU & Stacks)
 
-* **IP (Instruction Pointer):** Absolute world coordinate of the next instruction.
+* **IP (Instruction Pointer):** Absolute environment coordinate of the next instruction.
 
-* **DP (Data Pointer):** Absolute world coordinate for memory access (PEEK/POKE/SCAN).
+* **DP (Data Pointer):** Absolute environment coordinate for memory access (PEEK/POKE/SCAN).
 
 * **DV (Direction Vector):** Direction of movement for IP.
 
@@ -49,7 +49,7 @@ Supported operand kinds:
   - Notes:
     - DATA is the only scalar literal type; vectors are provided using the Vector literal syntax (below).
     - Literal type must match the instruction’s expected type.
-- Vector (VEC): `X|Y[|Z...]` (e.g., `1|0`, `-1|2|0`). The number of components must match the world dimension.
+- Vector (VEC): `X|Y[|Z...]` (e.g., `1|0`, `-1|2|0`). The number of components must match the environment dimension.
   - Usage:
     - Relative addressing (PEEK/SCAN/POKE/SEEK).
     - Control flow offsets (JMPI).
@@ -71,19 +71,19 @@ Examples:
 - `ADDI %DR0 DATA:1`        ; scalar immediate
 - `SETV %DR1 -1|0`          ; vector literal (2D)
 - `JMPI TARGET_LABEL`       ; label resolved to a relative vector at assembly
-- `PEKI %DR2 0|1|0`         ; vector in 3D world
+- `PEKI %DR2 0|1|0`         ; vector in 3D environment
 
 ### 4. Instruction Set
 
 This section lists each instruction with all of its variants grouped together (Register “R”, Immediate “I”, and Stack “S”). For each instruction you’ll find syntax, operands, effects, side effects, energy cost, errors, and a short example. Unless stated otherwise:
 - Register operands accept `%DRx` and `%PRx`.
 - Stack variants use the Data Stack (DS).
-- Vector arguments use `X|Y` (or more components if the world has higher dimensions).
+- Vector arguments use `X|Y` (or more components if the environment has higher dimensions).
 - Values are encoded Symbols; arithmetic/bitwise operate on scalar payloads.
 
 Energy model:
 - All energy costs are configurable by the simulator. The “Energy:” line indicates that an instruction consumes or transfers energy according to the configured schedule.
-- Some world interactions may transfer energy instead of strictly consuming it. For example, reading an ENERGY molecule can increase ER; writing symbols may include surcharges depending on the molecule being written.
+- Some environment interactions may transfer energy instead of strictly consuming it. For example, reading an ENERGY molecule can increase ER; writing symbols may include surcharges depending on the molecule being written.
 
 Energy costs:
 - Energy costs are configurable in the simulator; the values shown here are the default costs intended for balancing. When in doubt, prefer the per-instruction “Energy:” line. Typical defaults:
@@ -251,7 +251,7 @@ Example:
 
 #### World Interaction
 
-These instructions interact with the world grid and therefore participate in the Conflict Resolver system (world reads/writes and DP moves are resolved consistently with other organisms).
+These instructions interact with the environment grid and therefore participate in the Conflict Resolver system (environment reads/writes and DP moves are resolved consistently with other organisms).
 
 - PEEK family (read into register/stack)
   - Variants: PEEK, PEKI, PEKS
@@ -262,7 +262,7 @@ These instructions interact with the world grid and therefore participate in the
   - Operands:
     - Register variants use a target register and a vector (from register or immediate).
     - PEKS pops a vector from DS and pushes the read value to DS.
-  - Effect: Read the molecule at DP + vector and store its encoded value in the target (register or stack). Does not modify the world.
+  - Effect: Read the molecule at DP + vector and store its encoded value in the target (register or stack). Does not modify the environment.
   - Energy: 2
   - Errors: invalid vector dimensionality; stack underflow (PEKS)
   - Example: PEKI %DR0 1|0
@@ -273,12 +273,12 @@ These instructions interact with the world grid and therefore participate in the
     - SCAN %REG_TARGET %REG_VECTOR
     - SCNI %REG_TARGET X|Y
     - SCNS
-  - Effect: Same as PEEK family—reads and stores the value at DP + vector without modifying the world.
+  - Effect: Same as PEEK family—reads and stores the value at DP + vector without modifying the environment.
   - Energy: 2
   - Errors: same as PEEK family
   - Example: SCNS  (expects a vector on stack)
 
-- POKE family (write to world)
+- POKE family (write to environment)
   - Variants: POKE, POKI, POKS
   - Syntax:
     - POKE %REG_SOURCE %REG_VECTOR
@@ -287,7 +287,7 @@ These instructions interact with the world grid and therefore participate in the
   - Operands:
     - POKE/POKI use source register and vector (register or immediate).
     - POKS pops two items from DS: first the VALUE, then the VECTOR (order matters).
-  - Effect: Write the given VALUE into the world cell at DP + vector (if empty). If target is not empty, the instruction fails.
+  - Effect: Write the given VALUE into the environment cell at DP + vector (if empty). If target is not empty, the instruction fails.
   - Energy: 5
   - Errors: attempting to write vectors as value; target occupied; stack underflow (POKS); invalid vector dimensionality
   - Example: POKI %DR0 0|1
@@ -385,7 +385,7 @@ This section documents all assembler directives with syntax, semantics, and exam
     .DIR 1|0
     ```
 
-- .PLACE — Place initial world molecule
+- .PLACE — Place initial environment molecule
   - Syntax: `.PLACE TYPE:VALUE X|Y[|Z...]`
   - Semantics: Emits/places the given molecule at the relative offset from current origin.
   - Example:

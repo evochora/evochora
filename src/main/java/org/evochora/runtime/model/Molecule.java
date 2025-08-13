@@ -36,20 +36,20 @@ public record Molecule(int type, int value) {
     }
 
     // Ownership helpers: zero ownerId means unowned
-    public int getOwnerFrom(World world, int... coord) {
-        return world.getOwnerId(coord);
+    public int getOwnerFrom(Environment environment, int... coord) {
+        return environment.getOwnerId(coord);
     }
 
-    public void setOwnerIn(World world, int ownerId, int... coord) {
-        world.setOwnerId(ownerId, coord);
+    public void setOwnerIn(Environment environment, int ownerId, int... coord) {
+        environment.setOwnerId(ownerId, coord);
     }
 
-    public static int getOwner(World world, int... coord) {
-        return world.getOwnerId(coord);
+    public static int getOwner(Environment environment, int... coord) {
+        return environment.getOwnerId(coord);
     }
 
-    public static void setOwner(World world, int ownerId, int... coord) {
-        world.setOwnerId(ownerId, coord);
+    public static void setOwner(Environment environment, int ownerId, int... coord) {
+        environment.setOwnerId(ownerId, coord);
     }
 
     @Override

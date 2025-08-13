@@ -4,9 +4,9 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 
 import java.util.Collections;
 import java.util.List;
@@ -28,7 +28,7 @@ public class ControlFlowInstruction extends Instruction {
      * vom Compiler ersetzt wird, kann diese Überschreibung entfernt werden.
      */
     @Override
-    public java.util.List<Operand> resolveOperands(World world) {
+    public java.util.List<Operand> resolveOperands(Environment environment) {
         String opName = getName();
         // Diese spezielle Logik gilt nur für Instruktionen, die ein Label als ersten Operanden haben.
         if ("CALL".equals(opName) || "JMPI".equals(opName)) {
@@ -38,7 +38,7 @@ public class ControlFlowInstruction extends Instruction {
             // Wir lesen manuell nur den Label-Vektor und ignorieren den Rest der Zeile.
             int[] delta = new int[Config.WORLD_DIMENSIONS];
             for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
-                Organism.FetchResult res = organism.fetchSignedArgument(currentIp, world);
+                Organism.FetchResult res = organism.fetchSignedArgument(currentIp, environment);
                 delta[i] = res.value();
                 currentIp = res.nextIp();
             }
@@ -46,7 +46,7 @@ public class ControlFlowInstruction extends Instruction {
             return resolved;
         }
         // Für alle anderen Instruktionen in dieser Familie (z.B. JMPR, RET) das Standardverhalten verwenden.
-        return super.resolveOperands(world);
+        return super.resolveOperands(environment);
     }
 
     /**
@@ -58,11 +58,11 @@ public class ControlFlowInstruction extends Instruction {
     @Override
     public void execute(Simulation simulation) {
         // Erstelle die neuen Service-Klassen
-        org.evochora.runtime.internal.services.ExecutionContext context = new org.evochora.runtime.internal.services.ExecutionContext(organism, simulation.getWorld());
+        org.evochora.runtime.internal.services.ExecutionContext context = new org.evochora.runtime.internal.services.ExecutionContext(organism, simulation.getEnvironment());
         org.evochora.runtime.internal.services.ProcedureCallHandler callHandler = new org.evochora.runtime.internal.services.ProcedureCallHandler(context);
 
         String opName = getName();
-        List<Operand> operands = resolveOperands(simulation.getWorld());
+        List<Operand> operands = resolveOperands(simulation.getEnvironment());
 
         try {
             switch (opName) {
@@ -78,7 +78,7 @@ public class ControlFlowInstruction extends Instruction {
                 case "JMPS":
                     // Die einfache Sprunglogik bleibt vorerst hier, da sie trivial ist.
                     int[] delta = (int[]) operands.get(0).value();
-                    int[] targetIp = organism.getTargetCoordinate(organism.getIpBeforeFetch(), delta, simulation.getWorld());
+                    int[] targetIp = organism.getTargetCoordinate(organism.getIpBeforeFetch(), delta, simulation.getEnvironment());
                     organism.setIp(targetIp);
                     organism.setSkipIpAdvance(true);
                     break;
@@ -93,8 +93,8 @@ public class ControlFlowInstruction extends Instruction {
         }
     }
 
-    public static Instruction plan(Organism organism, World world) {
-        int fullOpcodeId = world.getMolecule(organism.getIp()).toInt();
+    public static Instruction plan(Organism organism, Environment environment) {
+        int fullOpcodeId = environment.getMolecule(organism.getIp()).toInt();
         return new ControlFlowInstruction(organism, fullOpcodeId);
     }
 

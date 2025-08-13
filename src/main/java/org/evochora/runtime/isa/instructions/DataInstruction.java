@@ -5,9 +5,9 @@ import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.compiler.internal.legacy.NumericParser;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,7 +23,7 @@ public class DataInstruction extends Instruction {
     @Override
     public void execute(Simulation simulation) {
         try {
-            List<Operand> operands = resolveOperands(simulation.getWorld());
+            List<Operand> operands = resolveOperands(simulation.getEnvironment());
             String opName = getName();
 
             switch (opName) {
@@ -68,8 +68,8 @@ public class DataInstruction extends Instruction {
         }
     }
 
-    public static Instruction plan(Organism organism, World world) {
-        int fullOpcodeId = world.getMolecule(organism.getIp()).toInt();
+    public static Instruction plan(Organism organism, Environment environment) {
+        int fullOpcodeId = environment.getMolecule(organism.getIp()).toInt();
         return new DataInstruction(organism, fullOpcodeId);
     }
 

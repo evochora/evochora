@@ -4,15 +4,8 @@ import java.util.List;
 
 /**
  * Definiert die öffentliche, saubere Schnittstelle für den Evochora-Compiler.
- * <p>
- * Jede Implementierung dieser Schnittstelle nimmt Quellcode in Form von Strings
- * entgegen und liefert bei Erfolg ein unveränderliches {@link ProgramArtifact}.
- * Bei Fehlern wird eine {@link CompilationException} geworfen.
- * <p>
- * Diese Schnittstelle entkoppelt den Rest der Anwendung vollständig von den
- * internen Implementierungsdetails des Compilers.
  */
-public interface Compiler {
+public interface ICompiler {
 
     /**
      * Kompiliert den gegebenen Quellcode.
@@ -24,4 +17,9 @@ public interface Compiler {
      */
     ProgramArtifact compile(List<String> sourceLines, String programName) throws CompilationException;
 
+    /**
+     * Setzt das Level für die Ausführlichkeit der Log-Ausgaben.
+     * @param level Das Verbosity-Level (z.B. 0=leise, 1=normal, 2=verbose, 3=trace).
+     */
+    void setVerbosity(int level);
 }

@@ -10,9 +10,9 @@ import javafx.scene.text.TextAlignment;
 import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -38,12 +38,12 @@ public class WorldRenderer {
         gc.setFill(Config.COLOR_BG);
         gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
 
-        World world = simulation.getWorld();
+        Environment environment = simulation.getEnvironment();
 
         if (isZoomedOut) {
-            drawZoomedOut(world, selectedOrganism);
+            drawZoomedOut(environment, selectedOrganism);
         } else {
-            drawNormal(world, selectedOrganism);
+            drawNormal(environment, selectedOrganism);
         }
 
         // Organisms are drawn in both modes, but the details differ.
@@ -52,10 +52,10 @@ public class WorldRenderer {
         }
     }
 
-    private void drawNormal(World world, Organism selectedOrganism) {
-        for (int x = 0; x < world.getShape()[0]; x++) {
-            for (int y = 0; y < world.getShape()[1]; y++) {
-                Molecule molecule = world.getMolecule(x, y);
+    private void drawNormal(Environment environment, Organism selectedOrganism) {
+        for (int x = 0; x < environment.getShape()[0]; x++) {
+            for (int y = 0; y < environment.getShape()[1]; y++) {
+                Molecule molecule = environment.getMolecule(x, y);
                 double cellX = x * Config.CELL_SIZE;
                 double cellY = y * Config.CELL_SIZE;
 
@@ -66,10 +66,10 @@ public class WorldRenderer {
         }
     }
 
-    private void drawZoomedOut(World world, Organism selectedOrganism) {
-        for (int x = 0; x < world.getShape()[0]; x++) {
-            for (int y = 0; y < world.getShape()[1]; y++) {
-                Molecule molecule = world.getMolecule(x, y);
+    private void drawZoomedOut(Environment environment, Organism selectedOrganism) {
+        for (int x = 0; x < environment.getShape()[0]; x++) {
+            for (int y = 0; y < environment.getShape()[1]; y++) {
+                Molecule molecule = environment.getMolecule(x, y);
                 // Draw each cell as a 1x1 pixel
                 gc.setFill(getBackgroundColorForSymbol(molecule));
                 gc.fillRect(x, y, 1, 1);

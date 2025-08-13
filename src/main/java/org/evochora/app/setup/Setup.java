@@ -3,9 +3,9 @@ package org.evochora.app.setup;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerException;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 import org.slf4j.Logger;
 
 import java.net.URL;
@@ -94,7 +94,7 @@ public class Setup {
             Simulation simulation, int[] startPos, Map<int[], Integer> layout,
             Map<int[], Molecule> worldObjects, Logger logger) {
 
-        World world = simulation.getWorld();
+        Environment environment = simulation.getEnvironment();
 
         for (Map.Entry<int[], Integer> entry : layout.entrySet()) {
             int[] relativePos = entry.getKey();
@@ -102,7 +102,7 @@ public class Setup {
             for (int i = 0; i < startPos.length; i++) {
                 absolutePos[i] = startPos[i] + relativePos[i];
             }
-            world.setMolecule(org.evochora.runtime.model.Molecule.fromInt(entry.getValue()), absolutePos);
+            environment.setMolecule(org.evochora.runtime.model.Molecule.fromInt(entry.getValue()), absolutePos);
         }
 
         for (Map.Entry<int[], Molecule> entry : worldObjects.entrySet()) {
@@ -111,7 +111,7 @@ public class Setup {
             for (int i = 0; i < startPos.length; i++) {
                 absolutePos[i] = startPos[i] + relativePos[i];
             }
-            world.setMolecule(entry.getValue(), absolutePos);
+            environment.setMolecule(entry.getValue(), absolutePos);
         }
 
         Organism org = Organism.create(simulation, startPos, Config.INITIAL_ORGANISM_ENERGY, logger);

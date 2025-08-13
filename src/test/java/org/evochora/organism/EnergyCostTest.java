@@ -5,7 +5,7 @@ import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
+import org.evochora.runtime.model.Environment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class EnergyCostTest {
 
-    private World world;
+    private Environment environment;
     private Simulation sim;
 
     @BeforeAll
@@ -24,17 +24,17 @@ public class EnergyCostTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{100, 100}, true);
-        sim = new Simulation(world);
+        environment = new Environment(new int[]{100, 100}, true);
+        sim = new Simulation(environment);
     }
 
     private void placeInstruction(Organism org, String name, Integer... args) {
         int opcode = Instruction.getInstructionIdByName(name);
-        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int arg : args) {
-            currentPos = org.getNextInstructionPosition(currentPos, world, org.getDv());
-            world.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
+            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
 
@@ -45,10 +45,10 @@ public class EnergyCostTest {
         org.setDp(org.getIp());
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
+        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
 
         // ensure target is empty
-        world.setMolecule(new Molecule(Config.TYPE_CODE, 0), target);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), target);
 
         int payload = new Molecule(Config.TYPE_DATA, 50).toInt();
         org.setDr(0, payload);      // value register
@@ -60,7 +60,7 @@ public class EnergyCostTest {
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("POKE should succeed on empty cell").isFalse();
-        assertThat(world.getMolecule(target).toInt()).isEqualTo(payload);
+        assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
         // Energy must be reduced by at least abs(payload scalar); allow extra per-tick overhead.
         assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 50);
     }
@@ -72,10 +72,10 @@ public class EnergyCostTest {
         org.setDp(org.getIp());
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
+        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
 
         // Make target occupied
-        world.setMolecule(new Molecule(Config.TYPE_DATA, 1), target);
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 1), target);
 
         int payload = new Molecule(Config.TYPE_DATA, 60).toInt();
         org.setDr(0, payload);
@@ -90,7 +90,7 @@ public class EnergyCostTest {
         // Energy should have been consumed despite failure
         assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 60);
         // Target content should remain unchanged due to failure
-        assertThat(world.getMolecule(target).toInt()).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(environment.getMolecule(target).toInt()).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
     @Test
@@ -100,10 +100,10 @@ public class EnergyCostTest {
         org.setDp(org.getIp());
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
+        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
 
         int dataVal = new Molecule(Config.TYPE_DATA, 33).toInt();
-        world.setMolecule(Molecule.fromInt(dataVal), target);
+        environment.setMolecule(Molecule.fromInt(dataVal), target);
 
         org.setDr(1, vec); // vector register
         int initialEr = org.getEr();
@@ -124,11 +124,11 @@ public class EnergyCostTest {
         org.setDp(org.getIp());
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
+        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
 
         int structVal = new Molecule(Config.TYPE_STRUCTURE, 10).toInt();
-        world.setMolecule(Molecule.fromInt(structVal), target);
-        world.setOwnerId(org.getId(), target[0], target[1]);
+        environment.setMolecule(Molecule.fromInt(structVal), target);
+        environment.setOwnerId(org.getId(), target[0], target[1]);
 
         org.setDr(1, vec);
         int initialEr = org.getEr();
@@ -150,11 +150,11 @@ public class EnergyCostTest {
         org.setDp(org.getIp());
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
+        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
 
         int structVal = new Molecule(Config.TYPE_STRUCTURE, 12).toInt();
-        world.setMolecule(Molecule.fromInt(structVal), target);
-        world.setOwnerId(org.getId() + 999, target[0], target[1]); // foreign owner
+        environment.setMolecule(Molecule.fromInt(structVal), target);
+        environment.setOwnerId(org.getId() + 999, target[0], target[1]); // foreign owner
 
         org.setDr(1, vec);
         int initialEr = org.getEr();
@@ -175,10 +175,10 @@ public class EnergyCostTest {
         org.setDp(org.getIp());
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, world);
+        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
 
         int energyAvailable = 80;
-        world.setMolecule(new Molecule(Config.TYPE_ENERGY, energyAvailable), target);
+        environment.setMolecule(new Molecule(Config.TYPE_ENERGY, energyAvailable), target);
 
         org.setDr(1, vec);
         int initialEr = org.getEr();

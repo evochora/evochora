@@ -4,9 +4,9 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,7 +30,7 @@ public class AssemblerConditionalInstructionTest {
         }
     }
 
-    private World world;
+    private Environment environment;
     private Simulation sim;
 
     @BeforeAll
@@ -40,8 +40,8 @@ public class AssemblerConditionalInstructionTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{100, 100}, true);
-        sim = new Simulation(world);
+        environment = new Environment(new int[]{100, 100}, true);
+        sim = new Simulation(environment);
         // Create a dummy organism to ensure the main test organism does not have ID 0
         Organism.create(sim, new int[]{-1, -1}, 1, sim.getLogger());
     }
@@ -51,7 +51,7 @@ public class AssemblerConditionalInstructionTest {
         Map<int[], Integer> machineCode = program.assemble();
 
         for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-            world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
+            environment.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
         }
 
         if (org == null) {
@@ -295,7 +295,7 @@ public class AssemblerConditionalInstructionTest {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
         org.setDr(1, new int[]{0, 1}); // unit vector
         org.setDr(0, new Molecule(Config.TYPE_DATA, 5).toInt());
-        world.setOwnerId(org.getId(), 0, 1); // Set owner to current organism
+        environment.setOwnerId(org.getId(), 0, 1); // Set owner to current organism
         List<String> code = List.of("IFMR %DR1", "ADDI %DR0 DATA:1");
         Organism finalOrg = runAssembly(code, org, 2);
         assertThat(finalOrg.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 6).toInt());
@@ -315,7 +315,7 @@ public class AssemblerConditionalInstructionTest {
     void testIfmi_Owned_Executes() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
         org.setDr(0, new Molecule(Config.TYPE_DATA, 5).toInt());
-        world.setOwnerId(org.getId(), 0, 1); // Set owner to current organism
+        environment.setOwnerId(org.getId(), 0, 1); // Set owner to current organism
         List<String> code = List.of("IFMI 0|1", "ADDI %DR0 DATA:1");
         Organism finalOrg = runAssembly(code, org, 2);
         assertThat(finalOrg.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 6).toInt());
@@ -337,7 +337,7 @@ public class AssemblerConditionalInstructionTest {
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
         org.setDr(0, new Molecule(Config.TYPE_DATA, 5).toInt());
         org.getDataStack().push(new int[]{0, 1});
-        world.setOwnerId(org.getId(), 0, 1); // Set owner to current organism
+        environment.setOwnerId(org.getId(), 0, 1); // Set owner to current organism
         List<String> code = List.of("IFMS", "ADDI %DR0 DATA:1");
         Organism finalOrg = runAssembly(code, org, 2);
         assertThat(finalOrg.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 6).toInt());

@@ -6,7 +6,7 @@ import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
+import org.evochora.runtime.model.Environment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,7 +22,7 @@ public class AssemblerSyntaxTest {
     // Compiler-API direkt verwenden.
     // private static class TestProgram extends AssemblyProgram { ... }
 
-    private World world;
+    private Environment environment;
     private Simulation sim;
 
     @BeforeAll
@@ -32,19 +32,19 @@ public class AssemblerSyntaxTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{50, 50}, true);
-        sim = new Simulation(world);
+        environment = new Environment(new int[]{50, 50}, true);
+        sim = new Simulation(environment);
     }
 
     private Organism runAssembly(List<String> code, Organism org, int cycles) {
         // Verwende die neue Compiler-API
-        org.evochora.compiler.api.Compiler compiler = new org.evochora.compiler.internal.LegacyCompilerAdapter();
+        org.evochora.compiler.api.ICompiler compiler = new org.evochora.compiler.internal.LegacyCompilerAdapter();
         try {
             org.evochora.compiler.api.ProgramArtifact artifact = compiler.compile(code, "SyntaxTest.s");
 
             // Platziere den Maschinencode in der Welt
             for (Map.Entry<int[], Integer> entry : artifact.machineCodeLayout().entrySet()) {
-                world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
+                environment.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
             }
 
             if (org == null) {

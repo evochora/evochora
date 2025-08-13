@@ -1,7 +1,7 @@
 package org.evochora.compiler.internal;
 
 import org.evochora.compiler.api.CompilationException;
-import org.evochora.compiler.api.Compiler;
+import org.evochora.compiler.api.ICompiler;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
  * {@link ProgramArtifact}. In Phase 4 wird dieser Adapter durch die Implementierung
  * des neuen Compilers ersetzt.
  */
-public class LegacyCompilerAdapter implements Compiler {
+public class LegacyCompilerAdapter implements ICompiler {
 
     @Override
     public ProgramArtifact compile(List<String> sourceLines, String programName) throws CompilationException {
@@ -85,4 +85,6 @@ public class LegacyCompilerAdapter implements Compiler {
                 metadata.labelAddressToName()
         );
     }
+
+    public void setVerbosity(int level) {}
 }

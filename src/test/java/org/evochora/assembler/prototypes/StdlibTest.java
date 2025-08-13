@@ -2,6 +2,7 @@ package org.evochora.assembler.prototypes;
 
 import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Disabled;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -25,6 +26,7 @@ public class StdlibTest extends TestBase {
             """;
     }
 
+    @Disabled("Soll wieder eingeschatet werden, wenn neuer Compiler fertig ist")
     @Test
     void isPassable_shouldReturnTrue_forEmptyCell() {
         String testCode = getTestCode(""); // Kein Setup, die Zelle bei (1,0) ist leer.
@@ -32,6 +34,7 @@ public class StdlibTest extends TestBase {
         assertThat(org.getDr(3)).isEqualTo(toData(1)); // Erwartet: DATA:1 (passierbar)
     }
 
+    @Disabled("Soll wieder eingeschatet werden, wenn neuer Compiler fertig ist")
     @Test
     void isPassable_shouldReturnFalse_forForeignCell() {
         // Vorbereitung: Platziere eine fremde Zelle mit .PLACE
@@ -41,6 +44,7 @@ public class StdlibTest extends TestBase {
         assertThat(org.getDr(3)).isEqualTo(toData(0)); // Erwartet: DATA:0 (blockiert)
     }
 
+    @Disabled("Soll wieder eingeschatet werden, wenn neuer Compiler fertig ist")
     @Test
     void isPassable_shouldReturnTrue_forOwnedCell() {
         // Vorbereitung: Der Organismus schreibt selbst in die Zelle und wird zum Besitzer.

@@ -5,7 +5,7 @@ import org.evochora.app.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
+import org.evochora.runtime.model.Environment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class SimulationTest {
 
-    private World world;
+    private Environment environment;
     private Simulation sim;
 
     @BeforeAll
@@ -24,25 +24,25 @@ public class SimulationTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{50, 50}, true);
-        sim = new Simulation(world);
+        environment = new Environment(new int[]{50, 50}, true);
+        sim = new Simulation(environment);
     }
 
     // Helper to place a single instruction with its integer DATA args along +X from org's IP
     private void placeInstruction(Organism org, String name, Integer... args) {
         int opcode = Instruction.getInstructionIdByName(name);
         int[] pos = org.getIp();
-        world.setMolecule(new Molecule(Config.TYPE_CODE, opcode), pos);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), pos);
         int[] cur = pos;
         for (int arg : args) {
-            cur = org.getNextInstructionPosition(cur, world, org.getDv());
-            world.setMolecule(new Molecule(Config.TYPE_DATA, arg), cur);
+            cur = org.getNextInstructionPosition(cur, environment, org.getDv());
+            environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), cur);
         }
     }
 
     // Compute absolute target for a DP-relative vector
     private int[] targetFromDp(Organism org, int[] vec) {
-        return org.getTargetCoordinate(org.getDp(), vec, world);
+        return org.getTargetCoordinate(org.getDp(), vec, environment);
     }
 
     @Test
@@ -73,7 +73,7 @@ public class SimulationTest {
         sim.tick();
 
         // Lower ID organism should win and write its payload
-        assertThat(world.getMolecule(target).toInt()).isEqualTo(payloadLow);
+        assertThat(environment.getMolecule(target).toInt()).isEqualTo(payloadLow);
         // Loser should not be executed (no base cost nor payload energy taken)
         assertThat(orgHigh.getEr()).isEqualTo(2000);
         // Winner's energy decreased by at least payload + base cost
@@ -108,8 +108,8 @@ public class SimulationTest {
 
         sim.tick();
 
-        assertThat(world.getMolecule(t1).toInt()).isEqualTo(v1);
-        assertThat(world.getMolecule(t2).toInt()).isEqualTo(v2);
+        assertThat(environment.getMolecule(t1).toInt()).isEqualTo(v1);
+        assertThat(environment.getMolecule(t2).toInt()).isEqualTo(v2);
         assertThat(o1.isInstructionFailed()).as("o1 failed: " + o1.getFailureReason()).isFalse();
         assertThat(o2.isInstructionFailed()).as("o2 failed: " + o2.getFailureReason()).isFalse();
     }

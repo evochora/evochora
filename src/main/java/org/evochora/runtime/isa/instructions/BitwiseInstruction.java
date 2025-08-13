@@ -5,9 +5,9 @@ import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.compiler.internal.legacy.NumericParser;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 
 import java.util.List;
 import java.util.Map;
@@ -22,7 +22,7 @@ public class BitwiseInstruction extends Instruction {
     @Override
     public void execute(Simulation simulation) {
         try {
-            List<Operand> operands = resolveOperands(simulation.getWorld());
+            List<Operand> operands = resolveOperands(simulation.getEnvironment());
             String opName = getName();
 
             // Handle NOT separately as it has only one operand
@@ -109,8 +109,8 @@ public class BitwiseInstruction extends Instruction {
         }
     }
 
-    public static Instruction plan(Organism organism, World world) {
-        int fullOpcodeId = world.getMolecule(organism.getIp()).toInt();
+    public static Instruction plan(Organism organism, Environment environment) {
+        int fullOpcodeId = environment.getMolecule(organism.getIp()).toInt();
         return new BitwiseInstruction(organism, fullOpcodeId);
     }
 

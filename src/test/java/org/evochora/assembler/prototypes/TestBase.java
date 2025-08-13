@@ -7,7 +7,7 @@ import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
+import org.evochora.runtime.model.Environment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 
@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public abstract class TestBase {
 
-    protected World world;
+    protected Environment environment;
     protected Simulation sim;
 
     @BeforeAll
@@ -27,8 +27,8 @@ public abstract class TestBase {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{100, 100}, true);
-        sim = new Simulation(world);
+        environment = new Environment(new int[]{100, 100}, true);
+        sim = new Simulation(environment);
     }
 
     protected Organism runTest(String code, int ticks) {
@@ -43,7 +43,7 @@ public abstract class TestBase {
             // Dieser Teil wird nur bei erfolgreicher Assemblierung ausgeführt
             Map<int[], Molecule> initialObjects = program.getInitialWorldObjects();
             for (Map.Entry<int[], Molecule> entry : initialObjects.entrySet()) {
-                world.setMolecule(entry.getValue(), entry.getKey());
+                environment.setMolecule(entry.getValue(), entry.getKey());
             }
 
             Organism org = Organism.create(sim, program.getProgramOrigin(), 2000, sim.getLogger());

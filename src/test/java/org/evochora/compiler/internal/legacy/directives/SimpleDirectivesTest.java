@@ -4,9 +4,9 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 import org.evochora.compiler.internal.legacy.AssemblerException;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,7 +32,7 @@ public class SimpleDirectivesTest {
         }
     }
 
-    private World world;
+    private Environment environment;
     private Simulation sim;
 
     @BeforeAll
@@ -42,8 +42,8 @@ public class SimpleDirectivesTest {
 
     @BeforeEach
     void setUp() {
-        world = new World(new int[]{100, 100}, true);
-        sim = new Simulation(world);
+        environment = new Environment(new int[]{100, 100}, true);
+        sim = new Simulation(environment);
     }
 
     private Organism runAssembly(List<String> code, Organism org, int cycles) {
@@ -53,12 +53,12 @@ public class SimpleDirectivesTest {
 
             int[] startPos = program.getProgramOrigin();
             for (Map.Entry<int[], Integer> entry : machineCode.entrySet()) {
-                world.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
+                environment.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
             }
-            // Also place initial world objects emitted by directives like .PLACE
+            // Also place initial environment objects emitted by directives like .PLACE
             Map<int[], Molecule> initialObjects = program.getInitialWorldObjects();
             for (Map.Entry<int[], Molecule> entry : initialObjects.entrySet()) {
-                world.setMolecule(entry.getValue(), entry.getKey());
+                environment.setMolecule(entry.getValue(), entry.getKey());
             }
 
             if (org == null) {
@@ -104,12 +104,12 @@ public class SimpleDirectivesTest {
                 ".ORG 7|9",
                 "SETI %DR0 DATA:1"
         );
-        // Assemble and load program into world (no execution)
+        // Assemble and load program into environment (no execution)
         runAssembly(code, null, 0);
         // Verify that the opcode at the origin matches SETI
         int[] origin = new int[]{7, 9};
         int setiOpcode = Instruction.getInstructionIdByName("SETI");
-        assertThat(world.getMolecule(origin).toInt()).isEqualTo(new Molecule(Config.TYPE_CODE, setiOpcode).toInt());
+        assertThat(environment.getMolecule(origin).toInt()).isEqualTo(new Molecule(Config.TYPE_CODE, setiOpcode).toInt());
     }
 
     @Test
@@ -128,15 +128,15 @@ public class SimpleDirectivesTest {
 
     @Test
     void testPlace() {
-        // Place a DATA value and verify the world content
+        // Place a DATA value and verify the environment content
         List<String> code = List.of(
                 ".PLACE DATA:5 3|4",
                 ".PLACE STRUCTURE:9 10|1",
                 "NOP"
         );
         runAssembly(code, null, 0);
-        assertThat(world.getMolecule(new int[]{3, 4}).toInt()).isEqualTo(new Molecule(Config.TYPE_DATA, 5).toInt());
-        assertThat(world.getMolecule(new int[]{10, 1}).toInt()).isEqualTo(new Molecule(Config.TYPE_STRUCTURE, 9).toInt());
+        assertThat(environment.getMolecule(new int[]{3, 4}).toInt()).isEqualTo(new Molecule(Config.TYPE_DATA, 5).toInt());
+        assertThat(environment.getMolecule(new int[]{10, 1}).toInt()).isEqualTo(new Molecule(Config.TYPE_STRUCTURE, 9).toInt());
     }
 
     @Test

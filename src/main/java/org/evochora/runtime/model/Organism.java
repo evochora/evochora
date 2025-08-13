@@ -94,111 +94,90 @@ public class Organism {
         return new Organism(newId, startIp, initialEnergy, logger, simulation);
     }
 
-    public Instruction planTick(World world) {
+    /**
+     * Setzt den internen Zustand für einen neuen Ausführungs-Tick zurück.
+     * Dies wird von der VirtualMachine aufgerufen, bevor eine neue Instruktion geplant wird.
+     */
+    public void resetTickState() {
         this.instructionFailed = false;
         this.failureReason = null;
         this.failureCallStack = null;
         this.skipIpAdvance = false;
-        this.ipBeforeFetch = Arrays.copyOf(this.ip, this.ip.length);
-        this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length);
-
-        Molecule molecule = world.getMolecule(this.ip);
-        if (Config.STRICT_TYPING) {
-            if (molecule.type() != Config.TYPE_CODE && !molecule.isEmpty()) {
-                this.instructionFailed("Illegal cell type (not CODE) at IP");
-                return new NopInstruction(this, world.getMolecule(this.ip).toInt());
-            }
-        }
-        int opcodeId = molecule.value();
-        BiFunction<Organism, World, Instruction> planner = Instruction.getPlannerById(Config.TYPE_CODE | opcodeId);
-        if (planner != null) {
-            return planner.apply(this, world);
-        }
-        this.instructionFailed("Unknown opcode: " + opcodeId);
-        return new NopInstruction(this, world.getMolecule(this.ip).toInt());
+        this.ipBeforeFetch = java.util.Arrays.copyOf(this.ip, this.ip.length);
+        this.dvBeforeFetch = java.util.Arrays.copyOf(this.dv, this.dv.length);
     }
 
-    public void processTickAction(Instruction instruction, Simulation simulation) {
-        if (isDead) return;
-        World world = simulation.getWorld();
-        List<Integer> rawArgs = getRawArgumentsFromWorld(ipBeforeFetch, instruction.getLength(), world);
-        this.er -= instruction.getCost(this, world, rawArgs);
-        instruction.execute(simulation);
-        if (this.instructionFailed) {
-            this.er -= Config.ERROR_PENALTY_COST;
-        }
-        if (this.er <= 0) {
-            isDead = true;
-            if (!this.instructionFailed) {
-                this.instructionFailed("Ran out of energy");
-            }
-            return;
-        }
-        if (!this.skipIpAdvance) {
-            advanceIpBy(instruction.getLength(), world);
+    public void advanceIpBy(int steps, Environment environment) {
+        for (int i = 0; i < steps; i++) {
+            this.ip = getNextInstructionPosition(this.ip, environment, this.dvBeforeFetch);
         }
     }
 
-    private List<Integer> getRawArgumentsFromWorld(int[] startIp, int instructionLength, World world) {
+    public List<Integer> getRawArgumentsFromEnvironment(int instructionLength, Environment environment) {
         List<Integer> rawArgs = new ArrayList<>();
-        int[] tempIp = Arrays.copyOf(startIp, startIp.length);
+        int[] tempIp = Arrays.copyOf(this.ipBeforeFetch, this.ipBeforeFetch.length);
         for (int i = 0; i < instructionLength - 1; i++) {
-            tempIp = getNextInstructionPosition(tempIp, world, this.dvBeforeFetch);
-            rawArgs.add(world.getMolecule(tempIp).toInt());
+            tempIp = getNextInstructionPosition(tempIp, environment, this.dvBeforeFetch);
+            rawArgs.add(environment.getMolecule(tempIp).toInt());
         }
         return rawArgs;
     }
 
-    public FetchResult fetchArgument(int[] currentIp, World world) {
-        int[] nextIp = getNextInstructionPosition(currentIp, world, this.dvBeforeFetch);
-        Molecule molecule = world.getMolecule(nextIp);
-        return new FetchResult(molecule.toInt(), nextIp);
-    }
-
-    public FetchResult fetchSignedArgument(int[] currentIp, World world) {
-        int[] nextIp = getNextInstructionPosition(currentIp, world, this.dvBeforeFetch);
-        Molecule molecule = world.getMolecule(nextIp);
-        return new FetchResult(molecule.toScalarValue(), nextIp);
-    }
-
-    private void advanceIpBy(int steps, World world) {
-        for (int i = 0; i < steps; i++) {
-            this.ip = getNextInstructionPosition(this.ip, world, this.dvBeforeFetch);
+    public void kill(String reason) {
+        this.isDead = true;
+        if (!this.instructionFailed) {
+            instructionFailed(reason);
         }
     }
 
-    public int[] getNextInstructionPosition(int[] currentIp, World world, int[] directionVector) {
+    public boolean shouldSkipIpAdvance() {
+        return skipIpAdvance;
+    }
+
+    public FetchResult fetchArgument(int[] currentIp, Environment environment) {
+        int[] nextIp = getNextInstructionPosition(currentIp, environment, this.dvBeforeFetch);
+        Molecule molecule = environment.getMolecule(nextIp);
+        return new FetchResult(molecule.toInt(), nextIp);
+    }
+
+    public FetchResult fetchSignedArgument(int[] currentIp, Environment environment) {
+        int[] nextIp = getNextInstructionPosition(currentIp, environment, this.dvBeforeFetch);
+        Molecule molecule = environment.getMolecule(nextIp);
+        return new FetchResult(molecule.toScalarValue(), nextIp);
+    }
+
+    public int[] getNextInstructionPosition(int[] currentIp, Environment environment, int[] directionVector) {
         int[] nextIp = new int[currentIp.length];
         for (int i = 0; i < currentIp.length; i++) {
             nextIp[i] = currentIp[i] + directionVector[i];
         }
-        return world.getNormalizedCoordinate(nextIp);
+        return environment.getNormalizedCoordinate(nextIp);
     }
 
-    public int[] getTargetCoordinate(int[] startPos, int[] vector, World world) {
+    public int[] getTargetCoordinate(int[] startPos, int[] vector, Environment environment) {
         int[] targetPos = new int[startPos.length];
         for(int i=0; i<startPos.length; i++) {
             targetPos[i] = startPos[i] + vector[i];
         }
-        return world.getNormalizedCoordinate(targetPos);
+        return environment.getNormalizedCoordinate(targetPos);
     }
 
-    public void skipNextInstruction(World world) {
+    public void skipNextInstruction(Environment environment) {
         int[] currentInstructionIp = this.getIpBeforeFetch();
-        int currentInstructionOpcode = world.getMolecule(currentInstructionIp).toInt();
+        int currentInstructionOpcode = environment.getMolecule(currentInstructionIp).toInt();
         int currentInstructionLength = Instruction.getInstructionLengthById(currentInstructionOpcode);
 
         int[] nextInstructionIp = currentInstructionIp;
         for (int i = 0; i < currentInstructionLength; i++) {
-            nextInstructionIp = getNextInstructionPosition(nextInstructionIp, world, this.getDvBeforeFetch());
+            nextInstructionIp = getNextInstructionPosition(nextInstructionIp, environment, this.getDvBeforeFetch());
         }
 
-        int nextOpcode = world.getMolecule(nextInstructionIp).toInt();
+        int nextOpcode = environment.getMolecule(nextInstructionIp).toInt();
         int lengthToSkip = Instruction.getInstructionLengthById(nextOpcode);
 
         int[] finalIp = nextInstructionIp;
         for (int i = 0; i < lengthToSkip; i++) {
-            finalIp = getNextInstructionPosition(finalIp, world, this.getDvBeforeFetch());
+            finalIp = getNextInstructionPosition(finalIp, environment, this.getDvBeforeFetch());
         }
         this.setIp(finalIp);
         this.setSkipIpAdvance(true);

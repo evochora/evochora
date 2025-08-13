@@ -5,9 +5,9 @@ import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.ArgumentType;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.runtime.isa.instructions.*;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -27,7 +27,7 @@ public abstract class Instruction {
     private static final Map<String, Integer> NAME_TO_ID = new HashMap<>();
     private static final Map<Integer, String> ID_TO_NAME = new HashMap<>();
     private static final Map<Integer, Integer> ID_TO_LENGTH = new HashMap<>();
-    private static final Map<Integer, BiFunction<Organism, World, Instruction>> REGISTERED_PLANNERS_BY_ID = new HashMap<>();
+    private static final Map<Integer, BiFunction<Organism, Environment, Instruction>> REGISTERED_PLANNERS_BY_ID = new HashMap<>();
     private static final Map<Integer, AssemblerPlanner> REGISTERED_ASSEMBLERS_BY_ID = new HashMap<>();
     protected static final Map<Integer, List<OperandSource>> OPERAND_SOURCES = new HashMap<>();
     private static final Map<Integer, Map<Integer, ArgumentType>> ARGUMENT_TYPES_BY_ID = new HashMap<>();
@@ -49,7 +49,7 @@ public abstract class Instruction {
         return organism.writeOperand(id, value);
     }
 
-    public List<Operand> resolveOperands(World world) {
+    public List<Operand> resolveOperands(Environment environment) {
         List<Operand> resolved = new ArrayList<>();
         List<OperandSource> sources = OPERAND_SOURCES.get(fullOpcodeId);
         if (sources == null) return resolved;
@@ -63,14 +63,14 @@ public abstract class Instruction {
                     resolved.add(new Operand(val, -1));
                     break;
                 case REGISTER: {
-                    Organism.FetchResult arg = organism.fetchArgument(currentIp, world);
+                    Organism.FetchResult arg = organism.fetchArgument(currentIp, environment);
                     int regId = Molecule.fromInt(arg.value()).toScalarValue();
                     resolved.add(new Operand(readOperand(regId), regId));
                     currentIp = arg.nextIp();
                     break;
                 }
                 case IMMEDIATE: {
-                    Organism.FetchResult arg = organism.fetchArgument(currentIp, world);
+                    Organism.FetchResult arg = organism.fetchArgument(currentIp, environment);
                     resolved.add(new Operand(arg.value(), -1));
                     currentIp = arg.nextIp();
                     break;
@@ -78,7 +78,7 @@ public abstract class Instruction {
                 case VECTOR: {
                     int[] vec = new int[Config.WORLD_DIMENSIONS];
                     for(int i=0; i<Config.WORLD_DIMENSIONS; i++) {
-                        Organism.FetchResult res = organism.fetchSignedArgument(currentIp, world);
+                        Organism.FetchResult res = organism.fetchSignedArgument(currentIp, environment);
                         vec[i] = res.value();
                         currentIp = res.nextIp();
                     }
@@ -88,7 +88,7 @@ public abstract class Instruction {
                 case LABEL: {
                     int[] delta = new int[Config.WORLD_DIMENSIONS];
                     for(int i=0; i<Config.WORLD_DIMENSIONS; i++) {
-                        Organism.FetchResult res = organism.fetchSignedArgument(currentIp, world);
+                        Organism.FetchResult res = organism.fetchSignedArgument(currentIp, environment);
                         delta[i] = res.value();
                         currentIp = res.nextIp();
                     }
@@ -168,10 +168,10 @@ public abstract class Instruction {
 
         // --- KORRIGIERTE REGISTRIERUNG ---
         // WorldInteraction (POKE & PEEK)
-        registerFamily(WorldInteractionInstruction.class, Map.of(15, "POKE", 14, "PEEK"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(WorldInteractionInstruction.class, Map.of(57, "POKI", 56, "PEKI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
-        registerFamily(WorldInteractionInstruction.class, Map.of(91, "POKS"), List.of(OperandSource.STACK, OperandSource.STACK)); // POKS braucht 2
-        registerFamily(WorldInteractionInstruction.class, Map.of(90, "PEKS"), List.of(OperandSource.STACK)); // PEKS braucht 1
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(15, "POKE", 14, "PEEK"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(57, "POKI", 56, "PEKI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(91, "POKS"), List.of(OperandSource.STACK, OperandSource.STACK)); // POKS braucht 2
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(90, "PEKS"), List.of(OperandSource.STACK)); // PEKS braucht 1
 
         // State (SCAN, SEEK & Rest)
         registerFamily(StateInstruction.class, Map.of(16, "SCAN"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
@@ -199,7 +199,7 @@ public abstract class Instruction {
                 String name = entry.getValue();
                 int fullId = id | Config.TYPE_CODE;
 
-                BiFunction<Organism, World, Instruction> planner = (org, world) -> {
+                BiFunction<Organism, Environment, Instruction> planner = (org, world) -> {
                     try {
                         return constructor.newInstance(org, world.getMolecule(org.getIp()).toInt());
                     } catch (Exception e) { throw new RuntimeException("Failed to plan instruction " + name, e); }
@@ -246,14 +246,14 @@ public abstract class Instruction {
 
     private static void register(Class<? extends Instruction> instructionClass, int id, String name) {
         // This is now just for NOP
-        BiFunction<Organism, World, Instruction> planner = (org, world) -> new NopInstruction(org, 0);
+        BiFunction<Organism, Environment, Instruction> planner = (org, world) -> new NopInstruction(org, 0);
         registerInstruction(instructionClass, id, name, 1, planner, null);
     }
 
     protected static void register(String name, Class<? extends Instruction> instructionClass, int id, List<OperandSource> sources,
                                  TargetCoordLambda targetLambda) {
 
-        BiFunction<Organism, World, Instruction> planner = (org, world) -> {
+        BiFunction<Organism, Environment, Instruction> planner = (org, world) -> {
             try {
                 Instruction inst = instructionClass.getConstructor(Organism.class, int.class)
                         .newInstance(org, world.getMolecule(org.getIp()).toInt());
@@ -294,7 +294,7 @@ public abstract class Instruction {
     }
 
     private static void registerInstruction(Class<? extends Instruction> instructionClass, int id, String name, int length,
-                                            BiFunction<Organism, World, Instruction> planner, AssemblerPlanner assembler) {
+                                            BiFunction<Organism, Environment, Instruction> planner, AssemblerPlanner assembler) {
         String upperCaseName = name.toUpperCase();
         int fullId = id | Config.TYPE_CODE;
         REGISTERED_INSTRUCTIONS_BY_ID.put(fullId, instructionClass);
@@ -306,7 +306,7 @@ public abstract class Instruction {
     }
 
     public abstract void execute(Simulation simulation);
-    public int getCost(Organism organism, World world, List<Integer> rawArguments) { return 1; }
+    public int getCost(Organism organism, Environment environment, List<Integer> rawArguments) { return 1; }
 
     public int getLength() {
         return getInstructionLengthById(this.fullOpcodeId);
@@ -323,12 +323,12 @@ public abstract class Instruction {
     public static String getInstructionNameById(int id) { return ID_TO_NAME.getOrDefault(id, "UNKNOWN"); }
     public static int getInstructionLengthById(int id) { return ID_TO_LENGTH.getOrDefault(id, 1); }
     public static Integer getInstructionIdByName(String name) { return NAME_TO_ID.get(name.toUpperCase()); }
-    public static BiFunction<Organism, World, Instruction> getPlannerById(int id) { return REGISTERED_PLANNERS_BY_ID.get(id); }
+    public static BiFunction<Organism, Environment, Instruction> getPlannerById(int id) { return REGISTERED_PLANNERS_BY_ID.get(id); }
     public static AssemblerPlanner getAssemblerById(int id) { return REGISTERED_ASSEMBLERS_BY_ID.get(id); }
     public static ArgumentType getArgumentTypeFor(int opcodeFullId, int argIndex) { return ARGUMENT_TYPES_BY_ID.getOrDefault(opcodeFullId, Map.of()).getOrDefault(argIndex, ArgumentType.LITERAL); }
 
     @FunctionalInterface public interface AssemblerPlanner { AssemblerOutput apply(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap); }
-    @FunctionalInterface public interface TargetCoordLambda { List<int[]> apply(Organism organism, World world); }
+    @FunctionalInterface public interface TargetCoordLambda { List<int[]> apply(Organism organism, Environment environment); }
 
     protected TargetCoordLambda targetCoordLambda;
     protected boolean executedInTick = false;
@@ -340,10 +340,24 @@ public abstract class Instruction {
     public ConflictResolutionStatus getConflictStatus() { return conflictStatus; }
     public void setConflictStatus(ConflictResolutionStatus conflictStatus) { this.conflictStatus = conflictStatus; }
     public void setTargetCoordLambda(TargetCoordLambda lambda) { this.targetCoordLambda = lambda; }
-    public List<int[]> getTargetCoordinates(World world) {
+    public List<int[]> getTargetCoordinates(Environment environment) {
         if (this.targetCoordLambda != null) {
-            return this.targetCoordLambda.apply(this.organism, world);
+            return this.targetCoordLambda.apply(this.organism, environment);
         }
         return Collections.emptyList();
+    }
+
+    /**
+     * Prüft, ob ein gegebener Name ein registrierter Instruktions-Name ist (case-insensitive).
+     * Wird vom Lexer verwendet, um Opcodes zu erkennen.
+     * @param name Der zu prüfende Name.
+     * @return {@code true}, wenn der Name als Instruktion registriert ist.
+     */
+    public static boolean isInstructionName(String name) {
+        if (name == null || name.isEmpty()) {
+            return false;
+        }
+        // Wir prüfen einfach, ob der Name in unserer existierenden NAME_TO_ID Map registriert ist.
+        return NAME_TO_ID.containsKey(name.toUpperCase());
     }
 }

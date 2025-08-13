@@ -1,7 +1,6 @@
 package org.evochora.runtime.internal.services;
 
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 
 /**
  * Entkoppelt die Strategien zur Auflösung von Parameterbindungen für Prozeduraufrufe.
@@ -31,7 +30,7 @@ public class CallBindingResolver {
      */
     public int[] resolveBindings() {
         Organism organism = context.getOrganism();
-        // World world = context.getWorld(); // Nicht mehr benötigt
+        // Environment world = context.getEnvironment(); // Nicht mehr benötigt
 
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
 

@@ -4,11 +4,11 @@ import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.compiler.internal.legacy.NumericParser;
-import org.evochora.runtime.isa.IWorldModifyingInstruction;
+import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.World;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -16,11 +16,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
-public class WorldInteractionInstruction extends Instruction implements IWorldModifyingInstruction {
+public class EnvironmentInteractionInstruction extends Instruction implements IEnvironmentModifyingInstruction {
 
     private int[] targetCoordinate;
 
-    public WorldInteractionInstruction(Organism organism, int fullOpcodeId) {
+    public EnvironmentInteractionInstruction(Organism organism, int fullOpcodeId) {
         super(organism, fullOpcodeId);
     }
 
@@ -47,7 +47,7 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
     }
 
     private void handlePoke(Simulation simulation) {
-        List<Operand> operands = resolveOperands(simulation.getWorld());
+        List<Operand> operands = resolveOperands(simulation.getEnvironment());
         Object valueToWrite;
         int[] vector;
 
@@ -62,7 +62,7 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
         }
 
         if (this.targetCoordinate == null) {
-            this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, simulation.getWorld());
+            this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, simulation.getEnvironment());
         }
 
         if (getConflictStatus() == ConflictResolutionStatus.WON_EXECUTION || getConflictStatus() == ConflictResolutionStatus.NOT_APPLICABLE) {
@@ -74,8 +74,8 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
             int cost = Math.abs(toWrite.toScalarValue());
             if (cost > 0) organism.takeEr(cost);
 
-            if (simulation.getWorld().getMolecule(targetCoordinate).isEmpty()) {
-                simulation.getWorld().setMolecule(toWrite, targetCoordinate);
+            if (simulation.getEnvironment().getMolecule(targetCoordinate).isEmpty()) {
+                simulation.getEnvironment().setMolecule(toWrite, targetCoordinate);
             } else {
                 organism.instructionFailed("POKE: Target cell is not empty.");
                 if (getConflictStatus() != ConflictResolutionStatus.NOT_APPLICABLE) setConflictStatus(ConflictResolutionStatus.LOST_TARGET_OCCUPIED);
@@ -84,8 +84,8 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
     }
 
     private void handlePeek(Simulation simulation) {
-        List<Operand> operands = resolveOperands(simulation.getWorld());
-        World world = simulation.getWorld();
+        List<Operand> operands = resolveOperands(simulation.getEnvironment());
+        Environment environment = simulation.getEnvironment();
         int targetReg;
         int[] vector;
 
@@ -100,10 +100,10 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
         }
 
         if (this.targetCoordinate == null) {
-            this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, world);
+            this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, environment);
         }
 
-        Molecule s = world.getMolecule(targetCoordinate);
+        Molecule s = environment.getMolecule(targetCoordinate);
 
         if (s.isEmpty()) {
             organism.instructionFailed("PEEK: Target cell is empty.");
@@ -117,7 +117,7 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
             valueToStore = new Molecule(Config.TYPE_ENERGY, energyToTake).toInt();
         } else {
             if (s.type() == Config.TYPE_STRUCTURE) {
-                int ownerId = world.getOwnerId(targetCoordinate);
+                int ownerId = environment.getOwnerId(targetCoordinate);
                 if (ownerId != organism.getId()) {
                     int cost = Math.abs(s.toScalarValue());
                     if (cost > 0) organism.takeEr(cost);
@@ -135,7 +135,7 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
             organism.getDataStack().push(valueToStore);
         }
 
-        world.setMolecule(new Molecule(Config.TYPE_CODE, 0), targetCoordinate);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), targetCoordinate);
     }
 
     @Override
@@ -145,7 +145,7 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
         }
 
         try {
-            World world = organism.getSimulation().getWorld();
+            Environment environment = organism.getSimulation().getEnvironment();
             String opName = getName();
             int[] vector = null;
 
@@ -162,16 +162,16 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
                 }
             } else if (opName.endsWith("I")) { // POKI, PEKI
                 int[] vec = new int[Config.WORLD_DIMENSIONS];
-                int[] ip = organism.getNextInstructionPosition(currentIp, world, organism.getDvBeforeFetch());
+                int[] ip = organism.getNextInstructionPosition(currentIp, environment, organism.getDvBeforeFetch());
                 for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
-                    Organism.FetchResult res = organism.fetchSignedArgument(ip, world);
+                    Organism.FetchResult res = organism.fetchSignedArgument(ip, environment);
                     vec[i] = res.value();
                     ip = res.nextIp();
                 }
                 vector = vec;
             } else { // POKE, PEEK
-                int[] ip = organism.getNextInstructionPosition(currentIp, world, organism.getDvBeforeFetch());
-                Organism.FetchResult vecRegArg = organism.fetchArgument(ip, world);
+                int[] ip = organism.getNextInstructionPosition(currentIp, environment, organism.getDvBeforeFetch());
+                Organism.FetchResult vecRegArg = organism.fetchArgument(ip, environment);
                 int vecRegId = org.evochora.runtime.model.Molecule.fromInt(vecRegArg.value()).toScalarValue();
                 Object vecObj = readOperand(vecRegId);
                 if (vecObj instanceof int[]) {
@@ -180,7 +180,7 @@ public class WorldInteractionInstruction extends Instruction implements IWorldMo
             }
 
             if (vector != null) {
-                this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, world);
+                this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, environment);
                 return List.of(this.targetCoordinate);
             }
 
