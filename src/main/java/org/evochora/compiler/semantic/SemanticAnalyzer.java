@@ -60,7 +60,6 @@ public class SemanticAnalyzer implements AstVisitor<Void> {
     }
 
     // Direktiven, die erst in der Linker-Phase relevant werden.
-    @Override public Void visit(ImportNode node) { return null; }
     @Override public Void visit(ExportNode node) { return null; }
     @Override public Void visit(RequireNode node) { return null; }
     @Override public Void visit(PregNode node) { return null; }

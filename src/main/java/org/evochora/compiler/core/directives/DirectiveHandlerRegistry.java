@@ -45,13 +45,18 @@ import java.util.Optional;
             registry.register(".REG", new RegDirectiveHandler());
             registry.register(".PROC", new ProcDirectiveHandler());
             registry.register(".SCOPE", new ScopeDirectiveHandler());
-            registry.register(".IMPORT", new ImportDirectiveHandler());
             registry.register(".EXPORT", new ExportDirectiveHandler());
             registry.register(".REQUIRE", new RequireDirectiveHandler());
             registry.register(".PREG", new PregDirectiveHandler());
             registry.register(".ORG", new OrgDirectiveHandler());
             registry.register(".DIR", new DirDirectiveHandler());
             registry.register(".PLACE", new PlaceDirectiveHandler());
+
+                // Präprozessor-Handler
+                org.evochora.compiler.preprocessor.IncludeDirectiveHandler includeHandler = new org.evochora.compiler.preprocessor.IncludeDirectiveHandler();
+                registry.register(".INCLUDE", includeHandler);
+                // TODO: Add .FILE and .INCLUDE_STRICT and differentiate in handler
+
         return registry;
     }
 }

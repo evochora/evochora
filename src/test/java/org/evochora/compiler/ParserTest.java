@@ -199,8 +199,7 @@ public class ParserTest {
     void testParserProcedureWithParameters() {
         // Arrange
         String source = String.join("\n",
-                ".PROC ADD",
-                "  .WITH %DR0 %DR1",
+                ".PROC ADD WITH %DR0 %DR1",
                 "  ADDS",
                 ".ENDP"
         );
@@ -258,32 +257,13 @@ public class ParserTest {
     }
 
     @Test
-    void testGlobalImport() {
-        // Arrange
-        String source = ".IMPORT MY.PROC AS P";
-        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics);
-
-        // Act
-        List<AstNode> ast = parser.parse();
-
-        // Assert
-        assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(ast).hasSize(1);
-        assertThat(ast.get(0)).isInstanceOf(org.evochora.compiler.core.ast.ImportNode.class);
-        org.evochora.compiler.core.ast.ImportNode importNode = (org.evochora.compiler.core.ast.ImportNode) ast.get(0);
-        assertThat(importNode.name().text()).isEqualTo("MY.PROC");
-        assertThat(importNode.alias().text()).isEqualTo("P");
-    }
-
-    @Test
     void testFullProcedureDefinition() {
         // Arrange
         String source = String.join("\n",
                 ".PROC FULL_PROC WITH %DR0",
                 "  .PREG %TMP 0",
                 "  .EXPORT FULL_PROC",
-                "  .REQUIRE SOME_OTHER_PROC",
+                "  .REQUIRE \"lib/utils.s\" AS utils",
                 "  NOP",
                 ".ENDP"
         );
@@ -314,7 +294,31 @@ public class ParserTest {
         assertThat(pregNode.index().value()).isEqualTo(0);
 
         assertThat(bodyDirectives.get(1)).isInstanceOf(org.evochora.compiler.core.ast.ExportNode.class);
+
         assertThat(bodyDirectives.get(2)).isInstanceOf(org.evochora.compiler.core.ast.RequireNode.class);
+        org.evochora.compiler.core.ast.RequireNode requireNode = (org.evochora.compiler.core.ast.RequireNode) bodyDirectives.get(2);
+        assertThat(requireNode.path().value()).isEqualTo("lib/utils.s");
+        assertThat(requireNode.alias().text()).isEqualTo("utils");
+    }
+
+    @Test
+    void testRequireDirective() {
+        // Arrange
+        String source = ".REQUIRE \"lib/math.s\" AS math";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics);
+
+        // Act
+        List<AstNode> ast = parser.parse();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(ast).hasSize(1);
+        assertThat(ast.get(0)).isInstanceOf(org.evochora.compiler.core.ast.RequireNode.class);
+
+        org.evochora.compiler.core.ast.RequireNode requireNode = (org.evochora.compiler.core.ast.RequireNode) ast.get(0);
+        assertThat(requireNode.path().value()).isEqualTo("lib/math.s");
+        assertThat(requireNode.alias().text()).isEqualTo("math");
     }
 
     @Test

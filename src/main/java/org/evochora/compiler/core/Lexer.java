@@ -49,6 +49,7 @@ public class Lexer {
     private void scanToken() {
         char c = advance();
         switch (c) {
+            case '"': string(); break;
             case '|': addToken(TokenType.PIPE); break;
             case ':': addToken(TokenType.COLON); break;
             case '#':
@@ -127,12 +128,38 @@ public class Lexer {
         return source.charAt(current++);
     }
 
+    private void string() {
+        while (peek() != '"' && !isAtEnd()) {
+            if (peek() == '\n') {
+                line++;
+                column = 1;
+            }
+            advance();
+        }
+
+        if (isAtEnd()) {
+            diagnostics.reportError("Unterminated string.", "Unknown", line);
+            return;
+        }
+
+        // Das schließende "
+        advance();
+
+        // Extrahiere den Wert des Strings ohne die Anführungszeichen.
+        String value = source.substring(start + 1, current - 1);
+        // Der Text des Tokens ist der String *mit* Anführungszeichen, der Wert ist der Inhalt.
+        addToken(TokenType.STRING, value, source.substring(start, current));
+    }
     private void addToken(TokenType type) {
         addToken(type, null);
     }
 
     private void addToken(TokenType type, Object literal) {
         String text = source.substring(start, current);
+        addToken(type, literal, text);
+    }
+
+    private void addToken(TokenType type, Object literal, String text) {
         tokens.add(new Token(type, text, literal, line, start + 1));
     }
 

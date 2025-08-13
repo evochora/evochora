@@ -12,7 +12,6 @@ public interface AstVisitor<T> {
     T visit(LabelNode node);
     T visit(ProcedureNode node);
     T visit(ScopeNode node);
-    T visit(ImportNode node);
     T visit(ExportNode node);
     T visit(RequireNode node);
     T visit(PregNode node);

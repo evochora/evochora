@@ -1,20 +1,12 @@
 package org.evochora.compiler.core.directives;
 
-import org.evochora.compiler.core.CompilerPhase;
-import org.evochora.compiler.core.Parser;
-import org.evochora.compiler.core.Token;
-import org.evochora.compiler.core.TokenType;
+import org.evochora.compiler.core.*;
 import org.evochora.compiler.core.ast.AstNode;
 import org.evochora.compiler.core.ast.ProcedureNode;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
-/**
- * Handler für die .PROC- und .ENDP-Direktiven.
- * Parst einen gesamten Prozedur-Block.
- */
 public class ProcDirectiveHandler implements IDirectiveHandler {
     @Override
     public CompilerPhase getPhase() {
@@ -22,48 +14,37 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
     }
 
     @Override
-    public AstNode parse(Parser parser) {
-        parser.advance(); // .PROC konsumieren
+    public AstNode parse(ParsingContext context) {
+        context.advance(); // .PROC konsumieren
 
-        Token procName = parser.consume(TokenType.IDENTIFIER, "Expected procedure name after .PROC.");
+        Token procName = context.consume(TokenType.IDENTIFIER, "Expected procedure name after .PROC.");
 
         List<Token> parameters = new ArrayList<>();
-        // Prüfe auf eine optionale WITH-Klausel (als Keyword oder Direktive), die auf der gleichen Zeile folgt.
-        boolean hasWith = (parser.check(TokenType.IDENTIFIER) && parser.peek().text().equalsIgnoreCase("WITH"))
-                || (parser.check(TokenType.DIRECTIVE) && parser.peek().text().equalsIgnoreCase(".WITH"));
+        // Prüfe auf eine optionale WITH-Klausel (als Keyword oder Direktive)
+        boolean hasWith = (context.check(TokenType.IDENTIFIER) && context.peek().text().equalsIgnoreCase("WITH")) ||
+                          (context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".WITH"));
 
         if (hasWith) {
-            parser.advance(); // WITH oder .WITH konsumieren
-            while (!parser.isAtEnd() && !parser.check(TokenType.NEWLINE)) {
-                parameters.add(parser.consume(TokenType.REGISTER, "Expected a register as a parameter in WITH clause."));
+            context.advance(); // WITH oder .WITH konsumieren
+            while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
+                parameters.add(context.consume(TokenType.REGISTER, "Expected a register as a parameter in .WITH clause."));
             }
         }
 
-        // Jede Deklaration muss mit einem Newline enden (oder EOF)
-        if (!parser.isAtEnd()) {
-             parser.consume(TokenType.NEWLINE, "Expected newline after .PROC declaration.");
+        if (!context.isAtEnd()) {
+             context.consume(TokenType.NEWLINE, "Expected newline after .PROC declaration.");
         }
 
+        Parser parser = (Parser) context;
         List<AstNode> body = new ArrayList<>();
-        while (!parser.isAtEnd() && !(parser.check(TokenType.DIRECTIVE) && parser.peek().text().equalsIgnoreCase(".ENDP"))) {
-            // Überspringe leere Zeilen innerhalb des Prozedur-Bodys
-            if (parser.check(TokenType.NEWLINE)) {
-                parser.advance();
-                continue;
-            }
-
+        while (!context.isAtEnd() && !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
             AstNode statement = parser.declaration();
             if (statement != null) {
                 body.add(statement);
-            } else if (!parser.getDiagnostics().hasErrors()){
-                // Wenn declaration() null zurückgibt, aber keinen Fehler gemeldet hat,
-                // ist es wahrscheinlich eine leere Zeile, die wir schon behandelt haben.
-                // Aber um Endlosschleifen zu vermeiden, wenn ein Handler null zurückgibt, gehen wir einen Schritt weiter.
-                parser.advance();
             }
         }
 
-        parser.consume(TokenType.DIRECTIVE, "Expected .ENDP to close procedure block.");
+        context.consume(TokenType.DIRECTIVE, "Expected .ENDP to close procedure block.");
 
         ProcedureNode procNode = new ProcedureNode(procName, parameters, body);
         parser.registerProcedure(procNode);

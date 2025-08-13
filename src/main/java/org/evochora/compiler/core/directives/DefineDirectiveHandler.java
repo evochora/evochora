@@ -1,9 +1,6 @@
 package org.evochora.compiler.core.directives;
 
-import org.evochora.compiler.core.CompilerPhase;
-import org.evochora.compiler.core.Parser;
-import org.evochora.compiler.core.Token;
-import org.evochora.compiler.core.TokenType;
+import org.evochora.compiler.core.*;
 import org.evochora.compiler.core.ast.AstNode;
 import org.evochora.compiler.core.ast.NumberLiteralNode;
 import org.evochora.compiler.core.ast.TypedLiteralNode;
@@ -23,14 +20,17 @@ public class DefineDirectiveHandler implements IDirectiveHandler {
     /**
      * Parst eine .DEFINE-Anweisung.
      * Erwartetes Format: .DEFINE <NAME> <LITERAL>
-     * @param parser Der Parser, der den Handler aufruft.
+     * @param context Der Kontext, der den Parser kapselt.
      * @return {@code null}, da diese Direktive keinen AST-Knoten erzeugt.
      */
     @Override
-    public AstNode parse(Parser parser) {
-        parser.advance(); // .DEFINE konsumieren
+    public AstNode parse(ParsingContext context) {
+        context.advance(); // .DEFINE konsumieren
 
-        Token name = parser.consume(TokenType.IDENTIFIER, "Expected a name after .DEFINE.");
+        Token name = context.consume(TokenType.IDENTIFIER, "Expected a name after .DEFINE.");
+
+        // Downcast ist hier sicher, da der Parser der einzige ist, der diesen Handler in dieser Phase aufruft.
+        Parser parser = (Parser) context;
         AstNode valueNode = parser.expression();
 
         if (name != null && valueNode != null) {
@@ -40,7 +40,7 @@ public class DefineDirectiveHandler implements IDirectiveHandler {
             } else if (valueNode instanceof TypedLiteralNode typedNode) {
                 valueToken = typedNode.value();
             } else if (valueNode instanceof VectorLiteralNode) {
-                parser.getDiagnostics().reportError("Vectors cannot be used in .DEFINE directives yet.", "Unknown", name.line());
+                context.getDiagnostics().reportError("Vectors cannot be used in .DEFINE directives yet.", "Unknown", name.line());
             }
 
             if (valueToken != null) {

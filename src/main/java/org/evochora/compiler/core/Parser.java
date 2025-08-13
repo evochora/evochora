@@ -6,6 +6,7 @@ import org.evochora.compiler.core.directives.IDirectiveHandler;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
 import java.util.ArrayList;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +17,7 @@ import java.util.Optional;
  * versucht, daraus eine strukturierte Repräsentation des Programms zu erstellen,
  * typischerweise einen Abstract Syntax Tree (AST).
  */
-public class Parser {
+public class Parser implements ParsingContext {
 
     private final List<Token> tokens;
     private final DiagnosticsEngine diagnostics;
@@ -54,6 +55,12 @@ public class Parser {
             if (statement != null) {
                 statements.add(statement);
             }
+            // Wenn declaration() null zurückgibt (z.B. eine leere Zeile),
+            // müssen wir sicherstellen, dass wir trotzdem vorankommen, um eine Endlosschleife zu vermeiden.
+            else if (!isAtEnd()){
+                 // Dies geschieht bereits durch match() in declaration(), aber als Sicherheitsnetz.
+                 // In den meisten Fällen wird dies nicht benötigt.
+            }
         }
         return statements;
     }
@@ -87,7 +94,13 @@ public class Parser {
 
         if (handlerOptional.isPresent()) {
             IDirectiveHandler handler = handlerOptional.get();
-            return handler.parse(this);
+            // Der Parser ruft nur Handler für die PARSING-Phase auf.
+            if (handler.getPhase() == CompilerPhase.PARSING) {
+                return handler.parse(this);
+            }
+            // Ignoriere Handler für andere Phasen (z.B. PRE_PROCESSING)
+            advance();
+            return null;
         } else {
             diagnostics.reportError("Unknown directive: " + directiveToken.text(), "Unknown", directiveToken.line());
             advance();
@@ -252,5 +265,25 @@ public class Parser {
 
     public DiagnosticsEngine getDiagnostics() {
         return diagnostics;
+    }
+
+    @Override
+    public void injectTokens(List<Token> tokens, int tokensToRemove) {
+        throw new UnsupportedOperationException("Token injection is not supported during the parsing phase.");
+    }
+
+    @Override
+    public Path getBasePath() {
+        throw new UnsupportedOperationException("Base path is not available during the parsing phase.");
+    }
+
+    @Override
+    public boolean hasAlreadyIncluded(String path) {
+        throw new UnsupportedOperationException("Inclusion tracking is not available during the parsing phase.");
+    }
+
+    @Override
+    public void markAsIncluded(String path) {
+        throw new UnsupportedOperationException("Inclusion tracking is not available during the parsing phase.");
     }
 }

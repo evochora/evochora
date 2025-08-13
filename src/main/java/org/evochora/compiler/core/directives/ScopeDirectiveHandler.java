@@ -1,9 +1,6 @@
 package org.evochora.compiler.core.directives;
 
-import org.evochora.compiler.core.CompilerPhase;
-import org.evochora.compiler.core.Parser;
-import org.evochora.compiler.core.Token;
-import org.evochora.compiler.core.TokenType;
+import org.evochora.compiler.core.*;
 import org.evochora.compiler.core.ast.AstNode;
 import org.evochora.compiler.core.ast.ScopeNode;
 
@@ -22,18 +19,23 @@ public class ScopeDirectiveHandler implements IDirectiveHandler {
     }
 
     @Override
-    public AstNode parse(Parser parser) {
-        parser.advance(); // .SCOPE konsumieren
+    public AstNode parse(ParsingContext context) {
+        context.advance(); // .SCOPE konsumieren
 
-        Token scopeName = parser.consume(TokenType.IDENTIFIER, "Expected scope name after .SCOPE.");
-        parser.consume(TokenType.NEWLINE, "Expected newline after scope name.");
+        Token scopeName = context.consume(TokenType.IDENTIFIER, "Expected scope name after .SCOPE.");
+        context.consume(TokenType.NEWLINE, "Expected newline after scope name.");
 
+        Parser parser = (Parser) context;
         List<AstNode> body = new ArrayList<>();
-        while (!parser.isAtEnd() && !(parser.check(TokenType.DIRECTIVE) && parser.peek().text().equalsIgnoreCase(".ENDS"))) {
+        while (!context.isAtEnd() && !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDS"))) {
+            if (context.check(TokenType.NEWLINE)) {
+                context.advance();
+                continue;
+            }
             body.add(parser.declaration());
         }
 
-        parser.consume(TokenType.DIRECTIVE, "Expected .ENDS directive to close scope block.");
+        context.consume(TokenType.DIRECTIVE, "Expected .ENDS directive to close scope block.");
 
         return new ScopeNode(scopeName, body.stream().filter(Objects::nonNull).toList());
     }

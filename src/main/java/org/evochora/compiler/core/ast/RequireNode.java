@@ -5,10 +5,12 @@ import org.evochora.compiler.core.Token;
 /**
  * Ein AST-Knoten, der eine .REQUIRE-Direktive repräsentiert.
  *
- * @param requiredName Das Token des Namens, der benötigt wird.
+ * @param path Das String-Token des Dateipfads.
+ * @param alias Das optionale Alias-Token (kann null sein).
  */
 public record RequireNode(
-        Token requiredName
+        Token path,
+        Token alias
 ) implements AstNode {
     @Override
     public <T> T accept(AstVisitor<T> visitor) {
