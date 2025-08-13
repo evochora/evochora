@@ -65,35 +65,32 @@ public class Parser {
      */
     public AstNode declaration() {
         try {
-            // Überspringe leere Zeilen
             if (match(TokenType.NEWLINE)) return null;
 
-            // Explizit geschriebene Version des Lambda-Ausdrucks
-
             if (check(TokenType.DIRECTIVE)) {
-                Token directiveToken = peek();
-
-                // 1. Hole den Handler aus der Registry. Das ist ein Optional<IDirectiveHandler>.
-                Optional<IDirectiveHandler> handlerOptional = directiveRegistry.get(directiveToken.text());
-
-                // 2. Wenn der Handler existiert (das .map wird ausgeführt)...
-                if (handlerOptional.isPresent()) {
-                    IDirectiveHandler handler = handlerOptional.get();
-                    // ...rufe seine parse-Methode auf.
-                    // FÜR .DEFINE gibt diese Methode 'null' zurück, was OK ist.
-                    return handler.parse(this);
-                }
-                // 3. Wenn der Handler NICHT existiert (das .orElseGet wird ausgeführt)...
-                else {
-                    // ...melde einen Fehler und gib null zurück.
-                    diagnostics.reportError("Unknown directive: " + directiveToken.text(), "Unknown", directiveToken.line());
-                    advance(); // Überspringe die unbekannte Direktive
-                    return null;
-                }
+                return directiveStatement();
             }
             return statement();
-        } catch (Exception ex) {
+        } catch (RuntimeException ex) {
             synchronize();
+            return null;
+        }
+    }
+
+    /**
+     * Parst eine Direktive, indem es an den entsprechenden Handler delegiert.
+     */
+    private AstNode directiveStatement() {
+        // Explizit geschriebene Version des Lambda-Ausdrucks
+        Token directiveToken = peek();
+        Optional<IDirectiveHandler> handlerOptional = directiveRegistry.get(directiveToken.text());
+
+        if (handlerOptional.isPresent()) {
+            IDirectiveHandler handler = handlerOptional.get();
+            return handler.parse(this);
+        } else {
+            diagnostics.reportError("Unknown directive: " + directiveToken.text(), "Unknown", directiveToken.line());
+            advance();
             return null;
         }
     }
@@ -117,18 +114,14 @@ public class Parser {
         if (match(TokenType.OPCODE)) {
             Token opcode = previous();
             List<AstNode> arguments = new ArrayList<>();
-            // Solange wir nicht am Zeilenende oder Dateiende sind, parsen wir Argumente.
             while (!isAtEnd() && !check(TokenType.NEWLINE)) {
                 arguments.add(expression());
             }
             return new InstructionNode(opcode, arguments);
         }
 
-        // Wenn wir hier ankommen, aber nicht am Ende sind, ist es ein Fehler.
-        if (!isAtEnd()) {
-            Token unexpected = advance();
-            diagnostics.reportError("Expected instruction, but got " + unexpected.text(), "Unknown", unexpected.line());
-        }
+        Token unexpected = advance();
+        diagnostics.reportError("Expected instruction, but got '" + unexpected.text() + "'.", "Unknown", unexpected.line());
         return null;
     }
 
@@ -136,14 +129,6 @@ public class Parser {
      * Parst einen Ausdruck (z.B. ein Argument einer Instruktion).
      */
     public AstNode expression() {
-        // Prüfe auf typisiertes Literal: IDENTIFIER:NUMBER
-        if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
-            Token type = advance();
-            advance(); // ':' konsumieren
-            Token value = consume(TokenType.NUMBER, "Expected a number after the literal type.");
-            return new TypedLiteralNode(type, value);
-        }
-
         // Prüfe auf Vektor-Literal: NUMBER | NUMBER ...
         if (check(TokenType.NUMBER) && checkNext(TokenType.PIPE)) {
             List<Token> components = new ArrayList<>();
@@ -154,6 +139,14 @@ public class Parser {
             return new VectorLiteralNode(components);
         }
 
+        // Prüfe auf typisiertes Literal: IDENTIFIER:NUMBER
+        if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
+            Token type = advance();
+            advance(); // ':' konsumieren
+            Token value = consume(TokenType.NUMBER, "Expected a number after the literal type.");
+            return new TypedLiteralNode(type, value);
+        }
+
         if (match(TokenType.NUMBER)) return new NumberLiteralNode(previous());
         if (match(TokenType.REGISTER)) return new RegisterNode(previous());
 
@@ -161,15 +154,8 @@ public class Parser {
             Token identifier = previous();
             String name = identifier.text().toUpperCase();
 
-            // Prüfe, ob es ein Register-Alias ist
-            if (registerAliasTable.containsKey(name)) {
-                return new RegisterNode(registerAliasTable.get(name));
-            }
-            // Prüfe, ob es eine definierte Konstante ist
-            if (symbolTable.containsKey(name)) {
-                return new NumberLiteralNode(symbolTable.get(name));
-            }
-            // Ansonsten ist es ein unbekannter Identifier (z.B. ein Label)
+            if (registerAliasTable.containsKey(name)) return new RegisterNode(registerAliasTable.get(name));
+            if (symbolTable.containsKey(name)) return new NumberLiteralNode(symbolTable.get(name));
             return new IdentifierNode(identifier);
         }
 
@@ -180,7 +166,6 @@ public class Parser {
 
     /**
      * Setzt den Parser nach einem Fehler zurück, um das Parsing fortzusetzen.
-     * Überspringt Tokens, bis es einen wahrscheinlichen Start eines neuen Statements findet.
      */
     private void synchronize() {
         advance();
@@ -241,7 +226,7 @@ public class Parser {
         }
         Token unexpected = peek();
         diagnostics.reportError(errorMessage, "Unknown", unexpected.line());
-        throw new RuntimeException(errorMessage); // Wirft eine interne Exception für die Synchronisation
+        throw new RuntimeException(errorMessage);
     }
 
     public Map<String, Token> getSymbolTable() {

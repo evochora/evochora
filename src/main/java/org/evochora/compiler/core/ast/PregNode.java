@@ -6,11 +6,11 @@ import org.evochora.compiler.core.Token;
  * Ein AST-Knoten, der eine .PREG-Direktive repräsentiert.
  *
  * @param alias Das Token des Alias-Namens.
- * @param register Das Token des Registers (%PR0 oder %PR1).
+ * @param index Das Token des Register-Index (0 oder 1).
  */
 public record PregNode(
         Token alias,
-        Token register
+        Token index
 ) implements AstNode {
     @Override
     public <T> T accept(AstVisitor<T> visitor) {

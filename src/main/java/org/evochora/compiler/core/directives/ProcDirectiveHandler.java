@@ -26,32 +26,44 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
         parser.advance(); // .PROC konsumieren
 
         Token procName = parser.consume(TokenType.IDENTIFIER, "Expected procedure name after .PROC.");
-        if (procName == null) return null;
-        parser.consume(TokenType.NEWLINE, "Expected newline after procedure name.");
 
         List<Token> parameters = new ArrayList<>();
-        // Prüfe auf eine optionale WITH-Klausel (als Keyword oder Direktive)
-        boolean hasWith = (parser.check(TokenType.IDENTIFIER) && parser.peek().text().equalsIgnoreCase("WITH")) ||
-                          (parser.check(TokenType.DIRECTIVE) && parser.peek().text().equalsIgnoreCase(".WITH"));
+        // Prüfe auf eine optionale WITH-Klausel (als Keyword oder Direktive), die auf der gleichen Zeile folgt.
+        boolean hasWith = (parser.check(TokenType.IDENTIFIER) && parser.peek().text().equalsIgnoreCase("WITH"))
+                || (parser.check(TokenType.DIRECTIVE) && parser.peek().text().equalsIgnoreCase(".WITH"));
 
         if (hasWith) {
             parser.advance(); // WITH oder .WITH konsumieren
-            while (!parser.check(TokenType.NEWLINE) && !parser.isAtEnd()) {
-                parameters.add(parser.consume(TokenType.REGISTER, "Expected a register as a parameter in .WITH clause."));
+            while (!parser.isAtEnd() && !parser.check(TokenType.NEWLINE)) {
+                parameters.add(parser.consume(TokenType.REGISTER, "Expected a register as a parameter in WITH clause."));
             }
-            parser.consume(TokenType.NEWLINE, "Expected newline after .WITH parameters.");
+        }
+
+        // Jede Deklaration muss mit einem Newline enden (oder EOF)
+        if (!parser.isAtEnd()) {
+             parser.consume(TokenType.NEWLINE, "Expected newline after .PROC declaration.");
         }
 
         List<AstNode> body = new ArrayList<>();
         while (!parser.isAtEnd() && !(parser.check(TokenType.DIRECTIVE) && parser.peek().text().equalsIgnoreCase(".ENDP"))) {
-            body.add(parser.declaration());
+            // Überspringe leere Zeilen innerhalb des Prozedur-Bodys
+            if (parser.check(TokenType.NEWLINE)) {
+                parser.advance();
+                continue;
+            }
+
+            AstNode statement = parser.declaration();
+            if (statement != null) {
+                body.add(statement);
+            } else if (!parser.getDiagnostics().hasErrors()){
+                // Wenn declaration() null zurückgibt, aber keinen Fehler gemeldet hat,
+                // ist es wahrscheinlich eine leere Zeile, die wir schon behandelt haben.
+                // Aber um Endlosschleifen zu vermeiden, wenn ein Handler null zurückgibt, gehen wir einen Schritt weiter.
+                parser.advance();
+            }
         }
 
-        // Konsumiere das .ENDP-Token, das die Schleife beendet hat.
-        if (!parser.match(TokenType.DIRECTIVE)) {
-             parser.getDiagnostics().reportError("Unterminated .PROC block; missing .ENDP.", "Unknown", procName.line());
-             return null;
-        }
+        parser.consume(TokenType.DIRECTIVE, "Expected .ENDP to close procedure block.");
 
         ProcedureNode procNode = new ProcedureNode(procName, parameters, body);
         parser.registerProcedure(procNode);

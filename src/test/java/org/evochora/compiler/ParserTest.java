@@ -281,7 +281,7 @@ public class ParserTest {
         // Arrange
         String source = String.join("\n",
                 ".PROC FULL_PROC WITH %DR0",
-                "  .PREG %TMP %PR0",
+                "  .PREG %TMP 0",
                 "  .EXPORT FULL_PROC",
                 "  .REQUIRE SOME_OTHER_PROC",
                 "  NOP",
@@ -307,7 +307,12 @@ public class ParserTest {
                 .filter(n -> !(n instanceof InstructionNode))
                 .toList();
         assertThat(bodyDirectives).hasSize(3);
+
         assertThat(bodyDirectives.get(0)).isInstanceOf(org.evochora.compiler.core.ast.PregNode.class);
+        org.evochora.compiler.core.ast.PregNode pregNode = (org.evochora.compiler.core.ast.PregNode) bodyDirectives.get(0);
+        assertThat(pregNode.alias().text()).isEqualTo("%TMP");
+        assertThat(pregNode.index().value()).isEqualTo(0);
+
         assertThat(bodyDirectives.get(1)).isInstanceOf(org.evochora.compiler.core.ast.ExportNode.class);
         assertThat(bodyDirectives.get(2)).isInstanceOf(org.evochora.compiler.core.ast.RequireNode.class);
     }
