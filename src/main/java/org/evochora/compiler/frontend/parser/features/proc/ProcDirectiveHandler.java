@@ -41,14 +41,26 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
 
         Parser parser = (Parser) context;
         List<AstNode> body = new ArrayList<>();
-        while (!context.isAtEnd() && !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
+        while (true) {
+            while(context.check(TokenType.NEWLINE)) {
+                context.advance();
+            }
+
+            if (context.isAtEnd() || (context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
+                break;
+            }
+
             AstNode statement = parser.declaration();
             if (statement != null) {
                 body.add(statement);
             }
         }
 
-        context.consume(TokenType.DIRECTIVE, "Expected .ENDP to close procedure block.");
+        if (context.isAtEnd() || !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
+            context.getDiagnostics().reportError("Expected .ENDP to close procedure block.", "Syntax Error", procName.line());
+        } else {
+            context.advance(); // Consume .ENDP
+        }
 
         ProcedureNode procNode = new ProcedureNode(procName, parameters, body);
         parser.registerProcedure(procNode);
