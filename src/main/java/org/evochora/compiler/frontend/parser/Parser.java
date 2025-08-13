@@ -3,6 +3,7 @@ package org.evochora.compiler.frontend.parser;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.CompilerPhase;
 import org.evochora.compiler.frontend.directive.IDirectiveHandler;
+import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.frontend.directive.DirectiveHandlerRegistry;
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
@@ -18,11 +19,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * Der Parser nimmt eine Liste von Tokens vom Lexer entgegen und
- * versucht, daraus eine strukturierte Repräsentation des Programms zu erstellen,
- * typischerweise einen Abstract Syntax Tree (AST).
- */
 public class Parser implements ParsingContext {
 
     private final List<Token> tokens;
@@ -30,7 +26,6 @@ public class Parser implements ParsingContext {
     private final DirectiveHandlerRegistry directiveRegistry;
     private int current = 0;
 
-    private final Map<String, Token> symbolTable = new HashMap<>();
     private final Map<String, Token> registerAliasTable = new HashMap<>();
     private final Map<String, ProcedureNode> procedureTable = new HashMap<>();
 
@@ -57,6 +52,12 @@ public class Parser implements ParsingContext {
 
     public AstNode declaration() {
         try {
+            // Leere Zeilen vor einem Statement konsumieren
+            while (check(TokenType.NEWLINE)) {
+                advance();
+            }
+            if (isAtEnd()) return null;
+
             if (check(TokenType.DIRECTIVE)) {
                 return directiveStatement();
             }
@@ -76,7 +77,7 @@ public class Parser implements ParsingContext {
             if (handler.getPhase() == CompilerPhase.PARSING) {
                 return handler.parse(this);
             }
-            advance();
+            advance(); // Ignoriere Direktiven für andere Phasen
             return null;
         } else {
             diagnostics.reportError("Unknown directive: " + directiveToken.text(), "Unknown", directiveToken.line());
@@ -89,10 +90,6 @@ public class Parser implements ParsingContext {
         if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
             Token labelToken = advance();
             advance(); // ':' konsumieren
-
-            // Das Statement, das diesem Label zugeordnet ist, ist die nächste Deklaration.
-            // Wenn die Zeile nach dem Label leer ist, wird declaration() null zurückgeben,
-            // was korrekt ist.
             return new LabelNode(labelToken, declaration());
         }
         return instructionStatement();
@@ -109,7 +106,6 @@ public class Parser implements ParsingContext {
         }
 
         Token unexpected = advance();
-        // Melde nur einen Fehler, wenn es nicht das Ende der Datei oder ein irrelevanter Zeilenumbruch ist.
         if (unexpected.type() != TokenType.END_OF_FILE && unexpected.type() != TokenType.NEWLINE) {
             diagnostics.reportError("Expected instruction or directive, but got '" + unexpected.text() + "'.", "Unknown", unexpected.line());
         }
@@ -139,9 +135,9 @@ public class Parser implements ParsingContext {
         if (match(TokenType.IDENTIFIER)) {
             Token identifier = previous();
             String name = identifier.text().toUpperCase();
-
-            if (registerAliasTable.containsKey(name)) return new RegisterNode(registerAliasTable.get(name));
-            if (symbolTable.containsKey(name)) return new NumberLiteralNode(symbolTable.get(name));
+            if (registerAliasTable.containsKey(name)) {
+                return new RegisterNode(registerAliasTable.get(name));
+            }
             return new IdentifierNode(identifier);
         }
 
@@ -154,10 +150,7 @@ public class Parser implements ParsingContext {
         advance();
         while (!isAtEnd()) {
             if (previous().type() == TokenType.NEWLINE) return;
-            switch (peek().type()) {
-                case OPCODE, DIRECTIVE:
-                    return;
-            }
+            if (check(TokenType.DIRECTIVE) || check(TokenType.OPCODE)) return;
             advance();
         }
     }
@@ -180,9 +173,7 @@ public class Parser implements ParsingContext {
     }
 
     public boolean checkNext(TokenType type) {
-        if (isAtEnd() || current + 1 >= tokens.size() || tokens.get(current + 1).type() == TokenType.END_OF_FILE) {
-            return false;
-        }
+        if (isAtEnd() || current + 1 >= tokens.size()) return false;
         return tokens.get(current + 1).type() == type;
     }
 
@@ -209,22 +200,13 @@ public class Parser implements ParsingContext {
 
     @Override
     public Token consume(TokenType type, String errorMessage) {
-        if (check(type)) {
-            return advance();
-        }
+        if (check(type)) return advance();
         Token unexpected = peek();
         diagnostics.reportError(errorMessage, "Unknown", unexpected.line());
         throw new RuntimeException(errorMessage);
     }
 
-    public Map<String, Token> getSymbolTable() {
-        return symbolTable;
-    }
-
-    public Map<String, Token> getRegisterAliasTable() {
-        return registerAliasTable;
-    }
-
+    public Map<String, Token> getRegisterAliasTable() { return registerAliasTable; }
     public void registerProcedure(ProcedureNode procedure) {
         String name = procedure.name().text().toUpperCase();
         if (procedureTable.containsKey(name)) {
@@ -233,33 +215,10 @@ public class Parser implements ParsingContext {
             procedureTable.put(name, procedure);
         }
     }
-
-    public Map<String, ProcedureNode> getProcedureTable() {
-        return procedureTable;
-    }
-
-    @Override
-    public DiagnosticsEngine getDiagnostics() {
-        return diagnostics;
-    }
-
-    @Override
-    public void injectTokens(List<Token> tokens, int tokensToRemove) {
-        throw new UnsupportedOperationException("Token injection is not supported during the parsing phase.");
-    }
-
-    @Override
-    public Path getBasePath() {
-        throw new UnsupportedOperationException("Base path is not available during the parsing phase.");
-    }
-
-    @Override
-    public boolean hasAlreadyIncluded(String path) {
-        throw new UnsupportedOperationException("Inclusion tracking is not available during the parsing phase.");
-    }
-
-    @Override
-    public void markAsIncluded(String path) {
-        throw new UnsupportedOperationException("Inclusion tracking is not available during the parsing phase.");
-    }
+    public Map<String, ProcedureNode> getProcedureTable() { return procedureTable; }
+    @Override public DiagnosticsEngine getDiagnostics() { return diagnostics; }
+    @Override public void injectTokens(List<Token> tokens, int tokensToRemove) { throw new UnsupportedOperationException("Not supported in parsing phase."); }
+    @Override public Path getBasePath() { throw new UnsupportedOperationException("Not supported in parsing phase."); }
+    @Override public boolean hasAlreadyIncluded(String path) { throw new UnsupportedOperationException("Not supported in parsing phase."); }
+    @Override public void markAsIncluded(String path) { throw new UnsupportedOperationException("Not supported in parsing phase."); }
 }

@@ -94,8 +94,6 @@ public class SemanticAnalyzerTest {
         assertThat(errors.get(0).message()).contains("Symbol 'LOOP' is already defined in this scope.");
     }
 
-    // --- NEUE TESTS FÜR ARGUMENTEN-PRÜFUNG ---
-
     @Test
     void testInstructionWithTooFewArgumentsReportsError() {
         // Arrange
@@ -144,4 +142,155 @@ public class SemanticAnalyzerTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
     }
+
+    // --- NEUE TESTS FÜR ARGUMENT-TYP-PRÜFUNG ---
+
+    @Test
+    void testInstructionWithWrongArgumentTypeReportsError() {
+        // Arrange
+        String source = "SETI 1|0 DATA:1  # Fehler: SETI erwartet ein REGISTER, kein VECTOR";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        // Act
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        analyzer.analyze(ast);
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().get(0).message())
+                .isEqualTo("Argument 1 for instruction 'SETI' has the wrong type. Expected REGISTER, but got VECTOR.");
+    }
+
+    @Test
+    void testInstructionWithMultipleWrongArgumentTypesReportsMultipleErrors() {
+        // Arrange
+        String source = "ADDI 1|0 %DR0  # Fehler: Arg1=VECTOR statt REGISTER, Arg2=REGISTER statt LITERAL";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        // Act
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        analyzer.analyze(ast);
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isTrue();
+        List<Diagnostic> errors = diagnostics.getDiagnostics();
+        assertThat(errors).hasSize(2);
+        assertThat(errors.get(0).message()).contains("Argument 1 for instruction 'ADDI' has the wrong type. Expected REGISTER, but got VECTOR.");
+        assertThat(errors.get(1).message()).contains("Argument 2 for instruction 'ADDI' has the wrong type. Expected LITERAL, but got REGISTER.");
+    }
+
+    @Test
+    void testInstructionWithCorrectArgumentTypesIsAllowed() {
+        // Arrange
+        String source = "SETV %DR0 1|0"; // Korrekte Typen: REGISTER, VECTOR
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        // Act
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        analyzer.analyze(ast);
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+    }
+
+    @Test
+    void testAccessingInnerScopeLabelFromOuterScopeReportsError() {
+        // Arrange
+        String source = String.join("\n",
+                ".SCOPE INNER_SCOPE",
+                "  INNER_LABEL: NOP",
+                ".ENDS",
+                "JMPI INNER_LABEL  # Fehler: INNER_LABEL ist hier nicht sichtbar"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        // Act
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        analyzer.analyze(ast);
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().get(0).message())
+                .isEqualTo("Symbol 'INNER_LABEL' is not defined.");
+    }
+
+    @Test
+    void testAccessingProcedureInternalLabelFromOutsideReportsError() {
+        // Arrange
+        String source = String.join("\n",
+                ".PROC MY_PROC",
+                "  INTERNAL_LABEL: NOP",
+                "  RET",
+                ".ENDP",
+                "JMPI INTERNAL_LABEL  # Fehler: Dieses Label ist privat für MY_PROC"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        // Act
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        analyzer.analyze(ast);
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().get(0).message())
+                .isEqualTo("Symbol 'INTERNAL_LABEL' is not defined.");
+    }
+
+    @Test
+    void testJumpingToAConstantReportsError() {
+        // Arrange
+        String source = String.join("\n",
+                ".DEFINE MY_CONST 42",
+                "JMPI MY_CONST  # Fehler: MY_CONST ist eine Konstante, kein Label"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        // ... (restlicher Test-Code)
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isTrue();
+        // Der Test muss jetzt auf die neue, spezifischere Fehlermeldung prüfen
+        assertThat(diagnostics.getDiagnostics().get(0).message())
+                .isEqualTo("Symbol 'MY_CONST' is a CONSTANT and cannot be used as a jump target.");
+    }
+
+    @Test
+    void testUsingUndefinedLabelReportsError() {
+        // Arrange
+        String source = "JMPI NON_EXISTENT_LABEL";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        // Act
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        analyzer.analyze(ast);
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().get(0).message())
+                .isEqualTo("Symbol 'NON_EXISTENT_LABEL' is not defined.");
+    }
+
+    @Test
+    void testUsingDefinedConstantAsLiteralIsAllowed() {
+        // Arrange
+        String source = String.join("\n",
+                ".DEFINE MY_CONST 123",
+                "SETI %DR0 MY_CONST"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        // Act
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        analyzer.analyze(ast);
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+    }
+
 }

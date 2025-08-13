@@ -1,19 +1,16 @@
 package org.evochora.compiler.frontend.parser.features.def;
 
+import org.evochora.compiler.frontend.CompilerPhase;
 import org.evochora.compiler.frontend.directive.IDirectiveHandler;
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.NumberLiteralNode;
-import org.evochora.compiler.frontend.parser.ast.TypedLiteralNode;
-import org.evochora.compiler.frontend.parser.ast.VectorLiteralNode;
-import org.evochora.compiler.frontend.CompilerPhase;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParsingContext;
+import org.evochora.compiler.frontend.parser.ast.AstNode;
 
 /**
  * Handler für die .DEFINE-Direktive.
- * Parst eine Konstantendefinition und fügt sie zur Symboltabelle des Parsers hinzu.
+ * Parst eine Konstantendefinition und erzeugt einen DefineNode im AST.
  */
 public class DefineDirectiveHandler implements IDirectiveHandler {
 
@@ -22,38 +19,18 @@ public class DefineDirectiveHandler implements IDirectiveHandler {
         return CompilerPhase.PARSING;
     }
 
-    /**
-     * Parst eine .DEFINE-Anweisung.
-     * Erwartetes Format: .DEFINE <NAME> <LITERAL>
-     * @param context Der Kontext, der den Parser kapselt.
-     * @return {@code null}, da diese Direktive keinen AST-Knoten erzeugt.
-     */
     @Override
     public AstNode parse(ParsingContext context) {
         context.advance(); // .DEFINE konsumieren
 
-        Token name = context.consume(TokenType.IDENTIFIER, "Expected a name after .DEFINE.");
+        Token name = context.consume(TokenType.IDENTIFIER, "Expected a constant name after .DEFINE.");
+        AstNode valueNode = ((Parser) context).expression();
 
-        // Downcast ist hier sicher, da der Parser der einzige ist, der diesen Handler in dieser Phase aufruft.
-        Parser parser = (Parser) context;
-        AstNode valueNode = parser.expression();
-
-        if (name != null && valueNode != null) {
-            Token valueToken = null;
-            if (valueNode instanceof NumberLiteralNode numNode) {
-                valueToken = numNode.numberToken();
-            } else if (valueNode instanceof TypedLiteralNode typedNode) {
-                valueToken = typedNode.value();
-            } else if (valueNode instanceof VectorLiteralNode) {
-                context.getDiagnostics().reportError("Vectors cannot be used in .DEFINE directives yet.", "Unknown", name.line());
-            }
-
-            if (valueToken != null) {
-                parser.getSymbolTable().put(name.text().toUpperCase(), valueToken);
-            }
+        if (name == null || valueNode == null) {
+            // Ein Fehler ist beim Parsen der Argumente aufgetreten, der bereits gemeldet wurde.
+            return null;
         }
 
-        // .DEFINE erzeugt keinen eigenen Knoten im AST
-        return null;
+        return new DefineNode(name, valueNode);
     }
 }
