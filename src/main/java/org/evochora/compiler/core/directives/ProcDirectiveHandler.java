@@ -30,9 +30,12 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
         parser.consume(TokenType.NEWLINE, "Expected newline after procedure name.");
 
         List<Token> parameters = new ArrayList<>();
-        // Prüfe auf eine optionale .WITH-Klausel
-        if (parser.check(TokenType.DIRECTIVE) && parser.peek().text().equalsIgnoreCase(".WITH")) {
-            parser.advance(); // .WITH konsumieren
+        // Prüfe auf eine optionale WITH-Klausel (als Keyword oder Direktive)
+        boolean hasWith = (parser.check(TokenType.IDENTIFIER) && parser.peek().text().equalsIgnoreCase("WITH")) ||
+                          (parser.check(TokenType.DIRECTIVE) && parser.peek().text().equalsIgnoreCase(".WITH"));
+
+        if (hasWith) {
+            parser.advance(); // WITH oder .WITH konsumieren
             while (!parser.check(TokenType.NEWLINE) && !parser.isAtEnd()) {
                 parameters.add(parser.consume(TokenType.REGISTER, "Expected a register as a parameter in .WITH clause."));
             }
@@ -47,8 +50,11 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
         // Konsumiere das .ENDP-Token, das die Schleife beendet hat.
         if (!parser.match(TokenType.DIRECTIVE)) {
              parser.getDiagnostics().reportError("Unterminated .PROC block; missing .ENDP.", "Unknown", procName.line());
+             return null;
         }
 
-        return new ProcedureNode(procName, parameters, body);
+        ProcedureNode procNode = new ProcedureNode(procName, parameters, body);
+        parser.registerProcedure(procNode);
+        return procNode;
     }
 }

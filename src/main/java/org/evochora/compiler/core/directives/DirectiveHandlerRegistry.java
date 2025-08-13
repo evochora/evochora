@@ -44,6 +44,14 @@ import java.util.Optional;
         registry.register(".DEFINE", new DefineDirectiveHandler());
             registry.register(".REG", new RegDirectiveHandler());
             registry.register(".PROC", new ProcDirectiveHandler());
+            registry.register(".SCOPE", new ScopeDirectiveHandler());
+            registry.register(".IMPORT", new ImportDirectiveHandler());
+            registry.register(".EXPORT", new ExportDirectiveHandler());
+            registry.register(".REQUIRE", new RequireDirectiveHandler());
+            registry.register(".PREG", new PregDirectiveHandler());
+            registry.register(".ORG", new OrgDirectiveHandler());
+            registry.register(".DIR", new DirDirectiveHandler());
+            registry.register(".PLACE", new PlaceDirectiveHandler());
         return registry;
     }
 }

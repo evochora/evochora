@@ -12,4 +12,8 @@ public record TypedLiteralNode(
         Token type,
         Token value
 ) implements AstNode {
+    @Override
+    public <T> T accept(AstVisitor<T> visitor) {
+        return visitor.visit(this);
+    }
 }

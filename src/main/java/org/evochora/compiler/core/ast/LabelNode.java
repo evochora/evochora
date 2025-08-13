@@ -12,4 +12,8 @@ public record LabelNode(
         Token labelToken,
         AstNode statement
 ) implements AstNode {
+    @Override
+    public <T> T accept(AstVisitor<T> visitor) {
+        return visitor.visit(this);
+    }
 }

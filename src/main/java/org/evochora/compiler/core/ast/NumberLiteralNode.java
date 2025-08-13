@@ -10,6 +10,11 @@ import org.evochora.compiler.core.Token;
 public record NumberLiteralNode(
         Token numberToken
 ) implements AstNode {
+    @Override
+    public <T> T accept(AstVisitor<T> visitor) {
+        return visitor.visit(this);
+    }
+
     public int getValue() {
         return (int) numberToken.value();
     }

@@ -6,6 +6,11 @@ package org.evochora.compiler.core.ast;
  * wird durch einen Knoten repräsentiert, der dieses Interface implementiert.
  */
 public interface AstNode {
-    // Vorerst leer, dient als gemeinsamer Typ.
-    // Später könnten hier z.B. Methoden für einen "Visitor" hinzukommen.
+    /**
+     * Akzeptiert einen Visitor. Teil des Visitor-Patterns.
+     * @param visitor Der Visitor, der diesen Knoten besuchen soll.
+     * @param <T> Der Rückgabetyp des Visitors.
+     * @return Das Ergebnis der visit-Operation.
+     */
+    <T> T accept(AstVisitor<T> visitor);
 }

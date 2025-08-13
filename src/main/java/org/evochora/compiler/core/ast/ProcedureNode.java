@@ -20,4 +20,8 @@ public record ProcedureNode(
         List<Token> parameters,
         List<AstNode> body
 ) implements AstNode {
+    @Override
+    public <T> T accept(AstVisitor<T> visitor) {
+        return visitor.visit(this);
+    }
 }

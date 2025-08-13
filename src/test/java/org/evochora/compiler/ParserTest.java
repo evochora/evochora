@@ -187,6 +187,12 @@ public class ParserTest {
 
         InstructionNode nopNode = (InstructionNode) bodyWithoutNulls.get(0);
         assertThat(nopNode.opcode().text()).isEqualTo("NOP");
+
+        // Prüfe, ob die Prozedur korrekt in der Tabelle des Parsers registriert wurde.
+        var procTable = parser.getProcedureTable();
+        assertThat(procTable).hasSize(1);
+        assertThat(procTable).containsKey("MY_PROC");
+        assertThat(procTable.get("MY_PROC")).isSameAs(procNode);
     }
 
     @Test
@@ -221,6 +227,136 @@ public class ParserTest {
         assertThat(bodyWithoutNulls).hasSize(1);
     }
 
+
+    @Test
+    void testParserScopeBlock() {
+        // Arrange
+        String source = String.join("\n",
+                ".SCOPE MY_SCOPE",
+                "  NOP",
+                ".ENDS"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics);
+
+        // Act
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(ast).hasSize(1);
+        assertThat(ast.get(0)).isInstanceOf(org.evochora.compiler.core.ast.ScopeNode.class);
+
+        org.evochora.compiler.core.ast.ScopeNode scopeNode = (org.evochora.compiler.core.ast.ScopeNode) ast.get(0);
+        assertThat(scopeNode.name().text()).isEqualTo("MY_SCOPE");
+
+        List<AstNode> scopeBody = scopeNode.body().stream().filter(Objects::nonNull).toList();
+        assertThat(scopeBody).hasSize(1);
+        assertThat(scopeBody.get(0)).isInstanceOf(InstructionNode.class);
+    }
+
+    @Test
+    void testGlobalImport() {
+        // Arrange
+        String source = ".IMPORT MY.PROC AS P";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics);
+
+        // Act
+        List<AstNode> ast = parser.parse();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(ast).hasSize(1);
+        assertThat(ast.get(0)).isInstanceOf(org.evochora.compiler.core.ast.ImportNode.class);
+        org.evochora.compiler.core.ast.ImportNode importNode = (org.evochora.compiler.core.ast.ImportNode) ast.get(0);
+        assertThat(importNode.name().text()).isEqualTo("MY.PROC");
+        assertThat(importNode.alias().text()).isEqualTo("P");
+    }
+
+    @Test
+    void testFullProcedureDefinition() {
+        // Arrange
+        String source = String.join("\n",
+                ".PROC FULL_PROC WITH %DR0",
+                "  .PREG %TMP %PR0",
+                "  .EXPORT FULL_PROC",
+                "  .REQUIRE SOME_OTHER_PROC",
+                "  NOP",
+                ".ENDP"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics);
+
+        // Act
+        List<AstNode> ast = parser.parse();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(ast).hasSize(1);
+        assertThat(ast.get(0)).isInstanceOf(org.evochora.compiler.core.ast.ProcedureNode.class);
+
+        org.evochora.compiler.core.ast.ProcedureNode procNode = (org.evochora.compiler.core.ast.ProcedureNode) ast.get(0);
+        assertThat(procNode.name().text()).isEqualTo("FULL_PROC");
+        assertThat(procNode.parameters()).hasSize(1).extracting(Token::text).containsExactly("%DR0");
+
+        // Filtere die Direktiven aus dem Body
+        List<AstNode> bodyDirectives = procNode.body().stream()
+                .filter(n -> !(n instanceof InstructionNode))
+                .toList();
+        assertThat(bodyDirectives).hasSize(3);
+        assertThat(bodyDirectives.get(0)).isInstanceOf(org.evochora.compiler.core.ast.PregNode.class);
+        assertThat(bodyDirectives.get(1)).isInstanceOf(org.evochora.compiler.core.ast.ExportNode.class);
+        assertThat(bodyDirectives.get(2)).isInstanceOf(org.evochora.compiler.core.ast.RequireNode.class);
+    }
+
+    @Test
+    void testOrgDirective() {
+        // Arrange
+        String source = ".ORG 10|20";
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine());
+
+        // Act
+        List<AstNode> ast = parser.parse();
+
+        // Assert
+        assertThat(parser.getDiagnostics().hasErrors()).isFalse();
+        assertThat(ast).hasSize(1).first().isInstanceOf(org.evochora.compiler.core.ast.OrgNode.class);
+    }
+
+    @Test
+    void testDirDirective() {
+        // Arrange
+        String source = ".DIR 1|0";
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine());
+
+        // Act
+        List<AstNode> ast = parser.parse();
+
+        // Assert
+        assertThat(parser.getDiagnostics().hasErrors()).isFalse();
+        assertThat(ast).hasSize(1).first().isInstanceOf(org.evochora.compiler.core.ast.DirNode.class);
+    }
+
+    @Test
+    void testPlaceDirective() {
+        // Arrange
+        String source = ".PLACE DATA:100 5|-5";
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine());
+
+        // Act
+        List<AstNode> ast = parser.parse();
+
+        // Assert
+        assertThat(parser.getDiagnostics().hasErrors()).isFalse();
+        assertThat(ast).hasSize(1).first().isInstanceOf(org.evochora.compiler.core.ast.PlaceNode.class);
+
+        org.evochora.compiler.core.ast.PlaceNode placeNode = (org.evochora.compiler.core.ast.PlaceNode) ast.get(0);
+        assertThat(placeNode.literal()).isInstanceOf(org.evochora.compiler.core.ast.TypedLiteralNode.class);
+        assertThat(placeNode.position()).isInstanceOf(org.evochora.compiler.core.ast.VectorLiteralNode.class);
+    }
 
     @Test
     void testParserVectorLiteral() {

@@ -30,6 +30,7 @@ public class Parser {
      */
     private final Map<String, Token> symbolTable = new HashMap<>();
     private final Map<String, Token> registerAliasTable = new HashMap<>();
+    private final Map<String, ProcedureNode> procedureTable = new HashMap<>();
 
     /**
      * Erstellt einen neuen Parser.
@@ -116,15 +117,18 @@ public class Parser {
         if (match(TokenType.OPCODE)) {
             Token opcode = previous();
             List<AstNode> arguments = new ArrayList<>();
-            // Solange wir nicht am Zeilenende sind, parsen wir Argumente.
+            // Solange wir nicht am Zeilenende oder Dateiende sind, parsen wir Argumente.
             while (!isAtEnd() && !check(TokenType.NEWLINE)) {
                 arguments.add(expression());
             }
             return new InstructionNode(opcode, arguments);
         }
 
-        Token unexpected = advance();
-        diagnostics.reportError("Expected instruction, but got " + unexpected.text(), "Unknown", unexpected.line());
+        // Wenn wir hier ankommen, aber nicht am Ende sind, ist es ein Fehler.
+        if (!isAtEnd()) {
+            Token unexpected = advance();
+            diagnostics.reportError("Expected instruction, but got " + unexpected.text(), "Unknown", unexpected.line());
+        }
         return null;
     }
 
@@ -227,7 +231,7 @@ public class Parser {
         return tokens.get(current);
     }
 
-    private Token previous() {
+    public Token previous() {
         return tokens.get(current - 1);
     }
 
@@ -246,6 +250,19 @@ public class Parser {
 
     public Map<String, Token> getRegisterAliasTable() {
         return registerAliasTable;
+    }
+
+    public void registerProcedure(ProcedureNode procedure) {
+        String name = procedure.name().text().toUpperCase();
+        if (procedureTable.containsKey(name)) {
+            getDiagnostics().reportError("Procedure '" + name + "' is already defined.", "Unknown", procedure.name().line());
+        } else {
+            procedureTable.put(name, procedure);
+        }
+    }
+
+    public Map<String, ProcedureNode> getProcedureTable() {
+        return procedureTable;
     }
 
     public DiagnosticsEngine getDiagnostics() {

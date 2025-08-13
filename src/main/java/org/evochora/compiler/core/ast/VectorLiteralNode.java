@@ -12,4 +12,8 @@ import java.util.List;
 public record VectorLiteralNode(
         List<Token> components
 ) implements AstNode {
+    @Override
+    public <T> T accept(AstVisitor<T> visitor) {
+        return visitor.visit(this);
+    }
 }

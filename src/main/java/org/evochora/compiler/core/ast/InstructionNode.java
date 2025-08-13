@@ -14,4 +14,8 @@ public record InstructionNode(
         Token opcode,
         List<AstNode> arguments
 ) implements AstNode {
+    @Override
+    public <T> T accept(AstVisitor<T> visitor) {
+        return visitor.visit(this);
+    }
 }

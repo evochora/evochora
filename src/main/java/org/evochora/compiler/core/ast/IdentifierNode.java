@@ -11,4 +11,8 @@ import org.evochora.compiler.core.Token;
 public record IdentifierNode(
         Token identifierToken
 ) implements AstNode {
+    @Override
+    public <T> T accept(AstVisitor<T> visitor) {
+        return visitor.visit(this);
+    }
 }
