@@ -1,11 +1,15 @@
 package org.evochora.compiler.directives;
 
-import org.evochora.compiler.core.phases.Lexer;
-import org.evochora.compiler.core.phases.Parser;
-import org.evochora.compiler.core.Token;
-import org.evochora.compiler.core.ast.AstNode;
-import org.evochora.compiler.core.ast.InstructionNode;
+import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.lexer.Token;
+import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.frontend.parser.ast.InstructionNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.parser.features.proc.ExportNode;
+import org.evochora.compiler.frontend.parser.features.proc.PregNode;
+import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
+import org.evochora.compiler.frontend.parser.features.require.RequireNode;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -33,9 +37,9 @@ public class ProcedureDirectiveTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
-        assertThat(ast.get(0)).isInstanceOf(org.evochora.compiler.core.ast.ProcedureNode.class);
+        assertThat(ast.get(0)).isInstanceOf(ProcedureNode.class);
 
-        org.evochora.compiler.core.ast.ProcedureNode procNode = (org.evochora.compiler.core.ast.ProcedureNode) ast.get(0);
+        ProcedureNode procNode = (ProcedureNode) ast.get(0);
         assertThat(procNode.name().text()).isEqualTo("MY_PROC");
 
         List<AstNode> bodyWithoutNulls = procNode.body().stream().filter(Objects::nonNull).toList();
@@ -68,9 +72,9 @@ public class ProcedureDirectiveTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
-        assertThat(ast.get(0)).isInstanceOf(org.evochora.compiler.core.ast.ProcedureNode.class);
+        assertThat(ast.get(0)).isInstanceOf(ProcedureNode.class);
 
-        org.evochora.compiler.core.ast.ProcedureNode procNode = (org.evochora.compiler.core.ast.ProcedureNode) ast.get(0);
+        ProcedureNode procNode = (ProcedureNode) ast.get(0);
         assertThat(procNode.name().text()).isEqualTo("ADD");
         assertThat(procNode.parameters()).hasSize(2);
         assertThat(procNode.parameters().get(0).text()).isEqualTo("%DR0");
@@ -97,9 +101,9 @@ public class ProcedureDirectiveTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
-        assertThat(ast.get(0)).isInstanceOf(org.evochora.compiler.core.ast.ProcedureNode.class);
+        assertThat(ast.get(0)).isInstanceOf(ProcedureNode.class);
 
-        org.evochora.compiler.core.ast.ProcedureNode procNode = (org.evochora.compiler.core.ast.ProcedureNode) ast.get(0);
+        ProcedureNode procNode = (ProcedureNode) ast.get(0);
         assertThat(procNode.name().text()).isEqualTo("FULL_PROC");
         assertThat(procNode.parameters()).hasSize(1).extracting(Token::text).containsExactly("%DR0");
 
@@ -108,15 +112,15 @@ public class ProcedureDirectiveTest {
                 .toList();
         assertThat(bodyDirectives).hasSize(3);
 
-        assertThat(bodyDirectives.get(0)).isInstanceOf(org.evochora.compiler.core.ast.PregNode.class);
-        org.evochora.compiler.core.ast.PregNode pregNode = (org.evochora.compiler.core.ast.PregNode) bodyDirectives.get(0);
+        assertThat(bodyDirectives.get(0)).isInstanceOf(PregNode.class);
+        PregNode pregNode = (PregNode) bodyDirectives.get(0);
         assertThat(pregNode.alias().text()).isEqualTo("%TMP");
         assertThat(pregNode.index().value()).isEqualTo(0);
 
-        assertThat(bodyDirectives.get(1)).isInstanceOf(org.evochora.compiler.core.ast.ExportNode.class);
+        assertThat(bodyDirectives.get(1)).isInstanceOf(ExportNode.class);
 
-        assertThat(bodyDirectives.get(2)).isInstanceOf(org.evochora.compiler.core.ast.RequireNode.class);
-        org.evochora.compiler.core.ast.RequireNode requireNode = (org.evochora.compiler.core.ast.RequireNode) bodyDirectives.get(2);
+        assertThat(bodyDirectives.get(2)).isInstanceOf(RequireNode.class);
+        RequireNode requireNode = (RequireNode) bodyDirectives.get(2);
         assertThat(requireNode.path().value()).isEqualTo("lib/utils.s");
         assertThat(requireNode.alias().text()).isEqualTo("utils");
     }

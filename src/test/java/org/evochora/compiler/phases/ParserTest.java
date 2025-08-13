@@ -1,13 +1,11 @@
 package org.evochora.compiler.phases;
 
-import org.evochora.compiler.core.phases.Lexer;
-import org.evochora.compiler.core.phases.Parser;
-import org.evochora.compiler.core.Token;
-import org.evochora.compiler.core.ast.AstNode;
-import org.evochora.compiler.core.ast.InstructionNode;
-import org.evochora.compiler.core.ast.NumberLiteralNode;
-import org.evochora.compiler.core.ast.RegisterNode;
+import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.lexer.Token;
+import org.evochora.compiler.frontend.parser.ast.*;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -62,9 +60,9 @@ public class ParserTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
-        assertThat(ast.get(0)).isInstanceOf(org.evochora.compiler.core.ast.LabelNode.class);
+        assertThat(ast.get(0)).isInstanceOf(LabelNode.class);
 
-        org.evochora.compiler.core.ast.LabelNode labelNode = (org.evochora.compiler.core.ast.LabelNode) ast.get(0);
+        LabelNode labelNode = (LabelNode) ast.get(0);
         assertThat(labelNode.labelToken().text()).isEqualTo("L1");
         assertThat(labelNode.statement()).isInstanceOf(InstructionNode.class);
 
@@ -90,9 +88,9 @@ public class ParserTest {
         assertThat(ast).hasSize(1);
         InstructionNode setv = (InstructionNode) ast.get(0);
         assertThat(setv.arguments()).hasSize(2);
-        assertThat(setv.arguments().get(1)).isInstanceOf(org.evochora.compiler.core.ast.VectorLiteralNode.class);
+        assertThat(setv.arguments().get(1)).isInstanceOf(VectorLiteralNode.class);
 
-        org.evochora.compiler.core.ast.VectorLiteralNode vector = (org.evochora.compiler.core.ast.VectorLiteralNode) setv.arguments().get(1);
+        VectorLiteralNode vector = (VectorLiteralNode) setv.arguments().get(1);
         assertThat(vector.components()).hasSize(2);
         assertThat(vector.components().get(0).value()).isEqualTo(10);
         assertThat(vector.components().get(1).value()).isEqualTo(-20);

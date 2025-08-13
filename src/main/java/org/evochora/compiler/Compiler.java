@@ -3,62 +3,68 @@ package org.evochora.compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ICompiler;
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.compiler.core.phases.Lexer;
-import org.evochora.compiler.core.phases.Parser;
+import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Token;
+import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.preprocessor.PreProcessor; // NEU
+import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.parser.ast.AstNode;
 
+import java.nio.file.Path; // NEU
 import java.util.List;
 
 /**
- * Die Hauptimplementierung der {@link ICompiler}-Schnittstelle.
- * Dies ist der neue, modulare Compiler, der die Legacy-Implementierung ersetzt.
- * <p>
- * Er orchestriert die verschiedenen Phasen des Kompilierungsprozesses.
+ * Die Hauptimplementierung der ICompiler-Schnittstelle.
  */
 public class Compiler implements ICompiler {
 
     private final DiagnosticsEngine diagnostics = new DiagnosticsEngine();
     private int verbosity = 1;
 
-    /**
-     * {@inheritDoc}
-     */
-        /**
-         * {@inheritDoc}
-         */
     @Override
     public ProgramArtifact compile(List<String> sourceLines, String programName) throws CompilationException {
-        // TODO: [Phase 4] Temporäre Implementierung, wird schrittweise ausgebaut.
 
-        // Phase 0: Preprocessing
-        // TODO: Hier werden die Preprocessing-Handler aufgerufen (z.B. für .FILE)
-
-        // Phase 1: Lexing
+        // VOR PHASE 1: Preprocessing (Hier werden Tokens direkt modifiziert)
+        // Anmerkung: Dieser Schritt ist etwas speziell, da er vor dem eigentlichen Lexing des Haupt-Codes
+        // stattfindet. Eine noch sauberere Architektur würde den Preprocessor den Source-String modifizieren
+        // lassen, aber für den Moment ist dieser Ansatz pragmatisch.
         String fullSource = String.join("\n", sourceLines);
-        Lexer lexer = new Lexer(fullSource, diagnostics);
-        List<org.evochora.compiler.core.Token> tokens = lexer.scanTokens();
+        Lexer initialLexer = new Lexer(fullSource, diagnostics);
+        List<Token> initialTokens = initialLexer.scanTokens();
+
+        // Wir brauchen einen Basispfad, um .INCLUDE-Dateien zu finden.
+        // Vorerst nehmen wir das aktuelle Arbeitsverzeichnis.
+        Path basePath = Path.of("").toAbsolutePath();
+
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, basePath);
+        List<Token> processedTokens = preProcessor.expand();
+
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
         }
 
-        // Phase 2: Parsing
-        Parser parser = new Parser(tokens, diagnostics);
-        List<org.evochora.compiler.core.ast.AstNode> ast = parser.parse();
+        // Phase 2: Parsing (arbeitet mit den vom Preprocessor bereinigten Tokens)
+        Parser parser = new Parser(processedTokens, diagnostics);
+        List<AstNode> ast = parser.parse();
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
         }
 
-        // TODO: Phase 3 (Semantische Analyse) und 4 (Code-Generierung) implementieren.
+        // Phase 3: Semantische Analyse
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        analyzer.analyze(ast);
+        if (diagnostics.hasErrors()) {
+            throw new CompilationException(diagnostics.summary());
+        }
+
+        // TODO: Phase 4 (Code-Generierung) implementieren.
         diagnostics.reportError("Code-Generierung ist noch nicht implementiert.", programName, 1);
         throw new CompilationException(diagnostics.summary());
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setVerbosity(int level) {
         this.verbosity = level;
     }
-    
 }

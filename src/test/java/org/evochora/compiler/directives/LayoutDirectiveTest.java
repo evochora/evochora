@@ -1,9 +1,14 @@
 package org.evochora.compiler.directives;
 
-import org.evochora.compiler.core.phases.Lexer;
-import org.evochora.compiler.core.phases.Parser;
-import org.evochora.compiler.core.ast.AstNode;
+import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.parser.ast.TypedLiteralNode;
+import org.evochora.compiler.frontend.parser.ast.VectorLiteralNode;
+import org.evochora.compiler.frontend.parser.features.dir.DirNode;
+import org.evochora.compiler.frontend.parser.features.org.OrgNode;
+import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -22,7 +27,7 @@ public class LayoutDirectiveTest {
 
         // Assert
         assertThat(parser.getDiagnostics().hasErrors()).isFalse();
-        assertThat(ast).hasSize(1).first().isInstanceOf(org.evochora.compiler.core.ast.OrgNode.class);
+        assertThat(ast).hasSize(1).first().isInstanceOf(OrgNode.class);
     }
 
     @Test
@@ -36,7 +41,7 @@ public class LayoutDirectiveTest {
 
         // Assert
         assertThat(parser.getDiagnostics().hasErrors()).isFalse();
-        assertThat(ast).hasSize(1).first().isInstanceOf(org.evochora.compiler.core.ast.DirNode.class);
+        assertThat(ast).hasSize(1).first().isInstanceOf(DirNode.class);
     }
 
     @Test
@@ -50,10 +55,10 @@ public class LayoutDirectiveTest {
 
         // Assert
         assertThat(parser.getDiagnostics().hasErrors()).isFalse();
-        assertThat(ast).hasSize(1).first().isInstanceOf(org.evochora.compiler.core.ast.PlaceNode.class);
+        assertThat(ast).hasSize(1).first().isInstanceOf(PlaceNode.class);
 
-        org.evochora.compiler.core.ast.PlaceNode placeNode = (org.evochora.compiler.core.ast.PlaceNode) ast.get(0);
-        assertThat(placeNode.literal()).isInstanceOf(org.evochora.compiler.core.ast.TypedLiteralNode.class);
-        assertThat(placeNode.position()).isInstanceOf(org.evochora.compiler.core.ast.VectorLiteralNode.class);
+        PlaceNode placeNode = (PlaceNode) ast.get(0);
+        assertThat(placeNode.literal()).isInstanceOf(TypedLiteralNode.class);
+        assertThat(placeNode.position()).isInstanceOf(VectorLiteralNode.class);
     }
 }

@@ -1,11 +1,11 @@
 package org.evochora.compiler.directives;
 
-import org.evochora.compiler.core.phases.Lexer;
-import org.evochora.compiler.core.phases.Parser;
-import org.evochora.compiler.core.Token;
-import org.evochora.compiler.core.ast.AstNode;
-import org.evochora.compiler.core.ast.InstructionNode;
-import org.evochora.compiler.core.ast.RegisterNode;
+import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.lexer.Token;
+import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.frontend.parser.ast.InstructionNode;
+import org.evochora.compiler.frontend.parser.ast.RegisterNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.junit.jupiter.api.Test;
 

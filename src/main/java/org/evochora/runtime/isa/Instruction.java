@@ -2,7 +2,6 @@ package org.evochora.runtime.isa;
 
 import org.evochora.app.setup.Config;
 import org.evochora.app.Simulation;
-import org.evochora.compiler.internal.legacy.ArgumentType;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.runtime.isa.instructions.*;
 import org.evochora.runtime.model.Environment;
@@ -30,7 +29,8 @@ public abstract class Instruction {
     private static final Map<Integer, BiFunction<Organism, Environment, Instruction>> REGISTERED_PLANNERS_BY_ID = new HashMap<>();
     private static final Map<Integer, AssemblerPlanner> REGISTERED_ASSEMBLERS_BY_ID = new HashMap<>();
     protected static final Map<Integer, List<OperandSource>> OPERAND_SOURCES = new HashMap<>();
-    private static final Map<Integer, Map<Integer, ArgumentType>> ARGUMENT_TYPES_BY_ID = new HashMap<>();
+    private static final Map<Integer, Map<Integer, org.evochora.compiler.internal.legacy.ArgumentType>> ARGUMENT_TYPES_BY_ID = new HashMap<>();
+    private static final Map<Integer, InstructionSignature> SIGNATURES_BY_ID = new HashMap<>();
 
 
     public static final int PR_BASE = 1000;
@@ -194,6 +194,35 @@ public abstract class Instruction {
             Constructor<? extends Instruction> constructor = familyClass.getConstructor(Organism.class, int.class);
             Method assembleMethod = familyClass.getMethod("assemble", String[].class, Map.class, Map.class, String.class);
 
+            // Erstelle die Signatur aus den OperandSources
+            List<InstructionArgumentType> argTypesForSignature = new ArrayList<>();
+            Map<Integer, org.evochora.compiler.internal.legacy.ArgumentType> legacyArgTypes = new HashMap<>();
+            int argIndex = 0;
+            int length = 1;
+
+            for (OperandSource s : sources) {
+                if (s == OperandSource.REGISTER) {
+                    length++;
+                    legacyArgTypes.put(argIndex++, org.evochora.compiler.internal.legacy.ArgumentType.REGISTER);
+                    argTypesForSignature.add(InstructionArgumentType.REGISTER);
+                } else if (s == OperandSource.IMMEDIATE) {
+                    length++;
+                    legacyArgTypes.put(argIndex++, org.evochora.compiler.internal.legacy.ArgumentType.LITERAL);
+                    argTypesForSignature.add(InstructionArgumentType.LITERAL);
+                } else if (s == OperandSource.VECTOR) {
+                    length += Config.WORLD_DIMENSIONS;
+                    argTypesForSignature.add(InstructionArgumentType.VECTOR);
+                    for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
+                        legacyArgTypes.put(argIndex++, org.evochora.compiler.internal.legacy.ArgumentType.COORDINATE);
+                    }
+                } else if (s == OperandSource.LABEL) {
+                    length += Config.WORLD_DIMENSIONS;
+                    legacyArgTypes.put(argIndex++, org.evochora.compiler.internal.legacy.ArgumentType.LABEL);
+                    argTypesForSignature.add(InstructionArgumentType.LABEL);
+                }
+            }
+            InstructionSignature signature = new InstructionSignature(argTypesForSignature);
+
             for (Map.Entry<Integer, String> entry : variants.entrySet()) {
                 int id = entry.getKey();
                 String name = entry.getValue();
@@ -214,30 +243,9 @@ public abstract class Instruction {
                     }
                 };
 
-                int length = 1;
-                Map<Integer, ArgumentType> argTypes = new HashMap<>();
-                int argIndex = 0;
-                for(OperandSource s : sources) {
-                    if (s == OperandSource.REGISTER) {
-                        length++;
-                        argTypes.put(argIndex++, ArgumentType.REGISTER);
-                    } else if (s == OperandSource.IMMEDIATE) {
-                        length++;
-                        argTypes.put(argIndex++, ArgumentType.LITERAL);
-                    } else if (s == OperandSource.VECTOR) {
-                        length += Config.WORLD_DIMENSIONS;
-                        for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
-                            argTypes.put(argIndex++, ArgumentType.COORDINATE);
-                        }
-                    } else if (s == OperandSource.LABEL) {
-                        length += Config.WORLD_DIMENSIONS;
-                        argTypes.put(argIndex++, ArgumentType.LABEL);
-                    }
-                }
-
-                registerInstruction(familyClass, id, name, length, planner, assembler);
+                registerInstruction(familyClass, id, name, length, planner, assembler, signature);
                 OPERAND_SOURCES.put(fullId, sources);
-                ARGUMENT_TYPES_BY_ID.put(fullId, argTypes);
+                ARGUMENT_TYPES_BY_ID.put(fullId, legacyArgTypes);
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to register instruction family " + familyClass.getSimpleName(), e);
@@ -247,11 +255,11 @@ public abstract class Instruction {
     private static void register(Class<? extends Instruction> instructionClass, int id, String name) {
         // This is now just for NOP
         BiFunction<Organism, Environment, Instruction> planner = (org, world) -> new NopInstruction(org, 0);
-        registerInstruction(instructionClass, id, name, 1, planner, null);
+        registerInstruction(instructionClass, id, name, 1, planner, null, InstructionSignature.noArgs());
     }
 
     protected static void register(String name, Class<? extends Instruction> instructionClass, int id, List<OperandSource> sources,
-                                 TargetCoordLambda targetLambda) {
+                                   TargetCoordLambda targetLambda) {
 
         BiFunction<Organism, Environment, Instruction> planner = (org, world) -> {
             try {
@@ -268,33 +276,39 @@ public abstract class Instruction {
 
         // Determine length and arg types from sources
         int length = 1;
-        Map<Integer, ArgumentType> argTypes = new HashMap<>();
+        Map<Integer, org.evochora.compiler.internal.legacy.ArgumentType> argTypes = new HashMap<>();
+        List<InstructionArgumentType> signatureArgs = new ArrayList<>();
         int argIndex = 0;
         for (OperandSource s : sources) {
             if (s == OperandSource.STACK) {
-                // Stack operands don't increase instruction length
+                // Stack operands don't increase instruction length or appear in signature
             } else if (s == OperandSource.IMMEDIATE) {
                 length++;
-                argTypes.put(argIndex++, ArgumentType.LITERAL);
+                argTypes.put(argIndex++, org.evochora.compiler.internal.legacy.ArgumentType.LITERAL);
+                signatureArgs.add(InstructionArgumentType.LITERAL);
             } else if (s == OperandSource.VECTOR) {
                 length += Config.WORLD_DIMENSIONS;
-                for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) argTypes.put(argIndex++, ArgumentType.COORDINATE);
+                signatureArgs.add(InstructionArgumentType.VECTOR);
+                for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) argTypes.put(argIndex++, org.evochora.compiler.internal.legacy.ArgumentType.COORDINATE);
             } else if (s == OperandSource.LABEL) {
                 length += Config.WORLD_DIMENSIONS;
-                argTypes.put(argIndex++, ArgumentType.LABEL);
+                argTypes.put(argIndex++, org.evochora.compiler.internal.legacy.ArgumentType.LABEL);
+                signatureArgs.add(InstructionArgumentType.LABEL);
             } else { // REGISTER
                 length++;
-                argTypes.put(argIndex++, ArgumentType.REGISTER);
+                argTypes.put(argIndex++, org.evochora.compiler.internal.legacy.ArgumentType.REGISTER);
+                signatureArgs.add(InstructionArgumentType.REGISTER);
             }
         }
+        InstructionSignature signature = new InstructionSignature(signatureArgs);
 
         OPERAND_SOURCES.put(id | Config.TYPE_CODE, sources);
         ARGUMENT_TYPES_BY_ID.put(id | Config.TYPE_CODE, argTypes);
-        registerInstruction(instructionClass, id, name, length, planner, null);
+        registerInstruction(instructionClass, id, name, length, planner, null, signature);
     }
 
     private static void registerInstruction(Class<? extends Instruction> instructionClass, int id, String name, int length,
-                                            BiFunction<Organism, Environment, Instruction> planner, AssemblerPlanner assembler) {
+                                            BiFunction<Organism, Environment, Instruction> planner, AssemblerPlanner assembler, InstructionSignature signature) {
         String upperCaseName = name.toUpperCase();
         int fullId = id | Config.TYPE_CODE;
         REGISTERED_INSTRUCTIONS_BY_ID.put(fullId, instructionClass);
@@ -303,6 +317,7 @@ public abstract class Instruction {
         ID_TO_LENGTH.put(fullId, length);
         REGISTERED_PLANNERS_BY_ID.put(fullId, planner);
         REGISTERED_ASSEMBLERS_BY_ID.put(fullId, assembler);
+        SIGNATURES_BY_ID.put(fullId, signature);
     }
 
     public abstract void execute(Simulation simulation);
@@ -325,7 +340,10 @@ public abstract class Instruction {
     public static Integer getInstructionIdByName(String name) { return NAME_TO_ID.get(name.toUpperCase()); }
     public static BiFunction<Organism, Environment, Instruction> getPlannerById(int id) { return REGISTERED_PLANNERS_BY_ID.get(id); }
     public static AssemblerPlanner getAssemblerById(int id) { return REGISTERED_ASSEMBLERS_BY_ID.get(id); }
-    public static ArgumentType getArgumentTypeFor(int opcodeFullId, int argIndex) { return ARGUMENT_TYPES_BY_ID.getOrDefault(opcodeFullId, Map.of()).getOrDefault(argIndex, ArgumentType.LITERAL); }
+    public static org.evochora.compiler.internal.legacy.ArgumentType getArgumentTypeFor(int opcodeFullId, int argIndex) { return ARGUMENT_TYPES_BY_ID.getOrDefault(opcodeFullId, Map.of()).getOrDefault(argIndex, org.evochora.compiler.internal.legacy.ArgumentType.LITERAL); }
+    public static Optional<InstructionSignature> getSignatureById(int id) {
+        return Optional.ofNullable(SIGNATURES_BY_ID.get(id));
+    }
 
     @FunctionalInterface public interface AssemblerPlanner { AssemblerOutput apply(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap); }
     @FunctionalInterface public interface TargetCoordLambda { List<int[]> apply(Organism organism, Environment environment); }

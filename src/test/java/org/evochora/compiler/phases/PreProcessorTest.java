@@ -1,10 +1,10 @@
 package org.evochora.compiler.phases;
 
-import org.evochora.compiler.core.phases.Lexer;
-import org.evochora.compiler.core.Token;
-import org.evochora.compiler.core.TokenType;
+import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Token;
+import org.evochora.compiler.frontend.lexer.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.core.phases.PreProcessor;
+import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

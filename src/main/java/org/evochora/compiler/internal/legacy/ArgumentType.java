@@ -1,4 +1,4 @@
-// src/main/java/org/evochora/assembler/ArgumentType.java
+// src/main/java/org/evochora/assembler/InstructionArgumentType.java
 package org.evochora.compiler.internal.legacy;
 
 /**

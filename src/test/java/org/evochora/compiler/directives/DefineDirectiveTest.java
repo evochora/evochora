@@ -1,12 +1,13 @@
 package org.evochora.compiler.directives;
 
-import org.evochora.compiler.core.phases.Lexer;
-import org.evochora.compiler.core.phases.Parser;
-import org.evochora.compiler.core.Token;
-import org.evochora.compiler.core.ast.AstNode;
-import org.evochora.compiler.core.ast.InstructionNode;
-import org.evochora.compiler.core.ast.NumberLiteralNode;
-import org.evochora.compiler.core.ast.RegisterNode;
+import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.TokenType;
+import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.lexer.Token;
+import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.frontend.parser.ast.InstructionNode;
+import org.evochora.compiler.frontend.parser.ast.NumberLiteralNode;
+import org.evochora.compiler.frontend.parser.ast.RegisterNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.junit.jupiter.api.Test;
 
@@ -36,7 +37,7 @@ public class DefineDirectiveTest {
         assertThat(symbolTable).containsKey("MY_CONST");
 
         Token valueToken = symbolTable.get("MY_CONST");
-        assertThat(valueToken.type()).isEqualTo(org.evochora.compiler.core.TokenType.NUMBER);
+        assertThat(valueToken.type()).isEqualTo(TokenType.NUMBER);
         assertThat(valueToken.value()).isEqualTo(123);
     }
 
