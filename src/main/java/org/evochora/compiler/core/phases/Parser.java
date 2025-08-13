@@ -1,5 +1,7 @@
-package org.evochora.compiler.core;
+package org.evochora.compiler.core.phases;
 
+import org.evochora.compiler.core.Token;
+import org.evochora.compiler.core.TokenType;
 import org.evochora.compiler.core.ast.*;
 import org.evochora.compiler.core.directives.DirectiveHandlerRegistry;
 import org.evochora.compiler.core.directives.IDirectiveHandler;

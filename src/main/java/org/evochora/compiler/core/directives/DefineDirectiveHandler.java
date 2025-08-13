@@ -5,6 +5,9 @@ import org.evochora.compiler.core.ast.AstNode;
 import org.evochora.compiler.core.ast.NumberLiteralNode;
 import org.evochora.compiler.core.ast.TypedLiteralNode;
 import org.evochora.compiler.core.ast.VectorLiteralNode;
+import org.evochora.compiler.core.phases.CompilerPhase;
+import org.evochora.compiler.core.phases.Parser;
+import org.evochora.compiler.core.phases.ParsingContext;
 
 /**
  * Handler für die .DEFINE-Direktive.

@@ -3,10 +3,8 @@ package org.evochora.compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ICompiler;
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.compiler.core.Lexer;
-import org.evochora.compiler.core.Parser;
-import org.evochora.compiler.core.Token;
-import org.evochora.compiler.core.ast.AstNode;
+import org.evochora.compiler.core.phases.Lexer;
+import org.evochora.compiler.core.phases.Parser;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
 import java.util.List;
@@ -37,14 +35,14 @@ public class Compiler implements ICompiler {
 
         // Phase 1: Lexing
         String fullSource = String.join("\n", sourceLines);
-        org.evochora.compiler.core.Lexer lexer = new org.evochora.compiler.core.Lexer(fullSource, diagnostics);
+        Lexer lexer = new Lexer(fullSource, diagnostics);
         List<org.evochora.compiler.core.Token> tokens = lexer.scanTokens();
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
         }
 
         // Phase 2: Parsing
-        org.evochora.compiler.core.Parser parser = new org.evochora.compiler.core.Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics);
         List<org.evochora.compiler.core.ast.AstNode> ast = parser.parse();
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());

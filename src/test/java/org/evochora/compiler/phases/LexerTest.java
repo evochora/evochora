@@ -1,6 +1,6 @@
-package org.evochora.compiler;
+package org.evochora.compiler.phases;
 
-import org.evochora.compiler.core.Lexer;
+import org.evochora.compiler.core.phases.Lexer;
 import org.evochora.compiler.core.Token;
 import org.evochora.compiler.core.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;

@@ -1,12 +1,12 @@
 package org.evochora.compiler.core.directives;
 
-import org.evochora.compiler.core.CompilerPhase;
-import org.evochora.compiler.core.Parser;
+import org.evochora.compiler.core.phases.CompilerPhase;
+import org.evochora.compiler.core.phases.Parser;
 import org.evochora.compiler.core.ast.AstNode;
 import org.evochora.compiler.core.ast.DirNode;
 import org.evochora.compiler.core.ast.VectorLiteralNode;
 
-import org.evochora.compiler.core.ParsingContext;
+import org.evochora.compiler.core.phases.ParsingContext;
 
 public class DirDirectiveHandler implements IDirectiveHandler {
     @Override public CompilerPhase getPhase() { return CompilerPhase.PARSING; }

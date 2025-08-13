@@ -1,9 +1,10 @@
-package org.evochora.compiler.preprocessor;
+package org.evochora.compiler.phases;
 
-import org.evochora.compiler.core.Lexer;
+import org.evochora.compiler.core.phases.Lexer;
 import org.evochora.compiler.core.Token;
 import org.evochora.compiler.core.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.core.phases.PreProcessor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -14,7 +15,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-public class PreProcessorPassTest {
+public class PreProcessorTest {
 
     @TempDir
     Path tempDir;
@@ -30,7 +31,7 @@ public class PreProcessorPassTest {
         Lexer lexer = new Lexer(mainSource, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
 
-        PreProcessorPass preProcessor = new PreProcessorPass(initialTokens, diagnostics, tempDir);
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, tempDir);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand();

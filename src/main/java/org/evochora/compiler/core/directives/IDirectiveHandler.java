@@ -1,12 +1,12 @@
 package org.evochora.compiler.core.directives;
 
-import org.evochora.compiler.core.CompilerPhase;
+import org.evochora.compiler.core.phases.CompilerPhase;
 
 /**
  * Das Basis-Interface für alle Direktiven-Handler.
  * Jeder Handler ist für die Verarbeitung einer bestimmten Direktive (z.B. ".DEFINE") zuständig.
  */
-import org.evochora.compiler.core.ParsingContext;
+import org.evochora.compiler.core.phases.ParsingContext;
 import org.evochora.compiler.core.ast.AstNode;
 
 public interface IDirectiveHandler {

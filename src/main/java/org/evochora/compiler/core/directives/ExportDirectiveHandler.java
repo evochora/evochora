@@ -1,7 +1,7 @@
 package org.evochora.compiler.core.directives;
 
-import org.evochora.compiler.core.CompilerPhase;
-import org.evochora.compiler.core.ParsingContext;
+import org.evochora.compiler.core.phases.CompilerPhase;
+import org.evochora.compiler.core.phases.ParsingContext;
 import org.evochora.compiler.core.Token;
 import org.evochora.compiler.core.TokenType;
 import org.evochora.compiler.core.ast.AstNode;

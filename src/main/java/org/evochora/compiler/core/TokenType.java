@@ -1,5 +1,7 @@
 package org.evochora.compiler.core;
 
+import org.evochora.compiler.core.phases.Lexer;
+
 /**
  * Definiert die verschiedenen Arten von Tokens, die der {@link Lexer} erkennen kann.
  */

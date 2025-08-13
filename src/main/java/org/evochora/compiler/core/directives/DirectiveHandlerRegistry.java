@@ -53,9 +53,10 @@ import java.util.Optional;
             registry.register(".PLACE", new PlaceDirectiveHandler());
 
                 // Präprozessor-Handler
-                org.evochora.compiler.preprocessor.IncludeDirectiveHandler includeHandler = new org.evochora.compiler.preprocessor.IncludeDirectiveHandler();
+                IncludeDirectiveHandler includeHandler = new IncludeDirectiveHandler();
                 registry.register(".INCLUDE", includeHandler);
                 // TODO: Add .FILE and .INCLUDE_STRICT and differentiate in handler
+    registry.register(".MACRO", new MacroDirectiveHandler());
 
         return registry;
     }

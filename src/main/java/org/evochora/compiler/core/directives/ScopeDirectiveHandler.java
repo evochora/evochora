@@ -3,6 +3,9 @@ package org.evochora.compiler.core.directives;
 import org.evochora.compiler.core.*;
 import org.evochora.compiler.core.ast.AstNode;
 import org.evochora.compiler.core.ast.ScopeNode;
+import org.evochora.compiler.core.phases.CompilerPhase;
+import org.evochora.compiler.core.phases.Parser;
+import org.evochora.compiler.core.phases.ParsingContext;
 
 import java.util.ArrayList;
 import java.util.List;

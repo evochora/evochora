@@ -1,8 +1,7 @@
-package org.evochora.compiler.semantic;
+package org.evochora.compiler.core.phases;
 
 import org.evochora.compiler.core.ast.*;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.runtime.isa.Instruction;
 
 import java.util.List;
 

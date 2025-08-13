@@ -1,8 +1,11 @@
-package org.evochora.compiler.preprocessor;
+package org.evochora.compiler.core.directives;
 
 import org.evochora.compiler.core.*;
-import org.evochora.compiler.core.directives.IDirectiveHandler;
 import org.evochora.compiler.core.ast.AstNode;
+import org.evochora.compiler.core.phases.CompilerPhase;
+import org.evochora.compiler.core.phases.Lexer;
+import org.evochora.compiler.core.phases.ParsingContext;
+import org.evochora.compiler.core.phases.PreProcessor;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,9 +19,14 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
 
     @Override
     public AstNode parse(ParsingContext context) {
+        PreProcessor pass = (PreProcessor) context;
+        int startIndex = pass.getCurrentIndex();
+
         context.advance(); // .INCLUDE konsumieren
         Token pathToken = context.consume(TokenType.STRING, "Expected a file path in quotes after .INCLUDE.");
         if (pathToken == null) return null; // Error occurred
+
+        int endIndex = pass.getCurrentIndex();
 
         String relativePath = (String) pathToken.value();
         Path absolutePath = context.getBasePath().resolve(relativePath).normalize();
@@ -32,8 +40,8 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
         try {
             String content = Files.readString(absolutePath);
             Lexer lexer = new Lexer(content, context.getDiagnostics());
-            // Wir müssen 2 Tokens entfernen: .INCLUDE und den Pfad-String.
-            context.injectTokens(lexer.scanTokens(), 2);
+            pass.removeTokens(startIndex, endIndex - startIndex);
+            pass.injectTokens(lexer.scanTokens(), 0);
         } catch (IOException e) {
             context.getDiagnostics().reportError("Could not read included file: " + absolutePath, "Unknown", pathToken.line());
         }

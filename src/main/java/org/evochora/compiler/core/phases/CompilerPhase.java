@@ -1,4 +1,4 @@
-package org.evochora.compiler.core;
+package org.evochora.compiler.core.phases;
 
 /**
  * Definiert die verschiedenen Phasen des Kompilierungsprozesses.
