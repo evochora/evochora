@@ -1,10 +1,6 @@
 package org.evochora.compiler.frontend;
 
-import org.evochora.compiler.frontend.parser.ast.InstructionNode;
-import org.evochora.compiler.frontend.parser.features.label.LabelNode;
-import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
-import org.evochora.compiler.frontend.parser.features.scope.ScopeNode;
-import org.evochora.compiler.frontend.parser.ast.*;
+import org.evochora.compiler.frontend.parser.ast.AstNode;
 
 import java.util.List;
 import java.util.Map;
@@ -34,19 +30,12 @@ public class TreeWalker {
             return;
         }
 
-        // Führe den Handler für den aktuellen Knoten aus, falls einer registriert ist
+        // Führe den Handler für den aktuellen Knoten aus, falls einer registriert ist.
         handlers.getOrDefault(node.getClass(), n -> {}).accept(node);
 
-        // Steige rekursiv in die Kinder des Knotens ab
-        if (node instanceof LabelNode n) {
-            walk(n.statement());
-        } else if (node instanceof ProcedureNode n) {
-            walk(n.body());
-        } else if (node instanceof ScopeNode n) {
-            walk(n.body());
-        } else if (node instanceof InstructionNode n) {
-            walk(n.arguments());
+        // Steige rekursiv in ALLE Kinder ab, ohne ihren Typ zu kennen.
+        for (AstNode child : node.getChildren()) {
+            walk(child);
         }
-        // Weitere Knotentypen mit Kindern hier hinzufügen...
     }
 }

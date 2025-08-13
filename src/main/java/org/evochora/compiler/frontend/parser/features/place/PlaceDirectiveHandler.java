@@ -3,7 +3,7 @@ package org.evochora.compiler.frontend.parser.features.place;
 import org.evochora.compiler.frontend.directive.IDirectiveHandler;
 import org.evochora.compiler.frontend.CompilerPhase;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.ParsingContext;
+import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.parser.ast.VectorLiteralNode;

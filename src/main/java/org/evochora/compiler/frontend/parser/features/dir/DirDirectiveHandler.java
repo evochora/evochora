@@ -6,7 +6,7 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.VectorLiteralNode;
 
-import org.evochora.compiler.frontend.ParsingContext;
+import org.evochora.compiler.frontend.parser.ParsingContext;
 
 public class DirDirectiveHandler implements IDirectiveHandler {
     @Override public CompilerPhase getPhase() { return CompilerPhase.PARSING; }

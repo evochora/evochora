@@ -5,7 +5,7 @@ import org.evochora.compiler.frontend.lexer.TokenType;
 import org.evochora.compiler.frontend.directive.IDirectiveHandler; // Platzhalter, wird später korrigiert
 import org.evochora.compiler.frontend.CompilerPhase;       // Platzhalter, wird später korrigiert
 import org.evochora.compiler.frontend.parser.Parser;            // Platzhalter, wird später korrigiert
-import org.evochora.compiler.frontend.ParsingContext;    // Platzhalter, wird später korrigiert
+import org.evochora.compiler.frontend.parser.ParsingContext;    // Platzhalter, wird später korrigiert
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 
 /**

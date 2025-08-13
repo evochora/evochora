@@ -9,7 +9,7 @@ import org.evochora.compiler.frontend.parser.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.parser.ast.VectorLiteralNode;
 import org.evochora.compiler.frontend.CompilerPhase;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.ParsingContext;
+import org.evochora.compiler.frontend.parser.ParsingContext;
 
 /**
  * Handler für die .DEFINE-Direktive.

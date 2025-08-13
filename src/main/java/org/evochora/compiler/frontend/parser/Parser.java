@@ -3,7 +3,6 @@ package org.evochora.compiler.frontend.parser;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.CompilerPhase;
 import org.evochora.compiler.frontend.directive.IDirectiveHandler;
-import org.evochora.compiler.frontend.ParsingContext;
 import org.evochora.compiler.frontend.directive.DirectiveHandlerRegistry;
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
@@ -44,12 +43,10 @@ public class Parser implements ParsingContext {
     public List<AstNode> parse() {
         List<AstNode> statements = new ArrayList<>();
         while (!isAtEnd()) {
-            // Überspringe alle leeren Zeilen
-            while (match(TokenType.NEWLINE)) {
-                // Nichts tun, nur konsumieren
+            // Leere Zeilen (nur Newlines) werden hier übersprungen.
+            if (match(TokenType.NEWLINE)) {
+                continue;
             }
-            if (isAtEnd()) break;
-
             AstNode statement = declaration();
             if (statement != null) {
                 statements.add(statement);
@@ -93,12 +90,9 @@ public class Parser implements ParsingContext {
             Token labelToken = advance();
             advance(); // ':' konsumieren
 
-            // Nach einem Label kann optional ein Newline folgen, was wir einfach ignorieren.
-            // Das eigentliche Statement muss die nächste Deklaration sein.
-            if (check(TokenType.NEWLINE)) {
-                match(TokenType.NEWLINE);
-            }
-
+            // Das Statement, das diesem Label zugeordnet ist, ist die nächste Deklaration.
+            // Wenn die Zeile nach dem Label leer ist, wird declaration() null zurückgeben,
+            // was korrekt ist.
             return new LabelNode(labelToken, declaration());
         }
         return instructionStatement();
@@ -115,7 +109,8 @@ public class Parser implements ParsingContext {
         }
 
         Token unexpected = advance();
-        if (unexpected.type() != TokenType.END_OF_FILE) {
+        // Melde nur einen Fehler, wenn es nicht das Ende der Datei oder ein irrelevanter Zeilenumbruch ist.
+        if (unexpected.type() != TokenType.END_OF_FILE && unexpected.type() != TokenType.NEWLINE) {
             diagnostics.reportError("Expected instruction or directive, but got '" + unexpected.text() + "'.", "Unknown", unexpected.line());
         }
         return null;

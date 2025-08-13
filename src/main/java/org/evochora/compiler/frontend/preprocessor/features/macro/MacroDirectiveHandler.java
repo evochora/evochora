@@ -5,7 +5,7 @@ import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.CompilerPhase;
-import org.evochora.compiler.frontend.ParsingContext;
+import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext; // NEU
 

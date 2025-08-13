@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend;
+package org.evochora.compiler.frontend.parser;
 
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
