@@ -41,7 +41,7 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
 
         try {
             String content = Files.readString(absolutePath);
-            Lexer lexer = new Lexer(content, context.getDiagnostics());
+            Lexer lexer = new Lexer(content, context.getDiagnostics(), absolutePath.toString());
             pass.removeTokens(startIndex, endIndex - startIndex);
             pass.injectTokens(lexer.scanTokens(), 0);
         } catch (IOException e) {

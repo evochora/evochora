@@ -10,6 +10,9 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessor; // NEU
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
+import org.evochora.compiler.frontend.irgen.IrGenerator;
+import org.evochora.compiler.ir.IrProgram;
 
 import java.nio.file.Path; // NEU
 import java.util.List;
@@ -57,6 +60,13 @@ public class Compiler implements ICompiler {
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
         }
+
+        // Phase 4a: IR-Generierung (Vorbereitung für spätere Backend-Phasen)
+        IrConverterRegistry irRegistry = IrConverterRegistry.initializeWithDefaults();
+        IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
+        IrProgram irProgram = irGenerator.generate(ast, programName);
+        // Temporär: IR für Tests/Debugging verfügbar machen
+        diagnostics.setTestPayload(irProgram);
 
         // TODO: Phase 4 (Code-Generierung) implementieren.
         diagnostics.reportError("Code-Generierung ist noch nicht implementiert.", programName, 1);

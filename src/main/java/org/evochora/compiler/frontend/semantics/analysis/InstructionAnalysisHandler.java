@@ -8,6 +8,7 @@ import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.InstructionArgumentType;
 import org.evochora.runtime.isa.InstructionSignature;
+import org.evochora.app.setup.Config;
 
 import java.util.Optional;
 
@@ -39,7 +40,36 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
         if (signatureOpt.isPresent()) {
             InstructionSignature signature = signatureOpt.get();
             int expectedArity = signature.getArity();
-            int actualArity = instructionNode.arguments().size();
+
+            // Sonderfall: CALL ... WITH %R1 %R2 ...
+            // Alles nach WITH (oder .WITH) wird nicht als Instruktions-Argument gezählt
+            java.util.List<AstNode> argsForSignature = instructionNode.arguments();
+            if ("CALL".equalsIgnoreCase(instructionName)) {
+                int withIdx = -1;
+                for (int i = 0; i < instructionNode.arguments().size(); i++) {
+                    AstNode a = instructionNode.arguments().get(i);
+                    if (a instanceof IdentifierNode id) {
+                        String t = id.identifierToken().text().toUpperCase();
+                        if ("WITH".equals(t) || ".WITH".equals(t)) { withIdx = i; break; }
+                    }
+                }
+                if (withIdx >= 0) {
+                    argsForSignature = instructionNode.arguments().subList(0, withIdx);
+                    // Validierung: alles nach WITH müssen Register sein
+                    for (int j = withIdx + 1; j < instructionNode.arguments().size(); j++) {
+                        if (!(instructionNode.arguments().get(j) instanceof RegisterNode)) {
+                            diagnostics.reportError(
+                                    "CALL .WITH expects register operands after WITH.",
+                                    "Unknown",
+                                    instructionNode.opcode().line()
+                            );
+                            return;
+                        }
+                    }
+                }
+            }
+
+            int actualArity = argsForSignature.size();
 
             if (expectedArity != actualArity) {
                 diagnostics.reportError(
@@ -52,7 +82,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
             }
 
             for (int i = 0; i < expectedArity; i++) {
-                AstNode argumentNode = instructionNode.arguments().get(i);
+                AstNode argumentNode = argsForSignature.get(i);
                 InstructionArgumentType expectedType = signature.argumentTypes().get(i);
 
                 // Behandle Konstanten-Ersetzung
@@ -94,6 +124,30 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         diagnostics.reportError(
                                 String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got %s.",
                                         i + 1, instructionName, expectedType, actualType),
+                                "Unknown",
+                                instructionNode.opcode().line()
+                        );
+                    }
+
+                    // Zusätzliche Validierungen
+                    // 1) Register-Gültigkeit (%DRx, %PRx, %FPRx) – Aliasse werden bereits im Parser ersetzt
+                    if (expectedType == InstructionArgumentType.REGISTER && argumentNode instanceof RegisterNode regNode) {
+                        String tokenText = regNode.registerToken().text();
+                        Integer regId = Instruction.resolveRegToken(tokenText, java.util.Collections.emptyMap());
+                        if (regId == null) {
+                            diagnostics.reportError(
+                                    String.format("Unknown register '%s'.", tokenText),
+                                    "Unknown",
+                                    regNode.registerToken().line()
+                            );
+                        }
+                    }
+
+                    // 2) Strict typing: ungetypte Literale verbieten, wenn Typ erwartet wird
+                    if (Config.STRICT_TYPING && expectedType == InstructionArgumentType.LITERAL && argumentNode instanceof NumberLiteralNode) {
+                        diagnostics.reportError(
+                                String.format("Argument %d for instruction '%s' requires a typed literal (e.g., DATA:42).",
+                                        i + 1, instructionName),
                                 "Unknown",
                                 instructionNode.opcode().line()
                         );

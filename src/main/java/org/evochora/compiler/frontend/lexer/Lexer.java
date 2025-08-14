@@ -15,6 +15,7 @@ public class Lexer {
     private final String source;
     private final DiagnosticsEngine diagnostics;
     private final List<Token> tokens = new ArrayList<>();
+    private final String logicalFileName;
     private int start = 0;
     private int current = 0;
     private int line = 1;
@@ -26,8 +27,16 @@ public class Lexer {
      * @param diagnostics Die Engine zum Melden von Fehlern.
      */
     public Lexer(String source, DiagnosticsEngine diagnostics) {
+        this(source, diagnostics, "<memory>");
+    }
+
+    /**
+     * Erstellt einen neuen Lexer mit explizitem logischen Dateinamen.
+     */
+    public Lexer(String source, DiagnosticsEngine diagnostics, String logicalFileName) {
         this.source = source;
         this.diagnostics = diagnostics;
+        this.logicalFileName = logicalFileName;
 
         // TODO: Kann das am ende wieder weg?
         org.evochora.runtime.isa.Instruction.init();
@@ -42,7 +51,7 @@ public class Lexer {
             start = current;
             scanToken();
         }
-        tokens.add(new Token(TokenType.END_OF_FILE, "", null, line, column));
+        tokens.add(new Token(TokenType.END_OF_FILE, "", null, line, column, logicalFileName));
         return tokens;
     }
 
@@ -160,7 +169,7 @@ public class Lexer {
     }
 
     private void addToken(TokenType type, Object literal, String text) {
-        tokens.add(new Token(type, text, literal, line, start + 1));
+        tokens.add(new Token(type, text, literal, line, start + 1, logicalFileName));
     }
 
     private boolean isAtEnd() {
