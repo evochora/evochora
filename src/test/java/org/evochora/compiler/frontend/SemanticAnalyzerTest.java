@@ -328,4 +328,18 @@ public class SemanticAnalyzerTest {
                 .contains("requires a typed literal");
     }
 
+    @Test
+    void testDirectAccessToFprIsForbidden() {
+        String source = "ADDI %FPR0 DATA:1";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        analyzer.analyze(ast);
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().get(0).message())
+                .contains("Access to formal parameter registers (%FPRx) is not allowed");
+    }
+
 }

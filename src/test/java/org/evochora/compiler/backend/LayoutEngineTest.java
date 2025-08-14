@@ -5,6 +5,7 @@ import org.evochora.compiler.backend.layout.LayoutEngine;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.ir.*;
 import org.junit.jupiter.api.Test;
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 
 import java.util.HashMap;
 import java.util.List;
@@ -41,8 +42,8 @@ public class LayoutEngineTest {
 
 		IrProgram ir = new IrProgram("Test", List.of(org, dir, label, seti, place));
 
-		LayoutEngine engine = new LayoutEngine();
-		LayoutResult res = engine.layout(ir);
+        LayoutEngine engine = new LayoutEngine();
+        LayoutResult res = engine.layout(ir, new RuntimeInstructionSetAdapter());
 
 		// Start at 2|3, direction 1|0:
 		// seti opcode at 2|3, two operands at 3|3 and 4|3

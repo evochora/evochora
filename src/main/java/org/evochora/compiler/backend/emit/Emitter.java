@@ -30,7 +30,7 @@ public final class Emitter {
 		Map<Integer, SourceInfo> sourceMap = layout.sourceMap();
 		Map<int[], PlacedMolecule> initialObjects = layout.initialWorldObjects();
 
-		int address = 0;
+        int address = 0;
 		for (IrItem item : program.items()) {
 			if (item instanceof IrInstruction ins) {
 				// opcode
@@ -44,13 +44,23 @@ public final class Emitter {
 				// operands
 				List<IrOperand> ops = ins.operands();
 				if (ops != null) {
-					for (IrOperand op : ops) {
-						int[] coord = linearToCoord.get(address);
-						if (coord == null) throw new IllegalStateException("Missing coord for address " + address);
-						Integer value = encodeOperand(op, isa);
-						machineCodeLayout.put(coord, value);
-						address++;
-					}
+                    for (IrOperand op : ops) {
+                        if (op instanceof IrVec vec) {
+                            int[] comps = vec.components();
+                            for (int c : comps) {
+                                int[] coord = linearToCoord.get(address);
+                                if (coord == null) throw new IllegalStateException("Missing coord for address " + address);
+                                machineCodeLayout.put(coord, new Molecule(Config.TYPE_DATA, c).toInt());
+                                address++;
+                            }
+                        } else {
+                            int[] coord = linearToCoord.get(address);
+                            if (coord == null) throw new IllegalStateException("Missing coord for address " + address);
+                            Integer value = encodeOperand(op, isa);
+                            machineCodeLayout.put(coord, value);
+                            address++;
+                        }
+                    }
 				}
 			}
 		}

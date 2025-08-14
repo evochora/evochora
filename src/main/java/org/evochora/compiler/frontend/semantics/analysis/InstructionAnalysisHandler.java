@@ -140,6 +140,16 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                     "Unknown",
                                     regNode.registerToken().line()
                             );
+                        } else {
+                            // Verbot: Direkter Zugriff auf %FPRx soll nicht erlaubt sein
+                            String u = tokenText.toUpperCase();
+                            if (u.startsWith("%FPR")) {
+                                diagnostics.reportError(
+                                        "Access to formal parameter registers (%FPRx) is not allowed in user code.",
+                                        "Unknown",
+                                        regNode.registerToken().line()
+                                );
+                            }
                         }
                     }
 

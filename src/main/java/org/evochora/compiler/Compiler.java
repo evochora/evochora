@@ -75,27 +75,28 @@ public class Compiler implements ICompiler {
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
         IrProgram irProgram = irGenerator.generate(ast, programName);
 
-        // Phase 2: Layout
-        LayoutEngine layoutEngine = new LayoutEngine();
-        LayoutResult layout = layoutEngine.layout(irProgram);
-
-        // Phase 2b: Linking
-        LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults();
-        LinkingContext linkingContext = new LinkingContext();
-        Linker linker = new Linker(linkingRegistry);
-        IrProgram linkedIr = linker.link(irProgram, layout, linkingContext);
-
-        // Phase 3: Emission Rules (rewrites)
+        // Phase 2: Emission Rules (rewrites) BEFORE layout
         EmissionRegistry emissionRegistry = EmissionRegistry.initializeWithDefaults();
-        java.util.List<org.evochora.compiler.ir.IrItem> rewritten = linkedIr.items();
+        java.util.List<org.evochora.compiler.ir.IrItem> rewritten = irProgram.items();
+        // create linking context early as emission rules may annotate it (e.g., callSiteBindings later)
+        LinkingContext linkingContext = new LinkingContext();
         for (IEmissionRule rule : emissionRegistry.rules()) {
             rewritten = rule.apply(rewritten, linkingContext);
         }
-        IrProgram finalIr = new IrProgram(programName, rewritten);
+        IrProgram rewrittenIr = new IrProgram(programName, rewritten);
 
-        // Phase 4: Machine code emission
+        // Phase 3: Layout (now includes rewritten instructions)
+        LayoutEngine layoutEngine = new LayoutEngine();
+        LayoutResult layout = layoutEngine.layout(rewrittenIr, new RuntimeInstructionSetAdapter());
+
+        // Phase 4: Linking
+        LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults();
+        Linker linker = new Linker(linkingRegistry);
+        IrProgram linkedIr = linker.link(rewrittenIr, layout, linkingContext);
+
+        // Phase 5: Machine code emission
         Emitter emitter = new Emitter();
-        ProgramArtifact artifact = emitter.emit(finalIr, layout, linkingContext, new RuntimeInstructionSetAdapter());
+        ProgramArtifact artifact = emitter.emit(linkedIr, layout, linkingContext, new RuntimeInstructionSetAdapter());
         return artifact;
     }
 

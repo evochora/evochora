@@ -31,7 +31,8 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
         if (hasWith) {
             context.advance(); // WITH oder .WITH konsumieren
             while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
-                parameters.add(context.consume(TokenType.REGISTER, "Expected a register as a parameter in .WITH clause."));
+                // Formalparameter sind Bezeichner (z. B. A, VAL), keine Register-Tokens
+                parameters.add(context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name in .WITH clause."));
             }
         }
 

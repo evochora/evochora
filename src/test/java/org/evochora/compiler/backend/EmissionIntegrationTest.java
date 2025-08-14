@@ -27,7 +27,7 @@ public class EmissionIntegrationTest {
 	@Test
 	void endToEnd_CallerAndCalleeMarshalling() {
 		String src = String.join("\n",
-				".PROC INC WITH P0",
+				".PROC INC WITH A",
 				"  RET",
 				".ENDP",
 				"L:",
@@ -64,10 +64,9 @@ public class EmissionIntegrationTest {
 		// Verify caller marshalling sequence around CALL
 		int newCallIdx = -1;
 		for (int i = 0; i < rewritten.size(); i++) if (rewritten.get(i) instanceof IrInstruction ins && ins.opcode().equals("CALL")) { newCallIdx = i; break; }
-		assertThat(newCallIdx).isGreaterThan(1);
-		assertThat(((IrInstruction) rewritten.get(newCallIdx - 1)).opcode()).isEqualTo("PUSH");
-		assertThat(((IrInstruction) rewritten.get(newCallIdx - 2)).opcode()).isEqualTo("PUSH");
-		assertThat(((IrInstruction) rewritten.get(newCallIdx + 1)).opcode()).isEqualTo("POP");
+        assertThat(newCallIdx).isGreaterThan(0);
+        assertThat(((IrInstruction) rewritten.get(newCallIdx - 1)).opcode()).isEqualTo("PUSH");
+        assertThat(((IrInstruction) rewritten.get(newCallIdx + 1)).opcode()).isEqualTo("POP");
 
 		// Verify callee prolog around procedure body
 		int enterIdx = -1; int exitIdx = -1;

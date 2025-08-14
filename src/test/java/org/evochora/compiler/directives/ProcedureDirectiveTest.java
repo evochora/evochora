@@ -59,7 +59,7 @@ public class ProcedureDirectiveTest {
     void testParserProcedureWithParameters() {
         // Arrange
         String source = String.join("\n",
-                ".PROC ADD WITH %DR0 %DR1",
+                ".PROC ADD WITH A B",
                 "  ADDS",
                 ".ENDP"
         );
@@ -77,15 +77,15 @@ public class ProcedureDirectiveTest {
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
         assertThat(procNode.name().text()).isEqualTo("ADD");
         assertThat(procNode.parameters()).hasSize(2);
-        assertThat(procNode.parameters().get(0).text()).isEqualTo("%DR0");
-        assertThat(procNode.parameters().get(1).text()).isEqualTo("%DR1");
+        assertThat(procNode.parameters().get(0).text()).isEqualTo("A");
+        assertThat(procNode.parameters().get(1).text()).isEqualTo("B");
     }
 
     @Test
     void testFullProcedureDefinition() {
         // Arrange
         String source = String.join("\n",
-                ".PROC FULL_PROC WITH %DR0",
+                ".PROC FULL_PROC WITH A",
                 "  .PREG %TMP 0",
                 "  .EXPORT FULL_PROC",
                 "  .REQUIRE \"lib/utils.s\" AS utils",
@@ -105,7 +105,7 @@ public class ProcedureDirectiveTest {
 
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
         assertThat(procNode.name().text()).isEqualTo("FULL_PROC");
-        assertThat(procNode.parameters()).hasSize(1).extracting(Token::text).containsExactly("%DR0");
+        assertThat(procNode.parameters()).hasSize(1).extracting(Token::text).containsExactly("A");
 
         List<AstNode> bodyDirectives = procNode.body().stream()
                 .filter(n -> !(n instanceof InstructionNode))
