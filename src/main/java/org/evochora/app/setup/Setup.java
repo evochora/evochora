@@ -21,7 +21,7 @@ public class Setup {
 
     public static void run(Simulation simulation) {
 
-        CompilerLogger.setLevel(CompilerLogger.TRACE);
+        CompilerLogger.setLevel(CompilerLogger.DEBUG);
 
         // Lade den visuellen Stdlib-Tester
         //placeProgramFromFile(simulation, "StdlibTest.s", new int[]{10, 10});

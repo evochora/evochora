@@ -100,6 +100,7 @@ public class Compiler implements ICompiler {
         IrConverterRegistry irRegistry = IrConverterRegistry.initializeWithDefaults();
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
         IrProgram irProgram = irGenerator.generate(ast, programName);
+        org.evochora.compiler.util.DebugDump.dumpIr(programName, "01_ir_generated", irProgram.items());
         {
             StringBuilder sb = new StringBuilder();
             int limit = Math.min(20, irProgram.items().size());
@@ -124,6 +125,7 @@ public class Compiler implements ICompiler {
         }
         org.evochora.compiler.diagnostics.CompilerLogger.debug("Emission rewrites applied: items=" + rewritten.size());
         IrProgram rewrittenIr = new IrProgram(programName, rewritten);
+        org.evochora.compiler.util.DebugDump.dumpIr(programName, "02_ir_rewritten", rewrittenIr.items());
 
         // Phase 3: Layout (now includes rewritten instructions)
         LayoutEngine layoutEngine = new LayoutEngine();
@@ -144,11 +146,13 @@ public class Compiler implements ICompiler {
         Linker linker = new Linker(linkingRegistry);
         IrProgram linkedIr = linker.link(rewrittenIr, layout, linkingContext);
         org.evochora.compiler.diagnostics.CompilerLogger.debug("Linking completed: items=" + linkedIr.items().size());
+        org.evochora.compiler.util.DebugDump.dumpIr(programName, "03_ir_linked", linkedIr.items());
 
         // Phase 5: Machine code emission
         Emitter emitter = new Emitter();
         ProgramArtifact artifact = emitter.emit(linkedIr, layout, linkingContext, new RuntimeInstructionSetAdapter());
         org.evochora.compiler.diagnostics.CompilerLogger.info("Emit completed: programId=" + artifact.programId() + ", codeWords=" + artifact.machineCodeLayout().size());
+        org.evochora.compiler.util.DebugDump.dumpProgramArtifact(programName, artifact);
         return artifact;
     }
 
