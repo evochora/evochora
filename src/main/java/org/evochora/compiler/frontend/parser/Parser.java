@@ -130,7 +130,14 @@ public class Parser implements ParsingContext {
         }
 
         if (match(TokenType.NUMBER)) return new NumberLiteralNode(previous());
-        if (match(TokenType.REGISTER)) return new RegisterNode(previous());
+        if (match(TokenType.REGISTER)) {
+            Token reg = previous();
+            String name = reg.text().toUpperCase();
+            if (registerAliasTable.containsKey(name)) {
+                return new RegisterNode(registerAliasTable.get(name));
+            }
+            return new RegisterNode(reg);
+        }
 
         if (match(TokenType.IDENTIFIER)) {
             Token identifier = previous();

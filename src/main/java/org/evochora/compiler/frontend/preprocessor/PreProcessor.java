@@ -59,9 +59,32 @@ public class PreProcessor implements ParsingContext {
         int callSiteIndex = this.current;
         advance();
 
-        List<Token> actualArgs = new ArrayList<>();
+        // Parse actual arguments into groups (each argument may span multiple tokens, e.g., DATA:123 or 3|4|5)
+        List<List<Token>> actualArgs = new ArrayList<>();
         while (!isAtEnd() && peek().type() != TokenType.NEWLINE) {
-            actualArgs.add(advance());
+            List<Token> arg = new ArrayList<>();
+            Token t = peek();
+            // Typed literal: IDENTIFIER ':' NUMBER (e.g., DATA:123)
+            if (t.type() == TokenType.IDENTIFIER && (current + 2) < tokens.size()
+                    && tokens.get(current + 1).type() == TokenType.COLON
+                    && tokens.get(current + 2).type() == TokenType.NUMBER) {
+                arg.add(advance()); // IDENTIFIER
+                arg.add(advance()); // ':'
+                arg.add(advance()); // NUMBER
+            }
+            // Vector literal: NUMBER ('|' NUMBER)+
+            else if (t.type() == TokenType.NUMBER) {
+                arg.add(advance()); // first number
+                while (!isAtEnd() && peek().type() == TokenType.PIPE) {
+                    arg.add(advance()); // '|'
+                    if (!isAtEnd()) arg.add(advance()); // next NUMBER
+                    else break;
+                }
+            } else {
+                // Single token argument (REGISTER, IDENTIFIER, etc.)
+                arg.add(advance());
+            }
+            actualArgs.add(arg);
         }
 
         if (actualArgs.size() != macro.parameters().size()) {
@@ -70,18 +93,23 @@ public class PreProcessor implements ParsingContext {
             return;
         }
 
-        Map<String, Token> argMap = new HashMap<>();
+        Map<String, List<Token>> argMap = new HashMap<>();
         for (int i = 0; i < macro.parameters().size(); i++) {
             argMap.put(macro.parameters().get(i).text().toUpperCase(), actualArgs.get(i));
         }
 
         List<Token> expandedBody = new ArrayList<>();
         for (Token bodyToken : macro.body()) {
-            expandedBody.add(argMap.getOrDefault(bodyToken.text().toUpperCase(), bodyToken));
+            List<Token> replacement = argMap.get(bodyToken.text().toUpperCase());
+            if (replacement != null) expandedBody.addAll(replacement);
+            else expandedBody.add(bodyToken);
         }
 
-        int tokensInCall = 1 + actualArgs.size();
-        tokens.subList(callSiteIndex, callSiteIndex + tokensInCall).clear();
+        // Remove invocation: name + all tokens up to newline
+        int removed = 1; // macro name
+        // Count tokens consumed for actuals by flattening groups
+        for (List<Token> g : actualArgs) removed += g.size();
+        tokens.subList(callSiteIndex, callSiteIndex + removed).clear();
 
         tokens.addAll(callSiteIndex, expandedBody);
 

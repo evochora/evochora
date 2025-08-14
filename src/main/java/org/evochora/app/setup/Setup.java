@@ -3,6 +3,8 @@ package org.evochora.app.setup;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerException;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
+import org.evochora.compiler.CompilerRunner;
+import org.evochora.compiler.api.CompilationException;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -19,7 +21,7 @@ public class Setup {
     public static void run(Simulation simulation) {
 
         // Lade den visuellen Stdlib-Tester
-        placeProgramFromFile(simulation, "StdlibTest.s", new int[]{10, 10});
+        //placeProgramFromFile(simulation, "StdlibTest.s", new int[]{10, 10});
 
         // Lade den Stdlib-Tester
         //placeProgramFromFile(simulation, "StdlibTest.s", new int[]{2, 2});
@@ -29,7 +31,7 @@ public class Setup {
 
 
         // Lade den InstructionTester
-        //placeProgramFromFile(simulation, "InstructionTester.s", new int[]{5, 1});
+        placeProgramFromFileViaCompiler(simulation, "InstructionTester.s", new int[]{5, 1});
 
         // Lade den EnergySeeker
         //EnergySeeker energySeeker = new EnergySeeker();
@@ -72,6 +74,29 @@ public class Setup {
                 System.err.println("FATALER FEHLER beim Laden von " + filename + ":");
                 e.printStackTrace();
             }
+        }
+    }
+
+    /**
+     * Alternative: Programm via neuem Compiler kompilieren und in die Runtime injizieren.
+     */
+    public static void placeProgramFromFileViaCompiler(Simulation simulation, String filename, int[] startPos) {
+        try {
+            String prototypesPath = "org/evochora/organism/prototypes/";
+            URL resourceUrl = Thread.currentThread().getContextClassLoader().getResource(prototypesPath + filename);
+            if (resourceUrl == null) {
+                System.err.println("FEHLER: Prototypen-Datei nicht gefunden: " + filename);
+                return;
+            }
+            Path path = Paths.get(resourceUrl.toURI());
+            final String programCode = Files.readString(path);
+            java.util.List<String> lines = java.util.Arrays.asList(programCode.split("\r?\n"));
+            CompilerRunner.loadIntoEnvironment(simulation, lines, filename, startPos);
+        } catch (CompilationException ce) {
+            System.err.println("Compilerfehler: " + ce.getMessage());
+        } catch (Exception e) {
+            System.err.println("FATALER FEHLER beim Laden (Compiler) von " + filename + ":");
+            e.printStackTrace();
         }
     }
 

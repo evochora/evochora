@@ -29,8 +29,36 @@ public class RegDirectiveHandler implements IDirectiveHandler {
     public AstNode parse(ParsingContext context) {
         context.advance(); // .REG konsumieren
 
-        Token name = context.consume(TokenType.IDENTIFIER, "Expected an alias name after .REG.");
-        Token register = context.consume(TokenType.REGISTER, "Expected a register after the alias name in .REG.");
+        // Alias name can be IDENTIFIER (e.g., DR_A) or REGISTER (e.g., %DR_A)
+        Token name;
+        if (context.check(TokenType.IDENTIFIER)) {
+            name = context.advance();
+        } else if (context.check(TokenType.REGISTER)) {
+            name = context.advance();
+        } else {
+            // force error with consistent message
+            name = context.consume(TokenType.IDENTIFIER, "Expected an alias name after .REG.");
+        }
+
+        // Target can be a REGISTER token or a NUMBER (interpreted as %DR<NUMBER>)
+        Token register;
+        if (context.check(TokenType.REGISTER)) {
+            register = context.advance();
+        } else if (context.check(TokenType.NUMBER)) {
+            Token numTok = context.advance();
+            int idx = (int) numTok.value();
+            String text = "%DR" + idx;
+            register = new org.evochora.compiler.frontend.lexer.Token(
+                    TokenType.REGISTER,
+                    text,
+                    null,
+                    numTok.line(),
+                    numTok.column(),
+                    numTok.fileName()
+            );
+        } else {
+            register = context.consume(TokenType.REGISTER, "Expected a register after the alias name in .REG.");
+        }
 
         if (name != null && register != null) {
             // Wir müssen auf die Parser-Implementierung casten, um Zugriff auf die Alias-Tabelle zu bekommen.
