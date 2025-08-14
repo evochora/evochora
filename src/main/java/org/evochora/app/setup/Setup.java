@@ -1,5 +1,6 @@
 package org.evochora.app.setup;
 
+import org.evochora.compiler.diagnostics.CompilerLogger;
 import org.evochora.app.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerException;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
@@ -20,6 +21,8 @@ public class Setup {
 
     public static void run(Simulation simulation) {
 
+        CompilerLogger.setLevel(CompilerLogger.TRACE);
+
         // Lade den visuellen Stdlib-Tester
         //placeProgramFromFile(simulation, "StdlibTest.s", new int[]{10, 10});
 
@@ -30,7 +33,7 @@ public class Setup {
         //placeProgramFromFile(simulation, "TacticsTest.s", new int[]{2, 2});
 
 
-        // Lade den InstructionTester
+        // Lade
         placeProgramFromFileViaCompiler(simulation, "InstructionTester.s", new int[]{5, 1});
 
         // Lade den EnergySeeker

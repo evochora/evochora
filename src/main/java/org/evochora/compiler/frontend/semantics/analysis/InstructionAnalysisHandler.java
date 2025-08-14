@@ -91,7 +91,6 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                     if (symbolOpt.isPresent()) {
                         Symbol symbol = symbolOpt.get();
                         if (symbol.type() == Symbol.Type.CONSTANT) {
-                            // Wenn eine Konstante gefunden wird, behandeln wir sie wie ein Literal
                             if (expectedType != InstructionArgumentType.LITERAL) {
                                 diagnostics.reportError(
                                         String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got CONSTANT.",
@@ -101,7 +100,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                 );
                             }
                         } else if (symbol.type() == Symbol.Type.LABEL) {
-                            if (expectedType != InstructionArgumentType.LABEL) {
+                            // Labels are valid for LABEL arguments, and also for VECTOR arguments (to be linked to deltas)
+                            if (expectedType != InstructionArgumentType.LABEL && expectedType != InstructionArgumentType.VECTOR) {
                                 diagnostics.reportError(
                                         String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got LABEL.",
                                                 i + 1, instructionName, expectedType),
@@ -111,11 +111,14 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                             }
                         }
                     } else {
-                        diagnostics.reportError(
-                                String.format("Symbol '%s' is not defined.", idNode.identifierToken().text()),
-                                "Unknown",
-                                idNode.identifierToken().line()
-                        );
+                        // Allow unresolved if a VECTOR is expected (forward-referenced label to be linked)
+                        if (expectedType != InstructionArgumentType.VECTOR) {
+                            diagnostics.reportError(
+                                    String.format("Symbol '%s' is not defined.", idNode.identifierToken().text()),
+                                    "Unknown",
+                                    idNode.identifierToken().line()
+                            );
+                        }
                     }
                 } else {
                     // Normale Typprüfung für Nicht-Identifier

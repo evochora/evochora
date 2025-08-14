@@ -34,7 +34,27 @@ public class SemanticAnalyzer {
     }
 
     public void analyze(List<AstNode> statements) {
+        // First pass: collect labels (and respect scopes) to allow forward references
+        collectLabels(statements);
+        // Second pass: full analysis (types, arity, scope rules)
         traverseAndAnalyze(statements);
+    }
+
+    private void collectLabels(List<AstNode> nodes) {
+        for (AstNode node : nodes) {
+            if (node == null) continue;
+
+            if (node instanceof ScopeNode || node instanceof ProcedureNode) {
+                symbolTable.enterScope();
+            }
+            if (node instanceof org.evochora.compiler.frontend.parser.features.label.LabelNode lbl) {
+                symbolTable.define(new Symbol(lbl.labelToken(), Symbol.Type.LABEL));
+            }
+            collectLabels(node.getChildren());
+            if (node instanceof ScopeNode || node instanceof ProcedureNode) {
+                symbolTable.leaveScope();
+            }
+        }
     }
 
     private void traverseAndAnalyze(List<AstNode> nodes) {

@@ -32,10 +32,16 @@ import java.util.List;
 public class Compiler implements ICompiler {
 
     private final DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-    private int verbosity = 1;
+    // -1 means: do not override global logger level
+    private int verbosity = -1;
 
     @Override
     public ProgramArtifact compile(List<String> sourceLines, String programName) throws CompilationException {
+
+        if (verbosity >= 0) {
+            org.evochora.compiler.diagnostics.CompilerLogger.setLevel(verbosity);
+        }
+        org.evochora.compiler.diagnostics.CompilerLogger.info("Start compile: " + programName + ", lines=" + sourceLines.size());
 
         // VOR PHASE 1: Preprocessing (Hier werden Tokens direkt modifiziert)
         // Anmerkung: Dieser Schritt ist etwas speziell, da er vor dem eigentlichen Lexing des Haupt-Codes
@@ -44,6 +50,17 @@ public class Compiler implements ICompiler {
         String fullSource = String.join("\n", sourceLines);
         Lexer initialLexer = new Lexer(fullSource, diagnostics);
         List<Token> initialTokens = initialLexer.scanTokens();
+        org.evochora.compiler.diagnostics.CompilerLogger.debug("Lexed tokens: " + initialTokens.size());
+        // TRACE: dump a sample of tokens
+        {
+            StringBuilder sb = new StringBuilder();
+            int limit = Math.min(20, initialTokens.size());
+            for (int i = 0; i < limit; i++) {
+                Token t = initialTokens.get(i);
+                sb.append('[').append(t.type()).append(':').append(t.text()).append("] ");
+            }
+            org.evochora.compiler.diagnostics.CompilerLogger.trace("Tokens[0.." + (limit - 1) + "]: " + sb);
+        }
 
         // Wir brauchen einen Basispfad, um .INCLUDE-Dateien zu finden.
         // Vorerst nehmen wir das aktuelle Arbeitsverzeichnis.
@@ -51,6 +68,7 @@ public class Compiler implements ICompiler {
 
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, basePath);
         List<Token> processedTokens = preProcessor.expand();
+        org.evochora.compiler.diagnostics.CompilerLogger.debug("Preprocessed tokens: " + processedTokens.size());
 
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
@@ -59,6 +77,13 @@ public class Compiler implements ICompiler {
         // Phase 2: Parsing (arbeitet mit den vom Preprocessor bereinigten Tokens)
         Parser parser = new Parser(processedTokens, diagnostics);
         List<AstNode> ast = parser.parse();
+        org.evochora.compiler.diagnostics.CompilerLogger.debug("Parsed AST nodes: " + ast.size());
+        {
+            StringBuilder sb = new StringBuilder();
+            int limit = Math.min(20, ast.size());
+            for (int i = 0; i < limit; i++) sb.append('[').append(ast.get(i).getClass().getSimpleName()).append("] ");
+            org.evochora.compiler.diagnostics.CompilerLogger.trace("AST[0.." + (limit - 1) + "]: " + sb);
+        }
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
         }
@@ -66,6 +91,7 @@ public class Compiler implements ICompiler {
         // Phase 3: Semantische Analyse
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
         analyzer.analyze(ast);
+        org.evochora.compiler.diagnostics.CompilerLogger.debug("Semantic analysis completed");
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
         }
@@ -74,6 +100,19 @@ public class Compiler implements ICompiler {
         IrConverterRegistry irRegistry = IrConverterRegistry.initializeWithDefaults();
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
         IrProgram irProgram = irGenerator.generate(ast, programName);
+        {
+            StringBuilder sb = new StringBuilder();
+            int limit = Math.min(20, irProgram.items().size());
+            for (int i = 0; i < limit; i++) {
+                var it = irProgram.items().get(i);
+                if (it instanceof org.evochora.compiler.ir.IrInstruction ins) sb.append("INS:").append(ins.opcode());
+                else if (it instanceof org.evochora.compiler.ir.IrDirective d) sb.append("DIR:").append(d.namespace()).append(':').append(d.name());
+                else if (it instanceof org.evochora.compiler.ir.IrLabelDef l) sb.append("LBL:").append(l.name());
+                else sb.append(it.getClass().getSimpleName());
+                sb.append(" | ");
+            }
+            org.evochora.compiler.diagnostics.CompilerLogger.trace("IR[0.." + (limit - 1) + "]: " + sb);
+        }
 
         // Phase 2: Emission Rules (rewrites) BEFORE layout
         EmissionRegistry emissionRegistry = EmissionRegistry.initializeWithDefaults();
@@ -83,20 +122,33 @@ public class Compiler implements ICompiler {
         for (IEmissionRule rule : emissionRegistry.rules()) {
             rewritten = rule.apply(rewritten, linkingContext);
         }
+        org.evochora.compiler.diagnostics.CompilerLogger.debug("Emission rewrites applied: items=" + rewritten.size());
         IrProgram rewrittenIr = new IrProgram(programName, rewritten);
 
         // Phase 3: Layout (now includes rewritten instructions)
         LayoutEngine layoutEngine = new LayoutEngine();
         LayoutResult layout = layoutEngine.layout(rewrittenIr, new RuntimeInstructionSetAdapter());
+        org.evochora.compiler.diagnostics.CompilerLogger.debug("Layout: codeSlots=" + layout.linearAddressToCoord().size() + ", labels=" + layout.labelToAddress().size());
+        {
+            StringBuilder sb = new StringBuilder();
+            int shown = 0;
+            for (var e : layout.labelToAddress().entrySet()) {
+                if (shown++ >= 10) break;
+                sb.append(e.getKey()).append("->").append(e.getValue()).append("; ");
+            }
+            org.evochora.compiler.diagnostics.CompilerLogger.trace("Labels(sample): " + sb);
+        }
 
         // Phase 4: Linking
         LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults();
         Linker linker = new Linker(linkingRegistry);
         IrProgram linkedIr = linker.link(rewrittenIr, layout, linkingContext);
+        org.evochora.compiler.diagnostics.CompilerLogger.debug("Linking completed: items=" + linkedIr.items().size());
 
         // Phase 5: Machine code emission
         Emitter emitter = new Emitter();
         ProgramArtifact artifact = emitter.emit(linkedIr, layout, linkingContext, new RuntimeInstructionSetAdapter());
+        org.evochora.compiler.diagnostics.CompilerLogger.info("Emit completed: programId=" + artifact.programId() + ", codeWords=" + artifact.machineCodeLayout().size());
         return artifact;
     }
 
