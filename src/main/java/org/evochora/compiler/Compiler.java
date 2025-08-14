@@ -13,6 +13,15 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
 import org.evochora.compiler.ir.IrProgram;
+import org.evochora.compiler.backend.layout.LayoutEngine;
+import org.evochora.compiler.backend.layout.LayoutResult;
+import org.evochora.compiler.backend.link.Linker;
+import org.evochora.compiler.backend.link.LinkingContext;
+import org.evochora.compiler.backend.link.LinkingRegistry;
+import org.evochora.compiler.backend.emit.EmissionRegistry;
+import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.emit.Emitter;
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 
 import java.nio.file.Path; // NEU
 import java.util.List;
@@ -65,12 +74,29 @@ public class Compiler implements ICompiler {
         IrConverterRegistry irRegistry = IrConverterRegistry.initializeWithDefaults();
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
         IrProgram irProgram = irGenerator.generate(ast, programName);
-        // Temporär: IR für Tests/Debugging verfügbar machen
-        diagnostics.setTestPayload(irProgram);
 
-        // TODO: Phase 4 (Code-Generierung) implementieren.
-        diagnostics.reportError("Code-Generierung ist noch nicht implementiert.", programName, 1);
-        throw new CompilationException(diagnostics.summary());
+        // Phase 2: Layout
+        LayoutEngine layoutEngine = new LayoutEngine();
+        LayoutResult layout = layoutEngine.layout(irProgram);
+
+        // Phase 2b: Linking
+        LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults();
+        LinkingContext linkingContext = new LinkingContext();
+        Linker linker = new Linker(linkingRegistry);
+        IrProgram linkedIr = linker.link(irProgram, layout, linkingContext);
+
+        // Phase 3: Emission Rules (rewrites)
+        EmissionRegistry emissionRegistry = EmissionRegistry.initializeWithDefaults();
+        java.util.List<org.evochora.compiler.ir.IrItem> rewritten = linkedIr.items();
+        for (IEmissionRule rule : emissionRegistry.rules()) {
+            rewritten = rule.apply(rewritten, linkingContext);
+        }
+        IrProgram finalIr = new IrProgram(programName, rewritten);
+
+        // Phase 4: Machine code emission
+        Emitter emitter = new Emitter();
+        ProgramArtifact artifact = emitter.emit(finalIr, layout, linkingContext, new RuntimeInstructionSetAdapter());
+        return artifact;
     }
 
     @Override
