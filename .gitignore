@@ -48,3 +48,4 @@ bin/
 # Log files
 *.log
 /docs/
+/runs/
