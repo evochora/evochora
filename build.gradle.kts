@@ -20,12 +20,22 @@ dependencies {
     testImplementation("org.assertj:assertj-core:3.26.3")
     implementation("org.slf4j:slf4j-api:2.0.13")
     runtimeOnly("ch.qos.logback:logback-classic:1.5.6")
+    implementation("org.xerial:sqlite-jdbc:3.46.0.0")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.17.1")
+    implementation("info.picocli:picocli:4.7.6")
 
 }
 
 // Definiert die Hauptklasse für den 'run'-Task
 application {
     mainClass.set("org.evochora.app.Main")
+}
+
+tasks.register<JavaExec>("runServer") {
+    group = "application"
+    description = "Run the Evochora server CLI"
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("org.evochora.server.CommandLineInterface")
 }
 
 tasks.test {

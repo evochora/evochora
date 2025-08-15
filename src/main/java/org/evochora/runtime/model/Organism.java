@@ -21,6 +21,9 @@ public class Organism {
     public record FetchResult(int value, int[] nextIp) {}
 
     private final int id;
+    private Integer parentId = null;
+    private long birthTick = 0L;
+    private String programId = "";
     private int[] ip;
     private int[] dp;
     private int[] dv;
@@ -237,6 +240,12 @@ public class Organism {
     public void takeEr(int amount) { this.er -= amount; }
     public void setSkipIpAdvance(boolean skip) { this.skipIpAdvance = skip; }
     public int getId() { return id; }
+    public Integer getParentId() { return parentId; }
+    public void setParentId(Integer parentId) { this.parentId = parentId; }
+    public long getBirthTick() { return birthTick; }
+    public void setBirthTick(long birthTick) { this.birthTick = birthTick; }
+    public String getProgramId() { return programId; }
+    public void setProgramId(String programId) { this.programId = programId; }
     public int[] getIp() { return Arrays.copyOf(ip, ip.length); }
     public int[] getIpBeforeFetch() { return Arrays.copyOf(ipBeforeFetch, ipBeforeFetch.length); }
     public int[] getDp() { return Arrays.copyOf(dp, dp.length); }

@@ -102,6 +102,9 @@ public class StateInstruction extends Instruction {
             organism.takeEr(totalCost);
             Organism child = Organism.create(simulation, childIp, energy, organism.getLogger());
             child.setDv(childDv);
+            child.setParentId(organism.getId());
+            child.setBirthTick(simulation.getCurrentTick());
+            // programId intentionally not propagated per spec
             simulation.addNewOrganism(child);
         } else {
             organism.instructionFailed("FORK failed due to insufficient energy or invalid parameters.");

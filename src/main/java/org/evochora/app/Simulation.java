@@ -15,7 +15,7 @@ public class Simulation {
     private final Environment environment;
     private final org.evochora.runtime.VirtualMachine vm; // NEU
     private final List<Organism> organisms;
-    private int currentTick = 0;
+    private long currentTick = 0L;
     public boolean paused = true;
     private final List<Organism> newOrganismsThisTick = new ArrayList<>();
     private int nextOrganismId = 0;
@@ -61,14 +61,24 @@ public class Simulation {
             if (instruction.isExecutedInTick()) {
                 vm.execute(instruction);
             }
-            // Logging
+            // Logging (detailed)
             Organism organism = instruction.getOrganism();
             if (organism.isLoggingEnabled()) {
-                LOG.debug("Tick[{}], Organism[{}], Instruction[{}], Status[{}]",
+                LOG.debug("Tick={} Org={} Instr={} Status={}",
                         currentTick,
                         organism.getId(),
                         instruction.getName(),
                         instruction.getConflictStatus());
+                LOG.debug("  IP={} DP={} DV={} ER={}",
+                        java.util.Arrays.toString(organism.getIp()),
+                        java.util.Arrays.toString(organism.getDp()),
+                        java.util.Arrays.toString(organism.getDv()),
+                        organism.getEr());
+                LOG.debug("  DR={} PR={} DS={} CS={}",
+                        organism.getDrs(),
+                        organism.getPrs(),
+                        organism.getDataStack(),
+                        organism.getCallStack());
             }
         }
 
@@ -130,7 +140,7 @@ public class Simulation {
     public List<Organism> getOrganisms() { return organisms; }
     public Environment getEnvironment() { return environment; }
     public org.evochora.runtime.VirtualMachine getVirtualMachine() { return vm; } // NEU
-    public int getCurrentTick() { return currentTick; }
+    public long getCurrentTick() { return currentTick; }
     public void addNewOrganism(Organism organism) {
         this.newOrganismsThisTick.add(organism);
     }

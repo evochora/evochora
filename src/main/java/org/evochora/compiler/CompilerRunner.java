@@ -40,6 +40,7 @@ public final class CompilerRunner {
 		}
 
 		Organism org = Organism.create(simulation, startPos, Config.INITIAL_ORGANISM_ENERGY, simulation.getLogger());
+		org.setProgramId(artifact.programId());
 		simulation.addOrganism(org);
 		return org;
 	}
