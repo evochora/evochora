@@ -3,9 +3,10 @@ package org.evochora.app;
 
 import javafx.application.Application;
 import javafx.stage.Stage;
-import org.evochora.app.setup.Config;
+import org.evochora.runtime.Config;
 import org.evochora.app.setup.Setup;
 import org.evochora.compiler.internal.legacy.AssemblerException;
+import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.app.ui.AppView;
 import org.evochora.runtime.model.Environment;

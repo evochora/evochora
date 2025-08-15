@@ -1,5 +1,5 @@
 // src/main/java/org/evochora/Config.java
-package org.evochora.app.setup;
+package org.evochora.runtime;
 
 import javafx.scene.paint.Color;
 
@@ -25,6 +25,10 @@ public final class Config {
     public static final int DS_MAX_DEPTH = 1024;
     public static final int CALL_STACK_MAX_DEPTH = 1024;
     public static final int STACK_MAX_DEPTH = DS_MAX_DEPTH;
+
+    // Server/CLI Settings (moved from Setup)
+    public static final String RUNS_DIRECTORY = "runs";
+    public static final long MAX_QUEUE_BYTES = 512L * 1024L * 1024L; // 512 MB
 
     // Graphics Settings
     public static final int CELL_SIZE = 22;

@@ -6,7 +6,7 @@ import org.evochora.server.contracts.IQueueMessage;
 import org.evochora.server.contracts.ProgramArtifactMessage;
 import org.evochora.server.contracts.WorldStateMessage;
 import org.evochora.server.queue.ITickMessageQueue;
-import org.evochora.server.setup.Config;
+import org.evochora.runtime.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,7 +27,7 @@ public final class PersistenceService implements IControllable, Runnable {
     private static final Logger log = LoggerFactory.getLogger(PersistenceService.class);
 
     private final ITickMessageQueue queue;
-    private final Config config;
+    private final Object unused = null;
     private final Thread thread;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
@@ -35,10 +35,10 @@ public final class PersistenceService implements IControllable, Runnable {
 
     private Connection connection;
     private Path dbFilePath;
+    private volatile long lastPersistedTick = -1L;
 
-    public PersistenceService(ITickMessageQueue queue, Config config) {
+    public PersistenceService(ITickMessageQueue queue) {
         this.queue = queue;
-        this.config = config;
         this.thread = new Thread(this, "PersistenceService");
         this.thread.setDaemon(true);
     }
@@ -71,10 +71,11 @@ public final class PersistenceService implements IControllable, Runnable {
     public boolean isPaused() { return paused.get(); }
 
     public Path getDbFilePath() { return dbFilePath; }
+    public long getLastPersistedTick() { return lastPersistedTick; }
 
     private void setupDatabase() {
         try {
-            Path runsDir = Paths.get(config.getRunsDirectory());
+            Path runsDir = Paths.get(Config.RUNS_DIRECTORY);
             Files.createDirectories(runsDir);
             String ts = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
             dbFilePath = runsDir.resolve("sim_run_" + ts + ".sqlite");
@@ -180,6 +181,7 @@ public final class PersistenceService implements IControllable, Runnable {
 
         connection.commit();
         connection.setAutoCommit(true);
+        lastPersistedTick = wsm.tickNumber();
     }
 }
 

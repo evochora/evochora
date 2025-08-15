@@ -1,7 +1,8 @@
 package org.evochora.app.setup;
 
 import org.evochora.compiler.diagnostics.CompilerLogger;
-import org.evochora.app.Simulation;
+import org.evochora.runtime.Config;
+import org.evochora.runtime.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerException;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.compiler.CompilerRunner;

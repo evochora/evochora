@@ -1,6 +1,6 @@
 package org.evochora.compiler.internal.legacy;
 
-import org.evochora.app.setup.Config;
+import org.evochora.runtime.Config;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;

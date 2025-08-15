@@ -1,6 +1,6 @@
 package org.evochora.compiler.backend.layout.features;
 
-import org.evochora.app.setup.Config;
+import org.evochora.runtime.Config;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.layout.LayoutContext;
 import org.evochora.compiler.backend.layout.Nd;

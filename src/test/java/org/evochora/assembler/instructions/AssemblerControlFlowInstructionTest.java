@@ -1,7 +1,7 @@
 package org.evochora.assembler.instructions;
 
-import org.evochora.app.setup.Config;
-import org.evochora.app.Simulation;
+import org.evochora.runtime.Config;
+import org.evochora.runtime.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblyProgram;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;

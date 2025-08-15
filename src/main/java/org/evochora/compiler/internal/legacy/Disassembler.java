@@ -1,7 +1,7 @@
 // src/main/java/org/evochora/assembler/Disassembler.java
 package org.evochora.compiler.internal.legacy;
 
-import org.evochora.app.setup.Config;
+import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;

@@ -1,4 +1,4 @@
-package org.evochora.app;
+package org.evochora.runtime;
 
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;

@@ -14,14 +14,14 @@ import org.evochora.runtime.model.Environment;
 public class VirtualMachine {
 
     private final Environment environment;
-    private final org.evochora.app.Simulation simulation; // TODO: In Phase 3 entfernen
+    private final Simulation simulation; // TODO: In Phase 3 entfernen
 
     /**
      * Erstellt eine neue VM, die an eine bestimmte Umgebung gebunden ist.
      *
      * @param simulation Die Simulation, die den Kontext für die Ausführung bereitstellt.
      */
-    public VirtualMachine(org.evochora.app.Simulation simulation) {
+    public VirtualMachine(Simulation simulation) {
         this.simulation = simulation;
         this.environment = simulation.getEnvironment();
     }
@@ -38,8 +38,8 @@ public class VirtualMachine {
         organism.resetTickState();
         Molecule molecule = this.environment.getMolecule(organism.getIp());
 
-        if (org.evochora.app.setup.Config.STRICT_TYPING) {
-            if (molecule.type() != org.evochora.app.setup.Config.TYPE_CODE && !molecule.isEmpty()) {
+        if (Config.STRICT_TYPING) {
+            if (molecule.type() != Config.TYPE_CODE && !molecule.isEmpty()) {
                 organism.instructionFailed("Illegal cell type (not CODE) at IP");
                 return new org.evochora.runtime.isa.instructions.NopInstruction(organism, molecule.toInt());
             }
@@ -75,7 +75,7 @@ public class VirtualMachine {
         instruction.execute(this.simulation);
 
         if (organism.isInstructionFailed()) {
-            organism.takeEr(org.evochora.app.setup.Config.ERROR_PENALTY_COST);
+            organism.takeEr(Config.ERROR_PENALTY_COST);
         }
 
         if (organism.getEr() <= 0) {

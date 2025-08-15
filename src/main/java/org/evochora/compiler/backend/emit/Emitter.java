@@ -1,6 +1,6 @@
 package org.evochora.compiler.backend.emit;
 
-import org.evochora.app.setup.Config;
+import org.evochora.runtime.Config;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;

@@ -3,25 +3,23 @@ package org.evochora.server.engine;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.server.queue.InMemoryTickQueue;
-import org.evochora.server.setup.Config;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static java.util.Collections.emptyList;
 import static java.util.Collections.emptyMap;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class WorldSeedingTest {
     @Test
     void seedsInitialWorldObjectsOnStart() throws Exception {
-        var queue = new InMemoryTickQueue(new Config());
+        var queue = new InMemoryTickQueue();
         var engine = new SimulationEngine(queue);
         var artifact = new ProgramArtifact(
                 "pid1",
                 emptyMap(),
-                Map.of(new int[]{1,2}, new PlacedMolecule(org.evochora.app.setup.Config.TYPE_DATA, 42)),
+                Map.of(new int[]{1,2}, new PlacedMolecule(org.evochora.runtime.Config.TYPE_DATA, 42)),
                 emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap()
         );
         engine.setProgramArtifacts(List.of(artifact));

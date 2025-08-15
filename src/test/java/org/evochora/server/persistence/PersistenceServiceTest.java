@@ -5,7 +5,6 @@ import org.evochora.server.contracts.OrganismState;
 import org.evochora.server.contracts.WorldStateMessage;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
-import org.evochora.server.setup.Config;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -20,9 +19,8 @@ class PersistenceServiceTest {
 
     @Test
     void writesWorldStateRows() throws Exception {
-        Config cfg = new Config();
-        ITickMessageQueue q = new InMemoryTickQueue(cfg);
-        PersistenceService persist = new PersistenceService(q, cfg);
+        ITickMessageQueue q = new InMemoryTickQueue();
+        PersistenceService persist = new PersistenceService(q);
         persist.start();
 
         var org = new OrganismState(

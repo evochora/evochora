@@ -9,8 +9,8 @@ import javafx.scene.layout.Region;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import org.evochora.app.i18n.LocalizationProvider;
-import org.evochora.app.setup.Config;
-import org.evochora.app.Simulation;
+import org.evochora.runtime.Config;
+import org.evochora.runtime.Simulation;
 import org.evochora.compiler.internal.i18n.Messages;
 import org.evochora.runtime.model.Organism;
 

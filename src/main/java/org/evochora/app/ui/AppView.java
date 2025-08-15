@@ -8,8 +8,8 @@ import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
 
 import org.evochora.app.i18n.LocalizationProvider;
-import org.evochora.app.setup.Config;
-import org.evochora.app.Simulation;
+import org.evochora.runtime.Config;
+import org.evochora.runtime.Simulation;
 import org.evochora.app.setup.Setup;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;

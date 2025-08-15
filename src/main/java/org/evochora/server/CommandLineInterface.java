@@ -4,19 +4,17 @@ import org.evochora.server.engine.SimulationEngine;
 import org.evochora.server.persistence.PersistenceService;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
-import org.evochora.server.setup.Config;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.server.engine.StatusMetricsRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 /**
@@ -27,68 +25,109 @@ public final class CommandLineInterface {
     private static final Logger log = LoggerFactory.getLogger(CommandLineInterface.class);
 
     public static void main(String[] args) throws Exception {
-        Config config = new Config();
-        ITickMessageQueue queue = new InMemoryTickQueue(config);
+        ITickMessageQueue queue = new InMemoryTickQueue();
         SimulationEngine sim = new SimulationEngine(queue);
-        PersistenceService persist = new PersistenceService(queue, config);
+        PersistenceService persist = new PersistenceService(queue);
+        java.util.ArrayList<ProgramArtifact> loadedArtifacts = new java.util.ArrayList<>();
 
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-        log.info("Evochora server CLI ready. Commands: run | sim pause|resume | persist pause|resume | status | exit");
+        log.info("Evochora server CLI ready. Commands: load <file> | run | sim pause|resume | persist pause|resume | status | exit");
 
         while (true) {
             System.err.print(">>> ");
             String line = reader.readLine();
             if (line == null) break;
             String cmd = line.trim();
+            if (cmd.startsWith("load ")) {
+                String path = cmd.substring("load ".length()).trim();
+                if (path.isEmpty()) {
+                    System.err.println("Usage: load <assembly_file_path>");
+                    continue;
+                }
+                if (sim.isRunning() || persist.isRunning()) {
+                    System.err.println("Stop services before loading a new program (use 'exit' then 'run').");
+                    continue;
+                }
+                try {
+                    List<String> lines;
+                    int[] startPos = null;
+                    // Optional coordinates parsing: e.g., "load file.s 10|20". Coordinates represent
+                    // both the placement origin for machine code and the organism start position.
+                    String[] parts = path.split("\\s+");
+                    String fileToken = parts[0];
+                    if (parts.length > 1) {
+                        String coordToken = parts[1];
+                        String[] comps = coordToken.split("\\|");
+                        if (comps.length != org.evochora.runtime.Config.WORLD_DIMENSIONS) {
+                            System.err.printf("Invalid coordinates, expected %d dimensions separated by '|'%n", org.evochora.runtime.Config.WORLD_DIMENSIONS);
+                            continue;
+                        }
+                        startPos = new int[comps.length];
+                        for (int i = 0; i < comps.length; i++) {
+                            startPos[i] = Integer.parseInt(comps[i]);
+                        }
+                    }
+                    String resourceBaseSingular = "org/evochora/organism/prototype/";
+                    String resourceBasePlural = "org/evochora/organism/prototypes/";
+                    String resourcePath = resourceBaseSingular + fileToken;
+                    java.io.InputStream is = CommandLineInterface.class.getClassLoader().getResourceAsStream(resourcePath);
+                    if (is == null) {
+                        resourcePath = resourceBasePlural + fileToken;
+                        is = CommandLineInterface.class.getClassLoader().getResourceAsStream(resourcePath);
+                    }
+                    if (is != null) {
+                        try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(is, StandardCharsets.UTF_8))) {
+                            lines = br.lines().toList();
+                        }
+                    } else {
+                        // Fallback: treat as filesystem path
+                        lines = Files.readAllLines(Path.of(path), StandardCharsets.UTF_8);
+                    }
+                    Compiler compiler = new Compiler();
+                    ProgramArtifact artifact = compiler.compile(lines, Path.of(fileToken).getFileName().toString());
+                    if (startPos != null) {
+                        // Remember desired start so engine places code and organism starting there
+                        org.evochora.server.engine.UserLoadRegistry.registerDesiredStart(artifact.programId(), startPos);
+                    }
+                    loadedArtifacts.add(artifact);
+                    System.err.printf("Loaded program '%s' (programId=%s). Loaded count=%d.%n", fileToken, artifact.programId(), loadedArtifacts.size());
+                } catch (Exception e) {
+                    log.error("Failed to compile {}", path, e);
+                }
+                continue;
+            }
             switch (cmd) {
                 case "run" -> {
-                    // Compile and load initial artifacts from classpath prototypes
-                    List<ProgramArtifact> artifacts = compileInitialArtifacts();
-                    sim.setProgramArtifacts(artifacts);
-                    if (!sim.isRunning()) sim.start();
-                    if (!persist.isRunning()) persist.start();
+                    sim.setProgramArtifacts(java.util.List.copyOf(loadedArtifacts));
+                    if (!sim.isRunning()) { sim.start(); System.err.println("SimulationEngine started."); }
+                    else { System.err.println("SimulationEngine already running."); }
+                    if (!persist.isRunning()) { persist.start(); System.err.println("PersistenceService started."); }
+                    else { System.err.println("PersistenceService already running."); }
                 }
-                case "sim pause" -> sim.pause();
-                case "sim resume" -> sim.resume();
-                case "persist pause" -> persist.pause();
-                case "persist resume" -> persist.resume();
+                case "sim pause" -> { sim.pause(); System.err.println("SimulationEngine paused."); }
+                case "sim resume" -> { sim.resume(); System.err.println("SimulationEngine resumed."); }
+                case "persist pause" -> { persist.pause(); System.err.println("PersistenceService paused."); }
+                case "persist resume" -> { persist.resume(); System.err.println("PersistenceService resumed."); }
                 case "status" -> {
-                    System.err.printf("sim: running=%s paused=%s | persist: running=%s paused=%s | queueSize=%d%n",
-                            sim.isRunning(), sim.isPaused(), persist.isRunning(), persist.isPaused(), queue.size());
+                    long simTick = sim.getCurrentTick();
+                    long persistTick = persist.getLastPersistedTick();
+                    int[] orgCounts = sim.getOrganismCounts();
+                    double tps = StatusMetricsRegistry.getTicksPerSecond();
+                    System.err.printf(
+                            "sim: %s | persist: %s | ticks (persist/sim): %d/%d | organisms (living/dead): %d/%d | queue: %d | tps: %.2f%n",
+                            sim.isPaused() ? "paused" : (sim.isRunning() ? "running" : "stopped"),
+                            persist.isPaused() ? "paused" : (persist.isRunning() ? "running" : "stopped"),
+                            persistTick, simTick, orgCounts[0], orgCounts[1], queue.size(), tps);
                 }
                 case "exit" -> {
                     sim.shutdown();
                     persist.shutdown();
+                    System.err.println("Services stopped. Exiting.");
                     return;
                 }
                 default -> System.err.println("Unknown command");
             }
         }
-    }
-
-    private static List<ProgramArtifact> compileInitialArtifacts() {
-        List<ProgramArtifact> out = new ArrayList<>();
-        String base = "org/evochora/organism/prototypes/";
-        String[] files = new String[] { "EnergySeeker.s", "InstructionTester.s" };
-        Compiler compiler = new Compiler();
-        for (String f : files) {
-            String resourcePath = base + f;
-            try (InputStream is = CommandLineInterface.class.getClassLoader().getResourceAsStream(resourcePath)) {
-                if (is == null) {
-                    log.warn("Prototype not found on classpath: {}", resourcePath);
-                    continue;
-                }
-                try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
-                    List<String> lines = br.lines().toList();
-                    ProgramArtifact artifact = compiler.compile(lines, f);
-                    out.add(artifact);
-                }
-            } catch (Exception e) {
-                log.error("Failed to compile prototype {}", f, e);
-            }
-        }
-        log.info("Compiled {} program artifact(s)", out.size());
-        return out;
     }
 }
 

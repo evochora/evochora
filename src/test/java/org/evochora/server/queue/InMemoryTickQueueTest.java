@@ -2,7 +2,6 @@ package org.evochora.server.queue;
 
 import org.evochora.server.contracts.IQueueMessage;
 import org.evochora.server.contracts.WorldStateMessage;
-import org.evochora.server.setup.Config;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
@@ -16,7 +15,7 @@ class InMemoryTickQueueTest {
 
     @Test
     void putAndTake_shouldExchangeMessages() throws Exception {
-        InMemoryTickQueue queue = new InMemoryTickQueue(new Config(64L * 1024L * 1024L, "runs"));
+        InMemoryTickQueue queue = new InMemoryTickQueue();
         IQueueMessage message = new WorldStateMessage(1L, 0L, Collections.emptyList(), Collections.emptyList());
 
         queue.put(message);
@@ -29,7 +28,7 @@ class InMemoryTickQueueTest {
 
     @Test
     void capacity_shouldApplyBackpressureByBytesHeuristic() throws Exception {
-        InMemoryTickQueue queue = new InMemoryTickQueue(new Config(2_000_000L, "runs")); // ~2 MB
+        InMemoryTickQueue queue = new InMemoryTickQueue();
 
         var exec = Executors.newSingleThreadExecutor();
         Future<?> producer = exec.submit(() -> {

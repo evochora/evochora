@@ -1,6 +1,6 @@
 package org.evochora.compiler.backend.layout;
 
-import org.evochora.app.setup.Config;
+import org.evochora.runtime.Config;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.ir.*;

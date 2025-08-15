@@ -1,6 +1,6 @@
 package org.evochora.runtime.isa.instructions;
 
-import org.evochora.app.Simulation;
+import org.evochora.runtime.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;

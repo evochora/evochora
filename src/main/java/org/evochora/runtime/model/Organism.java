@@ -1,16 +1,14 @@
 package org.evochora.runtime.model;
 
-import org.evochora.app.setup.Config;
-import org.evochora.app.Simulation;
+import org.evochora.runtime.Config;
+import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.instructions.NopInstruction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.BiFunction;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Random;

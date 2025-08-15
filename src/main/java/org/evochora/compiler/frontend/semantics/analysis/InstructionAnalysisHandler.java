@@ -8,7 +8,7 @@ import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.InstructionArgumentType;
 import org.evochora.runtime.isa.InstructionSignature;
-import org.evochora.app.setup.Config;
+import org.evochora.runtime.Config;
 
 import java.util.Optional;
 

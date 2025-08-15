@@ -1,6 +1,6 @@
 package org.evochora.runtime.internal.services;
 
-import org.evochora.app.setup.Config;
+import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;

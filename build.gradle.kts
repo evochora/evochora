@@ -36,6 +36,7 @@ tasks.register<JavaExec>("runServer") {
     description = "Run the Evochora server CLI"
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("org.evochora.server.CommandLineInterface")
+    standardInput = System.`in`
 }
 
 tasks.test {

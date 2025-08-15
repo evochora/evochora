@@ -1,7 +1,7 @@
 package org.evochora.server.queue;
 
 import org.evochora.server.contracts.IQueueMessage;
-import org.evochora.server.setup.Config;
+import org.evochora.runtime.Config;
 
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -24,8 +24,8 @@ public final class InMemoryTickQueue implements ITickMessageQueue {
      * - WorldStateMessage: configured as ~1 MB by default
      * This is a heuristic to bound memory; precise sizing is complex without off-heap measurement.
      */
-    public InMemoryTickQueue(Config config) {
-        this.maxQueueBytes = Math.max(16 * 1024 * 1024L, config.getMaxQueueBytes());
+    public InMemoryTickQueue() {
+        this.maxQueueBytes = Math.max(16 * 1024 * 1024L, Config.MAX_QUEUE_BYTES);
         int elementCapacity = Math.max(64, (int) Math.min(Integer.MAX_VALUE, this.maxQueueBytes / 1_000_000L));
         this.delegate = new LinkedBlockingQueue<>(elementCapacity);
     }

@@ -1,7 +1,7 @@
 // src/main/java/org/evochora/world/Molecule.java
 package org.evochora.runtime.model;
 
-import org.evochora.app.setup.Config;
+import org.evochora.runtime.Config;
 
 public record Molecule(int type, int value) {
 

@@ -3,7 +3,7 @@ package org.evochora.compiler.internal.legacy.directives;
 import org.evochora.compiler.internal.legacy.AnnotatedLine;
 import org.evochora.compiler.internal.legacy.AssemblerException;
 import org.evochora.compiler.internal.legacy.PassManagerContext;
-import org.evochora.app.setup.Config;
+import org.evochora.runtime.Config;
 import org.evochora.compiler.internal.i18n.Messages;
 import org.evochora.runtime.model.Molecule;
 
