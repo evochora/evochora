@@ -378,4 +378,13 @@ public abstract class Instruction {
         // Wir prüfen einfach, ob der Name in unserer existierenden NAME_TO_ID Map registriert ist.
         return NAME_TO_ID.containsKey(name.toUpperCase());
     }
+
+    public static Map<Integer, String> getIdToNameMap() {
+        // Wir müssen die TYPE_CODE-Maske entfernen, damit die reinen IDs übrig bleiben
+        java.util.Map<Integer, String> cleanMap = new java.util.HashMap<>();
+        for (java.util.Map.Entry<Integer, String> entry : ID_TO_NAME.entrySet()) {
+            cleanMap.put(entry.getKey() & Config.VALUE_MASK, entry.getValue());
+        }
+        return java.util.Collections.unmodifiableMap(cleanMap);
+    }
 }

@@ -9,8 +9,8 @@ import org.evochora.server.queue.ITickMessageQueue;
 import org.evochora.runtime.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.evochora.runtime.isa.Instruction;
 
-import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -18,6 +18,7 @@ import java.sql.*;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 /**
  * Consumes messages and persists them to a per-run SQLite database.
@@ -82,11 +83,24 @@ public final class PersistenceService implements IControllable, Runnable {
             String url = "jdbc:sqlite:" + dbFilePath.toAbsolutePath();
             connection = DriverManager.getConnection(url);
             try (Statement st = connection.createStatement()) {
-                st.execute("PRAGMA journal_mode=WAL");
                 st.execute("CREATE TABLE IF NOT EXISTS programs (programId TEXT PRIMARY KEY, artifactJson TEXT)");
                 st.execute("CREATE TABLE IF NOT EXISTS ticks (tickNumber INTEGER PRIMARY KEY, timestampMicroseconds INTEGER, organismCount INTEGER)");
-                st.execute("CREATE TABLE IF NOT EXISTS organism_states (tickNumber INTEGER, organismId INTEGER, programId TEXT, parentId INTEGER NULL, birthTick INTEGER, energy INTEGER, positionJson TEXT, dpJson TEXT, dvJson TEXT, stateJson TEXT, PRIMARY KEY (tickNumber, organismId))");
+                st.execute("CREATE TABLE IF NOT EXISTS organism_states (tickNumber INTEGER, organismId INTEGER, programId TEXT, parentId INTEGER NULL, birthTick INTEGER, energy INTEGER, positionJson TEXT, dpJson TEXT, dvJson TEXT, stateJson TEXT, disassembledInstructionJson TEXT, PRIMARY KEY (tickNumber, organismId))");
                 st.execute("CREATE TABLE IF NOT EXISTS cell_states (tickNumber INTEGER, positionJson TEXT, type INTEGER, value INTEGER, ownerId INTEGER, PRIMARY KEY (tickNumber, positionJson))");
+
+                // Metadaten-Tabelle erstellen und befüllen
+                st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
+                try (PreparedStatement ps = connection.prepareStatement("INSERT OR REPLACE INTO simulation_metadata (key, value) VALUES (?, ?)")) {
+                    // 1. Weltgröße speichern
+                    ps.setString(1, "worldShape");
+                    ps.setString(2, objectMapper.writeValueAsString(Config.WORLD_SHAPE));
+                    ps.executeUpdate();
+
+                    // 2. ISA-Tabelle speichern
+                    ps.setString(1, "isaMap");
+                    ps.setString(2, objectMapper.writeValueAsString(Instruction.getIdToNameMap()));
+                    ps.executeUpdate();
+                }
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to setup database", e);
@@ -122,7 +136,38 @@ public final class PersistenceService implements IControllable, Runnable {
     }
 
     private void handleProgramArtifact(ProgramArtifactMessage pam) throws Exception {
-        String json = objectMapper.writeValueAsString(pam.programArtifact());
+        java.util.Map<String, Object> serializableArtifact = new java.util.HashMap<>();
+        org.evochora.compiler.api.ProgramArtifact artifact = pam.programArtifact();
+
+        serializableArtifact.put("programId", artifact.programId());
+        serializableArtifact.put("sourceMap", artifact.sourceMap());
+        serializableArtifact.put("callSiteBindings", artifact.callSiteBindings());
+        serializableArtifact.put("linearAddressToCoord", artifact.linearAddressToCoord());
+        serializableArtifact.put("labelAddressToName", artifact.labelAddressToName());
+
+        serializableArtifact.put("machineCodeLayout",
+                artifact.machineCodeLayout().entrySet().stream()
+                        .collect(Collectors.toMap(
+                                e -> java.util.Arrays.stream(e.getKey()).mapToObj(String::valueOf).collect(Collectors.joining("|")),
+                                java.util.Map.Entry::getValue
+                        ))
+        );
+        serializableArtifact.put("initialWorldObjects",
+                artifact.initialWorldObjects().entrySet().stream()
+                        .collect(Collectors.toMap(
+                                e -> java.util.Arrays.stream(e.getKey()).mapToObj(String::valueOf).collect(Collectors.joining("|")),
+                                java.util.Map.Entry::getValue
+                        ))
+        );
+        serializableArtifact.put("relativeCoordToLinearAddress",
+                artifact.relativeCoordToLinearAddress().entrySet().stream()
+                        .collect(Collectors.toMap(
+                                e -> e.getKey().stream().map(String::valueOf).collect(Collectors.joining("|")),
+                                java.util.Map.Entry::getValue
+                        ))
+        );
+
+        String json = objectMapper.writeValueAsString(serializableArtifact);
         try (PreparedStatement ps = connection.prepareStatement("INSERT OR REPLACE INTO programs(programId, artifactJson) VALUES (?, ?)")) {
             ps.setString(1, pam.programId());
             ps.setString(2, json);
@@ -141,8 +186,8 @@ public final class PersistenceService implements IControllable, Runnable {
         }
 
         try (PreparedStatement psOrg = connection.prepareStatement(
-                "INSERT OR REPLACE INTO organism_states(tickNumber, organismId, programId, parentId, birthTick, energy, positionJson, dpJson, dvJson, stateJson) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                "INSERT OR REPLACE INTO organism_states(tickNumber, organismId, programId, parentId, birthTick, energy, positionJson, dpJson, dvJson, stateJson, disassembledInstructionJson) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
             for (var org : wsm.organismStates()) {
                 psOrg.setLong(1, wsm.tickNumber());
                 psOrg.setInt(2, org.organismId());
@@ -153,14 +198,18 @@ public final class PersistenceService implements IControllable, Runnable {
                 psOrg.setString(7, objectMapper.writeValueAsString(org.position()));
                 psOrg.setString(8, objectMapper.writeValueAsString(org.dp()));
                 psOrg.setString(9, objectMapper.writeValueAsString(org.dv()));
-                var stateNode = objectMapper.createObjectNode();
-                stateNode.put("ip", org.ip());
-                stateNode.put("er", org.er());
-                stateNode.putPOJO("dataRegisters", org.dataRegisters());
-                stateNode.putPOJO("procRegisters", org.procRegisters());
-                stateNode.putPOJO("dataStack", org.dataStack());
-                stateNode.putPOJO("callStack", org.callStack());
-                psOrg.setString(10, objectMapper.writeValueAsString(stateNode));
+
+                java.util.Map<String, Object> stateMap = new java.util.LinkedHashMap<>();
+                stateMap.put("ip", org.ip());
+                stateMap.put("er", org.er());
+                stateMap.put("dataRegisters", org.dataRegisters());
+                stateMap.put("procRegisters", org.procRegisters());
+                stateMap.put("dataStack", new java.util.ArrayList<>(org.dataStack()));
+                stateMap.put("callStack", new java.util.ArrayList<>(org.callStack()));
+                psOrg.setString(10, objectMapper.writeValueAsString(stateMap));
+
+                psOrg.setString(11, org.disassembledInstructionJson());
+
                 psOrg.addBatch();
             }
             psOrg.executeBatch();
@@ -184,5 +233,3 @@ public final class PersistenceService implements IControllable, Runnable {
         lastPersistedTick = wsm.tickNumber();
     }
 }
-
-

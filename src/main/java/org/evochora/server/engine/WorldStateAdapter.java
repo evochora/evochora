@@ -1,7 +1,11 @@
 package org.evochora.server.engine;
 
-import org.evochora.runtime.Simulation;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
+import org.evochora.runtime.Simulation;
+import org.evochora.runtime.api.DisassembledInstruction;
+import org.evochora.runtime.internal.services.RuntimeDisassembler;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -9,32 +13,35 @@ import org.evochora.server.contracts.CellState;
 import org.evochora.server.contracts.OrganismState;
 import org.evochora.server.contracts.WorldStateMessage;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
-/**
- * Builds WorldStateMessage from the current Simulation state.
- */
 final class WorldStateAdapter {
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     static WorldStateMessage fromSimulation(Simulation simulation) {
         long tick = simulation.getCurrentTick();
-        long tsMicros = Instant.now().toEpochMilli() * 1000;
+        long tsMicros = java.time.Instant.now().toEpochMilli() * 1000;
+
+        Map<String, ProgramArtifact> artifacts = simulation.getProgramArtifacts();
 
         List<OrganismState> organisms = new ArrayList<>();
         for (Organism o : simulation.getOrganisms()) {
             if (o.isDead()) continue;
-            List<Integer> position = toList(o.getIp());
-            List<Integer> dp = toList(o.getDp());
-            List<Integer> dv = toList(o.getDv());
 
-            int[] drInts = toIntArray(o.getDrs(), Config.NUM_DATA_REGISTERS);
-            int[] prInts = toIntArray(o.getPrs(), Config.NUM_PROC_REGISTERS);
-
-            List<Integer> dataStack = toIntegerList(o.getDataStack());
-            List<Integer> callStack = List.of(); // Simplified placeholder
+            String disassembledJson = "{}";
+            try {
+                ProgramArtifact artifact = artifacts.get(o.getProgramId());
+                // Disassembliere nur die EINE nächste Instruktion am aktuellen IP
+                DisassembledInstruction disassembled = RuntimeDisassembler.INSTANCE.disassemble(o, artifact, simulation.getEnvironment());
+                if (disassembled != null) {
+                    disassembledJson = objectMapper.writeValueAsString(disassembled);
+                }
+            } catch (Exception e) {
+                // Fehler ignorieren
+            }
 
             organisms.add(new OrganismState(
                     o.getId(),
@@ -42,41 +49,36 @@ final class WorldStateAdapter {
                     o.getParentId(),
                     o.getBirthTick(),
                     o.getEr(),
-                    position,
-                    dp,
-                    dv,
-                    // state
-                    // NOTE: ip is represented as flat? We expose only scalar ip index via 0 for now
-                    // but keep ip field as the flat index of current primary dimension
+                    toList(o.getIp()),
+                    toList(o.getDp()),
+                    toList(o.getDv()),
                     o.getIp()[0],
-                    0,
-                    drInts,
-                    prInts,
-                    dataStack,
-                    callStack
+                    o.getEr(),
+                    toIntArray(o.getDrs(), Config.NUM_DATA_REGISTERS),
+                    toIntArray(o.getPrs(), Config.NUM_PROC_REGISTERS),
+                    toIntegerList(o.getDataStack()),
+                    new ArrayList<>(),
+                    disassembledJson
             ));
         }
 
         List<CellState> cells = toCellStates(simulation.getEnvironment());
-
         return new WorldStateMessage(tick, tsMicros, organisms, cells);
     }
 
     private static List<CellState> toCellStates(Environment env) {
         int[] shape = env.getShape();
         List<CellState> out = new ArrayList<>();
-        // Iterate grid; currently Environment lacks direct grid iteration, so use nested loops
         int dims = shape.length;
         int[] coord = new int[dims];
         Arrays.fill(coord, 0);
         iterate(shape, 0, coord, () -> {
             Molecule m = env.getMolecule(coord);
-            int packed = m.toInt();
-            if (packed != 0) {
-                int type = (packed & Config.TYPE_MASK) >>> Config.TYPE_SHIFT;
-                int value = (packed & Config.VALUE_MASK);
+            if (m.toInt() != 0) {
+                int typeId = m.type() >>> Config.TYPE_SHIFT;
+                int value = m.toScalarValue();
                 int ownerId = env.getOwnerId(coord);
-                out.add(new CellState(toList(coord), type, value, ownerId));
+                out.add(new CellState(toList(coord), typeId, value, ownerId));
             }
         });
         return out;
@@ -103,10 +105,7 @@ final class WorldStateAdapter {
         List<Integer> list = new ArrayList<>();
         for (Object o : iterable) {
             if (o instanceof Integer i) list.add(i);
-            else if (o instanceof int[]) {
-                // flatten vectors by adding their length as marker; this is a simplification
-                list.add(0);
-            }
+            else if (o instanceof int[]) list.add(0);
         }
         return list;
     }
@@ -120,5 +119,3 @@ final class WorldStateAdapter {
         return out;
     }
 }
-
-

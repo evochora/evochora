@@ -5,6 +5,7 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -20,7 +21,12 @@ class WorldSeedingTest {
                 "pid1",
                 emptyMap(),
                 Map.of(new int[]{1,2}, new PlacedMolecule(org.evochora.runtime.Config.TYPE_DATA, 42)),
-                emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap()
+                emptyMap(),
+                emptyMap(),
+                emptyMap(),
+                emptyMap(),
+                emptyMap(),
+                emptyMap() // <-- HIER IST DAS FEHLENDE 9. ARGUMENT (registerAliasMap)
         );
         engine.setProgramArtifacts(List.of(artifact));
 
@@ -34,5 +40,3 @@ class WorldSeedingTest {
         engine.shutdown();
     }
 }
-
-

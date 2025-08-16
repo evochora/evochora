@@ -12,17 +12,13 @@ import org.slf4j.LoggerFactory;
 import org.evochora.runtime.model.Organism;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors; // NEUER IMPORT
 
-/**
- * Computes world states and publishes them to the queue at maximum speed,
- * while allowing pause/resume for CLI responsiveness.
- */
 public final class SimulationEngine implements IControllable, Runnable {
 
     private static final Logger log = LoggerFactory.getLogger(SimulationEngine.class);
 
     private final ITickMessageQueue queue;
-
     private final Thread thread;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
@@ -37,9 +33,6 @@ public final class SimulationEngine implements IControllable, Runnable {
         this.thread.setDaemon(true);
     }
 
-    /**
-     * Provide compiled program artifacts before starting the engine.
-     */
     public void setProgramArtifacts(java.util.List<ProgramArtifact> artifacts) {
         this.programArtifacts = artifacts == null ? java.util.Collections.emptyList() : artifacts;
     }
@@ -52,14 +45,10 @@ public final class SimulationEngine implements IControllable, Runnable {
     }
 
     @Override
-    public void pause() {
-        paused.set(true);
-    }
+    public void pause() { paused.set(true); }
 
     @Override
-    public void resume() {
-        paused.set(false);
-    }
+    public void resume() { paused.set(false); }
 
     @Override
     public void shutdown() {
@@ -68,14 +57,10 @@ public final class SimulationEngine implements IControllable, Runnable {
     }
 
     @Override
-    public boolean isRunning() {
-        return running.get();
-    }
+    public boolean isRunning() { return running.get(); }
 
     @Override
-    public boolean isPaused() {
-        return paused.get();
-    }
+    public boolean isPaused() { return paused.get(); }
 
     public long getCurrentTick() {
         return simulation != null ? simulation.getCurrentTick() : -1L;
@@ -94,7 +79,6 @@ public final class SimulationEngine implements IControllable, Runnable {
     public void run() {
         log.info("SimulationEngine started");
         try {
-            // First, publish program artifacts once
             for (ProgramArtifact artifact : programArtifacts) {
                 try {
                     queue.put(new ProgramArtifactMessage(artifact.programId(), artifact));
@@ -103,54 +87,56 @@ public final class SimulationEngine implements IControllable, Runnable {
                     return;
                 }
             }
+
+            var env = new org.evochora.runtime.model.Environment(Config.WORLD_SHAPE, Config.IS_TOROIDAL);
+            simulation = new Simulation(env);
+
+            // NEU: Übergebe die Artefakte als Map an die Simulation
+            if (programArtifacts != null && !programArtifacts.isEmpty()) {
+                simulation.setProgramArtifacts(this.programArtifacts.stream()
+                        .collect(Collectors.toMap(ProgramArtifact::programId, pa -> pa, (a, b) -> b)));
+            }
+
+            for (ProgramArtifact artifact : programArtifacts) {
+                int dims = org.evochora.runtime.Config.WORLD_DIMENSIONS;
+                int[] origin = UserLoadRegistry.getDesiredStart(artifact.programId());
+                if (origin == null) origin = new int[dims];
+
+                for (var e : artifact.machineCodeLayout().entrySet()) {
+                    int[] rel = e.getKey();
+                    int[] abs = new int[dims];
+                    for (int i = 0; i < dims; i++) abs[i] = origin[i] + rel[i];
+                    env.setMolecule(org.evochora.runtime.model.Molecule.fromInt(e.getValue()), abs);
+                }
+                for (var e : artifact.initialWorldObjects().entrySet()) {
+                    int[] rel = e.getKey();
+                    int[] abs = new int[dims];
+                    for (int i = 0; i < dims; i++) abs[i] = origin[i] + rel[i];
+                    var pm = e.getValue();
+                    var mol = new org.evochora.runtime.model.Molecule(pm.type(), pm.value());
+                    env.setMolecule(mol, abs);
+                }
+                Organism organism = Organism.create(simulation, origin,
+                        org.evochora.runtime.Config.INITIAL_ORGANISM_ENERGY, simulation.getLogger());
+                organism.setProgramId(artifact.programId());
+                simulation.addOrganism(organism);
+            }
+
+            log.info("Saving initial state for tick 0.");
+            StatusMetricsRegistry.onTick(simulation.getCurrentTick());
+            IQueueMessage initialMsg = WorldStateAdapter.fromSimulation(simulation);
+            queue.put(initialMsg);
+
             while (running.get()) {
                 if (paused.get()) {
                     Thread.onSpinWait();
                     continue;
                 }
 
-                if (simulation == null) {
-                    // Lazy bootstrap minimal simulation
-                    var env = new org.evochora.runtime.model.Environment(
-                            Config.WORLD_SHAPE,
-                            Config.IS_TOROIDAL);
-                    simulation = new Simulation(env);
-                    // Seed initial world objects from program artifacts
-                    for (ProgramArtifact artifact : programArtifacts) {
-                        // Determine placement origin
-                        int dims = org.evochora.runtime.Config.WORLD_DIMENSIONS;
-                        int[] origin = UserLoadRegistry.getDesiredStart(artifact.programId());
-                        if (origin == null) origin = new int[dims];
-
-                        // Place machine code layout at origin offset
-                        for (var e : artifact.machineCodeLayout().entrySet()) {
-                            int[] rel = e.getKey();
-                            int[] abs = new int[dims];
-                            for (int i = 0; i < dims; i++) abs[i] = origin[i] + rel[i];
-                            int value = e.getValue();
-                            env.setMolecule(org.evochora.runtime.model.Molecule.fromInt(value), abs);
-                        }
-                        // Place additional world objects at origin offset
-                        for (var e : artifact.initialWorldObjects().entrySet()) {
-                            int[] rel = e.getKey();
-                            int[] abs = new int[dims];
-                            for (int i = 0; i < dims; i++) abs[i] = origin[i] + rel[i];
-                            var pm = e.getValue();
-                            var mol = new org.evochora.runtime.model.Molecule(pm.type(), pm.value());
-                            env.setMolecule(mol, abs);
-                        }
-                        // Create organism for this programId starting at origin
-                        int[] start = origin;
-                        Organism organism = Organism.create(simulation, start,
-                                org.evochora.runtime.Config.INITIAL_ORGANISM_ENERGY, simulation.getLogger());
-                        organism.setProgramId(artifact.programId());
-                        simulation.addOrganism(organism);
-                    }
-                }
                 simulation.tick();
                 StatusMetricsRegistry.onTick(simulation.getCurrentTick());
-                IQueueMessage msg = WorldStateAdapter.fromSimulation(simulation);
-                queue.put(msg);
+                IQueueMessage tickMsg = WorldStateAdapter.fromSimulation(simulation);
+                queue.put(tickMsg);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -161,5 +147,3 @@ public final class SimulationEngine implements IControllable, Runnable {
         }
     }
 }
-
-

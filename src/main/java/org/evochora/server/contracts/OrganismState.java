@@ -20,8 +20,7 @@ public record OrganismState(
         int[] dataRegisters,
         int[] procRegisters,
         List<Integer> dataStack,
-        List<Integer> callStack
+        List<Integer> callStack,
+        String disassembledInstructionJson // <-- NEUES FELD
 ) {
 }
-
-

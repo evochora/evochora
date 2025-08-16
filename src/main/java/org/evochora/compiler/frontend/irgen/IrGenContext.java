@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.irgen;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.IdentifierNode;
 import org.evochora.compiler.frontend.parser.ast.InstructionNode;
@@ -20,6 +21,7 @@ import org.evochora.compiler.ir.IrProgram;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Mutable context passed to converters during IR generation.
@@ -27,97 +29,92 @@ import java.util.List;
  */
 public final class IrGenContext {
 
-	private final String programName;
-	private final DiagnosticsEngine diagnostics;
-	private final IrConverterRegistry registry;
-	private final List<IrItem> out = new ArrayList<>();
+    private final String programName;
+    private final DiagnosticsEngine diagnostics;
+    private final IrConverterRegistry registry;
+    private final List<IrItem> out = new ArrayList<>();
 
-	/**
-	 * Creates a new IR generation context for the given program.
-	 *
-	 * @param programName The program name used for diagnostics and IR metadata.
-	 * @param diagnostics The diagnostics engine to report errors and warnings.
-	 */
     public IrGenContext(String programName, DiagnosticsEngine diagnostics, IrConverterRegistry registry) {
-		this.programName = programName;
-		this.diagnostics = diagnostics;
-		this.registry = registry;
-	}
-
-	/**
-	 * Emits a single IR item to the output stream.
-	 *
-	 * @param item The IR item to emit.
-	 */
-	public void emit(IrItem item) {
-		out.add(item);
-	}
-
-	/**
-	 * Converts and emits the given child AST node using the registry.
-	 *
-	 * @param node The AST node to convert.
-	 */
-	public void convert(AstNode node) {
-		registry.resolve(node).convert(node, this);
-	}
-
-	/**
-	 * @return The diagnostics engine for reporting issues during IR generation.
-	 */
-	public DiagnosticsEngine diagnostics() {
-		return diagnostics;
-	}
-
-	/**
-	 * Builds a SourceInfo instance for the given AST node.
-	 * Note: This can be enhanced later to pull accurate file/line/content from tokens on each node type.
-	 *
-	 * @param node The AST node to extract source information from.
-	 * @return A SourceInfo instance associated with the node.
-	 */
-    public SourceInfo sourceOf(AstNode node) {
-        // Try to choose a representative token for the node
-        String file = "unknown";
-        int line = -1;
-        String text = "";
-
-        if (node instanceof InstructionNode n) {
-            if (n.opcode() != null) { file = n.opcode().fileName(); line = n.opcode().line(); text = n.opcode().text(); }
-        } else if (node instanceof LabelNode n) {
-            if (n.labelToken() != null) { file = n.labelToken().fileName(); line = n.labelToken().line(); text = n.labelToken().text(); }
-        } else if (node instanceof RegisterNode n) {
-            if (n.registerToken() != null) { file = n.registerToken().fileName(); line = n.registerToken().line(); text = n.registerToken().text(); }
-        } else if (node instanceof NumberLiteralNode n) {
-            if (n.numberToken() != null) { file = n.numberToken().fileName(); line = n.numberToken().line(); text = n.numberToken().text(); }
-        } else if (node instanceof TypedLiteralNode n) {
-            if (n.type() != null) { file = n.type().fileName(); line = n.type().line(); text = n.type().text(); }
-        } else if (node instanceof IdentifierNode n) {
-            if (n.identifierToken() != null) { file = n.identifierToken().fileName(); line = n.identifierToken().line(); text = n.identifierToken().text(); }
-        } else if (node instanceof VectorLiteralNode n) {
-            if (!n.components().isEmpty() && n.components().get(0) != null) {
-                var t = n.components().get(0);
-                file = t.fileName(); line = t.line(); text = t.text();
-            }
-        } else if (node instanceof OrgNode || node instanceof DirNode || node instanceof PlaceNode) {
-            // These wrap expressions; fallback: unknown. Their child nodes will produce better SourceInfo.
-        } else if (node instanceof ProcedureNode n) {
-            if (n.name() != null) { file = n.name().fileName(); line = n.name().line(); text = n.name().text(); }
-        } else if (node instanceof ScopeNode n) {
-            if (n.name() != null) { file = n.name().fileName(); line = n.name().line(); text = n.name().text(); }
-        }
-
-        return new SourceInfo(file, line, text);
+        this.programName = programName;
+        this.diagnostics = diagnostics;
+        this.registry = registry;
     }
 
-	/**
-	 * Finalizes and returns an immutable IR program with all emitted items.
-	 *
-	 * @return The generated IR program.
-	 */
-	public IrProgram build() {
-		return new IrProgram(programName, List.copyOf(out));
-	}
+    public void emit(IrItem item) {
+        out.add(item);
+    }
+
+    public void convert(AstNode node) {
+        registry.resolve(node).convert(node, this);
+    }
+
+    public DiagnosticsEngine diagnostics() {
+        return diagnostics;
+    }
+
+    // --- START DER KORREKTUR ---
+
+    /**
+     * Stellt den Text einer kompletten Instruktionszeile aus dem AST-Knoten wieder her.
+     * @param node Der AST-Knoten der Instruktion.
+     * @return Ein String, der die komplette Zeile repräsentiert.
+     */
+    private String reconstructLineFromInstruction(InstructionNode node) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(node.opcode().text());
+
+        for (AstNode arg : node.arguments()) {
+            sb.append(" ");
+            if (arg instanceof RegisterNode rn) {
+                sb.append(rn.registerToken().text());
+            } else if (arg instanceof NumberLiteralNode nn) {
+                sb.append(nn.numberToken().text());
+            } else if (arg instanceof TypedLiteralNode tn) {
+                sb.append(tn.type().text()).append(":").append(tn.value().text());
+            } else if (arg instanceof VectorLiteralNode vn) {
+                String vec = vn.components().stream().map(Token::text).collect(Collectors.joining("|"));
+                sb.append(vec);
+            } else if (arg instanceof IdentifierNode in) {
+                sb.append(in.identifierToken().text());
+            }
+        }
+        return sb.toString();
+    }
+
+    public SourceInfo sourceOf(AstNode node) {
+        if (node instanceof InstructionNode n && n.opcode() != null) {
+            // Für Instruktionen rekonstruieren wir die Zeile.
+            return new SourceInfo(
+                    n.opcode().fileName(),
+                    n.opcode().line(),
+                    reconstructLineFromInstruction(n)
+            );
+        }
+
+        // Für alle anderen Knoten verwenden wir weiterhin einen repräsentativen Token.
+        Token representative = getRepresentativeToken(node);
+        if (representative != null) {
+            return new SourceInfo(representative.fileName(), representative.line(), representative.text());
+        }
+
+        return new SourceInfo("unknown", -1, "");
+    }
+
+    private Token getRepresentativeToken(AstNode node) {
+        if (node instanceof LabelNode n) return n.labelToken();
+        if (node instanceof RegisterNode n) return n.registerToken();
+        if (node instanceof NumberLiteralNode n) return n.numberToken();
+        if (node instanceof TypedLiteralNode n) return n.type();
+        if (node instanceof IdentifierNode n) return n.identifierToken();
+        if (node instanceof ProcedureNode n) return n.name();
+        if (node instanceof ScopeNode n) return n.name();
+        if (node instanceof VectorLiteralNode n && !n.components().isEmpty()) return n.components().get(0);
+        return null;
+    }
+
+    // --- ENDE DER KORREKTUR ---
+
+    public IrProgram build() {
+        return new IrProgram(programName, List.copyOf(out));
+    }
 }
-
-

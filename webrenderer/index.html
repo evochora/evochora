@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evochora Web Renderer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+    <div class="controls-left">
+        <label for="db-upload" class="file-label">SQLite-Datei laden</label>
+        <input type="file" id="db-upload" accept=".sqlite" hidden>
+        <button id="btn-first">Anfang</button>
+        <button id="btn-prev">&lt; Zurück</button>
+        <input type="number" id="tick-input" min="0" value="0">
+        <button id="btn-goto">Gehe zu</button>
+        <button id="btn-next">Weiter &gt;</button>
+        <button id="btn-last">Ende</button>
+    </div>
+    <div class="controls-right">
+        <div class="tick-display">Tick: <span id="current-tick">N/A</span> / <span id="total-ticks">N/A</span></div>
+    </div>
+</header>
+
+<main class="container">
+    <div class="world-container">
+        <canvas id="worldCanvas"></canvas>
+    </div>
+    <div id="sidebar" class="sidebar">
+        <button id="close-sidebar" class="sidebar-toggle-btn">&gt;</button>
+        <div id="organism-details" class="details">
+            <h2>Organismus-Details</h2>
+            <div id="details-content"><p>Bitte eine SQLite-Datei laden und einen Organismus auswählen.</p></div>
+        </div>
+    </div>
+</main>
+
+<script src="renderer.js"></script>
+<script src="main.js"></script>
+</body>
+</html>

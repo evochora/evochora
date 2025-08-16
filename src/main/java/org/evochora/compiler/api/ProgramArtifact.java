@@ -34,7 +34,8 @@ public record ProgramArtifact(
         Map<Integer, int[]> callSiteBindings,
         Map<List<Integer>, Integer> relativeCoordToLinearAddress,
         Map<Integer, int[]> linearAddressToCoord,
-        Map<Integer, String> labelAddressToName
+        Map<Integer, String> labelAddressToName,
+        Map<String, Integer> registerAliasMap
 ) {
     /**
      * Konstruktor, der sicherstellt, dass alle Maps unveränderlich sind.
@@ -47,5 +48,6 @@ public record ProgramArtifact(
         relativeCoordToLinearAddress = Collections.unmodifiableMap(relativeCoordToLinearAddress);
         linearAddressToCoord = Collections.unmodifiableMap(linearAddressToCoord);
         labelAddressToName = Collections.unmodifiableMap(labelAddressToName);
+        registerAliasMap = Collections.unmodifiableMap(registerAliasMap);
     }
 }
