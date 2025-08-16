@@ -17,9 +17,14 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 
 	@Override
 	public void convert(ProcedureNode node, IrGenContext ctx) {
+		// Define a label at the procedure entry so CALL <name> can link to it
+		ctx.emit(new org.evochora.compiler.ir.IrLabelDef(node.name().text(), ctx.sourceOf(node)));
+		// Install parameter names for this procedure scope so identifiers can resolve to %FPRx
+		ctx.pushProcedureParams(node.parameters());
 		Map<String, IrValue> enterArgs = new HashMap<>();
 		enterArgs.put("name", new IrValue.Str(node.name().text()));
 		enterArgs.put("arity", new IrValue.Int64(node.parameters() != null ? node.parameters().size() : 0));
+		enterArgs.put("exported", new IrValue.Bool(node.exported()));
 		ctx.emit(new IrDirective("core", "proc_enter", enterArgs, ctx.sourceOf(node)));
 
 		// Convert body inline to preserve logical grouping
@@ -28,7 +33,9 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 		Map<String, IrValue> exitArgs = new HashMap<>();
 		exitArgs.put("name", new IrValue.Str(node.name().text()));
 		exitArgs.put("arity", new IrValue.Int64(node.parameters() != null ? node.parameters().size() : 0));
+		exitArgs.put("exported", new IrValue.Bool(node.exported()));
 		ctx.emit(new IrDirective("core", "proc_exit", exitArgs, ctx.sourceOf(node)));
+		ctx.popProcedureParams();
 	}
 }
 

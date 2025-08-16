@@ -23,7 +23,15 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
 
         Token procName = context.consume(TokenType.IDENTIFIER, "Expected procedure name after .PROC.");
 
+        boolean exported = false;
         List<Token> parameters = new ArrayList<>();
+
+        // Optionales EXPORT-Keyword erlauben
+        if (!context.isAtEnd() && context.check(TokenType.IDENTIFIER) && context.peek().text().equalsIgnoreCase("EXPORT")) {
+            context.advance();
+            exported = true;
+        }
+
         // Prüfe auf eine optionale WITH-Klausel (als Keyword oder Direktive)
         boolean hasWith = (context.check(TokenType.IDENTIFIER) && context.peek().text().equalsIgnoreCase("WITH")) ||
                           (context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".WITH"));
@@ -63,7 +71,7 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
             context.advance(); // Consume .ENDP
         }
 
-        ProcedureNode procNode = new ProcedureNode(procName, parameters, body);
+        ProcedureNode procNode = new ProcedureNode(procName, exported, parameters, body);
         parser.registerProcedure(procNode);
         return procNode;
     }

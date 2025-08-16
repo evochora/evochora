@@ -36,14 +36,22 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
 		}
 
 		int end = withIdx >= 0 ? withIdx : node.arguments().size();
-		for (int i = 0; i < end; i++) operands.add(convertOperand(node.arguments().get(i)));
+		for (int i = 0; i < end; i++) operands.add(convertOperand(node.arguments().get(i), ctx));
 
 		if (withIdx >= 0) {
 			java.util.Map<String, IrValue> args = new java.util.HashMap<>();
 			java.util.List<IrValue> actuals = new java.util.ArrayList<>();
 			for (int j = withIdx + 1; j < node.arguments().size(); j++) {
 				AstNode a = node.arguments().get(j);
-				if (a instanceof RegisterNode r) actuals.add(new IrValue.Str(r.registerToken().text()));
+				if (a instanceof RegisterNode r) {
+					actuals.add(new IrValue.Str(r.registerToken().text()));
+				} else if (a instanceof IdentifierNode id) {
+					String nameU = id.identifierToken().text().toUpperCase();
+					java.util.Optional<Integer> idxOpt = ctx.resolveProcedureParam(nameU);
+					if (idxOpt.isPresent()) {
+						actuals.add(new IrValue.Str("%FPR" + idxOpt.get()));
+					}
+				}
 			}
 			args.put("actuals", new IrValue.ListVal(actuals));
 			ctx.emit(new IrDirective("core", "call_with", args, ctx.sourceOf(node)));
@@ -52,7 +60,7 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
 		ctx.emit(new IrInstruction(opcode, operands, ctx.sourceOf(node)));
 	}
 
-	private IrOperand convertOperand(AstNode arg) {
+	private IrOperand convertOperand(AstNode arg, IrGenContext ctx) {
 		if (arg instanceof RegisterNode r) {
 			return new IrReg(r.registerToken().text());
 		} else if (arg instanceof NumberLiteralNode n) {
@@ -63,6 +71,11 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
 			int[] comps = v.components().stream().mapToInt(tok -> Integer.parseInt(tok.text())).toArray();
 			return new IrVec(comps);
 		} else if (arg instanceof IdentifierNode id) {
+			String nameU = id.identifierToken().text().toUpperCase();
+			java.util.Optional<Integer> idxOpt = ctx.resolveProcedureParam(nameU);
+			if (idxOpt.isPresent()) {
+				return new IrReg("%FPR" + idxOpt.get());
+			}
 			return new IrLabelRef(id.identifierToken().text());
 		}
 		// Fallback: treat as label-like reference for now

@@ -41,10 +41,16 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
             InstructionSignature signature = signatureOpt.get();
             int expectedArity = signature.getArity();
 
-            // Sonderfall: CALL ... WITH %R1 %R2 ...
-            // Alles nach WITH (oder .WITH) wird nicht als Instruktions-Argument gezählt
+            // Sonderfall: CALL ... [WITH] ACTUALS
+            // Für CALL zählt nur das Ziel (1 Argument). Zusätzliche Operanden
+            // nach dem Ziel oder nach WITH werden toleriert als 'actuals'.
             java.util.List<AstNode> argsForSignature = instructionNode.arguments();
             if ("CALL".equalsIgnoreCase(instructionName)) {
+                // Nur das Ziel-Label als Signatur-Argument werten
+                if (!instructionNode.arguments().isEmpty()) {
+                    argsForSignature = instructionNode.arguments().subList(0, 1);
+                }
+                // Validierung der Actuals: Register oder formale Parameternamen zulassen
                 int withIdx = -1;
                 for (int i = 0; i < instructionNode.arguments().size(); i++) {
                     AstNode a = instructionNode.arguments().get(i);
@@ -53,19 +59,20 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         if ("WITH".equals(t) || ".WITH".equals(t)) { withIdx = i; break; }
                     }
                 }
-                if (withIdx >= 0) {
-                    argsForSignature = instructionNode.arguments().subList(0, withIdx);
-                    // Validierung: alles nach WITH müssen Register sein
-                    for (int j = withIdx + 1; j < instructionNode.arguments().size(); j++) {
-                        if (!(instructionNode.arguments().get(j) instanceof RegisterNode)) {
-                            diagnostics.reportError(
-                                    "CALL .WITH expects register operands after WITH.",
-                                    "Unknown",
-                                    instructionNode.opcode().line()
-                            );
-                            return;
-                        }
+                int actualsStart = withIdx >= 0 ? withIdx + 1 : 1;
+                for (int j = actualsStart; j < instructionNode.arguments().size(); j++) {
+                    AstNode arg = instructionNode.arguments().get(j);
+                    if (arg instanceof RegisterNode) continue;
+                    if (arg instanceof IdentifierNode id) {
+                        var res = symbolTable.resolve(id.identifierToken());
+                        if (res.isPresent() && res.get().type() == Symbol.Type.VARIABLE) continue;
                     }
+                    diagnostics.reportError(
+                            "CALL actuals must be registers or parameter names.",
+                            "Unknown",
+                            instructionNode.opcode().line()
+                    );
+                    return;
                 }
             }
 
@@ -104,6 +111,16 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                             if (expectedType != InstructionArgumentType.LABEL && expectedType != InstructionArgumentType.VECTOR) {
                                 diagnostics.reportError(
                                         String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got LABEL.",
+                                                i + 1, instructionName, expectedType),
+                                        "Unknown",
+                                        instructionNode.opcode().line()
+                                );
+                            }
+                        } else if (symbol.type() == Symbol.Type.VARIABLE) {
+                            // Formale Parameter als Register-Platzhalter akzeptieren
+                            if (expectedType != InstructionArgumentType.REGISTER) {
+                                diagnostics.reportError(
+                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got PARAMETER.",
                                                 i + 1, instructionName, expectedType),
                                         "Unknown",
                                         instructionNode.opcode().line()

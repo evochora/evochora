@@ -6,7 +6,6 @@ import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.InstructionNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.parser.features.proc.ExportNode;
 import org.evochora.compiler.frontend.parser.features.proc.PregNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.parser.features.require.RequireNode;
@@ -41,6 +40,7 @@ public class ProcedureDirectiveTest {
 
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
         assertThat(procNode.name().text()).isEqualTo("MY_PROC");
+        assertThat(procNode.exported()).isFalse();
 
         List<AstNode> bodyWithoutNulls = procNode.body().stream().filter(Objects::nonNull).toList();
         assertThat(bodyWithoutNulls).hasSize(1);
@@ -76,6 +76,7 @@ public class ProcedureDirectiveTest {
 
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
         assertThat(procNode.name().text()).isEqualTo("ADD");
+        assertThat(procNode.exported()).isFalse();
         assertThat(procNode.parameters()).hasSize(2);
         assertThat(procNode.parameters().get(0).text()).isEqualTo("A");
         assertThat(procNode.parameters().get(1).text()).isEqualTo("B");
@@ -85,9 +86,8 @@ public class ProcedureDirectiveTest {
     void testFullProcedureDefinition() {
         // Arrange
         String source = String.join("\n",
-                ".PROC FULL_PROC WITH A",
+                ".PROC FULL_PROC EXPORT WITH A",
                 "  .PREG %TMP 0",
-                "  .EXPORT FULL_PROC",
                 "  .REQUIRE \"lib/utils.s\" AS utils",
                 "  NOP",
                 ".ENDP"
@@ -105,22 +105,21 @@ public class ProcedureDirectiveTest {
 
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
         assertThat(procNode.name().text()).isEqualTo("FULL_PROC");
+        assertThat(procNode.exported()).isTrue();
         assertThat(procNode.parameters()).hasSize(1).extracting(Token::text).containsExactly("A");
 
         List<AstNode> bodyDirectives = procNode.body().stream()
                 .filter(n -> !(n instanceof InstructionNode))
                 .toList();
-        assertThat(bodyDirectives).hasSize(3);
+        assertThat(bodyDirectives).hasSize(2);
 
         assertThat(bodyDirectives.get(0)).isInstanceOf(PregNode.class);
         PregNode pregNode = (PregNode) bodyDirectives.get(0);
         assertThat(pregNode.alias().text()).isEqualTo("%TMP");
         assertThat(pregNode.index().value()).isEqualTo(0);
 
-        assertThat(bodyDirectives.get(1)).isInstanceOf(ExportNode.class);
-
-        assertThat(bodyDirectives.get(2)).isInstanceOf(RequireNode.class);
-        RequireNode requireNode = (RequireNode) bodyDirectives.get(2);
+        assertThat(bodyDirectives.get(1)).isInstanceOf(RequireNode.class);
+        RequireNode requireNode = (RequireNode) bodyDirectives.get(1);
         assertThat(requireNode.path().value()).isEqualTo("lib/utils.s");
         assertThat(requireNode.alias().text()).isEqualTo("utils");
     }

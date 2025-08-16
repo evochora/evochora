@@ -193,7 +193,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 <b>Position (IP):</b> ${org.positionJson}
 <b>Datenzeiger (DP):</b> ${org.dpJson}
 <b>Richtung (DV):</b> ${org.dvJson}
-<hr><b>Nächste Instruktion (IP: ${ip}):</b>
+<hr><b>Nächste Instruktion</b>
 <div class="code-view">${instructionHtml}</div>
 <hr><b>Register (DRs):</b>
 <div class="code-view">${state.dataRegisters.join(', ')}</div>

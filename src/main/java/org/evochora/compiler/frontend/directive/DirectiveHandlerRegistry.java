@@ -1,13 +1,11 @@
 package org.evochora.compiler.frontend.directive;
 
-import org.evochora.compiler.frontend.directive.IDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.def.DefineDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.frontend.preprocessor.features.include.IncludeDirectiveHandler;
 import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.org.OrgDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.place.PlaceDirectiveHandler;
-import org.evochora.compiler.frontend.parser.features.proc.ExportDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.proc.PregDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.reg.RegDirectiveHandler;
@@ -36,7 +34,7 @@ public class DirectiveHandlerRegistry {
         registry.register(".REG", new RegDirectiveHandler());
         registry.register(".PROC", new ProcDirectiveHandler());
         registry.register(".SCOPE", new ScopeDirectiveHandler());
-        registry.register(".EXPORT", new ExportDirectiveHandler());
+        // Note: Legacy .EXPORT inside a procedure is not supported anymore; use `.PROC <Name> EXPORT`.
         registry.register(".REQUIRE", new RequireDirectiveHandler());
         registry.register(".PREG", new PregDirectiveHandler());
         registry.register(".ORG", new OrgDirectiveHandler());
