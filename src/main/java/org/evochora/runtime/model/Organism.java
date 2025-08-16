@@ -37,17 +37,17 @@ public class Organism {
     private String failureReason = null;
     private Deque<ProcFrame> failureCallStack;
 
-    // KORRIGIERT: Der ProcFrame sichert jetzt nur noch die PRs.
+    // Suchen Sie nach der inneren Klasse "ProcFrame"
     public static final class ProcFrame {
         public final String procName;
-        public final int[] relativeReturnIp;
+        public final int[] absoluteReturnIp; // Früher: relativeReturnIp
         public final Object[] savedPrs;
         public final Object[] savedFprs;
         public final java.util.Map<Integer, Integer> fprBindings;
 
-        public ProcFrame(String procName, int[] relativeReturnIp, Object[] savedPrs, Object[] savedFprs, java.util.Map<Integer, Integer> fprBindings) {
+        public ProcFrame(String procName, int[] absoluteReturnIp, Object[] savedPrs, Object[] savedFprs, java.util.Map<Integer, Integer> fprBindings) { // UND HIER
             this.procName = procName;
-            this.relativeReturnIp = relativeReturnIp;
+            this.absoluteReturnIp = absoluteReturnIp; // Früher: relativeReturnIp
             this.savedPrs = savedPrs;
             this.savedFprs = savedFprs;
             this.fprBindings = fprBindings;

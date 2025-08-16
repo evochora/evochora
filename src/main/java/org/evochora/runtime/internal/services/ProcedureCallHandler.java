@@ -119,14 +119,7 @@ public class ProcedureCallHandler {
         // 2. Zustand wiederherstellen
         organism.restorePrs(returnFrame.savedPrs);
 
-        // KORREKTUR: Die im Frame gespeicherte IP ist relativ zur Startposition des Organismus.
-        // Wir müssen sie in eine absolute Weltkoordinate umrechnen.
-        int[] initialPosition = organism.getInitialPosition();
-        int[] absoluteReturnIp = new int[returnFrame.relativeReturnIp.length];
-        for (int i = 0; i < returnFrame.relativeReturnIp.length; i++) {
-            absoluteReturnIp[i] = initialPosition[i] + returnFrame.relativeReturnIp[i];
-        }
-        organism.setIp(absoluteReturnIp);
+        organism.setIp(returnFrame.absoluteReturnIp); // Direkt die korrekte, absolute Adresse verwenden.
         organism.setSkipIpAdvance(true);
     }
 }

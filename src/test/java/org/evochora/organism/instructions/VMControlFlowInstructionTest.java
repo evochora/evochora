@@ -101,25 +101,27 @@ public class VMControlFlowInstructionTest {
         assertThat(org.getIp()).isEqualTo(expectedIp);
     }
 
-        @org.junit.jupiter.api.AfterEach
-        void assertNoInstructionFailure() {
-            assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
-        }
-
     @Test
     void testRet() {
-        // Einen Return-Frame vorbereiten, der auf InitialPosition + 3 zurückspringt
-        int[] relativeReturn = new int[]{3};
-        int[] expectedIp = new int[]{org.getInitialPosition()[0] + relativeReturn[0]};
+        // Ein Return-Frame vorbereiten. Die absolute Rücksprungadresse ist die
+        // Position nach der RET-Instruktion (Länge 1).
+        // Startposition ist [5], also ist die Rücksprungadresse [6].
+        int[] expectedIp = new int[]{6};
         Object[] prsSnapshot = org.getPrs().toArray(new Object[0]);
-        // KORREKTUR: Verwende den neuen Konstruktor und den Call-Stack
         Object[] fprsSnapshot = org.getFprs().toArray(new Object[0]);
-        org.getCallStack().push(new Organism.ProcFrame("TEST_PROC", relativeReturn, prsSnapshot, fprsSnapshot, java.util.Collections.emptyMap()));
+
+        // KORREKTUR: Verwende den neuen Konstruktor und eine absolute IP.
+        org.getCallStack().push(new Organism.ProcFrame("TEST_PROC", expectedIp, prsSnapshot, fprsSnapshot, java.util.Collections.emptyMap()));
 
         placeInstruction("RET");
 
         sim.tick();
 
         assertThat(org.getIp()).isEqualTo(expectedIp);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void assertNoInstructionFailure() {
+        assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
     }
 }
