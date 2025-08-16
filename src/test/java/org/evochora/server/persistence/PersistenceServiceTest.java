@@ -23,12 +23,17 @@ class PersistenceServiceTest {
         PersistenceService persist = new PersistenceService(q);
         persist.start();
 
-        // KORREKTUR: Das neue 15. Feld (disassembledInstructionJson) wurde hinzugefügt.
+        // KORREKTUR: Der Konstruktoraufruf wurde an die neue Signatur angepasst.
         var org = new OrganismState(
                 1, "progA", null, 0L, 123L,
                 List.of(1,2), List.of(0,1), List.of(1,0),
-                5, 0, new int[]{0,1,2}, new int[]{3,4}, List.of(9,8), List.of(7),
-                "{}" // Leerer JSON-String als Platzhalter für den Test
+                5, 0,
+                List.of("DATA:1", "DATA:2"), // dataRegisters als List<String>
+                List.of("DATA:3"),            // procRegisters als List<String>
+                List.of("DATA:9", "DATA:8"),  // dataStack als List<String>
+                List.of("MY_PROC"),           // callStack als List<String>
+                List.of(),                    // NEU: formalParameters als leere Liste
+                "{}"                          // disassembledInstructionJson
         );
         var cell = new CellState(List.of(1,2), 2, 42, 1);
         var wsm = new WorldStateMessage(10L, 999L, List.of(org), List.of(cell));

@@ -85,18 +85,21 @@ public final class PersistenceService implements IControllable, Runnable {
             try (Statement st = connection.createStatement()) {
                 st.execute("CREATE TABLE IF NOT EXISTS programs (programId TEXT PRIMARY KEY, artifactJson TEXT)");
                 st.execute("CREATE TABLE IF NOT EXISTS ticks (tickNumber INTEGER PRIMARY KEY, timestampMicroseconds INTEGER, organismCount INTEGER)");
-                st.execute("CREATE TABLE IF NOT EXISTS organism_states (tickNumber INTEGER, organismId INTEGER, programId TEXT, parentId INTEGER NULL, birthTick INTEGER, energy INTEGER, positionJson TEXT, dpJson TEXT, dvJson TEXT, stateJson TEXT, disassembledInstructionJson TEXT, PRIMARY KEY (tickNumber, organismId))");
+                // --- START DER ÄNDERUNG ---
+                st.execute("CREATE TABLE IF NOT EXISTS organism_states (" +
+                        "tickNumber INTEGER, organismId INTEGER, programId TEXT, parentId INTEGER NULL, " +
+                        "birthTick INTEGER, energy INTEGER, positionJson TEXT, dpJson TEXT, dvJson TEXT, " +
+                        "stateJson TEXT, disassembledInstructionJson TEXT, " +
+                        "dataRegisters TEXT, procRegisters TEXT, dataStack TEXT, callStack TEXT, formalParameters TEXT, " + // NEUE SPALTEN
+                        "PRIMARY KEY (tickNumber, organismId))");
+                // --- ENDE DER ÄNDERUNG ---
                 st.execute("CREATE TABLE IF NOT EXISTS cell_states (tickNumber INTEGER, positionJson TEXT, type INTEGER, value INTEGER, ownerId INTEGER, PRIMARY KEY (tickNumber, positionJson))");
 
-                // Metadaten-Tabelle erstellen und befüllen
                 st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
                 try (PreparedStatement ps = connection.prepareStatement("INSERT OR REPLACE INTO simulation_metadata (key, value) VALUES (?, ?)")) {
-                    // 1. Weltgröße speichern
                     ps.setString(1, "worldShape");
                     ps.setString(2, objectMapper.writeValueAsString(Config.WORLD_SHAPE));
                     ps.executeUpdate();
-
-                    // 2. ISA-Tabelle speichern
                     ps.setString(1, "isaMap");
                     ps.setString(2, objectMapper.writeValueAsString(Instruction.getIdToNameMap()));
                     ps.executeUpdate();
@@ -136,6 +139,7 @@ public final class PersistenceService implements IControllable, Runnable {
     }
 
     private void handleProgramArtifact(ProgramArtifactMessage pam) throws Exception {
+        // ... (diese Methode bleibt unverändert)
         java.util.Map<String, Object> serializableArtifact = new java.util.HashMap<>();
         org.evochora.compiler.api.ProgramArtifact artifact = pam.programArtifact();
 
@@ -144,6 +148,7 @@ public final class PersistenceService implements IControllable, Runnable {
         serializableArtifact.put("callSiteBindings", artifact.callSiteBindings());
         serializableArtifact.put("linearAddressToCoord", artifact.linearAddressToCoord());
         serializableArtifact.put("labelAddressToName", artifact.labelAddressToName());
+        serializableArtifact.put("registerAliasMap", artifact.registerAliasMap()); // Hinzugefügt für Vollständigkeit
 
         serializableArtifact.put("machineCodeLayout",
                 artifact.machineCodeLayout().entrySet().stream()
@@ -185,9 +190,13 @@ public final class PersistenceService implements IControllable, Runnable {
             psTick.executeUpdate();
         }
 
-        try (PreparedStatement psOrg = connection.prepareStatement(
-                "INSERT OR REPLACE INTO organism_states(tickNumber, organismId, programId, parentId, birthTick, energy, positionJson, dpJson, dvJson, stateJson, disassembledInstructionJson) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+        // --- START DER ÄNDERUNG ---
+        final String orgSql = "INSERT OR REPLACE INTO organism_states(" +
+                "tickNumber, organismId, programId, parentId, birthTick, energy, positionJson, dpJson, dvJson, " +
+                "stateJson, disassembledInstructionJson, dataRegisters, procRegisters, dataStack, callStack, formalParameters) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+        try (PreparedStatement psOrg = connection.prepareStatement(orgSql)) {
             for (var org : wsm.organismStates()) {
                 psOrg.setLong(1, wsm.tickNumber());
                 psOrg.setInt(2, org.organismId());
@@ -199,21 +208,26 @@ public final class PersistenceService implements IControllable, Runnable {
                 psOrg.setString(8, objectMapper.writeValueAsString(org.dp()));
                 psOrg.setString(9, objectMapper.writeValueAsString(org.dv()));
 
+                // stateJson bleibt für Abwärtskompatibilität, enthält aber nicht mehr alles
                 java.util.Map<String, Object> stateMap = new java.util.LinkedHashMap<>();
                 stateMap.put("ip", org.ip());
                 stateMap.put("er", org.er());
-                stateMap.put("dataRegisters", org.dataRegisters());
-                stateMap.put("procRegisters", org.procRegisters());
-                stateMap.put("dataStack", new java.util.ArrayList<>(org.dataStack()));
-                stateMap.put("callStack", new java.util.ArrayList<>(org.callStack()));
                 psOrg.setString(10, objectMapper.writeValueAsString(stateMap));
 
                 psOrg.setString(11, org.disassembledInstructionJson());
+
+                // Neue Felder als JSON-Strings speichern
+                psOrg.setString(12, objectMapper.writeValueAsString(org.dataRegisters()));
+                psOrg.setString(13, objectMapper.writeValueAsString(org.procRegisters()));
+                psOrg.setString(14, objectMapper.writeValueAsString(org.dataStack()));
+                psOrg.setString(15, objectMapper.writeValueAsString(org.callStack()));
+                psOrg.setString(16, objectMapper.writeValueAsString(org.formalParameters()));
 
                 psOrg.addBatch();
             }
             psOrg.executeBatch();
         }
+        // --- ENDE DER ÄNDERUNG ---
 
         try (PreparedStatement psCell = connection.prepareStatement(
                 "INSERT OR REPLACE INTO cell_states(tickNumber, positionJson, type, value, ownerId) VALUES (?, ?, ?, ?, ?)")) {

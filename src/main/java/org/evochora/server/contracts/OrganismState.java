@@ -17,10 +17,11 @@ public record OrganismState(
         // stateJson parts flattened as native: registers and stacks
         int ip,
         int er,
-        int[] dataRegisters,
-        int[] procRegisters,
-        List<Integer> dataStack,
-        List<Integer> callStack,
-        String disassembledInstructionJson // <-- NEUES FELD
+        List<String> dataRegisters, // Geändert von int[]
+        List<String> procRegisters, // Geändert von int[]
+        List<String> dataStack,     // Geändert von List<Integer>
+        List<String> callStack,     // Geändert von List<Integer>
+        List<String> formalParameters, // NEUES FELD
+        String disassembledInstructionJson
 ) {
 }

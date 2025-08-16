@@ -115,16 +115,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         const cells = [];
         while(cellsStmt.step()) cells.push(cellsStmt.getAsObject());
         cellsStmt.free();
-        const orgStmt = db.prepare("SELECT * FROM organism_states WHERE tickNumber = :tick");
+        // Holen Sie ALLE neuen Felder aus der DB
+        const orgStmt = db.prepare("SELECT organismId, programId, energy, positionJson, dpJson, dvJson, disassembledInstructionJson, dataRegisters, procRegisters, dataStack, callStack, formalParameters FROM organism_states WHERE tickNumber = :tick");
         orgStmt.bind({ ':tick': tick });
         const organisms = [];
-        while(orgStmt.step()) organisms.push(orgStmt.getAsObject());
+        while(orgStmt.step()) {
+            const orgData = orgStmt.getAsObject();
+            // JSON-Felder direkt parsen
+            try {
+                orgData.dataRegisters = JSON.parse(orgData.dataRegisters);
+                orgData.procRegisters = JSON.parse(orgData.procRegisters);
+                orgData.dataStack = JSON.parse(orgData.dataStack);
+                orgData.callStack = JSON.parse(orgData.callStack);
+                orgData.formalParameters = JSON.parse(orgData.formalParameters);
+            } catch(e) { console.error("Fehler beim Parsen von Organismus-Daten:", e); }
+            organisms.push(orgData);
+        }
         orgStmt.free();
         lastWorldState = { cells, organisms, selectedOrganismId };
         renderer.draw(lastWorldState);
     }
 
-    // --- START: FINALE, KORRIGIERTE `updateSidebar`-FUNKTION ---
     function updateSidebar() {
         if (selectedOrganismId === null || !lastWorldState.organisms) return;
         const org = lastWorldState.organisms.find(o => o.organismId === selectedOrganismId);
@@ -133,58 +144,39 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        let state, nextInstruction;
+        let nextInstruction;
         try {
-            state = JSON.parse(org.stateJson);
             nextInstruction = org.disassembledInstructionJson ? JSON.parse(org.disassembledInstructionJson) : null;
         } catch (e) {
-            detailsContent.innerHTML = `<p style="color:red;">Fehler beim Lesen der Organismus-Daten.</p>`;
+            detailsContent.innerHTML = `<p style="color:red;">Fehler beim Lesen der Instruktions-Daten.</p>`;
             return;
         }
 
         const artifact = programArtifacts.get(org.programId);
-        const ip = org.ip;
+        const ipAsInt = JSON.parse(org.positionJson)[0];
 
-        const formatInstructionLine = (instruction, lineIp, organismState) => {
-            if (!instruction || !instruction.opcodeName || instruction.opcodeName.startsWith("UNKNOWN")) {
+        const formatInstructionLine = (instruction, lineIp) => {
+             if (!instruction || !instruction.opcodeName || instruction.opcodeName.startsWith("UNKNOWN")) {
                 return `&gt; (IP ${lineIp}: ---)`;
             }
-
             let sourceInfo = "";
             if (artifact && artifact.sourceMap && artifact.sourceMap[lineIp]) {
                 const si = artifact.sourceMap[lineIp];
                 sourceInfo = `<i>(${si.fileName}:${si.lineNumber})</i> `;
             }
-
-            const argsHtml = instruction.arguments.map(arg => {
-                let displayName = arg.name.replace(/</g, "&lt;");
-
-                if (arg.type === 'register') {
-                    const regValue = organismState.dataRegisters[arg.value];
-                    let valueStr = regValue;
-                    if (typeof regValue === 'number') {
-                        const typeId = (regValue & 0xF000) >> 12;
-                        const val = regValue & 0xFFF;
-                        if (typeId === 1) valueStr = `DATA:${val}`;
-                        else if (typeId === 0 && simIsa[val]) valueStr = simIsa[val];
-                        else if (typeId === 2) valueStr = `ENERGY:${val}`;
-                        else if (typeId === 3) valueStr = `STRUCTURE:${val}`;
-                        else valueStr = `RAW:${regValue}`;
-                    }
-
-                    // KORREKTE ALIAS-AUFLÖSUNG
-                    if (artifact && artifact.reverseAliasMap && artifact.reverseAliasMap.has(arg.value)) {
-                        displayName = artifact.reverseAliasMap.get(arg.value);
-                    }
-                    return `<b>${displayName}</b><i>[${arg.name}=${valueStr}]</i>`;
-                }
-                return `<b>${displayName}</b>`;
-            }).join(' ');
-
+             const argsHtml = instruction.arguments.map(arg => `<b>${arg.name.replace(/</g, "&lt;")}</b>`).join(' ');
             return `&gt; ${sourceInfo}${instruction.opcodeName} ${argsHtml}`;
         };
 
-        const instructionHtml = formatInstructionLine(nextInstruction, ip, state);
+        const instructionHtml = formatInstructionLine(nextInstruction, ipAsInt);
+
+        // --- START DER ÄNDERUNGEN ---
+
+        const drsHtml = org.dataRegisters.map((val, i) => `DR${i}=${val}`).join(', ');
+        const prsHtml = org.procRegisters.length > 0 ? org.procRegisters.map((val, i) => `PR${i}=${val}`).join(', ') : '[]';
+        const dsHtml = org.dataStack.slice(-5).reverse().join(', ') || '[]';
+        const csHtml = org.callStack.length > 0 ? org.callStack.join(' &rarr; ') : '[]';
+        const fprsHtml = org.formalParameters.length > 0 ? org.formalParameters.join('<br>') : '[]';
 
         detailsContent.innerHTML = `
 <h3>Organismus #${org.organismId}</h3><hr>
@@ -196,11 +188,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 <hr><b>Nächste Instruktion</b>
 <div class="code-view">${instructionHtml}</div>
 <hr><b>Register (DRs):</b>
-<div class="code-view">${state.dataRegisters.join(', ')}</div>
+<div class="code-view">${drsHtml}</div>
+<b>Prozedur-Register (PRs):</b>
+<div class="code-view">${prsHtml}</div>
+<b>Formale Parameter (FPRs):</b>
+<div class="code-view">${fprsHtml}</div>
 <b>Data Stack (DS - Top 5):</b>
-<div class="code-view">${state.dataStack.slice(-5).reverse().join(', ') || '[]'}</div>`;
+<div class="code-view">${dsHtml}</div>
+<b>Call Stack (CS):</b>
+<div class="code-view">${csHtml}</div>
+        `;
+        // --- ENDE DER ÄNDERUNGEN ---
     }
-    // --- ENDE: FINALE, KORRIGIERTE `updateSidebar`-FUNKTION ---
 
     canvas.addEventListener('click', (event) => {
         if (!lastWorldState.organisms || !renderer) return;
