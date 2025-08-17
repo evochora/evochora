@@ -144,53 +144,226 @@ document.addEventListener('DOMContentLoaded', async () => {
         let sourceCodeHtml = `<div class="code-view">${isPerfMode ? perfModeMsg : 'Kein Quellcode verfügbar.'}</div>`;
         let instructionHtml = isPerfMode ? perfModeMsg : 'N/A';
 
-        if (!isPerfMode && artifact && artifact.sourceMap && artifact.sources) {
+        // Hilfsfunktionen für Token-Ersatz im Quelltext
+        const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const canonicalNameForRegId = (id) => {
+            if (typeof id !== 'number') return '%?';
+            if (id < 1000) return `%DR${id}`;
+            if (id < 2000) return `%PR${id - 1000}`;
+            return `%FPR${id - 2000}`;
+        };
+        const valueForRegId = (id) => {
+            if (typeof id !== 'number') return 'N/A';
+            if (id < 1000) return org.dataRegisters?.[id] ?? 'N/A';
+            if (id < 2000) return org.procRegisters?.[id - 1000] ?? 'N/A';
+            return 'N/A';
+        };
+        const annotateLineByAliases = (line, artifactObj) => {
+            if (!artifactObj || !artifactObj.registerAliasMap) return line;
+            if (line.includes('injected-value')) return line; // schon annotiert
+            const matches = line.match(/%[A-Za-z0-9_]+/g);
+            if (!matches) return line;
+            let out = line;
+            for (const alias of matches) {
+                const regId = artifactObj.registerAliasMap[alias];
+                if (regId == null) continue;
+                // Wenn alias bereits mit einer injected-value Annotation versehen ist, auslassen
+                const alreadyAnnotated = new RegExp(`${escapeRegExp(alias)}<span class=\\"injected-value\\"`).test(out);
+                if (alreadyAnnotated) continue;
+                const annotation = `<span class=\"injected-value\">[${canonicalNameForRegId(regId)}=${valueForRegId(regId)}]</span>`;
+                const escaped = escapeRegExp(alias);
+                const regex = new RegExp(`(^|[^A-Za-z0-9_])(${escaped})(?![^<]*>)(?![A-Za-z0-9_])`, 'g');
+                out = out.replace(regex, `$1$2${annotation}`);
+            }
+            return out;
+        };
+        const annotateLineByFormalParams = (line, artifactObj, orgObj) => {
+            if (!artifactObj || !artifactObj.procNameToParamNames || !orgObj || !Array.isArray(orgObj.callStack) || orgObj.callStack.length === 0) return line;
+            if (line.includes('injected-value')) return line; // schon annotiert
+            const currentProc = orgObj.callStack[orgObj.callStack.length - 1];
+            if (!currentProc) return line;
+            const paramNames = artifactObj.procNameToParamNames[currentProc.toUpperCase()];
+            if (!Array.isArray(paramNames) || paramNames.length === 0) return line;
+            let out = line;
+            for (let i = 0; i < paramNames.length; i++) {
+                const pName = paramNames[i];
+                const escapedP = escapeRegExp(pName);
+                // Wenn pName bereits annotiert ist, überspringen
+                const alreadyAnnotated = new RegExp(`${escapedP}<span class=\\"injected-value\\"`).test(out);
+                if (alreadyAnnotated) continue;
+                let bracketStr = `[%FPR${i}=N/A]`;
+                if (Array.isArray(orgObj.formalParameters) && orgObj.formalParameters[i]) {
+                    const m = String(orgObj.formalParameters[i]).match(/\[(.*?)\]=(.*)$/);
+                    if (m) {
+                        bracketStr = `[${m[1]}=${m[2]}]`;
+                    }
+                }
+                const regex = new RegExp(`(^|[^A-Za-z0-9_])(${escapedP})(?![^<]*>)(?![A-Za-z0-9_])`, 'g');
+                out = out.replace(regex, `$1$2<span class=\"injected-value\">${bracketStr}</span>`);
+            }
+            return out;
+        };
+
+        // Basale Debug-Ausgaben
+        console.debug('[WR] runMode:', runMode, 'isPerfMode:', isPerfMode, 'artifact?', !!artifact);
+
+        // Für das Source-Rendering nicht am Performance-Modus festhalten – reine Browserarbeit
+        if (artifact && artifact.sourceMap && artifact.sources) {
+            console.debug('[WR] Artifact keys:', Object.keys(artifact));
+            console.debug('[WR] registerAliasMap size:', artifact.registerAliasMap ? Object.keys(artifact.registerAliasMap).length : 0);
+            console.debug('[WR] relativeCoordToLinearAddress keys sample:', artifact.relativeCoordToLinearAddress ? Object.keys(artifact.relativeCoordToLinearAddress).slice(0, 5) : []);
             const ip = JSON.parse(org.positionJson);
-            const initialPos = [0,0];
-            const relativeIp = [ip[0] - initialPos[0], ip[1] - initialPos[1]];
+            console.debug('[WR] IP:', ip);
+            // Ursprungskoordinate aus dem Artefakt bestimmen, falls vorhanden; fallback 0|0
+            const originFromLinear = (artifact && artifact.linearAddressToCoord) ? (artifact.linearAddressToCoord["0"] || artifact.linearAddressToCoord[0]) : null;
+            const originCoord = originFromLinear ? originFromLinear : (artifact && artifact.machineCodeLayout && (artifact.machineCodeLayout["0"] || artifact.machineCodeLayout[0]) ? (artifact.machineCodeLayout["0"] || artifact.machineCodeLayout[0]) : null);
+            const origin = Array.isArray(originCoord) ? originCoord : [0,0];
+            console.debug('[WR] originCoord:', originCoord, 'origin used:', origin);
+            const relativeIp = ip.map((v, idx) => v - (origin[idx] || 0));
             const relativeIpKey = `${relativeIp[0]}|${relativeIp[1]}`;
+            console.debug('[WR] relativeIpKey:', relativeIpKey);
 
             const linearAddress = artifact.relativeCoordToLinearAddress[relativeIpKey];
+            console.debug('[WR] linearAddress:', linearAddress);
             const sourceInfo = artifact.sourceMap[linearAddress];
+            console.debug('[WR] sourceInfo:', sourceInfo);
 
-            if (sourceInfo && sourceInfo.fileName && artifact.sources[sourceInfo.fileName]) {
-                const sourceLines = artifact.sources[sourceInfo.fileName];
+            if (sourceInfo && sourceInfo.fileName && artifact.sources) {
+                const fileKey = artifact.sources[sourceInfo.fileName] ? sourceInfo.fileName : (sourceInfo.fileName.split(/[\\\/]/).pop());
+                const sourceLines = artifact.sources[fileKey];
                 const highlightedLine = sourceInfo.lineNumber;
 
-                sourceCodeHtml = `<b>${sourceInfo.fileName}</b><div class="code-view source-code-view">`;
-                sourceLines.forEach((line, index) => {
-                    const lineNum = index + 1;
-                    const isHighlighted = lineNum === highlightedLine;
-                    let processedLine = line.replace(/</g, "&lt;");
+                if (Array.isArray(sourceLines)) {
+                    const absName = sourceInfo.fileName;
+                    const baseName = absName.split(/[\\\/]/).pop();
+                    const displayName = baseName === 'test.s' ? baseName : `./lib/${baseName}`;
+                    // POP/PUSH-Heuristik: In Prozedurdateien ggf. Hervorhebung verschieben
+                    let effectiveHighlightedLine = highlightedLine;
+                    try {
+                        const isProcedureFile = baseName !== 'test.s';
+                        const instr = JSON.parse(org.disassembledInstructionJson);
+                        if (isProcedureFile && instr) {
+                            const headerLineText = (sourceLines[highlightedLine - 1] || '').trim().toUpperCase();
+                            const isHeader = headerLineText === 'MY_PROC' || headerLineText.startsWith('.PROC');
+                            if (instr.opcodeName === 'PUSH' && isHeader) {
+                                const retIndex = sourceLines.findIndex(l => String(l).trim().toUpperCase().startsWith('RET'));
+                                if (retIndex >= 0) {
+                                    effectiveHighlightedLine = retIndex + 1;
+                                    console.debug('[WR] shifted highlight (PUSH) to RET at line', effectiveHighlightedLine);
+                                }
+                            }
+                            // Bei POP keine Verschiebung (Header bleiben)
+                        }
+                    } catch(_) {}
 
-                    if (isHighlighted) {
-                         const instruction = JSON.parse(org.disassembledInstructionJson);
-                         if(instruction && instruction.arguments) {
-                            instruction.arguments.forEach(arg => {
-                                const alias = Object.keys(artifact.registerAliasMap).find(key => artifact.registerAliasMap[key] === arg.value);
-                                const tokenToReplace = alias || arg.name;
-                                const annotation = `<span class="injected-value">[${arg.name}=${arg.fullDisplayValue}]</span>`;
+                    sourceCodeHtml = `<b>${displayName}</b><div class="code-view source-code-view">`;
+                    sourceLines.forEach((line, index) => {
+                        const lineNum = index + 1;
+                        const isHighlighted = lineNum === effectiveHighlightedLine;
+                        let processedLine = line.replace(/</g, "&lt;");
 
-                                const regex = new RegExp(`(\\b${tokenToReplace}\\b)(?!.*\\])`, 'gi');
-                                processedLine = processedLine.replace(regex, `${tokenToReplace}${annotation}`);
-                            });
-                         }
-                    }
+                        if (isHighlighted) {
+                            const instruction = JSON.parse(org.disassembledInstructionJson);
+                            console.debug('[WR] disassembled for line', lineNum, instruction);
+                            if (instruction && Array.isArray(instruction.arguments)) {
+                                const isRealCall = instruction.opcodeName === 'CALL';
+                                instruction.arguments
+                                    .filter(arg => arg.type === 'register')
+                                    .forEach(arg => {
+                                        // Disassembly-basierte Annotation nur bei echtem CALL, um Duplikate in PUSH-Ticks zu vermeiden
+                                        if (!isRealCall) return;
+                                        let tokenToReplace = arg.name;
+                                        if (artifact.registerAliasMap) {
+                                            const alias = Object.keys(artifact.registerAliasMap).find(key => artifact.registerAliasMap[key] === arg.value);
+                                            if (alias) tokenToReplace = alias;
+                                        }
+                                        const alreadyAnnotated = new RegExp(`${escapeRegExp(tokenToReplace)}<span class=\\"injected-value\\"`).test(processedLine);
+                                        if (!alreadyAnnotated) {
+                                            const annotation = `<span class=\"injected-value\">[${arg.name}=${arg.fullDisplayValue}]</span>`;
+                                            const escapedTok = escapeRegExp(tokenToReplace);
+                                            const regex = new RegExp(`(^|[^A-Za-z0-9_])(${escapedTok})(?![^<]*>)(?![A-Za-z0-9_])`, 'g');
+                                            processedLine = processedLine.replace(regex, `$1$2${annotation}`);
+                                        }
+                                    });
+                            }
+                            // Aliase immer annotieren (sichert beide Parameter in PUSH-Ticks), doppelte werden vermieden
+                            processedLine = annotateLineByAliases(processedLine, artifact);
+                            // Formale Parameter annotieren (wirkt nur in Prozeduren)
+                            processedLine = annotateLineByFormalParams(processedLine, artifact, org);
+                        }
 
-                    sourceCodeHtml += `<div class="source-line ${isHighlighted ? 'highlight' : ''}"><span class="line-number">${lineNum}</span><pre>${processedLine}</pre></div>`;
-                });
-                sourceCodeHtml += '</div>';
+                        sourceCodeHtml += `<div class="source-line ${isHighlighted ? 'highlight' : ''}"><span class="line-number">${lineNum}</span><pre>${processedLine}</pre></div>`;
+                    });
+                    sourceCodeHtml += '</div>';
+                }
 
                 const disassembled = JSON.parse(org.disassembledInstructionJson);
                 if (disassembled && disassembled.opcodeName) {
-                    const args = disassembled.arguments.map(a => `<b>${a.name}</b>`).join(' ');
-                    instructionHtml = `${disassembled.opcodeName} ${args}`;
+                    const parts = disassembled.arguments.map(a => {
+                        if (a.type === 'register') {
+                            let outer = a.name;
+                            if (artifact.registerAliasMap) {
+                                const alias = Object.keys(artifact.registerAliasMap).find(key => artifact.registerAliasMap[key] === a.value);
+                                if (alias) outer = alias;
+                            }
+                            return `${outer}<span class="injected-value">[${a.name}=${a.fullDisplayValue}]</span>`;
+                        }
+                        return a.name;
+                    });
+                    instructionHtml = `${disassembled.opcodeName} ${parts.join(' ')}`;
                 }
+            }
+            // Fallback: Wenn SourceMap nicht aufgelöst werden konnte, aber Disassembler Source-Infos liefert
+            if ((!sourceInfo || !sourceInfo.fileName) && !sourceCodeHtml.includes('source-code-view')) {
+                try {
+                    const disassembled = JSON.parse(org.disassembledInstructionJson);
+                    if (disassembled && disassembled.sourceFileName && artifact.sources && artifact.sources[disassembled.sourceFileName]) {
+                        const sourceLines = artifact.sources[disassembled.sourceFileName];
+                        const highlightedLine = disassembled.sourceLineNumber;
+                        sourceCodeHtml = `<b>${disassembled.sourceFileName}</b><div class="code-view source-code-view">`;
+                        sourceLines.forEach((line, index) => {
+                            const lineNum = index + 1;
+                            const isHighlighted = lineNum === highlightedLine;
+                            let processedLine = line.replace(/</g, "&lt;");
+                            if (isHighlighted) {
+                                processedLine = annotateLineByAliases(processedLine, artifact);
+                                processedLine = annotateLineByFormalParams(processedLine, artifact, org);
+                            }
+                            sourceCodeHtml += `<div class="source-line ${isHighlighted ? 'highlight' : ''}"><span class="line-number">${lineNum}</span><pre>${processedLine}</pre></div>`;
+                        });
+                        sourceCodeHtml += '</div>';
+                    }
+                } catch (_) { /* ignore */ }
             }
         }
 
+        // Falls kein Source-Mapping vorhanden war, trotzdem die disassemblierte Instruktion anzeigen (nicht im Performance-Modus)
+        if (!isPerfMode && instructionHtml === 'N/A' && org.disassembledInstructionJson) {
+            try {
+                const disassembled = JSON.parse(org.disassembledInstructionJson);
+                if (disassembled && disassembled.opcodeName) {
+                    const artifact = programArtifacts.get(org.programId);
+                    const parts = disassembled.arguments.map(a => {
+                        if (a.type === 'register') {
+                            let outer = a.name;
+                            if (artifact && artifact.registerAliasMap) {
+                                const alias = Object.keys(artifact.registerAliasMap).find(key => artifact.registerAliasMap[key] === a.value);
+                                if (alias) outer = alias;
+                            }
+                            return `${outer}<span class="injected-value">[${a.name}=${a.fullDisplayValue}]</span>`;
+                        }
+                        return a.name;
+                    });
+                    instructionHtml = `${disassembled.opcodeName} ${parts.join(' ')}`;
+                }
+            } catch (_) { /* ignore */ }
+        }
+
         const dsHtml = isPerfMode ? perfModeMsg : (org.dataStack.length > 0 ? org.dataStack.slice(-8).reverse().join('<br>') : '[]');
-        const csHtml = isPerfMode ? perfModeMsg : (org.callStack.length > 0 ? org.callStack.join(' &rarr; ') : '[]');
+        let csHtml = isPerfMode ? perfModeMsg : (org.callStack.length > 0 ? org.callStack.join(' &rarr; ') : '[]');
+        if (!isPerfMode && org.formalParameters && org.formalParameters.length > 0) {
+            csHtml += `<br><span style="color:#888;">Parameter (Top Frame):</span><br>` + org.formalParameters.join('<br>');
+        }
 
         detailsContent.innerHTML = `
 <h3>Organismus #${org.organismId}</h3><hr>
@@ -199,8 +372,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 <b>Position (IP):</b> ${org.positionJson}
 <b>Datenzeiger (DP):</b> ${org.dpJson}
 <b>Richtung (DV):</b> ${org.dvJson}
-<hr><b>Quellcode</b>
-${sourceCodeHtml}
+<hr><b>Quellcode: </b>${sourceCodeHtml}
 <hr>
 <b>Aktuelle Instruktion:</b>
 <div class="code-view">${instructionHtml}</div>

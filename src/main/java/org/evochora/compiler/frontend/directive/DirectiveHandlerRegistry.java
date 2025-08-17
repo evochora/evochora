@@ -44,7 +44,6 @@ public class DirectiveHandlerRegistry {
         // Präprozessor-Handler
         IncludeDirectiveHandler includeHandler = new IncludeDirectiveHandler();
         registry.register(".INCLUDE", includeHandler);
-        // TODO: Add .FILE and .INCLUDE_STRICT and differentiate in handler
         registry.register(".MACRO", new MacroDirectiveHandler());
         registry.register(".ROUTINE", new RoutineDirectiveHandler()); // NEU
 

@@ -8,5 +8,7 @@ import java.util.List;
  */
 public record DisassembledInstruction(
         String opcodeName,
-        List<DisassembledArgument> arguments
+        List<DisassembledArgument> arguments,
+        String sourceFileName,
+        Integer sourceLineNumber
 ) {}

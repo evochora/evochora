@@ -6,9 +6,7 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
 
-import java.util.Arrays; // NEUER IMPORT
 import java.util.HashMap;
-import java.util.List; // NEUER IMPORT
 import java.util.Map;
 
 /**
@@ -76,8 +74,14 @@ public class ProcedureCallHandler {
             for (int i = 0; i < targetIp.length; i++) {
                 relativeTargetIp[i] = targetIp[i] - origin[i];
             }
-            List<Integer> relativeCoordList = Arrays.stream(relativeTargetIp).boxed().toList();
-            Integer targetAddress = artifact.relativeCoordToLinearAddress().get(relativeCoordList);
+            // Keys in ProgramArtifact.relativeCoordToLinearAddress are strings like "x|y|..."
+            StringBuilder keyBuilder = new StringBuilder();
+            for (int i = 0; i < relativeTargetIp.length; i++) {
+                if (i > 0) keyBuilder.append('|');
+                keyBuilder.append(relativeTargetIp[i]);
+            }
+            String relativeKey = keyBuilder.toString();
+            Integer targetAddress = artifact.relativeCoordToLinearAddress().get(relativeKey);
             if (targetAddress != null) {
                 procName = artifact.labelAddressToName().getOrDefault(targetAddress, "UNKNOWN");
             }

@@ -1,6 +1,11 @@
 package org.evochora.runtime.internal.services;
 
+import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Entkoppelt die Strategien zur Auflösung von Parameterbindungen für Prozeduraufrufe.
@@ -22,30 +27,51 @@ public class CallBindingResolver {
     /**
      * Löst die Parameterbindungen für die aktuelle CALL-Instruktion auf.
      * <p>
-     * Diese Methode versucht, die Bindungen in einer bestimmten Reihenfolge zu finden:
-     * 1. Über die lineare Adresse der Instruktion in der {@link CallBindingRegistry}.
-     * 2. Als Fallback über die absolute Weltkoordinate in der {@link CallBindingRegistry}.
+     * Reihenfolge:
+     * 1) Artefakt-gestützt: relative Adresse -> SourceMap -> Zeile parsen (Tokens nach WITH)
+     * 2) Fallback: CallBindingRegistry (absolute Koordinate)
      *
-     * @return Ein Array von Register-IDs, die gebunden sind, oder {@code null}, wenn keine Bindung gefunden wurde.
+     * @return Array der gebundenen Register-IDs oder null.
      */
     public int[] resolveBindings() {
         Organism organism = context.getOrganism();
-        // Environment world = context.getEnvironment(); // Nicht mehr benötigt
-
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
 
-        // TODO: [Phase 1 Workaround] Aktuell wird eine globale Registry basierend auf absoluten Koordinaten
-        //       verwendet. Dies ist eine temporäre "Krücke" und führt zu Fehlern bei dynamisch
-        //       erstelltem Code (z.B. durch FORK), da die Metadaten nicht mitkopiert werden.
-        //
-        // TODO: [Phase 2 Fix] Dies wird durch die Einführung eines `ProgramArtifact` im `ExecutionContext`
-        //       behoben. Der Resolver wird dann die Bindungen aus den Metadaten des Artefakts lesen,
-        //       basierend auf der *relativen* Adresse der Instruktion innerhalb des Programms.
+        // 1) Artefakt-gestützt über SourceMap
+        try {
+            ProgramArtifact artifact = context.getArtifact();
+            if (artifact != null && artifact.relativeCoordToLinearAddress() != null && artifact.sourceMap() != null) {
+                int[] origin = organism.getInitialPosition();
+                StringBuilder key = new StringBuilder();
+                for (int i = 0; i < ipBeforeFetch.length; i++) {
+                    if (i > 0) key.append('|');
+                    key.append(ipBeforeFetch[i] - origin[i]);
+                }
+                Integer addr = artifact.relativeCoordToLinearAddress().get(key.toString());
+                if (addr != null && artifact.sourceMap().get(addr) != null) {
+                    String line = artifact.sourceMap().get(addr).lineContent();
+                    if (line != null) {
+                        String upper = line.toUpperCase();
+                        int withIdx = upper.indexOf(" WITH ");
+                        if (withIdx >= 0) {
+                            String afterWith = line.substring(withIdx + 6).trim();
+                            String[] parts = afterWith.split("\\s+");
+                            List<Integer> regs = new ArrayList<>();
+                            for (String p : parts) {
+                                Integer regId = Instruction.resolveRegToken(p, java.util.Map.of());
+                                if (regId != null) regs.add(regId);
+                            }
+                            if (!regs.isEmpty()) {
+                                return regs.stream().mapToInt(Integer::intValue).toArray();
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignore) { }
 
+        // 2) Fallback: Globale Registry (absolute Koordinate)
         CallBindingRegistry registry = CallBindingRegistry.getInstance();
-        // Wir verlassen uns vorübergehend nur auf den Fallback über die absolute Koordinate.
-        int[] bindings = registry.getBindingForAbsoluteCoord(ipBeforeFetch);
-
-        return bindings;
+        return registry.getBindingForAbsoluteCoord(ipBeforeFetch);
     }
 }

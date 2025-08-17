@@ -110,17 +110,21 @@ final class WorldStateAdapter {
         List<String> formatted = new ArrayList<>();
         for (int i = 0; i < paramNames.size(); i++) {
             String paramName = paramNames.get(i);
-            Object value = organism.getFpr(i);
             Integer boundRegId = topFrame.fprBindings.get(Instruction.FPR_BASE + i);
-            String boundName = "??";
-            if (boundRegId != null) {
-                if (boundRegId < Instruction.PR_BASE) {
-                    boundName = "%DR" + boundRegId;
-                } else if (boundRegId < Instruction.FPR_BASE) {
-                    boundName = "%PR" + (boundRegId - Instruction.PR_BASE);
-                } else {
-                    boundName = "%FPR" + (boundRegId - Instruction.FPR_BASE);
-                }
+            Object value = (boundRegId != null) ? organism.readOperand(boundRegId) : organism.getFpr(i);
+            String boundName;
+            if (boundRegId == null) {
+                // Kein DR/PR gebunden – zeige FPR explizit (%FPRi)
+                boundName = "%FPR" + i;
+            } else if (boundRegId < Instruction.PR_BASE) {
+                // DR gebunden
+                boundName = "%DR" + boundRegId;
+            } else if (boundRegId < Instruction.FPR_BASE) {
+                // PR gebunden
+                boundName = "%PR" + (boundRegId - Instruction.PR_BASE);
+            } else {
+                // FPR gebunden (eher theoretisch)
+                boundName = "%FPR" + (boundRegId - Instruction.FPR_BASE);
             }
             formatted.add(String.format("%s[%s]=%s", paramName, boundName, formatObject(value)));
         }
