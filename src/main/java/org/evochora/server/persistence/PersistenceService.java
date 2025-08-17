@@ -17,6 +17,7 @@ import java.nio.file.Paths;
 import java.sql.*;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -28,18 +29,19 @@ public final class PersistenceService implements IControllable, Runnable {
     private static final Logger log = LoggerFactory.getLogger(PersistenceService.class);
 
     private final ITickMessageQueue queue;
-    private final Object unused = null;
     private final Thread thread;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final boolean performanceMode;
 
     private Connection connection;
     private Path dbFilePath;
     private volatile long lastPersistedTick = -1L;
 
-    public PersistenceService(ITickMessageQueue queue) {
+    public PersistenceService(ITickMessageQueue queue, boolean performanceMode) {
         this.queue = queue;
+        this.performanceMode = performanceMode;
         this.thread = new Thread(this, "PersistenceService");
         this.thread.setDaemon(true);
     }
@@ -85,14 +87,12 @@ public final class PersistenceService implements IControllable, Runnable {
             try (Statement st = connection.createStatement()) {
                 st.execute("CREATE TABLE IF NOT EXISTS programs (programId TEXT PRIMARY KEY, artifactJson TEXT)");
                 st.execute("CREATE TABLE IF NOT EXISTS ticks (tickNumber INTEGER PRIMARY KEY, timestampMicroseconds INTEGER, organismCount INTEGER)");
-                // --- START DER ÄNDERUNG ---
                 st.execute("CREATE TABLE IF NOT EXISTS organism_states (" +
                         "tickNumber INTEGER, organismId INTEGER, programId TEXT, parentId INTEGER NULL, " +
                         "birthTick INTEGER, energy INTEGER, positionJson TEXT, dpJson TEXT, dvJson TEXT, " +
                         "stateJson TEXT, disassembledInstructionJson TEXT, " +
-                        "dataRegisters TEXT, procRegisters TEXT, dataStack TEXT, callStack TEXT, formalParameters TEXT, " + // NEUE SPALTEN
+                        "dataRegisters TEXT, procRegisters TEXT, dataStack TEXT, callStack TEXT, formalParameters TEXT, " +
                         "PRIMARY KEY (tickNumber, organismId))");
-                // --- ENDE DER ÄNDERUNG ---
                 st.execute("CREATE TABLE IF NOT EXISTS cell_states (tickNumber INTEGER, positionJson TEXT, type INTEGER, value INTEGER, ownerId INTEGER, PRIMARY KEY (tickNumber, positionJson))");
 
                 st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
@@ -102,6 +102,9 @@ public final class PersistenceService implements IControllable, Runnable {
                     ps.executeUpdate();
                     ps.setString(1, "isaMap");
                     ps.setString(2, objectMapper.writeValueAsString(Instruction.getIdToNameMap()));
+                    ps.executeUpdate();
+                    ps.setString(1, "runMode");
+                    ps.setString(2, performanceMode ? "performance" : "debug");
                     ps.executeUpdate();
                 }
             }
@@ -133,46 +136,14 @@ public final class PersistenceService implements IControllable, Runnable {
         } catch (Exception e) {
             log.error("PersistenceService error", e);
         } finally {
-            closeQuietly();
             log.info("PersistenceService stopped");
         }
     }
 
     private void handleProgramArtifact(ProgramArtifactMessage pam) throws Exception {
-        // ... (diese Methode bleibt unverändert)
-        java.util.Map<String, Object> serializableArtifact = new java.util.HashMap<>();
-        org.evochora.compiler.api.ProgramArtifact artifact = pam.programArtifact();
-
-        serializableArtifact.put("programId", artifact.programId());
-        serializableArtifact.put("sourceMap", artifact.sourceMap());
-        serializableArtifact.put("callSiteBindings", artifact.callSiteBindings());
-        serializableArtifact.put("linearAddressToCoord", artifact.linearAddressToCoord());
-        serializableArtifact.put("labelAddressToName", artifact.labelAddressToName());
-        serializableArtifact.put("registerAliasMap", artifact.registerAliasMap()); // Hinzugefügt für Vollständigkeit
-
-        serializableArtifact.put("machineCodeLayout",
-                artifact.machineCodeLayout().entrySet().stream()
-                        .collect(Collectors.toMap(
-                                e -> java.util.Arrays.stream(e.getKey()).mapToObj(String::valueOf).collect(Collectors.joining("|")),
-                                java.util.Map.Entry::getValue
-                        ))
-        );
-        serializableArtifact.put("initialWorldObjects",
-                artifact.initialWorldObjects().entrySet().stream()
-                        .collect(Collectors.toMap(
-                                e -> java.util.Arrays.stream(e.getKey()).mapToObj(String::valueOf).collect(Collectors.joining("|")),
-                                java.util.Map.Entry::getValue
-                        ))
-        );
-        serializableArtifact.put("relativeCoordToLinearAddress",
-                artifact.relativeCoordToLinearAddress().entrySet().stream()
-                        .collect(Collectors.toMap(
-                                e -> e.getKey().stream().map(String::valueOf).collect(Collectors.joining("|")),
-                                java.util.Map.Entry::getValue
-                        ))
-        );
-
-        String json = objectMapper.writeValueAsString(serializableArtifact);
+        // KORREKTUR: Wir serialisieren das gesamte Artefakt direkt, ohne es manuell umzubauen.
+        // Das stellt sicher, dass alle Felder, einschließlich 'sources', korrekt gespeichert werden.
+        String json = objectMapper.writeValueAsString(pam.programArtifact());
         try (PreparedStatement ps = connection.prepareStatement("INSERT OR REPLACE INTO programs(programId, artifactJson) VALUES (?, ?)")) {
             ps.setString(1, pam.programId());
             ps.setString(2, json);
@@ -190,7 +161,6 @@ public final class PersistenceService implements IControllable, Runnable {
             psTick.executeUpdate();
         }
 
-        // --- START DER ÄNDERUNG ---
         final String orgSql = "INSERT OR REPLACE INTO organism_states(" +
                 "tickNumber, organismId, programId, parentId, birthTick, energy, positionJson, dpJson, dvJson, " +
                 "stateJson, disassembledInstructionJson, dataRegisters, procRegisters, dataStack, callStack, formalParameters) " +
@@ -208,15 +178,12 @@ public final class PersistenceService implements IControllable, Runnable {
                 psOrg.setString(8, objectMapper.writeValueAsString(org.dp()));
                 psOrg.setString(9, objectMapper.writeValueAsString(org.dv()));
 
-                // stateJson bleibt für Abwärtskompatibilität, enthält aber nicht mehr alles
                 java.util.Map<String, Object> stateMap = new java.util.LinkedHashMap<>();
                 stateMap.put("ip", org.ip());
                 stateMap.put("er", org.er());
                 psOrg.setString(10, objectMapper.writeValueAsString(stateMap));
 
                 psOrg.setString(11, org.disassembledInstructionJson());
-
-                // Neue Felder als JSON-Strings speichern
                 psOrg.setString(12, objectMapper.writeValueAsString(org.dataRegisters()));
                 psOrg.setString(13, objectMapper.writeValueAsString(org.procRegisters()));
                 psOrg.setString(14, objectMapper.writeValueAsString(org.dataStack()));
@@ -227,7 +194,6 @@ public final class PersistenceService implements IControllable, Runnable {
             }
             psOrg.executeBatch();
         }
-        // --- ENDE DER ÄNDERUNG ---
 
         try (PreparedStatement psCell = connection.prepareStatement(
                 "INSERT OR REPLACE INTO cell_states(tickNumber, positionJson, type, value, ownerId) VALUES (?, ?, ?, ?, ?)")) {

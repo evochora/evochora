@@ -1,6 +1,6 @@
 package org.evochora.runtime;
 
-import org.evochora.compiler.api.ProgramArtifact; // NEUER IMPORT
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
@@ -20,8 +20,8 @@ public class Simulation {
     public boolean paused = true;
     private final List<Organism> newOrganismsThisTick = new ArrayList<>();
     private int nextOrganismId = 0;
+    private final boolean isPerformanceMode;
 
-    // --- START: NEUE HINZUGEFÜGTE TEILE ---
     private Map<String, ProgramArtifact> programArtifacts = new HashMap<>();
 
     public void setProgramArtifacts(Map<String, ProgramArtifact> artifacts) {
@@ -31,12 +31,25 @@ public class Simulation {
     public Map<String, ProgramArtifact> getProgramArtifacts() {
         return programArtifacts;
     }
-    // --- ENDE: NEUE HINZUGEFÜGTE TEILE ---
 
+    /**
+     * NEUER KONSTRUKTOR: Setzt den Debug-Modus als Standard.
+     * Dies behebt die Compiler-Fehler in den Tests und der UI.
+     * @param environment Die Simulationsumgebung.
+     */
     public Simulation(Environment environment) {
+        this(environment, false); // Standardmäßig Debug-Modus
+    }
+
+    public Simulation(Environment environment, boolean performanceMode) {
         this.environment = environment;
+        this.isPerformanceMode = performanceMode;
         this.organisms = new ArrayList<>();
         this.vm = new org.evochora.runtime.VirtualMachine(this);
+    }
+
+    public boolean isPerformanceMode() {
+        return isPerformanceMode;
     }
 
     public void addOrganism(Organism organism) {

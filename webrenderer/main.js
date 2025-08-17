@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', async () => {
 
-    // DOM-Elemente holen (unverändert)
     const fileInput = document.getElementById('db-upload');
     const sidebar = document.getElementById('sidebar');
     const closeSidebarBtn = document.getElementById('close-sidebar');
@@ -18,6 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let programArtifacts = new Map();
     let renderer = null;
     let simConfig = {}, simIsa = {};
+    let runMode = 'performance';
 
     const SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
 
@@ -48,6 +48,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const row = metaStmt.getAsObject();
                 if (row.key === 'worldShape') simConfig.WORLD_SHAPE = JSON.parse(row.value);
                 else if (row.key === 'isaMap') simIsa = JSON.parse(row.value);
+                else if (row.key === 'runMode') runMode = row.value;
             }
             metaStmt.free();
 
@@ -61,13 +62,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                  artifactsResult[0].values.forEach(([id, json]) => {
                     try {
                         const artifact = JSON.parse(json);
-                        const reverseAliasMap = new Map();
-                        if (artifact.registerAliasMap) {
-                            for (const [alias, regId] of Object.entries(artifact.registerAliasMap)) {
-                                reverseAliasMap.set(regId, alias);
-                            }
-                        }
-                        artifact.reverseAliasMap = reverseAliasMap;
                         programArtifacts.set(id, artifact);
                     }
                     catch (e) { console.warn(`Konnte Artefakt für Programm "${id}" nicht parsen.`); }
@@ -115,13 +109,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const cells = [];
         while(cellsStmt.step()) cells.push(cellsStmt.getAsObject());
         cellsStmt.free();
-        // Holen Sie ALLE neuen Felder aus der DB
+
         const orgStmt = db.prepare("SELECT organismId, programId, energy, positionJson, dpJson, dvJson, disassembledInstructionJson, dataRegisters, procRegisters, dataStack, callStack, formalParameters FROM organism_states WHERE tickNumber = :tick");
         orgStmt.bind({ ':tick': tick });
         const organisms = [];
         while(orgStmt.step()) {
             const orgData = orgStmt.getAsObject();
-            // JSON-Felder direkt parsen
             try {
                 orgData.dataRegisters = JSON.parse(orgData.dataRegisters);
                 orgData.procRegisters = JSON.parse(orgData.procRegisters);
@@ -144,39 +137,59 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        let nextInstruction;
-        try {
-            nextInstruction = org.disassembledInstructionJson ? JSON.parse(org.disassembledInstructionJson) : null;
-        } catch (e) {
-            detailsContent.innerHTML = `<p style="color:red;">Fehler beim Lesen der Instruktions-Daten.</p>`;
-            return;
+        const isPerfMode = (runMode === 'performance');
+        const perfModeMsg = '<i style="color:#888;">(Performance-Modus)</i>';
+        const artifact = programArtifacts.get(org.programId);
+
+        let sourceCodeHtml = `<div class="code-view">${isPerfMode ? perfModeMsg : 'Kein Quellcode verfügbar.'}</div>`;
+        let instructionHtml = isPerfMode ? perfModeMsg : 'N/A';
+
+        if (!isPerfMode && artifact && artifact.sourceMap && artifact.sources) {
+            const ip = JSON.parse(org.positionJson);
+            const initialPos = [0,0];
+            const relativeIp = [ip[0] - initialPos[0], ip[1] - initialPos[1]];
+            const relativeIpKey = `${relativeIp[0]}|${relativeIp[1]}`;
+
+            const linearAddress = artifact.relativeCoordToLinearAddress[relativeIpKey];
+            const sourceInfo = artifact.sourceMap[linearAddress];
+
+            if (sourceInfo && sourceInfo.fileName && artifact.sources[sourceInfo.fileName]) {
+                const sourceLines = artifact.sources[sourceInfo.fileName];
+                const highlightedLine = sourceInfo.lineNumber;
+
+                sourceCodeHtml = `<b>${sourceInfo.fileName}</b><div class="code-view source-code-view">`;
+                sourceLines.forEach((line, index) => {
+                    const lineNum = index + 1;
+                    const isHighlighted = lineNum === highlightedLine;
+                    let processedLine = line.replace(/</g, "&lt;");
+
+                    if (isHighlighted) {
+                         const instruction = JSON.parse(org.disassembledInstructionJson);
+                         if(instruction && instruction.arguments) {
+                            instruction.arguments.forEach(arg => {
+                                const realRegName = arg.name;
+                                const alias = Object.keys(artifact.registerAliasMap).find(key => artifact.registerAliasMap[key] === arg.value);
+                                const tokenToReplace = alias || realRegName;
+                                const annotation = `<span class="injected-value">[${realRegName}=${arg.fullDisplayValue}]</span>`;
+                                processedLine = processedLine.replace(new RegExp(`\\b${tokenToReplace}\\b`, 'gi'), `${tokenToReplace}${annotation}`);
+                            });
+                         }
+                    }
+
+                    sourceCodeHtml += `<div class="source-line ${isHighlighted ? 'highlight' : ''}"><span class="line-number">${lineNum}</span><pre>${processedLine}</pre></div>`;
+                });
+                sourceCodeHtml += '</div>';
+
+                const disassembled = JSON.parse(org.disassembledInstructionJson);
+                if (disassembled && disassembled.opcodeName) {
+                    const args = disassembled.arguments.map(a => `<b>${a.name}</b>`).join(' ');
+                    instructionHtml = `${disassembled.opcodeName} ${args}`;
+                }
+            }
         }
 
-        const artifact = programArtifacts.get(org.programId);
-        const ipAsInt = JSON.parse(org.positionJson)[0];
-
-        const formatInstructionLine = (instruction, lineIp) => {
-             if (!instruction || !instruction.opcodeName || instruction.opcodeName.startsWith("UNKNOWN")) {
-                return `&gt; (IP ${lineIp}: ---)`;
-            }
-            let sourceInfo = "";
-            if (artifact && artifact.sourceMap && artifact.sourceMap[lineIp]) {
-                const si = artifact.sourceMap[lineIp];
-                sourceInfo = `<i>(${si.fileName}:${si.lineNumber})</i> `;
-            }
-             const argsHtml = instruction.arguments.map(arg => `<b>${arg.name.replace(/</g, "&lt;")}</b>`).join(' ');
-            return `&gt; ${sourceInfo}${instruction.opcodeName} ${argsHtml}`;
-        };
-
-        const instructionHtml = formatInstructionLine(nextInstruction, ipAsInt);
-
-        // --- START DER ÄNDERUNGEN ---
-
-        const drsHtml = org.dataRegisters.map((val, i) => `DR${i}=${val}`).join(', ');
-        const prsHtml = org.procRegisters.length > 0 ? org.procRegisters.map((val, i) => `PR${i}=${val}`).join(', ') : '[]';
-        const dsHtml = org.dataStack.slice(-5).reverse().join(', ') || '[]';
-        const csHtml = org.callStack.length > 0 ? org.callStack.join(' &rarr; ') : '[]';
-        const fprsHtml = org.formalParameters.length > 0 ? org.formalParameters.join('<br>') : '[]';
+        const dsHtml = isPerfMode ? perfModeMsg : (org.dataStack.length > 0 ? org.dataStack.slice(-8).reverse().join('<br>') : '[]');
+        const csHtml = isPerfMode ? perfModeMsg : (org.callStack.length > 0 ? org.callStack.join(' &rarr; ') : '[]');
 
         detailsContent.innerHTML = `
 <h3>Organismus #${org.organismId}</h3><hr>
@@ -185,20 +198,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 <b>Position (IP):</b> ${org.positionJson}
 <b>Datenzeiger (DP):</b> ${org.dpJson}
 <b>Richtung (DV):</b> ${org.dvJson}
-<hr><b>Nächste Instruktion</b>
+<hr><b>Quellcode</b>
+${sourceCodeHtml}
+<hr>
+<b>Aktuelle Instruktion:</b>
 <div class="code-view">${instructionHtml}</div>
-<hr><b>Register (DRs):</b>
-<div class="code-view">${drsHtml}</div>
-<b>Prozedur-Register (PRs):</b>
-<div class="code-view">${prsHtml}</div>
-<b>Formale Parameter (FPRs):</b>
-<div class="code-view">${fprsHtml}</div>
-<b>Data Stack (DS - Top 5):</b>
+<b>Data Stack (Top 8):</b>
 <div class="code-view">${dsHtml}</div>
-<b>Call Stack (CS):</b>
+<b>Call Stack:</b>
 <div class="code-view">${csHtml}</div>
         `;
-        // --- ENDE DER ÄNDERUNGEN ---
     }
 
     canvas.addEventListener('click', (event) => {
@@ -213,7 +222,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         let foundOrganism = false;
         for (const org of lastWorldState.organisms) {
             const pos = JSON.parse(org.positionJson);
-            if (pos[0] === gridX && pos[1] === gridY) {
+            if (pos[0] === gridX && (pos.length === 1 || pos[1] === gridY)) {
                 selectedOrganismId = org.organismId;
                 updateSidebar();
                 showSidebar();

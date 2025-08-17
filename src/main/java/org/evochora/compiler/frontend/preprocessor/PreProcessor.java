@@ -21,6 +21,7 @@ public class PreProcessor implements ParsingContext {
     private int current = 0;
     private final Set<String> includedFiles = new HashSet<>();
     private final PreProcessorContext ppContext = new PreProcessorContext();
+    private final Map<String, String> includedFileContents = new HashMap<>();
 
     public PreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics, Path basePath) {
         this.tokens = new ArrayList<>(initialTokens);
@@ -55,33 +56,36 @@ public class PreProcessor implements ParsingContext {
         return tokens;
     }
 
+    public Map<String, String> getIncludedFileContents() {
+        return includedFileContents;
+    }
+
+    public void addSourceContent(String path, String content) {
+        includedFileContents.put(path, content);
+    }
+
     private void expandMacro(MacroDefinition macro) {
         int callSiteIndex = this.current;
         advance();
-
-        // Parse actual arguments into groups (each argument may span multiple tokens, e.g., DATA:123 or 3|4|5)
         List<List<Token>> actualArgs = new ArrayList<>();
         while (!isAtEnd() && peek().type() != TokenType.NEWLINE) {
             List<Token> arg = new ArrayList<>();
             Token t = peek();
-            // Typed literal: IDENTIFIER ':' NUMBER (e.g., DATA:123)
             if (t.type() == TokenType.IDENTIFIER && (current + 2) < tokens.size()
                     && tokens.get(current + 1).type() == TokenType.COLON
                     && tokens.get(current + 2).type() == TokenType.NUMBER) {
-                arg.add(advance()); // IDENTIFIER
-                arg.add(advance()); // ':'
-                arg.add(advance()); // NUMBER
+                arg.add(advance());
+                arg.add(advance());
+                arg.add(advance());
             }
-            // Vector literal: NUMBER ('|' NUMBER)+
             else if (t.type() == TokenType.NUMBER) {
-                arg.add(advance()); // first number
+                arg.add(advance());
                 while (!isAtEnd() && peek().type() == TokenType.PIPE) {
-                    arg.add(advance()); // '|'
-                    if (!isAtEnd()) arg.add(advance()); // next NUMBER
+                    arg.add(advance());
+                    if (!isAtEnd()) arg.add(advance());
                     else break;
                 }
             } else {
-                // Single token argument (REGISTER, IDENTIFIER, etc.)
                 arg.add(advance());
             }
             actualArgs.add(arg);
@@ -105,9 +109,7 @@ public class PreProcessor implements ParsingContext {
             else expandedBody.add(bodyToken);
         }
 
-        // Remove invocation: name + all tokens up to newline
-        int removed = 1; // macro name
-        // Count tokens consumed for actuals by flattening groups
+        int removed = 1;
         for (List<Token> g : actualArgs) removed += g.size();
         tokens.subList(callSiteIndex, callSiteIndex + removed).clear();
 
@@ -206,10 +208,6 @@ public class PreProcessor implements ParsingContext {
         this.current = startIndex;
     }
 
-    /**
-     * Gibt den internen Präprozessor-Kontext zurück.
-     * Nur für Testzwecke benötigt.
-     */
     public PreProcessorContext getPreProcessorContext() {
         return this.ppContext;
     }

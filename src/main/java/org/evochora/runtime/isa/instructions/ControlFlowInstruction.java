@@ -1,8 +1,11 @@
 package org.evochora.runtime.isa.instructions;
 
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.compiler.internal.legacy.AssemblerOutput;
+import org.evochora.runtime.internal.services.ExecutionContext;
+import org.evochora.runtime.internal.services.ProcedureCallHandler;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -19,23 +22,13 @@ public class ControlFlowInstruction extends Instruction {
         super(organism, fullOpcodeId);
     }
 
-    /**
-     * TODO: [Phase 1 Workaround] Dies ist eine temporäre Überschreibung, um ein Problem mit der Operanden-Auflösung
-     * bei CALL-Instruktionen zu beheben, die eine .WITH-Klausel verwenden. Die Basis-Implementierung von
-     * {@code resolveOperands} würde fälschlicherweise versuchen, die Register nach .WITH als Teil der
-     * Instruktions-Argumente zu parsen, anstatt nur das Label zu lesen. Diese Methode stellt sicher,
-     * dass nur der Label-Vektor gelesen wird. In Phase 2/3, wenn das ".WITH" durch explizite PUSH-Instruktionen
-     * vom Compiler ersetzt wird, kann diese Überschreibung entfernt werden.
-     */
     @Override
     public java.util.List<Operand> resolveOperands(Environment environment) {
         String opName = getName();
-        // Diese spezielle Logik gilt nur für Instruktionen, die ein Label als ersten Operanden haben.
         if ("CALL".equals(opName) || "JMPI".equals(opName)) {
             java.util.List<Operand> resolved = new java.util.ArrayList<>();
             int[] currentIp = organism.getIpBeforeFetch();
 
-            // Wir lesen manuell nur den Label-Vektor und ignorieren den Rest der Zeile.
             int[] delta = new int[Config.WORLD_DIMENSIONS];
             for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
                 Organism.FetchResult res = organism.fetchSignedArgument(currentIp, environment);
@@ -45,21 +38,15 @@ public class ControlFlowInstruction extends Instruction {
             resolved.add(new Operand(delta, -1));
             return resolved;
         }
-        // Für alle anderen Instruktionen in dieser Familie (z.B. JMPR, RET) das Standardverhalten verwenden.
         return super.resolveOperands(environment);
     }
 
-    /**
-     * Führt eine Kontrollfluss-Instruktion aus, indem sie die komplexe Logik
-     * an einen dedizierten {@link org.evochora.runtime.internal.services.ProcedureCallHandler} delegiert.
-     *
-     * @param simulation Die aktuelle Simulation (wird bald durch den ExecutionContext ersetzt).
-     */
     @Override
     public void execute(Simulation simulation) {
-        // Erstelle die neuen Service-Klassen
-        org.evochora.runtime.internal.services.ExecutionContext context = new org.evochora.runtime.internal.services.ExecutionContext(organism, simulation.getEnvironment());
-        org.evochora.runtime.internal.services.ProcedureCallHandler callHandler = new org.evochora.runtime.internal.services.ProcedureCallHandler(context);
+        ProgramArtifact artifact = simulation.getProgramArtifacts().get(organism.getProgramId());
+        // KORREKTUR: performanceMode wird an den Kontext übergeben
+        ExecutionContext context = new ExecutionContext(organism, simulation.getEnvironment(), artifact, simulation.isPerformanceMode());
+        ProcedureCallHandler callHandler = new ProcedureCallHandler(context);
 
         String opName = getName();
         List<Operand> operands = resolveOperands(simulation.getEnvironment());
@@ -76,7 +63,6 @@ public class ControlFlowInstruction extends Instruction {
                 case "JMPI":
                 case "JMPR":
                 case "JMPS":
-                    // Die einfache Sprunglogik bleibt vorerst hier, da sie trivial ist.
                     int[] delta = (int[]) operands.get(0).value();
                     int[] targetIp = organism.getTargetCoordinate(organism.getIpBeforeFetch(), delta, simulation.getEnvironment());
                     organism.setIp(targetIp);

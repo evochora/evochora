@@ -19,7 +19,8 @@ public class Main extends Application {
             Instruction.init();
 
             Environment environment = new Environment(Config.WORLD_SHAPE, Config.IS_TOROIDAL);
-            Simulation simulation = new Simulation(environment);
+            // KORREKTUR: Der performanceMode-Parameter wird übergeben (false für die UI).
+            Simulation simulation = new Simulation(environment, false);
 
             Setup.run(simulation);
 

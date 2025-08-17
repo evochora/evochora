@@ -53,8 +53,12 @@ public class LegacyCompilerAdapter implements ICompiler {
                         }
                 ));
 
+        Map<String, List<String>> procParams = metadata.procMetaMap().entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().formalParams() != null ? e.getValue().formalParams() : Collections.emptyList()));
+
         return new ProgramArtifact(
                 metadata.programId(),
+                Collections.emptyMap(), // KORREKTUR: Leere Map für 'sources' übergeben
                 metadata.machineCodeLayout(),
                 initialObjects,
                 sourceMap,
@@ -62,7 +66,8 @@ public class LegacyCompilerAdapter implements ICompiler {
                 metadata.relativeCoordToLinearAddress(),
                 metadata.linearAddressToCoord(),
                 metadata.labelAddressToName(),
-                metadata.registerMap() // Das 9. Argument, das vorher fehlte
+                metadata.registerMap(),
+                procParams
         );
     }
 

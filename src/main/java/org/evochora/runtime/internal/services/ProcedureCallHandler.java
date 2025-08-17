@@ -1,11 +1,14 @@
 package org.evochora.runtime.internal.services;
 
+import org.evochora.compiler.api.ProgramArtifact; // NEUER IMPORT
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
 
+import java.util.Arrays; // NEUER IMPORT
 import java.util.HashMap;
+import java.util.List; // NEUER IMPORT
 import java.util.Map;
 
 /**
@@ -43,7 +46,6 @@ public class ProcedureCallHandler {
         // 1. Parameter-Binding auflösen
         CallBindingResolver bindingResolver = new CallBindingResolver(context);
         int[] bindings = bindingResolver.resolveBindings();
-
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
 
         Map<Integer, Integer> fprBindings = new HashMap<>();
@@ -55,9 +57,6 @@ public class ProcedureCallHandler {
             }
         }
 
-        // 2. Zustand sichern (ProcFrame erstellen)
-        // KORREKTUR: Die Rücksprungadresse ist die Adresse NACH der gesamten CALL-Instruktion.
-        // Die Länge einer CALL-Instruktion ist immer 1 (Opcode) + WORLD_DIMENSIONS (für das Label).
         int instructionLength = 1 + Config.WORLD_DIMENSIONS;
         int[] returnIp = ipBeforeFetch;
         for (int i = 0; i < instructionLength; i++) {
@@ -69,6 +68,21 @@ public class ProcedureCallHandler {
 
         // TODO: In Phase 2 wird der Prozedurname aus den ProgramMetadata des ExecutionContext gelesen.
         String procName = "UNKNOWN";
+        ProgramArtifact artifact = context.getArtifact();
+        if (artifact != null) {
+            int[] targetIp = organism.getTargetCoordinate(ipBeforeFetch, targetDelta, environment);
+            int[] origin = organism.getInitialPosition();
+            int[] relativeTargetIp = new int[targetIp.length];
+            for (int i = 0; i < targetIp.length; i++) {
+                relativeTargetIp[i] = targetIp[i] - origin[i];
+            }
+            List<Integer> relativeCoordList = Arrays.stream(relativeTargetIp).boxed().toList();
+            Integer targetAddress = artifact.relativeCoordToLinearAddress().get(relativeCoordList);
+            if (targetAddress != null) {
+                procName = artifact.labelAddressToName().getOrDefault(targetAddress, "UNKNOWN");
+            }
+        }
+        // --- ENDE DER ÄNDERUNG ---
 
         Organism.ProcFrame frame = new Organism.ProcFrame(procName, returnIp, prsSnapshot, fprsSnapshot, fprBindings);
         organism.getCallStack().push(frame);
@@ -118,8 +132,7 @@ public class ProcedureCallHandler {
 
         // 2. Zustand wiederherstellen
         organism.restorePrs(returnFrame.savedPrs);
-
-        organism.setIp(returnFrame.absoluteReturnIp); // Direkt die korrekte, absolute Adresse verwenden.
+        organism.setIp(returnFrame.absoluteReturnIp);
         organism.setSkipIpAdvance(true);
     }
 }

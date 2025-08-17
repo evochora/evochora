@@ -1,4 +1,3 @@
-// src/main/java/org/evochora/assembler/Disassembler.java
 package org.evochora.compiler.internal.legacy;
 
 import org.evochora.runtime.Config;
@@ -15,16 +14,19 @@ import java.util.stream.Collectors;
 public class Disassembler {
     private static final boolean DEBUG_ANNOTATE_ADAPTERS = true;
 
+    private String coordToStringKey(int[] coord) {
+        return Arrays.stream(coord).mapToObj(String::valueOf).collect(Collectors.joining("|"));
+    }
+
     public DisassembledInstruction disassemble(ProgramMetadata metadata, int[] coord, int[] currentDv, Environment environment) {
-        Map<List<Integer>, Integer> relativeCoordToLinearAddress = metadata.relativeCoordToLinearAddress();
+        Map<String, Integer> relativeCoordToLinearAddress = metadata.relativeCoordToLinearAddress(); // KORRIGIERT
         Map<Integer, int[]> linearAddressToRelativeCoord = metadata.linearAddressToCoord();
         Map<String, Integer> registerNameToId = metadata.registerMap();
-        // Invert the map for efficient lookup
         Map<Integer, String> registerIdToName = registerNameToId.entrySet().stream()
                 .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
         Map<Integer, String> labelAddressToName = metadata.labelAddressToName();
 
-        Integer linearAddress = relativeCoordToLinearAddress != null ? relativeCoordToLinearAddress.get(Arrays.stream(coord).boxed().collect(Collectors.toList())) : null;
+        Integer linearAddress = relativeCoordToLinearAddress != null ? relativeCoordToLinearAddress.get(coordToStringKey(coord)) : null; // KORRIGIERT
 
         Molecule molecule = environment.getMolecule(coord);
         String instructionType = getInstructionTypeString(molecule);
@@ -54,10 +56,9 @@ public class Disassembler {
                     int rawValue = argMolecule.value();
 
                     if (argType == ArgumentType.REGISTER) {
-                        // Bevorzugt den Alias aus den Metadaten, falls vorhanden
                         if (registerIdToName != null && registerIdToName.containsKey(rawValue)) {
                             argResolvedValue = registerIdToName.get(rawValue);
-                        } else if (rawValue >= 2000) { // NEU: FPRs erkennen
+                        } else if (rawValue >= 2000) {
                             argResolvedValue = "%FPR" + (rawValue - 2000);
                         } else if (rawValue >= 1000) {
                             argResolvedValue = "%PR" + (rawValue - 1000);
@@ -70,7 +71,7 @@ public class Disassembler {
                             targetCoord[d] = coord[d] + rawValue;
                         }
                         targetCoord = environment.getNormalizedCoordinate(targetCoord);
-                        Integer targetLinearAddress = relativeCoordToLinearAddress.get(Arrays.stream(targetCoord).boxed().collect(Collectors.toList()));
+                        Integer targetLinearAddress = relativeCoordToLinearAddress.get(coordToStringKey(targetCoord)); // KORRIGIERT
 
                         if(targetLinearAddress != null && labelAddressToName.containsKey(targetLinearAddress)) {
                             argResolvedValue = labelAddressToName.get(targetLinearAddress);
@@ -100,7 +101,7 @@ public class Disassembler {
             if (bothRegisterArgs) {
                 int raw0 = arguments.get(0).rawValue();
                 int raw1 = arguments.get(1).rawValue();
-                boolean involvesPrOrFpr = (raw0 >= 1000) || (raw1 >= 1000); // PRs oder FPRs
+                boolean involvesPrOrFpr = (raw0 >= 1000) || (raw1 >= 1000);
                 if (involvesPrOrFpr) {
                     opcodeName = opcodeName + " [adapter]";
                 }

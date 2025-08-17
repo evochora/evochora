@@ -21,7 +21,7 @@ public record PassManagerContext(
         Map<String, Integer> labelMap,
         Map<Integer, String> labelAddressToNameMap,
         Map<Integer, int[]> linearAddressToCoordMap,
-        Map<List<Integer>, Integer> coordToLinearAddressMap,
+        Map<String, Integer> coordToLinearAddressMap, // KORRIGIERT
         Map<Integer, SourceLocation> sourceMap,
 
         // Hinzugefügt für Vollständigkeit

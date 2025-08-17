@@ -33,7 +33,6 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
         String relativePath = (String) pathToken.value();
         Path absolutePath = context.getBasePath().resolve(relativePath).normalize();
 
-        // TODO: Add proper handling for .INCLUDE_STRICT vs .FILE
         if (context.hasAlreadyIncluded(absolutePath.toString())) {
             return null; // Prevent duplicate inclusion
         }
@@ -41,6 +40,7 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
 
         try {
             String content = Files.readString(absolutePath);
+            pass.addSourceContent(absolutePath.toString(), content);
             Lexer lexer = new Lexer(content, context.getDiagnostics(), absolutePath.toString());
             pass.removeTokens(startIndex, endIndex - startIndex);
             pass.injectTokens(lexer.scanTokens(), 0);
@@ -48,6 +48,6 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
             context.getDiagnostics().reportError("Could not read included file: " + absolutePath, "Unknown", pathToken.line());
         }
 
-        return null; // This handler does not produce an AST node.
+        return null;
     }
 }

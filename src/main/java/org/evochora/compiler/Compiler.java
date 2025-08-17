@@ -10,6 +10,7 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
 import org.evochora.compiler.ir.IrProgram;
@@ -25,6 +26,8 @@ import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.util.DebugDump;
 
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -50,23 +53,32 @@ public class Compiler implements ICompiler {
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, basePath);
         List<Token> processedTokens = preProcessor.expand();
 
+        Map<String, List<String>> sources = new HashMap<>();
+        sources.put(programName, sourceLines);
+        preProcessor.getIncludedFileContents().forEach((path, content) ->
+                sources.put(Path.of(path).getFileName().toString(), Arrays.asList(content.split("\\r?\\n"))));
+
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
         }
 
-        // --- START DER ÄNDERUNG ---
         Parser parser = new Parser(processedTokens, diagnostics);
         List<AstNode> ast = parser.parse();
 
-        // Hole die Alias-Tabelle aus dem Parser, nachdem er fertig ist.
         Map<String, Token> registerAliases = parser.getRegisterAliasTable();
-        // Konvertiere sie in das Format, das das Artefakt erwartet (String -> Integer)
         Map<String, Integer> finalAliasMap = registerAliases.entrySet().stream()
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
-                        entry -> Integer.parseInt(entry.getValue().text().substring(3)) // Wandelt z.B. "%DR0" in 0 um
+                        entry -> Integer.parseInt(entry.getValue().text().substring(3))
                 ));
-        // --- ENDE DER ÄNDERUNG ---
+
+        Map<String, List<String>> procNameToParamNames = new HashMap<>();
+        parser.getProcedureTable().forEach((name, procNode) -> {
+            List<String> paramNames = procNode.parameters().stream()
+                    .map(Token::text)
+                    .collect(Collectors.toList());
+            procNameToParamNames.put(name.toUpperCase(), paramNames);
+        });
 
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
@@ -98,8 +110,7 @@ public class Compiler implements ICompiler {
         IrProgram linkedIr = linker.link(rewrittenIr, layout, linkingContext);
 
         Emitter emitter = new Emitter();
-        // Übergebe die Alias-Map an den Emitter
-        ProgramArtifact artifact = emitter.emit(linkedIr, layout, linkingContext, new RuntimeInstructionSetAdapter(), finalAliasMap);
+        ProgramArtifact artifact = emitter.emit(linkedIr, layout, linkingContext, new RuntimeInstructionSetAdapter(), finalAliasMap, procNameToParamNames, sources);
 
         org.evochora.compiler.diagnostics.CompilerLogger.info("Emit completed: programId=" + artifact.programId());
         DebugDump.dumpProgramArtifact(programName, artifact);

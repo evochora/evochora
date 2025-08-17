@@ -12,16 +12,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class CommandLineInterfaceTest {
 
-	@Test
-	void persistenceService_createsRunDbFileOnStart() {
-		ITickMessageQueue q = new InMemoryTickQueue();
-		PersistenceService persist = new PersistenceService(q);
-		persist.start();
-		Path db = persist.getDbFilePath();
-		assertThat(db).isNotNull();
-		assertThat(Files.exists(db)).isTrue();
-		persist.shutdown();
-	}
+    @Test
+    void persistenceService_createsRunDbFileOnStart() {
+        ITickMessageQueue q = new InMemoryTickQueue();
+        // KORREKTUR: Der performanceMode-Parameter wird übergeben (false für Tests).
+        PersistenceService persist = new PersistenceService(q, false);
+        persist.start();
+        Path db = persist.getDbFilePath();
+        assertThat(db).isNotNull();
+        assertThat(Files.exists(db)).isTrue();
+        persist.shutdown();
+    }
 }
-
-

@@ -26,6 +26,7 @@ final class WorldStateAdapter {
     static WorldStateMessage fromSimulation(Simulation simulation) {
         long tick = simulation.getCurrentTick();
         long tsMicros = java.time.Instant.now().toEpochMilli() * 1000;
+        boolean perfMode = simulation.isPerformanceMode();
 
         Map<String, ProgramArtifact> artifacts = simulation.getProgramArtifacts();
 
@@ -33,47 +34,42 @@ final class WorldStateAdapter {
         for (Organism o : simulation.getOrganisms()) {
             if (o.isDead()) continue;
 
-            String disassembledJson = "{}";
-            try {
-                ProgramArtifact artifact = artifacts.get(o.getProgramId());
-                DisassembledInstruction disassembled = RuntimeDisassembler.INSTANCE.disassemble(o, artifact, simulation.getEnvironment());
-                if (disassembled != null) {
-                    disassembledJson = objectMapper.writeValueAsString(disassembled);
-                }
-            } catch (Exception e) {
-                // Fehler ignorieren
-            }
-
-            // NEU: Call Stack und FPRs aufbereiten
-            List<String> callStackNames = o.getCallStack().stream()
-                    .map(frame -> frame.procName)
-                    .collect(Collectors.toList());
-
-            List<String> formattedFprs = formatFprs(o, artifacts.get(o.getProgramId()));
-
+            // Im Performance-Modus werden alle teuren Operationen übersprungen
+            String disassembledJson = perfMode ? "{}" : getDisassembledJson(o, artifacts, simulation.getEnvironment());
+            List<String> callStackNames = perfMode ? List.of() : getCallStackNames(o);
+            List<String> formattedFprs = perfMode ? List.of() : formatFprs(o, artifacts.get(o.getProgramId()));
+            List<String> drs = perfMode ? List.of() : toFormattedList(o.getDrs());
+            List<String> prs = perfMode ? List.of() : toFormattedList(o.getPrs());
+            List<String> ds = perfMode ? List.of() : toFormattedList(o.getDataStack()); // KORREKTUR: Auch DS wird deaktiviert
 
             organisms.add(new OrganismState(
-                    o.getId(),
-                    o.getProgramId(),
-                    o.getParentId(),
-                    o.getBirthTick(),
-                    o.getEr(),
-                    toList(o.getIp()),
-                    toList(o.getDp()),
-                    toList(o.getDv()),
-                    o.getIp()[0], // ip als int ist redundant, bleibt für Kompatibilität
-                    o.getEr(), // er als int ist redundant, bleibt für Kompatibilität
-                    toFormattedList(o.getDrs()),
-                    toFormattedList(o.getPrs()),
-                    toFormattedList(o.getDataStack()),
-                    callStackNames,
-                    formattedFprs,
+                    o.getId(), o.getProgramId(), o.getParentId(), o.getBirthTick(), o.getEr(),
+                    toList(o.getIp()), toList(o.getDp()), toList(o.getDv()),
+                    o.getIp()[0], o.getEr(),
+                    drs, prs, ds, callStackNames, formattedFprs,
                     disassembledJson
             ));
         }
 
         List<CellState> cells = toCellStates(simulation.getEnvironment());
         return new WorldStateMessage(tick, tsMicros, organisms, cells);
+    }
+
+    private static String getDisassembledJson(Organism o, Map<String, ProgramArtifact> artifacts, Environment env) {
+        try {
+            ProgramArtifact artifact = artifacts.get(o.getProgramId());
+            DisassembledInstruction disassembled = RuntimeDisassembler.INSTANCE.disassemble(o, artifact, env);
+            if (disassembled != null) {
+                return objectMapper.writeValueAsString(disassembled);
+            }
+        } catch (Exception e) { /* Ignorieren */ }
+        return "{}";
+    }
+
+    private static List<String> getCallStackNames(Organism o) {
+        return o.getCallStack().stream()
+                .map(frame -> frame.procName)
+                .collect(Collectors.toList());
     }
 
     private static String formatObject(Object obj) {
@@ -102,17 +98,18 @@ final class WorldStateAdapter {
         Organism.ProcFrame topFrame = organism.getCallStack().peek();
         String procName = topFrame.procName;
 
-        // Finde Prozedur-Metadaten im Artefakt (benötigt Anpassung, wenn Metadaten vorhanden)
-        // HINWEIS: ProgramArtifact enthält keine ProcMetaMap, dies ist ein vereinfachter Ansatz.
-        // Wir können die Parameteranzahl aus den Bindungen ableiten.
-        if (procName == null || procName.equals("UNKNOWN") || topFrame.fprBindings.isEmpty()) {
+        if (procName == null || "UNKNOWN".equals(procName)) {
+            return List.of();
+        }
+
+        List<String> paramNames = artifact.procNameToParamNames().get(procName.toUpperCase());
+        if (paramNames == null || paramNames.isEmpty()) {
             return List.of();
         }
 
         List<String> formatted = new ArrayList<>();
-        int arity = topFrame.fprBindings.size();
-
-        for (int i = 0; i < arity; i++) {
+        for (int i = 0; i < paramNames.size(); i++) {
+            String paramName = paramNames.get(i);
             Object value = organism.getFpr(i);
             Integer boundRegId = topFrame.fprBindings.get(Instruction.FPR_BASE + i);
             String boundName = "??";
@@ -125,7 +122,7 @@ final class WorldStateAdapter {
                     boundName = "%FPR" + (boundRegId - Instruction.FPR_BASE);
                 }
             }
-            formatted.add(String.format("%%FPR%d[%s]=%s", i, boundName, formatObject(value)));
+            formatted.add(String.format("%s[%s]=%s", paramName, boundName, formatObject(value)));
         }
         return formatted;
     }

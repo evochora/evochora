@@ -16,16 +16,16 @@ import java.util.Map;
 
 public class Emitter {
 
-    // --- START DER ÄNDERUNG ---
     public ProgramArtifact emit(IrProgram program,
                                 LayoutResult layout,
                                 LinkingContext linkingContext,
                                 IInstructionSet isa,
-                                Map<String, Integer> registerAliasMap) { // Neuer Parameter
-        // --- ENDE DER ÄNDERUNG ---
+                                Map<String, Integer> registerAliasMap,
+                                Map<String, List<String>> procNameToParamNames,
+                                Map<String, List<String>> sources) {
         Map<int[], Integer> machineCodeLayout = new HashMap<>();
         Map<Integer, int[]> linearToCoord = layout.linearAddressToCoord();
-        Map<List<Integer>, Integer> coordToLinear = layout.relativeCoordToLinearAddress();
+        Map<String, Integer> coordToLinear = layout.relativeCoordToLinearAddress();
         Map<Integer, SourceInfo> sourceMap = layout.sourceMap();
         Map<int[], PlacedMolecule> initialObjects = layout.initialWorldObjects();
 
@@ -69,6 +69,7 @@ public class Emitter {
 
         return new ProgramArtifact(
                 programId,
+                sources,
                 machineCodeLayout,
                 initialObjects,
                 sourceMap,
@@ -76,7 +77,8 @@ public class Emitter {
                 coordToLinear,
                 linearToCoord,
                 labelAddressToName,
-                registerAliasMap // <-- HINZUGEFÜGT
+                registerAliasMap,
+                procNameToParamNames
         );
     }
 

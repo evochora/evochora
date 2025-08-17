@@ -141,7 +141,8 @@ public class AppView {
     private void restartSimulation() {
         try {
             Environment newEnvironment = new Environment(Config.WORLD_SHAPE, Config.IS_TOROIDAL);
-            this.simulation = new Simulation(newEnvironment);
+            // KORREKTUR: Der performanceMode-Parameter wird übergeben (false für die UI).
+            this.simulation = new Simulation(newEnvironment, false);
             Setup.run(this.simulation);
             this.selectedOrganism = null;
             this.simulation.paused = true;

@@ -14,7 +14,5 @@ CALL MY_PROC WITH %TEST1 %TEST2
 POKI %TEST1 0|1
 
 .ORG 0|3
-.PROC MY_PROC EXPORT WITH REG1 REG2
-ADDR REG1 REG2
-RET
-.ENDP
+.INCLUDE "C:\Users\raine\IdeaProjects\evochora\src\main\resources\org\evochora\organism\prototypes\lib\lib.s"
+#.REQUIRE "C:\Users\raine\IdeaProjects\evochora\src\main\resources\org\evochora\organism\prototypes\lib\lib.s" AS LIB

@@ -19,14 +19,16 @@ class WorldSeedingTest {
         var engine = new SimulationEngine(queue);
         var artifact = new ProgramArtifact(
                 "pid1",
-                emptyMap(),
+                emptyMap(), // sources
+                emptyMap(), // machineCodeLayout
                 Map.of(new int[]{1,2}, new PlacedMolecule(org.evochora.runtime.Config.TYPE_DATA, 42)),
-                emptyMap(),
-                emptyMap(),
-                emptyMap(),
-                emptyMap(),
-                emptyMap(),
-                emptyMap() // <-- HIER IST DAS FEHLENDE 9. ARGUMENT (registerAliasMap)
+                emptyMap(), // sourceMap
+                emptyMap(), // callSiteBindings
+                emptyMap(), // relativeCoordToLinearAddress
+                emptyMap(), // linearAddressToCoord
+                emptyMap(), // labelAddressToName
+                emptyMap(), // registerAliasMap
+                emptyMap()  // procNameToParamNames
         );
         engine.setProgramArtifacts(List.of(artifact));
 

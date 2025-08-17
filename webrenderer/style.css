@@ -85,7 +85,7 @@ main.container {
 
 /* Seitenleiste (standardmäßig versteckt) */
 .sidebar {
-    width: 450px;
+    width: 550px; /* Verbreitert für mehr Platz */
     background-color: #191923;
     border-left: 1px solid #333;
     position: absolute;
@@ -131,3 +131,38 @@ main.container {
     white-space: pre;
     overflow-x: auto;
 }
+
+/* --- NEUE STILE FÜR SOURCE CODE VIEW --- */
+.source-code-view {
+    max-height: 400px;
+    overflow-y: auto;
+    white-space: normal;
+}
+.source-line {
+    display: flex;
+    white-space: pre-wrap;
+    align-items: baseline;
+}
+.source-line.highlight {
+    background-color: #3c5078;
+}
+.source-line .line-number {
+    flex-shrink: 0;
+    width: 35px;
+    padding-right: 10px;
+    text-align: right;
+    color: #888;
+    user-select: none;
+}
+.source-line pre {
+    margin: 0;
+    flex-grow: 1;
+}
+.injected-value {
+    font-style: italic;
+    color: #a0e0a0; /* Helle grüne Farbe */
+    font-size: 0.9em;
+    margin-left: 4px;
+    opacity: 0.8;
+}
+

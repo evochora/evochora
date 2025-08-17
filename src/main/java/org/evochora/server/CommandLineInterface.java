@@ -26,12 +26,12 @@ public final class CommandLineInterface {
 
     public static void main(String[] args) throws Exception {
         ITickMessageQueue queue = new InMemoryTickQueue();
-        SimulationEngine sim = new SimulationEngine(queue);
-        PersistenceService persist = new PersistenceService(queue);
+        SimulationEngine sim = null;
+        PersistenceService persist = null;
         java.util.ArrayList<ProgramArtifact> loadedArtifacts = new java.util.ArrayList<>();
 
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-        log.info("Evochora server CLI ready. Commands: load <file> | run | sim pause|resume | persist pause|resume | status | exit");
+        log.info("Evochora server CLI ready. Commands: load <file> | run | run debug | status | exit");
 
         while (true) {
             System.err.print(">>> ");
@@ -44,7 +44,7 @@ public final class CommandLineInterface {
                     System.err.println("Usage: load <assembly_file_path>");
                     continue;
                 }
-                if (sim.isRunning() || persist.isRunning()) {
+                if (sim != null && (sim.isRunning() || persist.isRunning())) {
                     System.err.println("Stop services before loading a new program (use 'exit' then 'run').");
                     continue;
                 }
@@ -95,33 +95,42 @@ public final class CommandLineInterface {
                     log.error("Failed to compile {}", path, e);
                 }
                 continue;
+            } else if (cmd.equalsIgnoreCase("run") || cmd.equalsIgnoreCase("run debug")) {
+                boolean performanceMode = !cmd.equalsIgnoreCase("run debug");
+
+                if (performanceMode) {
+                    log.info("Starting in PERFORMANCE mode.");
+                } else {
+                    log.info("Starting in DEBUG mode.");
+                }
+
+                sim = new SimulationEngine(queue, performanceMode);
+                persist = new PersistenceService(queue, performanceMode);
+
+                sim.setProgramArtifacts(java.util.List.copyOf(loadedArtifacts));
+                if (!sim.isRunning()) { sim.start(); System.err.println("SimulationEngine started."); }
+                if (!persist.isRunning()) { persist.start(); System.err.println("PersistenceService started."); }
+                continue;
             }
             switch (cmd) {
-                case "run" -> {
-                    sim.setProgramArtifacts(java.util.List.copyOf(loadedArtifacts));
-                    if (!sim.isRunning()) { sim.start(); System.err.println("SimulationEngine started."); }
-                    else { System.err.println("SimulationEngine already running."); }
-                    if (!persist.isRunning()) { persist.start(); System.err.println("PersistenceService started."); }
-                    else { System.err.println("PersistenceService already running."); }
-                }
-                case "sim pause" -> { sim.pause(); System.err.println("SimulationEngine paused."); }
-                case "sim resume" -> { sim.resume(); System.err.println("SimulationEngine resumed."); }
-                case "persist pause" -> { persist.pause(); System.err.println("PersistenceService paused."); }
-                case "persist resume" -> { persist.resume(); System.err.println("PersistenceService resumed."); }
+                case "sim pause" -> { if(sim != null) sim.pause(); System.err.println("SimulationEngine paused."); }
+                case "sim resume" -> { if(sim != null) sim.resume(); System.err.println("SimulationEngine resumed."); }
+                case "persist pause" -> { if(persist != null) persist.pause(); System.err.println("PersistenceService paused."); }
+                case "persist resume" -> { if(persist != null) persist.resume(); System.err.println("PersistenceService resumed."); }
                 case "status" -> {
-                    long simTick = sim.getCurrentTick();
-                    long persistTick = persist.getLastPersistedTick();
-                    int[] orgCounts = sim.getOrganismCounts();
+                    long simTick = (sim != null) ? sim.getCurrentTick() : -1L;
+                    long persistTick = (persist != null) ? persist.getLastPersistedTick() : -1L;
+                    int[] orgCounts = (sim != null) ? sim.getOrganismCounts() : new int[]{0,0};
                     double tps = StatusMetricsRegistry.getTicksPerSecond();
                     System.err.printf(
                             "sim: %s | persist: %s | ticks (persist/sim): %d/%d | organisms (living/dead): %d/%d | queue: %d | tps: %.2f%n",
-                            sim.isPaused() ? "paused" : (sim.isRunning() ? "running" : "stopped"),
-                            persist.isPaused() ? "paused" : (persist.isRunning() ? "running" : "stopped"),
+                            (sim != null && sim.isPaused()) ? "paused" : ((sim != null && sim.isRunning()) ? "running" : "stopped"),
+                            (persist != null && persist.isPaused()) ? "paused" : ((persist != null && persist.isRunning()) ? "running" : "stopped"),
                             persistTick, simTick, orgCounts[0], orgCounts[1], queue.size(), tps);
                 }
                 case "exit" -> {
-                    sim.shutdown();
-                    persist.shutdown();
+                    if (sim != null) sim.shutdown();
+                    if (persist != null) persist.shutdown();
                     System.err.println("Services stopped. Exiting.");
                     return;
                 }
@@ -130,5 +139,3 @@ public final class CommandLineInterface {
         }
     }
 }
-
-

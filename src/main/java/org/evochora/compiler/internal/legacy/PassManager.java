@@ -32,13 +32,11 @@ public class PassManager {
     private final Map<String, Integer> labelMap = new HashMap<>();
     private final Map<Integer, String> labelAddressToNameMap = new LinkedHashMap<>();
     private final Map<Integer, int[]> linearAddressToCoordMap = new LinkedHashMap<>();
-    private final Map<List<Integer>, Integer> coordToLinearAddressMap = new LinkedHashMap<>();
+    private final Map<String, Integer> coordToLinearAddressMap = new LinkedHashMap<>(); // KORRIGIERT
     private final Map<int[], Integer> machineCodeLayout = new LinkedHashMap<>();
     private final Map<Integer, SourceLocation> sourceMap = new HashMap<>();
     private final List<PlaceholderResolver.JumpPlaceholder> jumpPlaceholders = new ArrayList<>();
     private final List<PlaceholderResolver.VectorPlaceholder> vectorPlaceholders = new ArrayList<>();
-
-    // Neu: CALL-Site Bindings (linear address -> Quellregister-IDs)
     private final Map<Integer, int[]> callSiteBindings = new HashMap<>();
 
     // Internal state
@@ -65,6 +63,10 @@ public class PassManager {
     public void runPasses(List<AnnotatedLine> processedCode) {
         performFirstPass(processedCode);
         performSecondPass(processedCode);
+    }
+
+    private String coordToStringKey(int[] coord) {
+        return Arrays.stream(coord).mapToObj(String::valueOf).collect(Collectors.joining("|"));
     }
 
     private void performFirstPass(List<AnnotatedLine> annotatedLines) {
@@ -97,7 +99,7 @@ public class PassManager {
                 int instructionLength = Instruction.getInstructionLengthById(opcodeId);
                 for (int j = 0; j < instructionLength; j++) {
                     linearAddressToCoordMap.put(linearAddress, Arrays.copyOf(currentPos, currentPos.length));
-                    coordToLinearAddressMap.put(Arrays.stream(currentPos).boxed().collect(Collectors.toList()), linearAddress);
+                    coordToLinearAddressMap.put(coordToStringKey(currentPos), linearAddress); // KORRIGIERT
                     sourceMap.put(linearAddress, new SourceLocation(line.originalFileName(), line.originalLineNumber(), line.content()));
                     linearAddress++;
                     for (int d = 0; d < Config.WORLD_DIMENSIONS; d++) {
@@ -186,7 +188,6 @@ public class PassManager {
         if ("CALL".equals(command)) {
             if (args.length == 0) throw new AssemblerException(programName, line.originalFileName(), line.originalLineNumber(), "CALL instruction requires an argument.", line.content());
 
-            // KORREKTUR: Akzeptiert "WITH" und ".WITH"
             int withIdx = -1;
             for (int i = 0; i < args.length; i++) {
                 if (args[i].equalsIgnoreCase("WITH") || args[i].equalsIgnoreCase(".WITH")) {
@@ -290,7 +291,7 @@ public class PassManager {
     private void placeSymbol(int value, AnnotatedLine line) {
         machineCodeLayout.put(Arrays.copyOf(currentPos, currentPos.length), value);
         linearAddressToCoordMap.put(linearAddress, Arrays.copyOf(currentPos, currentPos.length));
-        coordToLinearAddressMap.put(Arrays.stream(currentPos).boxed().collect(Collectors.toList()), linearAddress);
+        coordToLinearAddressMap.put(coordToStringKey(currentPos), linearAddress); // KORRIGIERT
         sourceMap.put(linearAddress, new SourceLocation(line.originalFileName(), line.originalLineNumber(), line.content()));
 
         for (int d = 0; d < Config.WORLD_DIMENSIONS; d++) {
@@ -312,7 +313,7 @@ public class PassManager {
     public Map<String, Integer> getLabelMap() { return labelMap; }
     public Map<Integer, String> getLabelAddressToNameMap() { return labelAddressToNameMap; }
     public Map<Integer, int[]> getLinearAddressToCoordMap() { return linearAddressToCoordMap; }
-    public Map<List<Integer>, Integer> getCoordToLinearAddressMap() { return coordToLinearAddressMap; }
+    public Map<String, Integer> getCoordToLinearAddressMap() { return coordToLinearAddressMap; } // KORRIGIERT
     public Map<int[], Integer> getMachineCodeLayout() { return machineCodeLayout; }
     public Map<Integer, SourceLocation> getSourceMap() { return sourceMap; }
     public List<PlaceholderResolver.JumpPlaceholder> getJumpPlaceholders() { return jumpPlaceholders; }
@@ -326,7 +327,6 @@ public class PassManager {
     }
 
     private void computeCallSiteBindings() {
-        // Build bindings by parsing CALL lines that contain a .WITH clause
         for (Map.Entry<Integer, SourceLocation> e : sourceMap.entrySet()) {
             Integer linear = e.getKey();
             SourceLocation loc = e.getValue();
@@ -359,7 +359,6 @@ public class PassManager {
             }
             if (ok) {
                 callSiteBindings.put(linear, ids);
-                // Also register by absolute coordinate so runtime can resolve without metadata
                 int[] absCoord = linearAddressToCoordMap.get(linear);
                 if (absCoord != null) {
                     org.evochora.runtime.internal.services.CallBindingRegistry.getInstance().registerBindingForAbsoluteCoord(absCoord, ids);

@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.evochora.runtime.model.Organism;
 
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors; // NEUER IMPORT
+import java.util.stream.Collectors;
 
 public final class SimulationEngine implements IControllable, Runnable {
 
@@ -22,13 +22,24 @@ public final class SimulationEngine implements IControllable, Runnable {
     private final Thread thread;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
+    private final boolean performanceMode;
 
     private long currentTick = 0L;
     private Simulation simulation;
     private java.util.List<ProgramArtifact> programArtifacts = java.util.Collections.emptyList();
 
+    /**
+     * NEUER KONSTRUKTOR: Standardmäßig wird der Debug-Modus verwendet.
+     * Dies behebt die Kompilierungsfehler in den Tests.
+     * @param queue Die Nachrichten-Warteschlange.
+     */
     public SimulationEngine(ITickMessageQueue queue) {
+        this(queue, false); // Standard ist Debug-Modus
+    }
+
+    public SimulationEngine(ITickMessageQueue queue, boolean performanceMode) {
         this.queue = queue;
+        this.performanceMode = performanceMode;
         this.thread = new Thread(this, "SimulationEngine");
         this.thread.setDaemon(true);
     }
@@ -89,9 +100,8 @@ public final class SimulationEngine implements IControllable, Runnable {
             }
 
             var env = new org.evochora.runtime.model.Environment(Config.WORLD_SHAPE, Config.IS_TOROIDAL);
-            simulation = new Simulation(env);
+            simulation = new Simulation(env, performanceMode);
 
-            // NEU: Übergebe die Artefakte als Map an die Simulation
             if (programArtifacts != null && !programArtifacts.isEmpty()) {
                 simulation.setProgramArtifacts(this.programArtifacts.stream()
                         .collect(Collectors.toMap(ProgramArtifact::programId, pa -> pa, (a, b) -> b)));

@@ -49,9 +49,6 @@ class WorldRenderer {
         this.ctx.fillStyle = this.getBackgroundColorForType(cell.type);
         this.ctx.fillRect(x, y, this.config.CELL_SIZE, this.config.CELL_SIZE);
 
-        // --- START DER KORREKTUR ---
-        // Die Logik stellt sicher, dass der Wert korrekt angezeigt wird,
-        // egal ob es sich um eine Instruktion oder einen einfachen Wert handelt.
         if ((cell.type === this.config.TYPE_CODE && cell.value !== 0) || cell.type !== this.config.TYPE_CODE) {
             this.ctx.fillStyle = this.getTextColorForType(cell.type);
             this.ctx.font = this.cellFont;
@@ -60,14 +57,13 @@ class WorldRenderer {
 
             let text;
             if (cell.type === this.config.TYPE_CODE) {
-                const instructionId = cell.value; // In cell_states ist der reine Wert gespeichert
+                const instructionId = cell.value;
                 text = this.isa[instructionId] || `OP(${instructionId})`;
             } else {
                 text = cell.value.toString();
             }
             this.ctx.fillText(text, x + this.config.CELL_SIZE / 2, y + this.config.CELL_SIZE / 2 + 1);
         }
-        // --- ENDE DER KORREKTUR ---
     }
 
     drawOrganism(organism, isSelected) {
@@ -83,6 +79,10 @@ class WorldRenderer {
         this.ctx.strokeRect(x, y, this.config.CELL_SIZE, this.config.CELL_SIZE);
 
         if (isSelected && organism.energy > 0) {
+            const dp = this.parsePosition(organism.dpJson);
+            if (dp) {
+                this.drawDp(dp, color);
+            }
             const dv = this.parsePosition(organism.dvJson);
             if (dv) {
                 const centerX = x + this.config.CELL_SIZE / 2;
@@ -95,6 +95,16 @@ class WorldRenderer {
                 this.ctx.fill();
             }
         }
+    }
+
+    drawDp(pos, color) {
+        const x = pos[0] * this.config.CELL_SIZE;
+        const y = pos[1] * this.config.CELL_SIZE;
+        this.ctx.strokeStyle = color;
+        this.ctx.lineWidth = 1.5;
+        this.ctx.setLineDash([3, 3]); // Gestrichelte Linie für DP
+        this.ctx.strokeRect(x + 2, y + 2, this.config.CELL_SIZE - 4, this.config.CELL_SIZE - 4);
+        this.ctx.setLineDash([]); // Linienstil zurücksetzen
     }
 
     getOrganismColor(id) {
