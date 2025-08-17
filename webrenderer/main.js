@@ -167,11 +167,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                          const instruction = JSON.parse(org.disassembledInstructionJson);
                          if(instruction && instruction.arguments) {
                             instruction.arguments.forEach(arg => {
-                                const realRegName = arg.name;
                                 const alias = Object.keys(artifact.registerAliasMap).find(key => artifact.registerAliasMap[key] === arg.value);
-                                const tokenToReplace = alias || realRegName;
-                                const annotation = `<span class="injected-value">[${realRegName}=${arg.fullDisplayValue}]</span>`;
-                                processedLine = processedLine.replace(new RegExp(`\\b${tokenToReplace}\\b`, 'gi'), `${tokenToReplace}${annotation}`);
+                                const tokenToReplace = alias || arg.name;
+                                const annotation = `<span class="injected-value">[${arg.name}=${arg.fullDisplayValue}]</span>`;
+
+                                const regex = new RegExp(`(\\b${tokenToReplace}\\b)(?!.*\\])`, 'gi');
+                                processedLine = processedLine.replace(regex, `${tokenToReplace}${annotation}`);
                             });
                          }
                     }
