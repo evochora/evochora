@@ -1,6 +1,6 @@
 package org.evochora.runtime.internal.services;
 
-import org.evochora.compiler.api.ProgramArtifact; // NEUER IMPORT
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
@@ -30,7 +30,7 @@ public class ProcedureCallHandler {
      * 3. Kopieren der gebundenen Parameterwerte in die Formal-Parameter-Register (Copy-In).
      * 4. Springen zum Einsprungspunkt der Prozedur.
      *
-     * @param targetDelta Der relative Vektor zum Einsprungspunkt der Prozedur.
+     * @param targetDelta Der programmrelative Vektor zum Einsprungspunkt der Prozedur.
      */
     public void executeCall(int[] targetDelta) {
         Organism organism = context.getOrganism();
@@ -68,18 +68,19 @@ public class ProcedureCallHandler {
         ProgramArtifact artifact = context.getArtifact();
         int[] computedAbsTarget = null;
         if (artifact != null) {
-            // Korrekte Zielberechnung: (ipBeforeFetch - origin) + delta → lookup → abs = origin + rel
             int[] origin = organism.getInitialPosition();
             int dims = ipBeforeFetch.length;
-            int[] relCurrent = new int[dims];
-            for (int i = 0; i < dims; i++) relCurrent[i] = ipBeforeFetch[i] - origin[i];
-            int[] relTarget = new int[dims];
-            for (int i = 0; i < dims; i++) relTarget[i] = relCurrent[i] + (i < targetDelta.length ? targetDelta[i] : 0);
+
+            // --- KORREKTUR BEGINNT HIER ---
+            // Die `targetDelta` ist bereits die programmrelative Zielkoordinate.
+            // Wir müssen sie nicht mehr zur aktuellen Position addieren.
+            int[] relTarget = targetDelta;
+            // --- KORREKTUR ENDE ---
 
             StringBuilder keyBuilder = new StringBuilder();
             for (int i = 0; i < dims; i++) {
                 if (i > 0) keyBuilder.append('|');
-                keyBuilder.append(relTarget[i]);
+                keyBuilder.append(i < relTarget.length ? relTarget[i] : 0);
             }
             String relativeKey = keyBuilder.toString();
             Integer targetAddress = artifact.relativeCoordToLinearAddress().get(relativeKey);
@@ -97,9 +98,8 @@ public class ProcedureCallHandler {
                     for (int i = 0; i < relCoord.length; i++) computedAbsTarget[i] = origin[i] + relCoord[i];
                 }
             } else {
-                // Fallback: direkt absolute Koordinate ausrechnen
                 computedAbsTarget = new int[dims];
-                for (int i = 0; i < dims; i++) computedAbsTarget[i] = origin[i] + relTarget[i];
+                for (int i = 0; i < dims; i++) computedAbsTarget[i] = origin[i] + (i < relTarget.length ? relTarget[i] : 0);
             }
         }
 
@@ -118,8 +118,8 @@ public class ProcedureCallHandler {
         if (computedAbsTarget != null) {
             organism.setIp(computedAbsTarget);
         } else {
-            // Fallback ohne Artefakt: DV-getriebene Koordinatenberechnung
-            int[] targetIp = organism.getTargetCoordinate(ipBeforeFetch, targetDelta, environment);
+            // Fallback ohne Artefakt: programmrelative Koordinatenberechnung
+            int[] targetIp = organism.getTargetCoordinate(organism.getInitialPosition(), targetDelta, environment);
             organism.setIp(targetIp);
         }
         organism.setSkipIpAdvance(true);
@@ -145,18 +145,6 @@ public class ProcedureCallHandler {
         /* Dieser Block ist eine fundamentale Designverletzung! Das Copy out wurde durch vom Compiler emittierte
            PUSH und POP Befehle bereits erledigt, somit ist dieser Block zum Glück auch überflüssig und wurde
            deaktiviert.
-
-        // 1. Copy-Out: Werte aus FPRs zurück in die gebundenen Register schreiben
-        if (returnFrame.fprBindings != null) {
-            for (Map.Entry<Integer, Integer> binding : returnFrame.fprBindings.entrySet()) {
-                int fprIndex = binding.getKey() - Instruction.FPR_BASE;
-                int boundRegId = binding.getValue();
-                // KORREKTUR: Wir lesen den *aktuellen* Wert aus dem FPR, der von der Prozedur
-                // modifiziert wurde, und schreiben ihn zurück in das ursprüngliche Register.
-                Object returnValue = organism.getFpr(fprIndex);
-                organism.writeOperand(boundRegId, returnValue);
-            }
-        }
         */
 
         // 2. Zustand wiederherstellen

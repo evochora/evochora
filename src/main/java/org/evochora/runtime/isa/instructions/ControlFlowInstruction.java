@@ -58,7 +58,7 @@ public class ControlFlowInstruction extends Instruction {
                 case "JMPR":
                 case "JMPS":
                     int[] delta = (int[]) operands.get(0).value();
-                    int[] targetIp = organism.getTargetCoordinate(organism.getIpBeforeFetch(), delta, environment);
+                    int[] targetIp = organism.getTargetCoordinate(organism.getInitialPosition(), delta, environment);
                     organism.setIp(targetIp);
                     organism.setSkipIpAdvance(true);
                     break;
