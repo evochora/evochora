@@ -4,6 +4,7 @@ package org.evochora.runtime.isa;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.instructions.*;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -103,21 +104,7 @@ public abstract class Instruction {
         return resolved;
     }
 
-    protected List<Object> peekFromDataStack(int count) {
-        if (organism.getDataStack().size() < count) {
-            return new java.util.ArrayList<>();
-        }
-        List<Object> peeked = new java.util.ArrayList<>(count);
-        java.util.Iterator<Object> it = organism.getDataStack().iterator();
-        int i = 0;
-        while (it.hasNext() && i < count) {
-            peeked.add(it.next());
-            i++;
-        }
-        return peeked;
-    }
-
-    public abstract void execute(Simulation simulation);
+    public abstract void execute(ExecutionContext context);
 
     public int getCost(Organism organism, Environment environment, List<Integer> rawArguments) {
         return 1;

@@ -6,8 +6,6 @@ import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 
 /**
- * TODO: Kann das am ende wieder entfertnt werden?
- *
  * Interne i18n-Fassade für Compiler- und Legacy-Komponenten.
  * Verwendet ResourceBundles mit dem Basisnamen "compiler_messages".
  */

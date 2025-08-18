@@ -5,6 +5,7 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.InstructionNode;
 import org.evochora.compiler.frontend.parser.features.def.DefineNode;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
+import org.evochora.compiler.frontend.parser.features.proc.PregNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.parser.features.scope.ScopeNode;
 import org.evochora.compiler.frontend.parser.features.require.RequireNode;
@@ -32,6 +33,7 @@ public class SemanticAnalyzer {
         handlers.put(ScopeNode.class, new ScopeAnalysisHandler());
         handlers.put(ProcedureNode.class, new ProcedureAnalysisHandler());
         handlers.put(InstructionNode.class, new InstructionAnalysisHandler(symbolTable, diagnostics));
+        handlers.put(PregNode.class, new PregAnalysisHandler());
     }
 
     public void analyze(List<AstNode> statements) {

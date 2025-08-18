@@ -81,7 +81,7 @@ public class Simulation {
 
         for (Instruction instruction : plannedInstructions) {
             if (instruction.isExecutedInTick()) {
-                vm.execute(instruction);
+                vm.execute(instruction, this);
             }
             Organism organism = instruction.getOrganism();
             if (organism.isLoggingEnabled()) {

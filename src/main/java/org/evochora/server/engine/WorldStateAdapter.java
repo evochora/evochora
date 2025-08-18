@@ -1,6 +1,8 @@
 package org.evochora.server.engine;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+// import org.slf4j.Logger;
+// import org.slf4j.LoggerFactory;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
@@ -20,10 +22,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-final class WorldStateAdapter {
+public final class WorldStateAdapter {
+    //private static final Logger log = LoggerFactory.getLogger(WorldStateAdapter.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
-    static WorldStateMessage fromSimulation(Simulation simulation) {
+    public static WorldStateMessage fromSimulation(Simulation simulation) {
         long tick = simulation.getCurrentTick();
         long tsMicros = java.time.Instant.now().toEpochMilli() * 1000;
         boolean perfMode = simulation.isPerformanceMode();
@@ -36,7 +39,7 @@ final class WorldStateAdapter {
 
             // Im Performance-Modus werden alle teuren Operationen übersprungen
             String disassembledJson = perfMode ? "{}" : getDisassembledJson(o, artifacts, simulation.getEnvironment());
-            List<String> callStackNames = perfMode ? List.of() : getCallStackWithParams(o, artifacts.get(o.getProgramId()));
+            List<String> callStackNames = perfMode ? List.of() : getCallStackWithParams(o, artifacts.get(o.getProgramId()), tick);
             List<String> formattedFprs = perfMode ? List.of() : formatFprs(o, artifacts.get(o.getProgramId()));
             List<String> drs = perfMode ? List.of() : toFormattedList(o.getDrs());
             List<String> prs = perfMode ? List.of() : toFormattedList(o.getPrs());
@@ -67,27 +70,26 @@ final class WorldStateAdapter {
         return "{}";
     }
 
-    private static List<String> getCallStackWithParams(Organism organism, ProgramArtifact artifact) {
+    private static List<String> getCallStackWithParams(Organism organism, ProgramArtifact artifact, long tick) {
         if (artifact == null) {
             return organism.getCallStack().stream().map(f -> f.procName).collect(Collectors.toList());
         }
         List<Organism.ProcFrame> frames = new ArrayList<>(organism.getCallStack());
+        
         List<String> out = new ArrayList<>();
 
-        // Hilfsfunktion: FPR-Kette auflösen bis DR/PR in älteren Frames
+        // Hilfsfunktion: FPR-Kette nach vorne (in ältere Frames) auflösen bis DR/PR
         java.util.function.BiFunction<Integer, Integer, Integer> resolveBoundRegId = (frameIdx, fprIndex) -> {
-            int idx = frameIdx;
+            int idx = frameIdx + 1; // in älteren Frames weitersuchen
             int currentRegId = Instruction.FPR_BASE + fprIndex;
-            while (idx >= 0) {
+            while (idx < frames.size()) {
                 Organism.ProcFrame fr = frames.get(idx);
                 Integer mapped = fr.fprBindings.get(currentRegId);
                 if (mapped == null) break;
                 currentRegId = mapped;
                 if (currentRegId < Instruction.FPR_BASE) break; // DR/PR erreicht
-                // sonst ist es wieder ein FPR -> gehe eine Ebene höher und suche dessen Bindung
                 int nextFprIdx = currentRegId - Instruction.FPR_BASE;
-                idx--;
-                if (idx < 0) break;
+                idx++;
                 currentRegId = Instruction.FPR_BASE + nextFprIdx;
             }
             return currentRegId;
@@ -106,12 +108,13 @@ final class WorldStateAdapter {
                 Integer boundRegId = frame.fprBindings.get(Instruction.FPR_BASE + pi);
                 int finalRegId;
                 if (boundRegId == null) {
-                    finalRegId = Instruction.FPR_BASE + pi;
+                    // keine direkte Bindung im Top-Frame → über ältere Frames anhand gleichen FPR-Index auflösen
+                    finalRegId = resolveBoundRegId.apply(fi, pi);
                 } else {
                     finalRegId = boundRegId;
                 }
                 if (finalRegId >= Instruction.FPR_BASE) {
-                    finalRegId = resolveBoundRegId.apply(fi - 1, finalRegId - Instruction.FPR_BASE);
+                    finalRegId = resolveBoundRegId.apply(fi, finalRegId - Instruction.FPR_BASE);
                 }
                 String boundName;
                 Object value;
@@ -156,7 +159,8 @@ final class WorldStateAdapter {
             return List.of();
         }
 
-        Organism.ProcFrame topFrame = organism.getCallStack().peek();
+        java.util.Deque<Organism.ProcFrame> stack = organism.getCallStack();
+        Organism.ProcFrame topFrame = stack.peek();
         String procName = topFrame.procName;
 
         if (procName == null || "UNKNOWN".equals(procName)) {
@@ -172,20 +176,37 @@ final class WorldStateAdapter {
         for (int i = 0; i < paramNames.size(); i++) {
             String paramName = paramNames.get(i);
             Integer boundRegId = topFrame.fprBindings.get(Instruction.FPR_BASE + i);
-            Object value = (boundRegId != null) ? organism.readOperand(boundRegId) : organism.getFpr(i);
+
+            // Falls keine direkte Bindung: in älteren Frames nach Auflösung für denselben FPR-Index suchen
+            if (boundRegId == null) {
+                int fprIdx = i;
+                java.util.Iterator<Organism.ProcFrame> it = stack.iterator();
+                boolean pastTop = false;
+                while (it.hasNext()) {
+                    Organism.ProcFrame fr = it.next();
+                    if (fr == topFrame) { pastTop = true; continue; }
+                    if (!pastTop) continue; // erst nach dem Top-Frame suchen
+                    Integer mapped = fr.fprBindings.get(Instruction.FPR_BASE + fprIdx);
+                    if (mapped != null) { boundRegId = mapped; break; }
+                }
+            }
+
+            Object value;
             String boundName;
             if (boundRegId == null) {
-                // Kein DR/PR gebunden – zeige FPR explizit (%FPRi)
+                // Kein DR/PR gefunden – zeige FPR explizit (%FPRi)
                 boundName = "%FPR" + i;
+                value = organism.getFpr(i);
             } else if (boundRegId < Instruction.PR_BASE) {
-                // DR gebunden
                 boundName = "%DR" + boundRegId;
+                value = organism.readOperand(boundRegId);
             } else if (boundRegId < Instruction.FPR_BASE) {
-                // PR gebunden
                 boundName = "%PR" + (boundRegId - Instruction.PR_BASE);
+                value = organism.readOperand(boundRegId);
             } else {
-                // FPR gebunden (eher theoretisch)
-                boundName = "%FPR" + (boundRegId - Instruction.FPR_BASE);
+                int fidx = boundRegId - Instruction.FPR_BASE;
+                boundName = "%FPR" + fidx;
+                value = organism.getFpr(fidx);
             }
             formatted.add(String.format("%s[%s]=%s", paramName, boundName, formatObject(value)));
         }

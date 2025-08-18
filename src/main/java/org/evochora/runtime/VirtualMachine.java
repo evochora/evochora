@@ -1,20 +1,20 @@
 package org.evochora.runtime;
 
+import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
 
 /**
- * TODO: [Phase 3] Dies ist der Kern der Ausführungsumgebung.
- *  Diese Klasse ist für die Orchestrierung der Ausführung von Organismus-Code
- *  innerhalb einer Umgebung verantwortlich. Sie respektiert die Trennung von
- *  Planung und Ausführung, um zukünftiges Multithreading zu ermöglichen.
+ * Der Kern der Ausführungsumgebung.
+ * Diese Klasse ist für die Orchestrierung der Ausführung von Organismus-Code
+ * innerhalb einer Umgebung verantwortlich. Sie respektiert die Trennung von
+ * Planung und Ausführung, um zukünftiges Multithreading zu ermöglichen.
  */
 public class VirtualMachine {
 
     private final Environment environment;
-    private final Simulation simulation; // TODO: In Phase 3 entfernen
 
     /**
      * Erstellt eine neue VM, die an eine bestimmte Umgebung gebunden ist.
@@ -22,7 +22,6 @@ public class VirtualMachine {
      * @param simulation Die Simulation, die den Kontext für die Ausführung bereitstellt.
      */
     public VirtualMachine(Simulation simulation) {
-        this.simulation = simulation;
         this.environment = simulation.getEnvironment();
     }
 
@@ -60,8 +59,9 @@ public class VirtualMachine {
      * Diese Methode modifiziert potenziell den Zustand des Organismus und der Umgebung.
      *
      * @param instruction Die geplante Instruktion, die ausgeführt werden soll.
+     * @param simulation  Die Simulation, die den Kontext für die Ausführung bereitstellt.
      */
-    public void execute(Instruction instruction) {
+    public void execute(Instruction instruction, Simulation simulation) {
         Organism organism = instruction.getOrganism();
         if (organism.isDead()) {
             return;
@@ -71,8 +71,11 @@ public class VirtualMachine {
         java.util.List<Integer> rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(), this.environment);
         organism.takeEr(instruction.getCost(organism, this.environment, rawArgs));
 
-        // TODO: [Phase 3] Diese Methode sollte die Simulation nicht direkt durchreichen.
-        instruction.execute(this.simulation);
+        ExecutionContext context = new ExecutionContext(organism, this.environment,
+                simulation.getProgramArtifacts().get(organism.getProgramId()),
+                simulation.isPerformanceMode());
+
+        instruction.execute(context);
 
         if (organism.isInstructionFailed()) {
             organism.takeEr(Config.ERROR_PENALTY_COST);

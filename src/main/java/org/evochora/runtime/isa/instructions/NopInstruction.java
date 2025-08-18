@@ -1,6 +1,6 @@
 package org.evochora.runtime.isa.instructions;
 
-import org.evochora.runtime.Simulation;
+import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
@@ -14,7 +14,7 @@ public class NopInstruction extends Instruction {
     }
 
     @Override
-    public void execute(Simulation simulation) {
+    public void execute(ExecutionContext context) {
         // Diese Instruktion tut absichtlich nichts.
     }
 

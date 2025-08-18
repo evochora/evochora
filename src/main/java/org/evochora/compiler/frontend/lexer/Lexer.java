@@ -36,9 +36,6 @@ public class Lexer {
         this.source = source;
         this.diagnostics = diagnostics;
         this.logicalFileName = logicalFileName;
-
-        // TODO: Kann das am ende wieder weg?
-        org.evochora.runtime.isa.Instruction.init();
     }
 
     /**

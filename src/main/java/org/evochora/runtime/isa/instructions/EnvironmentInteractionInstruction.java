@@ -1,17 +1,15 @@
 package org.evochora.runtime.isa.instructions;
 
 import org.evochora.runtime.Config;
-import org.evochora.runtime.Simulation;
+import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 
 public class EnvironmentInteractionInstruction extends Instruction implements IEnvironmentModifyingInstruction {
@@ -23,16 +21,15 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
     }
 
     @Override
-    public void execute(Simulation simulation) {
+    public void execute(ExecutionContext context) {
+        Organism organism = context.getOrganism();
         try {
             String opName = getName();
 
-            // KORREKTUR: Die Prüfung wurde von startsWith auf eine exakte Überprüfung aller
-            // Varianten umgestellt. Das behebt den Fehler.
             if ("POKE".equals(opName) || "POKI".equals(opName) || "POKS".equals(opName)) {
-                handlePoke(simulation);
+                handlePoke(context);
             } else if ("PEEK".equals(opName) || "PEKI".equals(opName) || "PEKS".equals(opName)) {
-                handlePeek(simulation);
+                handlePeek(context);
             } else {
                 organism.instructionFailed("Unknown world interaction instruction: " + opName);
             }
@@ -44,8 +41,10 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         }
     }
 
-    private void handlePoke(Simulation simulation) {
-        List<Operand> operands = resolveOperands(simulation.getEnvironment());
+    private void handlePoke(ExecutionContext context) {
+        Organism organism = context.getOrganism();
+        Environment environment = context.getWorld();
+        List<Operand> operands = resolveOperands(environment);
         Object valueToWrite;
         int[] vector;
 
@@ -60,7 +59,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         }
 
         if (this.targetCoordinate == null) {
-            this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, simulation.getEnvironment());
+            this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, environment);
         }
 
         if (getConflictStatus() == ConflictResolutionStatus.WON_EXECUTION || getConflictStatus() == ConflictResolutionStatus.NOT_APPLICABLE) {
@@ -72,8 +71,8 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             int cost = Math.abs(toWrite.toScalarValue());
             if (cost > 0) organism.takeEr(cost);
 
-            if (simulation.getEnvironment().getMolecule(targetCoordinate).isEmpty()) {
-                simulation.getEnvironment().setMolecule(toWrite, targetCoordinate);
+            if (environment.getMolecule(targetCoordinate).isEmpty()) {
+                environment.setMolecule(toWrite, targetCoordinate);
             } else {
                 organism.instructionFailed("POKE: Target cell is not empty.");
                 if (getConflictStatus() != ConflictResolutionStatus.NOT_APPLICABLE) setConflictStatus(ConflictResolutionStatus.LOST_TARGET_OCCUPIED);
@@ -81,9 +80,10 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         }
     }
 
-    private void handlePeek(Simulation simulation) {
-        List<Operand> operands = resolveOperands(simulation.getEnvironment());
-        Environment environment = simulation.getEnvironment();
+    private void handlePeek(ExecutionContext context) {
+        Organism organism = context.getOrganism();
+        Environment environment = context.getWorld();
+        List<Operand> operands = resolveOperands(environment);
         int targetReg;
         int[] vector;
 

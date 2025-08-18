@@ -77,6 +77,25 @@ public final class SimulationEngine implements IControllable, Runnable {
         return simulation != null ? simulation.getCurrentTick() : -1L;
     }
 
+    public Simulation getSimulation() { return simulation; }
+
+    /**
+     * Performs one deterministic tick on the simulation thread-safely while allowing the engine
+     * to stay paused. This method directly advances the underlying Simulation and enqueues the
+     * resulting world state to the queue, so PersistenceService can persist it.
+     */
+    public void step() {
+        if (simulation == null) return;
+        // Advance one tick synchronously
+        simulation.tick();
+        StatusMetricsRegistry.onTick(simulation.getCurrentTick());
+        try {
+            queue.put(WorldStateAdapter.fromSimulation(simulation));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     public int[] getOrganismCounts() {
         if (simulation == null) return new int[]{0,0};
         int living = 0, dead = 0;

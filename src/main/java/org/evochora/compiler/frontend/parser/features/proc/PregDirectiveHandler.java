@@ -13,7 +13,7 @@ public class PregDirectiveHandler implements IDirectiveHandler {
         context.advance(); // .PREG konsumieren
         Token alias = context.consume(TokenType.REGISTER, "Expected a register alias (e.g. %TMP) after .PREG.");
         Token index = context.consume(TokenType.NUMBER, "Expected a procedure register index (0 or 1) after the alias.");
-        // TODO: Semantische Analyse prüft, ob der Index 0 oder 1 ist.
+
         // Das abschließende Newline wird von der Schleife im ProcDirectiveHandler behandelt.
         return new PregNode(alias, index);
     }

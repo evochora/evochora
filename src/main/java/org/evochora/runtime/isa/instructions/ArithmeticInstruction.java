@@ -1,14 +1,13 @@
 package org.evochora.runtime.isa.instructions;
 
 import org.evochora.runtime.Config;
-import org.evochora.runtime.Simulation;
+import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 
 import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 
 public class ArithmeticInstruction extends Instruction {
@@ -18,10 +17,10 @@ public class ArithmeticInstruction extends Instruction {
     }
 
     @Override
-    public void execute(Simulation simulation) {
+    public void execute(ExecutionContext context) {
         try {
-            // Die Basisklasse holt die Operanden, egal ob von Registern, Stack oder als Immediate.
-            List<Operand> operands = resolveOperands(simulation.getEnvironment());
+            Organism organism = context.getOrganism();
+            List<Operand> operands = resolveOperands(context.getWorld());
             if (operands.size() != 2) {
                 organism.instructionFailed("Invalid operand count for arithmetic operation.");
                 return;

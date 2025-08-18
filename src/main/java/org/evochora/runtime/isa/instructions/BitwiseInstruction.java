@@ -1,14 +1,13 @@
 package org.evochora.runtime.isa.instructions;
 
 import org.evochora.runtime.Config;
-import org.evochora.runtime.Simulation;
+import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 
 import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 
 public class BitwiseInstruction extends Instruction {
@@ -18,9 +17,10 @@ public class BitwiseInstruction extends Instruction {
     }
 
     @Override
-    public void execute(Simulation simulation) {
+    public void execute(ExecutionContext context) {
+        Organism organism = context.getOrganism();
         try {
-            List<Operand> operands = resolveOperands(simulation.getEnvironment());
+            List<Operand> operands = resolveOperands(context.getWorld());
             String opName = getName();
 
             // Handle NOT separately as it has only one operand

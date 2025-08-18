@@ -2,14 +2,13 @@ package org.evochora.runtime.isa.instructions;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 
 public class StateInstruction extends Instruction {
@@ -19,9 +18,10 @@ public class StateInstruction extends Instruction {
     }
 
     @Override
-    public void execute(Simulation simulation) {
+    public void execute(ExecutionContext context) {
+        Organism organism = context.getOrganism();
         String opName = getName();
-        List<Operand> operands = resolveOperands(simulation.getEnvironment());
+        List<Operand> operands = resolveOperands(context.getWorld());
 
         try {
             switch (opName) {
@@ -36,7 +36,7 @@ public class StateInstruction extends Instruction {
                     handleNrg(opName, operands);
                     break;
                 case "FORK":
-                    handleFork(operands, simulation);
+                    handleFork(operands, organism.getSimulation()); // Behält Simulation für FORK
                     break;
                 case "DIFF":
                     handleDiff(operands);
@@ -50,12 +50,12 @@ public class StateInstruction extends Instruction {
                 case "SEEK":
                 case "SEKI":
                 case "SEKS":
-                    handleSeek(operands, simulation.getEnvironment());
+                    handleSeek(operands, context.getWorld());
                     break;
                 case "SCAN":
                 case "SCNI":
                 case "SCNS":
-                    handleScan(opName, operands, simulation.getEnvironment());
+                    handleScan(opName, operands, context.getWorld());
                     break;
                 default:
                     organism.instructionFailed("Unknown state instruction: " + opName);

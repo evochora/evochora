@@ -2,17 +2,13 @@ package org.evochora.runtime.isa.instructions;
 
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
-import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.internal.services.ProcedureCallHandler;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
-import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 
 public class ControlFlowInstruction extends Instruction {
@@ -41,14 +37,13 @@ public class ControlFlowInstruction extends Instruction {
     }
 
     @Override
-    public void execute(Simulation simulation) {
-        ProgramArtifact artifact = simulation.getProgramArtifacts().get(organism.getProgramId());
-        // KORREKTUR: performanceMode wird an den Kontext übergeben
-        ExecutionContext context = new ExecutionContext(organism, simulation.getEnvironment(), artifact, simulation.isPerformanceMode());
+    public void execute(ExecutionContext context) {
         ProcedureCallHandler callHandler = new ProcedureCallHandler(context);
+        Organism organism = context.getOrganism();
+        Environment environment = context.getWorld();
 
         String opName = getName();
-        List<Operand> operands = resolveOperands(simulation.getEnvironment());
+        List<Operand> operands = resolveOperands(environment);
 
         try {
             switch (opName) {
@@ -63,7 +58,7 @@ public class ControlFlowInstruction extends Instruction {
                 case "JMPR":
                 case "JMPS":
                     int[] delta = (int[]) operands.get(0).value();
-                    int[] targetIp = organism.getTargetCoordinate(organism.getIpBeforeFetch(), delta, simulation.getEnvironment());
+                    int[] targetIp = organism.getTargetCoordinate(organism.getIpBeforeFetch(), delta, environment);
                     organism.setIp(targetIp);
                     organism.setSkipIpAdvance(true);
                     break;

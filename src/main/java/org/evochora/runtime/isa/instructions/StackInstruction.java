@@ -1,14 +1,12 @@
 package org.evochora.runtime.isa.instructions;
 
 import org.evochora.runtime.Config;
-import org.evochora.runtime.Simulation;
+import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 
 import java.util.Deque;
-import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 
 public class StackInstruction extends Instruction {
@@ -18,7 +16,8 @@ public class StackInstruction extends Instruction {
     }
 
     @Override
-    public void execute(Simulation simulation) {
+    public void execute(ExecutionContext context) {
+        Organism organism = context.getOrganism();
         Deque<Object> ds = organism.getDataStack();
         String opName = getName();
 

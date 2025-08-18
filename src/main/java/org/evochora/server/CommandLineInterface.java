@@ -1,12 +1,15 @@
 package org.evochora.server;
 
+import org.evochora.runtime.isa.Instruction;
 import org.evochora.server.engine.SimulationEngine;
+import org.evochora.server.contracts.IQueueMessage;
 import org.evochora.server.persistence.PersistenceService;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.server.engine.StatusMetricsRegistry;
+// import org.evochora.server.engine.WorldStateAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,13 +28,15 @@ public final class CommandLineInterface {
     private static final Logger log = LoggerFactory.getLogger(CommandLineInterface.class);
 
     public static void main(String[] args) throws Exception {
+        Instruction.init();
+
         ITickMessageQueue queue = new InMemoryTickQueue();
         SimulationEngine sim = null;
         PersistenceService persist = null;
         java.util.ArrayList<ProgramArtifact> loadedArtifacts = new java.util.ArrayList<>();
 
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-        log.info("Evochora server CLI ready. Commands: load <file> | run | run debug | status | clear | exit");
+        log.info("Evochora server CLI ready. Commands: load <file> | run | run debug | tick [n] | status | clear | exit");
 
         while (true) {
             System.err.print(">>> ");
@@ -114,6 +119,31 @@ public final class CommandLineInterface {
                 sim.setProgramArtifacts(java.util.List.copyOf(loadedArtifacts));
                 if (!sim.isRunning()) { sim.start(); System.err.println("SimulationEngine started."); }
                 if (!persist.isRunning()) { persist.start(); System.err.println("PersistenceService started."); }
+                continue;
+            } else if (cmd.startsWith("tick")) {
+                if (sim == null || persist == null) {
+                    // Boot minimal debug services if not running
+                    boolean performanceMode = false;
+                    sim = new SimulationEngine(queue, performanceMode);
+                    persist = new PersistenceService(queue, performanceMode);
+                    sim.setProgramArtifacts(java.util.List.copyOf(loadedArtifacts));
+                    sim.start();
+                    persist.start();
+                    // Pause immediately to gain control over stepping
+                    sim.pause();
+                } else {
+                    // Ensure paused before stepping
+                    sim.pause();
+                }
+                int n = 1;
+                String[] parts = cmd.split("\\s+");
+                if (parts.length > 1) {
+                    try { n = Integer.parseInt(parts[1]); } catch (NumberFormatException ignore) { n = 1; }
+                }
+                for (int i = 0; i < n; i++) {
+                    sim.step();
+                }
+                System.err.printf("Stepped %d tick(s). Current: %d%n", n, sim.getCurrentTick());
                 continue;
             }
             switch (cmd) {

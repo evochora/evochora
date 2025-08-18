@@ -14,23 +14,6 @@ import java.util.stream.Collectors;
 public class DiagnosticsEngine {
 
     private final List<Diagnostic> diagnostics = new ArrayList<>();
-    private Object testPayload = null;
-
-    /**
-     * TODO: [Phase 4] Temporäre Methode, um Testdaten aus dem Compiler zu extrahieren,
-     *  während er schrittweise entwickelt wird. Wird entfernt, sobald der Compiler
-     *  vollständige Artefakte erzeugen kann und die Tests darauf umgestellt sind.
-     */
-    public void setTestPayload(Object payload) {
-        this.testPayload = payload;
-    }
-
-    /**
-     * TODO: [Phase 4] Temporäre Methode, siehe setTestPayload.
-     */
-    public Object getTestPayload() {
-        return this.testPayload;
-    }
 
     /**
      * Meldet einen Fehler.

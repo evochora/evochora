@@ -64,8 +64,7 @@ public class ProcedureCallHandler {
         Object[] prsSnapshot = organism.getPrs().toArray();
         Object[] fprsSnapshot = organism.getFprs().toArray();
 
-        // TODO: In Phase 2 wird der Prozedurname aus den ProgramMetadata des ExecutionContext gelesen.
-        String procName = "UNKNOWN";
+        String procName = "UNKNOWN"; // Fallback
         ProgramArtifact artifact = context.getArtifact();
         int[] computedAbsTarget = null;
         if (artifact != null) {
@@ -103,7 +102,6 @@ public class ProcedureCallHandler {
                 for (int i = 0; i < dims; i++) computedAbsTarget[i] = origin[i] + relTarget[i];
             }
         }
-        // --- ENDE DER ÄNDERUNG ---
 
         Organism.ProcFrame frame = new Organism.ProcFrame(procName, returnIp, prsSnapshot, fprsSnapshot, fprBindings);
         organism.getCallStack().push(frame);

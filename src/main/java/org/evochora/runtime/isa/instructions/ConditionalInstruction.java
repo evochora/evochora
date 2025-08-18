@@ -1,16 +1,14 @@
 package org.evochora.runtime.isa.instructions;
 
 import org.evochora.runtime.Config;
-import org.evochora.runtime.Simulation;
+import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 
 public class ConditionalInstruction extends Instruction {
@@ -20,11 +18,13 @@ public class ConditionalInstruction extends Instruction {
     }
 
     @Override
-    public void execute(Simulation simulation) {
+    public void execute(ExecutionContext context) {
+        Organism organism = context.getOrganism();
+        Environment environment = context.getWorld();
         try {
             String opName = getName();
             if (opName.startsWith("IFM")) {
-                List<Operand> operands = resolveOperands(simulation.getEnvironment());
+                List<Operand> operands = resolveOperands(environment);
                 if (operands.size() != 1) {
                     organism.instructionFailed("Invalid operand count for " + opName);
                     return;
@@ -38,14 +38,14 @@ public class ConditionalInstruction extends Instruction {
                 if (!organism.isUnitVector(vector)) {
                     return;
                 }
-                int[] targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, simulation.getEnvironment());
-                int ownerId = simulation.getEnvironment().getOwnerId(targetCoordinate);
+                int[] targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, environment);
+                int ownerId = environment.getOwnerId(targetCoordinate);
                 if (ownerId != organism.getId()) {
-                    organism.skipNextInstruction(simulation.getEnvironment());
+                    organism.skipNextInstruction(environment);
                 }
                 return;
             }
-            List<Operand> operands = resolveOperands(simulation.getEnvironment());
+            List<Operand> operands = resolveOperands(environment);
             if (operands.size() != 2) {
                 organism.instructionFailed("Invalid operand count for conditional operation.");
                 return;
@@ -84,7 +84,7 @@ public class ConditionalInstruction extends Instruction {
             }
 
             if (!conditionMet) {
-                organism.skipNextInstruction(simulation.getEnvironment());
+                organism.skipNextInstruction(environment);
             }
 
         } catch (NoSuchElementException e) {
