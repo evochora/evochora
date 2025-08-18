@@ -59,6 +59,19 @@ public class CallBindingResolver {
                             List<Integer> regs = new ArrayList<>();
                             for (String p : parts) {
                                 Integer regId = Instruction.resolveRegToken(p, java.util.Map.of());
+                                if (regId == null) {
+                                    String up = p.toUpperCase();
+                                    if (up.startsWith("REG")) {
+                                        try {
+                                            int idx = Integer.parseInt(up.substring(3)) - 1;
+                                            Organism.ProcFrame caller = organism.getCallStack().isEmpty() ? null : organism.getCallStack().peek();
+                                            if (caller != null && idx >= 0) {
+                                                Integer mapped = caller.fprBindings.get(Instruction.FPR_BASE + idx);
+                                                if (mapped != null) regId = mapped;
+                                            }
+                                        } catch (NumberFormatException ignore2) { /* ignore */ }
+                                    }
+                                }
                                 if (regId != null) regs.add(regId);
                             }
                             if (!regs.isEmpty()) {

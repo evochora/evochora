@@ -77,10 +77,13 @@ public class VMControlFlowInstructionTest {
 
     @Test
     void testJmpr() {
-        // JMPR interpretiert den Operanden als relative Koordinate zum initialen Start
-        int[] relative = new int[]{12};
-        int[] expectedIp = new int[]{org.getInitialPosition()[0] + relative[0]};
-        org.setDr(0, relative);
+        // JMPR interpretiert den Vektor im Register als relative Koordinate zur aktuellen IP.
+        int[] jumpVector = new int[]{12};
+        int[] currentIp = org.getIp(); // IP vor der Ausführung (z.B. [5])
+        // Das erwartete Ziel ist die aktuelle Position PLUS der Sprungvektor.
+        int[] expectedIp = org.getTargetCoordinate(currentIp, jumpVector, environment); // Erwartet: [17]
+
+        org.setDr(0, jumpVector);
         placeInstruction("JMPR", 0);
 
         sim.tick();

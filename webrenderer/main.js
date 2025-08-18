@@ -190,9 +190,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const annotateLineByFormalParams = (line, artifactObj, orgObj) => {
             if (!artifactObj || !artifactObj.procNameToParamNames || !orgObj || !Array.isArray(orgObj.callStack) || orgObj.callStack.length === 0) return line;
             if (line.includes('injected-value')) return line; // schon annotiert
-            const currentProc = orgObj.callStack[orgObj.callStack.length - 1];
-            if (!currentProc) return line;
-            const paramNames = artifactObj.procNameToParamNames[currentProc.toUpperCase()];
+            const topEntry = orgObj.callStack[orgObj.callStack.length - 1];
+            if (!topEntry) return line;
+            // Prozedurname aus erstem Token extrahieren, auch wenn Parameter angehängt sind
+            const currentProc = String(topEntry).trim().split(/\s+/)[0];
+            const paramNames = artifactObj.procNameToParamNames[currentProc ? currentProc.toUpperCase() : currentProc];
             if (!Array.isArray(paramNames) || paramNames.length === 0) return line;
             let out = line;
             for (let i = 0; i < paramNames.length; i++) {
@@ -426,11 +428,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const dsChanged = initialized && JSON.stringify(dsShort) !== JSON.stringify(prevState.ds||[]);
             const csChanged = initialized && JSON.stringify(csShort) !== JSON.stringify(prevState.cs||[]);
             const paramsArray = (org.formalParameters||[]).map(shorten);
-            // Build call stack lines: one line per entry; top frame with params
-            const csLines = (org.callStack||[]).map((name, idx, arr) => {
-                if (idx === arr.length - 1 && paramsArray.length) return `${name} ${paramsArray.join(' ')}`;
-                return name;
-            });
+            // Build call stack lines: one line per entry; use server-provided strings (bereits inkl. Parametern)
+            const csLines = (org.callStack||[]);
             const labelStyle = '';
             const kv = (label, html, changed) => `<div class=\"kv\"${changed?' style=\"background:#2a2a3a;border-radius:3px;padding:0 2px;\"':''}><div class=\"lbl\">${label}</div><div class=\"val\">${html}</div></div>`;
             regsHtml = `

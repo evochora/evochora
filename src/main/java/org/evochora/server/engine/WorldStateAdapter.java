@@ -71,8 +71,30 @@ final class WorldStateAdapter {
         if (artifact == null) {
             return organism.getCallStack().stream().map(f -> f.procName).collect(Collectors.toList());
         }
+        List<Organism.ProcFrame> frames = new ArrayList<>(organism.getCallStack());
         List<String> out = new ArrayList<>();
-        for (Organism.ProcFrame frame : organism.getCallStack()) {
+
+        // Hilfsfunktion: FPR-Kette auflösen bis DR/PR in älteren Frames
+        java.util.function.BiFunction<Integer, Integer, Integer> resolveBoundRegId = (frameIdx, fprIndex) -> {
+            int idx = frameIdx;
+            int currentRegId = Instruction.FPR_BASE + fprIndex;
+            while (idx >= 0) {
+                Organism.ProcFrame fr = frames.get(idx);
+                Integer mapped = fr.fprBindings.get(currentRegId);
+                if (mapped == null) break;
+                currentRegId = mapped;
+                if (currentRegId < Instruction.FPR_BASE) break; // DR/PR erreicht
+                // sonst ist es wieder ein FPR -> gehe eine Ebene höher und suche dessen Bindung
+                int nextFprIdx = currentRegId - Instruction.FPR_BASE;
+                idx--;
+                if (idx < 0) break;
+                currentRegId = Instruction.FPR_BASE + nextFprIdx;
+            }
+            return currentRegId;
+        };
+
+        for (int fi = frames.size() - 1; fi >= 0; fi--) {
+            Organism.ProcFrame frame = frames.get(fi);
             String procName = frame.procName;
             List<String> paramNames = artifact.procNameToParamNames().get(procName != null ? procName.toUpperCase() : null);
             if (paramNames == null || paramNames.isEmpty()) {
@@ -80,28 +102,33 @@ final class WorldStateAdapter {
                 continue;
             }
             StringBuilder sb = new StringBuilder(procName);
-            for (int i = 0; i < paramNames.size(); i++) {
-                Integer boundRegId = frame.fprBindings.get(Instruction.FPR_BASE + i);
+            for (int pi = 0; pi < paramNames.size(); pi++) {
+                Integer boundRegId = frame.fprBindings.get(Instruction.FPR_BASE + pi);
+                int finalRegId;
+                if (boundRegId == null) {
+                    finalRegId = Instruction.FPR_BASE + pi;
+                } else {
+                    finalRegId = boundRegId;
+                }
+                if (finalRegId >= Instruction.FPR_BASE) {
+                    finalRegId = resolveBoundRegId.apply(fi - 1, finalRegId - Instruction.FPR_BASE);
+                }
                 String boundName;
                 Object value;
-                if (boundRegId == null) {
-                    boundName = "%FPR" + i;
-                    // Werte aus FPR lesen, aber Anzeige priorisiert DR/PR Namensbindung
-                    value = organism.getFpr(i);
-                } else if (boundRegId < Instruction.PR_BASE) {
-                    boundName = "%DR" + boundRegId;
-                    value = organism.readOperand(boundRegId);
-                } else if (boundRegId < Instruction.FPR_BASE) {
-                    boundName = "%PR" + (boundRegId - Instruction.PR_BASE);
-                    value = organism.readOperand(boundRegId);
+                if (finalRegId < Instruction.PR_BASE) {
+                    boundName = "%DR" + finalRegId;
+                    value = organism.readOperand(finalRegId);
+                } else if (finalRegId < Instruction.FPR_BASE) {
+                    boundName = "%PR" + (finalRegId - Instruction.PR_BASE);
+                    value = organism.readOperand(finalRegId);
                 } else {
-                    boundName = "%FPR" + (boundRegId - Instruction.FPR_BASE);
-                    value = organism.getFpr(boundRegId - Instruction.FPR_BASE);
+                    int fidx = finalRegId - Instruction.FPR_BASE;
+                    boundName = "%FPR" + fidx;
+                    value = organism.getFpr(fidx);
                 }
-                // Duplikate verhindern: Parameternamen pro Frame nur einmal
-                sb.append(' ').append(paramNames.get(i)).append('[').append(boundName).append("=").append(formatObject(value)).append(']');
+                sb.append(' ').append(paramNames.get(pi)).append('[').append(boundName).append("=").append(formatObject(value)).append(']');
             }
-            out.add(sb.toString());
+            out.add(0, sb.toString());
         }
         return out;
     }

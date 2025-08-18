@@ -90,19 +90,17 @@ public class PlaceholderResolver {
                 throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(), Messages.get("placeholderResolver.targetLabelCoordinateNotFound", targetLabel), placeholder.line().content());
             }
 
-            int[] opcodeCoord = linearAddressToCoordMap.get(opcodeAddress);
-            if (opcodeCoord == null) {
-                throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(), Messages.get("placeholderResolver.vectorInstructionCoordinateNotFound"), placeholder.line().content());
-            }
-
-            // Write the vector values to the machine code layout
-            int[] argPos = Arrays.copyOf(opcodeCoord, opcodeCoord.length);
-            argPos[0]++; // To the register argument
-            argPos[0]++; // To the first vector component
-
-            for (int component : targetCoord) {
-                machineCodeLayout.put(Arrays.copyOf(argPos, argPos.length), new Molecule(Config.TYPE_DATA, component).toInt());
-                argPos[0]++;
+            // Das erste Argument ist das Register, es beginnt bei `opcodeAddress + 1`.
+            // Die Vektorkomponenten beginnen bei `opcodeAddress + 2`.
+            for (int i = 0; i < targetCoord.length; i++) {
+                int argLinearAddr = opcodeAddress + 2 + i;
+                int[] argCoord = linearAddressToCoordMap.get(argLinearAddr);
+                if (argCoord == null) {
+                    // Diese Exception sollte nie auftreten, wenn der PassManager korrekt arbeitet.
+                    throw new AssemblerException(programName, placeholder.line().originalFileName(), placeholder.line().originalLineNumber(),
+                            "Internal error: Coordinate for vector argument not found.", placeholder.line().content());
+                }
+                machineCodeLayout.put(Arrays.copyOf(argCoord, argCoord.length), new Molecule(Config.TYPE_DATA, targetCoord[i]).toInt());
             }
         }
     }
