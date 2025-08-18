@@ -425,21 +425,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             const csShort = (org.callStack||[]);
             const dsChanged = initialized && JSON.stringify(dsShort) !== JSON.stringify(prevState.ds||[]);
             const csChanged = initialized && JSON.stringify(csShort) !== JSON.stringify(prevState.cs||[]);
-            const paramsLines = (org.formalParameters||[]).map(shorten).join(' ');
-
+            const paramsArray = (org.formalParameters||[]).map(shorten);
             // Build call stack lines: one line per entry; top frame with params
             const csLines = (org.callStack||[]).map((name, idx, arr) => {
-                if (idx === arr.length - 1 && paramsLines) return `${name} ${paramsLines}`;
+                if (idx === arr.length - 1 && paramsArray.length) return `${name} ${paramsArray.join(' ')}`;
                 return name;
             });
-            const labelStyle = 'display:inline-block;width:3.2em;';
+            const labelStyle = '';
+            const kv = (label, html, changed) => `<div class=\"kv\"${changed?' style=\"background:#2a2a3a;border-radius:3px;padding:0 2px;\"':''}><div class=\"lbl\">${label}</div><div class=\"val\">${html}</div></div>`;
             regsHtml = `
-<div class="code-view" style="white-space:normal;line-height:1.4;font-size:0.85em;">
-<div><span style="${labelStyle}">DR:</span> ${drLine}</div>
-<div><span style="${labelStyle}">PR:</span> ${prLine}</div>
-<div><span style="${labelStyle}">FPR:</span> ${fprLine}</div>
-<div${dsChanged?' style=\"background:#2a2a3a;border-radius:3px;padding:0 2px;\"':''}><span style="${labelStyle}">DS:</span> ${dsShort.join(' ')||'[]'}</div>
-<div${csChanged?' style=\"background:#2a2a3a;border-radius:3px;padding:0 2px;\"':''}><span style="${labelStyle}">CS:</span> ${csLines.length? csLines.join('<br>') : '[]'}</div>
+<div class=\"code-view\" style=\"white-space:normal;line-height:1.4;font-size:0.85em;\"> 
+${kv('DR:', drLine, false)}
+${kv('PR:', prLine, false)}
+${kv('FPR:', fprLine, false)}
+${kv('DS:', dsShort.join(' ')||'[]', dsChanged)}
+${kv('CS:', csLines.length? csLines.join('<br>') : '[]', csChanged)}
 </div>`;
 
             prev.set(key, { initialized: true, dr: drNorm, pr: prNorm, fpr: fprNorm, ds: dsShort, cs: csShort });

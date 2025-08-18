@@ -36,7 +36,7 @@ final class WorldStateAdapter {
 
             // Im Performance-Modus werden alle teuren Operationen übersprungen
             String disassembledJson = perfMode ? "{}" : getDisassembledJson(o, artifacts, simulation.getEnvironment());
-            List<String> callStackNames = perfMode ? List.of() : getCallStackNames(o);
+            List<String> callStackNames = perfMode ? List.of() : getCallStackWithParams(o, artifacts.get(o.getProgramId()));
             List<String> formattedFprs = perfMode ? List.of() : formatFprs(o, artifacts.get(o.getProgramId()));
             List<String> drs = perfMode ? List.of() : toFormattedList(o.getDrs());
             List<String> prs = perfMode ? List.of() : toFormattedList(o.getPrs());
@@ -67,10 +67,43 @@ final class WorldStateAdapter {
         return "{}";
     }
 
-    private static List<String> getCallStackNames(Organism o) {
-        return o.getCallStack().stream()
-                .map(frame -> frame.procName)
-                .collect(Collectors.toList());
+    private static List<String> getCallStackWithParams(Organism organism, ProgramArtifact artifact) {
+        if (artifact == null) {
+            return organism.getCallStack().stream().map(f -> f.procName).collect(Collectors.toList());
+        }
+        List<String> out = new ArrayList<>();
+        for (Organism.ProcFrame frame : organism.getCallStack()) {
+            String procName = frame.procName;
+            List<String> paramNames = artifact.procNameToParamNames().get(procName != null ? procName.toUpperCase() : null);
+            if (paramNames == null || paramNames.isEmpty()) {
+                out.add(procName);
+                continue;
+            }
+            StringBuilder sb = new StringBuilder(procName);
+            for (int i = 0; i < paramNames.size(); i++) {
+                Integer boundRegId = frame.fprBindings.get(Instruction.FPR_BASE + i);
+                String boundName;
+                Object value;
+                if (boundRegId == null) {
+                    boundName = "%FPR" + i;
+                    // Werte aus FPR lesen, aber Anzeige priorisiert DR/PR Namensbindung
+                    value = organism.getFpr(i);
+                } else if (boundRegId < Instruction.PR_BASE) {
+                    boundName = "%DR" + boundRegId;
+                    value = organism.readOperand(boundRegId);
+                } else if (boundRegId < Instruction.FPR_BASE) {
+                    boundName = "%PR" + (boundRegId - Instruction.PR_BASE);
+                    value = organism.readOperand(boundRegId);
+                } else {
+                    boundName = "%FPR" + (boundRegId - Instruction.FPR_BASE);
+                    value = organism.getFpr(boundRegId - Instruction.FPR_BASE);
+                }
+                // Duplikate verhindern: Parameternamen pro Frame nur einmal
+                sb.append(' ').append(paramNames.get(i)).append('[').append(boundName).append("=").append(formatObject(value)).append(']');
+            }
+            out.add(sb.toString());
+        }
+        return out;
     }
 
     private static String formatObject(Object obj) {

@@ -67,23 +67,40 @@ public class ProcedureCallHandler {
         // TODO: In Phase 2 wird der Prozedurname aus den ProgramMetadata des ExecutionContext gelesen.
         String procName = "UNKNOWN";
         ProgramArtifact artifact = context.getArtifact();
+        int[] computedAbsTarget = null;
         if (artifact != null) {
-            int[] targetIp = organism.getTargetCoordinate(ipBeforeFetch, targetDelta, environment);
+            // Korrekte Zielberechnung: (ipBeforeFetch - origin) + delta → lookup → abs = origin + rel
             int[] origin = organism.getInitialPosition();
-            int[] relativeTargetIp = new int[targetIp.length];
-            for (int i = 0; i < targetIp.length; i++) {
-                relativeTargetIp[i] = targetIp[i] - origin[i];
-            }
-            // Keys in ProgramArtifact.relativeCoordToLinearAddress are strings like "x|y|..."
+            int dims = ipBeforeFetch.length;
+            int[] relCurrent = new int[dims];
+            for (int i = 0; i < dims; i++) relCurrent[i] = ipBeforeFetch[i] - origin[i];
+            int[] relTarget = new int[dims];
+            for (int i = 0; i < dims; i++) relTarget[i] = relCurrent[i] + (i < targetDelta.length ? targetDelta[i] : 0);
+
             StringBuilder keyBuilder = new StringBuilder();
-            for (int i = 0; i < relativeTargetIp.length; i++) {
+            for (int i = 0; i < dims; i++) {
                 if (i > 0) keyBuilder.append('|');
-                keyBuilder.append(relativeTargetIp[i]);
+                keyBuilder.append(relTarget[i]);
             }
             String relativeKey = keyBuilder.toString();
             Integer targetAddress = artifact.relativeCoordToLinearAddress().get(relativeKey);
+            if (targetAddress == null && artifact.linearAddressToCoord() != null) {
+                for (java.util.Map.Entry<Integer, int[]> e : artifact.linearAddressToCoord().entrySet()) {
+                    if (java.util.Arrays.equals(e.getValue(), relTarget)) { targetAddress = e.getKey(); break; }
+                }
+            }
             if (targetAddress != null) {
-                procName = artifact.labelAddressToName().getOrDefault(targetAddress, "UNKNOWN");
+                String name = artifact.labelAddressToName().get(targetAddress);
+                if (name != null) procName = name;
+                int[] relCoord = artifact.linearAddressToCoord().get(targetAddress);
+                if (relCoord != null) {
+                    computedAbsTarget = new int[relCoord.length];
+                    for (int i = 0; i < relCoord.length; i++) computedAbsTarget[i] = origin[i] + relCoord[i];
+                }
+            } else {
+                // Fallback: direkt absolute Koordinate ausrechnen
+                computedAbsTarget = new int[dims];
+                for (int i = 0; i < dims; i++) computedAbsTarget[i] = origin[i] + relTarget[i];
             }
         }
         // --- ENDE DER ÄNDERUNG ---
@@ -100,8 +117,13 @@ public class ProcedureCallHandler {
         }
 
         // 4. Zum Prozedur-Einsprungspunkt springen
-        int[] targetIp = organism.getTargetCoordinate(ipBeforeFetch, targetDelta, environment);
-        organism.setIp(targetIp);
+        if (computedAbsTarget != null) {
+            organism.setIp(computedAbsTarget);
+        } else {
+            // Fallback ohne Artefakt: DV-getriebene Koordinatenberechnung
+            int[] targetIp = organism.getTargetCoordinate(ipBeforeFetch, targetDelta, environment);
+            organism.setIp(targetIp);
+        }
         organism.setSkipIpAdvance(true);
     }
 

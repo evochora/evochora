@@ -172,3 +172,17 @@ main.container {
     padding-right: 12px;
 }
 
+/* Key/Value Layout in Sidebar-Boxen */
+.code-view .kv {
+    display: flex;
+    gap: 8px;
+}
+.code-view .kv .lbl {
+    flex: 0 0 3.2em;
+}
+.code-view .kv .val {
+    flex: 1 1 auto;
+    white-space: normal;
+    word-break: break-word;
+}
+
