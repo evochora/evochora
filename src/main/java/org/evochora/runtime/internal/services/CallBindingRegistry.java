@@ -32,13 +32,12 @@ public final class CallBindingRegistry {
 
     /**
      * Registriert eine Parameterbindung für eine CALL-Instruktion an einer bestimmten linearen Adresse.
-     * TODO: Dies wird in Phase 2 wieder relevant, wenn die Runtime über ProgramMetadata verfügt.
      *
      * @param linearAddress Die lineare Adresse der CALL-Instruktion.
      * @param drIds         Ein Array von Register-IDs, die gebunden werden sollen.
      */
     public void registerBindingForLinearAddress(int linearAddress, int[] drIds) {
-        // bindingsByLinearAddress.put(linearAddress, Arrays.copyOf(drIds, drIds.length));
+        bindingsByLinearAddress.put(linearAddress, Arrays.copyOf(drIds, drIds.length));
     }
 
     /**

@@ -7,7 +7,6 @@ import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Files;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -22,7 +21,8 @@ class PersistenceServiceTest {
     @Test
     void writesWorldStateRows() throws Exception {
         ITickMessageQueue q = new InMemoryTickQueue();
-        PersistenceService persist = new PersistenceService(q, false);
+        // Use shared in-memory SQLite so no files are generated during tests
+        PersistenceService persist = new PersistenceService(q, false, "jdbc:sqlite:file:psvcTest?mode=memory&cache=shared");
         persist.start();
 
         var org = new OrganismState(
@@ -51,10 +51,7 @@ class PersistenceServiceTest {
         }, "PersistenceService hat den Tick nicht innerhalb des Zeitlimits verarbeitet.");
 
 
-        var db = persist.getDbFilePath();
-        assertThat(Files.exists(db)).isTrue();
-
-        try (Connection c = DriverManager.getConnection("jdbc:sqlite:" + db.toAbsolutePath())) {
+        try (Connection c = DriverManager.getConnection(persist.getJdbcUrl())) {
             ResultSet rsTick = c.createStatement().executeQuery("select count(*) from ticks where tickNumber=10");
             assertThat(rsTick.next()).isTrue();
             assertThat(rsTick.getInt(1)).isEqualTo(1);
@@ -68,6 +65,7 @@ class PersistenceServiceTest {
             assertThat(rsCell.getInt(1)).isEqualTo(1);
         }
 
+        // Ensure service is stopped
         persist.shutdown();
     }
 }

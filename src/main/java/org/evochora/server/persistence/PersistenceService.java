@@ -35,11 +35,22 @@ public final class PersistenceService implements IControllable, Runnable {
 
     private Connection connection;
     private Path dbFilePath;
+    private final String jdbcUrlOverride;
+    private String jdbcUrlInUse;
     private volatile long lastPersistedTick = -1L;
 
     public PersistenceService(ITickMessageQueue queue, boolean performanceMode) {
         this.queue = queue;
         this.performanceMode = performanceMode;
+        this.jdbcUrlOverride = null;
+        this.thread = new Thread(this, "PersistenceService");
+        this.thread.setDaemon(true);
+    }
+
+    public PersistenceService(ITickMessageQueue queue, boolean performanceMode, String jdbcUrlOverride) {
+        this.queue = queue;
+        this.performanceMode = performanceMode;
+        this.jdbcUrlOverride = jdbcUrlOverride;
         this.thread = new Thread(this, "PersistenceService");
         this.thread.setDaemon(true);
     }
@@ -73,15 +84,23 @@ public final class PersistenceService implements IControllable, Runnable {
 
     public Path getDbFilePath() { return dbFilePath; }
     public long getLastPersistedTick() { return lastPersistedTick; }
+    public String getJdbcUrl() { return jdbcUrlInUse; }
 
     private void setupDatabase() {
         try {
-            Path runsDir = Paths.get(Config.RUNS_DIRECTORY);
-            Files.createDirectories(runsDir);
-            String ts = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-            dbFilePath = runsDir.resolve("sim_run_" + ts + ".sqlite");
-            String url = "jdbc:sqlite:" + dbFilePath.toAbsolutePath();
-            connection = DriverManager.getConnection(url);
+            if (jdbcUrlOverride != null && !jdbcUrlOverride.isBlank()) {
+                // In-memory or externally provided JDBC URL (e.g., for tests)
+                jdbcUrlInUse = jdbcUrlOverride;
+                dbFilePath = null;
+                connection = DriverManager.getConnection(jdbcUrlInUse);
+            } else {
+                Path runsDir = Paths.get(Config.RUNS_DIRECTORY);
+                Files.createDirectories(runsDir);
+                String ts = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+                dbFilePath = runsDir.resolve("sim_run_" + ts + ".sqlite");
+                jdbcUrlInUse = "jdbc:sqlite:" + dbFilePath.toAbsolutePath();
+                connection = DriverManager.getConnection(jdbcUrlInUse);
+            }
             try (Statement st = connection.createStatement()) {
                 st.execute("CREATE TABLE IF NOT EXISTS programs (programId TEXT PRIMARY KEY, artifactJson TEXT)");
                 st.execute("CREATE TABLE IF NOT EXISTS ticks (tickNumber INTEGER PRIMARY KEY, timestampMicroseconds INTEGER, organismCount INTEGER)");

@@ -1,5 +1,6 @@
 package org.evochora.compiler.backend.emit;
 
+import org.evochora.compiler.backend.emit.features.CallBindingCaptureRule;
 import org.evochora.compiler.backend.emit.features.ProcedureMarshallingRule;
 import org.evochora.compiler.backend.emit.features.CallerMarshallingRule;
 
@@ -18,6 +19,7 @@ public final class EmissionRegistry {
 
 	public static EmissionRegistry initializeWithDefaults() {
 		EmissionRegistry reg = new EmissionRegistry();
+        reg.register(new CallBindingCaptureRule());
 		reg.register(new ProcedureMarshallingRule());
 		reg.register(new CallerMarshallingRule());
 		return reg;

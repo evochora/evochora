@@ -6,7 +6,6 @@ import org.evochora.runtime.model.Organism;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -30,8 +29,8 @@ public class CallBindingResolver {
      * Löst die Parameterbindungen für die aktuelle CALL-Instruktion auf.
      * <p>
      * Reihenfolge:
-     * 1) Artefakt-gestützt: relative Adresse -> SourceMap -> Zeile parsen (Tokens nach WITH)
-     * 2) Fallback: CallBindingRegistry (absolute Koordinate)
+     * 1) Globale Registry (absolute Koordinate)
+     * 2) Fallback: Artefakt-gestützt: relative Adresse -> SourceMap -> Zeile parsen (Tokens nach WITH)
      *
      * @return Array der gebundenen Register-IDs oder null.
      */
@@ -39,7 +38,14 @@ public class CallBindingResolver {
         Organism organism = context.getOrganism();
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
 
-        // 1) Artefakt-gestützt über SourceMap
+        // 1) Primär: Globale Registry (absolute Koordinate)
+        CallBindingRegistry registry = CallBindingRegistry.getInstance();
+        int[] bindings = registry.getBindingForAbsoluteCoord(ipBeforeFetch);
+        if (bindings != null) {
+            return bindings;
+        }
+
+        // 2) Fallback: Artefakt-gestützt über SourceMap
         try {
             ProgramArtifact artifact = context.getArtifact();
             if (artifact != null && artifact.relativeCoordToLinearAddress() != null && artifact.sourceMap() != null) {
@@ -72,8 +78,6 @@ public class CallBindingResolver {
             }
         } catch (Exception ignore) { }
 
-        // 2) Fallback: Globale Registry (absolute Koordinate)
-        CallBindingRegistry registry = CallBindingRegistry.getInstance();
-        return registry.getBindingForAbsoluteCoord(ipBeforeFetch);
+        return null;
     }
 }

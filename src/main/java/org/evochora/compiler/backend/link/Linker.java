@@ -5,6 +5,7 @@ import org.evochora.compiler.ir.IrInstruction;
 import org.evochora.compiler.ir.IrItem;
 import org.evochora.compiler.ir.IrProgram;
 import org.evochora.compiler.isa.IInstructionSet;
+import org.evochora.runtime.isa.Instruction;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,9 +17,9 @@ import java.util.Optional;
  */
 public final class Linker {
 
-	private final LinkingRegistry registry;
+    private final LinkingRegistry registry;
 
-	public Linker(LinkingRegistry registry) { this.registry = registry; }
+    public Linker(LinkingRegistry registry) { this.registry = registry; }
 
     public IrProgram link(IrProgram program, LayoutResult layout, LinkingContext context) {
         List<IrItem> out = new ArrayList<>();
@@ -27,12 +28,21 @@ public final class Linker {
 
         for (IrItem item : program.items()) {
             if (item instanceof IrInstruction ins) {
+                // NEU: Prüfen, ob für diese CALL-Instruktion Bindungen vorliegen
+                if ("CALL".equalsIgnoreCase(ins.opcode())) {
+                    int[] bindings = context.resolvePendingBinding(ins, isa);
+                    if (bindings != null) {
+                        // Verknüpfe die Bindungen mit der aktuellen (finalen) linearen Adresse
+                        context.callSiteBindings().put(context.currentAddress(), bindings);
+                    }
+                }
+
                 for (ILinkingRule rule : registry.rules()) {
                     ins = rule.apply(ins, context, layout);
                 }
                 out.add(ins);
 
-                // *** BEGINN DER KORREKTUR: Korrekte Logik zum Zählen der Adressen ***
+                // *** KORREKTE Logik zum Zählen der Adressen ***
                 context.nextAddress(); // Zuerst für den Opcode selbst zählen.
 
                 Integer opcodeId = isa.getInstructionIdByName(ins.opcode()).orElse(null);
@@ -66,5 +76,3 @@ public final class Linker {
         return new IrProgram(program.programName(), out);
     }
 }
-
-
