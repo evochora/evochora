@@ -50,6 +50,27 @@ public class Emitter {
                                 machineCodeLayout.put(coord, new Molecule(Config.TYPE_DATA, c).toInt());
                                 address++;
                             }
+                        } else if (op instanceof IrLabelRef ref) {
+                            // Fallback: resolve any remaining label refs here using the opcode coordinate
+                            Integer targetAddr = layout.labelToAddress().get(ref.labelName());
+                            if (targetAddr == null) {
+                                throw new IllegalArgumentException("Unknown label reference: " + ref.labelName());
+                            }
+                            int[] dstCoord = linearToCoord.get(targetAddr);
+                            if (dstCoord == null) throw new IllegalStateException("Missing coord for label target address " + targetAddr);
+                            int dims = Math.max(opcodeCoord.length, dstCoord.length);
+                            int[] delta = new int[dims];
+                            for (int d = 0; d < dims; d++) {
+                                int s = d < opcodeCoord.length ? opcodeCoord[d] : 0;
+                                int t = d < dstCoord.length ? dstCoord[d] : 0;
+                                delta[d] = t - s;
+                            }
+                            for (int c : delta) {
+                                int[] coord = linearToCoord.get(address);
+                                if (coord == null) throw new IllegalStateException("Missing coord for address " + address);
+                                machineCodeLayout.put(coord, new Molecule(Config.TYPE_DATA, c).toInt());
+                                address++;
+                            }
                         } else {
                             int[] coord = linearToCoord.get(address);
                             if (coord == null) throw new IllegalStateException("Missing coord for address " + address);

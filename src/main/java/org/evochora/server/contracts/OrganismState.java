@@ -21,7 +21,8 @@ public record OrganismState(
         List<String> procRegisters, // Geändert von int[]
         List<String> dataStack,     // Geändert von List<Integer>
         List<String> callStack,     // Geändert von List<Integer>
-        List<String> formalParameters, // NEUES FELD
+        List<String> formalParameters,
+        List<String> fprs,
         String disassembledInstructionJson
 ) {
 }

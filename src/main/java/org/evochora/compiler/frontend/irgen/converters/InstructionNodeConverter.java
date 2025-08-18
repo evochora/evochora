@@ -36,7 +36,20 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
 		}
 
 		int end = withIdx >= 0 ? withIdx : node.arguments().size();
-		for (int i = 0; i < end; i++) operands.add(convertOperand(node.arguments().get(i), ctx));
+		for (int i = 0; i < end; i++) {
+			AstNode argNode = node.arguments().get(i);
+			// Für CALL das erste Argument (Ziel) ggf. qualifiziert -> entferne führenden Alias-Teil
+			if (i == 0 && "CALL".equalsIgnoreCase(opcode) && argNode instanceof IdentifierNode id0) {
+				String raw = id0.identifierToken().text();
+				int dot = raw.indexOf('.');
+				if (dot > 0) {
+					String remainder = raw.substring(dot + 1);
+					operands.add(new IrLabelRef(remainder));
+					continue;
+				}
+			}
+			operands.add(convertOperand(argNode, ctx));
+		}
 
 		if (withIdx >= 0) {
 			java.util.Map<String, IrValue> args = new java.util.HashMap<>();

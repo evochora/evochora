@@ -59,6 +59,16 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         if ("WITH".equals(t) || ".WITH".equals(t)) { withIdx = i; break; }
                     }
                 }
+                // Keine Zusatztoken zwischen Ziel und WITH erlauben (verhindert z.B. "EXPORT" dazwischen)
+                int unexpectedEnd = withIdx >= 0 ? withIdx : instructionNode.arguments().size();
+                if (unexpectedEnd > 1) {
+                    diagnostics.reportError(
+                            "CALL syntax error: unexpected token before WITH.",
+                            "Unknown",
+                            instructionNode.opcode().line()
+                    );
+                    return;
+                }
                 int actualsStart = withIdx >= 0 ? withIdx + 1 : 1;
                 for (int j = actualsStart; j < instructionNode.arguments().size(); j++) {
                     AstNode arg = instructionNode.arguments().get(j);
@@ -106,7 +116,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                         instructionNode.opcode().line()
                                 );
                             }
-                        } else if (symbol.type() == Symbol.Type.LABEL) {
+                        } else if (symbol.type() == Symbol.Type.LABEL || symbol.type() == Symbol.Type.PROCEDURE) {
                             // Labels are valid for LABEL arguments, and also for VECTOR arguments (to be linked to deltas)
                             if (expectedType != InstructionArgumentType.LABEL && expectedType != InstructionArgumentType.VECTOR) {
                                 diagnostics.reportError(

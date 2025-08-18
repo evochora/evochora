@@ -40,13 +40,14 @@ final class WorldStateAdapter {
             List<String> formattedFprs = perfMode ? List.of() : formatFprs(o, artifacts.get(o.getProgramId()));
             List<String> drs = perfMode ? List.of() : toFormattedList(o.getDrs());
             List<String> prs = perfMode ? List.of() : toFormattedList(o.getPrs());
-            List<String> ds = perfMode ? List.of() : toFormattedList(o.getDataStack()); // KORREKTUR: Auch DS wird deaktiviert
+            List<String> ds = perfMode ? List.of() : toFormattedList(o.getDataStack());
+            List<String> fprsRaw = perfMode ? List.of() : toFormattedList(o.getFprs());
 
             organisms.add(new OrganismState(
                     o.getId(), o.getProgramId(), o.getParentId(), o.getBirthTick(), o.getEr(),
                     toList(o.getIp()), toList(o.getDp()), toList(o.getDv()),
                     o.getIp()[0], o.getEr(),
-                    drs, prs, ds, callStackNames, formattedFprs,
+                    drs, prs, ds, callStackNames, formattedFprs, fprsRaw,
                     disassembledJson
             ));
         }

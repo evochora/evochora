@@ -7,6 +7,7 @@ import org.evochora.compiler.frontend.parser.features.def.DefineNode;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.parser.features.scope.ScopeNode;
+import org.evochora.compiler.frontend.parser.features.require.RequireNode;
 import org.evochora.compiler.frontend.semantics.analysis.*;
 
 import java.util.HashMap;
@@ -46,7 +47,21 @@ public class SemanticAnalyzer {
 
             // Prozedurnamen als globale Labels definieren, damit CALL <PROCNAME> aufgelöst werden kann
             if (node instanceof ProcedureNode proc) {
-                symbolTable.define(new Symbol(proc.name(), Symbol.Type.LABEL));
+                // Registriere Metadaten (Export-Flag) für grenzüberschreitenden Zugriff
+                symbolTable.registerProcedureMeta(proc.name(), proc.exported());
+                // Registriere die Prozedur als eigenes Symbol (Datei-bezogen). Für CALL wird PROCEDURE als Label-äquivalent akzeptiert.
+                symbolTable.define(new Symbol(proc.name(), Symbol.Type.PROCEDURE));
+            }
+            // Registriere .REQUIRE Aliasse pro Datei für spätere Namensraumauflösung
+            if (node instanceof RequireNode req) {
+                if (req.alias() != null && req.path() != null && req.path().value() instanceof String) {
+                    String aliasU = req.alias().text().toUpperCase();
+                    String file = req.alias().fileName();
+                    String target = (String) req.path().value();
+                    // Normalisiere Pfadtrennzeichen wie im Preprocessor (Lexer/Include nutzt absolute Pfade und speichert fileName)
+                    String normalizedTarget = java.nio.file.Path.of(target).normalize().toString();
+                    symbolTable.registerRequireAlias(file, aliasU, normalizedTarget);
+                }
             }
             if (node instanceof ScopeNode || node instanceof ProcedureNode) {
                 symbolTable.enterScope();

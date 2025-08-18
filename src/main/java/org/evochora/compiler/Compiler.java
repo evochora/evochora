@@ -49,7 +49,18 @@ public class Compiler implements ICompiler {
         Lexer initialLexer = new Lexer(fullSource, diagnostics, programName);
         List<Token> initialTokens = initialLexer.scanTokens();
 
-        Path basePath = Path.of("").toAbsolutePath();
+        Path basePath;
+        try {
+            Path pn = Path.of(programName);
+            if (pn.isAbsolute()) {
+                basePath = pn.getParent() != null ? pn.getParent() : pn.toAbsolutePath();
+            } else {
+                Path abs = pn.toAbsolutePath();
+                basePath = abs.getParent() != null ? abs.getParent() : Path.of("").toAbsolutePath();
+            }
+        } catch (Exception ignored) {
+            basePath = Path.of("").toAbsolutePath();
+        }
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, basePath);
         List<Token> processedTokens = preProcessor.expand();
 

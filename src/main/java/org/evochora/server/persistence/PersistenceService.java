@@ -17,9 +17,7 @@ import java.nio.file.Paths;
 import java.sql.*;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 
 /**
  * Consumes messages and persists them to a per-run SQLite database.
@@ -91,8 +89,10 @@ public final class PersistenceService implements IControllable, Runnable {
                         "tickNumber INTEGER, organismId INTEGER, programId TEXT, parentId INTEGER NULL, " +
                         "birthTick INTEGER, energy INTEGER, positionJson TEXT, dpJson TEXT, dvJson TEXT, " +
                         "stateJson TEXT, disassembledInstructionJson TEXT, " +
-                        "dataRegisters TEXT, procRegisters TEXT, dataStack TEXT, callStack TEXT, formalParameters TEXT, " +
+                        "dataRegisters TEXT, procRegisters TEXT, dataStack TEXT, callStack TEXT, formalParameters TEXT, fprs TEXT, " +
                         "PRIMARY KEY (tickNumber, organismId))");
+                // Schema-Upgrade: fehlende Spalte fprs hinzufügen (idempotent)
+                try { st.execute("ALTER TABLE organism_states ADD COLUMN fprs TEXT"); } catch (Exception ignore) {}
                 st.execute("CREATE TABLE IF NOT EXISTS cell_states (tickNumber INTEGER, positionJson TEXT, type INTEGER, value INTEGER, ownerId INTEGER, PRIMARY KEY (tickNumber, positionJson))");
 
                 st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
@@ -141,8 +141,8 @@ public final class PersistenceService implements IControllable, Runnable {
     }
 
     private void handleProgramArtifact(ProgramArtifactMessage pam) throws Exception {
-        // KORREKTUR: Wir serialisieren das gesamte Artefakt direkt, ohne es manuell umzubauen.
-        // Das stellt sicher, dass alle Felder, einschließlich 'sources', korrekt gespeichert werden.
+        // Im Performance-Modus keine Programmartifacts persistieren (keine Debug-Infos)
+        if (this.performanceMode) return;
         String json = objectMapper.writeValueAsString(pam.programArtifact());
         try (PreparedStatement ps = connection.prepareStatement("INSERT OR REPLACE INTO programs(programId, artifactJson) VALUES (?, ?)")) {
             ps.setString(1, pam.programId());
@@ -163,8 +163,8 @@ public final class PersistenceService implements IControllable, Runnable {
 
         final String orgSql = "INSERT OR REPLACE INTO organism_states(" +
                 "tickNumber, organismId, programId, parentId, birthTick, energy, positionJson, dpJson, dvJson, " +
-                "stateJson, disassembledInstructionJson, dataRegisters, procRegisters, dataStack, callStack, formalParameters) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "stateJson, disassembledInstructionJson, dataRegisters, procRegisters, dataStack, callStack, formalParameters, fprs) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (PreparedStatement psOrg = connection.prepareStatement(orgSql)) {
             for (var org : wsm.organismStates()) {
@@ -189,6 +189,9 @@ public final class PersistenceService implements IControllable, Runnable {
                 psOrg.setString(14, objectMapper.writeValueAsString(org.dataStack()));
                 psOrg.setString(15, objectMapper.writeValueAsString(org.callStack()));
                 psOrg.setString(16, objectMapper.writeValueAsString(org.formalParameters()));
+                // FPRs roh formatiert mitspeichern (nur Debug-Mode schreibt sie tatsächlich; im Perf-Mode leere Liste)
+                java.util.List<String> fprs = (org instanceof org.evochora.server.contracts.OrganismState ost) ? ost.fprs() : java.util.List.of();
+                psOrg.setString(17, objectMapper.writeValueAsString(fprs));
 
                 psOrg.addBatch();
             }

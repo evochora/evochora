@@ -31,7 +31,15 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
         int endIndex = pass.getCurrentIndex();
 
         String relativePath = (String) pathToken.value();
-        Path absolutePath = context.getBasePath().resolve(relativePath).normalize();
+        Path baseDir = null;
+        try {
+            Path includingFile = Path.of(pathToken.fileName());
+            baseDir = includingFile.getParent();
+        } catch (Exception ignored) { }
+        if (baseDir == null) {
+            baseDir = context.getBasePath();
+        }
+        Path absolutePath = baseDir.resolve(relativePath).normalize();
 
         if (context.hasAlreadyIncluded(absolutePath.toString())) {
             return null; // Prevent duplicate inclusion
@@ -39,7 +47,18 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
         context.markAsIncluded(absolutePath.toString());
 
         try {
-            String content = Files.readString(absolutePath);
+            String content;
+            if (Files.exists(absolutePath)) {
+                content = Files.readString(absolutePath);
+            } else {
+                String resourceName = absolutePath.toString().replace('\\', '/');
+                try (java.io.InputStream is = Thread.currentThread().getContextClassLoader().getResourceAsStream(resourceName)) {
+                    if (is == null) throw new IOException("Resource not found: " + resourceName);
+                    try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(is))) {
+                        content = br.lines().reduce(new StringBuilder(), (sb, s) -> sb.append(s).append('\n'), StringBuilder::append).toString();
+                    }
+                }
+            }
             pass.addSourceContent(absolutePath.toString(), content);
             Lexer lexer = new Lexer(content, context.getDiagnostics(), absolutePath.toString());
             pass.removeTokens(startIndex, endIndex - startIndex);

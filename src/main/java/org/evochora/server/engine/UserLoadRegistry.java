@@ -18,6 +18,10 @@ public final class UserLoadRegistry {
         int[] pos = programIdToStartPos.get(programId);
         return pos == null ? null : pos.clone();
     }
+
+    public static void clearAll() {
+        programIdToStartPos.clear();
+    }
 }
 
 

@@ -31,7 +31,7 @@ public final class CommandLineInterface {
         java.util.ArrayList<ProgramArtifact> loadedArtifacts = new java.util.ArrayList<>();
 
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-        log.info("Evochora server CLI ready. Commands: load <file> | run | run debug | status | exit");
+        log.info("Evochora server CLI ready. Commands: load <file> | run | run debug | status | clear | exit");
 
         while (true) {
             System.err.print(">>> ");
@@ -75,16 +75,20 @@ public final class CommandLineInterface {
                         resourcePath = resourceBasePlural + fileToken;
                         is = CommandLineInterface.class.getClassLoader().getResourceAsStream(resourcePath);
                     }
+                    String programLogicalName;
                     if (is != null) {
                         try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(is, StandardCharsets.UTF_8))) {
                             lines = br.lines().toList();
                         }
+                        programLogicalName = resourcePath; // Use resource path as logical file name
                     } else {
                         // Fallback: treat as filesystem path
-                        lines = Files.readAllLines(Path.of(path), StandardCharsets.UTF_8);
+                        Path fsPath = Path.of(fileToken);
+                        lines = Files.readAllLines(fsPath, StandardCharsets.UTF_8);
+                        programLogicalName = fsPath.toAbsolutePath().toString();
                     }
                     Compiler compiler = new Compiler();
-                    ProgramArtifact artifact = compiler.compile(lines, Path.of(fileToken).getFileName().toString());
+                    ProgramArtifact artifact = compiler.compile(lines, programLogicalName);
                     if (startPos != null) {
                         // Remember desired start so engine places code and organism starting there
                         org.evochora.server.engine.UserLoadRegistry.registerDesiredStart(artifact.programId(), startPos);
@@ -127,6 +131,17 @@ public final class CommandLineInterface {
                             (sim != null && sim.isPaused()) ? "paused" : ((sim != null && sim.isRunning()) ? "running" : "stopped"),
                             (persist != null && persist.isPaused()) ? "paused" : ((persist != null && persist.isRunning()) ? "running" : "stopped"),
                             persistTick, simTick, orgCounts[0], orgCounts[1], queue.size(), tps);
+                }
+                case "clear" -> {
+                    // Stop running services if necessary
+                    if (sim != null) { sim.shutdown(); sim = null; }
+                    if (persist != null) { persist.shutdown(); persist = null; }
+                    // Reset queue to drop any pending messages
+                    queue = new InMemoryTickQueue();
+                    // Clear loaded artifacts and user-registered starts
+                    loadedArtifacts.clear();
+                    org.evochora.server.engine.UserLoadRegistry.clearAll();
+                    System.err.println("World cleared. Loaded artifacts removed and state reset.");
                 }
                 case "exit" -> {
                     if (sim != null) sim.shutdown();

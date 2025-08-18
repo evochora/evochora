@@ -33,7 +33,8 @@ class PersistenceServiceTest {
                 List.of("DATA:3"),
                 List.of("DATA:9", "DATA:8"),
                 List.of("MY_PROC"),
-                List.of(),
+                java.util.List.<String>of(),
+                java.util.List.<String>of(),
                 "{}"
         );
         var cell = new CellState(List.of(1,2), 2, 42, 1);
