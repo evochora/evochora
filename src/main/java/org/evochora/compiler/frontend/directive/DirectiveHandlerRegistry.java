@@ -10,7 +10,6 @@ import org.evochora.compiler.frontend.parser.features.proc.PregDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.reg.RegDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.require.RequireDirectiveHandler;
-import org.evochora.compiler.frontend.preprocessor.features.routine.RoutineDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.scope.ScopeDirectiveHandler;
 
 import java.util.HashMap;
@@ -45,7 +44,6 @@ public class DirectiveHandlerRegistry {
         IncludeDirectiveHandler includeHandler = new IncludeDirectiveHandler();
         registry.register(".INCLUDE", includeHandler);
         registry.register(".MACRO", new MacroDirectiveHandler());
-        registry.register(".ROUTINE", new RoutineDirectiveHandler()); // NEU
 
         return registry;
     }

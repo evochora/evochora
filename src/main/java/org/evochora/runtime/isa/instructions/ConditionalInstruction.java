@@ -2,8 +2,6 @@ package org.evochora.runtime.isa.instructions;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
-import org.evochora.compiler.internal.legacy.AssemblerOutput;
-import org.evochora.compiler.internal.legacy.NumericParser;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -97,62 +95,5 @@ public class ConditionalInstruction extends Instruction {
     public static Instruction plan(Organism organism, Environment environment) {
         int fullOpcodeId = environment.getMolecule(organism.getIp()).toInt();
         return new ConditionalInstruction(organism, fullOpcodeId);
-    }
-
-    public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap, String instructionName) {
-        String name = instructionName.toUpperCase();
-
-        if (name.endsWith("R") && !name.equals("IFMR")) { // IFR, GTR, LTR, IFTR
-            if (args.length != 2) throw new IllegalArgumentException(name + " expects 2 register arguments.");
-            Integer reg1 = resolveRegToken(args[0], registerMap);
-            Integer reg2 = resolveRegToken(args[1], registerMap);
-            if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for " + name);
-            return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg1).toInt(), new Molecule(Config.TYPE_DATA, reg2).toInt()));
-        } else if (name.endsWith("I") && !name.equals("IFMI")) { // IFI, GTI, LTI, IFTI
-            if (args.length != 2) throw new IllegalArgumentException(name + " expects a register and an immediate value.");
-            Integer reg1 = resolveRegToken(args[0], registerMap);
-            if (reg1 == null) throw new IllegalArgumentException("Invalid register for " + name);
-
-            String[] literalParts = args[1].split(":");
-            if (literalParts.length != 2) throw new IllegalArgumentException("Immediate argument must be in TYPE:VALUE format.");
-            int type = getTypeFromString(literalParts[0]);
-            int value = NumericParser.parseInt(literalParts[1]);
-            return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg1).toInt(), new Molecule(type, value).toInt()));
-        } else if (name.endsWith("S") && !name.equals("IFMS")) { // IFS, GTS, LTS, IFTS
-            if (args.length != 0) throw new IllegalArgumentException(name + " expects no arguments.");
-            return new AssemblerOutput.CodeSequence(List.of());
-        } else if (name.equals("IFMR")) {
-            if (args.length != 1) throw new IllegalArgumentException("IFMR expects 1 register argument.");
-            Integer reg = resolveRegToken(args[0], registerMap);
-            if (reg == null) throw new IllegalArgumentException("Invalid register for IFMR.");
-            return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg).toInt()));
-        } else if (name.equals("IFMI")) {
-            if (args.length != 1) throw new IllegalArgumentException("IFMI expects 1 vector argument.");
-            String[] comps = args[0].split("\\|");
-            if (comps.length != Config.WORLD_DIMENSIONS)
-                throw new IllegalArgumentException("Invalid vector dimensionality for IFMI");
-            List<Integer> machineCode = new ArrayList<>();
-            for (String c : comps) {
-                int v = NumericParser.parseInt(c.strip());
-                machineCode.add(new Molecule(Config.TYPE_DATA, v).toInt());
-            }
-            return new AssemblerOutput.CodeSequence(machineCode);
-        } else if (name.equals("IFMS")) {
-            if (args.length != 0) throw new IllegalArgumentException("IFMS expects no arguments.");
-            return new AssemblerOutput.CodeSequence(List.of());
-        }
-
-
-        throw new IllegalArgumentException("Cannot assemble unknown conditional instruction variant: " + name);
-    }
-
-    private static int getTypeFromString(String typeName) {
-        return switch (typeName.toUpperCase()) {
-            case "CODE" -> Config.TYPE_CODE;
-            case "DATA" -> Config.TYPE_DATA;
-            case "ENERGY" -> Config.TYPE_ENERGY;
-            case "STRUCTURE" -> Config.TYPE_STRUCTURE;
-            default -> throw new IllegalArgumentException("Unknown type for literal: " + typeName);
-        };
     }
 }

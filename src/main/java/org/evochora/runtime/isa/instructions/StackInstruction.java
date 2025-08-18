@@ -2,7 +2,6 @@ package org.evochora.runtime.isa.instructions;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
-import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
@@ -65,12 +64,5 @@ public class StackInstruction extends Instruction {
     public static Instruction plan(Organism organism, Environment environment) {
         int fullOpcodeId = environment.getMolecule(organism.getIp()).toInt();
         return new StackInstruction(organism, fullOpcodeId);
-    }
-
-    public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap, String instructionName) {
-        if (args.length != 0) {
-            throw new IllegalArgumentException(instructionName.toUpperCase() + " expects no arguments.");
-        }
-        return new AssemblerOutput.CodeSequence(List.of());
     }
 }

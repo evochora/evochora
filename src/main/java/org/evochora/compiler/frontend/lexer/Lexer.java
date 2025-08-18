@@ -1,7 +1,6 @@
 package org.evochora.compiler.frontend.lexer;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.internal.legacy.NumericParser;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -107,8 +106,9 @@ public class Lexer {
         else if (text.startsWith(".")) {
             type = TokenType.DIRECTIVE;
         }
-        // Ist es ein bekannter Opcode?
-        else if (org.evochora.runtime.isa.Instruction.isInstructionName(text)) {
+
+        // Ist es ein bekannter Opcode? Wir prüfen das, indem wir versuchen, eine ID dafür zu bekommen.
+        else if (org.evochora.runtime.isa.Instruction.getInstructionIdByName(text) != null) {
             type = TokenType.OPCODE;
         }
 
@@ -116,26 +116,65 @@ public class Lexer {
     }
 
     private void number() {
-        while (isDigit(peek())) advance();
-        // Behandle Dezimalzahlen
-        if (peek() == '.' && isDigit(peekNext())) {
-            advance(); // den '.' konsumieren
+        // Erkenne Hex/Binär-Präfixe direkt am Anfang einer Zahl
+        if (previous() == '0' && (peek() == 'x' || peek() == 'X' || peek() == 'b' || peek() == 'B')) {
+            advance(); // 'x' oder 'b' konsumieren
+            while (isAlphaNumeric(peek())) advance(); // Hex-Ziffern (A-F) sind auch alphanumerisch
+        } else {
+            // Normale Dezimalzahlen oder Gleitkommazahlen
             while (isDigit(peek())) advance();
+            if (peek() == '.' && isDigit(peekNext())) {
+                advance(); // den '.' konsumieren
+                while (isDigit(peek())) advance();
+            }
         }
 
         String numberString = source.substring(start, current);
         try {
-            int value = NumericParser.parseInt(numberString);
+            int value = parseInt(numberString);
             addToken(TokenType.NUMBER, value);
         } catch (NumberFormatException e) {
             diagnostics.reportError("Invalid number format: " + numberString, "Unknown", line);
         }
     }
 
+    // *** BEGINN DER KORREKTUR: Die Logik des NumericParser ist jetzt hier. ***
+    private int parseInt(String token) throws NumberFormatException {
+        if (token == null) throw new NumberFormatException("null");
+        String s = token.trim();
+        boolean negative = false;
+
+        if (s.startsWith("+")) {
+            s = s.substring(1);
+        } else if (s.startsWith("-")) {
+            negative = true;
+            s = s.substring(1);
+        }
+
+        int radix = 10;
+        if (s.startsWith("0b") || s.startsWith("0B")) {
+            radix = 2;
+            s = s.substring(2);
+        } else if (s.startsWith("0x") || s.startsWith("0X")) {
+            radix = 16;
+            s = s.substring(2);
+        } else if (s.startsWith("0o") || s.startsWith("0O")) {
+            radix = 8;
+            s = s.substring(2);
+        }
+
+        if (s.isEmpty()) throw new NumberFormatException("Empty numeric literal");
+        int value = Integer.parseInt(s, radix);
+        return negative ? -value : value;
+    }
+    // *** ENDE DER KORREKTUR ***
+
     private char advance() {
         column++;
         return source.charAt(current++);
     }
+
+    // ... Rest der Klasse bleibt unverändert ...
 
     private void string() {
         while (peek() != '"' && !isAtEnd()) {
@@ -192,11 +231,15 @@ public class Lexer {
 
     private boolean isAlpha(char c) {
         return (c >= 'a' && c <= 'z') ||
-               (c >= 'A' && c <= 'Z') ||
+                (c >= 'A' && c <= 'Z') ||
                 c == '_' || c == '%' || c == '.' || c == '$';
     }
 
     private boolean isAlphaNumeric(char c) {
         return isAlpha(c) || isDigit(c);
+    }
+
+    private char previous() {
+        return source.charAt(current - 1);
     }
 }

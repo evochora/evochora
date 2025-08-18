@@ -30,30 +30,6 @@ public final class Config {
     public static final String RUNS_DIRECTORY = "runs";
     public static final long MAX_QUEUE_BYTES = 512L * 1024L * 1024L; // 512 MB
 
-    // Graphics Settings
-    public static final int CELL_SIZE = 22;
-    public static final int HEADER_HEIGHT = 50;
-    public static final int FOOTER_HEIGHT = 130;
-
-    // Farbdefinitionen
-    public static final Color COLOR_BG = Color.rgb(10, 10, 20);
-    public static final Color COLOR_HEADER_FOOTER = Color.rgb(25, 25, 35);
-    public static final Color COLOR_TEXT = Color.LIGHTGRAY;
-    public static final Color COLOR_DEAD = Color.rgb(80, 80, 80);
-
-    // Hintergrundfarben für Zelltypen
-    public static final Color COLOR_EMPTY_BG = Color.rgb(20, 20, 30);
-    public static final Color COLOR_CODE_BG = Color.rgb(60, 80, 120);
-    public static final Color COLOR_DATA_BG = Color.rgb(50, 50, 60);
-    public static final Color COLOR_STRUCTURE_BG = Color.rgb(255, 120, 120);
-    public static final Color COLOR_ENERGY_BG = Color.rgb(255, 230, 100);
-
-    // Textfarben für Zelltypen
-    public static final Color COLOR_CODE_TEXT = Color.WHITE;
-    public static final Color COLOR_DATA_TEXT = Color.WHITE;
-    public static final Color COLOR_STRUCTURE_TEXT = Color.rgb(50, 50, 50);
-    public static final Color COLOR_ENERGY_TEXT = Color.rgb(50, 50, 50);
-
     // --- Cell Type Definition (Dynamisch konfigurierbar) ---
     public static final int VALUE_BITS = 12;
     public static final int TYPE_BITS = 4;
@@ -67,14 +43,4 @@ public final class Config {
     public static final int TYPE_ENERGY    = (0x02 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;
     public static final int TYPE_STRUCTURE = (0x03 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;
 
-    // GEÄNDERT: Alle Opcode-bezogenen Maps, Opcode Record, OP_ Konstanten, static {} Block und addOpcode Methode entfernt.
-    // Die Instruktionsdetails werden nun direkt von der Instruction-Klasse (Instruction.java) bezogen.
-
-    /**
-     * Prüft, ob ein gegebener Opcode (per seiner vollen ID) Argumente als Vektorkomponenten erwartet.
-     * DIESE METHODE WIRD NUN AUS Config ENTFERNT und ihre Logik wird direkt in AssemblyProgram
-     * über Instruction.getArgumentType() oder ähnliche Mechanismen abgebildet.
-     * Diese Methode wird als Teil dieses Refactorings entfernt.
-     */
-    // public static boolean expectsVectorArguments(int opcodeFullValue) { ... }
 }

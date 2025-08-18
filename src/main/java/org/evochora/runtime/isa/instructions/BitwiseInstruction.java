@@ -2,8 +2,6 @@ package org.evochora.runtime.isa.instructions;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
-import org.evochora.compiler.internal.legacy.AssemblerOutput;
-import org.evochora.compiler.internal.legacy.NumericParser;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -112,53 +110,5 @@ public class BitwiseInstruction extends Instruction {
     public static Instruction plan(Organism organism, Environment environment) {
         int fullOpcodeId = environment.getMolecule(organism.getIp()).toInt();
         return new BitwiseInstruction(organism, fullOpcodeId);
-    }
-
-    public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap, String instructionName) {
-        String name = instructionName.toUpperCase();
-
-        if (name.startsWith("NOT")) {
-            if (name.endsWith("S")) { // NOTS
-                if (args.length != 0) throw new IllegalArgumentException(name + " expects no arguments.");
-                return new AssemblerOutput.CodeSequence(List.of());
-            } else { // NOT
-                if (args.length != 1) throw new IllegalArgumentException(name + " expects 1 register argument.");
-                Integer reg = resolveRegToken(args[0], registerMap);
-                if (reg == null) throw new IllegalArgumentException("Invalid register for " + name);
-                return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg).toInt()));
-            }
-        }
-
-        if (name.endsWith("R")) {
-            if (args.length != 2) throw new IllegalArgumentException(name + " expects 2 register arguments.");
-            Integer reg1 = resolveRegToken(args[0], registerMap);
-            Integer reg2 = resolveRegToken(args[1], registerMap);
-            if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for " + name);
-            return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg1).toInt(), new Molecule(Config.TYPE_DATA, reg2).toInt()));
-
-        } else if (name.endsWith("I")) {
-            if (args.length != 2) throw new IllegalArgumentException(name + " expects a register and an immediate value.");
-            Integer reg1 = resolveRegToken(args[0], registerMap);
-            if (reg1 == null) throw new IllegalArgumentException("Invalid register for " + name);
-
-            String[] literalParts = args[1].split(":");
-            if (literalParts.length != 2) throw new IllegalArgumentException("Immediate argument must be in TYPE:VALUE format.");
-            String typeName = literalParts[0].toUpperCase();
-            int value = NumericParser.parseInt(literalParts[1]);
-            int type = switch (typeName) {
-                case "CODE" -> Config.TYPE_CODE;
-                case "DATA" -> Config.TYPE_DATA;
-                case "ENERGY" -> Config.TYPE_ENERGY;
-                case "STRUCTURE" -> Config.TYPE_STRUCTURE;
-                default -> throw new IllegalArgumentException("Unknown type for literal: " + typeName);
-            };
-            return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg1).toInt(), new Molecule(type, value).toInt()));
-
-        } else if (name.endsWith("S")) {
-            if (args.length != 0) throw new IllegalArgumentException(name + " expects no arguments.");
-            return new AssemblerOutput.CodeSequence(List.of());
-        }
-
-        throw new IllegalArgumentException("Cannot assemble unknown instruction variant: " + name);
     }
 }

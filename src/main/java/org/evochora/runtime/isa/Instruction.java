@@ -1,19 +1,23 @@
+// in: src/main/java/org/evochora/runtime/isa/Instruction.java
+
 package org.evochora.runtime.isa;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
-import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.runtime.isa.instructions.*;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 
 import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.*;
 import java.util.function.BiFunction;
 
+/**
+ * Die abstrakte Basisklasse für alle Instruktionen der Evochora VM.
+ * Diese Klasse ist nun frei von Legacy-Compiler-Abhängigkeiten und konzentriert
+ * sich ausschließlich auf die Laufzeit-Logik.
+ */
 public abstract class Instruction {
 
     protected final Organism organism;
@@ -22,17 +26,16 @@ public abstract class Instruction {
     public enum OperandSource { REGISTER, IMMEDIATE, STACK, VECTOR, LABEL }
     public record Operand(Object value, int rawSourceId) {}
 
+    // --- Laufzeit-Registries ---
     private static final Map<Integer, Class<? extends Instruction>> REGISTERED_INSTRUCTIONS_BY_ID = new HashMap<>();
     private static final Map<String, Integer> NAME_TO_ID = new HashMap<>();
     private static final Map<Integer, String> ID_TO_NAME = new HashMap<>();
     private static final Map<Integer, Integer> ID_TO_LENGTH = new HashMap<>();
     private static final Map<Integer, BiFunction<Organism, Environment, Instruction>> REGISTERED_PLANNERS_BY_ID = new HashMap<>();
-    private static final Map<Integer, AssemblerPlanner> REGISTERED_ASSEMBLERS_BY_ID = new HashMap<>();
     protected static final Map<Integer, List<OperandSource>> OPERAND_SOURCES = new HashMap<>();
-    private static final Map<Integer, Map<Integer, org.evochora.compiler.internal.legacy.ArgumentType>> ARGUMENT_TYPES_BY_ID = new HashMap<>();
     private static final Map<Integer, InstructionSignature> SIGNATURES_BY_ID = new HashMap<>();
 
-
+    // --- Register-Konstanten ---
     public static final int PR_BASE = 1000;
     public static final int FPR_BASE = 2000;
 
@@ -114,34 +117,26 @@ public abstract class Instruction {
         return peeked;
     }
 
-    public static Integer resolveRegToken(String token, Map<String, Integer> registerMap) {
-        String u = token.toUpperCase();
-        if (u.startsWith("%DR")) {
-            try { return Integer.parseInt(u.substring(3)); } catch (NumberFormatException ignore) {}
-        }
-        if (u.startsWith("%PR")) {
-            try { return PR_BASE + Integer.parseInt(u.substring(3)); } catch (NumberFormatException ignore) {}
-        }
-        if (u.startsWith("%FPR")) {
-            try { return FPR_BASE + Integer.parseInt(u.substring(4)); } catch (NumberFormatException ignore) {}
-        }
-        return registerMap.get(u);
+    public abstract void execute(Simulation simulation);
+
+    public int getCost(Organism organism, Environment environment, List<Integer> rawArguments) {
+        return 1;
     }
 
     public static void init() {
-        // --- Arithmetik-Familie ---
+        // Arithmetik-Familie
         registerFamily(ArithmeticInstruction.class, Map.of(4, "ADDR", 6, "SUBR", 40, "MULR", 42, "DIVR", 44, "MODR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(ArithmeticInstruction.class, Map.of(30, "ADDI", 31, "SUBI", 41, "MULI", 43, "DIVI", 45, "MODI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
         registerFamily(ArithmeticInstruction.class, Map.of(70, "ADDS", 71, "SUBS", 72, "MULS", 73, "DIVS", 74, "MODS"), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // --- Bitwise-Familie ---
+        // Bitwise-Familie
         registerFamily(BitwiseInstruction.class, Map.of(5, "NADR", 46, "ANDR", 48, "ORR", 50, "XORR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(BitwiseInstruction.class, Map.of(32, "NADI", 47, "ANDI", 49, "ORI", 51, "XORI", 53, "SHLI", 54, "SHRI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
         registerFamily(BitwiseInstruction.class, Map.of(78, "NADS", 75, "ANDS", 76, "ORS", 77, "XORS", 80, "SHLS", 81, "SHRS"), List.of(OperandSource.STACK, OperandSource.STACK));
         registerFamily(BitwiseInstruction.class, Map.of(52, "NOT"), List.of(OperandSource.REGISTER));
         registerFamily(BitwiseInstruction.class, Map.of(79, "NOTS"), List.of(OperandSource.STACK));
 
-        // --- Data-Familie ---
+        // Data-Familie
         registerFamily(DataInstruction.class, Map.of(1, "SETI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
         registerFamily(DataInstruction.class, Map.of(2, "SETR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(DataInstruction.class, Map.of(3, "SETV"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
@@ -149,10 +144,10 @@ public abstract class Instruction {
         registerFamily(DataInstruction.class, Map.of(23, "POP"), List.of(OperandSource.REGISTER));
         registerFamily(DataInstruction.class, Map.of(58, "PUSI"), List.of(OperandSource.IMMEDIATE));
 
-        // --- Stack-Familie ---
+        // Stack-Familie
         registerFamily(StackInstruction.class, Map.of(60, "DUP", 61, "SWAP", 62, "DROP", 63, "ROT"), List.of());
 
-        // --- Conditional-Familie ---
+        // Conditional-Familie
         registerFamily(ConditionalInstruction.class, Map.of(7, "IFR", 8, "LTR", 9, "GTR", 33, "IFTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(ConditionalInstruction.class, Map.of(24, "IFI", 25, "LTI", 26, "GTI", 29, "IFTI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
         registerFamily(ConditionalInstruction.class, Map.of(85, "IFS", 86, "GTS", 87, "LTS", 88, "IFTS"), List.of(OperandSource.STACK, OperandSource.STACK));
@@ -160,18 +155,17 @@ public abstract class Instruction {
         registerFamily(ConditionalInstruction.class, Map.of(94, "IFMI"), List.of(OperandSource.VECTOR));
         registerFamily(ConditionalInstruction.class, Map.of(95, "IFMS"), List.of(OperandSource.STACK));
 
-        // --- ControlFlow-Familie ---
+        // ControlFlow-Familie
         registerFamily(ControlFlowInstruction.class, Map.of(20, "JMPI", 34, "CALL"), List.of(OperandSource.LABEL));
         registerFamily(ControlFlowInstruction.class, Map.of(10, "JMPR"), List.of(OperandSource.REGISTER));
         registerFamily(ControlFlowInstruction.class, Map.of(89, "JMPS"), List.of(OperandSource.STACK));
         registerFamily(ControlFlowInstruction.class, Map.of(35, "RET"), List.of());
 
-        // --- KORRIGIERTE REGISTRIERUNG ---
         // WorldInteraction (POKE & PEEK)
         registerFamily(EnvironmentInteractionInstruction.class, Map.of(15, "POKE", 14, "PEEK"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(EnvironmentInteractionInstruction.class, Map.of(57, "POKI", 56, "PEKI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
-        registerFamily(EnvironmentInteractionInstruction.class, Map.of(91, "POKS"), List.of(OperandSource.STACK, OperandSource.STACK)); // POKS braucht 2
-        registerFamily(EnvironmentInteractionInstruction.class, Map.of(90, "PEKS"), List.of(OperandSource.STACK)); // PEKS braucht 1
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(91, "POKS"), List.of(OperandSource.STACK, OperandSource.STACK));
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(90, "PEKS"), List.of(OperandSource.STACK));
 
         // State (SCAN, SEEK & Rest)
         registerFamily(StateInstruction.class, Map.of(16, "SCAN"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
@@ -184,40 +178,27 @@ public abstract class Instruction {
         registerFamily(StateInstruction.class, Map.of(18, "FORK"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(13, "SYNC", 92, "NRGS"), List.of());
 
-        // --- NOP ---
-        // Use registerFamily so the assembler planner is wired via reflection
+        // NOP
         registerFamily(NopInstruction.class, Map.of(0, "NOP"), List.of());
     }
 
     private static void registerFamily(Class<? extends Instruction> familyClass, Map<Integer, String> variants, List<OperandSource> sources) {
         try {
             Constructor<? extends Instruction> constructor = familyClass.getConstructor(Organism.class, int.class);
-            Method assembleMethod = familyClass.getMethod("assemble", String[].class, Map.class, Map.class, String.class);
-
-            // Erstelle die Signatur aus den OperandSources
             List<InstructionArgumentType> argTypesForSignature = new ArrayList<>();
-            Map<Integer, org.evochora.compiler.internal.legacy.ArgumentType> legacyArgTypes = new HashMap<>();
-            int argIndex = 0;
             int length = 1;
-
             for (OperandSource s : sources) {
                 if (s == OperandSource.REGISTER) {
                     length++;
-                    legacyArgTypes.put(argIndex++, org.evochora.compiler.internal.legacy.ArgumentType.REGISTER);
                     argTypesForSignature.add(InstructionArgumentType.REGISTER);
                 } else if (s == OperandSource.IMMEDIATE) {
                     length++;
-                    legacyArgTypes.put(argIndex++, org.evochora.compiler.internal.legacy.ArgumentType.LITERAL);
                     argTypesForSignature.add(InstructionArgumentType.LITERAL);
                 } else if (s == OperandSource.VECTOR) {
                     length += Config.WORLD_DIMENSIONS;
                     argTypesForSignature.add(InstructionArgumentType.VECTOR);
-                    for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
-                        legacyArgTypes.put(argIndex++, org.evochora.compiler.internal.legacy.ArgumentType.COORDINATE);
-                    }
                 } else if (s == OperandSource.LABEL) {
                     length += Config.WORLD_DIMENSIONS;
-                    legacyArgTypes.put(argIndex++, org.evochora.compiler.internal.legacy.ArgumentType.LABEL);
                     argTypesForSignature.add(InstructionArgumentType.LABEL);
                 }
             }
@@ -226,7 +207,6 @@ public abstract class Instruction {
             for (Map.Entry<Integer, String> entry : variants.entrySet()) {
                 int id = entry.getKey();
                 String name = entry.getValue();
-                int fullId = id | Config.TYPE_CODE;
 
                 BiFunction<Organism, Environment, Instruction> planner = (org, world) -> {
                     try {
@@ -234,81 +214,16 @@ public abstract class Instruction {
                     } catch (Exception e) { throw new RuntimeException("Failed to plan instruction " + name, e); }
                 };
 
-                AssemblerPlanner assembler = (args, regMap, lblMap) -> {
-                    try {
-                        return (AssemblerOutput) assembleMethod.invoke(null, args, regMap, lblMap, name);
-                    } catch (Exception e) {
-                        if (e instanceof InvocationTargetException ite && ite.getTargetException() instanceof RuntimeException) throw (RuntimeException)ite.getTargetException();
-                        throw new RuntimeException("Failed to assemble " + name, e);
-                    }
-                };
-
-                registerInstruction(familyClass, id, name, length, planner, assembler, signature);
-                OPERAND_SOURCES.put(fullId, sources);
-                ARGUMENT_TYPES_BY_ID.put(fullId, legacyArgTypes);
+                registerInstruction(familyClass, id, name, length, planner, signature);
+                OPERAND_SOURCES.put(id | Config.TYPE_CODE, sources);
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to register instruction family " + familyClass.getSimpleName(), e);
         }
     }
 
-    private static void register(Class<? extends Instruction> instructionClass, int id, String name) {
-        // This is now just for NOP
-        BiFunction<Organism, Environment, Instruction> planner = (org, world) -> new NopInstruction(org, 0);
-        registerInstruction(instructionClass, id, name, 1, planner, null, InstructionSignature.noArgs());
-    }
-
-    protected static void register(String name, Class<? extends Instruction> instructionClass, int id, List<OperandSource> sources,
-                                   TargetCoordLambda targetLambda) {
-
-        BiFunction<Organism, Environment, Instruction> planner = (org, world) -> {
-            try {
-                Instruction inst = instructionClass.getConstructor(Organism.class, int.class)
-                        .newInstance(org, world.getMolecule(org.getIp()).toInt());
-                if (targetLambda != null) {
-                    inst.setTargetCoordLambda(targetLambda);
-                }
-                return inst;
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to plan instruction " + name, e);
-            }
-        };
-
-        // Determine length and arg types from sources
-        int length = 1;
-        Map<Integer, org.evochora.compiler.internal.legacy.ArgumentType> argTypes = new HashMap<>();
-        List<InstructionArgumentType> signatureArgs = new ArrayList<>();
-        int argIndex = 0;
-        for (OperandSource s : sources) {
-            if (s == OperandSource.STACK) {
-                // Stack operands don't increase instruction length or appear in signature
-            } else if (s == OperandSource.IMMEDIATE) {
-                length++;
-                argTypes.put(argIndex++, org.evochora.compiler.internal.legacy.ArgumentType.LITERAL);
-                signatureArgs.add(InstructionArgumentType.LITERAL);
-            } else if (s == OperandSource.VECTOR) {
-                length += Config.WORLD_DIMENSIONS;
-                signatureArgs.add(InstructionArgumentType.VECTOR);
-                for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) argTypes.put(argIndex++, org.evochora.compiler.internal.legacy.ArgumentType.COORDINATE);
-            } else if (s == OperandSource.LABEL) {
-                length += Config.WORLD_DIMENSIONS;
-                argTypes.put(argIndex++, org.evochora.compiler.internal.legacy.ArgumentType.LABEL);
-                signatureArgs.add(InstructionArgumentType.LABEL);
-            } else { // REGISTER
-                length++;
-                argTypes.put(argIndex++, org.evochora.compiler.internal.legacy.ArgumentType.REGISTER);
-                signatureArgs.add(InstructionArgumentType.REGISTER);
-            }
-        }
-        InstructionSignature signature = new InstructionSignature(signatureArgs);
-
-        OPERAND_SOURCES.put(id | Config.TYPE_CODE, sources);
-        ARGUMENT_TYPES_BY_ID.put(id | Config.TYPE_CODE, argTypes);
-        registerInstruction(instructionClass, id, name, length, planner, null, signature);
-    }
-
     private static void registerInstruction(Class<? extends Instruction> instructionClass, int id, String name, int length,
-                                            BiFunction<Organism, Environment, Instruction> planner, AssemblerPlanner assembler, InstructionSignature signature) {
+                                            BiFunction<Organism, Environment, Instruction> planner, InstructionSignature signature) {
         String upperCaseName = name.toUpperCase();
         int fullId = id | Config.TYPE_CODE;
         REGISTERED_INSTRUCTIONS_BY_ID.put(fullId, instructionClass);
@@ -316,39 +231,50 @@ public abstract class Instruction {
         ID_TO_NAME.put(fullId, name);
         ID_TO_LENGTH.put(fullId, length);
         REGISTERED_PLANNERS_BY_ID.put(fullId, planner);
-        REGISTERED_ASSEMBLERS_BY_ID.put(fullId, assembler);
         SIGNATURES_BY_ID.put(fullId, signature);
     }
 
-    public abstract void execute(Simulation simulation);
-    public int getCost(Organism organism, Environment environment, List<Integer> rawArguments) { return 1; }
-
-    public int getLength() {
-        return getInstructionLengthById(this.fullOpcodeId);
+    public static Optional<Integer> resolveRegToken(String token) {
+        if (token == null) {
+            return Optional.empty();
+        }
+        String u = token.toUpperCase();
+        try {
+            if (u.startsWith("%DR")) {
+                return Optional.of(Integer.parseInt(u.substring(3)));
+            }
+            if (u.startsWith("%PR")) {
+                return Optional.of(PR_BASE + Integer.parseInt(u.substring(3)));
+            }
+            if (u.startsWith("%FPR")) {
+                return Optional.of(FPR_BASE + Integer.parseInt(u.substring(4)));
+            }
+        } catch (NumberFormatException ignore) {
+            // Fällt durch zum leeren Optional, wenn z.B. "%DR" ohne Zahl kommt.
+        }
+        return Optional.empty();
     }
 
-    public final Organism getOrganism() {
-        return this.organism;
-    }
+    // --- Statische Getter für Laufzeit-Informationen ---
 
-    public final String getName() {
-        return ID_TO_NAME.getOrDefault(this.fullOpcodeId, "UNKNOWN");
-    }
-
+    public int getLength() { return getInstructionLengthById(this.fullOpcodeId); }
+    public final Organism getOrganism() { return this.organism; }
+    public final String getName() { return ID_TO_NAME.getOrDefault(this.fullOpcodeId, "UNKNOWN"); }
     public static String getInstructionNameById(int id) { return ID_TO_NAME.getOrDefault(id, "UNKNOWN"); }
     public static int getInstructionLengthById(int id) { return ID_TO_LENGTH.getOrDefault(id, 1); }
     public static Integer getInstructionIdByName(String name) { return NAME_TO_ID.get(name.toUpperCase()); }
     public static BiFunction<Organism, Environment, Instruction> getPlannerById(int id) { return REGISTERED_PLANNERS_BY_ID.get(id); }
-    public static AssemblerPlanner getAssemblerById(int id) { return REGISTERED_ASSEMBLERS_BY_ID.get(id); }
-    public static org.evochora.compiler.internal.legacy.ArgumentType getArgumentTypeFor(int opcodeFullId, int argIndex) { return ARGUMENT_TYPES_BY_ID.getOrDefault(opcodeFullId, Map.of()).getOrDefault(argIndex, org.evochora.compiler.internal.legacy.ArgumentType.LITERAL); }
-    public static Optional<InstructionSignature> getSignatureById(int id) {
-        return Optional.ofNullable(SIGNATURES_BY_ID.get(id));
+    public static Optional<InstructionSignature> getSignatureById(int id) { return Optional.ofNullable(SIGNATURES_BY_ID.get(id)); }
+    public static Map<Integer, String> getIdToNameMap() {
+        java.util.Map<Integer, String> cleanMap = new java.util.HashMap<>();
+        for (java.util.Map.Entry<Integer, String> entry : ID_TO_NAME.entrySet()) {
+            cleanMap.put(entry.getKey() & Config.VALUE_MASK, entry.getValue());
+        }
+        return java.util.Collections.unmodifiableMap(cleanMap);
     }
 
-    @FunctionalInterface public interface AssemblerPlanner { AssemblerOutput apply(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap); }
-    @FunctionalInterface public interface TargetCoordLambda { List<int[]> apply(Organism organism, Environment environment); }
+    // --- Konfliktlösungs-Logik ---
 
-    protected TargetCoordLambda targetCoordLambda;
     protected boolean executedInTick = false;
     public enum ConflictResolutionStatus { NOT_APPLICABLE, WON_EXECUTION, LOST_TARGET_OCCUPIED, LOST_TARGET_EMPTY, LOST_LOWER_ID_WON, LOST_OTHER_REASON }
     protected ConflictResolutionStatus conflictStatus = ConflictResolutionStatus.NOT_APPLICABLE;
@@ -357,34 +283,4 @@ public abstract class Instruction {
     public void setExecutedInTick(boolean executedInTick) { this.executedInTick = executedInTick; }
     public ConflictResolutionStatus getConflictStatus() { return conflictStatus; }
     public void setConflictStatus(ConflictResolutionStatus conflictStatus) { this.conflictStatus = conflictStatus; }
-    public void setTargetCoordLambda(TargetCoordLambda lambda) { this.targetCoordLambda = lambda; }
-    public List<int[]> getTargetCoordinates(Environment environment) {
-        if (this.targetCoordLambda != null) {
-            return this.targetCoordLambda.apply(this.organism, environment);
-        }
-        return Collections.emptyList();
-    }
-
-    /**
-     * Prüft, ob ein gegebener Name ein registrierter Instruktions-Name ist (case-insensitive).
-     * Wird vom Lexer verwendet, um Opcodes zu erkennen.
-     * @param name Der zu prüfende Name.
-     * @return {@code true}, wenn der Name als Instruktion registriert ist.
-     */
-    public static boolean isInstructionName(String name) {
-        if (name == null || name.isEmpty()) {
-            return false;
-        }
-        // Wir prüfen einfach, ob der Name in unserer existierenden NAME_TO_ID Map registriert ist.
-        return NAME_TO_ID.containsKey(name.toUpperCase());
-    }
-
-    public static Map<Integer, String> getIdToNameMap() {
-        // Wir müssen die TYPE_CODE-Maske entfernen, damit die reinen IDs übrig bleiben
-        java.util.Map<Integer, String> cleanMap = new java.util.HashMap<>();
-        for (java.util.Map.Entry<Integer, String> entry : ID_TO_NAME.entrySet()) {
-            cleanMap.put(entry.getKey() & Config.VALUE_MASK, entry.getValue());
-        }
-        return java.util.Collections.unmodifiableMap(cleanMap);
-    }
 }

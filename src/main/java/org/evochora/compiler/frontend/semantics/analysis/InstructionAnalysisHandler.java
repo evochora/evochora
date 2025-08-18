@@ -163,8 +163,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                     // 1) Register-Gültigkeit (%DRx, %PRx, %FPRx) – Aliasse werden bereits im Parser ersetzt
                     if (expectedType == InstructionArgumentType.REGISTER && argumentNode instanceof RegisterNode regNode) {
                         String tokenText = regNode.registerToken().text();
-                        Integer regId = Instruction.resolveRegToken(tokenText, java.util.Collections.emptyMap());
-                        if (regId == null) {
+                        Optional<Integer> regId = Instruction.resolveRegToken(tokenText);
+                        if (regId.isEmpty()) {
                             diagnostics.reportError(
                                     String.format("Unknown register '%s'.", tokenText),
                                     "Unknown",

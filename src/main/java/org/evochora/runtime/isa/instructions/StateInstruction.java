@@ -2,8 +2,6 @@ package org.evochora.runtime.isa.instructions;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
-import org.evochora.compiler.internal.legacy.AssemblerOutput;
-import org.evochora.compiler.internal.legacy.NumericParser;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -199,71 +197,5 @@ public class StateInstruction extends Instruction {
             return 10;
         }
         return super.getCost(organism, environment, rawArguments);
-    }
-
-    public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap, String instructionName) {
-        String name = instructionName.toUpperCase();
-        switch (name) {
-            case "SYNC", "NRGS":
-                if (args.length != 0) throw new IllegalArgumentException(name + " expects no arguments.");
-                return new AssemblerOutput.CodeSequence(List.of());
-            case "TURN", "NRG", "DIFF", "POS", "RAND", "SEEK": {
-                if (args.length != 1) throw new IllegalArgumentException(name + " expects 1 register argument.");
-                Integer reg = resolveRegToken(args[0], registerMap);
-                if (reg == null) throw new IllegalArgumentException("Invalid register for " + name);
-                return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, reg).toInt()));
-            }
-            case "FORK": {
-                if (args.length != 3) throw new IllegalArgumentException("FORK expects 3 register arguments.");
-                Integer reg1 = resolveRegToken(args[0], registerMap);
-                Integer reg2 = resolveRegToken(args[1], registerMap);
-                Integer reg3 = resolveRegToken(args[2], registerMap);
-                if (reg1 == null || reg2 == null || reg3 == null) throw new IllegalArgumentException("Invalid register for FORK.");
-                return new AssemblerOutput.CodeSequence(List.of(
-                        new Molecule(Config.TYPE_DATA, reg1).toInt(),
-                        new Molecule(Config.TYPE_DATA, reg2).toInt(),
-                        new Molecule(Config.TYPE_DATA, reg3).toInt()
-                ));
-            }
-            case "SEKI": {
-                if (args.length != 1) throw new IllegalArgumentException("SEKI expects 1 vector argument.");
-                String[] comps = args[0].split("\\|");
-                if (comps.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("Invalid vector dimensionality for SEKI");
-                List<Integer> machineCode = new ArrayList<>();
-                for (String c : comps) {
-                    int v = NumericParser.parseInt(c.strip());
-                    machineCode.add(new Molecule(Config.TYPE_DATA, v).toInt());
-                }
-                return new AssemblerOutput.CodeSequence(machineCode);
-            }
-            case "SEKS", "SCNS":
-                if (args.length != 0) throw new IllegalArgumentException(name + " expects no arguments.");
-                return new AssemblerOutput.CodeSequence(List.of());
-            case "SCAN": {
-                if (args.length != 2) throw new IllegalArgumentException(name + " expects two register arguments.");
-                Integer reg1 = resolveRegToken(args[0], registerMap);
-                Integer reg2 = resolveRegToken(args[1], registerMap);
-                if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for " + name);
-                return new AssemblerOutput.CodeSequence(List.of(
-                        new Molecule(Config.TYPE_DATA, reg1).toInt(),
-                        new Molecule(Config.TYPE_DATA, reg2).toInt()
-                ));
-            }
-            case "SCNI": {
-                if (args.length != 2) throw new IllegalArgumentException(name + " expects a register and a vector.");
-                Integer reg = resolveRegToken(args[0], registerMap);
-                if (reg == null) throw new IllegalArgumentException("Invalid register for " + name);
-                String[] comps = args[1].split("\\|");
-                if (comps.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("Invalid vector dimensionality.");
-                List<Integer> machineCode = new ArrayList<>();
-                machineCode.add(new Molecule(Config.TYPE_DATA, reg).toInt());
-                for (String c : comps) {
-                    int v = NumericParser.parseInt(c.strip());
-                    machineCode.add(new Molecule(Config.TYPE_DATA, v).toInt());
-                }
-                return new AssemblerOutput.CodeSequence(machineCode);
-            }
-        }
-        throw new IllegalArgumentException("Cannot assemble unknown state instruction: " + name);
     }
 }

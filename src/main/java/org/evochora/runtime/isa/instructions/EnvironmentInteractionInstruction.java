@@ -2,8 +2,6 @@ package org.evochora.runtime.isa.instructions;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
-import org.evochora.compiler.internal.legacy.AssemblerOutput;
-import org.evochora.compiler.internal.legacy.NumericParser;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
@@ -188,44 +186,5 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             return List.of();
         }
         return List.of();
-    }
-
-    public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap, String instructionName) {
-        String name = instructionName.toUpperCase();
-        switch (name) {
-            case "POKS":
-            case "PEKS":
-                if (args.length != 0) throw new IllegalArgumentException(name + " expects no arguments.");
-                return new AssemblerOutput.CodeSequence(List.of());
-
-            case "POKI":
-            case "PEKI": {
-                if (args.length != 2) throw new IllegalArgumentException(name + " expects a register and a vector.");
-                Integer reg = resolveRegToken(args[0], registerMap);
-                if (reg == null) throw new IllegalArgumentException("Invalid register for " + name);
-                String[] comps = args[1].split("\\|");
-                if (comps.length != Config.WORLD_DIMENSIONS) throw new IllegalArgumentException("Invalid vector dimensionality.");
-                List<Integer> machineCode = new ArrayList<>();
-                machineCode.add(new Molecule(Config.TYPE_DATA, reg).toInt());
-                for (String c : comps) {
-                    int v = NumericParser.parseInt(c.strip());
-                    machineCode.add(new Molecule(Config.TYPE_DATA, v).toInt());
-                }
-                return new AssemblerOutput.CodeSequence(machineCode);
-            }
-
-            case "POKE":
-            case "PEEK": {
-                if (args.length != 2) throw new IllegalArgumentException(name + " expects two register arguments.");
-                Integer reg1 = resolveRegToken(args[0], registerMap);
-                Integer reg2 = resolveRegToken(args[1], registerMap);
-                if (reg1 == null || reg2 == null) throw new IllegalArgumentException("Invalid register for " + name);
-                return new AssemblerOutput.CodeSequence(List.of(
-                        new Molecule(Config.TYPE_DATA, reg1).toInt(),
-                        new Molecule(Config.TYPE_DATA, reg2).toInt()
-                ));
-            }
-        }
-        throw new IllegalArgumentException("Unknown world interaction instruction for assembler: " + name);
     }
 }

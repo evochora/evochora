@@ -3,7 +3,6 @@ package org.evochora.runtime.isa.instructions;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
-import org.evochora.compiler.internal.legacy.AssemblerOutput;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.internal.services.ProcedureCallHandler;
 import org.evochora.runtime.isa.Instruction;
@@ -82,25 +81,5 @@ public class ControlFlowInstruction extends Instruction {
     public static Instruction plan(Organism organism, Environment environment) {
         int fullOpcodeId = environment.getMolecule(organism.getIp()).toInt();
         return new ControlFlowInstruction(organism, fullOpcodeId);
-    }
-
-    public static AssemblerOutput assemble(String[] args, Map<String, Integer> registerMap, Map<String, Integer> labelMap, String instructionName) {
-        String name = instructionName.toUpperCase();
-
-        switch (name) {
-            case "JMPI", "CALL":
-                if (args.length != 1) throw new IllegalArgumentException(name + " expects 1 label argument.");
-                return new AssemblerOutput.JumpInstructionRequest(args[0]);
-            case "JMPR":
-                if (args.length != 1) throw new IllegalArgumentException("JMPR expects 1 register argument.");
-                Integer regId = resolveRegToken(args[0], registerMap);
-                if (regId == null) throw new IllegalArgumentException("Invalid register for JMPR.");
-                return new AssemblerOutput.CodeSequence(List.of(new Molecule(Config.TYPE_DATA, regId).toInt()));
-            case "JMPS":
-            case "RET":
-                if (args.length != 0) throw new IllegalArgumentException(name + " expects no arguments.");
-                return new AssemblerOutput.CodeSequence(Collections.emptyList());
-        }
-        throw new IllegalArgumentException("Cannot assemble unknown control flow instruction: " + name);
     }
 }

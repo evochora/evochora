@@ -43,10 +43,16 @@ class SimulationEngineControlTest {
         long t3 = sim.getCurrentTick();
         assertThat(t2).isEqualTo(t3);
 
-        // Resume and ensure tick advances again
+        // Resume and ensure tick advances again (poll with timeout to avoid flakes)
         sim.resume();
-        Thread.sleep(100);
-        long t4 = sim.getCurrentTick();
+        long waitStart = System.currentTimeMillis();
+        long t4;
+        while (true) {
+            Thread.sleep(20);
+            t4 = sim.getCurrentTick();
+            if (t4 > t3) break;
+            if (System.currentTimeMillis() - waitStart > 2000) break; // timeout safeguard
+        }
         assertThat(t4).isGreaterThan(t3);
 
         // Shutdown
