@@ -142,11 +142,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const savedSidebarScrollTop = detailsContainer ? detailsContainer.scrollTop : 0;
 
         const isPerfMode = (runMode === 'performance');
-        const perfModeMsg = '<i style="color:#888;">(Performance-Modus)</i>';
         const artifact = programArtifacts.get(org.programId);
 
-        let sourceCodeHtml = `<div class="code-view">${isPerfMode ? perfModeMsg : 'Kein Quellcode verfügbar.'}</div>`;
-        let instructionHtml = isPerfMode ? perfModeMsg : 'N/A';
+        let sourceCodeHtml = isPerfMode ? '' : `<div class="code-view">Kein Quellcode verfügbar.</div>`;
+        let instructionHtml = 'N/A';
 
         // Hilfsfunktionen für Token-Ersatz im Quelltext
         const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -219,8 +218,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Basale Debug-Ausgaben
         console.debug('[WR] runMode:', runMode, 'isPerfMode:', isPerfMode, 'artifact?', !!artifact);
 
-        // Für das Source-Rendering nicht am Performance-Modus festhalten – reine Browserarbeit
-        if (artifact && artifact.sourceMap && artifact.sources) {
+        // Source-Rendering nur im Debug-Modus
+        if (!isPerfMode && artifact && artifact.sourceMap && artifact.sources) {
             console.debug('[WR] Artifact keys:', Object.keys(artifact));
             console.debug('[WR] registerAliasMap size:', artifact.registerAliasMap ? Object.keys(artifact.registerAliasMap).length : 0);
             console.debug('[WR] relativeCoordToLinearAddress keys sample:', artifact.relativeCoordToLinearAddress ? Object.keys(artifact.relativeCoordToLinearAddress).slice(0, 5) : []);
@@ -282,13 +281,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     sourceCodeHtml = `<div class="code-view source-code-view">`;
                     // Header-Zeile ohne Zeilennummer, aber mit leerem line-number-Span für bündige Ausrichtung
                     sourceCodeHtml += `<div class="source-line"><span class="line-number"></span><pre>${headerLine}</pre></div>`;
-                    sourceLines.forEach((line, index) => {
-                        const lineNum = index + 1;
+                sourceLines.forEach((line, index) => {
+                    const lineNum = index + 1;
                         const isHighlighted = lineNum === effectiveHighlightedLine;
-                        let processedLine = line.replace(/</g, "&lt;");
+                    let processedLine = line.replace(/</g, "&lt;");
 
-                        if (isHighlighted) {
-                            const instruction = JSON.parse(org.disassembledInstructionJson);
+                    if (isHighlighted) {
+                         const instruction = JSON.parse(org.disassembledInstructionJson);
                             console.debug('[WR] disassembled for line', lineNum, instruction);
                             if (instruction && Array.isArray(instruction.arguments)) {
                                 const isRealCall = instruction.opcodeName === 'CALL';
@@ -299,7 +298,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                         if (!isRealCall) return;
                                         let tokenToReplace = arg.name;
                                         if (artifact.registerAliasMap) {
-                                            const alias = Object.keys(artifact.registerAliasMap).find(key => artifact.registerAliasMap[key] === arg.value);
+                                const alias = Object.keys(artifact.registerAliasMap).find(key => artifact.registerAliasMap[key] === arg.value);
                                             if (alias) tokenToReplace = alias;
                                         }
                                         const alreadyAnnotated = new RegExp(`${escapeRegExp(tokenToReplace)}<span class=\"injected-value\"`).test(processedLine);
@@ -318,8 +317,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }
 
                         sourceCodeHtml += `<div class=\"source-line ${isHighlighted ? 'highlight' : ''}\"><span class=\"line-number\">${lineNum}</span><pre>${processedLine}</pre></div>`;
-                    });
-                    sourceCodeHtml += '</div>';
+                });
+                sourceCodeHtml += '</div>';
                     // Auto-scroll nur im Quelltext-Container
                     setTimeout(() => {
                         const container = detailsContainerEl.querySelector('.source-code-view');
@@ -403,8 +402,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             } catch (_) { /* ignore */ }
         }
 
-        const dsHtml = isPerfMode ? perfModeMsg : (org.dataStack.length > 0 ? org.dataStack.slice(-8).reverse().join('<br>') : '[]');
-        let csHtml = isPerfMode ? perfModeMsg : (org.callStack.length > 0 ? org.callStack.join(' &rarr; ') : '[]');
+        const dsHtml = isPerfMode ? '' : (org.dataStack.length > 0 ? org.dataStack.slice(-8).reverse().join('<br>') : '[]');
+        let csHtml = isPerfMode ? '' : (org.callStack.length > 0 ? org.callStack.join(' &rarr; ') : '[]');
 
         // Kompakte Registeranzeige (nur Debug)
         let regsHtml = '';
@@ -455,11 +454,14 @@ ${kv('CS:', csLines.length? csLines.join('<br>') : '[]', csChanged)}
             titleEl.style.margin = '6px 0 6px';
         }
         const statusLine = `IP: ${org.positionJson} | ER: ${org.energy} | DP: ${org.dpJson} | DV: ${org.dvJson}`;
-        // Reihenfolge: Status, Instruktion, Register+CS, Quelltext (unten)
+        const debugNoteHtml = isPerfMode ? `<div style=\"margin:6px 0;color:#888;font-size:0.8em;\">No debug info available</div>` : '';
+        const instrBoxHtml = isPerfMode ? '' : `<div class=\"code-view\" style=\"font-size:0.85em;\">${shorten(instructionHtml)}</div>`;
+        // Reihenfolge: Status, (Perf-Hinweis), Instruktion (nur Debug), Register+CS (nur Debug), Quelltext (nur Debug)
         detailsContainerEl.innerHTML = `
 <h2>Organismus-Details</h2>
 <div class=\"code-view\" style=\"margin-bottom:6px;color:#ccc;font-size:0.85em;\">${shorten(statusLine)}</div>
-<div class=\"code-view\" style=\"font-size:0.85em;\">${shorten(instructionHtml)}</div>
+${debugNoteHtml}
+${instrBoxHtml}
 ${regsHtml}
 ${sourceCodeHtml}
         `;

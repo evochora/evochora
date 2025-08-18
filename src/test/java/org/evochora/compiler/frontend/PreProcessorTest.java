@@ -23,10 +23,10 @@ public class PreProcessorTest {
     @Test
     void testIncludeDirectiveExpandsTokens() throws IOException {
         // Arrange
-        Path libFile = tempDir.resolve("lib.s");
+        Path libFile = tempDir.resolve("test.s");
         Files.writeString(libFile, "NOP");
 
-        String mainSource = ".INCLUDE \"lib.s\"";
+        String mainSource = ".INCLUDE \"test.s\"";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(mainSource, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();

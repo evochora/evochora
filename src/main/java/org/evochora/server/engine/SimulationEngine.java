@@ -109,12 +109,14 @@ public final class SimulationEngine implements IControllable, Runnable {
     public void run() {
         log.info("SimulationEngine started");
         try {
-            for (ProgramArtifact artifact : programArtifacts) {
-                try {
-                    queue.put(new ProgramArtifactMessage(artifact.programId(), artifact));
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    return;
+            if (!performanceMode) {
+                for (ProgramArtifact artifact : programArtifacts) {
+                    try {
+                        queue.put(new ProgramArtifactMessage(artifact.programId(), artifact));
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
                 }
             }
 

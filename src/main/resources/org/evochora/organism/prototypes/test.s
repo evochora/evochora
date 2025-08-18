@@ -1,4 +1,4 @@
-.REQUIRE "lib\lib.s" AS LIB
+.REQUIRE "lib\test.s" AS LIB
 
 .REG %TEST1 0
 .REG %TEST2 1
@@ -21,6 +21,6 @@ CALL LIB.MY_PROC WITH %TEST1 %TEST2
 POKI %TEST1 0|1
 
 .ORG 0|3
-.INCLUDE "lib\lib.s"
+.INCLUDE "lib\test.s"
 .ORG 0|5
-.INCLUDE "lib\lib2.s"
+.INCLUDE "lib\test2.s"
