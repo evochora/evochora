@@ -142,6 +142,10 @@ public class ProcedureCallHandler {
         }
         Organism.ProcFrame returnFrame = organism.getCallStack().pop();
 
+        /* Dieser Block ist eine fundamentale Designverletzung! Das Copy out wurde durch vom Compiler emittierte
+           PUSH und POP Befehle bereits erledigt, somit ist dieser Block zum Glück auch überflüssig und wurde
+           deaktiviert.
+
         // 1. Copy-Out: Werte aus FPRs zurück in die gebundenen Register schreiben
         if (returnFrame.fprBindings != null) {
             for (Map.Entry<Integer, Integer> binding : returnFrame.fprBindings.entrySet()) {
@@ -153,6 +157,7 @@ public class ProcedureCallHandler {
                 organism.writeOperand(boundRegId, returnValue);
             }
         }
+        */
 
         // 2. Zustand wiederherstellen
         organism.restorePrs(returnFrame.savedPrs);

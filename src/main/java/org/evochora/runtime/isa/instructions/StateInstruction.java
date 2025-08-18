@@ -96,7 +96,7 @@ public class StateInstruction extends Instruction {
         int[] childDv = (int[]) operands.get(2).value();
         int totalCost = getCost(organism, simulation.getEnvironment(), null);
         if (energy > 0 && organism.getEr() >= totalCost) {
-            int[] childIp = organism.getTargetCoordinate(organism.getIpBeforeFetch(), delta, simulation.getEnvironment());
+            int[] childIp = organism.getTargetCoordinate(organism.getDp(), delta, simulation.getEnvironment());
             organism.takeEr(totalCost);
             Organism child = Organism.create(simulation, childIp, energy, organism.getLogger());
             child.setDv(childDv);
