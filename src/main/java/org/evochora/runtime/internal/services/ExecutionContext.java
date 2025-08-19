@@ -13,13 +13,13 @@ public class ExecutionContext {
 
     private final Organism organism;
     private final Environment environment;
-    private final ProgramArtifact artifact;
+    // private final ProgramArtifact artifact; // ENTFERNT
     private final boolean isPerformanceMode;
 
-    public ExecutionContext(Organism organism, Environment environment, ProgramArtifact artifact, boolean isPerformanceMode) {
+    public ExecutionContext(Organism organism, Environment environment, boolean isPerformanceMode) {
         this.organism = organism;
         this.environment = environment;
-        this.artifact = artifact;
+        // this.artifact = artifact; // ENTFERNT
         this.isPerformanceMode = isPerformanceMode;
     }
 
@@ -31,9 +31,9 @@ public class ExecutionContext {
         return environment;
     }
 
-    public ProgramArtifact getArtifact() {
-        return artifact;
-    }
+    // public ProgramArtifact getArtifact() { // ENTFERNT
+    //     return artifact;
+    // }
 
     public boolean isPerformanceMode() {
         return isPerformanceMode;

@@ -1,5 +1,6 @@
 package org.evochora.runtime.isa.instructions;
 
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
@@ -21,7 +22,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
     }
 
     @Override
-    public void execute(ExecutionContext context) {
+    public void execute(ExecutionContext context, ProgramArtifact artifact) {
         Organism organism = context.getOrganism();
         try {
             String opName = getName();

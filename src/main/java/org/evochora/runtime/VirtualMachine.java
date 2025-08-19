@@ -1,5 +1,6 @@
 package org.evochora.runtime;
 
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
@@ -71,11 +72,9 @@ public class VirtualMachine {
         java.util.List<Integer> rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(), this.environment);
         organism.takeEr(instruction.getCost(organism, this.environment, rawArgs));
 
-        ExecutionContext context = new ExecutionContext(organism, this.environment,
-                simulation.getProgramArtifacts().get(organism.getProgramId()),
-                simulation.isPerformanceMode());
-
-        instruction.execute(context);
+        ExecutionContext context = new ExecutionContext(organism, this.environment, simulation.isPerformanceMode());
+        ProgramArtifact artifact = simulation.getProgramArtifacts().get(organism.getProgramId());
+        instruction.execute(context, artifact);
 
         if (organism.isInstructionFailed()) {
             organism.takeEr(Config.ERROR_PENALTY_COST);

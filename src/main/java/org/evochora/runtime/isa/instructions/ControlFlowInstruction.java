@@ -37,7 +37,7 @@ public class ControlFlowInstruction extends Instruction {
     }
 
     @Override
-    public void execute(ExecutionContext context) {
+    public void execute(ExecutionContext context, ProgramArtifact artifact) {
         ProcedureCallHandler callHandler = new ProcedureCallHandler(context);
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
@@ -49,7 +49,7 @@ public class ControlFlowInstruction extends Instruction {
             switch (opName) {
                 case "CALL":
                     int[] targetDelta = (int[]) operands.get(0).value();
-                    callHandler.executeCall(targetDelta);
+                    callHandler.executeCall(targetDelta, artifact); // Korrekt!
                     break;
                 case "RET":
                     callHandler.executeReturn();

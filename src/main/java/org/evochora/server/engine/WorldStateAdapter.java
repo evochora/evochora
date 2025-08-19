@@ -1,12 +1,11 @@
 package org.evochora.server.engine;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-// import org.slf4j.Logger;
-// import org.slf4j.LoggerFactory;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.api.DisassembledInstruction;
+import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.internal.services.RuntimeDisassembler;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
@@ -23,7 +22,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public final class WorldStateAdapter {
-    //private static final Logger log = LoggerFactory.getLogger(WorldStateAdapter.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     public static WorldStateMessage fromSimulation(Simulation simulation) {
@@ -37,10 +35,13 @@ public final class WorldStateAdapter {
         for (Organism o : simulation.getOrganisms()) {
             if (o.isDead()) continue;
 
+            // KORREKTUR: Hole das spezifische Artefakt für diesen Organismus aus der Map.
+            ProgramArtifact artifact = artifacts.get(o.getProgramId());
+
             // Im Performance-Modus werden alle teuren Operationen übersprungen
-            String disassembledJson = perfMode ? "{}" : getDisassembledJson(o, artifacts, simulation.getEnvironment());
-            List<String> callStackNames = perfMode ? List.of() : getCallStackWithParams(o, artifacts.get(o.getProgramId()), tick);
-            List<String> formattedFprs = perfMode ? List.of() : formatFprs(o, artifacts.get(o.getProgramId()));
+            String disassembledJson = perfMode ? "{}" : getDisassembledJson(o, artifact, simulation.getEnvironment());
+            List<String> callStackNames = perfMode ? List.of() : getCallStackWithParams(o, artifact, tick);
+            List<String> formattedFprs = perfMode ? List.of() : formatFprs(o, artifact);
             List<String> drs = perfMode ? List.of() : toFormattedList(o.getDrs());
             List<String> prs = perfMode ? List.of() : toFormattedList(o.getPrs());
             List<String> ds = perfMode ? List.of() : toFormattedList(o.getDataStack());
@@ -49,7 +50,7 @@ public final class WorldStateAdapter {
             organisms.add(new OrganismState(
                     o.getId(), o.getProgramId(), o.getParentId(), o.getBirthTick(), o.getEr(),
                     toList(o.getIp()), toList(o.getDp()), toList(o.getDv()),
-                    o.getIp()[0], o.getEr(),
+                    o.getIp()[0], o.getEr(), // Note: ip[0] and er are likely duplicated, but kept for contract stability
                     drs, prs, ds, callStackNames, formattedFprs, fprsRaw,
                     disassembledJson
             ));
@@ -59,10 +60,13 @@ public final class WorldStateAdapter {
         return new WorldStateMessage(tick, tsMicros, organisms, cells);
     }
 
-    private static String getDisassembledJson(Organism o, Map<String, ProgramArtifact> artifacts, Environment env) {
+    private static String getDisassembledJson(Organism o, ProgramArtifact artifact, Environment env) {
+        // Diese Methode erwartet jetzt ein einzelnes Artefakt, das null sein kann.
+        if (artifact == null) return "{}";
         try {
-            ProgramArtifact artifact = artifacts.get(o.getProgramId());
-            DisassembledInstruction disassembled = RuntimeDisassembler.INSTANCE.disassemble(o, artifact, env);
+            // Temporären Kontext für das Disassemblieren erstellen, um die Trennung zu wahren
+            ExecutionContext tempContext = new ExecutionContext(o, env, false);
+            DisassembledInstruction disassembled = RuntimeDisassembler.INSTANCE.disassemble(tempContext, artifact);
             if (disassembled != null) {
                 return objectMapper.writeValueAsString(disassembled);
             }
@@ -75,19 +79,18 @@ public final class WorldStateAdapter {
             return organism.getCallStack().stream().map(f -> f.procName).collect(Collectors.toList());
         }
         List<Organism.ProcFrame> frames = new ArrayList<>(organism.getCallStack());
-        
+
         List<String> out = new ArrayList<>();
 
-        // Hilfsfunktion: FPR-Kette nach vorne (in ältere Frames) auflösen bis DR/PR
         java.util.function.BiFunction<Integer, Integer, Integer> resolveBoundRegId = (frameIdx, fprIndex) -> {
-            int idx = frameIdx + 1; // in älteren Frames weitersuchen
+            int idx = frameIdx + 1;
             int currentRegId = Instruction.FPR_BASE + fprIndex;
             while (idx < frames.size()) {
                 Organism.ProcFrame fr = frames.get(idx);
                 Integer mapped = fr.fprBindings.get(currentRegId);
                 if (mapped == null) break;
                 currentRegId = mapped;
-                if (currentRegId < Instruction.FPR_BASE) break; // DR/PR erreicht
+                if (currentRegId < Instruction.FPR_BASE) break;
                 int nextFprIdx = currentRegId - Instruction.FPR_BASE;
                 idx++;
                 currentRegId = Instruction.FPR_BASE + nextFprIdx;
@@ -108,7 +111,6 @@ public final class WorldStateAdapter {
                 Integer boundRegId = frame.fprBindings.get(Instruction.FPR_BASE + pi);
                 int finalRegId;
                 if (boundRegId == null) {
-                    // keine direkte Bindung im Top-Frame → über ältere Frames anhand gleichen FPR-Index auflösen
                     finalRegId = resolveBoundRegId.apply(fi, pi);
                 } else {
                     finalRegId = boundRegId;
@@ -177,7 +179,6 @@ public final class WorldStateAdapter {
             String paramName = paramNames.get(i);
             Integer boundRegId = topFrame.fprBindings.get(Instruction.FPR_BASE + i);
 
-            // Falls keine direkte Bindung: in älteren Frames nach Auflösung für denselben FPR-Index suchen
             if (boundRegId == null) {
                 int fprIdx = i;
                 java.util.Iterator<Organism.ProcFrame> it = stack.iterator();
@@ -185,7 +186,7 @@ public final class WorldStateAdapter {
                 while (it.hasNext()) {
                     Organism.ProcFrame fr = it.next();
                     if (fr == topFrame) { pastTop = true; continue; }
-                    if (!pastTop) continue; // erst nach dem Top-Frame suchen
+                    if (!pastTop) continue;
                     Integer mapped = fr.fprBindings.get(Instruction.FPR_BASE + fprIdx);
                     if (mapped != null) { boundRegId = mapped; break; }
                 }
@@ -194,7 +195,6 @@ public final class WorldStateAdapter {
             Object value;
             String boundName;
             if (boundRegId == null) {
-                // Kein DR/PR gefunden – zeige FPR explizit (%FPRi)
                 boundName = "%FPR" + i;
                 value = organism.getFpr(i);
             } else if (boundRegId < Instruction.PR_BASE) {

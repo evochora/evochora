@@ -1,5 +1,6 @@
 package org.evochora.runtime.isa.instructions;
 
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.ExecutionContext;
@@ -18,7 +19,7 @@ public class StateInstruction extends Instruction {
     }
 
     @Override
-    public void execute(ExecutionContext context) {
+    public void execute(ExecutionContext context, ProgramArtifact artifact) {
         Organism organism = context.getOrganism();
         String opName = getName();
         List<Operand> operands = resolveOperands(context.getWorld());

@@ -4,6 +4,7 @@ import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.internal.services.CallBindingRegistry;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -110,6 +112,87 @@ public class RuntimeIntegrationTest {
         assertThat(result.toScalarValue())
                 .as("Der Wert sollte nach dem Prozeduraufruf auf 42 inkrementiert sein, auch ohne Artefakt.")
                 .isEqualTo(42);
+        assertThat(org.isInstructionFailed()).isFalse();
+    }
+
+    @Test
+    void procedureCall_worksCorrectlyWithCorruptedProgramArtifact() throws Exception {
+        // Arrange: Ein einfaches Programm, das 10 + 20 addieren soll.
+        String sourceCode = String.join("\n",
+                ".PROC ADD EXPORT WITH A B",
+                "  ADDR A B",
+                "  RET",
+                ".ENDP",
+                "SETI %DR0 DATA:10",
+                "SETI %DR1 DATA:20",
+                "CALL ADD WITH %DR0 %DR1", // Ergebnis in %DR0 sollte 30 sein
+                "NOP"
+        );
+
+        Compiler compiler = new Compiler();
+        ProgramArtifact correctArtifact = compiler.compile(Arrays.asList(sourceCode.split("\\r?\\n")), "correct.s");
+        assertThat(correctArtifact).isNotNull();
+
+        // Erstelle ein absichtlich falsches/korruptes Artefakt.
+        // Wir nehmen die Metadaten vom korrekten Artefakt, aber überschreiben die kritischen Bindungen.
+        Map<Integer, int[]> corruptedBindings = new HashMap<>();
+        // FALSCH: Wir tun so, als würde der CALL nur EINEN Parameter (%DR1) übergeben.
+        // Wenn die Runtime dies liest, wird sie die Parameter falsch verarbeiten.
+        correctArtifact.callSiteBindings().forEach((addr, bindings) -> {
+            corruptedBindings.put(addr, new int[]{1}); // Nur %DR1 binden
+        });
+
+        ProgramArtifact corruptedArtifact = new ProgramArtifact(
+                correctArtifact.programId(),
+                correctArtifact.sources(),
+                correctArtifact.machineCodeLayout(),
+                correctArtifact.initialWorldObjects(),
+                correctArtifact.sourceMap(),
+                corruptedBindings, // Hier kommen die falschen Daten rein
+                correctArtifact.relativeCoordToLinearAddress(),
+                correctArtifact.linearAddressToCoord(),
+                correctArtifact.labelAddressToName(),
+                correctArtifact.registerAliasMap(),
+                correctArtifact.procNameToParamNames()
+        );
+
+        // Setup der Simulation
+        Environment env = new Environment(new int[]{64, 64}, true);
+        Simulation sim = new Simulation(env);
+
+        // WICHTIG: Wir laden den korrekten Maschinencode in die Welt...
+        for (Map.Entry<int[], Integer> e : correctArtifact.machineCodeLayout().entrySet()) {
+            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
+        }
+
+        // ...ABER wir füttern die Simulation mit dem korrupten Artefakt.
+        sim.setProgramArtifacts(Map.of(corruptedArtifact.programId(), corruptedArtifact));
+
+        Organism org = Organism.create(sim, new int[]{0, 0}, Config.INITIAL_ORGANISM_ENERGY, sim.getLogger());
+        org.setProgramId(correctArtifact.programId());
+        sim.addOrganism(org);
+
+        // Fülle die Registry mit den korrupten Daten, so wie es die SimulationEngine tun würde.
+        CallBindingRegistry.getInstance().clearAll(); // Wichtig: Registry vor dem Test säubern!
+        for (var binding : corruptedArtifact.callSiteBindings().entrySet()) {
+            int[] coord = corruptedArtifact.linearAddressToCoord().get(binding.getKey());
+            if (coord != null) {
+                CallBindingRegistry.getInstance().registerBindingForAbsoluteCoord(coord, binding.getValue());
+            }
+        }
+
+        // Act: Führe die Simulation aus.
+        for (int i = 0; i < 20; i++) {
+            sim.tick();
+        }
+
+        // Assert: Das Ergebnis muss dem Maschinencode entsprechen (10 + 20 = 30).
+        // Wenn die Runtime das korrupte Artefakt gelesen hätte, wäre das Ergebnis falsch
+        // (wahrscheinlich 20 + 20 = 40, da %DR0 nie korrekt übergeben worden wäre).
+        Molecule result = Molecule.fromInt((Integer) org.getDr(0));
+        assertThat(result.toScalarValue())
+                .as("Das Ergebnis der Addition muss 30 sein, basierend auf dem Maschinencode, nicht dem falschen Artefakt.")
+                .isEqualTo(30);
         assertThat(org.isInstructionFailed()).isFalse();
     }
 }

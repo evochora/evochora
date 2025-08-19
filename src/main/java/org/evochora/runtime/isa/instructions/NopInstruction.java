@@ -1,5 +1,6 @@
 package org.evochora.runtime.isa.instructions;
 
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
@@ -14,7 +15,7 @@ public class NopInstruction extends Instruction {
     }
 
     @Override
-    public void execute(ExecutionContext context) {
+    public void execute(ExecutionContext context, ProgramArtifact artifact) {
         // Diese Instruktion tut absichtlich nichts.
     }
 

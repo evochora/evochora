@@ -1,5 +1,6 @@
 package org.evochora.runtime.isa.instructions;
 
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
@@ -17,7 +18,7 @@ public class ArithmeticInstruction extends Instruction {
     }
 
     @Override
-    public void execute(ExecutionContext context) {
+    public void execute(ExecutionContext context, ProgramArtifact artifact) {
         try {
             Organism organism = context.getOrganism();
             List<Operand> operands = resolveOperands(context.getWorld());

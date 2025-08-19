@@ -20,7 +20,9 @@ public class RuntimeDisassembler {
     public static final RuntimeDisassembler INSTANCE = new RuntimeDisassembler();
     private RuntimeDisassembler() {}
 
-    public DisassembledInstruction disassemble(Organism organism, ProgramArtifact artifact, Environment environment) {
+    public DisassembledInstruction disassemble(ExecutionContext context, ProgramArtifact artifact) {
+        Organism organism = context.getOrganism();
+        Environment environment = context.getWorld();
         int[] ip = organism.getIp(); // Wir nehmen den aktuellen IP für die *nächste* Instruktion
         int[] dv = organism.getDv();
         Molecule molecule = environment.getMolecule(ip);

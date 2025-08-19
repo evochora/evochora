@@ -8,12 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Eine zentrale, VM-weite Registry zur Verwaltung von Parameterbindungen für CALL-Instruktionen.
  * <p>
- * Diese Klasse entkoppelt die Speicherung der Bindungen von den Instruktions-Klassen.
- * Sie verwendet zwei Mechanismen zur Auflösung:
- * 1. Eine primäre Map, die auf der linearen Adresse der CALL-Instruktion basiert (effizient und eindeutig).
- * 2. Eine Fallback-Map, die auf der absoluten Weltkoordinate basiert (für dynamisch generierten Code).
- * <p>
- * Diese Registry ist als Singleton implementiert und thread-sicher.
+ * Diese Klasse ist als Singleton implementiert und thread-sicher.
  */
 public final class CallBindingRegistry {
 
@@ -70,5 +65,14 @@ public final class CallBindingRegistry {
     public int[] getBindingForAbsoluteCoord(int[] absoluteCoord) {
         List<Integer> key = Arrays.stream(absoluteCoord).boxed().toList();
         return bindingsByAbsoluteCoord.get(key);
+    }
+
+    /**
+     * NEUE METHODE: Setzt den Zustand der Registry zurück.
+     * Dies ist entscheidend, um saubere und voneinander unabhängige Testläufe zu gewährleisten.
+     */
+    public void clearAll() {
+        bindingsByLinearAddress.clear();
+        bindingsByAbsoluteCoord.clear();
     }
 }

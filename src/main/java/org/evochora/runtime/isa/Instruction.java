@@ -2,6 +2,7 @@
 
 package org.evochora.runtime.isa;
 
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.ExecutionContext;
@@ -104,7 +105,7 @@ public abstract class Instruction {
         return resolved;
     }
 
-    public abstract void execute(ExecutionContext context);
+    public abstract void execute(ExecutionContext context, ProgramArtifact artifact);
 
     public int getCost(Organism organism, Environment environment, List<Integer> rawArguments) {
         return 1;
