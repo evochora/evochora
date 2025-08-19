@@ -22,7 +22,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
     }
 
     @Override
-    public void execute(ExecutionContext context, ProgramArtifact artifact) {
+    public void execute(ExecutionContext context, ProgramArtifact artifact) { // Signatur angepasst
         Organism organism = context.getOrganism();
         try {
             String opName = getName();
@@ -73,7 +73,10 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             if (cost > 0) organism.takeEr(cost);
 
             if (environment.getMolecule(targetCoordinate).isEmpty()) {
-                environment.setMolecule(toWrite, targetCoordinate);
+                // --- KORREKTUR BEGINNT HIER ---
+                // Setze nicht nur das Molekül, sondern auch den Eigentümer der Zelle.
+                environment.setMolecule(toWrite, organism.getId(), targetCoordinate);
+                // --- KORREKTUR ENDE ---
             } else {
                 organism.instructionFailed("POKE: Target cell is not empty.");
                 if (getConflictStatus() != ConflictResolutionStatus.NOT_APPLICABLE) setConflictStatus(ConflictResolutionStatus.LOST_TARGET_OCCUPIED);
@@ -135,6 +138,8 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         }
 
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), targetCoordinate);
+        // WICHTIG: Wenn eine Zelle geleert wird, sollte auch ihr Eigentum entfernt werden.
+        environment.clearOwner(targetCoordinate);
     }
 
     @Override
