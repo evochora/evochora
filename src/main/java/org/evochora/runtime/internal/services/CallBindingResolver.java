@@ -28,9 +28,9 @@ public class CallBindingResolver {
     /**
      * Löst die Parameterbindungen für die aktuelle CALL-Instruktion auf.
      * <p>
-     * Reihenfolge:
-     * 1) Globale Registry (absolute Koordinate)
-     * 2) Fallback: Artefakt-gestützt: relative Adresse -> SourceMap -> Zeile parsen (Tokens nach WITH)
+     * Die einzige zulässige Methode ist, die vorkompilierten Bindungen aus der
+     * globalen Registry abzurufen. Ein Fallback auf das Parsen des Quellcodes
+     * zur Laufzeit ist nicht erlaubt, da dies die evolutionäre Stabilität untergräbt.
      *
      * @return Array der gebundenen Register-IDs oder null.
      */
@@ -38,45 +38,16 @@ public class CallBindingResolver {
         Organism organism = context.getOrganism();
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
 
-        // 1) Primär: Globale Registry (absolute Koordinate)
+        // Die einzige korrekte Methode: Globale Registry (absolute Koordinate)
         CallBindingRegistry registry = CallBindingRegistry.getInstance();
         int[] bindings = registry.getBindingForAbsoluteCoord(ipBeforeFetch);
         if (bindings != null) {
             return bindings;
         }
 
-        // 2) Fallback: Artefakt-gestützt über SourceMap
-        try {
-            ProgramArtifact artifact = context.getArtifact();
-            if (artifact != null && artifact.relativeCoordToLinearAddress() != null && artifact.sourceMap() != null) {
-                int[] origin = organism.getInitialPosition();
-                StringBuilder key = new StringBuilder();
-                for (int i = 0; i < ipBeforeFetch.length; i++) {
-                    if (i > 0) key.append('|');
-                    key.append(ipBeforeFetch[i] - origin[i]);
-                }
-                Integer addr = artifact.relativeCoordToLinearAddress().get(key.toString());
-                if (addr != null && artifact.sourceMap().get(addr) != null) {
-                    String line = artifact.sourceMap().get(addr).lineContent();
-                    if (line != null) {
-                        String upper = line.toUpperCase();
-                        int withIdx = upper.indexOf(" WITH ");
-                        if (withIdx >= 0) {
-                            String afterWith = line.substring(withIdx + 6).trim();
-                            String[] parts = afterWith.split("\\s+");
-                            List<Integer> regs = new ArrayList<>();
-                            for (String p : parts) {
-                                Optional<Integer> regIdOpt = Instruction.resolveRegToken(p);
-                                regIdOpt.ifPresent(regs::add);
-                            }
-                            if (!regs.isEmpty()) {
-                                return regs.stream().mapToInt(Integer::intValue).toArray();
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Exception ignore) { }
+        // Der alte Fallback-Pfad, der das Artefakt zur Laufzeit parst, wurde
+        // entfernt, da er die Bedingung verletzt, dass die Laufzeitlogik
+        // unabhängig vom Artefakt sein muss.
 
         return null;
     }

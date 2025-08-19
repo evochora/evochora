@@ -66,47 +66,36 @@ public class ProcedureCallHandler {
 
         String procName = "UNKNOWN"; // Fallback
         ProgramArtifact artifact = context.getArtifact();
-        int[] computedAbsTarget = null;
-        if (artifact != null) {
-            int[] origin = organism.getInitialPosition();
-            int dims = ipBeforeFetch.length;
 
-            // --- KORREKTUR BEGINNT HIER ---
-            // Die `targetDelta` ist bereits die programmrelative Zielkoordinate.
-            // Wir müssen sie nicht mehr zur aktuellen Position addieren.
-            int[] relTarget = targetDelta;
-            // --- KORREKTUR ENDE ---
+        // Die Ziel-IP wird IMMER auf die gleiche Weise berechnet: Startposition + Vektor.
+        // Das Artefakt wird hier nur noch für Debugging-Informationen (procName) verwendet.
+        int[] targetIp = organism.getTargetCoordinate(organism.getInitialPosition(), targetDelta, environment);
+
+        if (artifact != null) {
+            // Logik zur Ermittlung des Prozedurnamens (nur für Debugging)
+            int[] origin = organism.getInitialPosition();
+            int[] relTarget = new int[targetDelta.length];
+            for (int i = 0; i < targetDelta.length; i++) {
+                relTarget[i] = targetIp[i] - origin[i];
+            }
 
             StringBuilder keyBuilder = new StringBuilder();
-            for (int i = 0; i < dims; i++) {
+            for (int i = 0; i < relTarget.length; i++) {
                 if (i > 0) keyBuilder.append('|');
-                keyBuilder.append(i < relTarget.length ? relTarget[i] : 0);
+                keyBuilder.append(relTarget[i]);
             }
             String relativeKey = keyBuilder.toString();
             Integer targetAddress = artifact.relativeCoordToLinearAddress().get(relativeKey);
-            if (targetAddress == null && artifact.linearAddressToCoord() != null) {
-                for (java.util.Map.Entry<Integer, int[]> e : artifact.linearAddressToCoord().entrySet()) {
-                    if (java.util.Arrays.equals(e.getValue(), relTarget)) { targetAddress = e.getKey(); break; }
-                }
-            }
             if (targetAddress != null) {
                 String name = artifact.labelAddressToName().get(targetAddress);
                 if (name != null) procName = name;
-                int[] relCoord = artifact.linearAddressToCoord().get(targetAddress);
-                if (relCoord != null) {
-                    computedAbsTarget = new int[relCoord.length];
-                    for (int i = 0; i < relCoord.length; i++) computedAbsTarget[i] = origin[i] + relCoord[i];
-                }
-            } else {
-                computedAbsTarget = new int[dims];
-                for (int i = 0; i < dims; i++) computedAbsTarget[i] = origin[i] + (i < relTarget.length ? relTarget[i] : 0);
             }
         }
 
         Organism.ProcFrame frame = new Organism.ProcFrame(procName, returnIp, prsSnapshot, fprsSnapshot, fprBindings);
         organism.getCallStack().push(frame);
 
-        // 3. Copy-In: Parameter in FPRs schreiben
+        // Copy-In: Parameter in FPRs schreiben
         if (bindings != null) {
             for (int i = 0; i < bindings.length; i++) {
                 Object value = organism.readOperand(bindings[i]);
@@ -114,14 +103,8 @@ public class ProcedureCallHandler {
             }
         }
 
-        // 4. Zum Prozedur-Einsprungspunkt springen
-        if (computedAbsTarget != null) {
-            organism.setIp(computedAbsTarget);
-        } else {
-            // Fallback ohne Artefakt: programmrelative Koordinatenberechnung
-            int[] targetIp = organism.getTargetCoordinate(organism.getInitialPosition(), targetDelta, environment);
-            organism.setIp(targetIp);
-        }
+        // Zum Prozedur-Einsprungspunkt springen
+        organism.setIp(targetIp);
         organism.setSkipIpAdvance(true);
     }
 
@@ -142,12 +125,7 @@ public class ProcedureCallHandler {
         }
         Organism.ProcFrame returnFrame = organism.getCallStack().pop();
 
-        /* Dieser Block ist eine fundamentale Designverletzung! Das Copy out wurde durch vom Compiler emittierte
-           PUSH und POP Befehle bereits erledigt, somit ist dieser Block zum Glück auch überflüssig und wurde
-           deaktiviert.
-        */
-
-        // 2. Zustand wiederherstellen
+        // Zustand wiederherstellen
         organism.restorePrs(returnFrame.savedPrs);
         organism.setIp(returnFrame.absoluteReturnIp);
         organism.setSkipIpAdvance(true);

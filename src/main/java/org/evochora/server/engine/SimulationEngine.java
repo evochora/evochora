@@ -1,15 +1,16 @@
 package org.evochora.server.engine;
 
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.internal.services.CallBindingRegistry;
+import org.evochora.runtime.model.Organism;
 import org.evochora.server.IControllable;
-import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.server.contracts.ProgramArtifactMessage;
 import org.evochora.server.contracts.IQueueMessage;
+import org.evochora.server.contracts.ProgramArtifactMessage;
 import org.evochora.server.queue.ITickMessageQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.evochora.runtime.model.Organism;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
@@ -24,17 +25,11 @@ public final class SimulationEngine implements IControllable, Runnable {
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final boolean performanceMode;
 
-    private long currentTick = 0L;
     private Simulation simulation;
     private java.util.List<ProgramArtifact> programArtifacts = java.util.Collections.emptyList();
 
-    /**
-     * NEUER KONSTRUKTOR: Standardmäßig wird der Debug-Modus verwendet.
-     * Dies behebt die Kompilierungsfehler in den Tests.
-     * @param queue Die Nachrichten-Warteschlange.
-     */
     public SimulationEngine(ITickMessageQueue queue) {
-        this(queue, false); // Standard ist Debug-Modus
+        this(queue, false);
     }
 
     public SimulationEngine(ITickMessageQueue queue, boolean performanceMode) {
@@ -79,14 +74,8 @@ public final class SimulationEngine implements IControllable, Runnable {
 
     public Simulation getSimulation() { return simulation; }
 
-    /**
-     * Performs one deterministic tick on the simulation thread-safely while allowing the engine
-     * to stay paused. This method directly advances the underlying Simulation and enqueues the
-     * resulting world state to the queue, so PersistenceService can persist it.
-     */
     public void step() {
         if (simulation == null) return;
-        // Advance one tick synchronously
         simulation.tick();
         StatusMetricsRegistry.onTick(simulation.getCurrentTick());
         try {
@@ -128,6 +117,9 @@ public final class SimulationEngine implements IControllable, Runnable {
                         .collect(Collectors.toMap(ProgramArtifact::programId, pa -> pa, (a, b) -> b)));
             }
 
+            // HOLEN DER REGISTRY-INSTANZ
+            CallBindingRegistry bindingRegistry = CallBindingRegistry.getInstance();
+
             for (ProgramArtifact artifact : programArtifacts) {
                 int dims = org.evochora.runtime.Config.WORLD_DIMENSIONS;
                 int[] origin = UserLoadRegistry.getDesiredStart(artifact.programId());
@@ -147,6 +139,25 @@ public final class SimulationEngine implements IControllable, Runnable {
                     var mol = new org.evochora.runtime.model.Molecule(pm.type(), pm.value());
                     env.setMolecule(mol, abs);
                 }
+
+                // --- NEUER, KORRIGIERTER ABSCHNITT ---
+                // Fülle die CallBindingRegistry mit den vorkompilierten Bindungen.
+                // Dies ist ein Setup-Schritt und verletzt nicht die Laufzeit-Trennung.
+                if (!performanceMode) {
+                    for (var binding : artifact.callSiteBindings().entrySet()) {
+                        int linearAddress = binding.getKey();
+                        int[] relativeCoord = artifact.linearAddressToCoord().get(linearAddress);
+                        if (relativeCoord != null) {
+                            int[] absoluteCoord = new int[dims];
+                            for (int i = 0; i < dims; i++) {
+                                absoluteCoord[i] = origin[i] + relativeCoord[i];
+                            }
+                            bindingRegistry.registerBindingForAbsoluteCoord(absoluteCoord, binding.getValue());
+                        }
+                    }
+                }
+                // --- ENDE DES NEUEN ABSCHNITTS ---
+
                 Organism organism = Organism.create(simulation, origin,
                         org.evochora.runtime.Config.INITIAL_ORGANISM_ENERGY, simulation.getLogger());
                 organism.setProgramId(artifact.programId());
