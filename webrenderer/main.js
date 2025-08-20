@@ -111,7 +111,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         while(cellsStmt.step()) cells.push(cellsStmt.getAsObject());
         cellsStmt.free();
 
-        const orgStmt = db.prepare("SELECT organismId, programId, birthTick, energy, positionJson, dpsJson, dvJson, disassembledInstructionJson, dataRegisters, procRegisters, dataStack, callStack, formalParameters, fprs, locationRegisters, locationStack FROM organism_states WHERE tickNumber = :tick");
+        const orgStmt = db.prepare("SELECT organismId, programId, birthTick, energy, positionJson, dpsJson, dvJson, returnIpJson, disassembledInstructionJson, dataRegisters, procRegisters, dataStack, callStack, formalParameters, fprs, locationRegisters, locationStack FROM organism_states WHERE tickNumber = :tick");
         orgStmt.bind({ ':tick': tick });
         const organisms = [];
         while(orgStmt.step()) {
@@ -125,6 +125,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 orgData.fprs = JSON.parse(orgData.fprs || '[]');
                 orgData.locationRegisters = JSON.parse(orgData.locationRegisters || '[]');
                 orgData.locationStack = JSON.parse(orgData.locationStack || '[]');
+                orgData.returnIp = JSON.parse(orgData.returnIpJson || '[]');
             } catch(e) { console.error("Fehler beim Parsen von Organismus-Daten:", e); }
             organisms.push(orgData);
         }
@@ -371,16 +372,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     // POP/PUSH-Heuristik: In Prozedurdateien ggf. Hervorhebung verschieben
                     let effectiveHighlightedLine = highlightedLine;
                     try {
-                        const isProcedureFile = baseName !== 'test.s';
                         const instr = JSON.parse(org.disassembledInstructionJson);
-                        if (isProcedureFile && instr) {
+                        if (instr) {
                             const headerLineText = (sourceLines[highlightedLine - 1] || '').trim().toUpperCase();
                             const isHeader = headerLineText === 'MY_PROC' || headerLineText.startsWith('.PROC');
-                            if (instr.opcodeName === 'PUSH' && isHeader) {
+                            if ((instr.opcodeName === 'PUSH') && isHeader) {
                                 const retIndex = sourceLines.findIndex(l => String(l).trim().toUpperCase().startsWith('RET'));
                                 if (retIndex >= 0) {
                                     effectiveHighlightedLine = retIndex + 1;
-                                    console.debug('[WR] shifted highlight (PUSH) to RET at line', effectiveHighlightedLine);
+                                    console.debug('[WR] shifted highlight to RET at line', effectiveHighlightedLine);
                                 }
                             }
                             // Bei POP keine Verschiebung (Header bleiben)
@@ -439,6 +439,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                             processedLine = annotateLabels(processedLine, artifact);
                             // Formale Parameter annotieren (wirkt nur in Prozeduren)
                             processedLine = annotateLineByFormalParams(processedLine, artifact, org);
+                            // RET: annotate with return address if available (top frame)
+                            try {
+                                if (/^\s*RET\b/.test(line)) {
+                                    const ret = Array.isArray(org.returnIp) ? org.returnIp : [];
+                                    if (ret.length >= 2) {
+                                        processedLine = processedLine.replace(/^(\s*RET\b)(.*)$/,'$1<span class="injected-value">['+ret[0]+'|'+ret[1]+']</span>$2');
+                                    }
+                                }
+                            } catch {}
                         }
 
                         sourceCodeHtml += `<div class=\"source-line ${isHighlighted ? 'highlight' : ''}\"><span class=\"line-number\">${lineNum}</span><pre>${processedLine}</pre></div>`;

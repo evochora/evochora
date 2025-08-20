@@ -121,7 +121,7 @@ public final class PersistenceService implements IControllable, Runnable {
                 st.execute("CREATE TABLE IF NOT EXISTS ticks (tickNumber INTEGER PRIMARY KEY, timestampMicroseconds INTEGER, organismCount INTEGER)");
                 st.execute("CREATE TABLE IF NOT EXISTS organism_states (" +
                         "tickNumber INTEGER, organismId INTEGER, programId TEXT, parentId INTEGER NULL, " +
-                        "birthTick INTEGER, energy INTEGER, positionJson TEXT, dpsJson TEXT, dvJson TEXT, " + // CHANGED: dpJson -> dpsJson
+                        "birthTick INTEGER, energy INTEGER, positionJson TEXT, dpsJson TEXT, dvJson TEXT, returnIpJson TEXT, " + // added returnIpJson
                         "stateJson TEXT, disassembledInstructionJson TEXT, " +
                         "dataRegisters TEXT, procRegisters TEXT, dataStack TEXT, callStack TEXT, formalParameters TEXT, fprs TEXT, " +
                         "locationRegisters TEXT, locationStack TEXT, " + // NEW COLUMNS
@@ -130,6 +130,7 @@ public final class PersistenceService implements IControllable, Runnable {
                 try { st.execute("ALTER TABLE organism_states ADD COLUMN fprs TEXT"); } catch (SQLException ignore) {}
                 try { st.execute("ALTER TABLE organism_states ADD COLUMN locationRegisters TEXT"); } catch (SQLException ignore) {}
                 try { st.execute("ALTER TABLE organism_states ADD COLUMN locationStack TEXT"); } catch (SQLException ignore) {}
+                try { st.execute("ALTER TABLE organism_states ADD COLUMN returnIpJson TEXT"); } catch (SQLException ignore) {}
                 // Rename dpJson to dpsJson if the old column exists
                 try { st.execute("ALTER TABLE organism_states RENAME COLUMN dpJson TO dpsJson"); } catch (SQLException ignore) {}
 
@@ -202,10 +203,10 @@ public final class PersistenceService implements IControllable, Runnable {
         }
 
         final String orgSql = "INSERT OR REPLACE INTO organism_states(" +
-                "tickNumber, organismId, programId, parentId, birthTick, energy, positionJson, dpsJson, dvJson, " +
+                "tickNumber, organismId, programId, parentId, birthTick, energy, positionJson, dpsJson, dvJson, returnIpJson, " +
                 "stateJson, disassembledInstructionJson, dataRegisters, procRegisters, dataStack, callStack, formalParameters, fprs, " +
-                "locationRegisters, locationStack) " + // NEW COLUMNS
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"; // UPDATED placeholder count
+                "locationRegisters, locationStack) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (PreparedStatement psOrg = connection.prepareStatement(orgSql)) {
             for (var org : wsm.organismStates()) {
@@ -218,23 +219,24 @@ public final class PersistenceService implements IControllable, Runnable {
                 psOrg.setString(7, objectMapper.writeValueAsString(org.position()));
                 psOrg.setString(8, objectMapper.writeValueAsString(org.dps())); // CHANGED: from dp() to dps()
                 psOrg.setString(9, objectMapper.writeValueAsString(org.dv()));
+                psOrg.setString(10, objectMapper.writeValueAsString(org.returnIp()));
 
                 java.util.Map<String, Object> stateMap = new java.util.LinkedHashMap<>();
                 stateMap.put("ip", org.ip());
                 stateMap.put("er", org.er());
-                psOrg.setString(10, objectMapper.writeValueAsString(stateMap));
+                psOrg.setString(11, objectMapper.writeValueAsString(stateMap));
 
-                psOrg.setString(11, org.disassembledInstructionJson());
-                psOrg.setString(12, objectMapper.writeValueAsString(org.dataRegisters()));
-                psOrg.setString(13, objectMapper.writeValueAsString(org.procRegisters()));
-                psOrg.setString(14, objectMapper.writeValueAsString(org.dataStack()));
-                psOrg.setString(15, objectMapper.writeValueAsString(org.callStack()));
-                psOrg.setString(16, objectMapper.writeValueAsString(org.formalParameters()));
-                psOrg.setString(17, objectMapper.writeValueAsString(org.fprs()));
+                psOrg.setString(12, org.disassembledInstructionJson());
+                psOrg.setString(13, objectMapper.writeValueAsString(org.dataRegisters()));
+                psOrg.setString(14, objectMapper.writeValueAsString(org.procRegisters()));
+                psOrg.setString(15, objectMapper.writeValueAsString(org.dataStack()));
+                psOrg.setString(16, objectMapper.writeValueAsString(org.callStack()));
+                psOrg.setString(17, objectMapper.writeValueAsString(org.formalParameters()));
+                psOrg.setString(18, objectMapper.writeValueAsString(org.fprs()));
 
                 // NEW: Persist location registers and stack
-                psOrg.setString(18, objectMapper.writeValueAsString(org.locationRegisters()));
-                psOrg.setString(19, objectMapper.writeValueAsString(org.locationStack()));
+                psOrg.setString(19, objectMapper.writeValueAsString(org.locationRegisters()));
+                psOrg.setString(20, objectMapper.writeValueAsString(org.locationStack()));
 
                 psOrg.addBatch();
             }

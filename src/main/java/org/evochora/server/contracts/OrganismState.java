@@ -15,6 +15,7 @@ public record OrganismState(
         List<Integer> position,
         List<List<Integer>> dps,
         List<Integer> dv,
+        List<Integer> returnIp,
         // stateJson parts flattened as native: registers and stacks
         int ip,
         int er,

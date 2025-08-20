@@ -65,9 +65,15 @@ public final class WorldStateAdapter {
 
             List<List<Integer>> dpsAsLists = o.getDps().stream().map(WorldStateAdapter::toList).collect(Collectors.toList());
 
+            // Return IP from top call stack frame if present
+            List<Integer> retIp = List.of();
+            if (!o.getCallStack().isEmpty() && o.getCallStack().peek().absoluteReturnIp != null) {
+                retIp = toList(o.getCallStack().peek().absoluteReturnIp);
+            }
+
             organisms.add(new OrganismState(
                     o.getId(), o.getProgramId(), o.getParentId(), o.getBirthTick(), o.getEr(),
-                    toList(o.getIp()), dpsAsLists, toList(o.getDv()),
+                    toList(o.getIp()), dpsAsLists, toList(o.getDv()), retIp,
                     o.getIp()[0], o.getEr(),
                     drs, prs, ds, callStackNames, formattedFprs, fprsRaw,
                     disassembledJson,
