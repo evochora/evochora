@@ -32,13 +32,8 @@ public class Simulation {
         return programArtifacts;
     }
 
-    /**
-     * NEUER KONSTRUKTOR: Setzt den Debug-Modus als Standard.
-     * Dies behebt die Compiler-Fehler in den Tests und der UI.
-     * @param environment Die Simulationsumgebung.
-     */
     public Simulation(Environment environment) {
-        this(environment, false); // Standardmäßig Debug-Modus
+        this(environment, false); // Default to debug mode
     }
 
     public Simulation(Environment environment, boolean performanceMode) {
@@ -92,7 +87,7 @@ public class Simulation {
                         instruction.getConflictStatus());
                 LOG.debug("  IP={} DP={} DV={} ER={}",
                         java.util.Arrays.toString(organism.getIp()),
-                        java.util.Arrays.toString(organism.getDp()),
+                        java.util.Arrays.toString(organism.getDp(0)), // CORRECTED
                         java.util.Arrays.toString(organism.getDv()),
                         organism.getEr());
                 LOG.debug("  DR={} PR={} DS={} CS={}",

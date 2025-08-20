@@ -4,6 +4,7 @@ import java.util.List;
 
 /**
  * Snapshot of a single organism at a given tick, using native Java types.
+ * This record serves as a data transfer object for serialization and persistence.
  */
 public record OrganismState(
         int organismId,
@@ -12,17 +13,20 @@ public record OrganismState(
         long birthTick,
         long energy,
         List<Integer> position,
-        List<Integer> dp,
+        List<List<Integer>> dps,
         List<Integer> dv,
         // stateJson parts flattened as native: registers and stacks
         int ip,
         int er,
-        List<String> dataRegisters, // Geändert von int[]
-        List<String> procRegisters, // Geändert von int[]
-        List<String> dataStack,     // Geändert von List<Integer>
-        List<String> callStack,     // Geändert von List<Integer>
+        List<String> dataRegisters,
+        List<String> procRegisters,
+        List<String> dataStack,
+        List<String> callStack,
         List<String> formalParameters,
         List<String> fprs,
-        String disassembledInstructionJson
+        String disassembledInstructionJson,
+        // NEW: Location-based architecture fields
+        List<String> locationRegisters,
+        List<String> locationStack
 ) {
 }

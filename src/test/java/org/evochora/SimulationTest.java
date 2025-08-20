@@ -28,57 +28,48 @@ public class SimulationTest {
         sim = new Simulation(environment);
     }
 
-    // Helper to place a single instruction with its integer DATA args along +X from org's IP
     private void placeInstruction(Organism org, String name, Integer... args) {
         int opcode = Instruction.getInstructionIdByName(name);
         int[] pos = org.getIp();
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), pos);
         int[] cur = pos;
         for (int arg : args) {
-            cur = org.getNextInstructionPosition(cur, environment, org.getDv());
+            cur = org.getNextInstructionPosition(cur, org.getDv(), environment); // CORRECTED
             environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), cur);
         }
     }
 
-    // Compute absolute target for a DP-relative vector
     private int[] targetFromDp(Organism org, int[] vec) {
-        return org.getTargetCoordinate(org.getDp(), vec, environment);
+        return org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
     }
 
     @Test
     void testConflictResolutionSameTargetLowerIdWins() {
-        // Two organisms, both POKI to the same DP-adjacent cell [0,1]
         Organism orgLow = Organism.create(sim, new int[]{0, 0}, 2000, sim.getLogger());
         orgLow.setDv(new int[]{1, 0});
-        orgLow.setDp(new int[]{0, 0});
+        orgLow.setDp(0, new int[]{0, 0}); // CORRECTED
         int payloadLow = new Molecule(Config.TYPE_DATA, 11).toInt();
         orgLow.setDr(0, payloadLow);
 
         Organism orgHigh = Organism.create(sim, new int[]{10, 0}, 2000, sim.getLogger());
         orgHigh.setDv(new int[]{1, 0});
-        orgHigh.setDp(new int[]{0, 0});
+        orgHigh.setDp(0, new int[]{0, 0}); // CORRECTED
         int payloadHigh = new Molecule(Config.TYPE_DATA, 22).toInt();
         orgHigh.setDr(0, payloadHigh);
 
         sim.addOrganism(orgLow);
         sim.addOrganism(orgHigh);
 
-        // POKI expects: regId, then vector components
         placeInstruction(orgLow, "POKI", 0, 0, 1);
         placeInstruction(orgHigh, "POKI", 0, 0, 1);
 
-        // Both target DP + [0,1]
         int[] target = targetFromDp(orgLow, new int[]{0, 1});
 
         sim.tick();
 
-        // Lower ID organism should win and write its payload
         assertThat(environment.getMolecule(target).toInt()).isEqualTo(payloadLow);
-        // Loser should not be executed (no base cost nor payload energy taken)
         assertThat(orgHigh.getEr()).isEqualTo(2000);
-        // Winner's energy decreased by at least payload + base cost
         assertThat(orgLow.getEr()).isLessThanOrEqualTo(2000 - 11 - 1);
-        // No failures expected
         assertThat(orgLow.isInstructionFailed()).as("Winner failed: " + orgLow.getFailureReason()).isFalse();
         assertThat(orgHigh.isInstructionFailed()).as("Loser failed: " + orgHigh.getFailureReason()).isFalse();
     }
@@ -87,21 +78,21 @@ public class SimulationTest {
     void testNoConflictDifferentTargetsBothExecute() {
         Organism o1 = Organism.create(sim, new int[]{0, 0}, 2000, sim.getLogger());
         o1.setDv(new int[]{1, 0});
-        o1.setDp(new int[]{0, 0});
+        o1.setDp(0, new int[]{0, 0}); // CORRECTED
         int v1 = new Molecule(Config.TYPE_DATA, 5).toInt();
         o1.setDr(0, v1);
 
         Organism o2 = Organism.create(sim, new int[]{10, 0}, 2000, sim.getLogger());
         o2.setDv(new int[]{1, 0});
-        o2.setDp(new int[]{1, 0}); // Different DP to avoid same target
+        o2.setDp(0, new int[]{1, 0}); // CORRECTED
         int v2 = new Molecule(Config.TYPE_DATA, 7).toInt();
         o2.setDr(0, v2);
 
         sim.addOrganism(o1);
         sim.addOrganism(o2);
 
-        placeInstruction(o1, "POKI", 0, 0, 1); // target [0,1]
-        placeInstruction(o2, "POKI", 0, 0, 1); // target [1,1]
+        placeInstruction(o1, "POKI", 0, 0, 1);
+        placeInstruction(o2, "POKI", 0, 0, 1);
 
         int[] t1 = targetFromDp(o1, new int[]{0, 1});
         int[] t2 = targetFromDp(o2, new int[]{0, 1});
@@ -116,20 +107,16 @@ public class SimulationTest {
 
     @Test
     void testSingleOrganismNoTargetStillExecutes() {
-        // POKS requires a value and a vector on the stack; provide none so getTargetCoordinates is empty
         Organism org = Organism.create(sim, new int[]{0, 0}, 2000, sim.getLogger());
         org.setDv(new int[]{1, 0});
-        org.setDp(new int[]{0, 0});
+        org.setDp(0, new int[]{0, 0}); // CORRECTED
         sim.addOrganism(org);
 
         placeInstruction(org, "POKS");
 
-        // With only one organism, Simulation should allow execution attempt
         sim.tick();
 
-        // The instruction will fail due to missing operands, proving it was executed
         assertThat(org.isInstructionFailed()).isTrue();
-        // KORREKTUR: Der Test erwartet jetzt die korrekte Fehlermeldung.
         assertThat(org.getFailureReason()).contains("Invalid operands for POKS");
     }
 }

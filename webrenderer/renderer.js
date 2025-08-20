@@ -79,9 +79,23 @@ class WorldRenderer {
         this.ctx.strokeRect(x, y, this.config.CELL_SIZE, this.config.CELL_SIZE);
 
         if (isSelected && organism.energy > 0) {
-            const dp = this.parsePosition(organism.dpJson);
-            if (dp) {
-                this.drawDp(dp, color);
+            // Draw all DPs with indices if dpsJson present
+            if (organism.dpsJson) {
+                try {
+                    const dps = JSON.parse(organism.dpsJson);
+                    if (Array.isArray(dps)) {
+                        // group by coordinate string so multiple DP indexes on same cell are shown together
+                        const byCell = new Map();
+                        dps.forEach((dpPos, idx) => {
+                            const key = Array.isArray(dpPos) ? dpPos.join('|') : String(dpPos);
+                            if (!byCell.has(key)) byCell.set(key, { pos: dpPos, idxs: [] });
+                            byCell.get(key).idxs.push(idx);
+                        });
+                        for (const { pos, idxs } of byCell.values()) {
+                            this.drawDp(pos, color, idxs);
+                        }
+                    }
+                } catch (_) { /* ignore parse errors */ }
             }
             const dv = this.parsePosition(organism.dvJson);
             if (dv) {
@@ -97,7 +111,7 @@ class WorldRenderer {
         }
     }
 
-    drawDp(pos, color) {
+    drawDp(pos, color, indices) {
         const x = pos[0] * this.config.CELL_SIZE;
         const y = pos[1] * this.config.CELL_SIZE;
         this.ctx.strokeStyle = color;
@@ -105,6 +119,14 @@ class WorldRenderer {
         this.ctx.setLineDash([3, 3]); // Gestrichelte Linie für DP
         this.ctx.strokeRect(x + 2, y + 2, this.config.CELL_SIZE - 4, this.config.CELL_SIZE - 4);
         this.ctx.setLineDash([]); // Linienstil zurücksetzen
+        if (Array.isArray(indices) && indices.length > 0) {
+            this.ctx.fillStyle = color;
+            this.ctx.font = `bold ${this.config.CELL_SIZE * 0.35}px 'Monospaced', 'Courier New'`;
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            const text = indices.join(',');
+            this.ctx.fillText(text, x + this.config.CELL_SIZE / 2, y + this.config.CELL_SIZE / 2 + 1);
+        }
     }
 
     getOrganismColor(id) {

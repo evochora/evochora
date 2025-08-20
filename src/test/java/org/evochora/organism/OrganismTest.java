@@ -37,7 +37,6 @@ public class OrganismTest {
         // Place a DATA symbol at IP to violate strict typing
         environment.setMolecule(new Molecule(Config.TYPE_DATA, 1), org.getIp());
 
-        // KORREKTUR: Verwende die VM, um die Instruktion zu planen.
         Instruction planned = sim.getVirtualMachine().plan(org);
         assertThat(planned).isNotNull();
         // Planner yields a no-op placeholder with name "UNKNOWN" for illegal type
@@ -53,7 +52,6 @@ public class OrganismTest {
         // Place a CODE opcode that doesn't exist (e.g., 999)
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 999), org.getIp());
 
-        // KORREKTUR: Verwende die VM, um die Instruktion zu planen.
         Instruction planned = sim.getVirtualMachine().plan(org);
         assertThat(planned).isNotNull();
         // Planner yields a no-op placeholder with name "UNKNOWN" for unknown opcode
@@ -102,8 +100,8 @@ public class OrganismTest {
         Organism org = Organism.create(sim, new int[]{10, 10}, 100, sim.getLogger());
         sim.addOrganism(org);
         // Set DP to somewhere else to ensure DP is used
-        org.setDp(new int[]{5, 5});
-        int[] target = org.getTargetCoordinate(org.getDp(), new int[]{0, 1}, environment);
+        org.setDp(0, new int[]{5, 5}); // CORRECTED
+        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment); // CORRECTED
         assertThat(target).isEqualTo(new int[]{5, 6});
     }
 
@@ -131,12 +129,11 @@ public class OrganismTest {
         org.setDr(0, dataVal);
         assertThat(org.getDr(0)).isEqualTo(dataVal);
 
-        // PR (procedure register) via snapshot/restore helpers: set/get directly if available
-        // Here we use set/get by PR index through read/writeOperand routes; however, Organism exposes PRs as a list
+        // PR
         org.setPr(0, dataVal);
         assertThat(org.getPr(0)).isEqualTo(dataVal);
 
-        // FPR stores Objects (e.g., vectors)
+        // FPR
         int[] vec = new int[]{3, 4};
         org.setFpr(0, vec);
         assertThat(org.getFpr(0)).isEqualTo(vec);

@@ -41,20 +41,19 @@ public class VMEnvironmentInteractionInstructionTest {
         placeInstruction(name);
         int[] currentPos = org.getIp();
         for (int arg : args) {
-            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
             environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
 
-    // Helper für Instruktionen mit Register + Vektor-Argument (z. B. PEKI)
     private void placeInstructionWithVector(String name, int reg, int[] vector) {
         int opcode = Instruction.getInstructionIdByName(name);
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
-        currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+        currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
         environment.setMolecule(new Molecule(Config.TYPE_DATA, reg), currentPos);
         for (int val : vector) {
-            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
             environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }
@@ -67,7 +66,7 @@ public class VMEnvironmentInteractionInstructionTest {
         org.setDr(1, vec);
 
         placeInstruction("POKE", 0, 1);
-        int[] targetPos = org.getTargetCoordinate(org.getDp(), vec, environment);
+        int[] targetPos = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
 
         sim.tick();
 
@@ -83,7 +82,7 @@ public class VMEnvironmentInteractionInstructionTest {
 
         placeInstruction("POKI", 0, 0, 1);
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
 
         sim.tick();
 
@@ -100,7 +99,7 @@ public class VMEnvironmentInteractionInstructionTest {
         org.getDataStack().push(payload);
 
         placeInstruction("POKS");
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
 
         sim.tick();
 
@@ -109,13 +108,11 @@ public class VMEnvironmentInteractionInstructionTest {
         assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 33 - 1);
     }
 
-    // --- HIER BEGINNEN DIE VERSCHOBENEN TESTS ---
-
     @Test
     void testPeek() {
-        org.setDp(org.getIp());
+        org.setDp(0, org.getIp()); // CORRECTED
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
         int payload = new Molecule(Config.TYPE_DATA, 7).toInt();
         environment.setMolecule(Molecule.fromInt(payload), target);
 
@@ -124,15 +121,14 @@ public class VMEnvironmentInteractionInstructionTest {
         sim.tick();
 
         assertThat(org.getDr(0)).isEqualTo(payload);
-        // Zelle sollte geleert sein
         assertThat(environment.getMolecule(target).isEmpty()).isTrue();
     }
 
     @Test
     void testPeki() {
-        org.setDp(org.getIp());
+        org.setDp(0, org.getIp()); // CORRECTED
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
         int payload = new Molecule(Config.TYPE_DATA, 11).toInt();
         environment.setMolecule(Molecule.fromInt(payload), target);
 
@@ -145,9 +141,9 @@ public class VMEnvironmentInteractionInstructionTest {
 
     @Test
     void testPeks() {
-        org.setDp(org.getIp());
+        org.setDp(0, org.getIp()); // CORRECTED
         int[] vec = new int[]{-1, 0};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
         int payload = new Molecule(Config.TYPE_DATA, 9).toInt();
         environment.setMolecule(Molecule.fromInt(payload), target);
 

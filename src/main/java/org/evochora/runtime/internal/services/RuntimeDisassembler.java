@@ -23,7 +23,7 @@ public class RuntimeDisassembler {
     public DisassembledInstruction disassemble(ExecutionContext context, ProgramArtifact artifact) {
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
-        int[] ip = organism.getIp(); // Wir nehmen den aktuellen IP für die *nächste* Instruktion
+        int[] ip = organism.getIp();
         int[] dv = organism.getDv();
         Molecule molecule = environment.getMolecule(ip);
 
@@ -44,7 +44,7 @@ public class RuntimeDisassembler {
         int[] currentArgCoord = ip;
 
         for (InstructionArgumentType argType : signature.argumentTypes()) {
-            currentArgCoord = organism.getNextInstructionPosition(currentArgCoord, environment, dv);
+            currentArgCoord = organism.getNextInstructionPosition(currentArgCoord, dv, environment); // CORRECTED
             Molecule argMol = environment.getMolecule(currentArgCoord);
             int argValue = argMol.toScalarValue();
             String argDisplay = argMol.toString();
@@ -58,28 +58,25 @@ public class RuntimeDisassembler {
                     break;
                 }
                 case VECTOR: {
-                    // Korrekte Disassembly für Vektorargumente (z. B. CALL/JMPI)
                     int[] vec = new int[Config.WORLD_DIMENSIONS];
-                    vec[0] = argValue; // Erstes Element schon gelesen
+                    vec[0] = argValue;
                     int[] next = currentArgCoord;
                     for (int i = 1; i < Config.WORLD_DIMENSIONS; i++) {
-                        next = organism.getNextInstructionPosition(next, environment, dv);
+                        next = organism.getNextInstructionPosition(next, dv, environment); // CORRECTED
                         Molecule m = environment.getMolecule(next);
                         vec[i] = m.toScalarValue();
                     }
                     String fullDisplay = formatRuntimeValue(vec);
                     arguments.add(new DisassembledArgument("vector", fullDisplay, 0, fullDisplay));
-                    // Wir haben zusätzliche Argumentzellen konsumiert → currentArgCoord auf letztes konsumiertes setzen
                     currentArgCoord = next;
                     break;
                 }
                 case LABEL: {
-                    // LABEL ist als Vektor von Koordinaten kodiert
                     int[] vec = new int[Config.WORLD_DIMENSIONS];
                     vec[0] = argValue;
                     int[] next = currentArgCoord;
                     for (int i = 1; i < Config.WORLD_DIMENSIONS; i++) {
-                        next = organism.getNextInstructionPosition(next, environment, dv);
+                        next = organism.getNextInstructionPosition(next, dv, environment); // CORRECTED
                         Molecule m = environment.getMolecule(next);
                         vec[i] = m.toScalarValue();
                     }
@@ -93,7 +90,6 @@ public class RuntimeDisassembler {
                 }
             }
         }
-        // Bestmögliche Source-Info anreichern
         String fileName = null;
         Integer lineNumber = null;
         if (artifact != null && artifact.sourceMap() != null && artifact.relativeCoordToLinearAddress() != null) {
@@ -113,7 +109,6 @@ public class RuntimeDisassembler {
     }
 
     private String resolveRegisterName(int regId, ProgramArtifact artifact) {
-        // In Zukunft könnte hier die Register-Map aus dem Artefakt genutzt werden, um Aliase aufzulösen.
         if (regId >= Instruction.FPR_BASE) return "%FPR" + (regId - Instruction.FPR_BASE);
         if (regId >= Instruction.PR_BASE) return "%PR" + (regId - Instruction.PR_BASE);
         return "%DR" + regId;
@@ -122,7 +117,6 @@ public class RuntimeDisassembler {
     private String formatRuntimeValue(Object value) {
         if (value == null) return "null";
         if (value instanceof int[] vec) {
-            // Vektor als DATA: a|b|c anzeigen
             StringBuilder sb = new StringBuilder();
             sb.append("[");
             for (int i = 0; i < vec.length; i++) {

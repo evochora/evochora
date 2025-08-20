@@ -37,22 +37,19 @@ public class VMDataInstructionTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int arg : args) {
-            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
             environment.setMolecule(Molecule.fromInt(arg), currentPos);
         }
     }
 
-    // Helper für Instruktionen mit Vektor-Argument (z. B. SETV)
     private void placeInstructionWithVector(String name, int reg, int[] vector) {
         int opcode = Instruction.getInstructionIdByName(name);
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
-        // Ziel-Register
-        currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+        currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
         environment.setMolecule(new Molecule(Config.TYPE_DATA, reg), currentPos);
-        // Vektor-Komponenten
         for (int val : vector) {
-            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
             environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }

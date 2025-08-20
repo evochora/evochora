@@ -12,7 +12,15 @@ import java.util.List;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Random;
+import java.util.stream.Collectors;
 
+/**
+ * Represents a single programmable agent within the simulation.
+ * <p>
+ * An Organism is a virtual machine with its own set of registers, pointers, and stacks.
+ * It executes a program defined by {@code CODE} molecules in the environment to interact
+ * with the world, consume resources, and reproduce.
+ */
 public class Organism {
     private static final Logger LOG = LoggerFactory.getLogger(Organism.class);
     record ForkRequest(int[] childIp, int childEnergy, int[] childDv) {}
@@ -23,13 +31,15 @@ public class Organism {
     private long birthTick = 0L;
     private String programId = "";
     private int[] ip;
-    private int[] dp;
+    private final List<int[]> dps;
     private int[] dv;
     private int er;
     private final List<Object> drs;
     private final List<Object> prs;
     private final List<Object> fprs;
+    private final List<Object> lrs;
     private final Deque<Object> dataStack;
+    private final Deque<int[]> locationStack;
     private final Deque<ProcFrame> callStack;
     private boolean isDead = false;
     private boolean loggingEnabled = false;
@@ -37,17 +47,20 @@ public class Organism {
     private String failureReason = null;
     private Deque<ProcFrame> failureCallStack;
 
-    // Suchen Sie nach der inneren Klasse "ProcFrame"
+    /**
+     * Represents a single frame on the call stack, created by a CALL instruction.
+     * It stores the necessary state to return to the caller correctly.
+     */
     public static final class ProcFrame {
         public final String procName;
-        public final int[] absoluteReturnIp; // Früher: relativeReturnIp
+        public final int[] absoluteReturnIp;
         public final Object[] savedPrs;
         public final Object[] savedFprs;
         public final java.util.Map<Integer, Integer> fprBindings;
 
-        public ProcFrame(String procName, int[] absoluteReturnIp, Object[] savedPrs, Object[] savedFprs, java.util.Map<Integer, Integer> fprBindings) { // UND HIER
+        public ProcFrame(String procName, int[] absoluteReturnIp, Object[] savedPrs, Object[] savedFprs, java.util.Map<Integer, Integer> fprBindings) {
             this.procName = procName;
-            this.absoluteReturnIp = absoluteReturnIp; // Früher: relativeReturnIp
+            this.absoluteReturnIp = absoluteReturnIp;
             this.savedPrs = savedPrs;
             this.savedFprs = savedFprs;
             this.fprBindings = fprBindings;
@@ -61,15 +74,27 @@ public class Organism {
     private final int[] initialPosition;
     private final Random random;
 
+    /**
+     * Constructs a new Organism. This constructor should only be called via the static factory {@link #create}.
+     *
+     * @param id The unique identifier for this organism.
+     * @param startIp The initial coordinate of the Instruction Pointer (IP).
+     * @param initialEnergy The starting energy (ER) of the organism.
+     * @param logger The logger instance for logging events.
+     * @param simulation The simulation instance this organism belongs to.
+     */
     Organism(int id, int[] startIp, int initialEnergy, Logger logger, Simulation simulation) {
         this.id = id;
         this.ip = startIp;
-        this.dp = startIp;
+        this.dps = new ArrayList<>(Config.NUM_DATA_POINTERS);
+        for (int i = 0; i < Config.NUM_DATA_POINTERS; i++) {
+            this.dps.add(Arrays.copyOf(startIp, startIp.length));
+        }
         this.er = initialEnergy;
         this.logger = logger;
         this.simulation = simulation;
         this.dv = new int[startIp.length];
-        this.dv[0] = 1;
+        this.dv[0] = 1; // Default direction: +X
         this.drs = new ArrayList<>(Config.NUM_DATA_REGISTERS);
         for (int i = 0; i < Config.NUM_DATA_REGISTERS; i++) {
             this.drs.add(0);
@@ -82,6 +107,11 @@ public class Organism {
         for (int i = 0; i < Config.NUM_FORMAL_PARAM_REGISTERS; i++) {
             this.fprs.add(0);
         }
+        this.lrs = new ArrayList<>(Config.NUM_LOCATION_REGISTERS);
+        for (int i = 0; i < Config.NUM_LOCATION_REGISTERS; i++) {
+            this.lrs.add(new int[startIp.length]);
+        }
+        this.locationStack = new ArrayDeque<>(Config.LOCATION_STACK_MAX_DEPTH);
         this.dataStack = new ArrayDeque<>(Config.STACK_MAX_DEPTH);
         this.callStack = new ArrayDeque<>(Config.CALL_STACK_MAX_DEPTH);
         this.ipBeforeFetch = Arrays.copyOf(startIp, startIp.length);
@@ -90,14 +120,22 @@ public class Organism {
         this.random = new Random(id);
     }
 
+    /**
+     * Factory method to create a new Organism with a unique ID from the simulation.
+     *
+     * @param simulation The simulation instance.
+     * @param startIp The initial coordinate of the Instruction Pointer.
+     * @param initialEnergy The starting energy.
+     * @param logger The logger instance.
+     * @return A newly created Organism.
+     */
     public static Organism create(Simulation simulation, int[] startIp, int initialEnergy, Logger logger) {
         int newId = simulation.getNextOrganismId();
         return new Organism(newId, startIp, initialEnergy, logger, simulation);
     }
 
     /**
-     * Setzt den internen Zustand für einen neuen Ausführungs-Tick zurück.
-     * Dies wird von der VirtualMachine aufgerufen, bevor eine neue Instruktion geplant wird.
+     * Resets the organism's per-tick state. Called by the VirtualMachine before planning a new instruction.
      */
     public void resetTickState() {
         this.instructionFailed = false;
@@ -108,22 +146,40 @@ public class Organism {
         this.dvBeforeFetch = java.util.Arrays.copyOf(this.dv, this.dv.length);
     }
 
+    /**
+     * Advances the Instruction Pointer by a given number of steps along the current direction vector.
+     *
+     * @param steps The number of steps to advance.
+     * @param environment The simulation environment.
+     */
     public void advanceIpBy(int steps, Environment environment) {
         for (int i = 0; i < steps; i++) {
-            this.ip = getNextInstructionPosition(this.ip, environment, this.dvBeforeFetch);
+            this.ip = getNextInstructionPosition(this.ip, this.dvBeforeFetch, environment);
         }
     }
 
+    /**
+     * Retrieves the raw integer values of an instruction's arguments from the environment.
+     *
+     * @param instructionLength The total length of the instruction (opcode + arguments).
+     * @param environment The simulation environment.
+     * @return A list of raw integer values representing the arguments.
+     */
     public List<Integer> getRawArgumentsFromEnvironment(int instructionLength, Environment environment) {
         List<Integer> rawArgs = new ArrayList<>();
         int[] tempIp = Arrays.copyOf(this.ipBeforeFetch, this.ipBeforeFetch.length);
         for (int i = 0; i < instructionLength - 1; i++) {
-            tempIp = getNextInstructionPosition(tempIp, environment, this.dvBeforeFetch);
+            tempIp = getNextInstructionPosition(tempIp, this.dvBeforeFetch, environment);
             rawArgs.add(environment.getMolecule(tempIp).toInt());
         }
         return rawArgs;
     }
 
+    /**
+     * Marks the organism as dead and records the reason.
+     *
+     * @param reason The reason for death.
+     */
     public void kill(String reason) {
         this.isDead = true;
         if (!this.instructionFailed) {
@@ -131,23 +187,51 @@ public class Organism {
         }
     }
 
+    /**
+     * Checks if the IP should not be advanced automatically at the end of a tick.
+     * This is typically true after a jump or call instruction.
+     *
+     * @return {@code true} if the IP advance should be skipped.
+     */
     public boolean shouldSkipIpAdvance() {
         return skipIpAdvance;
     }
 
+    /**
+     * Fetches the value of an instruction argument from the cell following the given coordinate.
+     *
+     * @param currentIp The coordinate of the preceding molecule (opcode or another argument).
+     * @param environment The simulation environment.
+     * @return A {@link FetchResult} containing the fetched value and the coordinate of the next molecule.
+     */
     public FetchResult fetchArgument(int[] currentIp, Environment environment) {
-        int[] nextIp = getNextInstructionPosition(currentIp, environment, this.dvBeforeFetch);
+        int[] nextIp = getNextInstructionPosition(currentIp, this.dvBeforeFetch, environment);
         Molecule molecule = environment.getMolecule(nextIp);
         return new FetchResult(molecule.toInt(), nextIp);
     }
 
+    /**
+     * Fetches the signed scalar value of an instruction argument from the cell following the given coordinate.
+     *
+     * @param currentIp The coordinate of the preceding molecule.
+     * @param environment The simulation environment.
+     * @return A {@link FetchResult} containing the signed scalar value and the coordinate of the next molecule.
+     */
     public FetchResult fetchSignedArgument(int[] currentIp, Environment environment) {
-        int[] nextIp = getNextInstructionPosition(currentIp, environment, this.dvBeforeFetch);
+        int[] nextIp = getNextInstructionPosition(currentIp, this.dvBeforeFetch, environment);
         Molecule molecule = environment.getMolecule(nextIp);
         return new FetchResult(molecule.toScalarValue(), nextIp);
     }
 
-    public int[] getNextInstructionPosition(int[] currentIp, Environment environment, int[] directionVector) {
+    /**
+     * Calculates the coordinate of the next instruction or argument based on the current position and direction.
+     *
+     * @param currentIp The current coordinate.
+     * @param directionVector The direction vector to apply.
+     * @param environment The simulation environment (for normalization).
+     * @return The normalized coordinate of the next molecule.
+     */
+    public int[] getNextInstructionPosition(int[] currentIp, int[] directionVector, Environment environment) {
         int[] nextIp = new int[currentIp.length];
         for (int i = 0; i < currentIp.length; i++) {
             nextIp[i] = currentIp[i] + directionVector[i];
@@ -155,6 +239,14 @@ public class Organism {
         return environment.getNormalizedCoordinate(nextIp);
     }
 
+    /**
+     * Calculates an absolute target coordinate by adding a vector to a starting position.
+     *
+     * @param startPos The starting coordinate.
+     * @param vector The vector to add.
+     * @param environment The simulation environment (for normalization).
+     * @return The normalized target coordinate.
+     */
     public int[] getTargetCoordinate(int[] startPos, int[] vector, Environment environment) {
         int[] targetPos = new int[startPos.length];
         for(int i=0; i<startPos.length; i++) {
@@ -163,6 +255,11 @@ public class Organism {
         return environment.getNormalizedCoordinate(targetPos);
     }
 
+    /**
+     * Skips the instruction immediately following the currently executing one.
+     *
+     * @param environment The simulation environment.
+     */
     public void skipNextInstruction(Environment environment) {
         int[] currentInstructionIp = this.getIpBeforeFetch();
         int currentInstructionOpcode = environment.getMolecule(currentInstructionIp).toInt();
@@ -170,7 +267,7 @@ public class Organism {
 
         int[] nextInstructionIp = currentInstructionIp;
         for (int i = 0; i < currentInstructionLength; i++) {
-            nextInstructionIp = getNextInstructionPosition(nextInstructionIp, environment, this.getDvBeforeFetch());
+            nextInstructionIp = getNextInstructionPosition(nextInstructionIp, this.getDvBeforeFetch(), environment);
         }
 
         int nextOpcode = environment.getMolecule(nextInstructionIp).toInt();
@@ -178,12 +275,18 @@ public class Organism {
 
         int[] finalIp = nextInstructionIp;
         for (int i = 0; i < lengthToSkip; i++) {
-            finalIp = getNextInstructionPosition(finalIp, environment, this.getDvBeforeFetch());
+            finalIp = getNextInstructionPosition(finalIp, this.getDvBeforeFetch(), environment);
         }
         this.setIp(finalIp);
         this.setSkipIpAdvance(true);
     }
 
+    /**
+     * Validates if a given vector is a unit vector (sum of absolute components is 1).
+     *
+     * @param vector The vector to check.
+     * @return {@code true} if it is a unit vector, otherwise {@code false}.
+     */
     public boolean isUnitVector(int[] vector) {
         if (vector.length != Config.WORLD_DIMENSIONS) {
             this.instructionFailed("Vector has incorrect dimensions: expected " + Config.WORLD_DIMENSIONS + ", got " + vector.length);
@@ -200,18 +303,30 @@ public class Organism {
         return true;
     }
 
+    /**
+     * Sets the instruction-failed flag and records the reason.
+     *
+     * @param reason The reason for the failure.
+     */
     public void instructionFailed(String reason) {
-        if (!this.instructionFailed) { // Nur beim ersten Fehler den Stack speichern
+        if (!this.instructionFailed) {
             this.instructionFailed = true;
             this.failureReason = reason;
-            // NEU: Speichere eine Kopie des Return Stacks im Fehlerfall
             if (this.callStack != null && !this.callStack.isEmpty()) {
                 this.failureCallStack = new ArrayDeque<>(this.callStack);
             }
         }
     }
 
-    // --- Public API für Instruktionen ---
+    // --- Public API for Instructions ---
+
+    /**
+     * Sets the value of a Data Register (DR).
+     *
+     * @param index The index of the register (0-7).
+     * @param value The value to set (must be {@code Integer} or {@code int[]}).
+     * @return {@code true} on success, {@code false} on failure.
+     */
     public boolean setDr(int index, Object value) {
         if (index >= 0 && index < this.drs.size()) {
             if (value instanceof Integer || value instanceof int[]) {
@@ -224,6 +339,13 @@ public class Organism {
         this.instructionFailed("DR index out of bounds: " + index);
         return false;
     }
+
+    /**
+     * Gets the value of a Data Register (DR).
+     *
+     * @param index The index of the register (0-7).
+     * @return The value of the register, or {@code null} if the index is invalid.
+     */
     public Object getDr(int index) {
         if (index >= 0 && index < this.drs.size()) {
             return this.drs.get(index);
@@ -231,39 +353,140 @@ public class Organism {
         this.instructionFailed("DR index out of bounds: " + index);
         return null;
     }
+
+    /**
+     * Sets the Instruction Pointer (IP) to a new coordinate.
+     *
+     * @param newIp The new coordinate for the IP.
+     */
     public void setIp(int[] newIp) { this.ip = newIp; }
-    public void setDp(int[] newDp) { this.dp = newDp; }
+
+    /**
+     * Sets the coordinate of a specific Data Pointer (DP).
+     *
+     * @param index The index of the DP to modify.
+     * @param newDp The new coordinate to set.
+     * @return {@code true} on success, {@code false} on failure (e.g., invalid index).
+     */
+    public boolean setDp(int index, int[] newDp) {
+        if (index >= 0 && index < this.dps.size()) {
+            this.dps.set(index, newDp);
+            return true;
+        }
+        this.instructionFailed("DP index out of bounds: " + index);
+        return false;
+    }
+
+    /**
+     * Gets the coordinate of a specific Data Pointer (DP).
+     *
+     * @param index The index of the DP to retrieve.
+     * @return A copy of the DP's coordinate, or {@code null} if the index is invalid.
+     */
+    public int[] getDp(int index) {
+        if (index >= 0 && index < this.dps.size()) {
+            return Arrays.copyOf(dps.get(index), dps.get(index).length);
+        }
+        this.instructionFailed("DP index out of bounds: " + index);
+        return null;
+    }
+
+    /**
+     * Gets a list of all Data Pointers (DPs).
+     *
+     * @return A new list containing copies of all DP coordinates.
+     */
+    public List<int[]> getDps() {
+        return this.dps.stream()
+                .map(dp -> Arrays.copyOf(dp, dp.length))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Sets the Direction Vector (DV).
+     *
+     * @param newDv The new direction vector.
+     */
     public void setDv(int[] newDv) { this.dv = newDv; }
+
+    /**
+     * Adds energy to the organism's Energy Register (ER), clamped to the maximum allowed.
+     *
+     * @param amount The amount of energy to add.
+     */
     public void addEr(int amount) { this.er = Math.min(this.er + amount, Config.MAX_ORGANISM_ENERGY); }
+
+    /**
+     * Subtracts energy from the organism's Energy Register (ER).
+     *
+     * @param amount The amount of energy to subtract.
+     */
     public void takeEr(int amount) { this.er -= amount; }
+
+    /**
+     * Sets a flag to prevent the VM from automatically advancing the IP at the end of the tick.
+     *
+     * @param skip {@code true} to skip the IP advance.
+     */
     public void setSkipIpAdvance(boolean skip) { this.skipIpAdvance = skip; }
+
+    /** Gets the unique ID of the organism. */
     public int getId() { return id; }
+    /** Gets the ID of the parent organism, or {@code null} if it has no parent. */
     public Integer getParentId() { return parentId; }
+    /** Sets the ID of the parent organism. */
     public void setParentId(Integer parentId) { this.parentId = parentId; }
+    /** Gets the simulation tick number at which the organism was born. */
     public long getBirthTick() { return birthTick; }
+    /** Sets the birth tick of the organism. */
     public void setBirthTick(long birthTick) { this.birthTick = birthTick; }
+    /** Gets the program ID associated with this organism. */
     public String getProgramId() { return programId; }
+    /** Sets the program ID for this organism. */
     public void setProgramId(String programId) { this.programId = programId; }
+    /** Gets a copy of the current Instruction Pointer (IP) coordinate. */
     public int[] getIp() { return Arrays.copyOf(ip, ip.length); }
+    /** Gets a copy of the IP coordinate as it was at the beginning of the tick. */
     public int[] getIpBeforeFetch() { return Arrays.copyOf(ipBeforeFetch, ipBeforeFetch.length); }
-    public int[] getDp() { return Arrays.copyOf(dp, dp.length); }
+    /** Gets a copy of the DV as it was at the beginning of the tick. */
     public int[] getDvBeforeFetch() { return Arrays.copyOf(dvBeforeFetch, dvBeforeFetch.length); }
+    /** Gets the current energy level (ER). */
     public int getEr() { return er; }
+    /** Gets a copy of the list of Data Registers (DRs). */
     public List<Object> getDrs() { return new ArrayList<>(drs); }
+    /** Checks if the organism is dead. */
     public boolean isDead() { return isDead; }
+    /** Checks if detailed logging is enabled for this organism. */
     public boolean isLoggingEnabled() { return loggingEnabled; }
+    /** Enables or disables detailed logging for this organism. */
     public void setLoggingEnabled(boolean loggingEnabled) { this.loggingEnabled = loggingEnabled; }
+    /** Checks if the last instruction failed. */
     public boolean isInstructionFailed() { return instructionFailed; }
+    /** Gets the reason for the last instruction failure. */
     public String getFailureReason() { return failureReason; }
+    /** Gets the logger instance. */
     public Logger getLogger() { return logger; }
+    /** Gets a copy of the current Direction Vector (DV). */
     public int[] getDv() { return Arrays.copyOf(dv, dv.length); }
+    /** Gets the simulation instance. */
     public Simulation getSimulation() { return simulation; }
+    /** Gets a copy of the organism's initial starting position. */
     public int[] getInitialPosition() { return Arrays.copyOf(this.initialPosition, this.initialPosition.length); }
+    /** Gets a reference to the Data Stack (DS). */
     public Deque<Object> getDataStack() { return this.dataStack; }
+    /** Gets a reference to the Call Stack (CS). */
     public Deque<ProcFrame> getCallStack() { return this.callStack; }
 
-    // PR register API
+    /** Gets a copy of the list of Procedure-local Registers (PRs). */
     public List<Object> getPrs() { return new ArrayList<>(this.prs); }
+
+    /**
+     * Sets the value of a Procedure-local Register (PR).
+     *
+     * @param index The index of the register.
+     * @param value The value to set.
+     * @return {@code true} on success, {@code false} on failure.
+     */
     public boolean setPr(int index, Object value) {
         if (index >= 0 && index < this.prs.size()) {
             if (value instanceof Integer || value instanceof int[]) {
@@ -276,6 +499,13 @@ public class Organism {
         this.instructionFailed("PR index out of bounds: " + index);
         return false;
     }
+
+    /**
+     * Gets the value of a Procedure-local Register (PR).
+     *
+     * @param index The index of the register.
+     * @return The value, or {@code null} on failure.
+     */
     public Object getPr(int index) {
         if (index >= 0 && index < this.prs.size()) {
             return this.prs.get(index);
@@ -283,6 +513,12 @@ public class Organism {
         this.instructionFailed("PR index out of bounds: " + index);
         return null;
     }
+
+    /**
+     * Restores the state of all PRs from a snapshot array.
+     *
+     * @param snapshot The snapshot to restore from.
+     */
     public void restorePrs(Object[] snapshot) {
         if (snapshot == null || snapshot.length != this.prs.size()) {
             this.instructionFailed("Invalid PR snapshot size: expected " + this.prs.size() + ", got " + (snapshot == null ? "null" : snapshot.length));
@@ -293,8 +529,16 @@ public class Organism {
         }
     }
 
-    // API für FPR-Register
+    /** Gets a copy of the list of Formal Parameter Registers (FPRs). */
     public List<Object> getFprs() { return new ArrayList<>(this.fprs); }
+
+    /**
+     * Sets the value of a Formal Parameter Register (FPR).
+     *
+     * @param index The index of the register.
+     * @param value The value to set.
+     * @return {@code true} on success, {@code false} on failure.
+     */
     public boolean setFpr(int index, Object value) {
         if (index >= 0 && index < this.fprs.size()) {
             if (value instanceof Integer || value instanceof int[]) {
@@ -307,6 +551,13 @@ public class Organism {
         instructionFailed("FPR index out of bounds: " + index);
         return false;
     }
+
+    /**
+     * Gets the value of a Formal Parameter Register (FPR).
+     *
+     * @param index The index of the register.
+     * @return The value, or {@code null} on failure.
+     */
     public Object getFpr(int index) {
         if (index >= 0 && index < this.fprs.size()) {
             return this.fprs.get(index);
@@ -314,6 +565,12 @@ public class Organism {
         instructionFailed("FPR index out of bounds: " + index);
         return null;
     }
+
+    /**
+     * Restores the state of all FPRs from a snapshot array.
+     *
+     * @param snapshot The snapshot to restore from.
+     */
     public void restoreFprs(Object[] snapshot) {
         if (snapshot == null || snapshot.length > this.fprs.size()) {
             instructionFailed("Invalid FPR snapshot for restore");
@@ -324,16 +581,73 @@ public class Organism {
         }
     }
 
-    public Random getRandom() { return this.random; }
-
-    public Deque<ProcFrame> getFailureCallStack() { return this.failureCallStack; }
-
-    // --- NEUE ZENTRALE OPERANDEN-METHODEN ---
+    /**
+     * Gets a copy of the list of Location Registers (LRs).
+     *
+     * @return A new list containing the vector values of all LRs.
+     */
+    public List<Object> getLrs() {
+        return new ArrayList<>(this.lrs);
+    }
 
     /**
-     * Liest einen Wert aus einem Register, egal ob DR, PR oder FPR.
-     * @param id die volle ID des Registers (z.B. 5 für DR5, 1002 für PR2).
-     * @return der gelesene Wert.
+     * Sets the value of a Location Register (LR).
+     *
+     * @param index The index of the register.
+     * @param value The vector value to set.
+     * @return {@code true} on success, {@code false} on failure.
+     */
+    public boolean setLr(int index, int[] value) {
+        if (index >= 0 && index < this.lrs.size()) {
+            this.lrs.set(index, value);
+            return true;
+        }
+        this.instructionFailed("LR index out of bounds: " + index);
+        return false;
+    }
+
+    /**
+     * Gets the value of a Location Register (LR).
+     *
+     * @param index The index of the register.
+     * @return The vector value, or {@code null} on failure.
+     */
+    public int[] getLr(int index) {
+        if (index >= 0 && index < this.lrs.size()) {
+            return (int[]) this.lrs.get(index);
+        }
+        this.instructionFailed("LR index out of bounds: " + index);
+        return null;
+    }
+
+    /**
+     * Gets a reference to the Location Stack (LS).
+     *
+     * @return The location stack.
+     */
+    public Deque<int[]> getLocationStack() {
+        return this.locationStack;
+    }
+
+    /**
+     * Gets the organism-specific random number generator.
+     *
+     * @return The {@link Random} instance.
+     */
+    public Random getRandom() { return this.random; }
+
+    /**
+     * Gets the call stack as it was at the moment an instruction failure occurred.
+     *
+     * @return A copy of the call stack at the time of failure.
+     */
+    public Deque<ProcFrame> getFailureCallStack() { return this.failureCallStack; }
+
+    /**
+     * Reads a value from a register (DR, PR, or FPR) using its full numeric ID.
+     *
+     * @param id The full ID of the register (e.g., 5 for DR5, 1002 for PR2).
+     * @return The value read from the register.
      */
     public Object readOperand(int id) {
         if (id >= Instruction.FPR_BASE) return getFpr(id - Instruction.FPR_BASE);
@@ -342,10 +656,11 @@ public class Organism {
     }
 
     /**
-     * Schreibt einen Wert in ein Register, egal ob DR, PR oder FPR.
-     * @param id die volle ID des Registers.
-     * @param value der zu schreibende Wert.
-     * @return true, wenn das Schreiben erfolgreich war.
+     * Writes a value to a register (DR, PR, or FPR) using its full numeric ID.
+     *
+     * @param id The full ID of the register.
+     * @param value The value to write.
+     * @return {@code true} if the write was successful.
      */
     public boolean writeOperand(int id, Object value) {
         if (id >= Instruction.FPR_BASE) return setFpr(id - Instruction.FPR_BASE, value);

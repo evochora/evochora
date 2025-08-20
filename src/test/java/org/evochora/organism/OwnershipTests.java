@@ -33,7 +33,7 @@ public class OwnershipTests {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int arg : args) {
-            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
             environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
@@ -43,7 +43,7 @@ public class OwnershipTests {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int val : vector) {
-            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
             environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }
@@ -57,9 +57,9 @@ public class OwnershipTests {
         {
             Organism org = Organism.create(sim, new int[]{10, 10}, 2000, sim.getLogger());
             sim.addOrganism(org);
-            org.setDp(org.getIp());
+            org.setDp(0, org.getIp()); // CORRECTED
 
-            int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+            int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
             environment.setMolecule(Molecule.fromInt(payload), target);
             environment.setOwnerId(org.getId(), target[0], target[1]);
 
@@ -69,16 +69,16 @@ public class OwnershipTests {
             sim.tick();
 
             assertThat(org.isInstructionFailed()).as("SEEK should succeed on owned, non-empty cell").isFalse();
-            assertThat(org.getDp()).isEqualTo(target);
+            assertThat(org.getDp(0)).isEqualTo(target); // CORRECTED
         }
 
         // SEKI (immediate vector)
         {
             Organism org = Organism.create(sim, new int[]{20, 20}, 2000, sim.getLogger());
             sim.addOrganism(org);
-            org.setDp(org.getIp());
+            org.setDp(0, org.getIp()); // CORRECTED
 
-            int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+            int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
             environment.setMolecule(Molecule.fromInt(payload), target);
             environment.setOwnerId(org.getId(), target[0], target[1]);
 
@@ -87,16 +87,16 @@ public class OwnershipTests {
             sim.tick();
 
             assertThat(org.isInstructionFailed()).as("SEKI should succeed on owned, non-empty cell").isFalse();
-            assertThat(org.getDp()).isEqualTo(target);
+            assertThat(org.getDp(0)).isEqualTo(target); // CORRECTED
         }
 
         // SEKS (stack-based vector)
         {
             Organism org = Organism.create(sim, new int[]{30, 30}, 2000, sim.getLogger());
             sim.addOrganism(org);
-            org.setDp(org.getIp());
+            org.setDp(0, org.getIp()); // CORRECTED
 
-            int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+            int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
             environment.setMolecule(Molecule.fromInt(payload), target);
             environment.setOwnerId(org.getId(), target[0], target[1]);
 
@@ -106,7 +106,7 @@ public class OwnershipTests {
             sim.tick();
 
             assertThat(org.isInstructionFailed()).as("SEKS should succeed on owned, non-empty cell").isFalse();
-            assertThat(org.getDp()).isEqualTo(target);
+            assertThat(org.getDp(0)).isEqualTo(target); // CORRECTED
         }
     }
 
@@ -119,11 +119,10 @@ public class OwnershipTests {
         {
             Organism org = Organism.create(sim, new int[]{40, 10}, 2000, sim.getLogger());
             sim.addOrganism(org);
-            org.setDp(org.getIp());
+            org.setDp(0, org.getIp()); // CORRECTED
 
-            int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+            int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
             environment.setMolecule(Molecule.fromInt(payload), target);
-            // Set foreign owner (different from org.getId())
             environment.setOwnerId(org.getId() + 1, target[0], target[1]);
 
             org.setDr(1, vec);
@@ -132,16 +131,16 @@ public class OwnershipTests {
             sim.tick();
 
             assertThat(org.isInstructionFailed()).as("SEEK should fail on foreign-owned, non-empty cell").isTrue();
-            assertThat(org.getDp()).as("DP must not move on failure").isEqualTo(new int[]{40, 10});
+            assertThat(org.getDp(0)).as("DP must not move on failure").isEqualTo(new int[]{40, 10}); // CORRECTED
         }
 
         // SEKI failure on foreign-owned
         {
             Organism org = Organism.create(sim, new int[]{50, 20}, 2000, sim.getLogger());
             sim.addOrganism(org);
-            org.setDp(org.getIp());
+            org.setDp(0, org.getIp()); // CORRECTED
 
-            int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+            int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
             environment.setMolecule(Molecule.fromInt(payload), target);
             environment.setOwnerId(org.getId() + 2, target[0], target[1]);
 
@@ -150,16 +149,16 @@ public class OwnershipTests {
             sim.tick();
 
             assertThat(org.isInstructionFailed()).as("SEKI should fail on foreign-owned, non-empty cell").isTrue();
-            assertThat(org.getDp()).as("DP must not move on failure").isEqualTo(new int[]{50, 20});
+            assertThat(org.getDp(0)).as("DP must not move on failure").isEqualTo(new int[]{50, 20}); // CORRECTED
         }
 
         // SEKS failure on foreign-owned
         {
             Organism org = Organism.create(sim, new int[]{60, 30}, 2000, sim.getLogger());
             sim.addOrganism(org);
-            org.setDp(org.getIp());
+            org.setDp(0, org.getIp()); // CORRECTED
 
-            int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+            int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
             environment.setMolecule(Molecule.fromInt(payload), target);
             environment.setOwnerId(org.getId() + 3, target[0], target[1]);
 
@@ -169,7 +168,7 @@ public class OwnershipTests {
             sim.tick();
 
             assertThat(org.isInstructionFailed()).as("SEKS should fail on foreign-owned, non-empty cell").isTrue();
-            assertThat(org.getDp()).as("DP must not move on failure").isEqualTo(new int[]{60, 30});
+            assertThat(org.getDp(0)).as("DP must not move on failure").isEqualTo(new int[]{60, 30}); // CORRECTED
         }
     }
 }

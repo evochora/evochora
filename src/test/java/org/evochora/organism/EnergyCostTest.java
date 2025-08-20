@@ -33,7 +33,8 @@ public class EnergyCostTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int arg : args) {
-            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            // CORRECTED: Parameter order for getNextInstructionPosition
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment);
             environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
@@ -42,10 +43,10 @@ public class EnergyCostTest {
     void testPokeConsumesEnergyOnSuccess() {
         Organism org = Organism.create(sim, new int[]{10, 10}, 1000, sim.getLogger());
         sim.addOrganism(org);
-        org.setDp(org.getIp());
+        org.setDp(0, org.getIp()); // CORRECTED: Use DP 0
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED: Use DP 0
 
         // ensure target is empty
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), target);
@@ -69,10 +70,10 @@ public class EnergyCostTest {
     void testPokeConsumesEnergyEvenOnOccupiedTarget() {
         Organism org = Organism.create(sim, new int[]{20, 20}, 1000, sim.getLogger());
         sim.addOrganism(org);
-        org.setDp(org.getIp());
+        org.setDp(0, org.getIp()); // CORRECTED: Use DP 0
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED: Use DP 0
 
         // Make target occupied
         environment.setMolecule(new Molecule(Config.TYPE_DATA, 1), target);
@@ -97,10 +98,10 @@ public class EnergyCostTest {
     void testPeekDataConsumesEnergy() {
         Organism org = Organism.create(sim, new int[]{30, 30}, 1000, sim.getLogger());
         sim.addOrganism(org);
-        org.setDp(org.getIp());
+        org.setDp(0, org.getIp()); // CORRECTED: Use DP 0
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED: Use DP 0
 
         int dataVal = new Molecule(Config.TYPE_DATA, 33).toInt();
         environment.setMolecule(Molecule.fromInt(dataVal), target);
@@ -121,10 +122,10 @@ public class EnergyCostTest {
     void testPeekStructureOwnedBySelf_NoEnergyCost() {
         Organism org = Organism.create(sim, new int[]{40, 40}, 1000, sim.getLogger());
         sim.addOrganism(org);
-        org.setDp(org.getIp());
+        org.setDp(0, org.getIp()); // CORRECTED: Use DP 0
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED: Use DP 0
 
         int structVal = new Molecule(Config.TYPE_STRUCTURE, 10).toInt();
         environment.setMolecule(Molecule.fromInt(structVal), target);
@@ -147,10 +148,10 @@ public class EnergyCostTest {
     void testPeekStructureForeignConsumesEnergy() {
         Organism org = Organism.create(sim, new int[]{50, 50}, 1000, sim.getLogger());
         sim.addOrganism(org);
-        org.setDp(org.getIp());
+        org.setDp(0, org.getIp()); // CORRECTED: Use DP 0
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED: Use DP 0
 
         int structVal = new Molecule(Config.TYPE_STRUCTURE, 12).toInt();
         environment.setMolecule(Molecule.fromInt(structVal), target);
@@ -172,10 +173,10 @@ public class EnergyCostTest {
     void testPeekEnergyHarvestsAndClampsToMax() {
         Organism org = Organism.create(sim, new int[]{60, 60}, 100, sim.getLogger());
         sim.addOrganism(org);
-        org.setDp(org.getIp());
+        org.setDp(0, org.getIp()); // CORRECTED: Use DP 0
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(), vec, environment);
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED: Use DP 0
 
         int energyAvailable = 80;
         environment.setMolecule(new Molecule(Config.TYPE_ENERGY, energyAvailable), target);

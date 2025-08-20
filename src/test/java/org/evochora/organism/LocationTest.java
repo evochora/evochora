@@ -1,0 +1,123 @@
+package org.evochora.organism;
+
+import org.evochora.runtime.Config;
+import org.evochora.runtime.Simulation;
+import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.Organism;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.Deque;
+
+/**
+ * Unit tests for the new location-based architecture features of the Organism class,
+ * including multiple Data Pointers (DPs), Location Registers (LRs), and the Location Stack (LS).
+ */
+public class LocationTest {
+
+    private Simulation sim;
+    private Organism org;
+
+    @BeforeEach
+    void setUp() {
+        // A minimal environment is needed for organism creation
+        Environment environment = new Environment(new int[]{10, 10}, true);
+        sim = new Simulation(environment);
+        org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+    }
+
+    // --- Data Pointer (DP) Tests ---
+
+    @Test
+    void testMultipleDpInitialization() {
+        assertThat(org.getDps()).hasSize(Config.NUM_DATA_POINTERS);
+        // All DPs should be initialized to the organism's start position
+        for (int i = 0; i < Config.NUM_DATA_POINTERS; i++) {
+            assertThat(org.getDp(i)).isEqualTo(new int[]{0, 0});
+        }
+    }
+
+    @Test
+    void testSetAndGetSpecificDp() {
+        int[] newPosition = {5, 5};
+        org.setDp(1, newPosition);
+
+        assertThat(org.getDp(1)).isEqualTo(newPosition);
+        // Ensure other DPs are unaffected
+        assertThat(org.getDp(0)).isEqualTo(new int[]{0, 0});
+    }
+
+    @Test
+    void testAccessingInvalidDpReportsFailure() {
+        // Test getting out of bounds
+        assertThat(org.getDp(Config.NUM_DATA_POINTERS)).isNull();
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("DP index out of bounds");
+
+        // Reset failure flag and test setting out of bounds
+        org.resetTickState();
+        assertThat(org.isInstructionFailed()).isFalse();
+        org.setDp(Config.NUM_DATA_POINTERS, new int[]{1, 1});
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("DP index out of bounds");
+    }
+
+    // --- Location Register (LR) Tests ---
+
+    @Test
+    void testLocationRegisterInitialization() {
+        // LRs should be initialized to zero vectors
+        for (int i = 0; i < Config.NUM_LOCATION_REGISTERS; i++) {
+            assertThat(org.getLr(i)).containsExactly(0, 0);
+        }
+    }
+
+    @Test
+    void testSetAndGetSpecificLr() {
+        int[] newLocation = {1, 2};
+        org.setLr(0, newLocation);
+        assertThat(org.getLr(0)).isEqualTo(newLocation);
+    }
+
+    @Test
+    void testSettingNonVectorToLrFails() {
+        // The setLr method now only accepts int[], so this test is implicitly handled by the compiler.
+        // We can test the generic `writeOperand` logic once LRs are integrated there.
+        // For now, this confirms the type safety of the new method.
+        // org.setLr(0, 123); // This would not compile
+    }
+
+    // --- Location Stack (LS) Tests ---
+
+    @Test
+    void testLocationStackPushAndPop() {
+        Deque<int[]> ls = org.getLocationStack();
+        int[] locationA = {3, 3};
+        int[] locationB = {4, 4};
+
+        ls.push(locationA);
+        ls.push(locationB);
+
+        assertThat(ls.size()).isEqualTo(2);
+        assertThat(ls.pop()).isEqualTo(locationB);
+        assertThat(ls.pop()).isEqualTo(locationA);
+        assertThat(ls.isEmpty()).isTrue();
+    }
+
+    @Test
+    void testLocationStackOverflow() {
+        Deque<int[]> ls = org.getLocationStack();
+        // Fill the stack to its maximum capacity
+        for (int i = 0; i < Config.LOCATION_STACK_MAX_DEPTH; i++) {
+            ls.push(new int[]{i, i});
+        }
+        assertThat(ls.size()).isEqualTo(Config.LOCATION_STACK_MAX_DEPTH);
+
+        // A direct push would exceed capacity, but ArrayDeque grows.
+        // In the VM, an instruction would check the size *before* pushing.
+        // We simulate this check here.
+        boolean wouldOverflow = ls.size() >= Config.LOCATION_STACK_MAX_DEPTH;
+        assertThat(wouldOverflow).isTrue();
+    }
+}

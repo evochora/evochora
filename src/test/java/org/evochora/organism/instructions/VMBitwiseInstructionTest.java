@@ -41,7 +41,7 @@ public class VMBitwiseInstructionTest {
         placeInstruction(name);
         int[] currentPos = org.getIp();
         for (int arg : args) {
-            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
             environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
@@ -49,9 +49,9 @@ public class VMBitwiseInstructionTest {
     private void placeInstruction(String name, int reg, int immediateValue) {
         placeInstruction(name);
         int[] currentPos = org.getIp();
-        currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+        currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
         environment.setMolecule(new Molecule(Config.TYPE_DATA, reg), currentPos);
-        currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+        currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
         environment.setMolecule(Molecule.fromInt(immediateValue), currentPos);
     }
 

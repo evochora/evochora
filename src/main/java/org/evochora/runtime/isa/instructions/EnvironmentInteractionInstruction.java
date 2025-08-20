@@ -22,7 +22,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
     }
 
     @Override
-    public void execute(ExecutionContext context, ProgramArtifact artifact) { // Signatur angepasst
+    public void execute(ExecutionContext context, ProgramArtifact artifact) {
         Organism organism = context.getOrganism();
         try {
             String opName = getName();
@@ -60,7 +60,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         }
 
         if (this.targetCoordinate == null) {
-            this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, environment);
+            this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(0), vector, environment); // CORRECTED
         }
 
         if (getConflictStatus() == ConflictResolutionStatus.WON_EXECUTION || getConflictStatus() == ConflictResolutionStatus.NOT_APPLICABLE) {
@@ -73,10 +73,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             if (cost > 0) organism.takeEr(cost);
 
             if (environment.getMolecule(targetCoordinate).isEmpty()) {
-                // --- KORREKTUR BEGINNT HIER ---
-                // Setze nicht nur das Molekül, sondern auch den Eigentümer der Zelle.
                 environment.setMolecule(toWrite, organism.getId(), targetCoordinate);
-                // --- KORREKTUR ENDE ---
             } else {
                 organism.instructionFailed("POKE: Target cell is not empty.");
                 if (getConflictStatus() != ConflictResolutionStatus.NOT_APPLICABLE) setConflictStatus(ConflictResolutionStatus.LOST_TARGET_OCCUPIED);
@@ -102,7 +99,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         }
 
         if (this.targetCoordinate == null) {
-            this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, environment);
+            this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(0), vector, environment); // CORRECTED
         }
 
         Molecule s = environment.getMolecule(targetCoordinate);
@@ -138,7 +135,6 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         }
 
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), targetCoordinate);
-        // WICHTIG: Wenn eine Zelle geleert wird, sollte auch ihr Eigentum entfernt werden.
         environment.clearOwner(targetCoordinate);
     }
 
@@ -155,7 +151,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
 
             int[] currentIp = organism.getIpBeforeFetch();
 
-            if (opName.endsWith("S")) { // POKS, PEKS
+            if (opName.endsWith("S")) {
                 if (organism.getDataStack().size() >= (opName.equals("POKS") ? 2 : 1)) {
                     Iterator<Object> it = organism.getDataStack().iterator();
                     if (opName.equals("POKS")) it.next();
@@ -164,17 +160,17 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                         vector = (int[]) vecObj;
                     }
                 }
-            } else if (opName.endsWith("I")) { // POKI, PEKI
+            } else if (opName.endsWith("I")) {
                 int[] vec = new int[Config.WORLD_DIMENSIONS];
-                int[] ip = organism.getNextInstructionPosition(currentIp, environment, organism.getDvBeforeFetch());
+                int[] ip = organism.getNextInstructionPosition(currentIp, organism.getDvBeforeFetch(), environment); // CORRECTED
                 for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
                     Organism.FetchResult res = organism.fetchSignedArgument(ip, environment);
                     vec[i] = res.value();
                     ip = res.nextIp();
                 }
                 vector = vec;
-            } else { // POKE, PEEK
-                int[] ip = organism.getNextInstructionPosition(currentIp, environment, organism.getDvBeforeFetch());
+            } else {
+                int[] ip = organism.getNextInstructionPosition(currentIp, organism.getDvBeforeFetch(), environment); // CORRECTED
                 Organism.FetchResult vecRegArg = organism.fetchArgument(ip, environment);
                 int vecRegId = org.evochora.runtime.model.Molecule.fromInt(vecRegArg.value()).toScalarValue();
                 Object vecObj = readOperand(vecRegId);
@@ -184,7 +180,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             }
 
             if (vector != null) {
-                this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, environment);
+                this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(0), vector, environment); // CORRECTED
                 return List.of(this.targetCoordinate);
             }
 

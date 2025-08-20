@@ -25,6 +25,10 @@ public final class Config {
     public static final int DS_MAX_DEPTH = 1024;
     public static final int CALL_STACK_MAX_DEPTH = 1024;
     public static final int STACK_MAX_DEPTH = DS_MAX_DEPTH;
+    public static final int NUM_DATA_POINTERS = 2;
+    public static final int NUM_LOCATION_REGISTERS = 4;
+    public static final int LOCATION_STACK_MAX_DEPTH = 64;
+
 
     // Server/CLI Settings (moved from Setup)
     public static final String RUNS_DIRECTORY = "runs";

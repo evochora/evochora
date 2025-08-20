@@ -37,7 +37,7 @@ public class StateInstruction extends Instruction {
                     handleNrg(opName, operands);
                     break;
                 case "FORK":
-                    handleFork(operands, organism.getSimulation()); // Behält Simulation für FORK
+                    handleFork(operands, organism.getSimulation());
                     break;
                 case "DIFF":
                     handleDiff(operands);
@@ -66,8 +66,6 @@ public class StateInstruction extends Instruction {
         }
     }
 
-    // --- Private Helper Methods for Execution Logic ---
-
     private void handleTurn(List<Operand> operands) {
         if (operands.size() != 1) { organism.instructionFailed("Invalid operands for TURN."); return; }
         int[] newDv = (int[]) operands.get(0).value();
@@ -77,7 +75,7 @@ public class StateInstruction extends Instruction {
     }
 
     private void handleSync() {
-        organism.setDp(organism.getIpBeforeFetch());
+        organism.setDp(0, organism.getIpBeforeFetch()); // CORRECTED
     }
 
     private void handleNrg(String opName, List<Operand> operands) {
@@ -97,13 +95,12 @@ public class StateInstruction extends Instruction {
         int[] childDv = (int[]) operands.get(2).value();
         int totalCost = getCost(organism, simulation.getEnvironment(), null);
         if (energy > 0 && organism.getEr() >= totalCost) {
-            int[] childIp = organism.getTargetCoordinate(organism.getDp(), delta, simulation.getEnvironment());
+            int[] childIp = organism.getTargetCoordinate(organism.getDp(0), delta, simulation.getEnvironment()); // CORRECTED
             organism.takeEr(totalCost);
             Organism child = Organism.create(simulation, childIp, energy, organism.getLogger());
             child.setDv(childDv);
             child.setParentId(organism.getId());
             child.setBirthTick(simulation.getCurrentTick());
-            // programId intentionally not propagated per spec
             simulation.addNewOrganism(child);
         } else {
             organism.instructionFailed("FORK failed due to insufficient energy or invalid parameters.");
@@ -113,7 +110,7 @@ public class StateInstruction extends Instruction {
     private void handleDiff(List<Operand> operands) {
         if (operands.size() != 1) { organism.instructionFailed("Invalid operands for DIFF."); return; }
         int[] ip = organism.getIp();
-        int[] dp = organism.getDp();
+        int[] dp = organism.getDp(0); // CORRECTED
         int[] delta = new int[ip.length];
         for (int i = 0; i < ip.length; i++) {
             delta[i] = dp[i] - ip[i];
@@ -153,15 +150,14 @@ public class StateInstruction extends Instruction {
             return;
         }
         int[] vector = (int[]) operands.get(0).value();
-        int[] targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, environment);
+        int[] targetCoordinate = organism.getTargetCoordinate(organism.getDp(0), vector, environment); // CORRECTED
 
         Molecule moleculeAtTarget = environment.getMolecule(targetCoordinate);
-        // Allow seeking if the cell is empty OR owned by this organism; otherwise fail.
         int ownerIdAtTarget = environment.getOwnerId(targetCoordinate[0], targetCoordinate[1]);
         boolean ownedBySelf = ownerIdAtTarget == organism.getId();
 
         if (moleculeAtTarget.isEmpty() || ownedBySelf) {
-            organism.setDp(targetCoordinate);
+            organism.setDp(0, targetCoordinate); // CORRECTED
         } else {
             organism.instructionFailed("SEEK: Target cell is owned by another organism.");
         }
@@ -179,7 +175,7 @@ public class StateInstruction extends Instruction {
             targetReg = operands.get(0).rawSourceId();
             vector = (int[]) operands.get(1).value();
         }
-        int[] target = organism.getTargetCoordinate(organism.getDp(), vector, environment);
+        int[] target = organism.getTargetCoordinate(organism.getDp(0), vector, environment); // CORRECTED
         Molecule s = environment.getMolecule(target);
         if (opName.endsWith("S")) {
             organism.getDataStack().push(s.toInt());

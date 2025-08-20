@@ -21,9 +21,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * Adapter class to convert the internal state of a {@link Simulation} into a serializable
+ * {@link WorldStateMessage} for persistence and visualization.
+ */
 public final class WorldStateAdapter {
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
+    /**
+     * Creates a {@link WorldStateMessage} snapshot from the current state of the simulation.
+     * <p>
+     * In performance mode, expensive state conversions (like disassembly and detailed register formatting)
+     * are skipped to minimize overhead.
+     *
+     * @param simulation The simulation instance to snapshot.
+     * @return A message containing the complete world state for the current tick.
+     */
     public static WorldStateMessage fromSimulation(Simulation simulation) {
         long tick = simulation.getCurrentTick();
         long tsMicros = java.time.Instant.now().toEpochMilli() * 1000;
@@ -35,10 +48,9 @@ public final class WorldStateAdapter {
         for (Organism o : simulation.getOrganisms()) {
             if (o.isDead()) continue;
 
-            // KORREKTUR: Hole das spezifische Artefakt für diesen Organismus aus der Map.
             ProgramArtifact artifact = artifacts.get(o.getProgramId());
 
-            // Im Performance-Modus werden alle teuren Operationen übersprungen
+            // Expensive operations are skipped in performance mode
             String disassembledJson = perfMode ? "{}" : getDisassembledJson(o, artifact, simulation.getEnvironment());
             List<String> callStackNames = perfMode ? List.of() : getCallStackWithParams(o, artifact, tick);
             List<String> formattedFprs = perfMode ? List.of() : formatFprs(o, artifact);
@@ -47,12 +59,19 @@ public final class WorldStateAdapter {
             List<String> ds = perfMode ? List.of() : toFormattedList(o.getDataStack());
             List<String> fprsRaw = perfMode ? List.of() : toFormattedList(o.getFprs());
 
+            // NEW: Capture Location Registers and Stack only in debug mode
+            List<String> lrs = perfMode ? List.of() : toFormattedList(o.getLrs());
+            List<String> ls = perfMode ? List.of() : toFormattedList(o.getLocationStack());
+
+            List<List<Integer>> dpsAsLists = o.getDps().stream().map(WorldStateAdapter::toList).collect(Collectors.toList());
+
             organisms.add(new OrganismState(
                     o.getId(), o.getProgramId(), o.getParentId(), o.getBirthTick(), o.getEr(),
-                    toList(o.getIp()), toList(o.getDp()), toList(o.getDv()),
-                    o.getIp()[0], o.getEr(), // Note: ip[0] and er are likely duplicated, but kept for contract stability
+                    toList(o.getIp()), dpsAsLists, toList(o.getDv()),
+                    o.getIp()[0], o.getEr(),
                     drs, prs, ds, callStackNames, formattedFprs, fprsRaw,
-                    disassembledJson
+                    disassembledJson,
+                    lrs, ls // NEW: Pass new fields to constructor
             ));
         }
 
@@ -61,16 +80,14 @@ public final class WorldStateAdapter {
     }
 
     private static String getDisassembledJson(Organism o, ProgramArtifact artifact, Environment env) {
-        // Diese Methode erwartet jetzt ein einzelnes Artefakt, das null sein kann.
         if (artifact == null) return "{}";
         try {
-            // Temporären Kontext für das Disassemblieren erstellen, um die Trennung zu wahren
             ExecutionContext tempContext = new ExecutionContext(o, env, false);
             DisassembledInstruction disassembled = RuntimeDisassembler.INSTANCE.disassemble(tempContext, artifact);
             if (disassembled != null) {
                 return objectMapper.writeValueAsString(disassembled);
             }
-        } catch (Exception e) { /* Ignorieren */ }
+        } catch (Exception e) { /* Ignore */ }
         return "{}";
     }
 
@@ -174,37 +191,50 @@ public final class WorldStateAdapter {
             return List.of();
         }
 
+        // Build a random-access list of frames, with index 0 = top frame, increasing = older
+        List<Organism.ProcFrame> frames = new ArrayList<>(stack);
+
+        // Helper to resolve FPR chains forward through older frames until DR/PR
+        java.util.function.BiFunction<Integer, Integer, Integer> resolveBoundRegId = (startFrameIdx, fprIndex) -> {
+            int idx = startFrameIdx + 1; // search in older frames
+            int currentRegId = Instruction.FPR_BASE + fprIndex;
+            while (idx < frames.size()) {
+                Organism.ProcFrame fr = frames.get(idx);
+                Integer mapped = fr.fprBindings.get(currentRegId);
+                if (mapped == null) break;
+                currentRegId = mapped;
+                if (currentRegId < Instruction.FPR_BASE) break; // reached DR/PR
+                int nextFprIdx = currentRegId - Instruction.FPR_BASE;
+                idx++;
+                currentRegId = Instruction.FPR_BASE + nextFprIdx;
+            }
+            return currentRegId;
+        };
+
         List<String> formatted = new ArrayList<>();
         for (int i = 0; i < paramNames.size(); i++) {
             String paramName = paramNames.get(i);
             Integer boundRegId = topFrame.fprBindings.get(Instruction.FPR_BASE + i);
-
+            int finalRegId;
             if (boundRegId == null) {
-                int fprIdx = i;
-                java.util.Iterator<Organism.ProcFrame> it = stack.iterator();
-                boolean pastTop = false;
-                while (it.hasNext()) {
-                    Organism.ProcFrame fr = it.next();
-                    if (fr == topFrame) { pastTop = true; continue; }
-                    if (!pastTop) continue;
-                    Integer mapped = fr.fprBindings.get(Instruction.FPR_BASE + fprIdx);
-                    if (mapped != null) { boundRegId = mapped; break; }
-                }
+                finalRegId = resolveBoundRegId.apply(0, i);
+            } else {
+                finalRegId = boundRegId;
+            }
+            if (finalRegId >= Instruction.FPR_BASE) {
+                finalRegId = resolveBoundRegId.apply(0, finalRegId - Instruction.FPR_BASE);
             }
 
             Object value;
             String boundName;
-            if (boundRegId == null) {
-                boundName = "%FPR" + i;
-                value = organism.getFpr(i);
-            } else if (boundRegId < Instruction.PR_BASE) {
-                boundName = "%DR" + boundRegId;
-                value = organism.readOperand(boundRegId);
-            } else if (boundRegId < Instruction.FPR_BASE) {
-                boundName = "%PR" + (boundRegId - Instruction.PR_BASE);
-                value = organism.readOperand(boundRegId);
+            if (finalRegId < Instruction.PR_BASE) {
+                boundName = "%DR" + finalRegId;
+                value = organism.readOperand(finalRegId);
+            } else if (finalRegId < Instruction.FPR_BASE) {
+                boundName = "%PR" + (finalRegId - Instruction.PR_BASE);
+                value = organism.readOperand(finalRegId);
             } else {
-                int fidx = boundRegId - Instruction.FPR_BASE;
+                int fidx = finalRegId - Instruction.FPR_BASE;
                 boundName = "%FPR" + fidx;
                 value = organism.getFpr(fidx);
             }

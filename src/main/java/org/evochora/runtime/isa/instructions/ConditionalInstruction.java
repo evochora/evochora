@@ -39,7 +39,7 @@ public class ConditionalInstruction extends Instruction {
                 if (!organism.isUnitVector(vector)) {
                     return;
                 }
-                int[] targetCoordinate = organism.getTargetCoordinate(organism.getDp(), vector, environment);
+                int[] targetCoordinate = organism.getTargetCoordinate(organism.getDp(0), vector, environment); // CORRECTED
                 int ownerId = environment.getOwnerId(targetCoordinate);
                 if (ownerId != organism.getId()) {
                     organism.skipNextInstruction(environment);
@@ -91,10 +91,5 @@ public class ConditionalInstruction extends Instruction {
         } catch (NoSuchElementException e) {
             organism.instructionFailed("Stack underflow during conditional operation.");
         }
-    }
-
-    public static Instruction plan(Organism organism, Environment environment) {
-        int fullOpcodeId = environment.getMolecule(organism.getIp()).toInt();
-        return new ConditionalInstruction(organism, fullOpcodeId);
     }
 }

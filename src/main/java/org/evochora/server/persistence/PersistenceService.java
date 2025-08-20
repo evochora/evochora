@@ -20,7 +20,10 @@ import java.util.Date;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Consumes messages and persists them to a per-run SQLite database.
+ * Consumes messages from a queue and persists them to a per-run SQLite database.
+ * <p>
+ * This service runs in its own thread, decoupling the simulation engine from disk I/O.
+ * In performance mode, it omits persisting expensive debug-only information like program artifacts.
  */
 public final class PersistenceService implements IControllable, Runnable {
 
@@ -39,6 +42,12 @@ public final class PersistenceService implements IControllable, Runnable {
     private String jdbcUrlInUse;
     private volatile long lastPersistedTick = -1L;
 
+    /**
+     * Constructs a new PersistenceService.
+     *
+     * @param queue The message queue to consume from.
+     * @param performanceMode If true, debug-only information will not be persisted.
+     */
     public PersistenceService(ITickMessageQueue queue, boolean performanceMode) {
         this.queue = queue;
         this.performanceMode = performanceMode;
@@ -47,6 +56,13 @@ public final class PersistenceService implements IControllable, Runnable {
         this.thread.setDaemon(true);
     }
 
+    /**
+     * Constructs a new PersistenceService with a specific JDBC URL, useful for testing.
+     *
+     * @param queue The message queue to consume from.
+     * @param performanceMode If true, debug-only information will not be persisted.
+     * @param jdbcUrlOverride The JDBC URL to use for the database connection.
+     */
     public PersistenceService(ITickMessageQueue queue, boolean performanceMode, String jdbcUrlOverride) {
         this.queue = queue;
         this.performanceMode = performanceMode;
@@ -89,7 +105,6 @@ public final class PersistenceService implements IControllable, Runnable {
     private void setupDatabase() {
         try {
             if (jdbcUrlOverride != null && !jdbcUrlOverride.isBlank()) {
-                // In-memory or externally provided JDBC URL (e.g., for tests)
                 jdbcUrlInUse = jdbcUrlOverride;
                 dbFilePath = null;
                 connection = DriverManager.getConnection(jdbcUrlInUse);
@@ -106,12 +121,19 @@ public final class PersistenceService implements IControllable, Runnable {
                 st.execute("CREATE TABLE IF NOT EXISTS ticks (tickNumber INTEGER PRIMARY KEY, timestampMicroseconds INTEGER, organismCount INTEGER)");
                 st.execute("CREATE TABLE IF NOT EXISTS organism_states (" +
                         "tickNumber INTEGER, organismId INTEGER, programId TEXT, parentId INTEGER NULL, " +
-                        "birthTick INTEGER, energy INTEGER, positionJson TEXT, dpJson TEXT, dvJson TEXT, " +
+                        "birthTick INTEGER, energy INTEGER, positionJson TEXT, dpsJson TEXT, dvJson TEXT, " + // CHANGED: dpJson -> dpsJson
                         "stateJson TEXT, disassembledInstructionJson TEXT, " +
                         "dataRegisters TEXT, procRegisters TEXT, dataStack TEXT, callStack TEXT, formalParameters TEXT, fprs TEXT, " +
+                        "locationRegisters TEXT, locationStack TEXT, " + // NEW COLUMNS
                         "PRIMARY KEY (tickNumber, organismId))");
-                // Schema-Upgrade: fehlende Spalte fprs hinzufügen (idempotent)
-                try { st.execute("ALTER TABLE organism_states ADD COLUMN fprs TEXT"); } catch (Exception ignore) {}
+                // Idempotent schema upgrades for backward compatibility
+                try { st.execute("ALTER TABLE organism_states ADD COLUMN fprs TEXT"); } catch (SQLException ignore) {}
+                try { st.execute("ALTER TABLE organism_states ADD COLUMN locationRegisters TEXT"); } catch (SQLException ignore) {}
+                try { st.execute("ALTER TABLE organism_states ADD COLUMN locationStack TEXT"); } catch (SQLException ignore) {}
+                // Rename dpJson to dpsJson if the old column exists
+                try { st.execute("ALTER TABLE organism_states RENAME COLUMN dpJson TO dpsJson"); } catch (SQLException ignore) {}
+
+
                 st.execute("CREATE TABLE IF NOT EXISTS cell_states (tickNumber INTEGER, positionJson TEXT, type INTEGER, value INTEGER, ownerId INTEGER, PRIMARY KEY (tickNumber, positionJson))");
 
                 st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
@@ -138,7 +160,7 @@ public final class PersistenceService implements IControllable, Runnable {
 
     @Override
     public void run() {
-        log.info("PersistenceService started, writing to {}", dbFilePath);
+        log.info("PersistenceService started, writing to {}", dbFilePath != null ? dbFilePath : jdbcUrlInUse);
         try {
             while (running.get()) {
                 if (paused.get()) { Thread.onSpinWait(); continue; }
@@ -160,7 +182,6 @@ public final class PersistenceService implements IControllable, Runnable {
     }
 
     private void handleProgramArtifact(ProgramArtifactMessage pam) throws Exception {
-        // Im Performance-Modus keine Programmartifacts persistieren (keine Debug-Infos)
         if (this.performanceMode) return;
         String json = objectMapper.writeValueAsString(pam.programArtifact());
         try (PreparedStatement ps = connection.prepareStatement("INSERT OR REPLACE INTO programs(programId, artifactJson) VALUES (?, ?)")) {
@@ -181,9 +202,10 @@ public final class PersistenceService implements IControllable, Runnable {
         }
 
         final String orgSql = "INSERT OR REPLACE INTO organism_states(" +
-                "tickNumber, organismId, programId, parentId, birthTick, energy, positionJson, dpJson, dvJson, " +
-                "stateJson, disassembledInstructionJson, dataRegisters, procRegisters, dataStack, callStack, formalParameters, fprs) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "tickNumber, organismId, programId, parentId, birthTick, energy, positionJson, dpsJson, dvJson, " +
+                "stateJson, disassembledInstructionJson, dataRegisters, procRegisters, dataStack, callStack, formalParameters, fprs, " +
+                "locationRegisters, locationStack) " + // NEW COLUMNS
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"; // UPDATED placeholder count
 
         try (PreparedStatement psOrg = connection.prepareStatement(orgSql)) {
             for (var org : wsm.organismStates()) {
@@ -194,7 +216,7 @@ public final class PersistenceService implements IControllable, Runnable {
                 psOrg.setLong(5, org.birthTick());
                 psOrg.setLong(6, org.energy());
                 psOrg.setString(7, objectMapper.writeValueAsString(org.position()));
-                psOrg.setString(8, objectMapper.writeValueAsString(org.dp()));
+                psOrg.setString(8, objectMapper.writeValueAsString(org.dps())); // CHANGED: from dp() to dps()
                 psOrg.setString(9, objectMapper.writeValueAsString(org.dv()));
 
                 java.util.Map<String, Object> stateMap = new java.util.LinkedHashMap<>();
@@ -208,9 +230,11 @@ public final class PersistenceService implements IControllable, Runnable {
                 psOrg.setString(14, objectMapper.writeValueAsString(org.dataStack()));
                 psOrg.setString(15, objectMapper.writeValueAsString(org.callStack()));
                 psOrg.setString(16, objectMapper.writeValueAsString(org.formalParameters()));
-                // FPRs roh formatiert mitspeichern (nur Debug-Mode schreibt sie tatsächlich; im Perf-Mode leere Liste)
-                java.util.List<String> fprs = (org instanceof org.evochora.server.contracts.OrganismState ost) ? ost.fprs() : java.util.List.of();
-                psOrg.setString(17, objectMapper.writeValueAsString(fprs));
+                psOrg.setString(17, objectMapper.writeValueAsString(org.fprs()));
+
+                // NEW: Persist location registers and stack
+                psOrg.setString(18, objectMapper.writeValueAsString(org.locationRegisters()));
+                psOrg.setString(19, objectMapper.writeValueAsString(org.locationStack()));
 
                 psOrg.addBatch();
             }

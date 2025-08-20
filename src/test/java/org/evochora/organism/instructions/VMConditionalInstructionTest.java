@@ -40,7 +40,7 @@ public class VMConditionalInstructionTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int arg : args) {
-            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment);
             environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
@@ -50,7 +50,7 @@ public class VMConditionalInstructionTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int val : vector) {
-            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment);
             environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }
@@ -58,14 +58,14 @@ public class VMConditionalInstructionTest {
     private void placeFollowingAddi(int instructionLength) {
         int[] nextIp = org.getIp();
         for (int i = 0; i < instructionLength; i++) {
-            nextIp = org.getNextInstructionPosition(nextIp, environment, org.getDv());
+            nextIp = org.getNextInstructionPosition(nextIp, org.getDv(), environment);
         }
 
         int addiOpcode = Instruction.getInstructionIdByName("ADDI");
         environment.setMolecule(new Molecule(Config.TYPE_CODE, addiOpcode), nextIp);
-        int[] arg1Ip = org.getNextInstructionPosition(nextIp, environment, org.getDv());
+        int[] arg1Ip = org.getNextInstructionPosition(nextIp, org.getDv(), environment);
         environment.setMolecule(new Molecule(Config.TYPE_DATA, 0), arg1Ip);
-        int[] arg2Ip = org.getNextInstructionPosition(arg1Ip, environment, org.getDv());
+        int[] arg2Ip = org.getNextInstructionPosition(arg1Ip, org.getDv(), environment);
         environment.setMolecule(new Molecule(Config.TYPE_DATA, 1), arg2Ip);
     }
 
@@ -419,7 +419,7 @@ public class VMConditionalInstructionTest {
     @Test
     void testIfmr_Owned_ExecutesNext() {
         org.setDr(1, new int[]{0, 1}); // unit vector
-        int[] target = org.getTargetCoordinate(org.getDp(), new int[]{0, 1}, environment);
+        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment); // CORRECTED
         environment.setOwnerId(org.getId(), target);
         placeInstruction("IFMR", 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMR")));

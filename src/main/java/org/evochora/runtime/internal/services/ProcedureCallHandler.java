@@ -9,9 +9,6 @@ import org.evochora.runtime.model.Environment;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Isoliert die komplexe Logik für Prozeduraufrufe (CALL) und Rücksprünge (RET).
- */
 public class ProcedureCallHandler {
 
     private final ExecutionContext context;
@@ -20,12 +17,6 @@ public class ProcedureCallHandler {
         this.context = context;
     }
 
-    /**
-     * Führt einen Prozeduraufruf (CALL) aus.
-     *
-     * @param targetDelta Der programmrelative Vektor zum Einsprungspunkt der Prozedur.
-     * @param artifact Das ProgramArtifact, das für Debugging-Zwecke verwendet wird (kann null sein).
-     */
     public void executeCall(int[] targetDelta, ProgramArtifact artifact) {
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
@@ -35,7 +26,6 @@ public class ProcedureCallHandler {
             return;
         }
 
-        // 1. Parameter-Binding auflösen
         CallBindingResolver bindingResolver = new CallBindingResolver(context);
         int[] bindings = bindingResolver.resolveBindings();
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
@@ -52,24 +42,20 @@ public class ProcedureCallHandler {
         int instructionLength = 1 + Config.WORLD_DIMENSIONS;
         int[] returnIp = ipBeforeFetch;
         for (int i = 0; i < instructionLength; i++) {
-            returnIp = organism.getNextInstructionPosition(returnIp, environment, organism.getDvBeforeFetch());
+            returnIp = organism.getNextInstructionPosition(returnIp, organism.getDvBeforeFetch(), environment); // CORRECTED
         }
 
         Object[] prsSnapshot = organism.getPrs().toArray();
         Object[] fprsSnapshot = organism.getFprs().toArray();
 
-        String procName = "UNKNOWN"; // Fallback
+        String procName = "UNKNOWN";
 
-        // Die Ziel-IP wird IMMER auf die gleiche Weise berechnet: Startposition + Vektor.
-        // Das Artefakt wird hier nur noch für Debugging-Informationen (procName) verwendet.
         int[] targetIp = organism.getTargetCoordinate(organism.getInitialPosition(), targetDelta, environment);
 
         if (artifact != null) {
-            // Logik zur Ermittlung des Prozedurnamens (nur für Debugging)
             int[] origin = organism.getInitialPosition();
             int[] relTarget = new int[targetDelta.length];
             for (int i = 0; i < targetDelta.length; i++) {
-                // Korrektur: Die absolute Ziel-IP muss zur Berechnung der relativen Koordinate verwendet werden
                 relTarget[i] = targetIp[i] - origin[i];
             }
 
@@ -89,7 +75,6 @@ public class ProcedureCallHandler {
         Organism.ProcFrame frame = new Organism.ProcFrame(procName, returnIp, prsSnapshot, fprsSnapshot, fprBindings);
         organism.getCallStack().push(frame);
 
-        // Copy-In: Parameter in FPRs schreiben
         if (bindings != null) {
             for (int i = 0; i < bindings.length; i++) {
                 Object value = organism.readOperand(bindings[i]);
@@ -97,14 +82,10 @@ public class ProcedureCallHandler {
             }
         }
 
-        // Zum Prozedur-Einsprungspunkt springen
         organism.setIp(targetIp);
         organism.setSkipIpAdvance(true);
     }
 
-    /**
-     * Führt eine Rückkehr aus einer Prozedur (RET) aus.
-     */
     public void executeReturn() {
         Organism organism = context.getOrganism();
 
@@ -114,7 +95,6 @@ public class ProcedureCallHandler {
         }
         Organism.ProcFrame returnFrame = organism.getCallStack().pop();
 
-        // Zustand wiederherstellen
         organism.restorePrs(returnFrame.savedPrs);
         organism.setIp(returnFrame.absoluteReturnIp);
         organism.setSkipIpAdvance(true);

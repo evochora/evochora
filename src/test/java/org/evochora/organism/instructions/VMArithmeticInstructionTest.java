@@ -41,7 +41,7 @@ public class VMArithmeticInstructionTest {
         placeInstruction(name);
         int[] currentPos = org.getIp();
         for (int arg : args) {
-            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
             environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
@@ -49,9 +49,9 @@ public class VMArithmeticInstructionTest {
     private void placeInstruction(String name, int reg, int immediateValue) {
         placeInstruction(name);
         int[] currentPos = org.getIp();
-        currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+        currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
         environment.setMolecule(new Molecule(Config.TYPE_DATA, reg), currentPos);
-        currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+        currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
         environment.setMolecule(new Molecule(Config.TYPE_DATA, immediateValue), currentPos);
     }
 
@@ -183,8 +183,6 @@ public class VMArithmeticInstructionTest {
 
     @Test
     void testMods() {
-        // Top is operand1 (dividend), next is operand2 (divisor): compute 43 % 6
-        // Top is operand1 (dividend), next is operand2 (divisor): compute 43 % 6
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 6).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 43).toInt());
         placeInstruction("MODS");

@@ -37,7 +37,7 @@ public class VMControlFlowInstructionTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int val : vector) {
-            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
             environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }
@@ -47,7 +47,7 @@ public class VMControlFlowInstructionTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int arg : args) {
-            currentPos = org.getNextInstructionPosition(currentPos, environment, org.getDv());
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
             environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
@@ -77,11 +77,9 @@ public class VMControlFlowInstructionTest {
 
     @Test
     void testJmpr() {
-        // JMPR interpretiert den Vektor im Register als relative Koordinate zur aktuellen IP.
         int[] jumpVector = new int[]{12};
-        int[] currentIp = org.getIp(); // IP vor der Ausführung (z.B. [5])
-        // Das erwartete Ziel ist die aktuelle Position PLUS der Sprungvektor.
-        int[] expectedIp = org.getTargetCoordinate(currentIp, jumpVector, environment); // Erwartet: [17]
+        int[] currentIp = org.getIp();
+        int[] expectedIp = org.getTargetCoordinate(currentIp, jumpVector, environment);
 
         org.setDr(0, jumpVector);
         placeInstruction("JMPR", 0);
@@ -95,7 +93,6 @@ public class VMControlFlowInstructionTest {
     void testJmps() {
         int[] jumpDelta = new int[]{8};
         int[] expectedIp = org.getTargetCoordinate(org.getIp(), jumpDelta, environment);
-        // Vektor oben auf den Stack legen
         org.getDataStack().push(jumpDelta);
         placeInstruction("JMPS");
 
@@ -106,14 +103,10 @@ public class VMControlFlowInstructionTest {
 
     @Test
     void testRet() {
-        // Ein Return-Frame vorbereiten. Die absolute Rücksprungadresse ist die
-        // Position nach der RET-Instruktion (Länge 1).
-        // Startposition ist [5], also ist die Rücksprungadresse [6].
         int[] expectedIp = new int[]{6};
         Object[] prsSnapshot = org.getPrs().toArray(new Object[0]);
         Object[] fprsSnapshot = org.getFprs().toArray(new Object[0]);
 
-        // KORREKTUR: Verwende den neuen Konstruktor und eine absolute IP.
         org.getCallStack().push(new Organism.ProcFrame("TEST_PROC", expectedIp, prsSnapshot, fprsSnapshot, java.util.Collections.emptyMap()));
 
         placeInstruction("RET");

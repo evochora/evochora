@@ -111,7 +111,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         while(cellsStmt.step()) cells.push(cellsStmt.getAsObject());
         cellsStmt.free();
 
-        const orgStmt = db.prepare("SELECT organismId, programId, birthTick, energy, positionJson, dpJson, dvJson, disassembledInstructionJson, dataRegisters, procRegisters, dataStack, callStack, formalParameters, fprs FROM organism_states WHERE tickNumber = :tick");
+        const orgStmt = db.prepare("SELECT organismId, programId, birthTick, energy, positionJson, dpsJson, dvJson, disassembledInstructionJson, dataRegisters, procRegisters, dataStack, callStack, formalParameters, fprs, locationRegisters, locationStack FROM organism_states WHERE tickNumber = :tick");
         orgStmt.bind({ ':tick': tick });
         const organisms = [];
         while(orgStmt.step()) {
@@ -123,6 +123,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 orgData.callStack = JSON.parse(orgData.callStack);
                 orgData.formalParameters = JSON.parse(orgData.formalParameters);
                 orgData.fprs = JSON.parse(orgData.fprs || '[]');
+                orgData.locationRegisters = JSON.parse(orgData.locationRegisters || '[]');
+                orgData.locationStack = JSON.parse(orgData.locationStack || '[]');
             } catch(e) { console.error("Fehler beim Parsen von Organismus-Daten:", e); }
             organisms.push(orgData);
         }
@@ -418,6 +420,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const drNorm = (org.dataRegisters || []).map(shorten);
             const prNorm = (org.procRegisters || []).map(shorten);
             const fprNorm = (org.fprs || []).map(shorten);
+            const lrNorm = (org.locationRegisters || []).map(shorten);
+            const lsNorm = (org.locationStack || []).map(shorten);
             const drLine = drNorm.map((v,i)=>`<span${markChanged(v, (prevState.dr||[])[i])}>${i}=${v}</span>`).join(' ');
             const prLine = prNorm.map((v,i)=>`<span${markChanged(v, (prevState.pr||[])[i])}>${i}=${v}</span>`).join(' ');
             const fprLine = fprNorm.map((v,i)=>`<span${markChanged(v, (prevState.fpr||[])[i])}>${i}=${v}</span>`).join(' ');
@@ -436,6 +440,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 ${kv('DR:', drLine, false)}
 ${kv('PR:', prLine, false)}
 ${kv('FPR:', fprLine, false)}
+${kv('LR:', lrNorm.join(' ')||'[]', false)}
+${kv('LS:', lsNorm.join(' ')||'[]', false)}
 ${kv('DS:', dsShort.join(' ')||'[]', dsChanged)}
 ${kv('CS:', csLines.length? csLines.join('<br>') : '[]', csChanged)}
 </div>`;
@@ -453,7 +459,7 @@ ${kv('CS:', csLines.length? csLines.join('<br>') : '[]', csChanged)}
             titleEl.style.fontSize = '16px';
             titleEl.style.margin = '6px 0 6px';
         }
-        const statusLine = `IP: ${org.positionJson} | ER: ${org.energy} | DP: ${org.dpJson} | DV: ${org.dvJson}`;
+        const statusLine = `IP: ${org.positionJson} | ER: ${org.energy} | DPs: ${org.dpsJson || '[]'} | DV: ${org.dvJson}`;
         const debugNoteHtml = isPerfMode ? `<div style=\"margin:6px 0;color:#888;font-size:0.8em;\">No debug info available</div>` : '';
         const instrBoxHtml = isPerfMode ? '' : `<div class=\"code-view\" style=\"font-size:0.85em;\">${shorten(instructionHtml)}</div>`;
         // Reihenfolge: Status, (Perf-Hinweis), Instruktion (nur Debug), Register+CS (nur Debug), Quelltext (nur Debug)
