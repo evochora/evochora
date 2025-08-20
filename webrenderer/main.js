@@ -175,6 +175,42 @@ document.addEventListener('DOMContentLoaded', async () => {
             const matches = line.match(/%[A-Za-z0-9_]+/g);
             if (!matches) return line;
             let out = line;
+            // 1) Annotate procedure header line: .PROC NAME ... WITH ...
+            out = out.replace(/^(\s*\.PROC\s+([A-Za-z_.][A-Za-z0-9_.]*))([^\n]*)$/i, (m, head, procName, rest) => {
+                // add address to procName if we can resolve a label
+                try {
+                    const labelAddrToName = artifactObj.labelAddressToName || {};
+                    const addrToCoord = artifactObj.linearAddressToCoord || {};
+                    let procAddr = null;
+                    for (const [addr, name] of Object.entries(labelAddrToName)) {
+                        if (String(name).toUpperCase() === String(procName).toUpperCase()) {
+                            const coord = addrToCoord[addr] || addrToCoord[parseInt(addr)];
+                            if (Array.isArray(coord)) procAddr = coord.join('|');
+                            break;
+                        }
+                    }
+                    if (procAddr) {
+                        head = `${head}<span class=\"injected-value\">[${procAddr}]</span>`;
+                    }
+                } catch {}
+                // annotate formal params after WITH
+                const params = paramNames || [];
+                let r = rest;
+                if (params.length > 0) {
+                    for (let i = 0; i < params.length; i++) {
+                        const pName = params[i];
+                        const escapedP = escapeRegExp(pName);
+                        let bracketStr = `[%FPR${i}=N/A]`;
+                        if (Array.isArray(orgObj.formalParameters) && orgObj.formalParameters[i]) {
+                            const mm = String(orgObj.formalParameters[i]).match(/\[(.*?)\]=(.*)$/);
+                            if (mm) bracketStr = `[${shorten(mm[1] + '=' + mm[2])}]`;
+                        }
+                        const rx = new RegExp(`(^|[^A-Za-z0-9_])(${escapedP})(?![^<]*>)(?![A-Za-z0-9_])`, 'g');
+                        r = r.replace(rx, `$1$2<span class=\"injected-value\">${bracketStr}</span>`);
+                    }
+                }
+                return `${head}${r}`;
+            });
             for (const alias of matches) {
                 const regId = artifactObj.registerAliasMap[alias];
                 if (regId == null) continue;
@@ -188,9 +224,39 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             return out;
         };
+        const annotateLabels = (line, artifactObj) => {
+            if (!artifactObj) return line;
+            const labelAddrToName = artifactObj.labelAddressToName || {};
+            const addrToCoord = artifactObj.linearAddressToCoord || {};
+            // Build name -> coord cache
+            const nameToCoord = {};
+            for (const [addrKey, name] of Object.entries(labelAddrToName)) {
+                const coord = addrToCoord[addrKey] || addrToCoord[parseInt(addrKey)];
+                if (Array.isArray(coord)) nameToCoord[name] = coord;
+            }
+            let out = line;
+            // Annotate label definitions at start of line: LABEL:
+            out = out.replace(/^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:(.*)$/,(m, pre, lbl, rest)=>{
+                const coord = nameToCoord[lbl];
+                if (!coord) return m;
+                const ann = `<span class=\"injected-value\">[${coord.join('|')}]</span>`;
+                return `${pre}${lbl}${ann}:${rest}`;
+            });
+            // Annotate label references in text (e.g., CALL MY_LABEL) with address only (no redundant =value). Avoid double brackets.
+            const tokenRegex = /(^|[^A-Za-z0-9_])([A-Za-z_][A-Za-z0-9_]*)(?![^<]*>)(?![A-Za-z0-9_])/g;
+            out = out.replace(tokenRegex, (match, pre, tok) => {
+                const coord = nameToCoord[tok];
+                if (!coord) return match;
+                // Avoid double annotation or cases where already annotated as [addr]=[addr]
+                if (new RegExp(`${tok}\\[`).test(out)) return match; // already followed by [ ... ]
+                if (new RegExp(`${tok}<span class=\\"injected-value\\"`).test(out)) return match;
+                const ann = `<span class=\"injected-value\">[${coord.join('|')}]</span>`;
+                return `${pre}${tok}${ann}`;
+            });
+            return out;
+        };
         const annotateLineByFormalParams = (line, artifactObj, orgObj) => {
             if (!artifactObj || !artifactObj.procNameToParamNames || !orgObj || !Array.isArray(orgObj.callStack) || orgObj.callStack.length === 0) return line;
-            if (line.includes('injected-value')) return line; // schon annotiert
             const topEntry = orgObj.callStack[orgObj.callStack.length - 1];
             if (!topEntry) return line;
             // Prozedurname aus erstem Token extrahieren, auch wenn Parameter angehängt sind
@@ -215,6 +281,58 @@ document.addEventListener('DOMContentLoaded', async () => {
                 out = out.replace(regex, `$1$2<span class=\"injected-value\">${shorten(bracketStr)}</span>`);
             }
             return out;
+        };
+
+        // Annotate macro-like parameters (e.g., IFI REGISTER EXPECTED_LITERAL) by mapping tokens to disassembled args
+        const annotateMacroParams = (line, instructionObj, artifactObj, orgObj) => {
+            try {
+                if (!instructionObj || !Array.isArray(instructionObj.arguments)) return line;
+                const m = line.match(/^\s*([A-Za-z_.][A-Za-z0-9_.]*)\s+(.+)$/);
+                if (!m) return line;
+                const firstToken = m[1];
+                if (firstToken.startsWith('.')) return line; // skip directives like .PROC
+                if (typeof instructionObj.opcodeName === 'string' && firstToken.toUpperCase() !== String(instructionObj.opcodeName).toUpperCase()) {
+                    // opcode mismatch → likely not an instruction line (e.g., header). Skip to avoid wrong annotations
+                    return line;
+                }
+                const paramsPart = m[2];
+                const tokens = paramsPart.split(/\s+/).filter(Boolean);
+                const exclude = new Set(['WITH','EXPORT','IMPORT','AS','MACRO','ENDM']);
+                // Exclude formal param names of current proc to avoid clobbering with FPRs
+                let formalParamNames = [];
+                try {
+                    if (artifactObj && artifactObj.procNameToParamNames && orgObj && Array.isArray(orgObj.callStack) && orgObj.callStack.length > 0) {
+                        const topEntry = orgObj.callStack[orgObj.callStack.length - 1];
+                        const currentProc = String(topEntry).trim().split(/\s+/)[0];
+                        formalParamNames = artifactObj.procNameToParamNames[currentProc ? currentProc.toUpperCase() : currentProc] || [];
+                    }
+                } catch {}
+                formalParamNames.forEach(n => exclude.add(String(n).toUpperCase()));
+                // Exclude known label names
+                try {
+                    const lan = artifactObj && artifactObj.labelAddressToName ? Object.values(artifactObj.labelAddressToName) : [];
+                    lan.forEach(n => exclude.add(String(n).toUpperCase()))
+                } catch {}
+                let out = line;
+                let argIdx = 0;
+                for (let i = 0; i < tokens.length && argIdx < instructionObj.arguments.length; i++) {
+                    const tok = tokens[i];
+                    // Only uppercase identifiers without % treated as macro params
+                    if (!/^[A-Z][A-Z0-9_]*$/.test(tok)) continue;
+                    if (exclude.has(tok.toUpperCase())) continue;
+                    const arg = instructionObj.arguments[argIdx++];
+                    const escapedTok = escapeRegExp(tok);
+                    const alreadyAnnotated = new RegExp(`${escapedTok}<span class=\\"injected-value\\"`).test(out);
+                    if (alreadyAnnotated) continue;
+                    const valuePart = shorten(arg.fullDisplayValue);
+                    const annotation = arg.type === 'register'
+                        ? `<span class=\"injected-value\">[${arg.name}=${valuePart}]</span>`
+                        : `<span class=\"injected-value\">[${valuePart}]</span>`;
+                    const regex = new RegExp(`(^|[^A-Za-z0-9_])(${escapedTok})(?![^<]*>)(?![A-Za-z0-9_])`, 'g');
+                    out = out.replace(regex, `$1$2${annotation}`);
+                }
+                return out;
+            } catch { return line; }
         };
 
         // Basale Debug-Ausgaben
@@ -292,28 +410,33 @@ document.addEventListener('DOMContentLoaded', async () => {
                          const instruction = JSON.parse(org.disassembledInstructionJson);
                             console.debug('[WR] disassembled for line', lineNum, instruction);
                             if (instruction && Array.isArray(instruction.arguments)) {
+                                // Annotate macro-like parameter tokens positionally
+                                processedLine = annotateMacroParams(processedLine, instruction, artifact, org);
+                                // Limit register token annotation to CALL to avoid duplicates
                                 const isRealCall = instruction.opcodeName === 'CALL';
-                                instruction.arguments
-                                    .filter(arg => arg.type === 'register')
-                                    .forEach(arg => {
-                                        // Disassembly-basierte Annotation nur bei echtem CALL, um Duplikate in PUSH-Ticks zu vermeiden
-                                        if (!isRealCall) return;
-                                        let tokenToReplace = arg.name;
-                                        if (artifact.registerAliasMap) {
+                                if (isRealCall) {
+                                    instruction.arguments
+                                        .filter(arg => arg.type === 'register')
+                                        .forEach(arg => {
+                                            let tokenToReplace = arg.name;
+                                            if (artifact.registerAliasMap) {
                                 const alias = Object.keys(artifact.registerAliasMap).find(key => artifact.registerAliasMap[key] === arg.value);
-                                            if (alias) tokenToReplace = alias;
-                                        }
-                                        const alreadyAnnotated = new RegExp(`${escapeRegExp(tokenToReplace)}<span class=\"injected-value\"`).test(processedLine);
-                                        if (!alreadyAnnotated) {
-                                            const annotation = `<span class=\"injected-value\">[${arg.name}=${shorten(arg.fullDisplayValue)}]</span>`;
-                                            const escapedTok = escapeRegExp(tokenToReplace);
-                                            const regex = new RegExp(`(^|[^A-Za-z0-9_])(${escapedTok})(?![^<]*>)(?![A-Za-z0-9_])`, 'g');
-                                            processedLine = processedLine.replace(regex, `$1$2${annotation}`);
-                                        }
-                                    });
+                                                if (alias) tokenToReplace = alias;
+                                            }
+                                            const alreadyAnnotated = new RegExp(`${escapeRegExp(tokenToReplace)}<span class=\"injected-value\"`).test(processedLine);
+                                            if (!alreadyAnnotated) {
+                                                const annotation = `<span class=\"injected-value\">[${arg.name}=${shorten(arg.fullDisplayValue)}]</span>`;
+                                                const escapedTok = escapeRegExp(tokenToReplace);
+                                                const regex = new RegExp(`(^|[^A-Za-z0-9_])(${escapedTok})(?![^<]*>)(?![A-Za-z0-9_])`, 'g');
+                                                processedLine = processedLine.replace(regex, `$1$2${annotation}`);
+                                            }
+                                        });
+                                }
                             }
                             // Aliase immer annotieren (sichert beide Parameter in PUSH-Ticks), doppelte werden vermieden
                             processedLine = annotateLineByAliases(processedLine, artifact);
+                            // Labels annotieren (Definitionen und Verwendungen)
+                            processedLine = annotateLabels(processedLine, artifact);
                             // Formale Parameter annotieren (wirkt nur in Prozeduren)
                             processedLine = annotateLineByFormalParams(processedLine, artifact, org);
                         }
@@ -372,6 +495,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                             let processedLine = line.replace(/</g, "&lt;");
                             if (isHighlighted) {
                                 processedLine = annotateLineByAliases(processedLine, artifact);
+                                processedLine = annotateLabels(processedLine, artifact);
+                                try { const dis = JSON.parse(org.disassembledInstructionJson); processedLine = annotateMacroParams(processedLine, dis, artifact, org); } catch {}
                                 processedLine = annotateLineByFormalParams(processedLine, artifact, org);
                             }
                             sourceCodeHtml += `<div class="source-line ${isHighlighted ? 'highlight' : ''}"><span class="line-number">${lineNum}</span><pre>${processedLine}</pre></div>`;
