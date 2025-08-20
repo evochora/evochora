@@ -31,7 +31,7 @@ public final class Config {
     public static final long MAX_QUEUE_BYTES = 512L * 1024L * 1024L; // 512 MB
 
     // --- Cell Type Definition (Dynamisch konfigurierbar) ---
-    public static final int VALUE_BITS = 12;
+    public static final int VALUE_BITS = 16;
     public static final int TYPE_BITS = 4;
 
     public static final int TYPE_SHIFT = VALUE_BITS;
