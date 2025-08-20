@@ -42,6 +42,18 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         }
     }
 
+    @Override
+    public int getCost(Organism organism, Environment environment, java.util.List<Integer> rawArguments) {
+        // Base cost 1 for env interactions only if the instruction will actually execute (winner or no conflict)
+        if (getConflictStatus() == ConflictResolutionStatus.LOST_TARGET_OCCUPIED
+                || getConflictStatus() == ConflictResolutionStatus.LOST_TARGET_EMPTY
+                || getConflictStatus() == ConflictResolutionStatus.LOST_OTHER_REASON
+                || getConflictStatus() == ConflictResolutionStatus.LOST_LOWER_ID_WON) {
+            return 0;
+        }
+        return 1;
+    }
+
     private void handlePoke(ExecutionContext context) {
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
@@ -60,7 +72,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         }
 
         if (this.targetCoordinate == null) {
-            this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(0), vector, environment); // CORRECTED
+            this.targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
         }
 
         if (getConflictStatus() == ConflictResolutionStatus.WON_EXECUTION || getConflictStatus() == ConflictResolutionStatus.NOT_APPLICABLE) {
@@ -69,8 +81,13 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                 return;
             }
             Molecule toWrite = org.evochora.runtime.model.Molecule.fromInt((Integer) valueToWrite);
-            int cost = Math.abs(toWrite.toScalarValue());
-            if (cost > 0) organism.takeEr(cost);
+            int additionalCost = 0;
+            if (toWrite.type() == Config.TYPE_ENERGY || toWrite.type() == Config.TYPE_STRUCTURE) {
+                additionalCost = Math.abs(toWrite.toScalarValue());
+            } else if (toWrite.type() == Config.TYPE_CODE || toWrite.type() == Config.TYPE_DATA) {
+                additionalCost = 5;
+            }
+            if (additionalCost > 0) organism.takeEr(additionalCost);
 
             if (environment.getMolecule(targetCoordinate).isEmpty()) {
                 environment.setMolecule(toWrite, organism.getId(), targetCoordinate);
@@ -99,7 +116,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         }
 
         if (this.targetCoordinate == null) {
-            this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(0), vector, environment); // CORRECTED
+            this.targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
         }
 
         Molecule s = environment.getMolecule(targetCoordinate);
@@ -115,15 +132,17 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             organism.addEr(energyToTake);
             valueToStore = new Molecule(Config.TYPE_ENERGY, energyToTake).toInt();
         } else {
+            int ownerId = environment.getOwnerId(targetCoordinate);
             if (s.type() == Config.TYPE_STRUCTURE) {
-                int ownerId = environment.getOwnerId(targetCoordinate);
                 if (ownerId != organism.getId()) {
                     int cost = Math.abs(s.toScalarValue());
                     if (cost > 0) organism.takeEr(cost);
                 }
-            } else {
-                int cost = Math.abs(s.toScalarValue());
-                if (cost > 0) organism.takeEr(cost);
+            } else if (s.type() == Config.TYPE_CODE || s.type() == Config.TYPE_DATA) {
+                // Treat ownerId==0 as foreign/neutral for cost purposes
+                if (!(ownerId == organism.getId() && ownerId != 0)) {
+                    organism.takeEr(5);
+                }
             }
             valueToStore = s.toInt();
         }
@@ -180,7 +199,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             }
 
             if (vector != null) {
-                this.targetCoordinate = organism.getTargetCoordinate(organism.getDp(0), vector, environment); // CORRECTED
+                this.targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
                 return List.of(this.targetCoordinate);
             }
 

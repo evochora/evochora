@@ -205,6 +205,40 @@ public class VMArithmeticInstructionTest {
     }
 
     @Test
+    void testDotAndCrossProducts() {
+        // Prepare vectors
+        int[] v1 = new int[]{2, 3};
+        int[] v2 = new int[]{4, -1};
+        // DOTR
+        org.setDr(0, 0); // dest
+        org.setDr(1, v1);
+        org.setDr(2, v2);
+        placeInstruction("DOTR", 0, 1, 2);
+        sim.tick();
+        int dot = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
+        assertThat(dot).isEqualTo(2*4 + 3*(-1));
+        // CRSR
+        org.setDr(0, 0);
+        placeInstruction("CRSR", 0, 1, 2);
+        sim.tick();
+        int crs = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
+        assertThat(crs).isEqualTo(2*(-1) - 3*4);
+        // DOTS / CRSS via stack
+        org.getDataStack().push(v1);
+        org.getDataStack().push(v2);
+        placeInstruction("DOTS");
+        sim.tick();
+        int dotS = Molecule.fromInt((Integer) org.getDataStack().pop()).toScalarValue();
+        assertThat(dotS).isEqualTo(2*4 + 3*(-1));
+        org.getDataStack().push(v1);
+        org.getDataStack().push(v2);
+        placeInstruction("CRSS");
+        sim.tick();
+        int crsS = Molecule.fromInt((Integer) org.getDataStack().pop()).toScalarValue();
+        assertThat(crsS).isEqualTo(2*(-1) - 3*4);
+    }
+
+    @Test
     void testSubrVector() {
         int[] v1 = new int[]{5, 7};
         int[] v2 = new int[]{2, 3};

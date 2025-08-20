@@ -72,7 +72,8 @@ public class VMEnvironmentInteractionInstructionTest {
 
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
         assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(payload);
-        assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 77 - 1);
+        // POKE(DATA) costs base 1 + 5
+        assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 1 - 5);
     }
 
     @Test
@@ -88,7 +89,8 @@ public class VMEnvironmentInteractionInstructionTest {
 
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
         assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
-        assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 88 - 1);
+        // POKI(DATA) costs base 1 + 5
+        assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 1 - 5);
     }
 
     @Test
@@ -105,7 +107,8 @@ public class VMEnvironmentInteractionInstructionTest {
 
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
         assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
-        assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 33 - 1);
+        // POKS(DATA) costs base 1 + 5
+        assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 1 - 5);
     }
 
     @Test

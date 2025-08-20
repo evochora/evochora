@@ -22,6 +22,11 @@ public class ArithmeticInstruction extends Instruction {
         try {
             Organism organism = context.getOrganism();
             List<Operand> operands = resolveOperands(context.getWorld());
+            if (getName().startsWith("DOT") || getName().startsWith("CRS")) {
+                handleVectorProducts(context.getWorld(), operands);
+                return;
+            }
+
             if (operands.size() != 2) {
                 organism.instructionFailed("Invalid operand count for arithmetic operation.");
                 return;
@@ -108,6 +113,58 @@ public class ArithmeticInstruction extends Instruction {
         } catch (NoSuchElementException e) {
             organism.instructionFailed("Stack underflow during arithmetic operation.");
         }
+    }
+
+    private void handleVectorProducts(Environment environment, List<Operand> operands) {
+        Organism organism = this.organism;
+        String name = getName();
+        try {
+            boolean stackVariant = name.endsWith("S");
+            if (stackVariant) {
+                if (operands.size() != 2) { organism.instructionFailed("" + name + " expects two stack operands."); return; }
+                if (!(operands.get(0).value() instanceof int[] v2) || !(operands.get(1).value() instanceof int[] v1)) {
+                    organism.instructionFailed(name + " requires vector operands.");
+                    return;
+                }
+                int result = switch (name) {
+                    case "DOTS" -> dot(v1, v2);
+                    case "CRSS" -> cross2d(v1, v2);
+                    default -> 0;
+                };
+                organism.getDataStack().push(new Molecule(Config.TYPE_DATA, result).toInt());
+                return;
+            }
+
+            // Register variant: %DEST, %VEC1, %VEC2
+            if (operands.size() != 3) { organism.instructionFailed(name + " expects 3 operands."); return; }
+            int destReg = operands.get(0).rawSourceId();
+            Object v1o = operands.get(1).value();
+            Object v2o = operands.get(2).value();
+            if (!(v1o instanceof int[] v1) || !(v2o instanceof int[] v2)) {
+                organism.instructionFailed(name + " requires vector operands.");
+                return;
+            }
+            int result = switch (name) {
+                case "DOTR" -> dot(v1, v2);
+                case "CRSR" -> cross2d(v1, v2);
+                default -> 0;
+            };
+            writeOperand(destReg, new Molecule(Config.TYPE_DATA, result).toInt());
+        } catch (NoSuchElementException e) {
+            organism.instructionFailed("Stack underflow during vector product operation.");
+        }
+    }
+
+    private int dot(int[] a, int[] b) {
+        if (a.length != b.length) { this.organism.instructionFailed("Vector dimensions must match for DOT."); return 0; }
+        long sum = 0;
+        for (int i = 0; i < a.length; i++) sum += (long)a[i] * (long)b[i];
+        return (int) sum;
+    }
+
+    private int cross2d(int[] a, int[] b) {
+        if (a.length < 2 || b.length < 2) { this.organism.instructionFailed("CRS requires 2D vectors."); return 0; }
+        return a[0] * b[1] - a[1] * b[0];
     }
 
     public static Instruction plan(Organism organism, Environment environment) {

@@ -123,6 +123,97 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    void testRnds() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
+        placeInstruction("RNDS");
+        sim.tick();
+        int val = Molecule.fromInt((Integer) org.getDataStack().pop()).toScalarValue();
+        assertThat(val).isGreaterThanOrEqualTo(0).isLessThan(5);
+    }
+
+    @Test
+    void testTrniSetsDirection() {
+        int[] vec = new int[]{0, 1};
+        placeInstructionWithVectorOnly("TRNI", vec);
+        sim.tick();
+        assertThat(org.getDv()).isEqualTo(vec);
+    }
+
+    @Test
+    void testTrnsSetsDirectionFromStack() {
+        int[] vec = new int[]{-1, 0};
+        org.getDataStack().push(vec);
+        placeInstruction("TRNS");
+        sim.tick();
+        assertThat(org.getDv()).isEqualTo(vec);
+    }
+
+    @Test
+    void testPossPushesRelativeIp() {
+        placeInstruction("POSS");
+        sim.tick();
+        Object top = org.getDataStack().pop();
+        assertThat(top).isInstanceOf(int[].class);
+        assertThat((int[]) top).isEqualTo(new int[]{0,0});
+    }
+
+    @Test
+    void testDifsPushesDeltaBetweenActiveDpAndIp() {
+        // Ensure DP0 = IP then SEEK to move DP by +1 on Y
+        placeInstruction("SYNC");
+        sim.tick();
+        int[] vec = new int[]{0, 1};
+        org.setDr(0, vec);
+        placeInstruction("SEEK", 0);
+        sim.tick();
+        placeInstruction("DIFS");
+        sim.tick();
+        Object top = org.getDataStack().pop();
+        assertThat(top).isInstanceOf(int[].class);
+        // IP advanced by length of SEEK (2 cells: opcode + 1 register argument)
+        // so delta = DP(0,1) - IP(2,0) relative to start -> depends on instruction lengths
+        // We only assert delta.y > 0 to avoid hard-coding exact IP shift
+        int[] delta = (int[]) top;
+        assertThat(delta[1]).isGreaterThan(0);
+    }
+
+    @Test
+    void testAdpiSetsActiveDpIndex() {
+        // Set active DP to 1, then SYNC should set DP1 to IP
+        int dpIndexLiteral = new Molecule(Config.TYPE_DATA, 1).toInt();
+        placeInstruction("ADPI", dpIndexLiteral);
+        sim.tick();
+        int[] expected = org.getIp();
+        placeInstruction("SYNC");
+        sim.tick();
+        assertThat(org.getDp(1)).isEqualTo(expected);
+        // DP0 should remain unchanged from default (startPos)
+        assertThat(org.getDp(0)).isEqualTo(startPos);
+    }
+
+    @Test
+    void testAdprSetsActiveDpIndexFromRegister() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
+        placeInstruction("ADPR", 0);
+        sim.tick();
+        int[] expected = org.getIp();
+        placeInstruction("SYNC");
+        sim.tick();
+        assertThat(org.getDp(1)).isEqualTo(expected);
+    }
+
+    @Test
+    void testAdpsSetsActiveDpIndexFromStack() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
+        placeInstruction("ADPS");
+        sim.tick();
+        int[] expected = org.getIp();
+        placeInstruction("SYNC");
+        sim.tick();
+        assertThat(org.getDp(1)).isEqualTo(expected);
+    }
+
+    @Test
     void testSeek() {
         org.setDp(0, org.getIp()); // CORRECTED
         int[] vec = new int[]{0, 1};

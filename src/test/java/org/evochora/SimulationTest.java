@@ -69,7 +69,8 @@ public class SimulationTest {
 
         assertThat(environment.getMolecule(target).toInt()).isEqualTo(payloadLow);
         assertThat(orgHigh.getEr()).isEqualTo(2000);
-        assertThat(orgLow.getEr()).isLessThanOrEqualTo(2000 - 11 - 1);
+        // New cost model: POKI(DATA) costs base 1 + 5
+        assertThat(orgLow.getEr()).isLessThanOrEqualTo(2000 - 5 - 1);
         assertThat(orgLow.isInstructionFailed()).as("Winner failed: " + orgLow.getFailureReason()).isFalse();
         assertThat(orgHigh.isInstructionFailed()).as("Loser failed: " + orgHigh.getFailureReason()).isFalse();
     }

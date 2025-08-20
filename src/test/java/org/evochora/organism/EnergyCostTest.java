@@ -62,8 +62,8 @@ public class EnergyCostTest {
 
         assertThat(org.isInstructionFailed()).as("POKE should succeed on empty cell").isFalse();
         assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
-        // Energy must be reduced by at least abs(payload scalar); allow extra per-tick overhead.
-        assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 50);
+        // POKE(DATA) costs base 1 + 5
+        assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 1 - 5);
     }
 
     @Test
@@ -88,8 +88,9 @@ public class EnergyCostTest {
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("POKE should fail on occupied cell").isTrue();
-        // Energy should have been consumed despite failure
-        assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 60);
+        // With new model we charge during PEEK consumption logic; for POKE we charge base+type only if executed
+        // Occupied cell -> no execution -> no additional type cost
+        assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 1);
         // Target content should remain unchanged due to failure
         assertThat(environment.getMolecule(target).toInt()).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
@@ -114,8 +115,8 @@ public class EnergyCostTest {
 
         assertThat(org.isInstructionFailed()).isFalse();
         assertThat(org.getDr(0)).isEqualTo(dataVal);
-        // Must consume at least |33| energy (allow per-tick overhead)
-        assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 33);
+        // PEEK(DATA) foreign costs +5
+        assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 5);
     }
 
     @Test

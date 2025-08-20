@@ -4,7 +4,6 @@ package org.evochora.runtime.isa;
 
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
-import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.instructions.*;
 import org.evochora.runtime.model.Environment;
@@ -121,6 +120,8 @@ public abstract class Instruction {
         registerFamily(BitwiseInstruction.class, Map.of(5, "NADR", 46, "ANDR", 48, "ORR", 50, "XORR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(BitwiseInstruction.class, Map.of(32, "NADI", 47, "ANDI", 49, "ORI", 51, "XORI", 53, "SHLI", 54, "SHRI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
         registerFamily(BitwiseInstruction.class, Map.of(78, "NADS", 75, "ANDS", 76, "ORS", 77, "XORS", 80, "SHLS", 81, "SHRS"), List.of(OperandSource.STACK, OperandSource.STACK));
+        // New register shift variants
+        registerFamily(BitwiseInstruction.class, Map.of(103, "SHLR", 104, "SHRR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(BitwiseInstruction.class, Map.of(52, "NOT"), List.of(OperandSource.REGISTER));
         registerFamily(BitwiseInstruction.class, Map.of(79, "NOTS"), List.of(OperandSource.STACK));
 
@@ -165,9 +166,33 @@ public abstract class Instruction {
         registerFamily(StateInstruction.class, Map.of(11, "TURN", 17, "NRG", 19, "DIFF", 21, "POS", 55, "RAND"), List.of(OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(18, "FORK"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(13, "SYNC", 92, "NRGS"), List.of());
+        // New: TRNI, TRNS, POSS, DIFS (allocate new IDs > current max 95?)
+        registerFamily(StateInstruction.class, Map.of(96, "TRNI"), List.of(OperandSource.VECTOR));
+        registerFamily(StateInstruction.class, Map.of(97, "TRNS"), List.of());
+        registerFamily(StateInstruction.class, Map.of(98, "POSS"), List.of());
+        registerFamily(StateInstruction.class, Map.of(99, "DIFS"), List.of());
+        // New: RNDS (pops from stack in handler)
+        registerFamily(StateInstruction.class, Map.of(105, "RNDS"), List.of());
+        // New: Active DP selection ADPR/ADPI/ADPS
+        registerFamily(StateInstruction.class, Map.of(100, "ADPR"), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(101, "ADPI"), List.of(OperandSource.IMMEDIATE));
+        registerFamily(StateInstruction.class, Map.of(102, "ADPS"), List.of());
+        // New: FRKI and FRKS
+        registerFamily(StateInstruction.class, Map.of(106, "FRKI"), List.of(OperandSource.VECTOR, OperandSource.IMMEDIATE, OperandSource.VECTOR));
+        registerFamily(StateInstruction.class, Map.of(107, "FRKS"), List.of(OperandSource.STACK));
 
         // NOP
         registerFamily(NopInstruction.class, Map.of(0, "NOP"), List.of());
+
+        // Arithmetic extensions: DOT and CRS
+        registerFamily(ArithmeticInstruction.class, Map.of(108, "DOTR", 109, "CRSR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ArithmeticInstruction.class, Map.of(110, "DOTS", 111, "CRSS"), List.of(OperandSource.STACK, OperandSource.STACK));
+
+        // Location instruction family registrations
+        registerFamily(LocationInstruction.class, Map.of(112, "DUPL", 113, "SWPL", 114, "DRPL", 115, "ROTL", 116, "DPLS", 117, "SKLS", 122, "LSDS"), List.of());
+        registerFamily(LocationInstruction.class, Map.of(118, "DPLR", 120, "SKLR", 121, "PUSL", 123, "LRDS", 125, "POPL"), List.of(OperandSource.IMMEDIATE));
+        registerFamily(LocationInstruction.class, Map.of(124, "LRDR"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(LocationInstruction.class, Map.of(126, "LSDR"), List.of(OperandSource.REGISTER));
     }
 
     private static void registerFamily(Class<? extends Instruction> familyClass, Map<Integer, String> variants, List<OperandSource> sources) {

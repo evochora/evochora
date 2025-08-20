@@ -147,4 +147,22 @@ public class VMBitwiseInstructionTest {
         sim.tick();
         assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1010).toInt());
     }
+
+    @Test
+    void testShiftRegisterVariants() {
+        // SHLR / SHRR
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 3).toInt());
+        placeInstruction("SHLR", 0, 1);
+        sim.tick();
+        int valL = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
+        assertThat(valL).isEqualTo(1 << 3);
+
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 8).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 2).toInt());
+        placeInstruction("SHRR", 0, 1);
+        sim.tick();
+        int valR = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
+        assertThat(valR).isEqualTo(8 >> 2);
+    }
 }

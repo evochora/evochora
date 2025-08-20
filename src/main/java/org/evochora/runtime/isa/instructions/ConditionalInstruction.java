@@ -39,7 +39,7 @@ public class ConditionalInstruction extends Instruction {
                 if (!organism.isUnitVector(vector)) {
                     return;
                 }
-                int[] targetCoordinate = organism.getTargetCoordinate(organism.getDp(0), vector, environment); // CORRECTED
+                int[] targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
                 int ownerId = environment.getOwnerId(targetCoordinate);
                 if (ownerId != organism.getId()) {
                     organism.skipNextInstruction(environment);

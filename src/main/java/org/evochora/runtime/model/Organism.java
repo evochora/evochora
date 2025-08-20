@@ -32,6 +32,7 @@ public class Organism {
     private String programId = "";
     private int[] ip;
     private final List<int[]> dps;
+    private int activeDpIndex;
     private int[] dv;
     private int er;
     private final List<Object> drs;
@@ -114,6 +115,7 @@ public class Organism {
         this.locationStack = new ArrayDeque<>(Config.LOCATION_STACK_MAX_DEPTH);
         this.dataStack = new ArrayDeque<>(Config.STACK_MAX_DEPTH);
         this.callStack = new ArrayDeque<>(Config.CALL_STACK_MAX_DEPTH);
+        this.activeDpIndex = 0;
         this.ipBeforeFetch = Arrays.copyOf(startIp, startIp.length);
         this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length);
         this.initialPosition = Arrays.copyOf(startIp, startIp.length);
@@ -389,6 +391,42 @@ public class Organism {
         }
         this.instructionFailed("DP index out of bounds: " + index);
         return null;
+    }
+
+    /**
+     * Gets the index of the currently active Data Pointer (DP).
+     */
+    public int getActiveDpIndex() {
+        return this.activeDpIndex;
+    }
+
+    /**
+     * Sets the active Data Pointer (DP) index.
+     *
+     * @param index Index to activate (0..NUM_DATA_POINTERS-1)
+     * @return {@code true} if successful; {@code false} if out of bounds
+     */
+    public boolean setActiveDpIndex(int index) {
+        if (index >= 0 && index < this.dps.size()) {
+            this.activeDpIndex = index;
+            return true;
+        }
+        this.instructionFailed("Active DP index out of bounds: " + index);
+        return false;
+    }
+
+    /**
+     * Convenience: returns a copy of the active DP coordinate.
+     */
+    public int[] getActiveDp() {
+        return getDp(this.activeDpIndex);
+    }
+
+    /**
+     * Convenience: sets the active DP coordinate.
+     */
+    public boolean setActiveDp(int[] newDp) {
+        return setDp(this.activeDpIndex, newDp);
     }
 
     /**

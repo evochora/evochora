@@ -2,7 +2,9 @@ package org.evochora.organism;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,9 +24,21 @@ public class LocationTest {
     @BeforeEach
     void setUp() {
         // A minimal environment is needed for organism creation
+        Instruction.init();
         Environment environment = new Environment(new int[]{10, 10}, true);
         sim = new Simulation(environment);
         org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+    }
+
+    private void placeInstruction(Organism o, String name, Integer... args) {
+        Environment environment = sim.getEnvironment();
+        int opcode = Instruction.getInstructionIdByName(name);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), o.getIp());
+        int[] cur = o.getIp();
+        for (int arg : args) {
+            cur = o.getNextInstructionPosition(cur, o.getDv(), environment);
+            environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), cur);
+        }
     }
 
     // --- Data Pointer (DP) Tests ---
@@ -103,6 +117,31 @@ public class LocationTest {
         assertThat(ls.pop()).isEqualTo(locationB);
         assertThat(ls.pop()).isEqualTo(locationA);
         assertThat(ls.isEmpty()).isTrue();
+    }
+
+    @org.junit.jupiter.api.Test
+    void testLocationInstructions_ls_lr_roundtrip() {
+        org.setDp(0, org.getIp());
+        // DPLS: push active DP to LS
+        placeInstruction(org, "DPLS");
+        sim.tick();
+        // PUSL: copy LR0 to LS after DPLR
+        int lr0 = new Molecule(Config.TYPE_DATA, 0).toInt();
+        placeInstruction(org, "DPLR", lr0);
+        sim.tick();
+        placeInstruction(org, "PUSL", lr0);
+        sim.tick();
+        // LRDR: copy LR0 into DR0
+        placeInstruction(org, "LRDR", 0, lr0);
+        sim.tick();
+        assertThat(org.getDr(0)).isNotNull();
+        // LSDS: pop to DS
+        placeInstruction(org, "LSDS");
+        sim.tick();
+        // SKLR: move active DP to LR0
+        placeInstruction(org, "SKLR", lr0);
+        sim.tick();
+        assertThat(org.getActiveDp()).isEqualTo(org.getLr(0));
     }
 
     @Test
