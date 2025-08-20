@@ -48,7 +48,7 @@ Pointers are special-purpose registers that define an organism's position and or
 
 * **Instruction Pointer (`IP`)**: An absolute coordinate in the grid that points to the next `CODE` molecule the organism will execute.
 
-* **Data Pointer (`DP`)**: An absolute coordinate used as the base for all world-interaction instructions like `PEEK`, `POKE`, `SCAN`, and `SEEK`. It can be moved independently of the `IP`.
+* **Data Pointers (`DPx`)**: A set of absolute coordinates used as the base for all world-interaction instructions. An organism has multiple DPs (e.g., `%DP0`, `%DP1`), but only one is "active" at a time to serve as the origin for instructions like `PEEK` and `SEEK`.
 
 * **Direction Vector (`DV`)**: A unit vector that determines the direction in which the `IP` advances after executing an instruction.
 
@@ -62,11 +62,15 @@ Registers are the primary working memory of the organism. They can hold either s
 
 * **Formal Parameter Registers (`%FPRx`)**: A set of 8 internal registers (`%FPR0` to `%FPR7`) used exclusively for parameter passing in procedures defined with a `.WITH` clause. They cannot be accessed directly by name in the code.
 
+* **Location Registers (`%LRx`)**: A set of 4 registers (`%LR0` to `%LR3`) for storing vector values (coordinates or direction vectors).
+
 ### Stacks
 
-The VM includes two distinct stacks to manage data and control flow.
+The VM includes three distinct stacks to manage data and control flow.
 
 * **Data Stack (`DS`)**: A last-in, first-out (LIFO) stack for temporary data storage. It is used by `PUSH`/`POP` instructions and the stack-based variants of arithmetic and logic instructions (e.g., `ADDS`).
+
+* **Location Stack (`LS`)**: A dedicated LIFO stack for storing vector values, separate from the `DS`.
 
 * **Call Stack (`CS`)**: This stack is managed automatically by `CALL` and `RET` instructions. It stores return addresses and the state of the `%PRx` registers, enabling structured programming with nested procedure calls.
 
@@ -142,17 +146,11 @@ The most common way to reference a value is through a register. Registers are sp
 A typed literal explicitly specifies both the type and the value of a molecule. This is the standard way to provide immediate values to instructions.
 
 * **Syntax**: `TYPE:VALUE`
-
 * **Examples**:
-
     * `DATA:42` (A data value of 42)
-
     * `ENERGY:500` (An energy value of 500)
-
     * `STRUCTURE:1` (A structure value of 1)
-
     * `CODE:0` (An empty cell, which is also the `NOP` instruction)
-
 * **Number Formats**: The `VALUE` part can be a decimal number (e.g., `100`), a hexadecimal number (e.g., `0xFF`), a binary number (e.g., `0b1010`), or an octal number (e.g., `0o77`).
 
 ### Vector Literals
@@ -160,13 +158,9 @@ A typed literal explicitly specifies both the type and the value of a molecule. 
 A vector literal is used to define coordinates or direction vectors. The components are separated by a pipe (`|`). The number of components must match the dimensions of the world. Each component can be specified in any of the supported number formats.
 
 * **Syntax**: `VALUE1|VALUE2|...`
-
 * **Examples**:
-
     * `1|0` (A vector pointing right in a 2D world)
-
     * `10|-5` (A vector pointing to the relative coordinate (10, -5))
-
     * `0xFF|0b1010` (A valid vector using mixed number formats)
 
 ### Labels as Literals
@@ -174,13 +168,12 @@ A vector literal is used to define coordinates or direction vectors. The compone
 When a label is used as an argument for an instruction that expects a vector (like `JMPI` or `SETV`), the compiler automatically calculates the relative vector from the instruction's location to the label's location. This allows for position-independent code.
 
 * **Example**:
-
-  ```
-  SETV %DR0 MY_TARGET  # DR0 will hold the vector pointing to MY_TARGET
-  JMPI MY_TARGET      # Jumps to the location of MY_TARGET
-  ...
-  MY_TARGET: NOP
-  ```
+    ```
+    SETV %DR0 MY_TARGET  # DR0 will hold the vector pointing to MY_TARGET
+    JMPI MY_TARGET      # Jumps to the location of MY_TARGET
+    ...
+    MY_TARGET: NOP
+    ```
 
 ---
 
@@ -189,31 +182,20 @@ When a label is used as an argument for an instruction that expects a vector (li
 The instruction set defines the fundamental operations an organism can perform. Many instructions come in three variants, identified by the last letter of their opcode:
 
 * `...R` (**Register**): The operation uses two registers.
-
 * `...I` (**Immediate**): The operation uses a register and a literal value.
-
 * `...S` (**Stack**): The operation uses values from the Data Stack (`DS`).
 
 ### Data and Memory Operations
 
 * `SETI %REG <Literal>`: Sets `<%REG>` to the immediate `<Literal>`. (Cost: 1)
-
 * `SETR %DEST_REG %SRC_REG`: Copies the value from `<%SRC_REG>` to `<%DEST_REG>`. (Cost: 1)
-
 * `SETV %REG <Vector|Label>`: Sets `<%REG>` to the specified vector or the vector to the label. (Cost: 1)
-
 * `PUSH %REG`: Pushes the value of `<%REG>` onto the Data Stack. (Cost: 1)
-
 * `POP %REG`: Pops a value from the Data Stack into `<%REG>`. (Cost: 1)
-
 * `PUSI <Literal>`: Pushes the immediate `<Literal>` onto the Data Stack. (Cost: 1)
-
 * `DUP`: Duplicates the top value on the Data Stack. (Cost: 0)
-
 * `SWAP`: Swaps the top two values on the Data Stack. (Cost: 0)
-
 * `DROP`: Discards the top value on the Data Stack. (Cost: 0)
-
 * `ROT`: Rotates the top three values on the Data Stack. (Cost: 0)
 
 ### Arithmetic Operations
@@ -221,43 +203,31 @@ The instruction set defines the fundamental operations an organism can perform. 
 These instructions operate on scalar `DATA` values. `ADD` and `SUB` also support component-wise vector arithmetic.
 
 * `ADDR %REG1 %REG2`, `ADDI %REG1 <Literal>`, `ADDS`: Performs addition. (Cost: 1)
-
 * `SUBR %REG1 %REG2`, `SUBI %REG1 <Literal>`, `SUBS`: Performs subtraction. (Cost: 1)
-
 * `MULR %REG1 %REG2`, `MULI %REG1 <Literal>`, `MULS`: Performs multiplication (scalars only). (Cost: 1)
-
 * `DIVR %REG1 %REG2`, `DIVI %REG1 <Literal>`, `DIVS`: Performs division (scalars only). (Cost: 1)
-
 * `MODR %REG1 %REG2`, `MODI %REG1 <Literal>`, `MODS`: Performs modulo (scalars only). (Cost: 1)
+* `DOTR %DEST_REG %VEC_REG1 %VEC_REG2`, `DOTS`: Calculates the dot product of two vectors. (Cost: 1)
+* `CRSR %DEST_REG %VEC_REG1 %VEC_REG2`, `CRSS`: Calculates the 2D cross product of two vectors. (Cost: 1)
 
 ### Bitwise Operations
 
 These instructions operate on the integer value of scalars.
 
 * `ANDR %REG1 %REG2`, `ANDI %REG1 <Literal>`, `ANDS`: Bitwise AND. (Cost: 1)
-
 * `ORR %REG1 %REG2`, `ORI %REG1 <Literal>`, `ORS`: Bitwise OR. (Cost: 1)
-
 * `XORR %REG1 %REG2`, `XORI %REG1 <Literal>`, `XORS`: Bitwise XOR. (Cost: 1)
-
 * `NADR %REG1 %REG2`, `NADI %REG1 <Literal>`, `NADS`: Bitwise NAND. (Cost: 1)
-
 * `NOT %REG`, `NOTS`: Bitwise NOT. (Cost: 1)
-
-* `SHLI %REG <Literal>`, `SHLS`: Logical shift left. (Cost: 1)
-
-* `SHRI %REG <Literal>`, `SHRS`: Logical shift right. (Cost: 1)
+* `SHLR %REG_VAL %REG_AMT`, `SHLI %REG_VAL <Literal>`, `SHLS`: Logical shift left. (Cost: 1)
+* `SHRR %REG_VAL %REG_AMT`, `SHRI %REG_VAL <Literal>`, `SHRS`: Logical shift right. (Cost: 1)
 
 ### Control Flow
 
 * `JMPI <Label>`: Jumps to `<Label>`. (Cost: 1)
-
 * `JMPR %VEC_REG>`: Jumps to the vector address in `<%VEC_REG>`. (Cost: 1)
-
 * `JMPS`: Jumps to the vector address popped from the stack. (Cost: 1)
-
 * `CALL <Label>`: Calls the procedure at `<Label>`. (Cost: 2)
-
 * `RET`: Returns from a procedure. (Cost: 2)
 
 ### Conditional Instructions
@@ -265,44 +235,47 @@ These instructions operate on the integer value of scalars.
 These instructions skip the next instruction if the condition is false.
 
 * `IFR %REG1 %REG2`, `IFI %REG1 <Literal>`, `IFS`: If values are equal. (Cost: 1)
-
 * `LTR %REG1 %REG2`, `LTI %REG1 <Literal>`, `LTS`: If value of first argument is less than second. (Cost: 1)
-
 * `GTR %REG1 %REG2`, `GTI %REG1 <Literal>`, `GTS`: If value of first argument is greater than second. (Cost: 1)
-
 * `IFTR %REG1 %REG2`, `IFTI %REG1 <Literal>`, `IFTS`: If molecule types are equal. (Cost: 1)
-
 * `IFMR %VEC_REG`, `IFMI <Vector>`, `IFMS`: If cell at `DP` + vector is owned by self. The vector must be a unit vector. (Cost: 1)
 
 ### World Interaction
 
-These instructions interact with the environment grid relative to the Data Pointer (`DP`). The vector argument must be a unit vector, meaning these instructions can only target adjacent cells.
+These instructions interact with the environment grid relative to the **active Data Pointer (`DP`)**. The vector argument must be a unit vector, meaning these instructions can only target adjacent cells.
 
 * `PEEK %DEST_REG %VEC_REG`, `PEKI %DEST_REG <Vector>`, `PEKS`: Reads and consumes molecule at `DP` + vector. If the molecule is `ENERGY`, its value is added to the organism's `ER`. For other types (like `DATA` or foreign `STRUCTURE`), its value is subtracted as an additional cost. (Base Cost: 2)
-
 * `SCAN %DEST_REG %VEC_REG`, `SCNI %DEST_REG <Vector>`, `SCNS`: Reads molecule at `DP` + vector without consuming it. (Cost: 2)
-
 * `POKE %SRC_REG %VEC_REG`, `POKI %SRC_REG <Vector>`, `POKS`: Writes molecule from `<%SRC_REG>` or stack to empty cell at `DP` + vector. (Cost: 5 + value)
+* `SEEK %VEC_REG`, `SEKI <Vector>`, `SEKS`: Moves active `DP` by vector if target cell is empty or owned by self. (Cost: 3)
 
-* `SEEK %VEC_REG`, `SEKI <Vector>`, `SEKS`: Moves `DP` by vector if target cell is empty or owned by self. (Cost: 3)
-
-### State Operations
+### State and Location Operations
 
 * `NOP`: No operation. (Cost: 1)
-
-* `SYNC`: Sets `DP` = `IP`. (Cost: 1)
-
-* `TURN %VEC_REG`: Sets `DV` to the vector in `<%VEC_REG>`. The instruction will fail if the vector is not a unit vector. (Cost: 1)
-
-* `POS %REG`: Stores the organism's relative position in `<%REG>`. (Cost: 1)
-
-* `DIFF %REG`: Stores the vector `DP` - `IP` in `<%REG>`. (Cost: 1)
-
+* `SYNC`: Sets active `DP` = `IP`. (Cost: 1)
+* `TURN %VEC_REG`, `TRNI <Vector>`, `TRNS`: Sets `DV` to the specified vector. The instruction will fail if the vector is not a unit vector. (Cost: 1)
+* `POS %REG`, `POSS`: Stores the organism's position relative to its start (`IP` - `InitialIP`) in `<%REG>` or on the stack. (Cost: 1)
+* `DIFF %REG`, `DIFS`: Stores the vector `DP` - `IP` in `<%REG>` or on the stack. (Cost: 1)
 * `NRG %REG`, `NRGS`: Stores current `ER` in `<%REG>` or on the stack. (Cost: 0)
+* `RAND %REG`, `RNDS`: Stores a random number [0, `<%REG>`) back into `<%REG>` or on the stack. (Cost: 2)
+* `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`, `FRKI <DP_Vec> <NRG_Lit> <DV_Vec>`, `FRKS`: Creates a child organism. (Cost: 10 + energy)
+* `ADPR %REG`, `ADPI <Literal>`, `ADPS`: Sets the active Data Pointer index. (Cost: 1)
 
-* `RAND %REG`: Stores a random number [0, `<%REG>`) back into `<%REG>`. (Cost: 2)
+### Location Stack and Register Operations
 
-* `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`: Creates a child at `DP` + `<%DP_VEC_REG>` with a starting direction from `<%DV_VEC_REG>`. The direction vector must be a unit vector. The child's starting energy is taken from `<%NRG_REG>`, and this amount is deducted from the parent's `ER`. (Cost: 10 + energy)
+These instructions manage the Location Stack (`LS`) and Location Registers (`%LRx`).
+
+* `DUPL`, `SWPL`, `DRPL`, `ROTL`: Standard stack operations (Duplicate, Swap, Drop, Rotate) for the `LS`. (Cost: 0)
+* `DPLS`: Pushes the active `DP` onto the `LS`. (Cost: 1)
+* `SKLS`: Pops a vector from `LS` and sets it as the active `DP`. (Cost: 1)
+* `LSDS`: Pops a vector from `LS` and pushes it onto the `DS`. (Cost: 1)
+* `DPLR <LR_Index>`: Copies the active `DP` into `%LR<Index>`. (Cost: 1)
+* `SKLR <LR_Index>`: Sets the active `DP` to the vector stored in `%LR<Index>`. (Cost: 1)
+* `PUSL <LR_Index>`: Pushes the vector from `%LR<Index>` onto the `LS`. (Cost: 1)
+* `POPL <LR_Index>`: Pops a vector from `LS` into `%LR<Index>`. (Cost: 1)
+* `LRDR %DEST_REG <LR_Index>`: Copies the vector from `%LR<Index>` into `<%DEST_REG>`. (Cost: 1)
+* `LRDS <LR_Index>`: Pushes the vector from `%LR<Index>` onto the `DS`. (Cost: 1)
+* `LSDR %DEST_REG>`: Copies the top vector from `LS` into `<%DEST_REG>` without popping. (Cost: 1)
 
 ---
 
@@ -313,45 +286,37 @@ Directives are special commands that instruct the compiler on how to assemble th
 ### Definitions and Aliases
 
 * `.DEFINE <NAME> <VALUE>`: Creates a simple text substitution. The compiler will replace every occurrence of `<NAME>` with `<VALUE>` before parsing.
-
 * `.REG <ALIAS> <REGISTER>`: Assigns a custom name (`<ALIAS>`) to a register (e.g., `.REG %COUNTER %DR0`).
 
 ### Layout Control
 
 * `.ORG <Vector>`: Sets the absolute starting coordinate for the following code or data.
-
 * `.DIR <Vector>`: Sets the direction in which the compiler places subsequent instructions and arguments in the grid.
-
 * `.PLACE <Literal> <Vector>`: Places a molecule with the specified `<Literal>` value at a coordinate relative to the current origin.
 
 ### Macros
 
 * `.MACRO <Name> [PARAM1 ...] / .ENDM`: Defines a macro, a template for code that is expanded inline. Parameters are optional. To invoke a macro, simply use its name followed by the arguments.
-
-  ```
-  .MACRO INCREMENT REG_TARGET
-    ADDI REG_TARGET DATA:1
-  .ENDM
-  
-  INCREMENT %DR0  # This line expands to "ADDI %DR0 DATA:1"
-  ```
+    ```
+    .MACRO INCREMENT REG_TARGET
+      ADDI REG_TARGET DATA:1
+    .ENDM
+    
+    INCREMENT %DR0  # This line expands to "ADDI %DR0 DATA:1"
+    ```
 
 ### Modules and Procedures
 
 A **module** is a source file (e.g., `lib.s`) containing one or more `.PROC` definitions that can be reused. To create and use modules effectively, you combine `.PROC`, `.REQUIRE`, and `.INCLUDE`.
 
 * `.PROC <Name> [EXPORT] [WITH <PARAM1> ...] / .ENDP`: Defines a procedure, a reusable block of code that can be called via `CALL`. By default, procedures are private to their file. The optional `EXPORT` keyword makes the procedure public, allowing it to be used by other modules.
-
 * `.REQUIRE "<path>" AS <Alias>`: Declares a logical dependency on a module. A library file should use this to declare its own dependencies on other libraries.
-
 * `.INCLUDE "<path>"`: Inlines the content of another source file. The main program file must use this directive to include the source code for all required modules, which gives the main program full control over the physical layout of the code in the environment.
-
 * `.PREG <%ALIAS> <INDEX>`: Within a `.PROC` block, assigns an alias to a procedure-local register (`%PR0` or `%PR1`).
 
 #### Example of a Modular Program:
 
 **File 1: `lib/math.s`**
-
 ```
 # This module provides a simple math function.
 .PROC MATH.ADD EXPORT WITH A B  # Make this procedure public
@@ -361,7 +326,6 @@ A **module** is a source file (e.g., `lib.s`) containing one or more `.PROC` def
 ```
 
 **File 2: `lib/utils.s`**
-
 ```
 # This module depends on the math library.
 .REQUIRE "lib/math.s" AS MATH
@@ -383,7 +347,6 @@ A **module** is a source file (e.g., `lib.s`) containing one or more `.PROC` def
 ```
 
 **File 3: `main.s` (The main program)**
-
 ```
 # 1. Include the source code for all required modules.
 #    This places their machine code into the environment.
