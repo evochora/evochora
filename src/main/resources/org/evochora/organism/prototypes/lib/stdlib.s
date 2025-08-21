@@ -18,7 +18,7 @@
 #   - Ausgabe:
 #       SUCCESS_FLAG: DATA:1, wenn passierbar, sonst DATA:0.
 #
-.PROC IS_PASSABLE EXPORT WITH DIRECTION_VEC, SUCCESS_FLAG
+.PROC IS_PASSABLE EXPORT WITH DIRECTION_VEC SUCCESS_FLAG
     # Wir leihen uns ein Prozedur-Register für temporäre Daten.
     .PREG %TEMP_STORAGE 0
 

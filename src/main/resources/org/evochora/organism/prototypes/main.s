@@ -1,50 +1,58 @@
 # ================================================
-# Hauptprogramm: main.s (Version 2)
-# Zweck: Eine einfache Zustandsmaschine, die basierend
-# auf einer einzigen Energieschwelle zwischen den
-# Verhaltensmodi wechselt.
+# Hauptprogramm: main.s
 # ================================================
 
-# --- 1. Definitionen ---
-# Es gibt nur noch einen Schwellenwert. Liegt die Energie darüber,
-# wird die Reproduktion gestartet. Andernfalls wird Energie gesucht.
+# --- 1. Definitionen und logische Abhängigkeiten ---
+# Diese benötigen keinen physischen Platz in der Welt.
 .DEFINE ENERGY_REPRODUCTION_THRESHOLD  DATA:1500
-
-# Alias für das Register, in dem wir die Energie speichern.
 .REG %CURRENT_ENERGY %DR0
+.REG %TEMP_CALC_REG %DR6
+.REG %LAST_DIRECTION %DR7
 
+.REQUIRE "behaviors.s" AS BEHAVIORS
 
-# --- 2. Hauptschleife (State Machine) ---
-# Das Programm beginnt hier und kehrt immer wieder zu diesem Punkt zurück,
-# um den Zustand neu zu bewerten.
+# --- 2. Hauptprogramm-Code ---
+# Wir legen den Startpunkt unseres Programms auf 0|0 fest.
+# Der Code der Module wird vom Compiler direkt im Anschluss platziert.
 .ORG 0|0
+
+# Initialisierung der letzten Richtung, damit der Filter im ersten Tick funktioniert.
+SETV %LAST_DIRECTION 0|0
+
 MAIN_LOOP:
-    # Lade die aktuelle Energie in unser Arbeitsregister.
+    # Lade die aktuelle Energie.
     NRG %CURRENT_ENERGY
 
-    # Prüfe die Bedingung: Ist unsere Energie größer als die Schwelle?
+    # Entscheide basierend auf der Energie, welches Verhalten ausgeführt wird.
     GTI %CURRENT_ENERGY ENERGY_REPRODUCTION_THRESHOLD
-        JMPI START_REPRODUCTION  # Wenn ja, springe zum Reproduktionsmodus.
+        JMPI START_REPRODUCTION
 
-    # Wenn die Bedingung nicht erfüllt ist (Energie ist zu niedrig),
-    # fahre mit der Energiesuche fort.
     JMPI SEEK_ENERGY
 
-
-# --- 3. Verhaltensmodi (als unterbrechbare Stubs) ---
-
-# --- Reproduktionsmodus ---
+# --- Verhaltens-Aufrufe ---
 START_REPRODUCTION:
-    # PLATZHALTER: Führt einen Schritt der Reproduktion aus.
-    # In einer echten Implementierung würde hier eine einzelne, kleine
-    # Aktion stehen (z.B. ein Byte des eigenen Codes kopieren).
-    NOP
-    JMPI MAIN_LOOP # Unmittelbar danach: zurück zur Hauptschleife, um den Zustand neu zu prüfen.
+    CALL BEHAVIORS.REPRODUCE
+    JMPI MAIN_LOOP
 
-
-# --- Energiesuchmodus ---
 SEEK_ENERGY:
-    # PLATZHALTER: Führt einen Schritt der Energiesuche aus.
-    # Später würde hier eine Aktion wie "SCAN" oder "PEEK" stehen.
-    NOP
-    JMPI MAIN_LOOP # Unmittelbar danach: zurück zur Hauptschleife.
+    # Berechne die invertierte letzte Richtung für die "Nicht zurück"-Logik.
+    SETV %TEMP_CALC_REG 0|0
+    SUBR %TEMP_CALC_REG %LAST_DIRECTION
+
+    # Rufe das Verhalten auf und aktualisiere die letzte Bewegungsrichtung.
+    CALL BEHAVIORS.SEEK_ENERGY_RANDOM WITH %TEMP_CALC_REG %LAST_DIRECTION
+    JMPI MAIN_LOOP
+
+# --- 3. Physisches Einbinden der Module ---
+# Ohne .ORG-Anweisungen dazwischen platziert der Compiler den Code
+# jedes Moduls direkt hinter den Code des vorherigen.
+.ORG 0|1
+.INCLUDE "lib/stdlib.s"
+.ORG 0|2
+.INCLUDE "lib/stdlib_2d.s"
+.ORG 0|3
+.INCLUDE "lib/tactics.s"
+.ORG 0|4
+.INCLUDE "lib/strategies.s"
+.ORG 0|5
+.INCLUDE "lib/behaviors.s"

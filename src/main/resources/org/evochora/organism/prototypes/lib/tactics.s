@@ -21,7 +21,7 @@
 #       RESULT_REG: Enthält die geerntete Energie oder CODE:0 (leer),
 #                   wenn nichts gefunden wurde.
 #
-.PROC HARVEST_CELL EXPORT WITH DIRECTION_VEC, RESULT_REG
+.PROC HARVEST_CELL EXPORT WITH DIRECTION_VEC RESULT_REG
     # Wir leihen uns ein Prozedur-Register (%PR0), um das Ergebnis
     # des Scans temporär zu speichern.
     .PREG %TEMP_STORAGE 0
@@ -46,60 +46,67 @@ IS_ENERGY:
 .ENDP
 
 
-# --- Taktik: STEP_RANDOMLY ---
+# --- Taktik 2: STEP_RANDOMLY (Bitmasken-Version) ---
 #
 # Zweck:
-#   Findet eine zufällige, passierbare Nachbarzelle und bewegt sich.
-#   Diese Version ist für minimalen Code-Footprint und Effizienz optimiert.
-#   Sie verzichtet auf den Stack und die "Nicht-zurück-gehen"-Logik.
+#   Implementiert die kompakte Filter-Logik mit den neuen Bit-Befehlen.
 #
-# Signatur:
-#   .PROC STEP_RANDOMLY EXPORT WITH NEW_DIRECTION_OUT
-#
-.PROC STEP_RANDOMLY EXPORT WITH NEW_DIRECTION_OUT
-    .PREG %DIRECTION_TO_TEST 0 # Vektor für die aktuelle Prüfung
-    .PREG %IS_PASSABLE 1       # Flag von IS_PASSABLE
-    .PREG %VALID_MOVES_COUNT 2 # Zähler für gefundene, gültige Züge
-    .PREG %RANDOM_CHOICE 3     # Register für die Zufallszahl
-    .PREG %LOOP_COUNTER 4      # Schleifenzähler
+.PROC STEP_RANDOMLY EXPORT WITH LAST_DIRECTION_INV NEW_DIRECTION_OUT
+    .PREG %DIR_TEST 0       # Zu prüfende Richtung
+    .PREG %FLAG 1           # Flag für Passierbarkeit
+    .PREG %PASSABLE_MASK 2  # Bitmaske der passierbaren Richtungen
+    .PREG %FILTERED_MASK 3  # Gefilterte Maske
+    .PREG %COUNT 4          # Zähler für Optionen
 
-    # --- Phase 1: Prüfe alle Richtungen und wähle dabei zufällig aus ---
-    SETI %VALID_MOVES_COUNT DATA:0
-    SETV %DIRECTION_TO_TEST 1|0      # Starte mit der Richtung "Rechts"
-    SETI %LOOP_COUNTER DATA:4
+    # --- Phase 1: Baue eine Bitmaske aller passierbaren Richtungen ---
+    SETI %PASSABLE_MASK DATA:0
+    SETV %DIR_TEST 1|0      # Start: Rechts (entspricht Bit 0)
+    SETI %FLAG DATA:4       # Schleifenzähler
 
-CHECK_DIRECTIONS_LOOP:
-    # Ist die aktuelle Richtung passierbar?
-    CALL STDLIB.IS_PASSABLE WITH %DIRECTION_TO_TEST, %IS_PASSABLE
-    IFI %IS_PASSABLE DATA:0
-        JMPI TRY_NEXT_DIRECTION      # Wenn nicht, überspringe den Rest und drehe weiter.
+CHECK_LOOP:
+    # Bit für die aktuelle Richtung nach links schieben (Rechts=1, Unten=2, Links=4, Oben=8)
+    SHLI %FLAG DATA:1
+    CALL STDLIB.IS_PASSABLE WITH %DIR_TEST %FLAG
+    IFI %FLAG DATA:1
+        ORR %PASSABLE_MASK %FLAG # Bit in Maske setzen
+    CALL STDLIB_2D.TURN_RIGHT WITH %DIR_TEST
+    GTI %FLAG DATA:0
+        JMPI CHECK_LOOP
 
-    # Es ist eine gültige Richtung!
-    ADDI %VALID_MOVES_COUNT DATA:1
+    # --- Phase 2: "Nicht zurückgehen"-Filter anwenden ---
+    PCNR %COUNT %PASSABLE_MASK # Zähle, wie viele Optionen es gibt
+    IFI %COUNT DATA:0
+        RET # Keine Bewegung möglich
 
-    # Der Trick: Die k-te gefundene Option wird mit einer Wahrscheinlichkeit
-    # von 1/k zur neuen "besten" Option.
-    SETR %RANDOM_CHOICE %VALID_MOVES_COUNT
-    RAND %RANDOM_CHOICE
+    SETR %FILTERED_MASK %PASSABLE_MASK # Kopiere für die Filterung
+    GTI %COUNT DATA:1
+        JMPI APPLY_FILTER
 
-    # RAND %k gibt eine Zahl von 0 bis k-1 zurück. Wenn das Ergebnis 0 ist
-    # (was mit 1/k Wahrscheinlichkeit passiert), überschreiben wir unsere Wahl.
-    IFI %RANDOM_CHOICE DATA:0
-        SETR NEW_DIRECTION_OUT %DIRECTION_TO_TEST # Neue beste Richtung merken
+APPLY_FILTER:
+    # Konvertiere "verbotene" Richtung in eine Bitmaske
+    CALL STDLIB_2D.BITMASK_TO_VECTOR WITH LAST_DIRECTION_INV %FLAG # Missbrauche %FLAG temporär
+    NOT %FLAG
+    ANDR %FILTERED_MASK %FLAG # Entferne das "zurück"-Bit
 
-TRY_NEXT_DIRECTION:
-    # Drehe zur nächsten Richtung für die nächste Iteration.
-    CALL STDLIB_2D.TURN_RIGHT WITH %DIRECTION_TO_TEST
+    PCNR %COUNT %FILTERED_MASK
+    # Sackgasse? Wenn nach dem Filtern nichts übrig ist, nimm die originale Maske.
+    IFI %COUNT DATA:0
+        SETR %FILTERED_MASK %PASSABLE_MASK
+        PCNR %COUNT %FILTERED_MASK
 
-    SUBI %LOOP_COUNTER DATA:1
-    GTI %LOOP_COUNTER DATA:0
-        JMPI CHECK_DIRECTIONS_LOOP
+    # --- Phase 3: Wähle zufällig und bewege ---
+    RAND %COUNT                 # Wähle einen Index von 0 bis (COUNT-1)
+    ADDI %COUNT DATA:1          # BSN ist 1-basiert, also +1
 
-    # --- Phase 2: Führe die Bewegung aus (wenn eine Richtung gefunden wurde) ---
-    IFI %VALID_MOVES_COUNT DATA:0
-        RET # Keine gültige Richtung gefunden, also nichts tun.
+    # Finde das N-te gesetzte Bit. Wir nutzen die Stack-Version BSNS.
+    PUSH %FILTERED_MASK
+    PUSH %COUNT
+    BSNS
+    POP %FINAL_MASK             # Ergebnis ist eine Maske mit nur einem gesetzten Bit
 
-    # Bewege dich in die zuletzt ausgewählte "beste" Richtung.
+    # Konvertiere die finale Bitmaske zurück in einen Vektor
+    CALL STDLIB_2D.BITMASK_TO_VECTOR WITH %FINAL_MASK NEW_DIRECTION_OUT
+
     SEEK NEW_DIRECTION_OUT
     SYNC
     RET

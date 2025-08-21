@@ -1,13 +1,13 @@
 {
   "seed": 123456789,
   "environment": {
-    "shape": [200, 150],
+    "shape": [300, 500],
     "toroidal": true
   },
   "organisms": [
     {
-      "id": "test",
-      "program": "prototypes/test.s",
+      "id": "main",
+      "program": "prototypes/main.s",
       "initialEnergy": 2500,
       "placement": {
         "strategy": "fixed",
