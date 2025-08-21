@@ -1,4 +1,5 @@
 {
+  "seed": 123456789,
   "environment": {
     "shape": [200, 150],
     "toroidal": true

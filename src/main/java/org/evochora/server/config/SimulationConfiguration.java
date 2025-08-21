@@ -33,6 +33,7 @@ public final class SimulationConfiguration {
     public EnvironmentConfig environment;
     public OrganismDefinition[] organisms;
     public List<EnergyStrategyConfig> energyStrategies;
+    public Long seed;
 
     public int getDimensions() {
         return environment != null && environment.shape != null ? environment.shape.length : 2;

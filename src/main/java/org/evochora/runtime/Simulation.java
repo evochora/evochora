@@ -21,6 +21,7 @@ public class Simulation {
     private final List<Organism> newOrganismsThisTick = new ArrayList<>();
     private int nextOrganismId = 0;
     private final boolean isPerformanceMode;
+    private org.evochora.runtime.internal.services.IRandomProvider randomProvider;
 
     private Map<String, ProgramArtifact> programArtifacts = new HashMap<>();
 
@@ -49,6 +50,14 @@ public class Simulation {
 
     public void addOrganism(Organism organism) {
         this.organisms.add(organism);
+    }
+
+    public void setRandomProvider(org.evochora.runtime.internal.services.IRandomProvider provider) {
+        this.randomProvider = provider;
+    }
+
+    public org.evochora.runtime.internal.services.IRandomProvider getRandomProvider() {
+        return this.randomProvider;
     }
 
     public int getNextOrganismId() {

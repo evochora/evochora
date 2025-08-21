@@ -34,6 +34,7 @@ public final class SimulationEngine implements IControllable, Runnable {
     private java.util.List<ProgramArtifact> programArtifacts = java.util.Collections.emptyList();
     private SimulationConfiguration.OrganismDefinition[] organismDefinitions = new SimulationConfiguration.OrganismDefinition[0];
     private java.util.List<IEnergyDistributionCreator> energyStrategies = java.util.Collections.emptyList();
+    private org.evochora.runtime.internal.services.IRandomProvider randomProvider;
 
     public SimulationEngine(ITickMessageQueue queue) {
         this(queue, false, new int[]{120,80}, true);
@@ -72,7 +73,8 @@ public final class SimulationEngine implements IControllable, Runnable {
         for (org.evochora.server.config.SimulationConfiguration.EnergyStrategyConfig cfg : configs) {
             if (cfg == null || cfg.type == null || cfg.type.isBlank()) continue;
             try {
-                built.add(EnergyStrategyFactory.create(cfg.type, cfg.params));
+                org.evochora.runtime.internal.services.IRandomProvider prov = this.randomProvider != null ? this.randomProvider : new org.evochora.runtime.internal.services.SeededRandomProvider(0L);
+                built.add(EnergyStrategyFactory.create(cfg.type, cfg.params, prov));
             } catch (IllegalArgumentException ex) {
                 log.warn("Ignoring unknown energy strategy type '{}': {}", cfg.type, ex.getMessage());
             } catch (Exception ex) {
@@ -80,6 +82,14 @@ public final class SimulationEngine implements IControllable, Runnable {
             }
         }
         this.energyStrategies = java.util.Collections.unmodifiableList(built);
+    }
+
+    public void setSeed(java.lang.Long seed) {
+        if (seed == null) {
+            this.randomProvider = null;
+        } else {
+            this.randomProvider = new org.evochora.runtime.internal.services.SeededRandomProvider(seed);
+        }
     }
 
     @Override
@@ -160,6 +170,10 @@ public final class SimulationEngine implements IControllable, Runnable {
 
             var env = new org.evochora.runtime.model.Environment(this.worldShape, this.isToroidal);
             simulation = new Simulation(env, performanceMode);
+            if (this.randomProvider == null) {
+                this.randomProvider = new org.evochora.runtime.internal.services.SeededRandomProvider(0L);
+            }
+            simulation.setRandomProvider(this.randomProvider);
 
             // New path: configure organisms from JSON if present; otherwise fallback to already-loaded artifacts path
             if (organismDefinitions != null && organismDefinitions.length > 0) {

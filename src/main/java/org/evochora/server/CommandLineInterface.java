@@ -7,8 +7,7 @@ import org.evochora.server.config.SimulationConfiguration;
 import org.evochora.server.persistence.PersistenceService;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
-import org.evochora.compiler.Compiler;
-import org.evochora.compiler.api.ProgramArtifact;
+// Removed unused imports
 import org.evochora.server.engine.StatusMetricsRegistry;
 // import org.evochora.server.engine.WorldStateAdapter;
 import org.slf4j.Logger;
@@ -16,10 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
+// Removed unused imports
 
 /**
  * Simple CLI REPL to control the simulation and persistence services.
@@ -76,6 +72,8 @@ public final class CommandLineInterface {
                 }
 
                 sim = new SimulationEngine(queue, performanceMode, cfg.environment.shape, cfg.environment.toroidal);
+                // Configure deterministic randomness if seed is provided
+                sim.setSeed(cfg.seed);
                 persist = new PersistenceService(queue, performanceMode, cfg.environment.shape);
 
                 sim.setOrganismDefinitions(cfg.organisms);

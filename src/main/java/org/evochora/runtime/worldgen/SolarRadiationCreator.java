@@ -4,18 +4,25 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import java.util.Random;
+import org.evochora.runtime.internal.services.IRandomProvider;
 
 public class SolarRadiationCreator implements IEnergyDistributionCreator {
 
-    private final Random random = new Random();
+    private final Random random;
     private final double spawnProbability;
     private final int spawnAmount;
     private final int safetyRadius;
 
-    public SolarRadiationCreator(double probability, int amount, int safetyRadius) {
+    public SolarRadiationCreator(IRandomProvider randomProvider, double probability, int amount, int safetyRadius) {
+        this.random = randomProvider.asJavaRandom();
         this.spawnProbability = probability;
         this.spawnAmount = amount;
         this.safetyRadius = safetyRadius;
+    }
+
+    // Backward-compatible constructor for tests and legacy code
+    public SolarRadiationCreator(double probability, int amount, int safetyRadius) {
+        this(new org.evochora.runtime.internal.services.SeededRandomProvider(0L), probability, amount, safetyRadius);
     }
 
     @Override

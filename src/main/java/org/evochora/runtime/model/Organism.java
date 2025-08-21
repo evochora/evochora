@@ -119,7 +119,12 @@ public class Organism {
         this.ipBeforeFetch = Arrays.copyOf(startIp, startIp.length);
         this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length);
         this.initialPosition = Arrays.copyOf(startIp, startIp.length);
-        this.random = new Random(id);
+        org.evochora.runtime.internal.services.IRandomProvider baseProvider = simulation.getRandomProvider();
+        if (baseProvider != null) {
+            this.random = baseProvider.deriveFor("organism", id).asJavaRandom();
+        } else {
+            this.random = new Random(id);
+        }
     }
 
     /**

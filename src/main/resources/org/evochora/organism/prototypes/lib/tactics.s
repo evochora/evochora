@@ -46,96 +46,61 @@ IS_ENERGY:
 .ENDP
 
 
-# --- Taktik: STEP_RANDOMLY (Optimierte Version) ---
+# --- Taktik: STEP_RANDOMLY ---
 #
 # Zweck:
-#   Findet alle passierbaren Nachbarn, meidet dabei die vorherige Zelle
-#   (wenn möglich), wählt zufällig eine Richtung und bewegt sich.
+#   Findet eine zufällige, passierbare Nachbarzelle und bewegt sich.
+#   Diese Version ist für minimalen Code-Footprint und Effizienz optimiert.
+#   Sie verzichtet auf den Stack und die "Nicht-zurück-gehen"-Logik.
 #
 # Signatur:
-#   .PROC STEP_RANDOMLY EXPORT WITH LAST_DIRECTION_INV, NEW_DIRECTION
-#   - Eingabe:
-#       LAST_DIRECTION_INV: Der *invertierte* Vektor der letzten Bewegung.
-#                           (z.B. wenn wir von links kamen [1|0], ist dies [-1|0]).
-#   - Ausgabe:
-#       NEW_DIRECTION:      Das Register wird mit der neuen Bewegungsrichtung überschrieben.
+#   .PROC STEP_RANDOMLY EXPORT WITH NEW_DIRECTION_OUT
 #
-.PROC STEP_RANDOMLY EXPORT WITH LAST_DIRECTION_INV, NEW_DIRECTION
-    .PREG %DIRECTION_TO_TEST 0 # %PR0
-    .PREG %IS_PASSABLE 1       # %PR1
-    .PREG %VALID_MOVES 2       # %PR2
-    .PREG %RANDOM_CHOICE 3     # %PR3
-    .PREG %TEMP_COUNTER 4      # %PR4
+.PROC STEP_RANDOMLY EXPORT WITH NEW_DIRECTION_OUT
+    .PREG %DIRECTION_TO_TEST 0 # Vektor für die aktuelle Prüfung
+    .PREG %IS_PASSABLE 1       # Flag von IS_PASSABLE
+    .PREG %VALID_MOVES_COUNT 2 # Zähler für gefundene, gültige Züge
+    .PREG %RANDOM_CHOICE 3     # Register für die Zufallszahl
+    .PREG %LOOP_COUNTER 4      # Schleifenzähler
 
-    # --- Phase 1: Finde passierbare Nachbarn (jetzt in einer Schleife) ---
-    SETI %VALID_MOVES DATA:0
-    SETI %TEMP_COUNTER DATA:4   # Wir haben 4 Richtungen zu prüfen
+    # --- Phase 1: Prüfe alle Richtungen und wähle dabei zufällig aus ---
+    SETI %VALID_MOVES_COUNT DATA:0
+    SETV %DIRECTION_TO_TEST 1|0      # Starte mit der Richtung "Rechts"
+    SETI %LOOP_COUNTER DATA:4
 
-CHECK_NEXT_DIRECTION:
-    # Lade die nächste Richtung basierend auf dem Zähler.
-    # Die Richtungen sind direkt unter der Prozedur als Daten gespeichert.
-    SETV %DIRECTION_TO_TEST DIR_TABLE
-    ADDR %DIRECTION_TO_TEST %TEMP_COUNTER # Berechne die Adresse des Vektors
-
+CHECK_DIRECTIONS_LOOP:
+    # Ist die aktuelle Richtung passierbar?
     CALL STDLIB.IS_PASSABLE WITH %DIRECTION_TO_TEST, %IS_PASSABLE
-    IFR %IS_PASSABLE DATA:1
-        PUSH %DIRECTION_TO_TEST # Gültige Richtung auf den Stack
-        ADDI %VALID_MOVES DATA:1
+    IFI %IS_PASSABLE DATA:0
+        JMPI TRY_NEXT_DIRECTION      # Wenn nicht, überspringe den Rest und drehe weiter.
 
-    SUBI %TEMP_COUNTER DATA:1
-    GTI %TEMP_COUNTER DATA:0
-        JMPI CHECK_NEXT_DIRECTION
+    # Es ist eine gültige Richtung!
+    ADDI %VALID_MOVES_COUNT DATA:1
 
-    # --- Phase 2: "Nicht zurückgehen"-Filter anwenden ---
-    IFI %VALID_MOVES DATA:0
-        RET # Keine Bewegung möglich
-
-    # Nur filtern, wenn es mehr als eine Option gibt.
-    GTI %VALID_MOVES DATA:1
-        JMPI APPLY_FILTER
-    JMPI CHOOSE_DIRECTION # Ansonsten direkt zur Auswahl springen
-
-APPLY_FILTER:
-    # Vergleiche jede Richtung auf dem Stack mit der "verbotenen" Richtung.
-    # Wir bauen einen neuen, gefilterten Stack auf.
-    SETI %TEMP_COUNTER %VALID_MOVES
-    FILTER_LOOP:
-        POP %DIRECTION_TO_TEST
-        IFR %DIRECTION_TO_TEST LAST_DIRECTION_INV
-            SUBI %VALID_MOVES DATA:1 # Diese Richtung verwerfen und Zähler reduzieren
-        JMPI CONTINUE_FILTER_LOOP
-        # Wenn es nicht die verbotene Richtung ist, legen wir sie
-        # auf den "neuen" Stack (der effektiv unter dem alten liegt).
-        PUSH %DIRECTION_TO_TEST
-    CONTINUE_FILTER_LOOP:
-        SUBI %TEMP_COUNTER DATA:1
-        GTI %TEMP_COUNTER DATA:0
-            JMPI FILTER_LOOP
-
-    # Wenn nach dem Filtern keine Optionen mehr übrig sind (z.B. in einer Sackgasse),
-    # müssen wir die ungefilterten Optionen wiederherstellen.
-    # (Diese Logik ist komplex und wird hier für den Anfang weggelassen).
-
-CHOOSE_DIRECTION:
-    # --- Phase 3 & 4: Wähle und bewege ---
-    # (Diese Logik ist identisch zur vorherigen Version, aber nutzt den
-    # möglicherweise reduzierten %VALID_MOVES Zähler)
-    SETR %RANDOM_CHOICE %VALID_MOVES
+    # Der Trick: Die k-te gefundene Option wird mit einer Wahrscheinlichkeit
+    # von 1/k zur neuen "besten" Option.
+    SETR %RANDOM_CHOICE %VALID_MOVES_COUNT
     RAND %RANDOM_CHOICE
 
-    SUBI %VALID_MOVES %RANDOM_CHOICE
-    SUBI %VALID_MOVES DATA:1
-    # ... (POP_LOOP, MOVE_NOW, CLEANUP_LOOP wie zuvor) ...
-    POP NEW_DIRECTION # Die gewählte Richtung in den Ausgabeparameter schreiben
-    SEEK NEW_DIRECTION
-    SYNC
-    # ... (Restlicher Cleanup) ...
-    RET
+    # RAND %k gibt eine Zahl von 0 bis k-1 zurück. Wenn das Ergebnis 0 ist
+    # (was mit 1/k Wahrscheinlichkeit passiert), überschreiben wir unsere Wahl.
+    IFI %RANDOM_CHOICE DATA:0
+        SETR NEW_DIRECTION_OUT %DIRECTION_TO_TEST # Neue beste Richtung merken
 
-# Datentabelle für die Schleife (direkt im Code platziert für Effizienz)
-DIR_TABLE:
-    .PLACE DATA:1  0|1
-    .PLACE DATA:2 -1|0
-    .PLACE DATA:3  0|-1
-    .PLACE DATA:4  1|0
+TRY_NEXT_DIRECTION:
+    # Drehe zur nächsten Richtung für die nächste Iteration.
+    CALL STDLIB_2D.TURN_RIGHT WITH %DIRECTION_TO_TEST
+
+    SUBI %LOOP_COUNTER DATA:1
+    GTI %LOOP_COUNTER DATA:0
+        JMPI CHECK_DIRECTIONS_LOOP
+
+    # --- Phase 2: Führe die Bewegung aus (wenn eine Richtung gefunden wurde) ---
+    IFI %VALID_MOVES_COUNT DATA:0
+        RET # Keine gültige Richtung gefunden, also nichts tun.
+
+    # Bewege dich in die zuletzt ausgewählte "beste" Richtung.
+    SEEK NEW_DIRECTION_OUT
+    SYNC
+    RET
 .ENDP

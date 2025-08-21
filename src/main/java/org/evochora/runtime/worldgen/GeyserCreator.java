@@ -8,19 +8,26 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
+import org.evochora.runtime.internal.services.IRandomProvider;
 
 public class GeyserCreator implements IEnergyDistributionCreator {
 
     private final int geyserCount;
     private final int tickInterval;
     private final int energyAmount;
-    private final Random random = new Random();
+    private final Random random;
     private List<int[]> geyserLocations = null; // Wird beim ersten Aufruf initialisiert
 
-    public GeyserCreator(int count, int interval, int amount) {
+    public GeyserCreator(IRandomProvider randomProvider, int count, int interval, int amount) {
+        this.random = randomProvider.asJavaRandom();
         this.geyserCount = count;
         this.tickInterval = interval;
         this.energyAmount = amount;
+    }
+
+    // Backward-compatible constructor for legacy code/tests
+    public GeyserCreator(int count, int interval, int amount) {
+        this(new org.evochora.runtime.internal.services.SeededRandomProvider(0L), count, interval, amount);
     }
 
     @Override
