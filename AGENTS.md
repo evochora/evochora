@@ -22,7 +22,7 @@ Simulate evolution of organisms in n-D worlds, written in Assemnbly.
 
 ## Testing guidelines
 - Framework: JUnit 5 (`useJUnitPlatform()`).
-- Write tests for org.evochora.assembler, org.evochora.organism, org.evochora.organism.instructions
+- Write tests for org.evochora.assembler, org.evochora.organism, org.evochora.runtime.instructions
 - Skip/mark slow/integration tests: .
 - (Optional) Coverage goal: 60%+ lines (JaCoCo).
 

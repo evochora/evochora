@@ -5,7 +5,7 @@ import org.evochora.runtime.model.Environment;
 /**
  * Eine Schnittstelle für verschiedene Strategien, um Energie in der Welt zu verteilen.
  */
-public interface IEnergyDistributionStrategy {
+public interface IEnergyDistributionCreator {
     /**
      * Diese Methode wird von der Simulation in jedem Tick aufgerufen, um potenziell
      * neue Energie in die Umgebung einzubringen.

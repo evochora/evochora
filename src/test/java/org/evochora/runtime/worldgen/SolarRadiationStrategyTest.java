@@ -13,7 +13,7 @@ public class SolarRadiationStrategyTest {
     void placesEnergyInNDEnvironment_whenAreaIsUnowned() {
         // 3D world with a single cell ensures deterministic coordinate selection
         Environment env = new Environment(new int[]{1, 1, 1}, true);
-        SolarRadiationStrategy strat = new SolarRadiationStrategy(1.0, 42, 0);
+        SolarRadiationCreator strat = new SolarRadiationCreator(1.0, 42, 0);
 
         strat.distributeEnergy(env, 1);
 
@@ -27,7 +27,7 @@ public class SolarRadiationStrategyTest {
         // 3D world with single cell; mark it as owned to violate safety radius
         Environment env = new Environment(new int[]{1, 1, 1}, true);
         env.setOwnerId(7, 0, 0, 0);
-        SolarRadiationStrategy strat = new SolarRadiationStrategy(1.0, 99, 1);
+        SolarRadiationCreator strat = new SolarRadiationCreator(1.0, 99, 1);
 
         strat.distributeEnergy(env, 1);
 

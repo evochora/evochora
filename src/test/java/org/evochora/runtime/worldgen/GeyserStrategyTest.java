@@ -14,7 +14,7 @@ public class GeyserStrategyTest {
         // 3D world 3x3x3 to allow neighbors around random geyser locations
         Environment env = new Environment(new int[]{3, 3, 3}, true);
         // count=1 for determinism, interval=1 to trigger on tick 1, amount=77
-        GeyserStrategy strat = new GeyserStrategy(1, 1, 77);
+        GeyserCreator strat = new GeyserCreator(1, 1, 77);
 
         // First call initializes geysers but does not place energy until tick%interval==0 and >0
         strat.distributeEnergy(env, 0);

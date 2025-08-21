@@ -9,7 +9,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 
-public class GeyserStrategy implements IEnergyDistributionStrategy {
+public class GeyserCreator implements IEnergyDistributionCreator {
 
     private final int geyserCount;
     private final int tickInterval;
@@ -17,7 +17,7 @@ public class GeyserStrategy implements IEnergyDistributionStrategy {
     private final Random random = new Random();
     private List<int[]> geyserLocations = null; // Wird beim ersten Aufruf initialisiert
 
-    public GeyserStrategy(int count, int interval, int amount) {
+    public GeyserCreator(int count, int interval, int amount) {
         this.geyserCount = count;
         this.tickInterval = interval;
         this.energyAmount = amount;

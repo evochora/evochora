@@ -1,7 +1,5 @@
-package org.evochora.organism;
+package org.evochora.runtime;
 
-import org.evochora.runtime.Config;
-import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;

@@ -1,4 +1,4 @@
-package org.evochora.organism.instructions;
+package org.evochora.runtime.instructions;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;

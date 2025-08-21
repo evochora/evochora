@@ -5,14 +5,14 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import java.util.Random;
 
-public class SolarRadiationStrategy implements IEnergyDistributionStrategy {
+public class SolarRadiationCreator implements IEnergyDistributionCreator {
 
     private final Random random = new Random();
     private final double spawnProbability;
     private final int spawnAmount;
     private final int safetyRadius;
 
-    public SolarRadiationStrategy(double probability, int amount, int safetyRadius) {
+    public SolarRadiationCreator(double probability, int amount, int safetyRadius) {
         this.spawnProbability = probability;
         this.spawnAmount = amount;
         this.safetyRadius = safetyRadius;

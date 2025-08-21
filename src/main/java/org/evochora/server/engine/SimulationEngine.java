@@ -5,7 +5,7 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.server.config.SimulationConfiguration;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.CallBindingRegistry;
-import org.evochora.runtime.worldgen.IEnergyDistributionStrategy;
+import org.evochora.runtime.worldgen.IEnergyDistributionCreator;
 import org.evochora.runtime.worldgen.EnergyStrategyFactory;
 import org.evochora.runtime.model.Organism;
 import org.evochora.server.IControllable;
@@ -33,7 +33,7 @@ public final class SimulationEngine implements IControllable, Runnable {
     private Simulation simulation;
     private java.util.List<ProgramArtifact> programArtifacts = java.util.Collections.emptyList();
     private SimulationConfiguration.OrganismDefinition[] organismDefinitions = new SimulationConfiguration.OrganismDefinition[0];
-    private java.util.List<IEnergyDistributionStrategy> energyStrategies = java.util.Collections.emptyList();
+    private java.util.List<IEnergyDistributionCreator> energyStrategies = java.util.Collections.emptyList();
 
     public SimulationEngine(ITickMessageQueue queue) {
         this(queue, false, new int[]{120,80}, true);
@@ -68,7 +68,7 @@ public final class SimulationEngine implements IControllable, Runnable {
             this.energyStrategies = java.util.Collections.emptyList();
             return;
         }
-        java.util.List<IEnergyDistributionStrategy> built = new java.util.ArrayList<>();
+        java.util.List<IEnergyDistributionCreator> built = new java.util.ArrayList<>();
         for (org.evochora.server.config.SimulationConfiguration.EnergyStrategyConfig cfg : configs) {
             if (cfg == null || cfg.type == null || cfg.type.isBlank()) continue;
             try {
@@ -118,7 +118,7 @@ public final class SimulationEngine implements IControllable, Runnable {
         simulation.tick();
         // Apply energy distribution after organisms executed for this tick
         if (energyStrategies != null && !energyStrategies.isEmpty()) {
-            for (IEnergyDistributionStrategy strategy : energyStrategies) {
+            for (IEnergyDistributionCreator strategy : energyStrategies) {
                 try {
                     strategy.distributeEnergy(simulation.getEnvironment(), simulation.getCurrentTick());
                 } catch (Exception ex) {
@@ -312,7 +312,7 @@ public final class SimulationEngine implements IControllable, Runnable {
                 simulation.tick();
                 // Apply configured energy strategies each tick
                 if (energyStrategies != null && !energyStrategies.isEmpty()) {
-                    for (IEnergyDistributionStrategy strategy : energyStrategies) {
+                    for (IEnergyDistributionCreator strategy : energyStrategies) {
                         try {
                             strategy.distributeEnergy(simulation.getEnvironment(), simulation.getCurrentTick());
                         } catch (Exception ex) {
