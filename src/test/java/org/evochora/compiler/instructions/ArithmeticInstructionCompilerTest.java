@@ -37,7 +37,7 @@ public class ArithmeticInstructionCompilerTest {
 			env.setMolecule(Molecule.fromInt(e.getValue()), abs);
 		}
 
-		Organism org = Organism.create(sim, new int[]{0, 0}, Config.INITIAL_ORGANISM_ENERGY, sim.getLogger());
+		Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
 		org.setProgramId(artifact.programId());
 		sim.addOrganism(org);
 

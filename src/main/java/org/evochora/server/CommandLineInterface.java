@@ -34,11 +34,11 @@ public final class CommandLineInterface {
         ITickMessageQueue queue = new InMemoryTickQueue();
         SimulationEngine sim = null;
         PersistenceService persist = null;
-        java.util.ArrayList<ProgramArtifact> loadedArtifacts = new java.util.ArrayList<>();
+        // 'load' command removed; programs are defined in config
         SimulationConfiguration loadedConfig = null;
 
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-        log.info("Evochora server CLI ready. Commands: config <file> | load <file> | run | run debug | tick [n] | status | clear | exit");
+        log.info("Evochora server CLI ready. Commands: config <file> | run | run debug | tick [n] | status | clear | exit");
 
         while (true) {
             System.err.print(">>> ");
@@ -62,78 +62,6 @@ public final class CommandLineInterface {
                     System.err.println("Failed to load config: " + e.getMessage());
                 }
                 continue;
-            } else if (cmd.startsWith("load ")) {
-                String path = cmd.substring("load ".length()).trim();
-                if (path.isEmpty()) {
-                    System.err.println("Usage: load <assembly_file_path>");
-                    continue;
-                }
-                if (sim != null && (sim.isRunning() || persist.isRunning())) {
-                    System.err.println("Stop services before loading a new program (use 'exit' then 'run').");
-                    continue;
-                }
-                try {
-                    List<String> lines;
-                    int[] startPos = null;
-                    // Optional coordinates parsing: e.g., "load file.s 10|20". Coordinates represent
-                    // both the placement origin for machine code and the organism start position.
-                    String[] parts = path.split("\\s+");
-                    String fileToken = parts[0];
-                    if (parts.length > 1) {
-                        String coordToken = parts[1];
-                        String[] comps = coordToken.split("\\|");
-                        int expectedDims = (loadedConfig != null && loadedConfig.environment != null && loadedConfig.environment.shape != null)
-                                ? loadedConfig.environment.shape.length
-                                : org.evochora.server.config.ConfigLoader.loadDefault().getDimensions();
-                        if (comps.length != expectedDims) {
-                            System.err.printf("Invalid coordinates, expected %d dimensions separated by '|'%n", expectedDims);
-                            continue;
-                        }
-                        startPos = new int[comps.length];
-                        for (int i = 0; i < comps.length; i++) {
-                            startPos[i] = Integer.parseInt(comps[i]);
-                        }
-                    }
-                    String resourceBaseSingular = "org/evochora/organism/prototype/";
-                    String resourceBasePlural = "org/evochora/organism/prototypes/";
-                    String resourcePath = resourceBaseSingular + fileToken;
-                    java.io.InputStream is = CommandLineInterface.class.getClassLoader().getResourceAsStream(resourcePath);
-                    if (is == null) {
-                        resourcePath = resourceBasePlural + fileToken;
-                        is = CommandLineInterface.class.getClassLoader().getResourceAsStream(resourcePath);
-                    }
-                    String programLogicalName;
-                    if (is != null) {
-                        try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(is, StandardCharsets.UTF_8))) {
-                            lines = br.lines().toList();
-                        }
-                        programLogicalName = resourcePath; // Use resource path as logical file name
-                    } else {
-                        // Fallback: treat as filesystem path
-                        Path fsPath = Path.of(fileToken);
-                        lines = Files.readAllLines(fsPath, StandardCharsets.UTF_8);
-                        programLogicalName = fsPath.toAbsolutePath().toString();
-                    }
-                    Compiler compiler = new Compiler();
-                    int dimsForCompile;
-                    if (loadedConfig != null && loadedConfig.environment != null && loadedConfig.environment.shape != null) {
-                        dimsForCompile = loadedConfig.environment.shape.length;
-                    } else {
-                        dimsForCompile = org.evochora.server.config.ConfigLoader.loadDefault().getDimensions();
-                    }
-                    ProgramArtifact artifact = compiler.compile(lines, programLogicalName, dimsForCompile);
-                    if (startPos != null) {
-                        // Remember desired start so engine places code and organism starting there
-                        org.evochora.server.engine.UserLoadRegistry.registerDesiredStart(artifact.programId(), startPos);
-                    }
-                    loadedArtifacts.add(artifact);
-                    System.err.printf("Loaded program '%s' (programId=%s). Loaded count=%d.%n", fileToken, artifact.programId(), loadedArtifacts.size());
-                } catch (org.evochora.compiler.api.CompilationException e) {
-                    System.err.println(e.getMessage());
-                } catch (Exception e) {
-                    log.error("Failed to compile {}", path, e);
-                }
-                continue;
             } else if (cmd.equalsIgnoreCase("run") || cmd.equalsIgnoreCase("run debug")) {
                 boolean performanceMode = !cmd.equalsIgnoreCase("run debug");
 
@@ -150,7 +78,7 @@ public final class CommandLineInterface {
                 sim = new SimulationEngine(queue, performanceMode, cfg.environment.shape, cfg.environment.toroidal);
                 persist = new PersistenceService(queue, performanceMode, cfg.environment.shape);
 
-                sim.setProgramArtifacts(java.util.List.copyOf(loadedArtifacts));
+                sim.setOrganismDefinitions(cfg.organisms);
                 if (!sim.isRunning()) { sim.start(); System.err.println("SimulationEngine started."); }
                 if (!persist.isRunning()) { persist.start(); System.err.println("PersistenceService started."); }
                 continue;
@@ -160,7 +88,6 @@ public final class CommandLineInterface {
                     boolean performanceMode = false;
                     sim = new SimulationEngine(queue, performanceMode);
                     persist = new PersistenceService(queue, performanceMode);
-                    sim.setProgramArtifacts(java.util.List.copyOf(loadedArtifacts));
                     sim.start();
                     persist.start();
                     // Pause immediately to gain control over stepping
@@ -202,10 +129,9 @@ public final class CommandLineInterface {
                     if (persist != null) { persist.shutdown(); persist = null; }
                     // Reset queue to drop any pending messages
                     queue = new InMemoryTickQueue();
-                    // Clear loaded artifacts and user-registered starts
-                    loadedArtifacts.clear();
+                    // Clear user-registered starts
                     org.evochora.server.engine.UserLoadRegistry.clearAll();
-                    System.err.println("World cleared. Loaded artifacts removed and state reset.");
+                    System.err.println("World cleared. State reset.");
                 }
                 case "exit" -> {
                     if (sim != null) sim.shutdown();

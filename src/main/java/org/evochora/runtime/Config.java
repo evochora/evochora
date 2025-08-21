@@ -7,8 +7,7 @@ public final class Config {
 
     // Environment Settings (moved to JSON config loaded at runtime)
 
-    // Simulation Settings
-    public static final int INITIAL_ORGANISM_ENERGY = 2000;
+    // Simulation Settings (per-organism initial energy moved to config)
     public static final int ERROR_PENALTY_COST = 5;
     public static final int MAX_ORGANISM_ENERGY = 10000;
     public static final boolean STRICT_TYPING = true;

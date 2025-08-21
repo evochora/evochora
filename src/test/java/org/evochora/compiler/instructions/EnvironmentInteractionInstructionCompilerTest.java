@@ -28,7 +28,7 @@ public class EnvironmentInteractionInstructionCompilerTest {
 			int[] abs = new int[]{e.getKey()[0], e.getKey()[1]};
 			env.setMolecule(Molecule.fromInt(e.getValue()), abs);
 		}
-		Organism org = Organism.create(sim, new int[]{0,0}, Config.INITIAL_ORGANISM_ENERGY, sim.getLogger());
+		Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
 		org.setProgramId(artifact.programId());
 		sim.addOrganism(org);
 		for (int i=0;i<ticks;i++) sim.tick();

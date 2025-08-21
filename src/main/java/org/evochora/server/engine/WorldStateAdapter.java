@@ -125,6 +125,13 @@ public final class WorldStateAdapter {
             Organism.ProcFrame frame = frames.get(fi);
             String procName = frame.procName;
             List<String> paramNames = artifact.procNameToParamNames().get(procName != null ? procName.toUpperCase() : null);
+            if ((paramNames == null || paramNames.isEmpty()) && procName != null) {
+                int dot = procName.lastIndexOf('.');
+                if (dot > 0 && dot < procName.length() - 1) {
+                    String shortName = procName.substring(dot + 1).toUpperCase();
+                    paramNames = artifact.procNameToParamNames().get(shortName);
+                }
+            }
             if (paramNames == null || paramNames.isEmpty()) {
                 out.add(procName);
                 continue;
@@ -192,7 +199,14 @@ public final class WorldStateAdapter {
             return List.of();
         }
 
-        List<String> paramNames = artifact.procNameToParamNames().get(procName.toUpperCase());
+        List<String> paramNames = artifact.procNameToParamNames().get(procName != null ? procName.toUpperCase() : null);
+        if ((paramNames == null || paramNames.isEmpty()) && procName != null) {
+            int dot = procName.lastIndexOf('.');
+            if (dot > 0 && dot < procName.length() - 1) {
+                String shortName = procName.substring(dot + 1).toUpperCase();
+                paramNames = artifact.procNameToParamNames().get(shortName);
+            }
+        }
         if (paramNames == null || paramNames.isEmpty()) {
             return List.of();
         }

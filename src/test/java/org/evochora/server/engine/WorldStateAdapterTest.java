@@ -39,7 +39,7 @@ class WorldStateAdapterTest {
 	@Test
 	void resolvesFprBindingsAcrossFramesToDrOrPrForCallStackAndFormalParameters() {
 		// Arrange organism
-		Organism org = Organism.create(simulation, new int[]{0,0}, Config.INITIAL_ORGANISM_ENERGY, simulation.getLogger());
+		Organism org = Organism.create(simulation, new int[]{0,0}, 1000, simulation.getLogger());
 		org.setProgramId("p1");
 		// DR0 = DATA:3, DR1 = DATA:6
 		org.setDr(0, new Molecule(Config.TYPE_DATA, 3).toInt());

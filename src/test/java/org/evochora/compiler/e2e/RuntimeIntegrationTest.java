@@ -48,7 +48,7 @@ public class RuntimeIntegrationTest {
 			env.setMolecule(Molecule.fromInt(e.getValue()), abs);
 		}
 
-		Organism org = Organism.create(sim, new int[]{0, 0}, Config.INITIAL_ORGANISM_ENERGY, sim.getLogger());
+		Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
 		org.setProgramId(artifact.programId());
 		sim.addOrganism(org);
 
@@ -96,7 +96,7 @@ public class RuntimeIntegrationTest {
             env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
         }
 
-        Organism org = Organism.create(sim, new int[]{0, 0}, Config.INITIAL_ORGANISM_ENERGY, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
         // Wichtig: Die programId wird gesetzt, aber die Simulation kennt das zugehörige Artefakt nicht.
         org.setProgramId(artifact.programId());
         sim.addOrganism(org);
@@ -168,7 +168,7 @@ public class RuntimeIntegrationTest {
         // ...ABER wir füttern die Simulation mit dem korrupten Artefakt.
         sim.setProgramArtifacts(Map.of(corruptedArtifact.programId(), corruptedArtifact));
 
-        Organism org = Organism.create(sim, new int[]{0, 0}, Config.INITIAL_ORGANISM_ENERGY, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
         org.setProgramId(correctArtifact.programId());
         sim.addOrganism(org);
 

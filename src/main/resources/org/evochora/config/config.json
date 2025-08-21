@@ -1,8 +1,19 @@
 {
   "environment": {
-    "shape": [120, 80],
+    "shape": [200, 150],
     "toroidal": true
-  }
+  },
+  "organisms": [
+    {
+      "id": "sentry_bot",
+      "program": "prototypes/InstructionTester.s",
+      "initialEnergy": 2500,
+      "placement": {
+        "strategy": "fixed",
+        "positions": [
+          [0, 0]
+        ]
+      }
+    }
+  ]
 }
-
-
