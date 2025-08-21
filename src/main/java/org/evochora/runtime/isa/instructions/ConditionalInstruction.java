@@ -41,7 +41,7 @@ public class ConditionalInstruction extends Instruction {
                 }
                 int[] targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
                 int ownerId = environment.getOwnerId(targetCoordinate);
-                if (ownerId != organism.getId()) {
+                if (!organism.isCellAccessible(ownerId)) {
                     organism.skipNextInstruction(environment);
                 }
                 return;

@@ -193,6 +193,16 @@ public abstract class Instruction {
         registerFamily(LocationInstruction.class, Map.of(118, "DPLR", 120, "SKLR", 121, "PUSL", 123, "LRDS", 125, "POPL"), List.of(OperandSource.IMMEDIATE));
         registerFamily(LocationInstruction.class, Map.of(124, "LRDR"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
         registerFamily(LocationInstruction.class, Map.of(126, "LSDR"), List.of(OperandSource.REGISTER));
+
+        // Vector Manipulation Instruction Family (neu)
+        registerFamily(VectorInstruction.class, Map.of(127, "VGTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(VectorInstruction.class, Map.of(128, "VGTI"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(VectorInstruction.class, Map.of(129, "VGTS"), List.of()); // Operands vom Stack
+        registerFamily(VectorInstruction.class, Map.of(130, "VSTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(VectorInstruction.class, Map.of(131, "VSTI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE, OperandSource.IMMEDIATE));
+        registerFamily(VectorInstruction.class, Map.of(132, "VSTS"), List.of()); // Operands vom Stack
+        registerFamily(VectorInstruction.class, Map.of(133, "VBLD"), List.of(OperandSource.REGISTER));
+        registerFamily(VectorInstruction.class, Map.of(134, "VBLS"), List.of());
     }
 
     private static void registerFamily(Class<? extends Instruction> familyClass, Map<Integer, String> variants, List<OperandSource> sources) {

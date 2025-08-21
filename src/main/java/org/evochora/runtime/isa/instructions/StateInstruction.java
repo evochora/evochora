@@ -188,9 +188,7 @@ public class StateInstruction extends Instruction {
 
         Molecule moleculeAtTarget = environment.getMolecule(targetCoordinate);
         int ownerIdAtTarget = environment.getOwnerId(targetCoordinate[0], targetCoordinate[1]);
-        boolean ownedBySelf = ownerIdAtTarget == organism.getId();
-
-        if (moleculeAtTarget.isEmpty() || ownedBySelf) {
+        if (moleculeAtTarget.isEmpty() || organism.isCellAccessible(ownerIdAtTarget)) {
             organism.setActiveDp(targetCoordinate);
         } else {
             organism.instructionFailed("SEEK: Target cell is owned by another organism.");

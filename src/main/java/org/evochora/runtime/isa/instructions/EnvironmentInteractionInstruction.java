@@ -134,7 +134,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         } else {
             int ownerId = environment.getOwnerId(targetCoordinate);
             if (s.type() == Config.TYPE_STRUCTURE) {
-                if (ownerId != organism.getId()) {
+                if (!organism.isCellAccessible(ownerId)) {
                     int cost = Math.abs(s.toScalarValue());
                     if (cost > 0) organism.takeEr(cost);
                 }

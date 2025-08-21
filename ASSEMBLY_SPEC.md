@@ -34,7 +34,7 @@ Every cell in the grid contains a **Molecule**, which is the fundamental unit of
 
 ### Ownership
 
-Any grid cell can be "owned" by an organism. This ownership is tracked separately from the molecule in the cell and is crucial for certain instructions like `SEEK` or `PEEK`, which behave differently depending on whether the target cell is owned by the acting organism, a foreign organism, or is unowned.
+Any grid cell can be "owned" by an organism. This ownership is tracked separately from the molecule in the cell and is crucial for certain instructions like `SEEK` or `PEEK`, which behave differently depending on whether the target cell is owned by the acting organism, a foreign organism, or is unowned. An organism may also treat cells owned by its direct parent as accessible, i.e., as if they were its own, for the purpose of certain instructions (see `SEEK` and `IFM*`). Some instructions treat unowned cells as foreign for cost purposes.
 
 ---
 
@@ -193,10 +193,10 @@ The instruction set defines the fundamental operations an organism can perform. 
 * `PUSH %REG`: Pushes the value of `<%REG>` onto the Data Stack. (Cost: 1)
 * `POP %REG`: Pops a value from the Data Stack into `<%REG>`. (Cost: 1)
 * `PUSI <Literal>`: Pushes the immediate `<Literal>` onto the Data Stack. (Cost: 1)
-* `DUP`: Duplicates the top value on the Data Stack. (Cost: 0)
-* `SWAP`: Swaps the top two values on the Data Stack. (Cost: 0)
-* `DROP`: Discards the top value on the Data Stack. (Cost: 0)
-* `ROT`: Rotates the top three values on the Data Stack. (Cost: 0)
+* `DUP`: Duplicates the top value on the Data Stack. (Cost: 1)
+* `SWAP`: Swaps the top two values on the Data Stack. (Cost: 1)
+* `DROP`: Discards the top value on the Data Stack. (Cost: 1)
+* `ROT`: Rotates the top three values on the Data Stack. (Cost: 1)
 
 ### Arithmetic Operations
 
@@ -227,8 +227,8 @@ These instructions operate on the integer value of scalars.
 * `JMPI <Label>`: Jumps to `<Label>`. (Cost: 1)
 * `JMPR %VEC_REG>`: Jumps to the vector address in `<%VEC_REG>`. (Cost: 1)
 * `JMPS`: Jumps to the vector address popped from the stack. (Cost: 1)
-* `CALL <Label>`: Calls the procedure at `<Label>`. (Cost: 2)
-* `RET`: Returns from a procedure. (Cost: 2)
+* `CALL <Label>`: Calls the procedure at `<Label>`. (Cost: 1)
+* `RET`: Returns from a procedure. (Cost: 1)
 
 ### Conditional Instructions
 
@@ -238,16 +238,22 @@ These instructions skip the next instruction if the condition is false.
 * `LTR %REG1 %REG2`, `LTI %REG1 <Literal>`, `LTS`: If value of first argument is less than second. (Cost: 1)
 * `GTR %REG1 %REG2`, `GTI %REG1 <Literal>`, `GTS`: If value of first argument is greater than second. (Cost: 1)
 * `IFTR %REG1 %REG2`, `IFTI %REG1 <Literal>`, `IFTS`: If molecule types are equal. (Cost: 1)
-* `IFMR %VEC_REG`, `IFMI <Vector>`, `IFMS`: If cell at `DP` + vector is owned by self. The vector must be a unit vector. (Cost: 1)
+* `IFMR %VEC_REG`, `IFMI <Vector>`, `IFMS`: If cell at `DP` + vector is owned by self or direct parent. The vector must be a unit vector. (Cost: 1)
 
 ### World Interaction
 
 These instructions interact with the environment grid relative to the **active Data Pointer (`DP`)**. The vector argument must be a unit vector, meaning these instructions can only target adjacent cells.
+Note on conflicts: If a world interaction loses conflict resolution for its target, its base energy cost is waived (cost 0). Any additional costs described below may still apply if taken before the conflict outcome (e.g., `POKE`).
 
-* `PEEK %DEST_REG %VEC_REG`, `PEKI %DEST_REG <Vector>`, `PEKS`: Reads and consumes molecule at `DP` + vector. If the molecule is `ENERGY`, its value is added to the organism's `ER`. For other types (like `DATA` or foreign `STRUCTURE`), its value is subtracted as an additional cost. (Base Cost: 2)
-* `SCAN %DEST_REG %VEC_REG`, `SCNI %DEST_REG <Vector>`, `SCNS`: Reads molecule at `DP` + vector without consuming it. (Cost: 2)
-* `POKE %SRC_REG %VEC_REG`, `POKI %SRC_REG <Vector>`, `POKS`: Writes molecule from `<%SRC_REG>` or stack to empty cell at `DP` + vector. (Cost: 5 + value)
-* `SEEK %VEC_REG`, `SEKI <Vector>`, `SEKS`: Moves active `DP` by vector if target cell is empty or owned by self. (Cost: 3)
+* `PEEK %DEST_REG %VEC_REG`, `PEKI %DEST_REG <Vector>`, `PEKS`: Reads and consumes molecule at `DP` + vector, then clears ownership on that cell. (Base Cost: 1)
+  - ENERGY: Adds its value to `ER` (no extra cost).
+  - STRUCTURE: If the cell is not accessible (neither owned by self nor direct parent), pay additional `|value|` energy.
+  - CODE/DATA: Pay an additional flat cost of `5` unless the cell is owned by self (ownerId != 0). Unowned and parent-owned cells still incur this `5` cost.
+* `SCAN %DEST_REG %VEC_REG`, `SCNI %DEST_REG <Vector>`, `SCNS`: Reads molecule at `DP` + vector without consuming it. (Cost: 1)
+* `POKE %SRC_REG %VEC_REG`, `POKI %SRC_REG <Vector>`, `POKS`: Writes molecule from `<%SRC_REG>` or stack to an empty cell at `DP` + vector. (Base Cost: 1)
+  - Additional cost: ENERGY or STRUCTURE writes cost `|value|`; CODE or DATA writes cost `5`.
+  - Note: The additional cost is charged even if the target cell is occupied and the write fails.
+* `SEEK %VEC_REG`, `SEKI <Vector>`, `SEKS`: Moves active `DP` by vector if target cell is empty or accessible (owned by self or direct parent). (Cost: 1)
 
 ### State and Location Operations
 
@@ -256,16 +262,17 @@ These instructions interact with the environment grid relative to the **active D
 * `TURN %VEC_REG`, `TRNI <Vector>`, `TRNS`: Sets `DV` to the specified vector. The instruction will fail if the vector is not a unit vector. (Cost: 1)
 * `POS %REG`, `POSS`: Stores the organism's position relative to its start (`IP` - `InitialIP`) in `<%REG>` or on the stack. (Cost: 1)
 * `DIFF %REG`, `DIFS`: Stores the vector `DP` - `IP` in `<%REG>` or on the stack. (Cost: 1)
-* `NRG %REG`, `NRGS`: Stores current `ER` in `<%REG>` or on the stack. (Cost: 0)
-* `RAND %REG`, `RNDS`: Stores a random number [0, `<%REG>`) back into `<%REG>` or on the stack. (Cost: 2)
-* `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`, `FRKI <DP_Vec> <NRG_Lit> <DV_Vec>`, `FRKS`: Creates a child organism. (Cost: 10 + energy)
+* `NRG %REG`, `NRGS`: Stores current `ER` in `<%REG>` or on the stack. (Cost: 1)
+* `RAND %REG`, `RNDS`: Stores a random number [0, `<%REG>`) back into `<%REG>` or on the stack. (Cost: 1)
+* `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`: Creates a child organism. (Cost: 10 + energy)
+* `FRKI <DP_Vec> <NRG_Lit> <DV_Vec>`, `FRKS`: Creates a child organism (immediate/stack variants). (Cost: 1)
 * `ADPR %REG`, `ADPI <Literal>`, `ADPS`: Sets the active Data Pointer index. (Cost: 1)
 
 ### Location Stack and Register Operations
 
 These instructions manage the Location Stack (`LS`) and Location Registers (`%LRx`).
 
-* `DUPL`, `SWPL`, `DRPL`, `ROTL`: Standard stack operations (Duplicate, Swap, Drop, Rotate) for the `LS`. (Cost: 0)
+* `DUPL`, `SWPL`, `DRPL`, `ROTL`: Standard stack operations (Duplicate, Swap, Drop, Rotate) for the `LS`. (Cost: 1)
 * `DPLS`: Pushes the active `DP` onto the `LS`. (Cost: 1)
 * `SKLS`: Pops a vector from `LS` and sets it as the active `DP`. (Cost: 1)
 * `LSDS`: Pops a vector from `LS` and pushes it onto the `DS`. (Cost: 1)
@@ -276,6 +283,16 @@ These instructions manage the Location Stack (`LS`) and Location Registers (`%LR
 * `LRDR %DEST_REG <LR_Index>`: Copies the vector from `%LR<Index>` into `<%DEST_REG>`. (Cost: 1)
 * `LRDS <LR_Index>`: Pushes the vector from `%LR<Index>` onto the `DS`. (Cost: 1)
 * `LSDR %DEST_REG>`: Copies the top vector from `LS` into `<%DEST_REG>` without popping. (Cost: 1)
+
+### Vector Component Operations
+
+These instructions provide atomic control over the components of a vector, allowing for dynamic construction and manipulation of vectors at runtime.
+
+* `VGTR %Dst_Reg %Src_Vec %Idx_Reg`, `VGTI %Dst_Reg %Src_Vec <Idx_Lit>`, `VGTS`: **V**ector **G**e**t**: Extracts a single scalar component from a source vector. The `R` variant uses a register for the index, `I` uses an immediate literal, and `S` operates entirely on the stack.
+
+* `VSTR %Vec_Reg %Idx_Reg %Val_Reg`, `VSTI %Vec_Reg <Idx_Lit> <Val_Lit>`, `VSTS`:**V**ector **S**e**t**: Modifies a single scalar component within a target vector. The variants follow the same pattern as `VGET`. Note that the `I` variant for `VSTI` takes an immediate index but a register for the value.
+
+* `VBLD %Dest_Reg`, `VBLS`: **V**ector **B**ui**ld**: Constructs a new vector from N scalar values taken from the top of the Data Stack (where N is the dimensionality of the world). `VBLD` stores the result in a register, while `VBLS` pushes it back onto the stack.
 
 ---
 
@@ -375,3 +392,5 @@ START:
 ### Scopes
 
 * `.SCOPE <Name> / .ENDS`: Defines a named scope. Labels defined inside a scope are only visible within that scope, preventing name collisions.
+
+```

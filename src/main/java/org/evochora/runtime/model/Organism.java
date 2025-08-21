@@ -474,6 +474,28 @@ public class Organism {
     public Integer getParentId() { return parentId; }
     /** Sets the ID of the parent organism. */
     public void setParentId(Integer parentId) { this.parentId = parentId; }
+
+    /**
+     * Checks if a cell, identified by its owner's ID, is accessible to this organism.
+     * A cell is considered accessible if it is owned by the organism itself or its direct parent.
+     *
+     * @param ownerId The ID of the cell's owner.
+     * @return {@code true} if the cell is accessible, otherwise {@code false}.
+     */
+    public boolean isCellAccessible(int ownerId) {
+        // A cell is always accessible to its owner.
+        if (ownerId == this.id) {
+            return true;
+        }
+        // A cell is also accessible if it belongs to the direct parent.
+        Integer parent = this.getParentId();
+        if (parent != null && ownerId == parent) {
+            return true;
+        }
+        // Otherwise, it's considered foreign.
+        return false;
+    }
+
     /** Gets the simulation tick number at which the organism was born. */
     public long getBirthTick() { return birthTick; }
     /** Sets the birth tick of the organism. */
