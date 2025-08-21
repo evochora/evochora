@@ -6,13 +6,31 @@
   "organisms": [
     {
       "id": "sentry_bot",
-      "program": "prototypes/InstructionTester.s",
+      "program": "prototypes/test.s",
       "initialEnergy": 2500,
       "placement": {
         "strategy": "fixed",
         "positions": [
           [0, 0]
         ]
+      }
+    }
+  ],
+  "energyStrategies": [
+    {
+      "type": "geyser",
+      "params": {
+        "count": 4,
+        "interval": 10,
+        "amount": 200
+      }
+    },
+    {
+      "type": "solar",
+      "params": {
+        "probability": 0.1,
+        "amount": 30,
+        "safetyRadius": 2
       }
     }
   ]

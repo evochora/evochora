@@ -79,6 +79,8 @@ public final class CommandLineInterface {
                 persist = new PersistenceService(queue, performanceMode, cfg.environment.shape);
 
                 sim.setOrganismDefinitions(cfg.organisms);
+                // Configure energy strategies from config if provided
+                sim.setEnergyStrategies(cfg.energyStrategies);
                 if (!sim.isRunning()) { sim.start(); System.err.println("SimulationEngine started."); }
                 if (!persist.isRunning()) { persist.start(); System.err.println("PersistenceService started."); }
                 continue;

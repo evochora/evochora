@@ -5,6 +5,8 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.server.config.SimulationConfiguration;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.CallBindingRegistry;
+import org.evochora.runtime.worldgen.IEnergyDistributionStrategy;
+import org.evochora.runtime.worldgen.EnergyStrategyFactory;
 import org.evochora.runtime.model.Organism;
 import org.evochora.server.IControllable;
 import org.evochora.server.contracts.IQueueMessage;
@@ -31,6 +33,7 @@ public final class SimulationEngine implements IControllable, Runnable {
     private Simulation simulation;
     private java.util.List<ProgramArtifact> programArtifacts = java.util.Collections.emptyList();
     private SimulationConfiguration.OrganismDefinition[] organismDefinitions = new SimulationConfiguration.OrganismDefinition[0];
+    private java.util.List<IEnergyDistributionStrategy> energyStrategies = java.util.Collections.emptyList();
 
     public SimulationEngine(ITickMessageQueue queue) {
         this(queue, false, new int[]{120,80}, true);
@@ -55,6 +58,28 @@ public final class SimulationEngine implements IControllable, Runnable {
 
     public void setOrganismDefinitions(SimulationConfiguration.OrganismDefinition[] defs) {
         this.organismDefinitions = defs != null ? defs : new SimulationConfiguration.OrganismDefinition[0];
+    }
+
+    /**
+     * Builds and installs energy distribution strategies from configuration entries.
+     */
+    public void setEnergyStrategies(java.util.List<org.evochora.server.config.SimulationConfiguration.EnergyStrategyConfig> configs) {
+        if (configs == null || configs.isEmpty()) {
+            this.energyStrategies = java.util.Collections.emptyList();
+            return;
+        }
+        java.util.List<IEnergyDistributionStrategy> built = new java.util.ArrayList<>();
+        for (org.evochora.server.config.SimulationConfiguration.EnergyStrategyConfig cfg : configs) {
+            if (cfg == null || cfg.type == null || cfg.type.isBlank()) continue;
+            try {
+                built.add(EnergyStrategyFactory.create(cfg.type, cfg.params));
+            } catch (IllegalArgumentException ex) {
+                log.warn("Ignoring unknown energy strategy type '{}': {}", cfg.type, ex.getMessage());
+            } catch (Exception ex) {
+                log.warn("Failed to build energy strategy '{}': {}", cfg.type, ex.getMessage());
+            }
+        }
+        this.energyStrategies = java.util.Collections.unmodifiableList(built);
     }
 
     @Override
@@ -91,6 +116,16 @@ public final class SimulationEngine implements IControllable, Runnable {
     public void step() {
         if (simulation == null) return;
         simulation.tick();
+        // Apply energy distribution after organisms executed for this tick
+        if (energyStrategies != null && !energyStrategies.isEmpty()) {
+            for (IEnergyDistributionStrategy strategy : energyStrategies) {
+                try {
+                    strategy.distributeEnergy(simulation.getEnvironment(), simulation.getCurrentTick());
+                } catch (Exception ex) {
+                    log.warn("Energy strategy execution failed: {}", ex.getMessage());
+                }
+            }
+        }
         StatusMetricsRegistry.onTick(simulation.getCurrentTick());
         try {
             queue.put(WorldStateAdapter.fromSimulation(simulation));
@@ -275,6 +310,16 @@ public final class SimulationEngine implements IControllable, Runnable {
                 }
 
                 simulation.tick();
+                // Apply configured energy strategies each tick
+                if (energyStrategies != null && !energyStrategies.isEmpty()) {
+                    for (IEnergyDistributionStrategy strategy : energyStrategies) {
+                        try {
+                            strategy.distributeEnergy(simulation.getEnvironment(), simulation.getCurrentTick());
+                        } catch (Exception ex) {
+                            log.warn("Energy strategy execution failed: {}", ex.getMessage());
+                        }
+                    }
+                }
                 StatusMetricsRegistry.onTick(simulation.getCurrentTick());
                 IQueueMessage tickMsg = WorldStateAdapter.fromSimulation(simulation);
                 queue.put(tickMsg);
