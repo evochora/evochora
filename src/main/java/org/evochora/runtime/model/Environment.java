@@ -121,15 +121,31 @@ public class Environment {
         if (centerCoord.length != this.shape.length) {
             throw new IllegalArgumentException("Coordinate dimensions do not match world dimensions.");
         }
-        // Für eine 2D-Welt (erweiterbar auf n-Dimensionen)
-        for (int dx = -radius; dx <= radius; dx++) {
-            for (int dy = -radius; dy <= radius; dy++) {
-                int[] checkCoord = {centerCoord[0] + dx, centerCoord[1] + dy};
-                if (getOwnerId(checkCoord) != 0) {
-                    return false; // Ein Besitzer wurde gefunden, der Bereich ist nicht sicher.
-                }
+        // N-dimensionale Iteration über einen hyperkubischen Bereich mit gegebenem Radius
+        int dims = this.shape.length;
+        int[] offsets = new int[dims];
+
+        while (true) {
+            int[] checkCoord = new int[dims];
+            for (int i = 0; i < dims; i++) {
+                checkCoord[i] = centerCoord[i] + offsets[i];
             }
+            if (getOwnerId(checkCoord) != 0) {
+                return false;
+            }
+            // Inkrementiere die Offsets wie ein Zähler von -radius..+radius je Dimension
+            int dim = dims - 1;
+            while (dim >= 0) {
+                if (offsets[dim] < radius) {
+                    offsets[dim]++;
+                    // Setze nachfolgende Dimensionen zurück
+                    for (int j = dim + 1; j < dims; j++) offsets[j] = -radius;
+                    break;
+                }
+                dim--;
+            }
+            if (dim < 0) break; // alle Kombinationen durchlaufen
         }
-        return true; // Kein Besitzer im gesamten Bereich gefunden.
+        return true;
     }
 }

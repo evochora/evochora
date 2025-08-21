@@ -5,7 +5,7 @@
   },
   "organisms": [
     {
-      "id": "sentry_bot",
+      "id": "test",
       "program": "prototypes/test.s",
       "initialEnergy": 2500,
       "placement": {

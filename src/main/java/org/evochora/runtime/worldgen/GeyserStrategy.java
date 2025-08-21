@@ -31,13 +31,16 @@ public class GeyserStrategy implements IEnergyDistributionStrategy {
 
         if (currentTick > 0 && currentTick % tickInterval == 0) {
             for (int[] geyserPos : geyserLocations) {
-                // Finde alle gültigen Nachbarzellen (leer und unbeansprucht)
+                // Finde alle gültigen Nachbarzellen (leer und unbeansprucht) in N Dimensionen
                 List<int[]> validTargets = new ArrayList<>();
-                int[][] neighbors = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}}; // Für 2D
-                for (int[] offset : neighbors) {
-                    int[] checkPos = {geyserPos[0] + offset[0], geyserPos[1] + offset[1]};
-                    if (environment.getMolecule(checkPos).isEmpty() && environment.getOwnerId(checkPos) == 0) {
-                        validTargets.add(checkPos);
+                int dims = environment.getShape().length;
+                for (int axis = 0; axis < dims; axis++) {
+                    for (int delta : new int[]{-1, 1}) {
+                        int[] checkPos = java.util.Arrays.copyOf(geyserPos, dims);
+                        checkPos[axis] = checkPos[axis] + delta;
+                        if (environment.getMolecule(checkPos).isEmpty() && environment.getOwnerId(checkPos) == 0) {
+                            validTargets.add(checkPos);
+                        }
                     }
                 }
 
