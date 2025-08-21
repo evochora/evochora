@@ -14,7 +14,7 @@ public class OrgDirectiveHandler implements IDirectiveHandler {
         Parser parser = (Parser) context;
         AstNode vector = parser.expression();
         if (!(vector instanceof VectorLiteralNode)) {
-            context.getDiagnostics().reportError("Expected a vector literal after .ORG.", "Unknown", context.peek().line());
+            context.getDiagnostics().reportError("Expected a vector literal after .ORG.", context.peek().fileName(), context.peek().line());
         }
         return new OrgNode(vector);
     }

@@ -2,7 +2,6 @@ package org.evochora.server;
 
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.server.engine.SimulationEngine;
-import org.evochora.server.contracts.IQueueMessage;
 import org.evochora.server.persistence.PersistenceService;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
@@ -100,6 +99,8 @@ public final class CommandLineInterface {
                     }
                     loadedArtifacts.add(artifact);
                     System.err.printf("Loaded program '%s' (programId=%s). Loaded count=%d.%n", fileToken, artifact.programId(), loadedArtifacts.size());
+                } catch (org.evochora.compiler.api.CompilationException e) {
+                    System.err.println(e.getMessage());
                 } catch (Exception e) {
                     log.error("Failed to compile {}", path, e);
                 }

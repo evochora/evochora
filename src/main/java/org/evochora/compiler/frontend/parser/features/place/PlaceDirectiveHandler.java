@@ -15,11 +15,11 @@ public class PlaceDirectiveHandler implements IDirectiveHandler {
         Parser parser = (Parser) context;
         AstNode literal = parser.expression();
         if (!(literal instanceof TypedLiteralNode)) {
-             context.getDiagnostics().reportError("Expected a typed literal (e.g. DATA:5) for .PLACE.", "Unknown", context.peek().line());
+             context.getDiagnostics().reportError("Expected a typed literal (e.g. DATA:5) for .PLACE.", context.peek().fileName(), context.peek().line());
         }
         AstNode position = parser.expression();
         if (!(position instanceof VectorLiteralNode)) {
-             context.getDiagnostics().reportError("Expected a vector literal for the position in .PLACE.", "Unknown", context.peek().line());
+             context.getDiagnostics().reportError("Expected a vector literal for the position in .PLACE.", context.peek().fileName(), context.peek().line());
         }
         return new PlaceNode(literal, position);
     }

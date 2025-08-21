@@ -64,7 +64,7 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
             pass.removeTokens(startIndex, endIndex - startIndex);
             pass.injectTokens(lexer.scanTokens(), 0);
         } catch (IOException e) {
-            context.getDiagnostics().reportError("Could not read included file: " + absolutePath, "Unknown", pathToken.line());
+            context.getDiagnostics().reportError("Could not read included file: " + absolutePath, pathToken.fileName(), pathToken.line());
         }
 
         return null;

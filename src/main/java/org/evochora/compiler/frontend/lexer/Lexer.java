@@ -67,7 +67,7 @@ public class Lexer {
                     number();
                 } else {
                     // Andernfalls ist es ein Fehler (später vielleicht ein Operator).
-                    diagnostics.reportError("Unexpected character: " + c, "Unknown", line);
+                    diagnostics.reportError("Unexpected character: " + c, logicalFileName, line);
                 }
                 break;
             // Ignoriere Whitespace
@@ -84,7 +84,7 @@ public class Lexer {
                 } else if (isAlpha(c)) {
                     identifier();
                 } else {
-                    diagnostics.reportError("Unexpected character: " + c, "Unknown", line);
+                    diagnostics.reportError("Unexpected character: " + c, logicalFileName, line);
                 }
                 break;
         }
@@ -131,7 +131,7 @@ public class Lexer {
             int value = parseInt(numberString);
             addToken(TokenType.NUMBER, value);
         } catch (NumberFormatException e) {
-            diagnostics.reportError("Invalid number format: " + numberString, "Unknown", line);
+            diagnostics.reportError("Invalid number format: " + numberString, logicalFileName, line);
         }
     }
 
@@ -183,7 +183,7 @@ public class Lexer {
         }
 
         if (isAtEnd()) {
-            diagnostics.reportError("Unterminated string.", "Unknown", line);
+            diagnostics.reportError("Unterminated string.", logicalFileName, line);
             return;
         }
 

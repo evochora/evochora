@@ -89,6 +89,9 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
 			if (idxOpt.isPresent()) {
 				return new IrReg("%FPR" + idxOpt.get());
 			}
+			// Try resolve defined constants
+			java.util.Optional<IrOperand> constOpt = ctx.resolveConstant(nameU);
+			if (constOpt.isPresent()) return constOpt.get();
 			return new IrLabelRef(id.identifierToken().text());
 		}
 		// Fallback: treat as label-like reference for now

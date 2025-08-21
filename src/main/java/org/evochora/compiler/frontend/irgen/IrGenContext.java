@@ -34,6 +34,7 @@ public final class IrGenContext {
 	private final IrConverterRegistry registry;
 	private final List<IrItem> out = new ArrayList<>();
 	private final Deque<Map<String, Integer>> procParamScopes = new ArrayDeque<>();
+	private final Map<String, org.evochora.compiler.ir.IrOperand> constantByNameUpper = new HashMap<>();
 
 	public IrGenContext(String programName, DiagnosticsEngine diagnostics, IrConverterRegistry registry) {
 		this.programName = programName;
@@ -140,5 +141,16 @@ public final class IrGenContext {
 			if (scope.containsKey(identifierUpper)) return java.util.Optional.of(scope.get(identifierUpper));
 		}
 		return java.util.Optional.empty();
+	}
+
+	// --- Constant registry for .DEFINE ---
+	public void registerConstant(String nameUpper, org.evochora.compiler.ir.IrOperand value) {
+		if (nameUpper != null && value != null) {
+			constantByNameUpper.put(nameUpper, value);
+		}
+	}
+
+	public java.util.Optional<org.evochora.compiler.ir.IrOperand> resolveConstant(String nameUpper) {
+		return java.util.Optional.ofNullable(constantByNameUpper.get(nameUpper));
 	}
 }

@@ -10,7 +10,6 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
-import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
 import org.evochora.compiler.ir.IrProgram;
@@ -121,7 +120,15 @@ public class Compiler implements ICompiler {
         IrProgram linkedIr = linker.link(rewrittenIr, layout, linkingContext);
 
         Emitter emitter = new Emitter();
-        ProgramArtifact artifact = emitter.emit(linkedIr, layout, linkingContext, new RuntimeInstructionSetAdapter(), finalAliasMap, procNameToParamNames, sources);
+        ProgramArtifact artifact;
+        try {
+            artifact = emitter.emit(linkedIr, layout, linkingContext, new RuntimeInstructionSetAdapter(), finalAliasMap, procNameToParamNames, sources);
+        } catch (org.evochora.compiler.api.CompilationException ce) {
+            throw ce; // already formatted with file/line
+        } catch (RuntimeException re) {
+            // If any runtime exception bubbles up, wrap into CompilationException to present user-friendly message
+            throw new org.evochora.compiler.api.CompilationException(re.getMessage(), re);
+        }
 
         org.evochora.compiler.diagnostics.CompilerLogger.info("Emit completed: programId=" + artifact.programId());
         DebugDump.dumpProgramArtifact(programName, artifact);

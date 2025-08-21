@@ -3,7 +3,6 @@ package org.evochora.compiler.frontend.parser;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.CompilerPhase;
 import org.evochora.compiler.frontend.directive.IDirectiveHandler;
-import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.frontend.directive.DirectiveHandlerRegistry;
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
@@ -80,7 +79,7 @@ public class Parser implements ParsingContext {
             advance(); // Ignoriere Direktiven für andere Phasen
             return null;
         } else {
-            diagnostics.reportError("Unknown directive: " + directiveToken.text(), "Unknown", directiveToken.line());
+            diagnostics.reportError("Unknown directive: " + directiveToken.text(), directiveToken.fileName(), directiveToken.line());
             advance();
             return null;
         }
@@ -107,7 +106,7 @@ public class Parser implements ParsingContext {
 
         Token unexpected = advance();
         if (unexpected.type() != TokenType.END_OF_FILE && unexpected.type() != TokenType.NEWLINE) {
-            diagnostics.reportError("Expected instruction or directive, but got '" + unexpected.text() + "'.", "Unknown", unexpected.line());
+            diagnostics.reportError("Expected instruction or directive, but got '" + unexpected.text() + "'.", unexpected.fileName(), unexpected.line());
         }
         return null;
     }
@@ -149,7 +148,7 @@ public class Parser implements ParsingContext {
         }
 
         Token unexpected = advance();
-        diagnostics.reportError("Unexpected token while parsing expression: " + unexpected.text(), "Unknown", unexpected.line());
+        diagnostics.reportError("Unexpected token while parsing expression: " + unexpected.text(), unexpected.fileName(), unexpected.line());
         return null;
     }
 
@@ -209,7 +208,7 @@ public class Parser implements ParsingContext {
     public Token consume(TokenType type, String errorMessage) {
         if (check(type)) return advance();
         Token unexpected = peek();
-        diagnostics.reportError(errorMessage, "Unknown", unexpected.line());
+        diagnostics.reportError(errorMessage, unexpected.fileName(), unexpected.line());
         throw new RuntimeException(errorMessage);
     }
 
@@ -217,7 +216,7 @@ public class Parser implements ParsingContext {
     public void registerProcedure(ProcedureNode procedure) {
         String name = procedure.name().text().toUpperCase();
         if (procedureTable.containsKey(name)) {
-            getDiagnostics().reportError("Procedure '" + name + "' is already defined.", "Unknown", procedure.name().line());
+            getDiagnostics().reportError("Procedure '" + name + "' is already defined.", procedure.name().fileName(), procedure.name().line());
         } else {
             procedureTable.put(name, procedure);
         }

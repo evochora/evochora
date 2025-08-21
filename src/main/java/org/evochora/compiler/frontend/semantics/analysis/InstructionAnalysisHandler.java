@@ -32,7 +32,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
         Integer instructionId = Instruction.getInstructionIdByName(instructionName);
 
         if (instructionId == null) {
-            diagnostics.reportError("Unknown instruction '" + instructionName + "'.", "Unknown", instructionNode.opcode().line());
+            diagnostics.reportError("Unknown instruction '" + instructionName + "'.", instructionNode.opcode().fileName(), instructionNode.opcode().line());
             return;
         }
 
@@ -64,7 +64,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                 if (unexpectedEnd > 1) {
                     diagnostics.reportError(
                             "CALL syntax error: unexpected token before WITH.",
-                            "Unknown",
+                            instructionNode.opcode().fileName(),
                             instructionNode.opcode().line()
                     );
                     return;
@@ -79,7 +79,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                     }
                     diagnostics.reportError(
                             "CALL actuals must be registers or parameter names.",
-                            "Unknown",
+                            instructionNode.opcode().fileName(),
                             instructionNode.opcode().line()
                     );
                     return;
@@ -92,7 +92,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                 diagnostics.reportError(
                         String.format("Instruction '%s' expects %d argument(s), but got %d.",
                                 instructionName, expectedArity, actualArity),
-                        "Unknown",
+                        instructionNode.opcode().fileName(),
                         instructionNode.opcode().line()
                 );
                 return;
@@ -112,7 +112,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                 diagnostics.reportError(
                                         String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got CONSTANT.",
                                                 i + 1, instructionName, expectedType),
-                                        "Unknown",
+                                        instructionNode.opcode().fileName(),
                                         instructionNode.opcode().line()
                                 );
                             }
@@ -122,7 +122,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                 diagnostics.reportError(
                                         String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got LABEL.",
                                                 i + 1, instructionName, expectedType),
-                                        "Unknown",
+                                        instructionNode.opcode().fileName(),
                                         instructionNode.opcode().line()
                                 );
                             }
@@ -132,7 +132,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                 diagnostics.reportError(
                                         String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got PARAMETER.",
                                                 i + 1, instructionName, expectedType),
-                                        "Unknown",
+                                        instructionNode.opcode().fileName(),
                                         instructionNode.opcode().line()
                                 );
                             }
@@ -142,7 +142,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         if (expectedType != InstructionArgumentType.VECTOR) {
                             diagnostics.reportError(
                                     String.format("Symbol '%s' is not defined.", idNode.identifierToken().text()),
-                                    "Unknown",
+                                    idNode.identifierToken().fileName(),
                                     idNode.identifierToken().line()
                             );
                         }
@@ -154,7 +154,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         diagnostics.reportError(
                                 String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got %s.",
                                         i + 1, instructionName, expectedType, actualType),
-                                "Unknown",
+                                instructionNode.opcode().fileName(),
                                 instructionNode.opcode().line()
                         );
                     }
@@ -167,7 +167,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         if (regId.isEmpty()) {
                             diagnostics.reportError(
                                     String.format("Unknown register '%s'.", tokenText),
-                                    "Unknown",
+                                    regNode.registerToken().fileName(),
                                     regNode.registerToken().line()
                             );
                         } else {
@@ -176,7 +176,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                             if (u.startsWith("%FPR")) {
                                 diagnostics.reportError(
                                         "Access to formal parameter registers (%FPRx) is not allowed in user code.",
-                                        "Unknown",
+                                        regNode.registerToken().fileName(),
                                         regNode.registerToken().line()
                                 );
                             }
@@ -188,7 +188,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         diagnostics.reportError(
                                 String.format("Argument %d for instruction '%s' requires a typed literal (e.g., DATA:42).",
                                         i + 1, instructionName),
-                                "Unknown",
+                                instructionNode.opcode().fileName(),
                                 instructionNode.opcode().line()
                         );
                     }

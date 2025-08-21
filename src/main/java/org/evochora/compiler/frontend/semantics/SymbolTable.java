@@ -52,7 +52,7 @@ public class SymbolTable {
         if (perFile.containsKey(file)) {
             diagnostics.reportError(
                     "Symbol '" + name + "' is already defined in this scope.",
-                    symbol.name().text(),
+                    symbol.name().fileName(),
                     symbol.name().line()
             );
         } else {

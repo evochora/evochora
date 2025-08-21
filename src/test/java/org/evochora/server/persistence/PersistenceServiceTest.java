@@ -11,7 +11,6 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.time.Duration;
-import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,6 +27,7 @@ class PersistenceServiceTest {
         var org = new OrganismState(
                 1, "progA", null, 0L, 123L,
                 List.of(1,2), List.of(List.of(0,1)), List.of(1,0), // CORRECTED: Wrapped dp in a list
+                List.of(), // returnIp
                 5, 0,
                 List.of("DATA:1", "DATA:2"),
                 List.of("DATA:3"),
@@ -36,8 +36,8 @@ class PersistenceServiceTest {
                 java.util.List.<String>of(),
                 java.util.List.<String>of(),
                 "{}",
-                Collections.emptyList(), // CORRECTED: Added empty list for locationRegisters
-                Collections.emptyList()  // CORRECTED: Added empty list for locationStack
+                List.of(), // locationRegisters
+                List.of()  // locationStack
         );
         var cell = new CellState(List.of(1,2), 2, 42, 1);
         var wsm = new WorldStateMessage(10L, 999L, List.of(org), List.of(cell));

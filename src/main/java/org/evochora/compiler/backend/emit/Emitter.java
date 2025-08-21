@@ -1,6 +1,7 @@
 package org.evochora.compiler.backend.emit;
 
 import org.evochora.runtime.Config;
+import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
@@ -22,7 +23,7 @@ public class Emitter {
                                 IInstructionSet isa,
                                 Map<String, Integer> registerAliasMap,
                                 Map<String, List<String>> procNameToParamNames,
-                                Map<String, List<String>> sources) {
+                                Map<String, List<String>> sources) throws CompilationException {
         Map<int[], Integer> machineCodeLayout = new HashMap<>();
         Map<Integer, int[]> linearToCoord = layout.linearAddressToCoord();
         Map<String, Integer> coordToLinear = layout.relativeCoordToLinearAddress();
@@ -33,7 +34,7 @@ public class Emitter {
         for (IrItem item : program.items()) {
             if (item instanceof IrInstruction ins) {
                 int opcode = isa.getInstructionIdByName(ins.opcode()).orElseThrow(() ->
-                        new IllegalArgumentException("Unknown opcode: " + ins.opcode()));
+                        new RuntimeException(formatSource(ins.source(), "Unknown opcode: " + ins.opcode())));
                 int[] opcodeCoord = linearToCoord.get(address);
                 if (opcodeCoord == null) throw new IllegalStateException("Missing coord for address " + address);
                 machineCodeLayout.put(opcodeCoord, opcode);
@@ -54,7 +55,7 @@ public class Emitter {
                             // Fallback: resolve any remaining label refs here using the opcode coordinate
                             Integer targetAddr = layout.labelToAddress().get(ref.labelName());
                             if (targetAddr == null) {
-                                throw new IllegalArgumentException("Unknown label reference: " + ref.labelName());
+                                throw new CompilationException(formatSource(ins.source(), "Unknown label reference: " + ref.labelName()));
                             }
                             int[] dstCoord = linearToCoord.get(targetAddr);
                             if (dstCoord == null) throw new IllegalStateException("Missing coord for label target address " + targetAddr);
@@ -74,7 +75,7 @@ public class Emitter {
                         } else {
                             int[] coord = linearToCoord.get(address);
                             if (coord == null) throw new IllegalStateException("Missing coord for address " + address);
-                            Integer value = encodeOperand(op, isa);
+                            Integer value = encodeOperand(op, isa, ins.source());
                             machineCodeLayout.put(coord, value);
                             address++;
                         }
@@ -103,9 +104,9 @@ public class Emitter {
         );
     }
 
-    private Integer encodeOperand(IrOperand op, IInstructionSet isa) {
+    private Integer encodeOperand(IrOperand op, IInstructionSet isa, SourceInfo ctx) throws CompilationException {
         if (op instanceof IrReg r) {
-            int regId = isa.resolveRegisterToken(r.name()).orElseThrow(() -> new IllegalArgumentException("Unknown register: " + r.name()));
+            int regId = isa.resolveRegisterToken(r.name()).orElseThrow(() -> new RuntimeException(formatSource(ctx, "Unknown register: " + r.name())));
             return new Molecule(Config.TYPE_DATA, regId).toInt();
         }
         if (op instanceof IrImm imm) {
@@ -123,6 +124,13 @@ public class Emitter {
         if (op instanceof IrVec vec) {
             return new Molecule(Config.TYPE_DATA, vec.components()[0]).toInt();
         }
-        throw new IllegalArgumentException("Unsupported operand type: " + op.getClass().getSimpleName());
+        throw new CompilationException(formatSource(ctx, "Unsupported operand type: " + op.getClass().getSimpleName()));
+    }
+
+    private String formatSource(SourceInfo src, String message) {
+        if (src == null) return message;
+        String file = src.fileName() != null ? src.fileName() : "<unknown>";
+        int line = src.lineNumber();
+        return String.format("[ERROR] %s:%d: %s", file, line, message);
     }
 }

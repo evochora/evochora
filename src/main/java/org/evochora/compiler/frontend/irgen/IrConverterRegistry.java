@@ -7,6 +7,7 @@ import org.evochora.compiler.frontend.irgen.converters.OrgNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.PlaceNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.ProcedureNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.ScopeNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.DefineNodeConverter;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.InstructionNode;
 import org.evochora.compiler.frontend.parser.features.dir.DirNode;
@@ -114,6 +115,7 @@ public final class IrConverterRegistry {
 		reg.register(PlaceNode.class, new PlaceNodeConverter());
 		reg.register(ProcedureNode.class, new ProcedureNodeConverter());
 		reg.register(ScopeNode.class, new ScopeNodeConverter());
+		reg.register(org.evochora.compiler.frontend.parser.features.def.DefineNode.class, new DefineNodeConverter());
 		return reg;
 	}
 }

@@ -156,7 +156,7 @@ public class PreProcessor implements ParsingContext {
     public Token consume(TokenType type, String errorMessage) {
         if (check(type)) return advance();
         Token unexpected = peek();
-        getDiagnostics().reportError(errorMessage, "Unknown", unexpected.line());
+        getDiagnostics().reportError(errorMessage, unexpected.fileName(), unexpected.line());
         throw new RuntimeException("Parser error: " + errorMessage);
     }
 

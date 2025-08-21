@@ -27,7 +27,7 @@ public class IdentifierAnalysisHandler implements IAnalysisHandler {
         if (symbolOpt.isEmpty()) {
             diagnostics.reportError(
                     String.format("Symbol '%s' is not defined.", identifierNode.identifierToken().text()),
-                    "Unknown",
+                    identifierNode.identifierToken().fileName(),
                     identifierNode.identifierToken().line()
             );
         } else {
@@ -36,7 +36,7 @@ public class IdentifierAnalysisHandler implements IAnalysisHandler {
             if (isJumpContext && symbol.type() == Symbol.Type.CONSTANT) {
                 diagnostics.reportError(
                         String.format("Symbol '%s' is a CONSTANT and cannot be used as a jump target.", symbol.name().text()),
-                        "Unknown",
+                        symbol.name().fileName(),
                         symbol.name().line()
                 );
             }

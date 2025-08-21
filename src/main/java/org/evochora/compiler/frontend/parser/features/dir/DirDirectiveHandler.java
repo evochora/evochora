@@ -15,7 +15,7 @@ public class DirDirectiveHandler implements IDirectiveHandler {
         Parser parser = (Parser) context; // Cast to access parser-specific methods
         AstNode vector = parser.expression();
         if (!(vector instanceof VectorLiteralNode)) {
-            context.getDiagnostics().reportError("Expected a vector literal after .DIR.", "Unknown", context.peek().line());
+            context.getDiagnostics().reportError("Expected a vector literal after .DIR.", context.peek().fileName(), context.peek().line());
         }
         return new DirNode(vector);
     }
