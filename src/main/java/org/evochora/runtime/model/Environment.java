@@ -109,4 +109,27 @@ public class Environment {
     public int[] getShape() {
         return Arrays.copyOf(this.shape, this.shape.length);
     }
+
+    /**
+     * Checks if a square/cubic area around a central coordinate is completely unowned.
+     *
+     * @param centerCoord The coordinate of the center of the area.
+     * @param radius The radius of the check (e.g., radius 2 checks a 5x5 area in 2D).
+     * @return {@code true} if no cell in the area has an owner (ownerId == 0), otherwise {@code false}.
+     */
+    public boolean isAreaUnowned(int[] centerCoord, int radius) {
+        if (centerCoord.length != this.shape.length) {
+            throw new IllegalArgumentException("Coordinate dimensions do not match world dimensions.");
+        }
+        // Für eine 2D-Welt (erweiterbar auf n-Dimensionen)
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dy = -radius; dy <= radius; dy++) {
+                int[] checkCoord = {centerCoord[0] + dx, centerCoord[1] + dy};
+                if (getOwnerId(checkCoord) != 0) {
+                    return false; // Ein Besitzer wurde gefunden, der Bereich ist nicht sicher.
+                }
+            }
+        }
+        return true; // Kein Besitzer im gesamten Bereich gefunden.
+    }
 }

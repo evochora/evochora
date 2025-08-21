@@ -1,5 +1,8 @@
 package org.evochora.server.config;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * Holds simulation configuration loaded from JSON.
  */
@@ -22,8 +25,14 @@ public final class SimulationConfiguration {
         public PlacementConfig placement;
     }
 
+    public static final class EnergyStrategyConfig {
+        public String type;
+        public Map<String, Object> params;
+    }
+
     public EnvironmentConfig environment;
     public OrganismDefinition[] organisms;
+    public List<EnergyStrategyConfig> energyStrategies;
 
     public int getDimensions() {
         return environment != null && environment.shape != null ? environment.shape.length : 2;
