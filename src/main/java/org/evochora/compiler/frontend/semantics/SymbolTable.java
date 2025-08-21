@@ -3,40 +3,83 @@ package org.evochora.compiler.frontend.semantics;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Token;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Stack; // NEU
 
 /**
  * Verwaltet Symbole (Labels, Konstanten etc.) für den Compiler.
- * Diese Implementierung unterstützt hierarchische Geltungsbereiche (Scopes).
+ * Diese Implementierung unterstützt hierarchische Geltungsbereiche (Scopes)
+ * über eine persistente Baumstruktur.
  */
 public class SymbolTable {
 
-    private final Stack<Map<String, java.util.Map<String, Symbol>>> scopes = new Stack<>(); // name -> (fileName -> symbol)
+    // NEU: Eine interne Klasse, die einen einzelnen Scope im Baum darstellt.
+    public static class Scope {
+        private final Scope parent;
+        private final List<Scope> children = new ArrayList<>();
+        private final Map<String, Map<String, Symbol>> symbols = new HashMap<>(); // name -> (fileName -> symbol)
+
+        Scope(Scope parent) {
+            this.parent = parent;
+        }
+
+        void addChild(Scope child) {
+            children.add(child);
+        }
+    }
+
+    private final Scope rootScope;
+    private Scope currentScope; // Zeiger auf den aktuellen Scope im Baum
     private final DiagnosticsEngine diagnostics;
-    // Per-file registry of aliases declared via .REQUIRE: file -> (alias -> targetFile)
-    private final Map<String, java.util.Map<String, String>> fileToAliasToTarget = new HashMap<>();
+    private final Map<String, Map<String, String>> fileToAliasToTarget = new HashMap<>();
 
     public SymbolTable(DiagnosticsEngine diagnostics) {
         this.diagnostics = diagnostics;
-        // Jede Symboltabelle beginnt mit einem globalen Scope
-        enterScope();
+        // Jede Symboltabelle beginnt mit einem globalen Wurzel-Scope.
+        this.rootScope = new Scope(null);
+        this.currentScope = this.rootScope;
     }
 
     /**
-     * Betritt einen neuen, untergeordneten Geltungsbereich.
+     * Setzt den internen Zeiger auf den Wurzel-Scope zurück.
+     * Wichtig für Analysen, die mehrere Durchgänge über den Baum machen.
      */
-    public void enterScope() {
-        scopes.push(new HashMap<>());
+    public void resetScope() {
+        this.currentScope = this.rootScope;
+    }
+
+
+    /**
+     * Betritt einen neuen, untergeordneten Geltungsbereich.
+     * Statt auf einen Stack zu pushen, wird ein neuer Kind-Knoten im Baum erstellt.
+     * @return Der neu erstellte Scope. // <-- NEUER JavaDoc-Kommentar
+     */
+    public Scope enterScope() {
+        Scope newScope = new Scope(currentScope);
+        currentScope.addChild(newScope);
+        currentScope = newScope;
+        return newScope;
+    }
+
+    /**
+     * Setzt den internen Zeiger direkt auf einen bestimmten Scope.
+     * @param scope Der Scope, der zum aktuellen gemacht werden soll.
+     */
+    public void setCurrentScope(Scope scope) {
+        this.currentScope = scope;
     }
 
     /**
      * Verlässt den aktuellen Geltungsbereich.
+     * Statt vom Stack zu poppen, wird zum Eltern-Knoten im Baum gewechselt.
      */
     public void leaveScope() {
-        if (scopes.size() > 1) { scopes.pop(); }
+        if (currentScope.parent != null) {
+            currentScope = currentScope.parent;
+        }
     }
 
     /**
@@ -47,8 +90,8 @@ public class SymbolTable {
     public void define(Symbol symbol) {
         String name = symbol.name().text().toUpperCase();
         String file = symbol.name().fileName();
-        Map<String, java.util.Map<String, Symbol>> currentScope = scopes.peek();
-        java.util.Map<String, Symbol> perFile = currentScope.computeIfAbsent(name, k -> new java.util.HashMap<>());
+        // Die Logik bleibt gleich, arbeitet aber auf dem 'currentScope'.
+        Map<String, Symbol> perFile = currentScope.symbols.computeIfAbsent(name, k -> new HashMap<>());
         if (perFile.containsKey(file)) {
             diagnostics.reportError(
                     "Symbol '" + name + "' is already defined in this scope.",
@@ -61,42 +104,38 @@ public class SymbolTable {
     }
 
     /**
-     * Sucht nach einem Symbol, beginnend im aktuellen Scope und dann nach außen.
+     * Sucht nach einem Symbol, beginnend im aktuellen Scope und dann nach oben zum Wurzel-Scope.
      * @param name Das Token des gesuchten Symbols.
      * @return Ein Optional, das das Symbol enthält, falls es gefunden wurde.
      */
     public Optional<Symbol> resolve(Token name) {
         String key = name.text().toUpperCase();
-        // Durchsuche die Scopes von innen nach außen (vom Stack-Top nach unten)
-        for (int i = scopes.size() - 1; i >= 0; i--) {
-            Map<String, java.util.Map<String, Symbol>> scope = scopes.get(i);
-            java.util.Map<String, Symbol> perFile = scope.get(key);
+
+        // Durchsuche die Scopes von innen nach außen, indem wir dem parent-Zeiger folgen.
+        for (Scope scope = currentScope; scope != null; scope = scope.parent) {
+            Map<String, Symbol> perFile = scope.symbols.get(key);
             if (perFile != null) {
                 Symbol sym = perFile.get(name.fileName());
                 if (sym != null) return Optional.of(sym);
             }
         }
-        // Fallback: Unterstütze Namensräume per .REQUIRE Alias pro Datei.
-        // Wenn das Symbol die Form ALIAS.NAME hat und ALIAS in derselben Datei per .REQUIRE registriert wurde,
-        // versuche NAME aufzulösen – aber nur, wenn das Label aus der require-Zieldatei stammt.
+
+        // Fallback für Namensräume (unverändert)
         int dot = key.indexOf('.');
         if (dot > 0) {
             String alias = key.substring(0, dot);
-            String remainder = key.substring(dot + 1); // kann weitere Punkte enthalten (LIB.PKG.NAME)
+            String remainder = key.substring(dot + 1);
             String file = name.fileName();
-            java.util.Map<String, String> aliasMap = fileToAliasToTarget.get(file);
+            Map<String, String> aliasMap = fileToAliasToTarget.get(file);
             if (aliasMap != null) {
                 String targetFile = aliasMap.get(alias);
                 if (targetFile != null) {
-                    for (int i = scopes.size() - 1; i >= 0; i--) {
-                        Map<String, java.util.Map<String, Symbol>> scope = scopes.get(i);
-                        java.util.Map<String, Symbol> perFile = scope.get(remainder);
+                    for (Scope scope = currentScope; scope != null; scope = scope.parent) {
+                        Map<String, Symbol> perFile = scope.symbols.get(remainder);
                         if (perFile != null) {
                             Symbol sym = null;
-                            // 1) Versuche exakte Übereinstimmung des Dateinamens
                             sym = perFile.get(targetFile);
                             if (sym == null) {
-                                // 2) Suffix-Matching (normalisierte Separatoren), falls absolute/relative Mischungen vorliegen
                                 String targetNorm = targetFile.replace('\\', '/');
                                 for (Map.Entry<String, Symbol> e : perFile.entrySet()) {
                                     String fileNorm = e.getKey() != null ? e.getKey().replace('\\', '/') : null;
@@ -107,12 +146,10 @@ public class SymbolTable {
                                 }
                             }
                             if (sym != null) {
-                                // Wenn es sich um eine Prozedur handelt, muss sie exportiert sein
                                 if (sym.type() == Symbol.Type.PROCEDURE) {
                                     Boolean exp = isProcedureExported(sym.name());
                                     if (Boolean.TRUE.equals(exp)) return Optional.of(sym);
                                 } else {
-                                    // Andere Symboltypen dürfen nicht über .REQUIRE zugreifbar sein
                                     return Optional.empty();
                                 }
                             }
@@ -124,19 +161,13 @@ public class SymbolTable {
         return Optional.empty();
     }
 
-    /**
-     * Registriert einen Alias aus einer .REQUIRE Direktive für die angegebene Datei.
-     * Aliasse werden in Großschreibung gespeichert.
-     * @param fileName Der logische Dateiname, in dem die .REQUIRE-Direktive steht.
-     * @param aliasUpper Der Alias in Großschreibung.
-     */
+    // Die restlichen Methoden bleiben unverändert.
     public void registerRequireAlias(String fileName, String aliasUpper, String targetFilePath) {
         if (fileName == null) return;
         if (targetFilePath == null) return;
-        fileToAliasToTarget.computeIfAbsent(fileName, k -> new java.util.HashMap<>()).put(aliasUpper, targetFilePath);
+        fileToAliasToTarget.computeIfAbsent(fileName, k -> new HashMap<>()).put(aliasUpper, targetFilePath);
     }
 
-    // --- Procedure Export Metadata ---
     private final Map<String, Boolean> procExportedByFileAndName = new HashMap<>();
 
     public void registerProcedureMeta(Token procName, boolean exported) {
