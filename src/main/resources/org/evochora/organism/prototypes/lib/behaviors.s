@@ -4,8 +4,8 @@
 # Verhaltensblöcke des Organismus.
 # =================================================================
 
-.REQUIRE "strategies.s" AS STRATEGIES
-.REQUIRE "tactics.s" AS TACTICS
+.REQUIRE "lib/strategies.s" AS STRATEGIES
+.REQUIRE "lib/tactics.s" AS TACTICS
 
 # --- Verhalten: Energiesuche ---
 #

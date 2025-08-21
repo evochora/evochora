@@ -342,4 +342,26 @@ public class SemanticAnalyzerTest {
                 .contains("Access to formal parameter registers (%FPRx) is not allowed");
     }
 
+    @Test
+    void testLabelAfterRetInProcedureIsFound() {
+        // Arrange
+        String source = String.join("\n",
+                ".PROC MY_PROC",
+                "  JMPI SUCCESS_LABEL  # Sprung zu einem Label, das nach RET definiert wird",
+                "  RET",
+                "SUCCESS_LABEL: NOP",
+                ".ENDP"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+
+        // Act
+        analyzer.analyze(ast);
+
+        // Assert
+        assertThat(diagnostics.hasErrors())
+                .as("Ein Label, das nach einem RET, aber vor .ENDP definiert wird, sollte gefunden werden.")
+                .isFalse();
+    }
 }

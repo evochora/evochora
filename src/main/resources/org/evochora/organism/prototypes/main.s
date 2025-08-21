@@ -9,7 +9,7 @@
 .REG %TEMP_CALC_REG %DR6
 .REG %LAST_DIRECTION %DR7
 
-.REQUIRE "behaviors.s" AS BEHAVIORS
+.REQUIRE "lib/behaviors.s" AS BEHAVIORS
 
 # --- 2. Hauptprogramm-Code ---
 # Wir legen den Startpunkt unseres Programms auf 0|0 fest.

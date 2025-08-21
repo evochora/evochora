@@ -7,7 +7,7 @@
 # Wir deklarieren, dass diese Datei Funktionen aus "tactics.s" benötigt.
 # Der Compiler weiß dadurch, dass er Aufrufe wie "TACTICS.HARVEST_CELL"
 # verstehen muss.
-.REQUIRE "tactics.s" AS TACTICS
+.REQUIRE "lib/tactics.s" AS TACTICS
 
 # --- Strategie: HARVEST_SURROUNDINGS ---
 #
