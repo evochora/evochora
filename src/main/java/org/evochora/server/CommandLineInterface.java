@@ -2,6 +2,8 @@ package org.evochora.server;
 
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.server.engine.SimulationEngine;
+import org.evochora.server.config.ConfigLoader;
+import org.evochora.server.config.SimulationConfiguration;
 import org.evochora.server.persistence.PersistenceService;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
@@ -33,16 +35,34 @@ public final class CommandLineInterface {
         SimulationEngine sim = null;
         PersistenceService persist = null;
         java.util.ArrayList<ProgramArtifact> loadedArtifacts = new java.util.ArrayList<>();
+        SimulationConfiguration loadedConfig = null;
 
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-        log.info("Evochora server CLI ready. Commands: load <file> | run | run debug | tick [n] | status | clear | exit");
+        log.info("Evochora server CLI ready. Commands: config <file> | load <file> | run | run debug | tick [n] | status | clear | exit");
 
         while (true) {
             System.err.print(">>> ");
             String line = reader.readLine();
             if (line == null) break;
             String cmd = line.trim();
-            if (cmd.startsWith("load ")) {
+            if (cmd.startsWith("config ")) {
+                String path = cmd.substring("config ".length()).trim();
+                if (path.isEmpty()) {
+                    System.err.println("Usage: config <filepath>");
+                    continue;
+                }
+                try {
+                    loadedConfig = org.evochora.server.config.ConfigLoader.loadFromFile(java.nio.file.Path.of(path));
+                    System.err.printf("Loaded config from %s: dims=%d shape=[%s] toroidal=%s%n",
+                            path,
+                            loadedConfig.getDimensions(),
+                            java.util.Arrays.stream(loadedConfig.environment.shape).mapToObj(String::valueOf).collect(java.util.stream.Collectors.joining(",")),
+                            loadedConfig.environment.toroidal);
+                } catch (Exception e) {
+                    System.err.println("Failed to load config: " + e.getMessage());
+                }
+                continue;
+            } else if (cmd.startsWith("load ")) {
                 String path = cmd.substring("load ".length()).trim();
                 if (path.isEmpty()) {
                     System.err.println("Usage: load <assembly_file_path>");
@@ -62,8 +82,11 @@ public final class CommandLineInterface {
                     if (parts.length > 1) {
                         String coordToken = parts[1];
                         String[] comps = coordToken.split("\\|");
-                        if (comps.length != org.evochora.runtime.Config.WORLD_DIMENSIONS) {
-                            System.err.printf("Invalid coordinates, expected %d dimensions separated by '|'%n", org.evochora.runtime.Config.WORLD_DIMENSIONS);
+                        int expectedDims = (loadedConfig != null && loadedConfig.environment != null && loadedConfig.environment.shape != null)
+                                ? loadedConfig.environment.shape.length
+                                : org.evochora.server.config.ConfigLoader.loadDefault().getDimensions();
+                        if (comps.length != expectedDims) {
+                            System.err.printf("Invalid coordinates, expected %d dimensions separated by '|'%n", expectedDims);
                             continue;
                         }
                         startPos = new int[comps.length];
@@ -92,7 +115,13 @@ public final class CommandLineInterface {
                         programLogicalName = fsPath.toAbsolutePath().toString();
                     }
                     Compiler compiler = new Compiler();
-                    ProgramArtifact artifact = compiler.compile(lines, programLogicalName);
+                    int dimsForCompile;
+                    if (loadedConfig != null && loadedConfig.environment != null && loadedConfig.environment.shape != null) {
+                        dimsForCompile = loadedConfig.environment.shape.length;
+                    } else {
+                        dimsForCompile = org.evochora.server.config.ConfigLoader.loadDefault().getDimensions();
+                    }
+                    ProgramArtifact artifact = compiler.compile(lines, programLogicalName, dimsForCompile);
                     if (startPos != null) {
                         // Remember desired start so engine places code and organism starting there
                         org.evochora.server.engine.UserLoadRegistry.registerDesiredStart(artifact.programId(), startPos);
@@ -113,9 +142,13 @@ public final class CommandLineInterface {
                 } else {
                     log.info("Starting in DEBUG mode.");
                 }
+                SimulationConfiguration cfg = loadedConfig != null ? loadedConfig : ConfigLoader.loadDefault();
+                if (loadedConfig == null) {
+                    System.err.println("No config provided. Using default resources config.json.");
+                }
 
-                sim = new SimulationEngine(queue, performanceMode);
-                persist = new PersistenceService(queue, performanceMode);
+                sim = new SimulationEngine(queue, performanceMode, cfg.environment.shape, cfg.environment.toroidal);
+                persist = new PersistenceService(queue, performanceMode, cfg.environment.shape);
 
                 sim.setProgramArtifacts(java.util.List.copyOf(loadedArtifacts));
                 if (!sim.isRunning()) { sim.start(); System.err.println("SimulationEngine started."); }

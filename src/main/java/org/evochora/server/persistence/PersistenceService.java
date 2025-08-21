@@ -35,6 +35,7 @@ public final class PersistenceService implements IControllable, Runnable {
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final boolean performanceMode;
+    private final int[] worldShape;
 
     private Connection connection;
     private Path dbFilePath;
@@ -49,11 +50,7 @@ public final class PersistenceService implements IControllable, Runnable {
      * @param performanceMode If true, debug-only information will not be persisted.
      */
     public PersistenceService(ITickMessageQueue queue, boolean performanceMode) {
-        this.queue = queue;
-        this.performanceMode = performanceMode;
-        this.jdbcUrlOverride = null;
-        this.thread = new Thread(this, "PersistenceService");
-        this.thread.setDaemon(true);
+        this(queue, performanceMode, null, null);
     }
 
     /**
@@ -64,9 +61,18 @@ public final class PersistenceService implements IControllable, Runnable {
      * @param jdbcUrlOverride The JDBC URL to use for the database connection.
      */
     public PersistenceService(ITickMessageQueue queue, boolean performanceMode, String jdbcUrlOverride) {
+        this(queue, performanceMode, jdbcUrlOverride, null);
+    }
+
+    public PersistenceService(ITickMessageQueue queue, boolean performanceMode, int[] worldShape) {
+        this(queue, performanceMode, null, worldShape);
+    }
+
+    private PersistenceService(ITickMessageQueue queue, boolean performanceMode, String jdbcUrlOverride, int[] worldShape) {
         this.queue = queue;
         this.performanceMode = performanceMode;
         this.jdbcUrlOverride = jdbcUrlOverride;
+        this.worldShape = worldShape != null ? java.util.Arrays.copyOf(worldShape, worldShape.length) : null;
         this.thread = new Thread(this, "PersistenceService");
         this.thread.setDaemon(true);
     }
@@ -139,9 +145,11 @@ public final class PersistenceService implements IControllable, Runnable {
 
                 st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
                 try (PreparedStatement ps = connection.prepareStatement("INSERT OR REPLACE INTO simulation_metadata (key, value) VALUES (?, ?)")) {
-                    ps.setString(1, "worldShape");
-                    ps.setString(2, objectMapper.writeValueAsString(Config.WORLD_SHAPE));
-                    ps.executeUpdate();
+                    if (worldShape != null) {
+                        ps.setString(1, "worldShape");
+                        ps.setString(2, objectMapper.writeValueAsString(worldShape));
+                        ps.executeUpdate();
+                    }
                     ps.setString(1, "isaMap");
                     ps.setString(2, objectMapper.writeValueAsString(Instruction.getIdToNameMap()));
                     ps.executeUpdate();

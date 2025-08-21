@@ -69,7 +69,7 @@ public class VirtualMachine {
         }
 
         // Logik wurde aus Organism.processTickAction() hierher verschoben
-        java.util.List<Integer> rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(), this.environment);
+        java.util.List<Integer> rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(this.environment), this.environment);
         organism.takeEr(instruction.getCost(organism, this.environment, rawArgs));
 
         ExecutionContext context = new ExecutionContext(organism, this.environment, simulation.isPerformanceMode());
@@ -86,7 +86,7 @@ public class VirtualMachine {
         }
 
         if (!organism.shouldSkipIpAdvance()) {
-            organism.advanceIpBy(instruction.getLength(), this.environment);
+            organism.advanceIpBy(instruction.getLength(this.environment), this.environment);
         }
     }
 }

@@ -1,7 +1,6 @@
 package org.evochora.runtime.internal.services;
 
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.runtime.Config;
 import org.evochora.runtime.api.DisassembledArgument;
 import org.evochora.runtime.api.DisassembledInstruction;
 import org.evochora.runtime.isa.Instruction;
@@ -58,10 +57,11 @@ public class RuntimeDisassembler {
                     break;
                 }
                 case VECTOR: {
-                    int[] vec = new int[Config.WORLD_DIMENSIONS];
+                    int dims = environment.getShape().length;
+                    int[] vec = new int[dims];
                     vec[0] = argValue;
                     int[] next = currentArgCoord;
-                    for (int i = 1; i < Config.WORLD_DIMENSIONS; i++) {
+                    for (int i = 1; i < dims; i++) {
                         next = organism.getNextInstructionPosition(next, dv, environment); // CORRECTED
                         Molecule m = environment.getMolecule(next);
                         vec[i] = m.toScalarValue();
@@ -72,10 +72,11 @@ public class RuntimeDisassembler {
                     break;
                 }
                 case LABEL: {
-                    int[] vec = new int[Config.WORLD_DIMENSIONS];
+                    int dims = environment.getShape().length;
+                    int[] vec = new int[dims];
                     vec[0] = argValue;
                     int[] next = currentArgCoord;
-                    for (int i = 1; i < Config.WORLD_DIMENSIONS; i++) {
+                    for (int i = 1; i < dims; i++) {
                         next = organism.getNextInstructionPosition(next, dv, environment); // CORRECTED
                         Molecule m = environment.getMolecule(next);
                         vec[i] = m.toScalarValue();

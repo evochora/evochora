@@ -1,7 +1,6 @@
 package org.evochora.server.engine;
 
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.CallBindingRegistry;
 import org.evochora.runtime.model.Organism;
@@ -24,17 +23,25 @@ public final class SimulationEngine implements IControllable, Runnable {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final boolean performanceMode;
+    private final int[] worldShape;
+    private final boolean isToroidal;
 
     private Simulation simulation;
     private java.util.List<ProgramArtifact> programArtifacts = java.util.Collections.emptyList();
 
     public SimulationEngine(ITickMessageQueue queue) {
-        this(queue, false);
+        this(queue, false, new int[]{120,80}, true);
     }
 
     public SimulationEngine(ITickMessageQueue queue, boolean performanceMode) {
+        this(queue, performanceMode, new int[]{120,80}, true);
+    }
+
+    public SimulationEngine(ITickMessageQueue queue, boolean performanceMode, int[] worldShape, boolean isToroidal) {
         this.queue = queue;
         this.performanceMode = performanceMode;
+        this.worldShape = java.util.Arrays.copyOf(worldShape, worldShape.length);
+        this.isToroidal = isToroidal;
         this.thread = new Thread(this, "SimulationEngine");
         this.thread.setDaemon(true);
     }
@@ -109,7 +116,7 @@ public final class SimulationEngine implements IControllable, Runnable {
                 }
             }
 
-            var env = new org.evochora.runtime.model.Environment(Config.WORLD_SHAPE, Config.IS_TOROIDAL);
+            var env = new org.evochora.runtime.model.Environment(this.worldShape, this.isToroidal);
             simulation = new Simulation(env, performanceMode);
 
             if (programArtifacts != null && !programArtifacts.isEmpty()) {
@@ -121,7 +128,7 @@ public final class SimulationEngine implements IControllable, Runnable {
             CallBindingRegistry bindingRegistry = CallBindingRegistry.getInstance();
 
             for (ProgramArtifact artifact : programArtifacts) {
-                int dims = org.evochora.runtime.Config.WORLD_DIMENSIONS;
+                int dims = this.worldShape.length;
                 int[] origin = UserLoadRegistry.getDesiredStart(artifact.programId());
                 if (origin == null) origin = new int[dims];
 

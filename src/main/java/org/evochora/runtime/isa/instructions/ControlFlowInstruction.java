@@ -24,8 +24,9 @@ public class ControlFlowInstruction extends Instruction {
             java.util.List<Operand> resolved = new java.util.ArrayList<>();
             int[] currentIp = organism.getIpBeforeFetch();
 
-            int[] delta = new int[Config.WORLD_DIMENSIONS];
-            for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
+            int dims = environment.getShape().length;
+            int[] delta = new int[dims];
+            for (int i = 0; i < dims; i++) {
                 Organism.FetchResult res = organism.fetchSignedArgument(currentIp, environment);
                 delta[i] = res.value();
                 currentIp = res.nextIp();

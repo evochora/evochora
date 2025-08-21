@@ -38,6 +38,10 @@ public class Compiler implements ICompiler {
 
     @Override
     public ProgramArtifact compile(List<String> sourceLines, String programName) throws CompilationException {
+        return compile(sourceLines, programName, 2);
+    }
+
+    public ProgramArtifact compile(List<String> sourceLines, String programName, int worldDimensions) throws CompilationException {
 
         if (verbosity >= 0) {
             org.evochora.compiler.diagnostics.CompilerLogger.setLevel(verbosity);
@@ -113,11 +117,11 @@ public class Compiler implements ICompiler {
         IrProgram rewrittenIr = new IrProgram(programName, rewritten);
 
         LayoutEngine layoutEngine = new LayoutEngine();
-        LayoutResult layout = layoutEngine.layout(rewrittenIr, new RuntimeInstructionSetAdapter());
+        LayoutResult layout = layoutEngine.layout(rewrittenIr, new RuntimeInstructionSetAdapter(), worldDimensions);
 
         LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults();
         Linker linker = new Linker(linkingRegistry);
-        IrProgram linkedIr = linker.link(rewrittenIr, layout, linkingContext);
+        IrProgram linkedIr = linker.link(rewrittenIr, layout, linkingContext, worldDimensions);
 
         Emitter emitter = new Emitter();
         ProgramArtifact artifact;

@@ -27,13 +27,14 @@ public class VectorInstruction extends Instruction {
             String opName = getName();
             List<Operand> operands = resolveOperands(context.getWorld());
 
+            int dims = context.getWorld().getShape().length;
             switch (opName) {
                 case "VGTR", "VGTI" -> handleVectorGet(operands);
                 case "VGTS" -> handleVectorGetStack();
                 case "VSTR", "VSTI" -> handleVectorSet(operands);
                 case "VSTS" -> handleVectorSetStack();
-                case "VBLD" -> handleVectorBuild(operands);
-                case "VBLS" -> handleVectorBuildStack();
+                case "VBLD" -> handleVectorBuild(operands, dims);
+                case "VBLS" -> handleVectorBuildStack(dims);
                 default -> organism.instructionFailed("Unknown vector instruction: " + opName);
             }
         } catch (NoSuchElementException e) {
@@ -160,23 +161,22 @@ public class VectorInstruction extends Instruction {
         ds.push(newVector);
     }
 
-    private void handleVectorBuild(List<Operand> operands) {
+    private void handleVectorBuild(List<Operand> operands, int dims) {
         if (operands.size() != 1) {
             organism.instructionFailed("VBLD requires one destination register operand.");
             return;
         }
         int destReg = operands.get(0).rawSourceId();
         Deque<Object> ds = organism.getDataStack();
-
-        if (ds.size() < Config.WORLD_DIMENSIONS) {
-            organism.instructionFailed("Stack underflow for VBLD. Need " + Config.WORLD_DIMENSIONS + " components.");
+        if (ds.size() < dims) {
+            organism.instructionFailed("Stack underflow for VBLD. Need " + dims + " components.");
             return;
         }
 
-        int[] newVector = new int[Config.WORLD_DIMENSIONS];
+        int[] newVector = new int[dims];
 
         // Das erste gepoppte Element (X-Wert) kommt an Index 0.
-        for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
+        for (int i = 0; i < dims; i++) {
             Object valObj = ds.pop();
             if (!(valObj instanceof Integer val)) {
                 organism.instructionFailed("VBLD requires scalar components on the stack.");
@@ -188,17 +188,16 @@ public class VectorInstruction extends Instruction {
         writeOperand(destReg, newVector);
     }
 
-    private void handleVectorBuildStack() {
+    private void handleVectorBuildStack(int dims) {
         Deque<Object> ds = organism.getDataStack();
-
-        if (ds.size() < Config.WORLD_DIMENSIONS) {
-            organism.instructionFailed("Stack underflow for VBLS. Need " + Config.WORLD_DIMENSIONS + " components.");
+        if (ds.size() < dims) {
+            organism.instructionFailed("Stack underflow for VBLS. Need " + dims + " components.");
             return;
         }
 
-        int[] newVector = new int[Config.WORLD_DIMENSIONS];
+        int[] newVector = new int[dims];
 
-        for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
+        for (int i = 0; i < dims; i++) {
             Object valObj = ds.pop();
             if (!(valObj instanceof Integer val)) {
                 organism.instructionFailed("VBLS requires scalar components on the stack.");

@@ -1,6 +1,5 @@
 package org.evochora.compiler.backend.layout;
 
-import org.evochora.runtime.Config;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.ir.*;
@@ -14,8 +13,8 @@ import java.util.Map;
  */
 public final class LayoutEngine {
 
-    public LayoutResult layout(IrProgram program, IInstructionSet isa) {
-        int dims = 2; // Will be validated later
+    public LayoutResult layout(IrProgram program, IInstructionSet isa, int dims) {
+        if (dims <= 0) dims = 2;
         LayoutContext ctx = new LayoutContext(dims);
         LayoutDirectiveRegistry registry = LayoutDirectiveRegistry.initializeWithDefaults();
 
@@ -40,14 +39,14 @@ public final class LayoutEngine {
                 // determine operand slot widths from ISA signature
                 int opcodeId = isa.getInstructionIdByName(ins.opcode()).orElseThrow(() -> new IllegalArgumentException("Unknown opcode: " + ins.opcode()));
                 var sigOpt = isa.getSignatureById(opcodeId);
-                int argIndex = 0;
+                int argIndex = 0; // kept for potential future use
                 if (sigOpt.isPresent()) {
                     for (IInstructionSet.ArgKind kind : sigOpt.get().argumentTypes()) {
                         if (kind == IInstructionSet.ArgKind.REGISTER || kind == IInstructionSet.ArgKind.LITERAL) {
                             ctx.placeOperand(src);
                             argIndex++;
                         } else if (kind == IInstructionSet.ArgKind.VECTOR || kind == IInstructionSet.ArgKind.LABEL) {
-                            for (int k = 0; k < Config.WORLD_DIMENSIONS; k++) ctx.placeOperand(src);
+                            for (int k = 0; k < dims; k++) ctx.placeOperand(src);
                             argIndex++;
                         }
                     }

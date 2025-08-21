@@ -1,16 +1,11 @@
 // src/main/java/org/evochora/Config.java
 package org.evochora.runtime;
 
-import javafx.scene.paint.Color;
-
 public final class Config {
 
     private Config() {}
 
-    // Environment Settings
-    public static final int[] WORLD_SHAPE = {120, 80};
-    public static final boolean IS_TOROIDAL = true;
-    public static final int WORLD_DIMENSIONS = WORLD_SHAPE.length;
+    // Environment Settings (moved to JSON config loaded at runtime)
 
     // Simulation Settings
     public static final int INITIAL_ORGANISM_ENERGY = 2000;

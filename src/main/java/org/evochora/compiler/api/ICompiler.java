@@ -18,6 +18,11 @@ public interface ICompiler {
     ProgramArtifact compile(List<String> sourceLines, String programName) throws CompilationException;
 
     /**
+     * Compiles with explicit world dimensions for vector/label argument sizing.
+     */
+    ProgramArtifact compile(List<String> sourceLines, String programName, int worldDimensions) throws CompilationException;
+
+    /**
      * Setzt das Level für die Ausführlichkeit der Log-Ausgaben.
      * @param level Das Verbosity-Level (z.B. 0=leise, 1=normal, 2=verbose, 3=trace).
      */

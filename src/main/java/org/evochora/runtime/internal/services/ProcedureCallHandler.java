@@ -39,7 +39,7 @@ public class ProcedureCallHandler {
             }
         }
 
-        int instructionLength = 1 + Config.WORLD_DIMENSIONS;
+        int instructionLength = 1 + environment.getShape().length;
         int[] returnIp = ipBeforeFetch;
         for (int i = 0; i < instructionLength; i++) {
             returnIp = organism.getNextInstructionPosition(returnIp, organism.getDvBeforeFetch(), environment); // CORRECTED

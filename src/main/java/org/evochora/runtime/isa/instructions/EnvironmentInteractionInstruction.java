@@ -180,9 +180,10 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                     }
                 }
             } else if (opName.endsWith("I")) {
-                int[] vec = new int[Config.WORLD_DIMENSIONS];
+                int dims = environment.getShape().length;
+                int[] vec = new int[dims];
                 int[] ip = organism.getNextInstructionPosition(currentIp, organism.getDvBeforeFetch(), environment); // CORRECTED
-                for (int i = 0; i < Config.WORLD_DIMENSIONS; i++) {
+                for (int i = 0; i < dims; i++) {
                     Organism.FetchResult res = organism.fetchSignedArgument(ip, environment);
                     vec[i] = res.value();
                     ip = res.nextIp();

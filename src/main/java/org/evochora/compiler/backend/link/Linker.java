@@ -5,7 +5,6 @@ import org.evochora.compiler.ir.IrInstruction;
 import org.evochora.compiler.ir.IrItem;
 import org.evochora.compiler.ir.IrProgram;
 import org.evochora.compiler.isa.IInstructionSet;
-import org.evochora.runtime.isa.Instruction;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +20,7 @@ public final class Linker {
 
     public Linker(LinkingRegistry registry) { this.registry = registry; }
 
-    public IrProgram link(IrProgram program, LayoutResult layout, LinkingContext context) {
+    public IrProgram link(IrProgram program, LayoutResult layout, LinkingContext context, int worldDimensions) {
         List<IrItem> out = new ArrayList<>();
         // Wir benötigen die ISA-Definitionen, um die Größe der Argumente zu kennen.
         org.evochora.compiler.isa.IInstructionSet isa = new org.evochora.compiler.isa.RuntimeInstructionSetAdapter();
@@ -52,12 +51,8 @@ public final class Linker {
                         // Anhand der Signatur die Größe jedes Arguments bestimmen
                         for (org.evochora.compiler.isa.IInstructionSet.ArgKind kind : sigOpt.get().argumentTypes()) {
                             if (kind == org.evochora.compiler.isa.IInstructionSet.ArgKind.VECTOR || kind == org.evochora.compiler.isa.IInstructionSet.ArgKind.LABEL) {
-                                // Vektor- und Label-Argumente belegen mehrere Adressen
-                                for (int k = 0; k < org.evochora.runtime.Config.WORLD_DIMENSIONS; k++) {
-                                    context.nextAddress();
-                                }
+                                for (int k = 0; k < worldDimensions; k++) context.nextAddress();
                             } else {
-                                // Register- und Literal-Argumente belegen eine Adresse
                                 context.nextAddress();
                             }
                         }

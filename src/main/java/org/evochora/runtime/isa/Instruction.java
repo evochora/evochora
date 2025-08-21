@@ -80,8 +80,9 @@ public abstract class Instruction {
                     break;
                 }
                 case VECTOR: {
-                    int[] vec = new int[Config.WORLD_DIMENSIONS];
-                    for(int i=0; i<Config.WORLD_DIMENSIONS; i++) {
+                    int dims = environment.getShape().length;
+                    int[] vec = new int[dims];
+                    for(int i=0; i<dims; i++) {
                         Organism.FetchResult res = organism.fetchSignedArgument(currentIp, environment);
                         vec[i] = res.value();
                         currentIp = res.nextIp();
@@ -90,8 +91,9 @@ public abstract class Instruction {
                     break;
                 }
                 case LABEL: {
-                    int[] delta = new int[Config.WORLD_DIMENSIONS];
-                    for(int i=0; i<Config.WORLD_DIMENSIONS; i++) {
+                    int dims = environment.getShape().length;
+                    int[] delta = new int[dims];
+                    for(int i=0; i<dims; i++) {
                         Organism.FetchResult res = organism.fetchSignedArgument(currentIp, environment);
                         delta[i] = res.value();
                         currentIp = res.nextIp();
@@ -205,6 +207,8 @@ public abstract class Instruction {
         registerFamily(VectorInstruction.class, Map.of(134, "VBLS"), List.of());
     }
 
+    private static final int DEFAULT_VECTOR_DIMS = 2;
+
     private static void registerFamily(Class<? extends Instruction> familyClass, Map<Integer, String> variants, List<OperandSource> sources) {
         try {
             Constructor<? extends Instruction> constructor = familyClass.getConstructor(Organism.class, int.class);
@@ -218,10 +222,10 @@ public abstract class Instruction {
                     length++;
                     argTypesForSignature.add(InstructionArgumentType.LITERAL);
                 } else if (s == OperandSource.VECTOR) {
-                    length += Config.WORLD_DIMENSIONS;
+                    length += DEFAULT_VECTOR_DIMS;
                     argTypesForSignature.add(InstructionArgumentType.VECTOR);
                 } else if (s == OperandSource.LABEL) {
-                    length += Config.WORLD_DIMENSIONS;
+                    length += DEFAULT_VECTOR_DIMS;
                     argTypesForSignature.add(InstructionArgumentType.LABEL);
                 }
             }
@@ -281,10 +285,28 @@ public abstract class Instruction {
     // --- Statische Getter für Laufzeit-Informationen ---
 
     public int getLength() { return getInstructionLengthById(this.fullOpcodeId); }
+    public int getLength(Environment env) { return getInstructionLengthById(this.fullOpcodeId, env); }
     public final Organism getOrganism() { return this.organism; }
     public final String getName() { return ID_TO_NAME.getOrDefault(this.fullOpcodeId, "UNKNOWN"); }
     public static String getInstructionNameById(int id) { return ID_TO_NAME.getOrDefault(id, "UNKNOWN"); }
     public static int getInstructionLengthById(int id) { return ID_TO_LENGTH.getOrDefault(id, 1); }
+
+    public static int getInstructionLengthById(int id, Environment env) {
+        int baseId = id;
+        List<OperandSource> sources = OPERAND_SOURCES.get(baseId);
+        if (sources == null) return 1;
+        int length = 1;
+        int dims = env.getShape().length;
+        for (OperandSource s : sources) {
+            if (s == OperandSource.REGISTER || s == OperandSource.IMMEDIATE || s == OperandSource.STACK) {
+                // For STACK we assume no encoded operand in code
+                if (s != OperandSource.STACK) length++;
+            } else if (s == OperandSource.VECTOR || s == OperandSource.LABEL) {
+                length += dims;
+            }
+        }
+        return length;
+    }
     public static Integer getInstructionIdByName(String name) { return NAME_TO_ID.get(name.toUpperCase()); }
     public static BiFunction<Organism, Environment, Instruction> getPlannerById(int id) { return REGISTERED_PLANNERS_BY_ID.get(id); }
     public static Optional<InstructionSignature> getSignatureById(int id) { return Optional.ofNullable(SIGNATURES_BY_ID.get(id)); }

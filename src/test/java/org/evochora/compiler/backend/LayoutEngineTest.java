@@ -43,7 +43,7 @@ public class LayoutEngineTest {
 		IrProgram ir = new IrProgram("Test", List.of(org, dir, label, seti, place));
 
         LayoutEngine engine = new LayoutEngine();
-        LayoutResult res = engine.layout(ir, new RuntimeInstructionSetAdapter());
+        LayoutResult res = engine.layout(ir, new RuntimeInstructionSetAdapter(), 2);
 
 		// Start at 2|3, direction 1|0:
 		// seti opcode at 2|3, two operands at 3|3 and 4|3

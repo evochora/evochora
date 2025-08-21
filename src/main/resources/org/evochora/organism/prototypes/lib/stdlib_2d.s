@@ -6,46 +6,34 @@
 # --- Prozedur: stdlib_2d.TURN_RIGHT ---
 #
 # Zweck:
-#   Rotiert einen 2D-Einheitsvektor um 90° im Uhrzeigersinn.
-#   Diese Version ist optimiert für minimalen Code-Footprint.
+#   Rotiert einen 2D-Einheitsvektor um 90° im Uhrzeigersinn unter
+#   Verwendung der mathematischen Formel (x, y) -> (y, -x).
+#   Diese Version nutzt die neuen Vektor-Instruktionen.
 #
 # Signatur:
 #   .PROC TURN_RIGHT EXPORT WITH VECTOR_IO
-#   - Eingabe/Ausgabe:
-#       VECTOR_IO: Das Register mit dem Vektor. Wird direkt überschrieben.
 #
 .PROC TURN_RIGHT EXPORT WITH VECTOR_IO
-    # Wir nutzen ein internes Register. Kein zusätzlicher Parameter nötig.
-    .PREG %TEMP 0
+    # Wir leihen uns interne Register für die Komponenten x und y.
+    .PREG %X 0
+    .PREG %Y 1
 
-    # Fall 1: Oben (0|-1) -> Rechts (1|0)
-    SETV %TEMP 0|-1
-    IFR VECTOR_IO %TEMP
-        JMPI SET_RIGHT
+    # 1. Extrahiere die x- und y-Komponenten des Eingabevektors.
+    #    VGTI %ZielRegister, %QuellVektor, INDEX
+    VGTI %X, VECTOR_IO, DATA:0  # %X = VECTOR_IO.x
+    VGTI %Y, VECTOR_IO, DATA:1  # %Y = VECTOR_IO.y
 
-    # Fall 2: Rechts (1|0) -> Unten (0|1)
-    SETV %TEMP 1|0
-    IFR VECTOR_IO %TEMP
-        JMPI SET_DOWN
+    # 2. Berechne -x.
+    #    Wir multiplizieren x mit -1, um die Negation zu erhalten.
+    MULI %X, DATA:-1            # %X = %X * -1
 
-    # Fall 3: Unten (0|1) -> Links (-1|0)
-    SETV %TEMP 0|1
-    IFR VECTOR_IO %TEMP
-        JMPI SET_LEFT
+    # 3. Baue den neuen Vektor (y, -x) zusammen.
+    #    VBLD baut einen Vektor aus Werten vom Stack. Die Reihenfolge
+    #    ist wichtig: Der Wert für die letzte Komponente (y) muss
+    #    zuerst gepusht werden.
+    PUSH %X                     # Lege -x auf den Stack
+    PUSH %Y                     # Lege y auf den Stack
+    VBLD VECTOR_IO              # Baut den Vektor aus [y, -x] und speichert ihn in VECTOR_IO
 
-    # Fall 4 (Default): Links (-1|0) -> Oben (0|-1)
-    # Dieser Fall benötigt keinen Vergleich, er wird ausgeführt,
-    # wenn keiner der anderen zutrifft. Das spart Instruktionen.
-    SETV VECTOR_IO 0|-1
-    RET
-
-SET_RIGHT:
-    SETV VECTOR_IO 1|0
-    RET
-SET_DOWN:
-    SETV VECTOR_IO 0|1
-    RET
-SET_LEFT:
-    SETV VECTOR_IO -1|0
     RET
 .ENDP

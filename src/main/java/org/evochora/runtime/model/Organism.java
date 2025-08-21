@@ -265,7 +265,7 @@ public class Organism {
     public void skipNextInstruction(Environment environment) {
         int[] currentInstructionIp = this.getIpBeforeFetch();
         int currentInstructionOpcode = environment.getMolecule(currentInstructionIp).toInt();
-        int currentInstructionLength = Instruction.getInstructionLengthById(currentInstructionOpcode);
+        int currentInstructionLength = Instruction.getInstructionLengthById(currentInstructionOpcode, environment);
 
         int[] nextInstructionIp = currentInstructionIp;
         for (int i = 0; i < currentInstructionLength; i++) {
@@ -273,7 +273,7 @@ public class Organism {
         }
 
         int nextOpcode = environment.getMolecule(nextInstructionIp).toInt();
-        int lengthToSkip = Instruction.getInstructionLengthById(nextOpcode);
+        int lengthToSkip = Instruction.getInstructionLengthById(nextOpcode, environment);
 
         int[] finalIp = nextInstructionIp;
         for (int i = 0; i < lengthToSkip; i++) {
@@ -290,8 +290,9 @@ public class Organism {
      * @return {@code true} if it is a unit vector, otherwise {@code false}.
      */
     public boolean isUnitVector(int[] vector) {
-        if (vector.length != Config.WORLD_DIMENSIONS) {
-            this.instructionFailed("Vector has incorrect dimensions: expected " + Config.WORLD_DIMENSIONS + ", got " + vector.length);
+        int expected = this.simulation.getEnvironment().getShape().length;
+        if (vector.length != expected) {
+            this.instructionFailed("Vector has incorrect dimensions: expected " + expected + ", got " + vector.length);
             return false;
         }
         int distance = 0;

@@ -32,7 +32,7 @@ class WorldStateAdapterTest {
 
 	@BeforeEach
 	void setUp() {
-		Environment environment = new Environment(Config.WORLD_SHAPE, true);
+		Environment environment = new Environment(new int[]{10,10}, true);
 		simulation = new Simulation(environment, false); // debug mode
 	}
 
