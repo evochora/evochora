@@ -127,6 +127,19 @@ public abstract class Instruction {
         registerFamily(BitwiseInstruction.class, Map.of(52, "NOT"), List.of(OperandSource.REGISTER));
         registerFamily(BitwiseInstruction.class, Map.of(79, "NOTS"), List.of(OperandSource.STACK));
 
+        // New: Rotate (ROT), Population Count (PCN), Bit Scan N-th (BSN)
+        // Allocate new IDs beyond current max (>=134)
+        registerFamily(BitwiseInstruction.class, Map.of(135, "ROTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(BitwiseInstruction.class, Map.of(136, "ROTI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(BitwiseInstruction.class, Map.of(137, "ROTS"), List.of(OperandSource.STACK, OperandSource.STACK));
+
+        registerFamily(BitwiseInstruction.class, Map.of(138, "PCNR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(BitwiseInstruction.class, Map.of(139, "PCNS"), List.of(OperandSource.STACK));
+
+        registerFamily(BitwiseInstruction.class, Map.of(140, "BSNR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(BitwiseInstruction.class, Map.of(141, "BSNI"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(BitwiseInstruction.class, Map.of(142, "BSNS"), List.of(OperandSource.STACK, OperandSource.STACK));
+
         // Data-Familie
         registerFamily(DataInstruction.class, Map.of(1, "SETI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
         registerFamily(DataInstruction.class, Map.of(2, "SETR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));

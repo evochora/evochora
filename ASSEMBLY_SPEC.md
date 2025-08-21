@@ -222,6 +222,22 @@ These instructions operate on the integer value of scalars.
 * `SHLR %REG_VAL %REG_AMT`, `SHLI %REG_VAL <Literal>`, `SHLS`: Logical shift left. (Cost: 1)
 * `SHRR %REG_VAL %REG_AMT`, `SHRI %REG_VAL <Literal>`, `SHRS`: Logical shift right. (Cost: 1)
 
+#### Rotation and Bit Utilities
+
+These operate on the lower VALUE_BITS of the scalar and preserve the molecule type.
+
+* `ROTR %VAL_REG %AMT_REG`, `ROTI %VAL_REG <Amount>`, `ROTS`: Rotate bits.
+  - The signed amount determines direction: positive rotates left, negative rotates right.
+  - `ROTS` pops `<Amt>` then `<Val>` from the Data Stack and pushes the rotated result. All stack ops are destructive.
+  - Rotations by 0 or by the full bit-width leave the value unchanged.
+* `PCNR %DEST_REG %SRC_REG`, `PCNS`: Population count (number of set bits in the lower VALUE_BITS).
+  - `PCNR` writes the count into `%DEST_REG` with the same type as `%SRC_REG`.
+  - `PCNS` pops a scalar and pushes the count with type `DATA`.
+* `BSNR %DEST_REG %SRC_REG %N_REG`, `BSNI %DEST_REG %SRC_REG <N>`, `BSNS`: Bit Scan N-th.
+  - Finds the n-th set bit in `%SRC` and writes a bitmask with only that bit set.
+  - N is 1-based. Positive N scans from LSB to MSB; negative N scans from MSB to LSB. N=0 is invalid.
+  - Failure conditions: N=0 or fewer than |N| set bits. On failure, the instruction fails and `%DEST_REG` (or the stack result for `BSNS`) is set to 0.
+
 ### Control Flow
 
 * `JMPI <Label>`: Jumps to `<Label>`. (Cost: 1)
