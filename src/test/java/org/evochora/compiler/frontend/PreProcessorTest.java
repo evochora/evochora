@@ -24,11 +24,13 @@ public class PreProcessorTest {
     void testIncludeDirectiveExpandsTokens() throws IOException {
         // Arrange
         Path libFile = tempDir.resolve("test.s");
-        Files.writeString(libFile, "NOP");
+        Files.writeString(libFile, "NOP"); // Schreibt NUR "NOP", ohne Zeilenumbruch
 
         String mainSource = ".INCLUDE \"test.s\"";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(mainSource, diagnostics);
+
+        Path mainFile = tempDir.resolve("main.s");
+        Lexer lexer = new Lexer(mainSource, diagnostics, mainFile.toString());
         List<Token> initialTokens = lexer.scanTokens();
 
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, tempDir);
@@ -38,7 +40,8 @@ public class PreProcessorTest {
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
-        // Expected tokens: NOP, EOF
+
+        // KORREKTUR: Wir erwarten nur 2 Tokens: NOP und das finale END_OF_FILE.
         assertThat(expandedTokens).hasSize(2);
         assertThat(expandedTokens.get(0).type()).isEqualTo(TokenType.OPCODE);
         assertThat(expandedTokens.get(0).text()).isEqualTo("NOP");

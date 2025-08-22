@@ -19,84 +19,72 @@ import java.util.List;
  */
 public final class InstructionNodeConverter implements IAstNodeToIrConverter<InstructionNode> {
 
-	@Override
-	public void convert(InstructionNode node, IrGenContext ctx) {
-		List<IrOperand> operands = new ArrayList<>();
-		// Sonderfall CALL WITH: trenne Operanden vom WITH-Block und emittiere core:call_with davor
-		String opcode = node.opcode().text();
-		int withIdx = -1;
-		if ("CALL".equalsIgnoreCase(opcode)) {
-			for (int i = 0; i < node.arguments().size(); i++) {
-				AstNode a = node.arguments().get(i);
-				if (a instanceof IdentifierNode id) {
-					String t = id.identifierToken().text().toUpperCase();
-					if ("WITH".equals(t) || ".WITH".equals(t)) { withIdx = i; break; }
-				}
-			}
-		}
+    @Override
+    public void convert(InstructionNode node, IrGenContext ctx) {
+        List<IrOperand> operands = new ArrayList<>();
+        String opcode = node.opcode().text();
+        int withIdx = -1;
 
-		int end = withIdx >= 0 ? withIdx : node.arguments().size();
-		for (int i = 0; i < end; i++) {
-			AstNode argNode = node.arguments().get(i);
-			// Für CALL das erste Argument (Ziel) ggf. qualifiziert -> entferne führenden Alias-Teil
-			if (i == 0 && "CALL".equalsIgnoreCase(opcode) && argNode instanceof IdentifierNode id0) {
-				String raw = id0.identifierToken().text();
-				int dot = raw.indexOf('.');
-				if (dot > 0) {
-					String remainder = raw.substring(dot + 1);
-					operands.add(new IrLabelRef(remainder));
-					continue;
-				}
-			}
-			operands.add(convertOperand(argNode, ctx));
-		}
+        if ("CALL".equalsIgnoreCase(opcode)) {
+            for (int i = 0; i < node.arguments().size(); i++) {
+                AstNode a = node.arguments().get(i);
+                if (a instanceof IdentifierNode id) {
+                    String t = id.identifierToken().text().toUpperCase();
+                    if ("WITH".equals(t) || ".WITH".equals(t)) {
+                        withIdx = i;
+                        break;
+                    }
+                }
+            }
+        }
 
-		if (withIdx >= 0) {
-			java.util.Map<String, IrValue> args = new java.util.HashMap<>();
-			java.util.List<IrValue> actuals = new java.util.ArrayList<>();
-			for (int j = withIdx + 1; j < node.arguments().size(); j++) {
-				AstNode a = node.arguments().get(j);
-				if (a instanceof RegisterNode r) {
-					actuals.add(new IrValue.Str(r.registerToken().text()));
-				} else if (a instanceof IdentifierNode id) {
-					String nameU = id.identifierToken().text().toUpperCase();
-					java.util.Optional<Integer> idxOpt = ctx.resolveProcedureParam(nameU);
-					if (idxOpt.isPresent()) {
-						actuals.add(new IrValue.Str("%FPR" + idxOpt.get()));
-					}
-				}
-			}
-			args.put("actuals", new IrValue.ListVal(actuals));
-			ctx.emit(new IrDirective("core", "call_with", args, ctx.sourceOf(node)));
-		}
+        int end = withIdx >= 0 ? withIdx : node.arguments().size();
+        for (int i = 0; i < end; i++) {
+            operands.add(convertOperand(node.arguments().get(i), ctx));
+        }
 
-		ctx.emit(new IrInstruction(opcode, operands, ctx.sourceOf(node)));
-	}
+        if (withIdx >= 0) {
+            java.util.Map<String, IrValue> args = new java.util.HashMap<>();
+            java.util.List<IrValue> actuals = new java.util.ArrayList<>();
+            for (int j = withIdx + 1; j < node.arguments().size(); j++) {
+                AstNode a = node.arguments().get(j);
+                if (a instanceof RegisterNode r) {
+                    actuals.add(new IrValue.Str(r.registerToken().text()));
+                } else if (a instanceof IdentifierNode id) {
+                    String nameU = id.identifierToken().text().toUpperCase();
+                    java.util.Optional<Integer> idxOpt = ctx.resolveProcedureParam(nameU);
+                    if (idxOpt.isPresent()) {
+                        actuals.add(new IrValue.Str("%FPR" + idxOpt.get()));
+                    }
+                }
+            }
+            args.put("actuals", new IrValue.ListVal(actuals));
+            ctx.emit(new IrDirective("core", "call_with", args, ctx.sourceOf(node)));
+        }
 
-	private IrOperand convertOperand(AstNode arg, IrGenContext ctx) {
-		if (arg instanceof RegisterNode r) {
-			return new IrReg(r.registerToken().text());
-		} else if (arg instanceof NumberLiteralNode n) {
-			return new IrImm(n.getValue());
-		} else if (arg instanceof TypedLiteralNode t) {
-			return new IrTypedImm(t.type().text(), Integer.parseInt(t.value().text()));
-		} else if (arg instanceof VectorLiteralNode v) {
-			int[] comps = v.components().stream().mapToInt(tok -> Integer.parseInt(tok.text())).toArray();
-			return new IrVec(comps);
-		} else if (arg instanceof IdentifierNode id) {
-			String nameU = id.identifierToken().text().toUpperCase();
-			java.util.Optional<Integer> idxOpt = ctx.resolveProcedureParam(nameU);
-			if (idxOpt.isPresent()) {
-				return new IrReg("%FPR" + idxOpt.get());
-			}
-			// Try resolve defined constants
-			java.util.Optional<IrOperand> constOpt = ctx.resolveConstant(nameU);
-			if (constOpt.isPresent()) return constOpt.get();
-			return new IrLabelRef(id.identifierToken().text());
-		}
-		// Fallback: treat as label-like reference for now
-		return new IrLabelRef(arg.toString());
-	}
+        ctx.emit(new IrInstruction(opcode, operands, ctx.sourceOf(node)));
+    }
+
+    private IrOperand convertOperand(AstNode arg, IrGenContext ctx) {
+        if (arg instanceof RegisterNode r) {
+            return new IrReg(r.registerToken().text());
+        } else if (arg instanceof NumberLiteralNode n) {
+            return new IrImm(n.getValue());
+        } else if (arg instanceof TypedLiteralNode t) {
+            return new IrTypedImm(t.type().text(), Integer.parseInt(t.value().text()));
+        } else if (arg instanceof VectorLiteralNode v) {
+            int[] comps = v.components().stream().mapToInt(tok -> Integer.parseInt(tok.text())).toArray();
+            return new IrVec(comps);
+        } else if (arg instanceof IdentifierNode id) {
+            String nameU = id.identifierToken().text().toUpperCase();
+            java.util.Optional<Integer> idxOpt = ctx.resolveProcedureParam(nameU);
+            if (idxOpt.isPresent()) {
+                return new IrReg("%FPR" + idxOpt.get());
+            }
+            java.util.Optional<IrOperand> constOpt = ctx.resolveConstant(nameU);
+            if (constOpt.isPresent()) return constOpt.get();
+            return new IrLabelRef(id.identifierToken().text());
+        }
+        return new IrLabelRef(arg.toString());
+    }
 }
-
-

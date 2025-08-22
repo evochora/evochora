@@ -3,6 +3,7 @@ package org.evochora.compiler.backend.link.features;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.backend.link.LinkingContext;
+import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.ir.*;
 
 import java.util.ArrayList;
@@ -13,7 +14,13 @@ import java.util.List;
  * Resolves IrLabelRef operands to n-D delta vectors using the layout mapping.
  * In this version, the vector represents the program-relative coordinate of the label.
  */
-public final class LabelRefLinkingRule implements ILinkingRule {
+public class LabelRefLinkingRule implements ILinkingRule {
+
+    private final SymbolTable symbolTable;
+
+    public LabelRefLinkingRule(SymbolTable symbolTable) {
+        this.symbolTable = symbolTable;
+    }
 
     @Override
     public IrInstruction apply(IrInstruction instruction, LinkingContext context, LayoutResult layout) {
@@ -24,15 +31,22 @@ public final class LabelRefLinkingRule implements ILinkingRule {
         for (int i = 0; i < ops.size(); i++) {
             IrOperand op = ops.get(i);
             if (op instanceof IrLabelRef ref) {
-                Integer targetAddr = layout.labelToAddress().get(ref.labelName());
+                String labelNameToFind = ref.labelName();
+
+                if (labelNameToFind.contains(".")) {
+                    var symbolOpt = symbolTable.resolve(new org.evochora.compiler.frontend.lexer.Token(
+                            null, labelNameToFind, null, instruction.source().lineNumber(), 0, instruction.source().fileName()
+                    ));
+                    if (symbolOpt.isPresent()) {
+                        labelNameToFind = symbolOpt.get().name().text();
+                    }
+                }
+
+                Integer targetAddr = layout.labelToAddress().get(labelNameToFind);
                 if (targetAddr != null) {
-                    // NEUE LOGIK: Der Vektor ist jetzt die absolute (programmrelative)
-                    // Koordinate des Ziels, nicht mehr die Differenz zum aktuellen IP.
                     int[] dstCoord = layout.linearAddressToCoord().get(targetAddr);
                     if (dstCoord != null) {
-                        // Eine Kopie erstellen, um Seiteneffekte zu vermeiden.
                         int[] absoluteVector = Arrays.copyOf(dstCoord, dstCoord.length);
-
                         if (rewritten == null) {
                             rewritten = new ArrayList<>(ops);
                         }

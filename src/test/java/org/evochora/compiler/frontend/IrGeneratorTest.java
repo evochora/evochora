@@ -8,13 +8,15 @@ import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
+import org.evochora.compiler.frontend.semantics.SymbolTable; // NEUER IMPORT
 import org.evochora.compiler.ir.*;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.assertj.core.api.Assertions.assertThat; // <-- NEUE, KORRIGIERENDE IMPORT-ZEILE
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration-like test for the IR generator: runs Lexer -> Parser -> Semantics -> IR.
@@ -35,12 +37,14 @@ public class IrGeneratorTest {
         assertFalse(diagnostics.hasErrors(), diagnostics.summary());
 
         // 2) Parsing
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, Path.of("")); // KORREKTUR
         List<AstNode> ast = parser.parse();
         assertFalse(diagnostics.hasErrors(), diagnostics.summary());
 
         // 3) Semantics
-        new SemanticAnalyzer(diagnostics).analyze(ast);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        new SemanticAnalyzer(diagnostics, symbolTable).analyze(ast);
         assertFalse(diagnostics.hasErrors(), diagnostics.summary());
 
         // 4) IR-Gen

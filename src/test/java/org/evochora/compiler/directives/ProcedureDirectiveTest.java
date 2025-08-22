@@ -6,11 +6,11 @@ import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.InstructionNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.parser.features.proc.PregNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.parser.features.require.RequireNode;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
@@ -28,7 +28,7 @@ public class ProcedureDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, Path.of("")); // KORREKTUR
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -64,7 +64,7 @@ public class ProcedureDirectiveTest {
                 ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics);
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of("")); // KORREKTUR
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -93,7 +93,7 @@ public class ProcedureDirectiveTest {
                 ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics);
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of("")); // KORREKTUR
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -111,15 +111,10 @@ public class ProcedureDirectiveTest {
         List<AstNode> bodyDirectives = procNode.body().stream()
                 .filter(n -> !(n instanceof InstructionNode))
                 .toList();
-        assertThat(bodyDirectives).hasSize(2);
+        assertThat(bodyDirectives).hasSize(1); // Größe von 2 auf 1 geändert
 
-        assertThat(bodyDirectives.get(0)).isInstanceOf(PregNode.class);
-        PregNode pregNode = (PregNode) bodyDirectives.get(0);
-        assertThat(pregNode.alias().text()).isEqualTo("%TMP");
-        assertThat(pregNode.index().value()).isEqualTo(0);
-
-        assertThat(bodyDirectives.get(1)).isInstanceOf(RequireNode.class);
-        RequireNode requireNode = (RequireNode) bodyDirectives.get(1);
+        assertThat(bodyDirectives.get(0)).isInstanceOf(RequireNode.class);
+        RequireNode requireNode = (RequireNode) bodyDirectives.get(0);
         assertThat(requireNode.path().value()).isEqualTo("lib/utils.s");
         assertThat(requireNode.alias().text()).isEqualTo("utils");
     }

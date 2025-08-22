@@ -7,8 +7,10 @@ import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
+import org.evochora.compiler.frontend.semantics.SymbolTable; // NEUER IMPORT
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,10 +20,9 @@ public class SemanticAnalyzerTest {
     private List<AstNode> getAst(String source, DiagnosticsEngine diagnostics) {
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, Path.of(""));
         return parser.parse();
     }
-
     @Test
     void testDuplicateLabelInGlobalScopeIsReported() {
         // Arrange
@@ -35,7 +36,9 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         // Assert
@@ -61,7 +64,9 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         // Assert
@@ -83,7 +88,9 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         // Assert
@@ -102,7 +109,9 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         // Assert
@@ -119,7 +128,9 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         // Assert
@@ -136,14 +147,14 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
     }
-
-    // --- NEUE TESTS FÜR ARGUMENT-TYP-PRÜFUNG ---
 
     @Test
     void testInstructionWithWrongArgumentTypeReportsError() {
@@ -153,7 +164,9 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         // Assert
@@ -170,7 +183,9 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         // Assert
@@ -189,7 +204,9 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         // Assert
@@ -209,7 +226,9 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         // Assert
@@ -232,7 +251,9 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         // Assert
@@ -252,12 +273,13 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        // Der Test muss jetzt auf die neue, spezifischere Fehlermeldung prüfen
         assertThat(diagnostics.getDiagnostics().get(0).message())
                 .isEqualTo("Argument 1 for instruction 'JMPI' has the wrong type. Expected LABEL, but got CONSTANT.");
     }
@@ -270,7 +292,9 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         // Assert
@@ -290,14 +314,14 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
     }
-
-    // --- Neue Tests für verschärfte Syntax ---
 
     @Test
     void testUnknownRegisterIsReported() {
@@ -306,7 +330,9 @@ public class SemanticAnalyzerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -320,7 +346,9 @@ public class SemanticAnalyzerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -334,7 +362,9 @@ public class SemanticAnalyzerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -354,9 +384,10 @@ public class SemanticAnalyzerTest {
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
 
-        // Act
+        // KORREKTUR: SymbolTable erstellen und übergeben
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
 
         // Assert

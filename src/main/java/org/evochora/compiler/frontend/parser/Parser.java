@@ -9,10 +9,11 @@ import org.evochora.compiler.frontend.lexer.TokenType;
 import org.evochora.compiler.frontend.parser.ast.*;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
-import org.evochora.compiler.frontend.parser.ast.RegisterNode;
 
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,21 +24,51 @@ public class Parser implements ParsingContext {
     private final List<Token> tokens;
     private final DiagnosticsEngine diagnostics;
     private final DirectiveHandlerRegistry directiveRegistry;
+    private final Path basePath;
     private int current = 0;
 
-    private final Map<String, Token> registerAliasTable = new HashMap<>();
+    private final Deque<Map<String, Token>> registerAliasScopes = new ArrayDeque<>();
     private final Map<String, ProcedureNode> procedureTable = new HashMap<>();
 
-    public Parser(List<Token> tokens, DiagnosticsEngine diagnostics) {
+    public Parser(List<Token> tokens, DiagnosticsEngine diagnostics, Path basePath) {
         this.tokens = tokens;
         this.diagnostics = diagnostics;
+        this.basePath = basePath;
         this.directiveRegistry = DirectiveHandlerRegistry.initialize();
+        registerAliasScopes.push(new HashMap<>());
+    }
+
+    public void pushRegisterAliasScope() {
+        registerAliasScopes.push(new HashMap<>());
+    }
+
+    public void popRegisterAliasScope() {
+        if (registerAliasScopes.size() > 1) {
+            registerAliasScopes.pop();
+        }
+    }
+
+    public void addRegisterAlias(String name, Token registerToken) {
+        registerAliasScopes.peek().put(name.toUpperCase(), registerToken);
+    }
+
+    private Token resolveRegisterAlias(String name) {
+        for (Map<String, Token> scope : registerAliasScopes) {
+            Token token = scope.get(name.toUpperCase());
+            if (token != null) {
+                return token;
+            }
+        }
+        return null;
+    }
+
+    public Map<String, Token> getGlobalRegisterAliases() {
+        return new HashMap<>(registerAliasScopes.getLast()); // Global scope is the last element
     }
 
     public List<AstNode> parse() {
         List<AstNode> statements = new ArrayList<>();
         while (!isAtEnd()) {
-            // Leere Zeilen (nur Newlines) werden hier übersprungen.
             if (match(TokenType.NEWLINE)) {
                 continue;
             }
@@ -51,7 +82,6 @@ public class Parser implements ParsingContext {
 
     public AstNode declaration() {
         try {
-            // Leere Zeilen vor einem Statement konsumieren
             while (check(TokenType.NEWLINE)) {
                 advance();
             }
@@ -76,7 +106,7 @@ public class Parser implements ParsingContext {
             if (handler.getPhase() == CompilerPhase.PARSING) {
                 return handler.parse(this);
             }
-            advance(); // Ignoriere Direktiven für andere Phasen
+            advance();
             return null;
         } else {
             diagnostics.reportError("Unknown directive: " + directiveToken.text(), directiveToken.fileName(), directiveToken.line());
@@ -88,7 +118,7 @@ public class Parser implements ParsingContext {
     private AstNode statement() {
         if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
             Token labelToken = advance();
-            advance(); // ':' konsumieren
+            advance();
             return new LabelNode(labelToken, declaration());
         }
         return instructionStatement();
@@ -123,26 +153,24 @@ public class Parser implements ParsingContext {
 
         if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
             Token type = advance();
-            advance(); // ':' konsumieren
+            advance();
             Token value = consume(TokenType.NUMBER, "Expected a number after the literal type.");
             return new TypedLiteralNode(type, value);
         }
 
         if (match(TokenType.NUMBER)) return new NumberLiteralNode(previous());
+
         if (match(TokenType.REGISTER)) {
             Token reg = previous();
-            String name = reg.text().toUpperCase();
-            if (registerAliasTable.containsKey(name)) {
-                return new RegisterNode(registerAliasTable.get(name));
-            }
-            return new RegisterNode(reg);
+            Token resolved = resolveRegisterAlias(reg.text());
+            return new RegisterNode(resolved != null ? resolved : reg);
         }
 
         if (match(TokenType.IDENTIFIER)) {
             Token identifier = previous();
-            String name = identifier.text().toUpperCase();
-            if (registerAliasTable.containsKey(name)) {
-                return new RegisterNode(registerAliasTable.get(name));
+            Token resolved = resolveRegisterAlias(identifier.text());
+            if (resolved != null) {
+                return new RegisterNode(resolved);
             }
             return new IdentifierNode(identifier);
         }
@@ -212,7 +240,6 @@ public class Parser implements ParsingContext {
         throw new RuntimeException(errorMessage);
     }
 
-    public Map<String, Token> getRegisterAliasTable() { return registerAliasTable; }
     public void registerProcedure(ProcedureNode procedure) {
         String name = procedure.name().text().toUpperCase();
         if (procedureTable.containsKey(name)) {
@@ -221,10 +248,16 @@ public class Parser implements ParsingContext {
             procedureTable.put(name, procedure);
         }
     }
+
     public Map<String, ProcedureNode> getProcedureTable() { return procedureTable; }
     @Override public DiagnosticsEngine getDiagnostics() { return diagnostics; }
     @Override public void injectTokens(List<Token> tokens, int tokensToRemove) { throw new UnsupportedOperationException("Not supported in parsing phase."); }
-    @Override public Path getBasePath() { throw new UnsupportedOperationException("Not supported in parsing phase."); }
+
+    @Override
+    public Path getBasePath() {
+        return this.basePath;
+    }
+
     @Override public boolean hasAlreadyIncluded(String path) { throw new UnsupportedOperationException("Not supported in parsing phase."); }
     @Override public void markAsIncluded(String path) { throw new UnsupportedOperationException("Not supported in parsing phase."); }
 }

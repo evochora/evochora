@@ -57,6 +57,7 @@ IS_ENERGY:
     .PREG %PASSABLE_MASK 2  # Bitmaske der passierbaren Richtungen
     .PREG %FILTERED_MASK 3  # Gefilterte Maske
     .PREG %COUNT 4          # Zähler für Optionen
+    .PREG %FINAL_MASK 5     # Ergebnisregister
 
     # --- Phase 1: Baue eine Bitmaske aller passierbaren Richtungen ---
     SETI %PASSABLE_MASK DATA:0

@@ -11,12 +11,14 @@ import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
+import org.evochora.compiler.frontend.semantics.SymbolTable; // NEUER IMPORT
 import org.evochora.compiler.ir.IrDirective;
 import org.evochora.compiler.ir.IrInstruction;
 import org.evochora.compiler.ir.IrItem;
 import org.evochora.compiler.ir.IrProgram;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -38,9 +40,14 @@ public class EmissionIntegrationTest {
         DiagnosticsEngine diags = new DiagnosticsEngine();
         Lexer lexer = new Lexer(src, diags);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diags);
+        // KORREKTUR: basePath hinzufügen
+        Parser parser = new Parser(tokens, diags, Path.of(""));
         List<AstNode> ast = parser.parse();
-        new SemanticAnalyzer(diags).analyze(ast);
+
+        // KORREKTUR: Erstelle eine SymbolTable und übergib sie.
+        SymbolTable symbolTable = new SymbolTable(diags);
+        new SemanticAnalyzer(diags, symbolTable).analyze(ast);
+
         assertThat(diags.hasErrors()).as(diags.summary()).isFalse();
 
         IrConverterRegistry reg = IrConverterRegistry.initializeWithDefaults();

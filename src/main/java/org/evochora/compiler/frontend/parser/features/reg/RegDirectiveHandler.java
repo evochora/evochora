@@ -63,9 +63,7 @@ public class RegDirectiveHandler implements IDirectiveHandler {
         if (name != null && register != null) {
             // Wir müssen auf die Parser-Implementierung casten, um Zugriff auf die Alias-Tabelle zu bekommen.
             // Eine sauberere Lösung könnte ein Interface sein, aber das ist für jetzt pragmatisch.
-            if (context instanceof Parser) {
-                ((Parser) context).getRegisterAliasTable().put(name.text().toUpperCase(), register);
-            }
+            ((Parser) context).addRegisterAlias(name.text(), register);
         }
 
         // .REG erzeugt keinen eigenen Knoten im AST

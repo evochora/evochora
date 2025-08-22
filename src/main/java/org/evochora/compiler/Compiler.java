@@ -12,6 +12,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
+import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.ir.IrProgram;
 import org.evochora.compiler.backend.layout.LayoutEngine;
 import org.evochora.compiler.backend.layout.LayoutResult;
@@ -76,10 +77,11 @@ public class Compiler implements ICompiler {
             throw new CompilationException(diagnostics.summary());
         }
 
-        Parser parser = new Parser(processedTokens, diagnostics);
+        Parser parser = new Parser(processedTokens, diagnostics, basePath);
         List<AstNode> ast = parser.parse();
 
-        Map<String, Token> registerAliases = parser.getRegisterAliasTable();
+        Map<String, Token> registerAliases = parser.getGlobalRegisterAliases();
+
         Map<String, Integer> finalAliasMap = registerAliases.entrySet().stream()
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
@@ -98,7 +100,8 @@ public class Compiler implements ICompiler {
             throw new CompilationException(diagnostics.summary());
         }
 
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics);
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
@@ -119,7 +122,7 @@ public class Compiler implements ICompiler {
         LayoutEngine layoutEngine = new LayoutEngine();
         LayoutResult layout = layoutEngine.layout(rewrittenIr, new RuntimeInstructionSetAdapter(), worldDimensions);
 
-        LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults();
+        LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults(symbolTable);
         Linker linker = new Linker(linkingRegistry);
         IrProgram linkedIr = linker.link(rewrittenIr, layout, linkingContext, worldDimensions);
 

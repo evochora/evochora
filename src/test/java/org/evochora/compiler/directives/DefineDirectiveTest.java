@@ -9,6 +9,7 @@ import org.evochora.compiler.frontend.parser.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.parser.features.def.DefineNode;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
@@ -22,7 +23,8 @@ public class DefineDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, Path.of("")); // KORREKTUR
+
 
         // Act
         // Wir filtern null-Werte heraus, da der Parser für leere Zeilen null zurückgibt.

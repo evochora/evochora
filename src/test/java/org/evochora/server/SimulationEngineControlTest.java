@@ -1,12 +1,17 @@
 package org.evochora.server;
 
+import org.evochora.server.contracts.IQueueMessage;
+import org.evochora.server.contracts.WorldStateMessage;
 import org.evochora.server.engine.SimulationEngine;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 class SimulationEngineControlTest {
 
@@ -23,44 +28,39 @@ class SimulationEngineControlTest {
         sim = new SimulationEngine(q, false);
         sim.start();
 
-        // Wait until engine ticks at least once
-        long start = System.currentTimeMillis();
-        while (sim.getCurrentTick() < 0 && (System.currentTimeMillis() - start) < 2000) {
-            Thread.sleep(10);
-        }
-        assertThat(sim.isRunning()).isTrue();
+        // 1. Warten, bis die Simulation initialisiert ist (erste Nachricht für Tick 0).
+        IQueueMessage initialMessage = assertTimeoutPreemptively(Duration.ofSeconds(5), q::take, "Simulation failed to start.");
+        assertThat(((WorldStateMessage) initialMessage).tickNumber()).isZero();
 
-        // Let it tick a bit
+        // 2. Lassen Sie die Simulation kurz laufen.
         Thread.sleep(50);
         long t1 = sim.getCurrentTick();
-        assertThat(t1).isGreaterThanOrEqualTo(0L);
+        assertThat(t1).isGreaterThan(0L);
 
-        // Pause and ensure tick does not advance
+        // 3. Pausieren und dem Thread Zeit geben, die Pause zu registrieren.
         sim.pause();
-        Thread.sleep(50);
-        long t2 = sim.getCurrentTick();
-        Thread.sleep(100);
+        Thread.sleep(100); // Warten, damit ein eventuell laufender Tick noch abgeschlossen werden kann.
         long t3 = sim.getCurrentTick();
-        assertThat(t2).isEqualTo(t3);
 
-        // Resume and ensure tick advances again (poll with timeout to avoid flakes)
-        sim.resume();
-        long waitStart = System.currentTimeMillis();
-        long t4;
-        while (true) {
-            Thread.sleep(20);
-            t4 = sim.getCurrentTick();
-            if (t4 > t3) break;
-            if (System.currentTimeMillis() - waitStart > 2000) break; // timeout safeguard
+        // 4. KORREKTUR: Leeren Sie die Warteschlange NACH dem Pausieren, um alle "in-flight" Nachrichten zu entfernen.
+        while (q.size() > 0) {
+            q.take();
         }
-        assertThat(t4).isGreaterThan(t3);
 
-        // Shutdown
+        // 5. Warten Sie erneut und stellen Sie sicher, dass die Warteschlange leer BLEIBT.
+        Thread.sleep(100);
+        assertThat(q.size()).as("Queue should remain empty while paused").isZero();
+        assertThat(sim.getCurrentTick()).isEqualTo(t3); // Der Zähler darf sich nicht verändert haben.
+
+        // 6. Fortsetzen und auf die nächste Nachricht warten, um zu beweisen, dass es weitergeht.
+        sim.resume();
+        IQueueMessage nextMessage = assertTimeoutPreemptively(Duration.ofSeconds(5), q::take, "Simulation did not resume.");
+
+        assertThat(((WorldStateMessage) nextMessage).tickNumber()).isGreaterThan(t3);
+
+        // 7. Herunterfahren.
         sim.shutdown();
-        // Allow shutdown to propagate
         Thread.sleep(50);
         assertThat(sim.isRunning()).isFalse();
     }
 }
-
-

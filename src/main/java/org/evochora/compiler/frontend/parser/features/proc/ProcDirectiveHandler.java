@@ -19,56 +19,64 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
 
     @Override
     public AstNode parse(ParsingContext context) {
+        Parser parser = (Parser) context;
         context.advance(); // .PROC konsumieren
 
         Token procName = context.consume(TokenType.IDENTIFIER, "Expected procedure name after .PROC.");
-
         boolean exported = false;
         List<Token> parameters = new ArrayList<>();
+        boolean withFound = false;
 
-        // Optionales EXPORT-Keyword erlauben
-        if (!context.isAtEnd() && context.check(TokenType.IDENTIFIER) && context.peek().text().equalsIgnoreCase("EXPORT")) {
-            context.advance();
-            exported = true;
+        // Flexible Schleife zum Parsen von optionalen Keywords wie EXPORT und WITH
+        while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
+            if (context.check(TokenType.IDENTIFIER)) {
+                String keyword = context.peek().text();
+                if ("EXPORT".equalsIgnoreCase(keyword)) {
+                    context.advance();
+                    exported = true;
+                } else if ("WITH".equalsIgnoreCase(keyword)) {
+                    context.advance();
+                    withFound = true;
+                    break; // Nach WITH kommen nur noch Parameter
+                } else {
+                    // Unbekanntes Keyword in der Deklaration
+                    context.getDiagnostics().reportError("Unexpected token '" + keyword + "' in procedure declaration.", procName.fileName(), procName.line());
+                    break;
+                }
+            } else {
+                break; // Kein Identifier, also keine optionalen Keywords mehr
+            }
         }
 
-        // Prüfe auf eine optionale WITH-Klausel (als Keyword oder Direktive)
-        boolean hasWith = (context.check(TokenType.IDENTIFIER) && context.peek().text().equalsIgnoreCase("WITH")) ||
-                          (context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".WITH"));
-
-        if (hasWith) {
-            context.advance(); // WITH oder .WITH konsumieren
+        if (withFound) {
             while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
-                // Formalparameter sind Bezeichner (z. B. A, VAL), keine Register-Tokens
-                parameters.add(context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name in .WITH clause."));
+                parameters.add(context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after WITH."));
             }
         }
 
         if (!context.isAtEnd()) {
-             context.consume(TokenType.NEWLINE, "Expected newline after .PROC declaration.");
+            context.consume(TokenType.NEWLINE, "Expected newline after .PROC declaration.");
         }
 
-        Parser parser = (Parser) context;
+        // Scope für prozedur-lokale Aliase öffnen
+        parser.pushRegisterAliasScope();
+
         List<AstNode> body = new ArrayList<>();
-        while (true) {
-            while(context.check(TokenType.NEWLINE)) {
-                context.advance();
-            }
-
-            if (context.isAtEnd() || (context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
-                break;
-            }
-
+        while (!context.isAtEnd() && !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
+            if (context.match(TokenType.NEWLINE)) continue;
             AstNode statement = parser.declaration();
             if (statement != null) {
                 body.add(statement);
             }
         }
 
+        // Scope für prozedur-lokale Aliase schließen
+        parser.popRegisterAliasScope();
+
         if (context.isAtEnd() || !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
             context.getDiagnostics().reportError("Expected .ENDP to close procedure block.", "Syntax Error", procName.line());
         } else {
-            context.advance(); // Consume .ENDP
+            context.advance(); // .ENDP konsumieren
         }
 
         ProcedureNode procNode = new ProcedureNode(procName, exported, parameters, body);

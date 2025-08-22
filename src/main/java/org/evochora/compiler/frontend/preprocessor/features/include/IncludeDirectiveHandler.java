@@ -9,9 +9,13 @@ import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.stream.Collectors;
 
 public class IncludeDirectiveHandler implements IDirectiveHandler {
     @Override
@@ -26,45 +30,43 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
 
         context.advance(); // .INCLUDE konsumieren
         Token pathToken = context.consume(TokenType.STRING, "Expected a file path in quotes after .INCLUDE.");
-        if (pathToken == null) return null; // Error occurred
+        if (pathToken == null) return null;
 
         int endIndex = pass.getCurrentIndex();
-
         String relativePath = (String) pathToken.value();
-        Path baseDir = null;
-        try {
-            Path includingFile = Path.of(pathToken.fileName());
-            baseDir = includingFile.getParent();
-        } catch (Exception ignored) { }
-        if (baseDir == null) {
-            baseDir = context.getBasePath();
-        }
-        Path absolutePath = baseDir.resolve(relativePath).normalize();
-
-        if (context.hasAlreadyIncluded(absolutePath.toString())) {
-            return null; // Prevent duplicate inclusion
-        }
-        context.markAsIncluded(absolutePath.toString());
 
         try {
+            // KORREKTUR: Robuste Pfadauflösung
+            Path resolvedPath = context.getBasePath().resolve(relativePath).normalize();
+            String logicalName = resolvedPath.toString().replace('\\', '/');
             String content;
-            if (Files.exists(absolutePath)) {
-                content = Files.readString(absolutePath);
+
+            if (Files.exists(resolvedPath)) {
+                // Priorität 1: Als Datei im Dateisystem lesen (funktioniert für Tests)
+                content = Files.readString(resolvedPath);
             } else {
-                String resourceName = absolutePath.toString().replace('\\', '/');
-                try (java.io.InputStream is = Thread.currentThread().getContextClassLoader().getResourceAsStream(resourceName)) {
-                    if (is == null) throw new IOException("Resource not found: " + resourceName);
-                    try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(is))) {
-                        content = br.lines().reduce(new StringBuilder(), (sb, s) -> sb.append(s).append('\n'), StringBuilder::append).toString();
+                // Priorität 2: Als Ressource aus dem Classpath laden (funktioniert für die Anwendung)
+                try (InputStream is = Thread.currentThread().getContextClassLoader().getResourceAsStream(logicalName)) {
+                    if (is == null) throw new IOException("Resource not found in classpath: " + logicalName);
+                    try (BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
+                        content = br.lines().collect(Collectors.joining("\n"));
                     }
                 }
             }
-            pass.addSourceContent(absolutePath.toString(), content);
-            Lexer lexer = new Lexer(content, context.getDiagnostics(), absolutePath.toString());
+
+            if (context.hasAlreadyIncluded(logicalName)) {
+                pass.removeTokens(startIndex, endIndex - startIndex);
+                return null;
+            }
+            context.markAsIncluded(logicalName);
+            pass.addSourceContent(logicalName, content);
+
+            Lexer lexer = new Lexer(content, context.getDiagnostics(), logicalName);
             pass.removeTokens(startIndex, endIndex - startIndex);
             pass.injectTokens(lexer.scanTokens(), 0);
+
         } catch (IOException e) {
-            context.getDiagnostics().reportError("Could not read included file: " + absolutePath, pathToken.fileName(), pathToken.line());
+            context.getDiagnostics().reportError("Could not read included file: " + relativePath, pathToken.fileName(), pathToken.line());
         }
 
         return null;
