@@ -209,12 +209,17 @@ public final class SimulationEngine implements IControllable, Runnable {
                     if (def.placement != null && def.placement.positions != null) {
                         for (int[] origin : def.placement.positions) {
                             int[] start = origin != null ? origin : new int[dims];
-                            // Place machine code and initial world objects relative to origin, also set owner for set cells
+                            // Create organism first so ownership can be applied at placement time
+                            int energy = Math.max(0, def.initialEnergy);
+                            Organism organism = Organism.create(simulation, start, energy, simulation.getLogger());
+                            organism.setProgramId(artifact.programId());
+
+                            // Place machine code and initial world objects relative to origin, setting owner
                             for (var e : artifact.machineCodeLayout().entrySet()) {
                                 int[] rel = e.getKey();
                                 int[] abs = new int[dims];
                                 for (int i = 0; i < dims; i++) abs[i] = start[i] + rel[i];
-                                env.setMolecule(org.evochora.runtime.model.Molecule.fromInt(e.getValue()), 0, abs);
+                                env.setMolecule(org.evochora.runtime.model.Molecule.fromInt(e.getValue()), organism.getId(), abs);
                             }
                             for (var e : artifact.initialWorldObjects().entrySet()) {
                                 int[] rel = e.getKey();
@@ -222,8 +227,23 @@ public final class SimulationEngine implements IControllable, Runnable {
                                 for (int i = 0; i < dims; i++) abs[i] = start[i] + rel[i];
                                 var pm = e.getValue();
                                 var mol = new org.evochora.runtime.model.Molecule(pm.type(), pm.value());
-                                env.setMolecule(mol, 0, abs);
+                                env.setMolecule(mol, organism.getId(), abs);
                             }
+
+                            // Defensive: ensure ownership is set even if a packed value was 0
+                            for (var e : artifact.machineCodeLayout().entrySet()) {
+                                int[] rel = e.getKey();
+                                int[] abs = new int[dims];
+                                for (int i = 0; i < dims; i++) abs[i] = start[i] + rel[i];
+                                env.setOwnerId(organism.getId(), abs);
+                            }
+                            for (var e : artifact.initialWorldObjects().entrySet()) {
+                                int[] rel = e.getKey();
+                                int[] abs = new int[dims];
+                                for (int i = 0; i < dims; i++) abs[i] = start[i] + rel[i];
+                                env.setOwnerId(organism.getId(), abs);
+                            }
+
                             // Register CALL-site bindings for this placement (absolute coordinates)
                             if (!performanceMode && artifact.callSiteBindings() != null && artifact.linearAddressToCoord() != null) {
                                 org.evochora.runtime.internal.services.CallBindingRegistry registry = org.evochora.runtime.internal.services.CallBindingRegistry.getInstance();
@@ -238,23 +258,8 @@ public final class SimulationEngine implements IControllable, Runnable {
                                     }
                                 }
                             }
-                            // Create organism with configured energy and own placed cells
-                            int energy = Math.max(0, def.initialEnergy);
-                            Organism organism = Organism.create(simulation, start, energy, simulation.getLogger());
-                            organism.setProgramId(artifact.programId());
-                            // Set owner for all machine code cells to organism id
-                            for (var e : artifact.machineCodeLayout().entrySet()) {
-                                int[] rel = e.getKey();
-                                int[] abs = new int[dims];
-                                for (int i = 0; i < dims; i++) abs[i] = start[i] + rel[i];
-                                env.setOwnerId(organism.getId(), abs);
-                            }
-                            for (var e : artifact.initialWorldObjects().entrySet()) {
-                                int[] rel = e.getKey();
-                                int[] abs = new int[dims];
-                                for (int i = 0; i < dims; i++) abs[i] = start[i] + rel[i];
-                                env.setOwnerId(organism.getId(), abs);
-                            }
+                            // Ensure the origin cell is marked as owned to be visible in the initial snapshot
+                            env.setOwnerId(organism.getId(), start);
                             simulation.addOrganism(organism);
                         }
                     }
@@ -268,11 +273,16 @@ public final class SimulationEngine implements IControllable, Runnable {
                 for (ProgramArtifact artifact : programArtifacts) {
                     int[] origin = UserLoadRegistry.getDesiredStart(artifact.programId());
                     if (origin == null) origin = new int[dims];
+                    // Create organism first
+                    Organism organism = Organism.create(simulation, origin,
+                            org.evochora.runtime.Config.ERROR_PENALTY_COST + 1000, simulation.getLogger());
+                    organism.setProgramId(artifact.programId());
+                    // Place with ownership
                     for (var e : artifact.machineCodeLayout().entrySet()) {
                         int[] rel = e.getKey();
                         int[] abs = new int[dims];
                         for (int i = 0; i < dims; i++) abs[i] = origin[i] + rel[i];
-                        env.setMolecule(org.evochora.runtime.model.Molecule.fromInt(e.getValue()), abs);
+                        env.setMolecule(org.evochora.runtime.model.Molecule.fromInt(e.getValue()), organism.getId(), abs);
                     }
                     for (var e : artifact.initialWorldObjects().entrySet()) {
                         int[] rel = e.getKey();
@@ -280,11 +290,24 @@ public final class SimulationEngine implements IControllable, Runnable {
                         for (int i = 0; i < dims; i++) abs[i] = origin[i] + rel[i];
                         var pm = e.getValue();
                         var mol = new org.evochora.runtime.model.Molecule(pm.type(), pm.value());
-                        env.setMolecule(mol, abs);
+                        env.setMolecule(mol, organism.getId(), abs);
                     }
-                    Organism organism = Organism.create(simulation, origin,
-                            org.evochora.runtime.Config.ERROR_PENALTY_COST + 1000, simulation.getLogger());
-                    organism.setProgramId(artifact.programId());
+
+                    // Defensive: ensure ownership is set even if a packed value was 0
+                    for (var e : artifact.machineCodeLayout().entrySet()) {
+                        int[] rel = e.getKey();
+                        int[] abs = new int[dims];
+                        for (int i = 0; i < dims; i++) abs[i] = origin[i] + rel[i];
+                        env.setOwnerId(organism.getId(), abs);
+                    }
+                    for (var e : artifact.initialWorldObjects().entrySet()) {
+                        int[] rel = e.getKey();
+                        int[] abs = new int[dims];
+                        for (int i = 0; i < dims; i++) abs[i] = origin[i] + rel[i];
+                        env.setOwnerId(organism.getId(), abs);
+                    }
+                    // Ensure the origin cell is marked as owned for initial snapshot visibility
+                    env.setOwnerId(organism.getId(), origin);
                     simulation.addOrganism(organism);
                 }
             }

@@ -46,68 +46,32 @@ IS_ENERGY:
 .ENDP
 
 
-# --- Taktik 2: STEP_RANDOMLY (Bitmasken-Version) ---
+# --- Taktik 2: STEP_RANDOMLY (Final optimierte Version) ---
 #
 # Zweck:
-#   Implementiert die kompakte Filter-Logik mit den neuen Bit-Befehlen.
+#   Nutzt die erweiterte ISA, um in minimalen Ticks eine freie
+#   Nachbarzelle zu finden und sich dorthin zu bewegen.
 #
-.PROC STEP_RANDOMLY EXPORT WITH LAST_DIRECTION_INV NEW_DIRECTION_OUT
-    .PREG %DIR_TEST 0       # Zu prüfende Richtung
-    .PREG %FLAG 1           # Flag für Passierbarkeit
-    .PREG %PASSABLE_MASK 2  # Bitmaske der passierbaren Richtungen
-    .PREG %FILTERED_MASK 3  # Gefilterte Maske
-    .PREG %COUNT 4          # Zähler für Optionen
-    .PREG %FINAL_MASK 5     # Ergebnisregister
+.PROC STEP_RANDOMLY EXPORT WITH NEW_DIRECTION_OUT
+    .PREG %MASK   0   # Hält die Maske der passierbaren Richtungen
+    .PREG %CHOICE 1   # Hält die Maske der zufälligen Auswahl (nur ein Bit)
 
-    # --- Phase 1: Baue eine Bitmaske aller passierbaren Richtungen ---
-    SETI %PASSABLE_MASK DATA:0
-    SETV %DIR_TEST 1|0      # Start: Rechts (entspricht Bit 0)
-    SETI %FLAG DATA:4       # Schleifenzähler
+    # Tick 1: Finde ALLE passierbaren Richtungen mit einem Befehl.
+    SPNR %MASK
 
-CHECK_LOOP:
-    # Bit für die aktuelle Richtung nach links schieben (Rechts=1, Unten=2, Links=4, Oben=8)
-    SHLI %FLAG DATA:1
-    CALL STDLIB.IS_PASSABLE WITH %DIR_TEST %FLAG
-    IFI %FLAG DATA:1
-        ORR %PASSABLE_MASK %FLAG # Bit in Maske setzen
-    CALL STDLIB_2D.TURN_RIGHT WITH %DIR_TEST
-    GTI %FLAG DATA:0
-        JMPI CHECK_LOOP
+    # Tick 2: Wähle zufällig EINE der passierbaren Optionen aus.
+    RBIR %CHOICE %MASK
 
-    # --- Phase 2: "Nicht zurückgehen"-Filter anwenden ---
-    PCNR %COUNT %PASSABLE_MASK # Zähle, wie viele Optionen es gibt
-    IFI %COUNT DATA:0
-        RET # Keine Bewegung möglich
+    # Wenn keine Richtung frei war (%CHOICE ist 0), überspringe die Bewegung.
+    IFI %CHOICE DATA:0
+        JMPI NO_MOVE
 
-    SETR %FILTERED_MASK %PASSABLE_MASK # Kopiere für die Filterung
-    GTI %COUNT DATA:1
-        JMPI APPLY_FILTER
+    # Tick 3: Konvertiere das gewählte Bit direkt in einen Vektor.
+    B2VR NEW_DIRECTION_OUT %CHOICE
 
-APPLY_FILTER:
-    # Konvertiere "verbotene" Richtung in eine Bitmaske
-    CALL STDLIB_2D.BITMASK_TO_VECTOR WITH LAST_DIRECTION_INV %FLAG # Missbrauche %FLAG temporär
-    NOT %FLAG
-    ANDR %FILTERED_MASK %FLAG # Entferne das "zurück"-Bit
-
-    PCNR %COUNT %FILTERED_MASK
-    # Sackgasse? Wenn nach dem Filtern nichts übrig ist, nimm die originale Maske.
-    IFI %COUNT DATA:0
-        SETR %FILTERED_MASK %PASSABLE_MASK
-        PCNR %COUNT %FILTERED_MASK
-
-    # --- Phase 3: Wähle zufällig und bewege ---
-    RAND %COUNT                 # Wähle einen Index von 0 bis (COUNT-1)
-    ADDI %COUNT DATA:1          # BSN ist 1-basiert, also +1
-
-    # Finde das N-te gesetzte Bit. Wir nutzen die Stack-Version BSNS.
-    PUSH %FILTERED_MASK
-    PUSH %COUNT
-    BSNS
-    POP %FINAL_MASK             # Ergebnis ist eine Maske mit nur einem gesetzten Bit
-
-    # Konvertiere die finale Bitmaske zurück in einen Vektor
-    CALL STDLIB_2D.BITMASK_TO_VECTOR WITH %FINAL_MASK NEW_DIRECTION_OUT
-
+    # Tick 4: Gehe dorthin.
     SEEK NEW_DIRECTION_OUT
+
+NO_MOVE:
     RET
 .ENDP

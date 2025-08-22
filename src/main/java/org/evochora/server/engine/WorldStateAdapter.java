@@ -271,10 +271,11 @@ public final class WorldStateAdapter {
         Arrays.fill(coord, 0);
         iterate(shape, 0, coord, () -> {
             Molecule m = env.getMolecule(coord);
-            if (m.toInt() != 0) {
+            int ownerId = env.getOwnerId(coord);
+            // Include cell if non-empty OR has an owner; ensures ownership is visible at tick 0
+            if (m.toInt() != 0 || ownerId != 0) {
                 int typeId = m.type() >>> Config.TYPE_SHIFT;
                 int value = m.toScalarValue();
-                int ownerId = env.getOwnerId(coord);
                 out.add(new CellState(toList(coord), typeId, value, ownerId));
             }
         });

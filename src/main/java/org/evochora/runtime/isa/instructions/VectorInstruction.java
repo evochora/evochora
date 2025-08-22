@@ -35,6 +35,8 @@ public class VectorInstruction extends Instruction {
                 case "VSTS" -> handleVectorSetStack();
                 case "VBLD" -> handleVectorBuild(operands, dims);
                 case "VBLS" -> handleVectorBuildStack(dims);
+                case "B2VR", "B2VI" -> handleBitToVector(operands, dims);
+                case "B2VS" -> handleBitToVectorStack(dims);
                 default -> organism.instructionFailed("Unknown vector instruction: " + opName);
             }
         } catch (NoSuchElementException e) {
@@ -42,6 +44,62 @@ public class VectorInstruction extends Instruction {
         } catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
             organism.instructionFailed("Invalid operand types for vector operation: " + e.getMessage());
         }
+    }
+
+    private void handleBitToVector(List<Operand> operands, int dims) {
+        if (operands.size() != 2) {
+            organism.instructionFailed("B2V requires two operands.");
+            return;
+        }
+        int destReg = operands.get(0).rawSourceId();
+        if (!(operands.get(1).value() instanceof Integer srcVal)) {
+            organism.instructionFailed("B2V source must be scalar mask.");
+            return;
+        }
+        org.evochora.runtime.model.Molecule srcMol = org.evochora.runtime.model.Molecule.fromInt(srcVal);
+        int mask = srcMol.toScalarValue();
+        int[] vec = maskToUnitVector(mask, dims);
+        if (vec == null) {
+            organism.instructionFailed("B2V requires a single-bit direction mask.");
+            return;
+        }
+        writeOperand(destReg, vec);
+    }
+
+    private void handleBitToVectorStack(int dims) {
+        Deque<Object> ds = organism.getDataStack();
+        if (ds.isEmpty()) {
+            organism.instructionFailed("B2VS requires a mask on the stack.");
+            return;
+        }
+        Object top = ds.pop();
+        if (!(top instanceof Integer iv)) {
+            organism.instructionFailed("B2VS requires a scalar mask on the stack.");
+            return;
+        }
+        org.evochora.runtime.model.Molecule srcMol = org.evochora.runtime.model.Molecule.fromInt(iv);
+        int[] vec = maskToUnitVector(srcMol.toScalarValue(), dims);
+        if (vec == null) {
+            organism.instructionFailed("B2VS requires a single-bit direction mask.");
+            return;
+        }
+        ds.push(vec);
+    }
+
+    private int[] maskToUnitVector(int rawMask, int dims) {
+        int mask = rawMask & ((1 << org.evochora.runtime.Config.VALUE_BITS) - 1);
+        if (Integer.bitCount(mask) != 1) {
+            return null;
+        }
+        int bit = Integer.numberOfTrailingZeros(mask);
+        int[] vec = new int[dims];
+        int axis = bit / 2;
+        int dirBit = bit % 2;
+        if (axis >= dims || axis >= 8) {
+            return null;
+        }
+        vec[axis] = (dirBit == 0) ? 1 : -1;
+        return vec;
     }
 
     private void handleVectorGet(List<Operand> operands) {

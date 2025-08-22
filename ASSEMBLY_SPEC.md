@@ -238,6 +238,24 @@ These operate on the lower VALUE_BITS of the scalar and preserve the molecule ty
   - N is 1-based. Positive N scans from LSB to MSB; negative N scans from MSB to LSB. N=0 is invalid.
   - Failure conditions: N=0 or fewer than |N| set bits. On failure, the instruction fails and `%DEST_REG` (or the stack result for `BSNS`) is set to 0.
 
+#### Random Bit Selection
+
+Selects a single set bit from a source mask at random. If the source mask is 0, the result is 0. Randomness is provided by the simulation's seeded RNG for reproducibility.
+
+* `RBIR %DEST_REG %SOURCE_REG`, `RBII %DEST_REG <Mask_Lit>`, `RBIS`
+  - From the source bitmask, randomly selects one of the set bits and writes a mask containing only that bit.
+  - Register variants preserve the molecule type of the source; immediates use `DATA`.
+  - Stack variant pops the source mask and pushes the result.
+
+#### Scan Passable Neighbors (SPNP)
+
+Scans axis-aligned neighbors around the active DP and returns a bitmask of passable directions. A neighbor is passable if the cell is empty or owned by self or direct parent. For dimension d (0-indexed), bit 2·d indicates the +1 direction, bit 2·d+1 indicates the −1 direction. Supports up to n ≤ 8.
+
+* `SPNR %MASK_REG`, `SPNS`
+  - Register variant writes the mask to `%MASK_REG`.
+  - Stack variant pushes the mask onto the Data Stack.
+  - If no neighbors are passable, the mask is `DATA:0`.
+
 ### Control Flow
 
 * `JMPI <Label>`: Jumps to `<Label>`. (Cost: 1)
@@ -309,6 +327,14 @@ These instructions provide atomic control over the components of a vector, allow
 * `VSTR %Vec_Reg %Idx_Reg %Val_Reg`, `VSTI %Vec_Reg <Idx_Lit> <Val_Lit>`, `VSTS`:**V**ector **S**e**t**: Modifies a single scalar component within a target vector. The variants follow the same pattern as `VGET`. Note that the `I` variant for `VSTI` takes an immediate index but a register for the value.
 
 * `VBLD %Dest_Reg`, `VBLS`: **V**ector **B**ui**ld**: Constructs a new vector from N scalar values taken from the top of the Data Stack (where N is the dimensionality of the world). `VBLD` stores the result in a register, while `VBLS` pushes it back onto the stack.
+
+#### Bit to Unit Vector (B2V)
+
+Converts a single-bit direction mask into an n-dimensional unit vector using the convention: for dimension d, bit 2·d = +1 direction, bit 2·d+1 = −1 direction.
+
+* `B2VR %VEC_REG %MASK_REG`, `B2VI %VEC_REG <Mask_Lit>`, `B2VS`
+  - Fails if the mask is 0 or contains more than one set bit.
+  - Immediate variant uses `DATA` for the literal; stack variant pops mask and pushes the vector.
 
 ---
 

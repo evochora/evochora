@@ -175,6 +175,9 @@ public abstract class Instruction {
         registerFamily(StateInstruction.class, Map.of(16, "SCAN"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(82, "SCNI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
         registerFamily(StateInstruction.class, Map.of(83, "SCNS"), List.of(OperandSource.STACK));
+        // New: SPNP (Scan Passable Neighbors): SPNR/SPNS
+        registerFamily(StateInstruction.class, Map.of(152, "SPNR"), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(153, "SPNS"), List.of());
         registerFamily(StateInstruction.class, Map.of(12, "SEEK"), List.of(OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(59, "SEKI"), List.of(OperandSource.VECTOR));
         registerFamily(StateInstruction.class, Map.of(84, "SEKS"), List.of(OperandSource.STACK));
@@ -218,6 +221,16 @@ public abstract class Instruction {
         registerFamily(VectorInstruction.class, Map.of(132, "VSTS"), List.of()); // Operands vom Stack
         registerFamily(VectorInstruction.class, Map.of(133, "VBLD"), List.of(OperandSource.REGISTER));
         registerFamily(VectorInstruction.class, Map.of(134, "VBLS"), List.of());
+
+        // New: B2V family (bit to vector)
+        registerFamily(VectorInstruction.class, Map.of(146, "B2VR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(VectorInstruction.class, Map.of(147, "B2VI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(VectorInstruction.class, Map.of(148, "B2VS"), List.of());
+
+        // New: RBIT family (random bit from mask)
+        registerFamily(StateInstruction.class, Map.of(149, "RBIR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(150, "RBII"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(StateInstruction.class, Map.of(151, "RBIS"), List.of());
     }
 
     private static final int DEFAULT_VECTOR_DIMS = 2;

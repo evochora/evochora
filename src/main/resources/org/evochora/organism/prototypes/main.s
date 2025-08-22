@@ -4,7 +4,7 @@
 
 # --- 1. Definitionen und logische Abhängigkeiten ---
 # Diese benötigen keinen physischen Platz in der Welt.
-.DEFINE ENERGY_REPRODUCTION_THRESHOLD  DATA:1500
+.DEFINE ENERGY_REPRODUCTION_THRESHOLD  DATA:5000
 .REG %CURRENT_ENERGY %DR0
 .REG %TEMP_CALC_REG %DR6
 .REG %LAST_DIRECTION %DR7

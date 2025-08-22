@@ -8,7 +8,7 @@
     {
       "id": "main",
       "program": "prototypes/main.s",
-      "initialEnergy": 1500,
+      "initialEnergy": 5000,
       "placement": {
         "strategy": "fixed",
         "positions": [
@@ -19,9 +19,18 @@
   ],
   "energyStrategies": [
     {
+      "type": "geyser",
+      "params": {
+        "count": 30,
+        "interval": 10,
+        "amount": 400,
+        "safetyRadius": 5
+      }
+    },
+    {
       "type": "solar",
       "params": {
-        "probability": 0.2,
+        "probability": 0.5,
         "amount": 100,
         "safetyRadius": 5
       }

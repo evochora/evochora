@@ -51,12 +51,11 @@ public class ProcedureMarshallingRule implements IEmissionRule {
                     }
                 }
 
-                // Falls kein RET im Körper vorhanden war, am Ende Epilog + RET einfügen
+                // Falls kein RET im Körper vorhanden war, nur Epilog einfügen (kein implizites RET)
                 if (!sawRet) {
                     for (int p = 0; p < arity; p++) {
                         out.add(new IrInstruction("PUSH", List.of(new IrReg("%FPR" + p)), it.source()));
                     }
-                    out.add(new IrInstruction("RET", List.of(), it.source()));
                 }
 
                 // proc_exit anfügen

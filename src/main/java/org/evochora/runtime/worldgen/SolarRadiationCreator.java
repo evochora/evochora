@@ -34,7 +34,7 @@ public class SolarRadiationCreator implements IEnergyDistributionCreator {
                 coord[i] = random.nextInt(shape[i]);
             }
 
-            // Prüfe, ob die Zelle leer ist UND der Bereich um sie herum unbeansprucht ist.
+            // Bereich muss unbesessen sein (Abstand zu Organismus-Zellen)
             if (environment.getMolecule(coord).isEmpty() && environment.isAreaUnowned(coord, this.safetyRadius)) {
                 environment.setMolecule(new Molecule(Config.TYPE_ENERGY, spawnAmount), coord);
             }

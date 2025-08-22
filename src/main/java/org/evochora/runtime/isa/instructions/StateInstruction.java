@@ -29,6 +29,11 @@ public class StateInstruction extends Instruction {
                 case "TURN":
                     handleTurn(operands);
                     break;
+                case "RBIR":
+                case "RBII":
+                case "RBIS":
+                    handleRbit(opName, operands);
+                    break;
                 case "TRNI":
                     handleTrni(operands);
                     break;
@@ -76,6 +81,10 @@ public class StateInstruction extends Instruction {
                 case "FRKI":
                 case "FRKS":
                     handleForkExtended(opName, operands, context.getWorld(), organism.getSimulation());
+                    break;
+                case "SPNR":
+                case "SPNS":
+                    handleScanPassableNeighbors(opName, operands, context.getWorld());
                     break;
                 case "SCAN":
                 case "SCNI":
@@ -176,6 +185,65 @@ public class StateInstruction extends Instruction {
         if (upperBound <= 0) { organism.instructionFailed("RNDS upper bound must be > 0."); organism.getDataStack().push(new Molecule(Config.TYPE_DATA, 0).toInt()); return; }
         int v = organism.getRandom().nextInt(upperBound);
         organism.getDataStack().push(new Molecule(Config.TYPE_DATA, v).toInt());
+    }
+
+    private void handleRbit(String opName, List<Operand> operands) {
+        // RBIR %DEST_REG, %SOURCE_REG
+        // RBII %DEST_REG, <MASK_LITERAL>
+        // RBIS (stack): pop mask, push single-bit mask
+        final int width = Config.VALUE_BITS;
+        final int maskAll = (1 << width) - 1;
+
+        if ("RBIS".equals(opName)) {
+            if (organism.getDataStack().isEmpty()) { organism.instructionFailed("RBIS requires a source mask on the stack."); return; }
+            Object srcObj = organism.getDataStack().pop();
+            if (!(srcObj instanceof Integer)) { organism.instructionFailed("RBIS requires a scalar mask on the stack."); return; }
+            Molecule srcMol = org.evochora.runtime.model.Molecule.fromInt((Integer) srcObj);
+            int srcMask = srcMol.toScalarValue() & maskAll;
+            int resultMask = chooseRandomSetBitMask(srcMask);
+            organism.getDataStack().push(new Molecule(srcMol.type(), resultMask).toInt());
+            return;
+        }
+
+        if (operands.size() != 2) { organism.instructionFailed(opName + " requires two operands."); return; }
+        Operand dest = operands.get(0);
+        Operand src = operands.get(1);
+        if (!(dest.value() instanceof Integer)) { organism.instructionFailed(opName + " destination must be a scalar register."); return; }
+
+        Molecule srcMol;
+        if ("RBII".equals(opName)) {
+            // immediate uses DATA type
+            if (!(src.value() instanceof Integer)) { organism.instructionFailed("RBII requires immediate scalar mask."); return; }
+            srcMol = new Molecule(Config.TYPE_DATA, (Integer) src.value());
+        } else {
+            if (!(src.value() instanceof Integer)) { organism.instructionFailed("RBIR requires scalar source register."); return; }
+            srcMol = org.evochora.runtime.model.Molecule.fromInt((Integer) src.value());
+        }
+
+        int srcMask = srcMol.toScalarValue() & maskAll;
+        int resultMask = chooseRandomSetBitMask(srcMask);
+        if (dest.rawSourceId() != -1) {
+            writeOperand(dest.rawSourceId(), new Molecule(srcMol.type(), resultMask).toInt());
+        } else {
+            organism.instructionFailed(opName + " destination must be a register.");
+        }
+    }
+
+    private int chooseRandomSetBitMask(int mask) {
+        if (mask == 0) return 0;
+        // collect indices of set bits within VALUE_BITS
+        int[] indices = new int[Config.VALUE_BITS];
+        int count = 0;
+        for (int i = 0; i < Config.VALUE_BITS; i++) {
+            if (((mask >>> i) & 1) != 0) {
+                indices[count++] = i;
+            }
+        }
+        if (count == 0) return 0;
+        int pick = organism.getRandom().nextInt(count);
+        int bitIndex = indices[pick];
+        int result = (1 << bitIndex) & ((1 << Config.VALUE_BITS) - 1);
+        return result;
     }
 
     private void handleSeek(List<Operand> operands, Environment environment) {
@@ -321,6 +389,44 @@ public class StateInstruction extends Instruction {
                 organism.setActiveDpIndex(idx);
                 break;
             }
+        }
+    }
+
+    private void handleScanPassableNeighbors(String opName, List<Operand> operands, Environment environment) {
+        int dims = environment.getShape().length;
+        int scanDims = Math.min(dims, 8);
+        int[] dp = organism.getActiveDp();
+        int mask = 0;
+        for (int d = 0; d < scanDims; d++) {
+            // + direction
+            int[] vecPlus = new int[dims];
+            vecPlus[d] = 1;
+            int[] tgtPlus = organism.getTargetCoordinate(dp, vecPlus, environment);
+            org.evochora.runtime.model.Molecule mPlus = environment.getMolecule(tgtPlus);
+            int ownerPlus = environment.getOwnerId(tgtPlus);
+            boolean passablePlus = mPlus.isEmpty() || organism.isCellAccessible(ownerPlus);
+            if (passablePlus) {
+                mask |= (1 << (2 * d));
+            }
+
+            // - direction
+            int[] vecMinus = new int[dims];
+            vecMinus[d] = -1;
+            int[] tgtMinus = organism.getTargetCoordinate(dp, vecMinus, environment);
+            org.evochora.runtime.model.Molecule mMinus = environment.getMolecule(tgtMinus);
+            int ownerMinus = environment.getOwnerId(tgtMinus);
+            boolean passableMinus = mMinus.isEmpty() || organism.isCellAccessible(ownerMinus);
+            if (passableMinus) {
+                mask |= (1 << (2 * d + 1));
+            }
+        }
+
+        if ("SPNS".equals(opName)) {
+            organism.getDataStack().push(new Molecule(Config.TYPE_DATA, mask).toInt());
+        } else {
+            if (operands.size() != 1) { organism.instructionFailed("SPNR requires one destination register."); return; }
+            int dest = operands.get(0).rawSourceId();
+            writeOperand(dest, new Molecule(Config.TYPE_DATA, mask).toInt());
         }
     }
 

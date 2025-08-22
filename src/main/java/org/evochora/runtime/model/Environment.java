@@ -124,6 +124,7 @@ public class Environment {
         // N-dimensionale Iteration über einen hyperkubischen Bereich mit gegebenem Radius
         int dims = this.shape.length;
         int[] offsets = new int[dims];
+        for (int i = 0; i < dims; i++) offsets[i] = -radius;
 
         while (true) {
             int[] checkCoord = new int[dims];
@@ -135,16 +136,12 @@ public class Environment {
             }
             // Inkrementiere die Offsets wie ein Zähler von -radius..+radius je Dimension
             int dim = dims - 1;
-            while (dim >= 0) {
-                if (offsets[dim] < radius) {
-                    offsets[dim]++;
-                    // Setze nachfolgende Dimensionen zurück
-                    for (int j = dim + 1; j < dims; j++) offsets[j] = -radius;
-                    break;
-                }
+            while (dim >= 0 && offsets[dim] == radius) {
+                offsets[dim] = -radius;
                 dim--;
             }
             if (dim < 0) break; // alle Kombinationen durchlaufen
+            offsets[dim]++;
         }
         return true;
     }

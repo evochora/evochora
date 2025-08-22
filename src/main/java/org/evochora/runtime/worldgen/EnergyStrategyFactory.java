@@ -21,7 +21,8 @@ public class EnergyStrategyFactory {
             int count = ((Number) params.getOrDefault("count", 5)).intValue();
             int interval = ((Number) params.getOrDefault("interval", 100)).intValue();
             int amount = ((Number) params.getOrDefault("amount", 200)).intValue();
-            return new GeyserCreator(rngProvider, count, interval, amount);
+            int safetyRadius = ((Number) params.getOrDefault("safetyRadius", 2)).intValue();
+            return new GeyserCreator(rngProvider, count, interval, amount, safetyRadius);
         });
     }
 

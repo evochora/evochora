@@ -71,6 +71,33 @@ public class VMVectorInstructionTest {
         assertThat((int[])org.getDr(0)).containsExactly(40, 50);
     }
 
+    // B2V Tests
+    @Test
+    void testB2viPositiveX() {
+        int mask = new Molecule(Config.TYPE_DATA, 1 << 0).toInt(); // +X
+        placeInstruction("B2VI", 0, mask); // %DR0, DATA:mask
+        sim.tick();
+        assertThat((int[]) org.getDr(0)).containsExactly(1, 0);
+    }
+
+    @Test
+    void testB2viNegativeY() {
+        int mask = new Molecule(Config.TYPE_DATA, 1 << 3).toInt(); // 2*d+1 for d=1 => bit 3 = -Y
+        placeInstruction("B2VI", 0, mask);
+        sim.tick();
+        assertThat((int[]) org.getDr(0)).containsExactly(0, -1);
+    }
+
+    @Test
+    void testB2vsStackVariant() {
+        int mask = new Molecule(Config.TYPE_DATA, 1 << 2).toInt(); // +Y
+        org.getDataStack().push(mask);
+        placeInstruction("B2VS");
+        sim.tick();
+        Object top = org.getDataStack().pop();
+        assertThat((int[]) top).containsExactly(0, 1);
+    }
+
     @org.junit.jupiter.api.AfterEach
     void assertNoInstructionFailure() {
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
