@@ -79,9 +79,7 @@ public class Environment {
         if (index != -1) {
             int packed = molecule.toInt();
             this.grid[index] = packed;
-            if (packed != 0) { // only update owner for non-empty cells
-                this.ownerGrid[index] = ownerId;
-            }
+            this.ownerGrid[index] = ownerId;
         }
     }
 

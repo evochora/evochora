@@ -81,7 +81,7 @@ public final class WorldStateAdapter {
             ));
         }
 
-        List<CellState> cells = toCellStates(simulation.getEnvironment());
+        List<CellState> cells = toCellStates(simulation);
         return new WorldStateMessage(tick, tsMicros, organisms, cells);
     }
 
@@ -263,9 +263,11 @@ public final class WorldStateAdapter {
         return formatted;
     }
 
-    private static List<CellState> toCellStates(Environment env) {
+    private static List<CellState> toCellStates(Simulation simulation) {
+        Environment env = simulation.getEnvironment();
         int[] shape = env.getShape();
         List<CellState> out = new ArrayList<>();
+        java.util.Set<java.util.List<Integer>> seen = new java.util.HashSet<>();
         int dims = shape.length;
         int[] coord = new int[dims];
         Arrays.fill(coord, 0);
@@ -276,9 +278,51 @@ public final class WorldStateAdapter {
             if (m.toInt() != 0 || ownerId != 0) {
                 int typeId = m.type() >>> Config.TYPE_SHIFT;
                 int value = m.toScalarValue();
-                out.add(new CellState(toList(coord), typeId, value, ownerId));
+                java.util.List<Integer> pos = toList(coord);
+                out.add(new CellState(pos, typeId, value, ownerId));
+                seen.add(pos);
             }
         });
+
+        // Ensure organism footprints (machine code and initial world objects) appear with ownership even if env owner grid not yet set
+        Map<String, ProgramArtifact> artifacts = simulation.getProgramArtifacts();
+        if (artifacts != null && !artifacts.isEmpty()) {
+            for (var o : simulation.getOrganisms()) {
+                ProgramArtifact pa = artifacts.get(o.getProgramId());
+                if (pa == null) continue;
+                int[] origin = o.getInitialPosition();
+                // Machine code layout
+                for (var e : pa.machineCodeLayout().entrySet()) {
+                    int[] rel = e.getKey();
+                    int[] abs = new int[dims];
+                    for (int i = 0; i < dims; i++) abs[i] = origin[i] + rel[i];
+                    java.util.List<Integer> pos = toList(abs);
+                    if (seen.contains(pos)) continue;
+                    Molecule m = env.getMolecule(abs);
+                    int typeId = m.type() >>> Config.TYPE_SHIFT;
+                    int value = m.toScalarValue();
+                    int ownerId = env.getOwnerId(abs);
+                    if (ownerId == 0) ownerId = o.getId();
+                    out.add(new CellState(pos, typeId, value, ownerId));
+                    seen.add(pos);
+                }
+                // Initial world objects
+                for (var e : pa.initialWorldObjects().entrySet()) {
+                    int[] rel = e.getKey();
+                    int[] abs = new int[dims];
+                    for (int i = 0; i < dims; i++) abs[i] = origin[i] + rel[i];
+                    java.util.List<Integer> pos = toList(abs);
+                    if (seen.contains(pos)) continue;
+                    Molecule m = env.getMolecule(abs);
+                    int typeId = m.type() >>> Config.TYPE_SHIFT;
+                    int value = m.toScalarValue();
+                    int ownerId = env.getOwnerId(abs);
+                    if (ownerId == 0) ownerId = o.getId();
+                    out.add(new CellState(pos, typeId, value, ownerId));
+                    seen.add(pos);
+                }
+            }
+        }
         return out;
     }
 
