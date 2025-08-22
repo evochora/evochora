@@ -100,6 +100,63 @@ public class VMStateInstructionAdvancedTest {
         assertThat(mask & expected).isEqualTo(expected);
     }
 
+    // SNT* (Scan Neighbors by Type) tests
+    @Test
+    void testSntrDetectsStructureNeighborsIntoDest() {
+        int[] dp = org.getActiveDp();
+        // Place STRUCTURE at +X and -Y
+        environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 1), new int[]{dp[0] + 1, dp[1]});
+        environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 2), new int[]{dp[0], dp[1] - 1});
+        // Other neighbors are left as CODE:0 (not STRUCTURE)
+
+        // Put type in %DR1
+        org.setDr(1, new Molecule(Config.TYPE_STRUCTURE, 123).toInt());
+        // Ensure arguments are placed along +Y to avoid overwriting +X neighbor
+        org.setDv(new int[]{0, 1});
+        placeInstruction("SNTR", 0, 1); // %DR0 (dest), %DR1 (type)
+        sim.tick();
+        int resultPacked = (Integer) org.getDr(0);
+        int mask = Molecule.fromInt(resultPacked).toScalarValue();
+        int expected = (1 << 0) | (1 << 3); // +X (bit0) and -Y (bit3)
+        assertThat(mask & expected).isEqualTo(expected);
+    }
+
+    @Test
+    void testSntiDetectsEnergyNeighborImmediate() {
+        int[] dp = org.getActiveDp();
+        // Place ENERGY at -X only
+        environment.setMolecule(new Molecule(Config.TYPE_ENERGY, 7), new int[]{dp[0] - 1, dp[1]});
+
+        int typeImm = new Molecule(Config.TYPE_ENERGY, 0).toInt();
+        placeInstruction("SNTI", 0, typeImm); // %DR0 (dest), placeholder immediate
+        // Overwrite the immediate argument cell with a correctly typed literal (ENERGY:0)
+        int[] arg1 = org.getNextInstructionPosition(org.getIp(), org.getDv(), environment); // %DEST_REG cell
+        int[] arg2 = org.getNextInstructionPosition(arg1, org.getDv(), environment); // immediate cell
+        environment.setMolecule(new Molecule(Config.TYPE_ENERGY, 0), arg2);
+        sim.tick();
+        int resultPacked = (Integer) org.getDr(0);
+        int mask = Molecule.fromInt(resultPacked).toScalarValue();
+        int expected = (1 << 1); // -X (bit1)
+        assertThat(mask & expected).isEqualTo(expected);
+    }
+
+    @Test
+    void testSntsStackVariantConsumesTypeAndPushesMask() {
+        int[] dp = org.getActiveDp();
+        // Make +X non-CODE to exclude it; others remain CODE:0
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 1), new int[]{dp[0] + 1, dp[1]});
+
+        // Push type CODE onto stack
+        org.getDataStack().push(new Molecule(Config.TYPE_CODE, 0).toInt());
+        placeInstruction("SNTS");
+        sim.tick();
+        Object top = org.getDataStack().pop();
+        int mask = Molecule.fromInt((Integer) top).toScalarValue();
+        // Expect -X, +Y, -Y (bits 1,2,3) set; +X (bit0) not set
+        int expected = (1 << 1) | (1 << 2) | (1 << 3);
+        assertThat(mask & expected).isEqualTo(expected);
+    }
+
     @Test
     void testRbiiZeroMaskProducesZero() {
         int zero = new Molecule(Config.TYPE_DATA, 0).toInt();

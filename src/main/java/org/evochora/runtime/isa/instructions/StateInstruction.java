@@ -86,6 +86,11 @@ public class StateInstruction extends Instruction {
                 case "SPNS":
                     handleScanPassableNeighbors(opName, operands, context.getWorld());
                     break;
+                case "SNTR":
+                case "SNTI":
+                case "SNTS":
+                    handleScanNeighborsByType(opName, operands, context.getWorld());
+                    break;
                 case "SCAN":
                 case "SCNI":
                 case "SCNS":
@@ -427,6 +432,61 @@ public class StateInstruction extends Instruction {
             if (operands.size() != 1) { organism.instructionFailed("SPNR requires one destination register."); return; }
             int dest = operands.get(0).rawSourceId();
             writeOperand(dest, new Molecule(Config.TYPE_DATA, mask).toInt());
+        }
+    }
+
+    private void handleScanNeighborsByType(String opName, List<Operand> operands, Environment environment) {
+        // Determine destination (register or stack) and the requested type
+        boolean toStack = opName.endsWith("S");
+        int destReg = -1;
+        int requestedType;
+
+        if ("SNTR".equals(opName)) {
+            if (operands.size() != 2) { organism.instructionFailed("SNTR expects %DEST_REG, %TYPE_REG"); return; }
+            destReg = operands.get(0).rawSourceId();
+            Object typeObj = operands.get(1).value();
+            if (!(typeObj instanceof Integer ti)) { organism.instructionFailed("SNTR type source must be scalar."); return; }
+            requestedType = Molecule.fromInt(ti).type();
+        } else if ("SNTI".equals(opName)) {
+            if (operands.size() != 2) { organism.instructionFailed("SNTI expects %DEST_REG, <Type_Lit>"); return; }
+            destReg = operands.get(0).rawSourceId();
+            Object imm = operands.get(1).value();
+            if (!(imm instanceof Integer ii)) { organism.instructionFailed("SNTI immediate must be scalar."); return; }
+            requestedType = Molecule.fromInt(ii).type();
+        } else { // SNTS
+            if (operands.size() != 1) { organism.instructionFailed("SNTS expects <Type> on stack"); return; }
+            Object top = operands.get(0).value();
+            if (!(top instanceof Integer si)) { organism.instructionFailed("SNTS requires scalar type on stack."); return; }
+            requestedType = Molecule.fromInt(si).type();
+            toStack = true;
+        }
+
+        int dims = environment.getShape().length;
+        int scanDims = Math.min(dims, 8);
+        int[] dp = organism.getActiveDp();
+        int mask = 0;
+        for (int d = 0; d < scanDims; d++) {
+            int[] vecPlus = new int[dims];
+            vecPlus[d] = 1;
+            int[] tgtPlus = organism.getTargetCoordinate(dp, vecPlus, environment);
+            Molecule mPlus = environment.getMolecule(tgtPlus);
+            if (mPlus.type() == requestedType) {
+                mask |= (1 << (2 * d));
+            }
+
+            int[] vecMinus = new int[dims];
+            vecMinus[d] = -1;
+            int[] tgtMinus = organism.getTargetCoordinate(dp, vecMinus, environment);
+            Molecule mMinus = environment.getMolecule(tgtMinus);
+            if (mMinus.type() == requestedType) {
+                mask |= (1 << (2 * d + 1));
+            }
+        }
+
+        if (toStack) {
+            organism.getDataStack().push(new Molecule(Config.TYPE_DATA, mask).toInt());
+        } else {
+            writeOperand(destReg, new Molecule(Config.TYPE_DATA, mask).toInt());
         }
     }
 

@@ -256,6 +256,16 @@ Scans axis-aligned neighbors around the active DP and returns a bitmask of passa
   - Stack variant pushes the mask onto the Data Stack.
   - If no neighbors are passable, the mask is `DATA:0`.
 
+#### Scan Neighbors by Type (SNT*)
+
+Scans axis-aligned neighbors around the active DP and returns a bitmask indicating where neighbors match a specific molecule type. For dimension d (0-indexed), bit 2·d indicates the +1 direction, bit 2·d+1 indicates the −1 direction.
+
+* `SNTR %DEST_REG %TYPE_REG`, `SNTI %DEST_REG <Type_Lit>`, `SNTS`
+  - Compares only the molecule type of the neighbor cell; the VALUE is ignored.
+  - `<Type_Lit>` is any typed literal; only its type component is used (e.g., `ENERGY:0` selects ENERGY).
+  - Register variants write the `DATA`-typed mask into `%DEST_REG`; stack variant pushes it.
+  - If no neighbors match, the mask is `DATA:0`.
+
 ### Control Flow
 
 * `JMPI <Label>`: Jumps to `<Label>`. (Cost: 1)

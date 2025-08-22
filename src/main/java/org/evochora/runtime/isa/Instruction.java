@@ -178,6 +178,10 @@ public abstract class Instruction {
         // New: SPNP (Scan Passable Neighbors): SPNR/SPNS
         registerFamily(StateInstruction.class, Map.of(152, "SPNR"), List.of(OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(153, "SPNS"), List.of());
+        // New: SNT* (Scan Neighbors by Type): SNTR/SNTI/SNTS
+        registerFamily(StateInstruction.class, Map.of(154, "SNTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(155, "SNTI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(StateInstruction.class, Map.of(156, "SNTS"), List.of(OperandSource.STACK));
         registerFamily(StateInstruction.class, Map.of(12, "SEEK"), List.of(OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(59, "SEKI"), List.of(OperandSource.VECTOR));
         registerFamily(StateInstruction.class, Map.of(84, "SEKS"), List.of(OperandSource.STACK));
