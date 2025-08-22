@@ -36,22 +36,27 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
         String relativePath = (String) pathToken.value();
 
         try {
-            // KORREKTUR: Robuste Pfadauflösung
             Path resolvedPath = context.getBasePath().resolve(relativePath).normalize();
-            String logicalName = resolvedPath.toString().replace('\\', '/');
             String content;
+            String logicalName;
 
             if (Files.exists(resolvedPath)) {
-                // Priorität 1: Als Datei im Dateisystem lesen (funktioniert für Tests)
+                // Filesystem path for tests/tools
+                logicalName = resolvedPath.toString().replace('\\', '/');
                 content = Files.readString(resolvedPath);
             } else {
-                // Priorität 2: Als Ressource aus dem Classpath laden (funktioniert für die Anwendung)
-                try (InputStream is = Thread.currentThread().getContextClassLoader().getResourceAsStream(logicalName)) {
-                    if (is == null) throw new IOException("Resource not found in classpath: " + logicalName);
+                // Classpath resource relative to including file
+                String including = pathToken.fileName() != null ? pathToken.fileName().replace('\\', '/') : "";
+                String resourceBase = including.contains("/") ? including.substring(0, including.lastIndexOf('/')) : "";
+                String classpathCandidate = (resourceBase.isEmpty() ? relativePath : resourceBase + "/" + relativePath).replace('\\', '/');
+
+                try (InputStream is = Thread.currentThread().getContextClassLoader().getResourceAsStream(classpathCandidate)) {
+                    if (is == null) throw new IOException("Resource not found in classpath: " + classpathCandidate);
                     try (BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
                         content = br.lines().collect(Collectors.joining("\n"));
                     }
                 }
+                logicalName = classpathCandidate;
             }
 
             if (context.hasAlreadyIncluded(logicalName)) {

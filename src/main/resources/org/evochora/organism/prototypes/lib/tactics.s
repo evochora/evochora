@@ -3,8 +3,8 @@
 # Enthält kurzfristige, zielgerichtete Aktionen.
 # =================================================================
 
-.REQUIRE "lib/stdlib.s" AS STDLIB
-.REQUIRE "lib/stdlib_2d.s" AS STDLIB_2D
+.REQUIRE "stdlib.s" AS STDLIB
+.REQUIRE "stdlib_2d.s" AS STDLIB_2D
 
 # --- Taktik: HARVEST_CELL ---
 #
