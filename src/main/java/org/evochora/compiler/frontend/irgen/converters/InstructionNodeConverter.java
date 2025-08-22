@@ -71,9 +71,9 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
         } else if (arg instanceof NumberLiteralNode n) {
             return new IrImm(n.getValue());
         } else if (arg instanceof TypedLiteralNode t) {
-            return new IrTypedImm(t.type().text(), Integer.parseInt(t.value().text()));
+            return new IrTypedImm(t.type().text(), parseIntegerLiteral(t.value().text()));
         } else if (arg instanceof VectorLiteralNode v) {
-            int[] comps = v.components().stream().mapToInt(tok -> Integer.parseInt(tok.text())).toArray();
+            int[] comps = v.components().stream().mapToInt(tok -> parseIntegerLiteral(tok.text())).toArray();
             return new IrVec(comps);
         } else if (arg instanceof IdentifierNode id) {
             String nameU = id.identifierToken().text().toUpperCase();
@@ -86,5 +86,35 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
             return new IrLabelRef(id.identifierToken().text());
         }
         return new IrLabelRef(arg.toString());
+    }
+
+    private int parseIntegerLiteral(String text) {
+        if (text == null || text.isEmpty()) return 0;
+        String s = text.trim();
+        int sign = 1;
+        if (s.startsWith("+")) {
+            s = s.substring(1);
+        } else if (s.startsWith("-")) {
+            sign = -1;
+            s = s.substring(1);
+        }
+
+        String lower = s.toLowerCase();
+        int radix = 10;
+        String digits = lower;
+        if (lower.startsWith("0b")) {
+            radix = 2;
+            digits = lower.substring(2);
+        } else if (lower.startsWith("0x")) {
+            radix = 16;
+            digits = lower.substring(2);
+        } else if (lower.startsWith("0o")) {
+            radix = 8;
+            digits = lower.substring(2);
+        }
+
+        // Remove underscores for readability if present
+        digits = digits.replace("_", "");
+        return sign * Integer.parseInt(digits, radix);
     }
 }

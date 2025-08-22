@@ -36,35 +36,32 @@ public class ProcedureMarshallingRule implements IEmissionRule {
                     body.add(bi);
                 }
 
-                // Finde die RET-Anweisung im Rumpf
-                IrInstruction retInstruction = null;
-                int retIndex = -1;
-                for (int k = 0; k < body.size(); k++) {
-                    if (body.get(k) instanceof IrInstruction instr && "RET".equals(instr.opcode())) {
-                        retInstruction = instr;
-                        retIndex = k;
-                        break;
+                // Kopiere den Rumpf und füge den Epilog vor JEDEM RET ein
+                boolean sawRet = false;
+                for (IrItem bi : body) {
+                    if (bi instanceof IrInstruction instr && "RET".equals(instr.opcode())) {
+                        // Epilog vor RET einfügen
+                        for (int p = 0; p < arity; p++) {
+                            out.add(new IrInstruction("PUSH", List.of(new IrReg("%FPR" + p)), it.source()));
+                        }
+                        out.add(instr);
+                        sawRet = true;
+                    } else {
+                        out.add(bi);
                     }
                 }
 
-                // Füge den Rumpf bis (exklusive) RET hinzu
-                if (retIndex != -1) {
-                    out.addAll(body.subList(0, retIndex));
-                } else {
-                    out.addAll(body); // Füge den gesamten Rumpf hinzu, wenn kein RET gefunden wurde
+                // Falls kein RET im Körper vorhanden war, am Ende Epilog + RET einfügen
+                if (!sawRet) {
+                    for (int p = 0; p < arity; p++) {
+                        out.add(new IrInstruction("PUSH", List.of(new IrReg("%FPR" + p)), it.source()));
+                    }
+                    out.add(new IrInstruction("RET", List.of(), it.source()));
                 }
 
-                // Epilog: Schreibe die Werte aus den %FPR-Registern zurück auf den Stack
-                for (int p = 0; p < arity; p++) {
-                    out.add(new IrInstruction("PUSH", List.of(new IrReg("%FPR" + p)), it.source()));
-                }
-
-                // Füge die RET-Anweisung (falls vorhanden) und das proc_exit hinzu
-                if (retInstruction != null) {
-                    out.add(retInstruction);
-                }
+                // proc_exit anfügen
                 if (j < items.size()) {
-                    out.add(items.get(j)); // proc_exit
+                    out.add(items.get(j));
                 }
 
                 i = j + 1;

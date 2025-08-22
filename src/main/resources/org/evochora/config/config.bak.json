@@ -19,11 +19,19 @@
   ],
   "energyStrategies": [
     {
+      "type": "geyser",
+      "params": {
+        "count": 8,
+        "interval": 10,
+        "amount": 400
+      }
+    },
+    {
       "type": "solar",
       "params": {
         "probability": 0.2,
-        "amount": 100,
-        "safetyRadius": 5
+        "amount": 50,
+        "safetyRadius": 2
       }
     }
   ]

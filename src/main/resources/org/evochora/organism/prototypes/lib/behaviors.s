@@ -17,9 +17,7 @@
     CALL STRATEGIES.HARVEST_SURROUNDINGS
 
     # Schritt 2: Mache einen einzelnen, intelligenten Schritt.
-    # PLATZHALTER: Diese Taktik werden wir im nächsten Schritt erstellen.
-    # CALL TACTICS.STEP_RANDOMLY
-    NOP
+    CALL TACTICS.STEP_RANDOMLY
 
     # Das Verhalten ist für diesen Tick abgeschlossen.
     RET
