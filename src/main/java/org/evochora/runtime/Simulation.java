@@ -19,7 +19,7 @@ public class Simulation {
     private long currentTick = 0L;
     public boolean paused = true;
     private final List<Organism> newOrganismsThisTick = new ArrayList<>();
-    private int nextOrganismId = 0;
+    private int nextOrganismId = 1;
     private final boolean isPerformanceMode;
     private org.evochora.runtime.internal.services.IRandomProvider randomProvider;
 
