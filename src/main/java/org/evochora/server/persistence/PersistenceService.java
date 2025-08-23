@@ -4,12 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.evochora.server.IControllable;
 import org.evochora.server.contracts.IQueueMessage;
 import org.evochora.server.contracts.ProgramArtifactMessage;
-import org.evochora.server.contracts.WorldStateMessage;
+import org.evochora.server.contracts.PreparedTickState;
 import org.evochora.server.queue.ITickMessageQueue;
 import org.evochora.runtime.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.evochora.runtime.isa.Instruction;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -124,25 +123,7 @@ public final class PersistenceService implements IControllable, Runnable {
             }
             try (Statement st = connection.createStatement()) {
                 st.execute("CREATE TABLE IF NOT EXISTS programs (programId TEXT PRIMARY KEY, artifactJson TEXT)");
-                st.execute("CREATE TABLE IF NOT EXISTS ticks (tickNumber INTEGER PRIMARY KEY, timestampMicroseconds INTEGER, organismCount INTEGER)");
-                st.execute("CREATE TABLE IF NOT EXISTS organism_states (" +
-                        "tickNumber INTEGER, organismId INTEGER, programId TEXT, parentId INTEGER NULL, " +
-                        "birthTick INTEGER, energy INTEGER, positionJson TEXT, dpsJson TEXT, dvJson TEXT, returnIpJson TEXT, " + // added returnIpJson
-                        "stateJson TEXT, disassembledInstructionJson TEXT, " +
-                        "dataRegisters TEXT, procRegisters TEXT, dataStack TEXT, callStack TEXT, formalParameters TEXT, fprs TEXT, " +
-                        "locationRegisters TEXT, locationStack TEXT, " + // NEW COLUMNS
-                        "PRIMARY KEY (tickNumber, organismId))");
-                // Idempotent schema upgrades for backward compatibility
-                try { st.execute("ALTER TABLE organism_states ADD COLUMN fprs TEXT"); } catch (SQLException ignore) {}
-                try { st.execute("ALTER TABLE organism_states ADD COLUMN locationRegisters TEXT"); } catch (SQLException ignore) {}
-                try { st.execute("ALTER TABLE organism_states ADD COLUMN locationStack TEXT"); } catch (SQLException ignore) {}
-                try { st.execute("ALTER TABLE organism_states ADD COLUMN returnIpJson TEXT"); } catch (SQLException ignore) {}
-                // Rename dpJson to dpsJson if the old column exists
-                try { st.execute("ALTER TABLE organism_states RENAME COLUMN dpJson TO dpsJson"); } catch (SQLException ignore) {}
-
-
-                st.execute("CREATE TABLE IF NOT EXISTS cell_states (tickNumber INTEGER, positionJson TEXT, type INTEGER, value INTEGER, ownerId INTEGER, PRIMARY KEY (tickNumber, positionJson))");
-
+                st.execute("CREATE TABLE IF NOT EXISTS prepared_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json TEXT)");
                 st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
                 try (PreparedStatement ps = connection.prepareStatement("INSERT OR REPLACE INTO simulation_metadata (key, value) VALUES (?, ?)")) {
                     if (worldShape != null) {
@@ -150,9 +131,7 @@ public final class PersistenceService implements IControllable, Runnable {
                         ps.setString(2, objectMapper.writeValueAsString(worldShape));
                         ps.executeUpdate();
                     }
-                    ps.setString(1, "isaMap");
-                    ps.setString(2, objectMapper.writeValueAsString(Instruction.getIdToNameMap()));
-                    ps.executeUpdate();
+                    // Removed isaMap persistence; opcode names are included per cell in prepared tick payloads
                     ps.setString(1, "runMode");
                     ps.setString(2, performanceMode ? "performance" : "debug");
                     ps.executeUpdate();
@@ -177,8 +156,8 @@ public final class PersistenceService implements IControllable, Runnable {
                 IQueueMessage msg = queue.take();
                 if (msg instanceof ProgramArtifactMessage pam) {
                     handleProgramArtifact(pam);
-                } else if (msg instanceof WorldStateMessage wsm) {
-                    handleWorldState(wsm);
+                } else if (msg instanceof PreparedTickState pts) {
+                    handlePreparedTick(pts);
                 }
             }
         } catch (InterruptedException e) {
@@ -200,72 +179,13 @@ public final class PersistenceService implements IControllable, Runnable {
         }
     }
 
-    private void handleWorldState(WorldStateMessage wsm) throws Exception {
-        connection.setAutoCommit(false);
-        try (PreparedStatement psTick = connection.prepareStatement(
-                "INSERT OR REPLACE INTO ticks(tickNumber, timestampMicroseconds, organismCount) VALUES (?, ?, ?)")) {
-            psTick.setLong(1, wsm.tickNumber());
-            psTick.setLong(2, wsm.timestampMicroseconds());
-            psTick.setInt(3, wsm.organismStates().size());
-            psTick.executeUpdate();
+    private void handlePreparedTick(PreparedTickState pts) throws Exception {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "INSERT OR REPLACE INTO prepared_ticks(tick_number, tick_data_json) VALUES (?, ?)")) {
+            ps.setLong(1, pts.tickNumber());
+            ps.setString(2, objectMapper.writeValueAsString(pts));
+            ps.executeUpdate();
         }
-
-        final String orgSql = "INSERT OR REPLACE INTO organism_states(" +
-                "tickNumber, organismId, programId, parentId, birthTick, energy, positionJson, dpsJson, dvJson, returnIpJson, " +
-                "stateJson, disassembledInstructionJson, dataRegisters, procRegisters, dataStack, callStack, formalParameters, fprs, " +
-                "locationRegisters, locationStack) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-        try (PreparedStatement psOrg = connection.prepareStatement(orgSql)) {
-            for (var org : wsm.organismStates()) {
-                psOrg.setLong(1, wsm.tickNumber());
-                psOrg.setInt(2, org.organismId());
-                psOrg.setString(3, org.programId());
-                if (org.parentId() == null) psOrg.setNull(4, Types.INTEGER); else psOrg.setInt(4, org.parentId());
-                psOrg.setLong(5, org.birthTick());
-                psOrg.setLong(6, org.energy());
-                psOrg.setString(7, objectMapper.writeValueAsString(org.position()));
-                psOrg.setString(8, objectMapper.writeValueAsString(org.dps())); // CHANGED: from dp() to dps()
-                psOrg.setString(9, objectMapper.writeValueAsString(org.dv()));
-                psOrg.setString(10, objectMapper.writeValueAsString(org.returnIp()));
-
-                java.util.Map<String, Object> stateMap = new java.util.LinkedHashMap<>();
-                stateMap.put("ip", org.ip());
-                stateMap.put("er", org.er());
-                psOrg.setString(11, objectMapper.writeValueAsString(stateMap));
-
-                psOrg.setString(12, org.disassembledInstructionJson());
-                psOrg.setString(13, objectMapper.writeValueAsString(org.dataRegisters()));
-                psOrg.setString(14, objectMapper.writeValueAsString(org.procRegisters()));
-                psOrg.setString(15, objectMapper.writeValueAsString(org.dataStack()));
-                psOrg.setString(16, objectMapper.writeValueAsString(org.callStack()));
-                psOrg.setString(17, objectMapper.writeValueAsString(org.formalParameters()));
-                psOrg.setString(18, objectMapper.writeValueAsString(org.fprs()));
-
-                // NEW: Persist location registers and stack
-                psOrg.setString(19, objectMapper.writeValueAsString(org.locationRegisters()));
-                psOrg.setString(20, objectMapper.writeValueAsString(org.locationStack()));
-
-                psOrg.addBatch();
-            }
-            psOrg.executeBatch();
-        }
-
-        try (PreparedStatement psCell = connection.prepareStatement(
-                "INSERT OR REPLACE INTO cell_states(tickNumber, positionJson, type, value, ownerId) VALUES (?, ?, ?, ?, ?)")) {
-            for (var cell : wsm.cellStates()) {
-                psCell.setLong(1, wsm.tickNumber());
-                psCell.setString(2, objectMapper.writeValueAsString(cell.position()));
-                psCell.setInt(3, cell.type());
-                psCell.setInt(4, cell.value());
-                psCell.setInt(5, cell.ownerId());
-                psCell.addBatch();
-            }
-            psCell.executeBatch();
-        }
-
-        connection.commit();
-        connection.setAutoCommit(true);
-        lastPersistedTick = wsm.tickNumber();
+        lastPersistedTick = pts.tickNumber();
     }
 }

@@ -348,13 +348,7 @@ public abstract class Instruction {
     public static Integer getInstructionIdByName(String name) { return NAME_TO_ID.get(name.toUpperCase()); }
     public static BiFunction<Organism, Environment, Instruction> getPlannerById(int id) { return REGISTERED_PLANNERS_BY_ID.get(id); }
     public static Optional<InstructionSignature> getSignatureById(int id) { return Optional.ofNullable(SIGNATURES_BY_ID.get(id)); }
-    public static Map<Integer, String> getIdToNameMap() {
-        java.util.Map<Integer, String> cleanMap = new java.util.HashMap<>();
-        for (java.util.Map.Entry<Integer, String> entry : ID_TO_NAME.entrySet()) {
-            cleanMap.put(entry.getKey() & Config.VALUE_MASK, entry.getValue());
-        }
-        return java.util.Collections.unmodifiableMap(cleanMap);
-    }
+    // getIdToNameMap removed: opcode names are rendered directly in HTTP responses where needed
 
     // --- Konfliktlösungs-Logik ---
 

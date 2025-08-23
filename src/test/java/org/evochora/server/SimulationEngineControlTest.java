@@ -1,7 +1,7 @@
 package org.evochora.server;
 
 import org.evochora.server.contracts.IQueueMessage;
-import org.evochora.server.contracts.WorldStateMessage;
+import org.evochora.server.contracts.PreparedTickState;
 import org.evochora.server.engine.SimulationEngine;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
@@ -30,7 +30,7 @@ class SimulationEngineControlTest {
 
         // 1. Warten, bis die Simulation initialisiert ist (erste Nachricht für Tick 0).
         IQueueMessage initialMessage = assertTimeoutPreemptively(Duration.ofSeconds(5), q::take, "Simulation failed to start.");
-        assertThat(((WorldStateMessage) initialMessage).tickNumber()).isZero();
+        assertThat(((PreparedTickState) initialMessage).tickNumber()).isZero();
 
         // 2. Lassen Sie die Simulation kurz laufen.
         Thread.sleep(50);
@@ -56,7 +56,7 @@ class SimulationEngineControlTest {
         sim.resume();
         IQueueMessage nextMessage = assertTimeoutPreemptively(Duration.ofSeconds(5), q::take, "Simulation did not resume.");
 
-        assertThat(((WorldStateMessage) nextMessage).tickNumber()).isGreaterThan(t3);
+        assertThat(((PreparedTickState) nextMessage).tickNumber()).isGreaterThan(t3);
 
         // 7. Herunterfahren.
         sim.shutdown();

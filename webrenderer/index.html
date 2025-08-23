@@ -4,24 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Evochora Web Renderer</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <header>
     <div class="controls-left">
-        <label for="db-upload" class="file-label">SQLite-Datei laden</label>
-        <input type="file" id="db-upload" accept=".sqlite" hidden>
         <button id="btn-first">Anfang</button>
         <button id="btn-prev">&lt; Zurück</button>
-        <input type="number" id="tick-input" min="0" value="0">
-        <button id="btn-goto">Gehe zu</button>
+        <div class="tick-input-wrapper">
+            <input type="number" id="tick-input" min="0" value="0" aria-label="Tick">
+            <span class="tick-total-suffix" id="tick-total-suffix">/N/A</span>
+        </div>
         <button id="btn-next">Weiter &gt;</button>
+        <button id="btn-goto">Gehe zu</button>
         <button id="btn-last">Ende</button>
-    </div>
-    <div class="controls-right">
-        <div class="tick-display">Tick: <span id="current-tick">N/A</span> / <span id="total-ticks">N/A</span></div>
     </div>
 </header>
 
@@ -32,8 +29,10 @@
     <div id="sidebar" class="sidebar">
         <button id="close-sidebar" class="sidebar-toggle-btn">&gt;</button>
         <div id="organism-details" class="details">
-            <h2>Organismus-Details</h2>
-            <p>Bitte eine SQLite-Datei laden und einen Organismus auswählen.</p>
+            <div data-section="basic"></div>
+            <div data-section="nextInstruction"></div>
+            <div data-section="state"></div>
+            <div data-section="source"></div>
         </div>
     </div>
 </main>

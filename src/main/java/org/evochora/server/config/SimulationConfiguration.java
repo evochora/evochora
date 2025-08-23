@@ -30,10 +30,16 @@ public final class SimulationConfiguration {
         public Map<String, Object> params;
     }
 
+    public static final class WebConfig {
+        public Integer port; // default 7070 if null
+        public String dbFile; // optional override for view mode
+    }
+
     public EnvironmentConfig environment;
     public OrganismDefinition[] organisms;
     public List<EnergyStrategyConfig> energyStrategies;
     public Long seed;
+    public WebConfig web;
 
     public int getDimensions() {
         return environment != null && environment.shape != null ? environment.shape.length : 2;

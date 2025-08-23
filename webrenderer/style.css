@@ -47,13 +47,25 @@ button {
 }
 button:hover { background-color: #4a4a6a; }
 
-input[type="number"] {
-    width: 80px;
+.tick-input-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+.tick-input-wrapper input[type="number"] {
+    width: 120px;
     background-color: #222;
     border: 1px solid #555;
     color: #e0e0e0;
-    padding: 8px;
+    padding: 8px 44px 8px 8px; /* space for suffix */
     border-radius: 4px;
+}
+.tick-input-wrapper .tick-total-suffix {
+    position: absolute;
+    right: 8px;
+    pointer-events: none;
+    color: #aaa;
+    font-size: 0.95em;
 }
 
 .tick-display { font-size: 1.1em; }
@@ -166,6 +178,8 @@ main.container {
     margin-left: 4px;
     opacity: 0.8;
 }
+.injected-value.callParam { color: #ffd27f; }
+.injected-value.popParam { color: #7fd2ff; }
 
 /* Tighter gutter in source code view to match other boxes */
 .source-code-view .line-number {

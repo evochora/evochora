@@ -9,7 +9,8 @@ import org.evochora.runtime.worldgen.IEnergyDistributionCreator;
 import org.evochora.runtime.worldgen.EnergyStrategyFactory;
 import org.evochora.runtime.model.Organism;
 import org.evochora.server.IControllable;
-import org.evochora.server.contracts.IQueueMessage;
+// import org.evochora.server.contracts.IQueueMessage;
+import org.evochora.server.contracts.PreparedTickState;
 import org.evochora.server.contracts.ProgramArtifactMessage;
 import org.evochora.server.queue.ITickMessageQueue;
 import org.slf4j.Logger;
@@ -138,7 +139,8 @@ public final class SimulationEngine implements IControllable, Runnable {
         }
         StatusMetricsRegistry.onTick(simulation.getCurrentTick());
         try {
-            queue.put(WorldStateAdapter.fromSimulation(simulation));
+            PreparedTickState pts = WorldStateAdapter.toPreparedState(simulation);
+            queue.put(pts);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -337,7 +339,7 @@ public final class SimulationEngine implements IControllable, Runnable {
 
             log.info("Saving initial state for tick 0.");
             StatusMetricsRegistry.onTick(simulation.getCurrentTick());
-            IQueueMessage initialMsg = WorldStateAdapter.fromSimulation(simulation);
+            PreparedTickState initialMsg = WorldStateAdapter.toPreparedState(simulation);
             queue.put(initialMsg);
 
             while (running.get()) {
@@ -358,7 +360,7 @@ public final class SimulationEngine implements IControllable, Runnable {
                     }
                 }
                 StatusMetricsRegistry.onTick(simulation.getCurrentTick());
-                IQueueMessage tickMsg = WorldStateAdapter.fromSimulation(simulation);
+                PreparedTickState tickMsg = WorldStateAdapter.toPreparedState(simulation);
                 queue.put(tickMsg);
             }
         } catch (InterruptedException e) {

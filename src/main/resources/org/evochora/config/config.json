@@ -7,7 +7,7 @@
   "organisms": [
     {
       "id": "main",
-      "program": "prototypes/main.s",
+      "program": "prototypes/test.s",
       "initialEnergy": 5000,
       "placement": {
         "strategy": "fixed",
@@ -21,7 +21,7 @@
     {
       "type": "geyser",
       "params": {
-        "count": 500,
+        "count": 5,
         "interval": 10,
         "amount": 1000,
         "safetyRadius": 2
@@ -37,4 +37,8 @@
       }
     }
   ]
+  ,
+  "web": {
+    "port": 7070
+  }
 }

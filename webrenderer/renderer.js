@@ -57,8 +57,7 @@ class WorldRenderer {
 
             let text;
             if (cell.type === this.config.TYPE_CODE) {
-                const instructionId = cell.value;
-                text = this.isa[instructionId] || `OP(${instructionId})`;
+                text = (cell.opcodeName && typeof cell.opcodeName === 'string') ? cell.opcodeName : String(cell.value);
             } else {
                 text = cell.value.toString();
             }
@@ -78,37 +77,40 @@ class WorldRenderer {
         this.ctx.lineWidth = 2.5;
         this.ctx.strokeRect(x, y, this.config.CELL_SIZE, this.config.CELL_SIZE);
 
-        if (isSelected && organism.energy > 0) {
-            // Draw all DPs with indices if dpsJson present
-            if (organism.dpsJson) {
-                try {
-                    const dps = JSON.parse(organism.dpsJson);
-                    if (Array.isArray(dps)) {
-                        // group by coordinate string so multiple DP indexes on same cell are shown together
-                        const byCell = new Map();
-                        dps.forEach((dpPos, idx) => {
-                            const key = Array.isArray(dpPos) ? dpPos.join('|') : String(dpPos);
-                            if (!byCell.has(key)) byCell.set(key, { pos: dpPos, idxs: [] });
-                            byCell.get(key).idxs.push(idx);
-                        });
-                        for (const { pos, idxs } of byCell.values()) {
-                            this.drawDp(pos, color, idxs);
-                        }
-                    }
-                } catch (_) { /* ignore parse errors */ }
-            }
-            const dv = this.parsePosition(organism.dvJson);
-            if (dv) {
-                const centerX = x + this.config.CELL_SIZE / 2;
-                const centerY = y + this.config.CELL_SIZE / 2;
-                const size = this.config.CELL_SIZE * 0.2;
-                const offset = this.config.CELL_SIZE * 0.35;
-                this.ctx.fillStyle = color;
-                this.ctx.beginPath();
-                this.ctx.arc(centerX + dv[0] * offset, centerY + dv[1] * offset, size / 2, 0, 2 * Math.PI);
-                this.ctx.fill();
+        // Draw all DPs for the organism (selected or not)
+        const dpsArray = Array.isArray(organism.dps) ? organism.dps
+            : (organism.dpsJson ? (() => { try { const a = JSON.parse(organism.dpsJson); return Array.isArray(a) ? a : null; } catch { return null; } })() : null);
+        if (Array.isArray(dpsArray)) {
+            const byCell = new Map();
+            dpsArray.forEach((dpPos, idx) => {
+                const key = Array.isArray(dpPos) ? dpPos.join('|') : String(dpPos);
+                if (!byCell.has(key)) byCell.set(key, { pos: dpPos, idxs: [] });
+                byCell.get(key).idxs.push(idx);
+            });
+            for (const { pos, idxs } of byCell.values()) {
+                this.drawDp(pos, color, idxs);
             }
         }
+        // DV marker: draw at the edge of the IP cell for any available dv vector (dv or dvJson)
+        let dvVec = null;
+        if (organism.dvJson) {
+            const pv = this.parsePosition(organism.dvJson);
+            if (Array.isArray(pv)) dvVec = pv;
+        } else if (Array.isArray(organism.dv)) {
+            dvVec = organism.dv;
+        }
+        if (Array.isArray(dvVec)) {
+            const edgeOffset = this.config.CELL_SIZE * 0.5;
+            this.ctx.fillStyle = color;
+            const cx = x + this.config.CELL_SIZE / 2;
+            const cy = y + this.config.CELL_SIZE / 2;
+            const px = cx + Math.sign(dvVec[0]||0) * edgeOffset * 0.9;
+            const py = cy + Math.sign(dvVec[1]||0) * edgeOffset * 0.9;
+            this.ctx.beginPath();
+            this.ctx.arc(px, py, this.config.CELL_SIZE * 0.1, 0, 2*Math.PI);
+            this.ctx.fill();
+        }
+
     }
 
     drawDp(pos, color, indices) {

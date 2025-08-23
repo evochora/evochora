@@ -25,6 +25,7 @@ dependencies {
     implementation("org.xerial:sqlite-jdbc:3.46.0.0")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.1")
     implementation("info.picocli:picocli:4.7.6")
+    implementation("io.javalin:javalin:6.1.3")
 
 }
 

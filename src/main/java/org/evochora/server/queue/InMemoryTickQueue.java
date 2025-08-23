@@ -57,7 +57,7 @@ public final class InMemoryTickQueue implements ITickMessageQueue {
         // Heuristic: 64 KB for artifacts, 1 MB for world states, 4 KB fallback
         String type = message.getClass().getSimpleName();
         if (type.equals("ProgramArtifactMessage")) return 64 * 1024L;
-        if (type.equals("WorldStateMessage")) return 1_000_000L;
+        if (type.equals("WorldStateMessage") || type.equals("PreparedTickState")) return 1_000_000L;
         return 4 * 1024L;
     }
 }
