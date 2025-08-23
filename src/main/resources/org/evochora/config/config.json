@@ -1,7 +1,7 @@
 {
   "seed": 123456789,
   "environment": {
-    "shape": [250, 150],
+    "shape": [100, 30],
     "toroidal": true
   },
   "organisms": [
@@ -21,18 +21,19 @@
     {
       "type": "geyser",
       "params": {
-        "count": 100,
+        "count": 500,
         "interval": 10,
-        "amount": 400,
-        "safetyRadius": 5
+        "amount": 1000,
+        "safetyRadius": 2
       }
     },
     {
       "type": "solar",
       "params": {
         "probability": 1,
-        "amount": 100,
-        "safetyRadius": 5
+        "amount": 500,
+        "safetyRadius": 2,
+        "executionsPerTick": 3
       }
     }
   ]

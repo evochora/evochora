@@ -136,6 +136,7 @@ main.container {
 .source-code-view {
     max-height: 400px;
     overflow-y: auto;
+    overflow-x: auto;
     white-space: normal;
 }
 .source-line {
@@ -182,7 +183,8 @@ main.container {
 }
 .code-view .kv .val {
     flex: 1 1 auto;
-    white-space: normal;
-    word-break: break-word;
+    white-space: nowrap; /* prevent line wrapping */
+    overflow-x: auto;    /* horizontal scroll if needed */
+    word-break: normal;
 }
 

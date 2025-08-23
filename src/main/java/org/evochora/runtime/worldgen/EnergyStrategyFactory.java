@@ -14,7 +14,8 @@ public class EnergyStrategyFactory {
             double probability = ((Number) params.getOrDefault("probability", 0.001)).doubleValue();
             int amount = ((Number) params.getOrDefault("amount", 50)).intValue();
             int safetyRadius = ((Number) params.getOrDefault("safetyRadius", 2)).intValue();
-            return new SolarRadiationCreator(rngProvider, probability, amount, safetyRadius);
+            int executionsPerTick = ((Number) params.getOrDefault("executionsPerTick", 1)).intValue();
+            return new SolarRadiationCreator(rngProvider, probability, amount, safetyRadius, executionsPerTick);
         });
 
         register("geyser", (params, rngProvider) -> {

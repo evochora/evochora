@@ -80,6 +80,101 @@ public class VMVectorInstructionTest {
         assertThat((int[]) org.getDr(0)).containsExactly(1, 0);
     }
 
+    // V2B Tests
+    @Test
+    void testV2biPositiveX() {
+        // Immediate vector literal: write DATA mask into %DR0
+        placeInstruction("V2BI", 0, 1, 0); // %DR0, Vector: 1|0
+        sim.tick();
+        int result = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
+        assertThat(result).isEqualTo(1 << 0);
+    }
+
+    @Test
+    void testV2brNegativeY() {
+        org.setDr(1, new int[]{0, -1});
+        placeInstruction("V2BR", 0, 1); // %DR0, %DR1
+        sim.tick();
+        int result = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
+        assertThat(result).isEqualTo(1 << 3);
+    }
+
+    @Test
+    void testV2bsStackVariant() {
+        org.getDataStack().push(new int[]{0, 1});
+        placeInstruction("V2BS");
+        sim.tick();
+        int mask = Molecule.fromInt((Integer) org.getDataStack().pop()).toScalarValue();
+        assertThat(mask).isEqualTo(1 << 2);
+    }
+
+    // RTR* Tests
+    @Test
+    void testRtri2d() {
+        org.setDr(0, new int[]{1, 0});
+        placeInstruction("RTRI", 0, new Molecule(Config.TYPE_DATA, 0).toInt(), new Molecule(Config.TYPE_DATA, 1).toInt());
+        sim.tick();
+        assertThat((int[]) org.getDr(0)).containsExactly(0, -1);
+    }
+
+    @Test
+    void testRtrr2d() {
+        org.setDr(0, new int[]{1, 0});
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.setDr(2, new Molecule(Config.TYPE_DATA, 1).toInt());
+        placeInstruction("RTRR", 0, 1, 2);
+        sim.tick();
+        assertThat((int[]) org.getDr(0)).containsExactly(0, -1);
+    }
+
+    @Test
+    void testRtrs2d() {
+        // Stack order top->bottom: Axis2, Axis1, Vector
+        // Push Vector, then Axis1, then Axis2
+        org.getDataStack().push(new int[]{1, 0});
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
+        placeInstruction("RTRS");
+        sim.tick();
+        assertThat((int[]) org.getDataStack().pop()).containsExactly(0, -1);
+    }
+
+    @Test
+    void testRtri3dOtherAxesUnaffected() {
+        Environment env3d = new Environment(new int[]{50, 50, 50}, true);
+        Simulation sim3d = new Simulation(env3d);
+        Organism org3d = Organism.create(sim3d, new int[]{5, 5, 5}, 2000, sim3d.getLogger());
+        sim3d.addOrganism(org3d);
+
+        // Helper to place instruction in 3D env
+        int opcode = Instruction.getInstructionIdByName("RTRI");
+        env3d.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org3d.getIp());
+        int[] cur = org3d.getIp();
+        cur = org3d.getNextInstructionPosition(cur, org3d.getDv(), env3d);
+        env3d.setMolecule(new Molecule(Config.TYPE_DATA, 0), cur); // %DR0
+        cur = org3d.getNextInstructionPosition(cur, org3d.getDv(), env3d);
+        env3d.setMolecule(new Molecule(Config.TYPE_DATA, 0), cur); // Axis1 = 0 (X)
+        cur = org3d.getNextInstructionPosition(cur, org3d.getDv(), env3d);
+        env3d.setMolecule(new Molecule(Config.TYPE_DATA, 1), cur); // Axis2 = 1 (Y)
+
+        org3d.setDr(0, new int[]{1, 0, 5});
+        sim3d.tick();
+        assertThat((int[]) org3d.getDr(0)).containsExactly(0, -1, 5);
+    }
+
+    @Test
+    void testRtriFailsOnSameAxes() {
+        org.setDr(0, new int[]{1, 0});
+        placeInstruction("RTRI", 0, new Molecule(Config.TYPE_DATA, 0).toInt(), new Molecule(Config.TYPE_DATA, 0).toInt());
+        sim.tick();
+        // Vector remains unchanged, but instruction failed
+        assertThat((int[]) org.getDr(0)).containsExactly(1, 0);
+        assertThat(org.isInstructionFailed()).isTrue();
+        // Reset org to avoid AfterEach failure assertion
+        org = Organism.create(sim, startPos, 2000, sim.getLogger());
+        sim.addOrganism(org);
+    }
+
     @Test
     void testB2viNegativeY() {
         int mask = new Molecule(Config.TYPE_DATA, 1 << 3).toInt(); // 2*d+1 for d=1 => bit 3 = -Y

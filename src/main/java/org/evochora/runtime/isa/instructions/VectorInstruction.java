@@ -37,6 +37,10 @@ public class VectorInstruction extends Instruction {
                 case "VBLS" -> handleVectorBuildStack(dims);
                 case "B2VR", "B2VI" -> handleBitToVector(operands, dims);
                 case "B2VS" -> handleBitToVectorStack(dims);
+                case "V2BR", "V2BI" -> handleVectorToBit(operands);
+                case "V2BS" -> handleVectorToBitStack();
+                case "RTRR", "RTRI" -> handleVectorRotate(operands);
+                case "RTRS" -> handleVectorRotateStack();
                 default -> organism.instructionFailed("Unknown vector instruction: " + opName);
             }
         } catch (NoSuchElementException e) {
@@ -44,6 +48,91 @@ public class VectorInstruction extends Instruction {
         } catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
             organism.instructionFailed("Invalid operand types for vector operation: " + e.getMessage());
         }
+    }
+
+    private void handleVectorRotate(List<Operand> operands) {
+        // Expect 3 operands: dest/source vector register, axis1 (scalar), axis2 (scalar)
+        if (operands.size() != 3) {
+            organism.instructionFailed(getName() + " requires 3 operands.");
+            return;
+        }
+        int vecReg = operands.get(0).rawSourceId();
+        Object vecObj = readOperand(vecReg);
+        if (!(vecObj instanceof int[] vector)) {
+            organism.instructionFailed(getName() + " target must be a vector register.");
+            return;
+        }
+        Integer ax1Raw = extractScalar(operands.get(1).value());
+        Integer ax2Raw = extractScalar(operands.get(2).value());
+        if (ax1Raw == null || ax2Raw == null) {
+            organism.instructionFailed(getName() + " axes must be scalars.");
+            return;
+        }
+        int axis1 = ax1Raw;
+        int axis2 = ax2Raw;
+        if (!validateAxes(axis1, axis2, vector.length)) {
+            // On failure, do not modify the vector register
+            return;
+        }
+        int[] rotated = Arrays.copyOf(vector, vector.length);
+        int vi = vector[axis1];
+        int vj = vector[axis2];
+        rotated[axis1] = vj;
+        rotated[axis2] = -vi;
+        writeOperand(vecReg, rotated);
+    }
+
+    private void handleVectorRotateStack() {
+        Deque<Object> ds = organism.getDataStack();
+        if (ds.size() < 3) {
+            organism.instructionFailed("RTRS requires axis2, axis1, and a vector on the stack.");
+            return;
+        }
+        Object axis2Obj = ds.pop();
+        Object axis1Obj = ds.pop();
+        Object vecObj = ds.pop();
+        if (!(vecObj instanceof int[] vector)) {
+            organism.instructionFailed("RTRS requires a vector on the stack.");
+            return;
+        }
+        Integer ax1Raw = extractScalar(axis1Obj);
+        Integer ax2Raw = extractScalar(axis2Obj);
+        if (ax1Raw == null || ax2Raw == null) {
+            organism.instructionFailed("RTRS axes must be scalars.");
+            // Push original vector back to keep it unchanged as per spec
+            ds.push(vector);
+            return;
+        }
+        int axis1 = ax1Raw;
+        int axis2 = ax2Raw;
+        if (!validateAxes(axis1, axis2, vector.length)) {
+            // Failure: push original vector back, unchanged
+            ds.push(vector);
+            return;
+        }
+        int[] rotated = Arrays.copyOf(vector, vector.length);
+        int vi = vector[axis1];
+        int vj = vector[axis2];
+        rotated[axis1] = vj;
+        rotated[axis2] = -vi;
+        ds.push(rotated);
+    }
+
+    private Integer extractScalar(Object obj) {
+        if (!(obj instanceof Integer iv)) return null;
+        return Molecule.fromInt(iv).toScalarValue();
+    }
+
+    private boolean validateAxes(int axis1, int axis2, int dims) {
+        if (axis1 < 0 || axis1 >= dims || axis2 < 0 || axis2 >= dims) {
+            organism.instructionFailed("Axis index out of bounds.");
+            return false;
+        }
+        if (axis1 == axis2) {
+            organism.instructionFailed("Axes must be distinct.");
+            return false;
+        }
+        return true;
     }
 
     private void handleBitToVector(List<Operand> operands, int dims) {
@@ -84,6 +173,55 @@ public class VectorInstruction extends Instruction {
             return;
         }
         ds.push(vec);
+    }
+
+    private void handleVectorToBit(List<Operand> operands) {
+        if (operands.size() != 2) {
+            organism.instructionFailed("V2B requires two operands.");
+            return;
+        }
+        int destReg = operands.get(0).rawSourceId();
+        Object src = operands.get(1).value();
+        int mask = vectorToMask(src);
+        if (mask == -1) {
+            organism.instructionFailed("V2B requires a unit vector with single non-zero component of magnitude 1.");
+            return;
+        }
+        writeOperand(destReg, new Molecule(Config.TYPE_DATA, mask).toInt());
+    }
+
+    private void handleVectorToBitStack() {
+        Deque<Object> ds = organism.getDataStack();
+        if (ds.isEmpty()) {
+            organism.instructionFailed("V2BS requires a vector on the stack.");
+            return;
+        }
+        Object top = ds.pop();
+        int mask = vectorToMask(top);
+        if (mask == -1) {
+            organism.instructionFailed("V2BS requires a unit vector with single non-zero component of magnitude 1.");
+            return;
+        }
+        ds.push(new Molecule(Config.TYPE_DATA, mask).toInt());
+    }
+
+    private int vectorToMask(Object vectorObj) {
+        if (!(vectorObj instanceof int[] vector)) {
+            return -1;
+        }
+        int nonZeroIndex = -1;
+        for (int i = 0; i < vector.length; i++) {
+            int v = vector[i];
+            if (v == 0) continue;
+            if (Math.abs(v) != 1) return -1;
+            if (nonZeroIndex != -1) return -1;
+            nonZeroIndex = i;
+        }
+        if (nonZeroIndex == -1) return -1;
+        boolean positive = vector[nonZeroIndex] > 0;
+        int bitIndex = nonZeroIndex * 2 + (positive ? 0 : 1);
+        if (nonZeroIndex >= 8) return -1;
+        return 1 << bitIndex;
     }
 
     private int[] maskToUnitVector(int rawMask, int dims) {

@@ -346,6 +346,37 @@ Converts a single-bit direction mask into an n-dimensional unit vector using the
   - Fails if the mask is 0 or contains more than one set bit.
   - Immediate variant uses `DATA` for the literal; stack variant pops mask and pushes the vector.
 
+#### Unit Vector to Bit (V2B)
+
+Converts an n-dimensional unit vector into a single-bit direction mask using the same convention as `B2V`: for dimension d, bit 2·d = +1 direction, bit 2·d+1 = −1 direction.
+
+* `V2BR %MASK_REG %VEC_REG`, `V2BI %MASK_REG <Vector>`, `V2BS`
+  - Fails if the vector is not a unit vector with exactly one non-zero component of magnitude 1.
+  - Register variants write a `DATA`-typed mask into `%MASK_REG`; stack variant pops the vector and pushes the mask.
+
+#### Rotate Right in Plane (RTR*)
+
+Performs a 90° clockwise rotation of a vector within the plane defined by two axes. For a vector V and axes i and j, the result V' is:
+
+- V'[i] = V[j]
+- V'[j] = -V[i]
+- V'[k] = V[k] for all k ≠ i, j
+
+This does not require the vector to be a unit vector.
+
+Failure conditions: i or j out of bounds for the world's dimensionality, or i == j. On failure, the target vector remains unchanged.
+
+Opcodes:
+
+* `RTRR %VEC_IO %AXIS1_REG %AXIS2_REG` (Cost: 1)
+  - Rotates the vector in `%VEC_IO`. Reads axes from scalar registers. Writes back into `%VEC_IO`.
+
+* `RTRI %VEC_IO <Axis1_Lit> <Axis2_Lit>` (Cost: 1)
+  - Same as `RTRR`, but axis indices are immediate `DATA` literals (e.g., `DATA:0`, `DATA:1`).
+
+* `RTRS` (Cost: 1)
+  - Stack order (top to bottom): Axis2, Axis1, Vector. Pops all, pushes rotated vector back.
+
 ---
 
 ## 7. Compiler Directives

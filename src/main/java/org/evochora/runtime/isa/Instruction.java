@@ -231,6 +231,14 @@ public abstract class Instruction {
         registerFamily(VectorInstruction.class, Map.of(147, "B2VI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
         registerFamily(VectorInstruction.class, Map.of(148, "B2VS"), List.of());
 
+        // New: V2B family (vector to bit)
+        registerFamily(VectorInstruction.class, Map.of(157, "V2BR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(VectorInstruction.class, Map.of(158, "V2BI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
+        registerFamily(VectorInstruction.class, Map.of(159, "V2BS"), List.of());
+        // New: RTR* family (Rotate Right by 90° in plane of two axes)
+        registerFamily(VectorInstruction.class, Map.of(160, "RTRR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(VectorInstruction.class, Map.of(161, "RTRI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE, OperandSource.IMMEDIATE));
+        registerFamily(VectorInstruction.class, Map.of(162, "RTRS"), List.of());
         // New: RBIT family (random bit from mask)
         registerFamily(StateInstruction.class, Map.of(149, "RBIR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(150, "RBII"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
