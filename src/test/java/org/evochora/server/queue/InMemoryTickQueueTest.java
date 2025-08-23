@@ -1,7 +1,6 @@
 package org.evochora.server.queue;
 
 import org.evochora.server.contracts.IQueueMessage;
-import org.evochora.server.contracts.WorldStateMessage;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
@@ -16,13 +15,20 @@ class InMemoryTickQueueTest {
     @Test
     void putAndTake_shouldExchangeMessages() throws Exception {
         InMemoryTickQueue queue = new InMemoryTickQueue();
-        IQueueMessage message = new WorldStateMessage(1L, 0L, Collections.emptyList(), Collections.emptyList());
+        IQueueMessage message = org.evochora.server.contracts.PreparedTickState.of(
+            "debug", 1L, 
+            new org.evochora.server.contracts.PreparedTickState.WorldMeta(new int[]{10, 10}),
+            new org.evochora.server.contracts.PreparedTickState.WorldState(
+                Collections.emptyList(), Collections.emptyList()
+            ),
+            Collections.emptyMap()
+        );
 
         queue.put(message);
         assertThat(queue.size()).isEqualTo(1);
 
         IQueueMessage taken = queue.take();
-        assertThat(taken).isInstanceOf(WorldStateMessage.class);
+        assertThat(taken).isInstanceOf(org.evochora.server.contracts.PreparedTickState.class);
         assertThat(queue.size()).isZero();
     }
 
@@ -34,7 +40,14 @@ class InMemoryTickQueueTest {
         Future<?> producer = exec.submit(() -> {
             try {
                 for (int i = 0; i < 10; i++) {
-                    queue.put(new WorldStateMessage(i, 0L, Collections.emptyList(), Collections.emptyList()));
+                    queue.put(org.evochora.server.contracts.PreparedTickState.of(
+                        "debug", i, 
+                        new org.evochora.server.contracts.PreparedTickState.WorldMeta(new int[]{10, 10}),
+                        new org.evochora.server.contracts.PreparedTickState.WorldState(
+                            Collections.emptyList(), Collections.emptyList()
+                        ),
+                        Collections.emptyMap()
+                    ));
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

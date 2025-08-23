@@ -7,7 +7,6 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.server.contracts.WorldStateMessage;
 import org.evochora.server.engine.WorldStateAdapter;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
@@ -85,7 +84,7 @@ class FormalParameterPersistenceTest {
         sim.addOrganism(org);
 
         // Build world state message via adapter (this is what gets persisted)
-        WorldStateMessage msg = WorldStateAdapter.fromSimulation(sim);
+        org.evochora.server.contracts.PreparedTickState pts = WorldStateAdapter.toPreparedState(sim);
 
         // Prepare temp sqlite file
         Path tmp = Files.createTempFile("evochora_fp_test", ".sqlite");
@@ -95,17 +94,18 @@ class FormalParameterPersistenceTest {
         ITickMessageQueue q = new InMemoryTickQueue();
         persist = new PersistenceService(q, false, jdbcUrl);
         persist.start();
-        q.put(msg);
+        q.put(pts);
 
-        // Give persistence a brief moment to write
-        Thread.sleep(100);
+        // Give persistence time to write and process
+        Thread.sleep(500);
 
         // Read back formalParameters from DB
         try (Connection conn = DriverManager.getConnection(jdbcUrl);
              Statement st = conn.createStatement()) {
-            ResultSet rs = st.executeQuery("SELECT formalParameters FROM organism_states WHERE tickNumber=0 LIMIT 1");
-            assertThat(rs.next()).isTrue();
+            ResultSet rs = st.executeQuery("SELECT tick_data_json FROM prepared_ticks WHERE tick_number=0 LIMIT 1");
+            assertThat(rs.next()).as("Should find at least one row in prepared_ticks table").isTrue();
             String json = rs.getString(1);
+            // Check that the JSON contains the expected formal parameter information
             assertThat(json).contains("REG1[%DR0]");
             assertThat(json).contains("REG2[%DR1]");
             assertThat(json).doesNotContain("%FPR0");

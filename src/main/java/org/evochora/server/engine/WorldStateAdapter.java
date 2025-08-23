@@ -13,7 +13,6 @@ import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.server.contracts.CellState;
 import org.evochora.server.contracts.OrganismState;
-import org.evochora.server.contracts.WorldStateMessage;
 import org.evochora.server.contracts.PreparedTickState;
 
 import java.util.ArrayList;
@@ -28,63 +27,6 @@ import java.util.stream.Collectors;
  */
 public final class WorldStateAdapter {
     private static final ObjectMapper objectMapper = new ObjectMapper();
-
-    /**
-     * Creates a {@link WorldStateMessage} snapshot from the current state of the simulation.
-     * <p>
-     * In performance mode, expensive state conversions (like disassembly and detailed register formatting)
-     * are skipped to minimize overhead.
-     *
-     * @param simulation The simulation instance to snapshot.
-     * @return A message containing the complete world state for the current tick.
-     */
-    public static WorldStateMessage fromSimulation(Simulation simulation) {
-        long tick = simulation.getCurrentTick();
-        long tsMicros = java.time.Instant.now().toEpochMilli() * 1000;
-        boolean perfMode = simulation.isPerformanceMode();
-
-        Map<String, ProgramArtifact> artifacts = simulation.getProgramArtifacts();
-
-        List<OrganismState> organisms = new ArrayList<>();
-        for (Organism o : simulation.getOrganisms()) {
-            if (o.isDead()) continue;
-
-            ProgramArtifact artifact = artifacts.get(o.getProgramId());
-
-            // Expensive operations are skipped in performance mode
-            String disassembledJson = perfMode ? "{}" : getDisassembledJson(o, artifact, simulation.getEnvironment());
-            List<String> callStackNames = perfMode ? List.of() : getCallStackWithParams(o, artifact, tick);
-            List<String> formattedFprs = perfMode ? List.of() : formatFprs(o, artifact);
-            List<String> drs = perfMode ? List.of() : toFormattedList(o.getDrs());
-            List<String> prs = perfMode ? List.of() : toFormattedList(o.getPrs());
-            List<String> ds = perfMode ? List.of() : toFormattedList(o.getDataStack());
-            List<String> fprsRaw = perfMode ? List.of() : toFormattedList(o.getFprs());
-
-            // NEW: Capture Location Registers and Stack only in debug mode
-            List<String> lrs = perfMode ? List.of() : toFormattedList(o.getLrs());
-            List<String> ls = perfMode ? List.of() : toFormattedList(o.getLocationStack());
-
-            List<List<Integer>> dpsAsLists = o.getDps().stream().map(WorldStateAdapter::toList).collect(Collectors.toList());
-
-            // Return IP from top call stack frame if present
-            List<Integer> retIp = List.of();
-            if (!o.getCallStack().isEmpty() && o.getCallStack().peek().absoluteReturnIp != null) {
-                retIp = toList(o.getCallStack().peek().absoluteReturnIp);
-            }
-
-            organisms.add(new OrganismState(
-                    o.getId(), o.getProgramId(), o.getParentId(), o.getBirthTick(), o.getEr(),
-                    toList(o.getIp()), dpsAsLists, toList(o.getDv()), retIp,
-                    o.getIp()[0], o.getEr(),
-                    drs, prs, ds, callStackNames, formattedFprs, fprsRaw,
-                    disassembledJson,
-                    lrs, ls // NEW: Pass new fields to constructor
-            ));
-        }
-
-        List<CellState> cells = toCellStates(simulation);
-        return new WorldStateMessage(tick, tsMicros, organisms, cells);
-    }
 
     /**
      * New API: Produces a fully prepared tick state for the web debugger.
