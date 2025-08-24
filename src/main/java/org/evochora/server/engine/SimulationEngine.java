@@ -1,374 +1,118 @@
 package org.evochora.server.engine;
 
-import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.server.config.SimulationConfiguration;
 import org.evochora.runtime.Simulation;
-import org.evochora.runtime.internal.services.CallBindingRegistry;
-import org.evochora.runtime.worldgen.IEnergyDistributionCreator;
+import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.worldgen.EnergyStrategyFactory;
-import org.evochora.runtime.model.Organism;
 import org.evochora.server.IControllable;
-// import org.evochora.server.contracts.IQueueMessage;
-import org.evochora.server.contracts.PreparedTickState;
-import org.evochora.server.contracts.ProgramArtifactMessage;
+import org.evochora.server.config.SimulationConfiguration;
+import org.evochora.server.contracts.raw.RawTickState;
 import org.evochora.server.queue.ITickMessageQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collection;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 
-public final class SimulationEngine implements IControllable, Runnable {
-
-    private static final Logger log = LoggerFactory.getLogger(SimulationEngine.class);
-
-    private final ITickMessageQueue queue;
-    private final Thread thread;
+/**
+ * Manages the simulation lifecycle, including running, pausing, and stopping.
+ */
+public class SimulationEngine implements IControllable, Runnable {
+    private static final Logger logger = LoggerFactory.getLogger(SimulationEngine.class);
+    private final Simulation simulation;
+    private final ITickMessageQueue messageQueue;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
-    private final boolean performanceMode;
-    private final int[] worldShape;
-    private final boolean isToroidal;
 
-    private Simulation simulation;
-    private java.util.List<ProgramArtifact> programArtifacts = java.util.Collections.emptyList();
-    private SimulationConfiguration.OrganismDefinition[] organismDefinitions = new SimulationConfiguration.OrganismDefinition[0];
-    private java.util.List<IEnergyDistributionCreator> energyStrategies = java.util.Collections.emptyList();
-    private org.evochora.runtime.internal.services.IRandomProvider randomProvider;
+    public SimulationEngine(
+            final SimulationConfiguration configuration,
+            final Collection<ProgramArtifact> artifacts,
+            final ITickMessageQueue messageQueue) {
 
-    public SimulationEngine(ITickMessageQueue queue) {
-        this(queue, false, new int[]{120,80}, true);
-    }
+        // CORRECTED: Create the Environment and RandomProvider from the configuration first.
+        final var randomProvider = new SeededRandomProvider(configuration.seed);
+        final var environment = new Environment(
+                configuration.environment.shape,
+                configuration.environment.toroidal
+        );
 
-    public SimulationEngine(ITickMessageQueue queue, boolean performanceMode) {
-        this(queue, performanceMode, new int[]{120,80}, true);
-    }
+        // CORRECTED: Pass the newly created objects to the Simulation constructor.
+        this.simulation = new Simulation(environment, randomProvider, artifacts);
 
-    public SimulationEngine(ITickMessageQueue queue, boolean performanceMode, int[] worldShape, boolean isToroidal) {
-        this.queue = queue;
-        this.performanceMode = performanceMode;
-        this.worldShape = java.util.Arrays.copyOf(worldShape, worldShape.length);
-        this.isToroidal = isToroidal;
-        this.thread = new Thread(this, "SimulationEngine");
-        this.thread.setDaemon(true);
-    }
+        // Seed energy strategies
+        final var energyFactory = new EnergyStrategyFactory(randomProvider);
+        configuration.energyStrategies.forEach(strategyConfig ->
+                this.simulation.addEnergyStrategy(energyFactory.create(strategyConfig))
+        );
 
-    public void setProgramArtifacts(java.util.List<ProgramArtifact> artifacts) {
-        this.programArtifacts = artifacts == null ? java.util.Collections.emptyList() : artifacts;
-    }
-
-    public void setOrganismDefinitions(SimulationConfiguration.OrganismDefinition[] defs) {
-        this.organismDefinitions = defs != null ? defs : new SimulationConfiguration.OrganismDefinition[0];
-    }
-
-    /**
-     * Builds and installs energy distribution strategies from configuration entries.
-     */
-    public void setEnergyStrategies(java.util.List<org.evochora.server.config.SimulationConfiguration.EnergyStrategyConfig> configs) {
-        if (configs == null || configs.isEmpty()) {
-            this.energyStrategies = java.util.Collections.emptyList();
-            return;
-        }
-        java.util.List<IEnergyDistributionCreator> built = new java.util.ArrayList<>();
-        for (org.evochora.server.config.SimulationConfiguration.EnergyStrategyConfig cfg : configs) {
-            if (cfg == null || cfg.type == null || cfg.type.isBlank()) continue;
-            try {
-                org.evochora.runtime.internal.services.IRandomProvider prov = this.randomProvider != null ? this.randomProvider : new org.evochora.runtime.internal.services.SeededRandomProvider(0L);
-                built.add(EnergyStrategyFactory.create(cfg.type, cfg.params, prov));
-            } catch (IllegalArgumentException ex) {
-                log.warn("Ignoring unknown energy strategy type '{}': {}", cfg.type, ex.getMessage());
-            } catch (Exception ex) {
-                log.warn("Failed to build energy strategy '{}': {}", cfg.type, ex.getMessage());
-            }
-        }
-        this.energyStrategies = java.util.Collections.unmodifiableList(built);
-    }
-
-    public void setSeed(java.lang.Long seed) {
-        if (seed == null) {
-            this.randomProvider = null;
-        } else {
-            this.randomProvider = new org.evochora.runtime.internal.services.SeededRandomProvider(seed);
-        }
-    }
-
-    @Override
-    public void start() {
-        if (running.compareAndSet(false, true)) {
-            thread.start();
-        }
-    }
-
-    @Override
-    public void pause() { paused.set(true); }
-
-    @Override
-    public void resume() { paused.set(false); }
-
-    @Override
-    public void shutdown() {
-        running.set(false);
-        thread.interrupt();
-    }
-
-    @Override
-    public boolean isRunning() { return running.get(); }
-
-    @Override
-    public boolean isPaused() { return paused.get(); }
-
-    public long getCurrentTick() {
-        return simulation != null ? simulation.getCurrentTick() : -1L;
-    }
-
-    public Simulation getSimulation() { return simulation; }
-
-    public void step() {
-        if (simulation == null) return;
-        simulation.tick();
-        // Apply energy distribution after organisms executed for this tick
-        if (energyStrategies != null && !energyStrategies.isEmpty()) {
-            for (IEnergyDistributionCreator strategy : energyStrategies) {
-                try {
-                    strategy.distributeEnergy(simulation.getEnvironment(), simulation.getCurrentTick());
-                } catch (Exception ex) {
-                    log.warn("Energy strategy execution failed: {}", ex.getMessage());
-                }
-            }
-        }
-        StatusMetricsRegistry.onTick(simulation.getCurrentTick());
-        try {
-            PreparedTickState pts = WorldStateAdapter.toPreparedState(simulation);
-            queue.put(pts);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    public int[] getOrganismCounts() {
-        if (simulation == null) return new int[]{0,0};
-        int living = 0, dead = 0;
-        for (var o : simulation.getOrganisms()) {
-            if (o.isDead()) dead++; else living++;
-        }
-        return new int[]{living, dead};
+        this.messageQueue = messageQueue;
     }
 
     @Override
     public void run() {
-        log.info("SimulationEngine started");
+        running.set(true);
+        logger.info("Simulation engine started.");
+        while (running.get()) {
+            if (!paused.get()) {
+                tick();
+            } else {
+                try {
+                    // Prevent busy-waiting while paused
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    running.set(false);
+                }
+            }
+        }
+        logger.info("Simulation engine stopped.");
+    }
+
+    private void tick() {
         try {
-            if (!performanceMode) {
-                for (ProgramArtifact artifact : programArtifacts) {
-                    try {
-                        queue.put(new ProgramArtifactMessage(artifact.programId(), artifact));
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        return;
-                    }
-                }
-            }
-
-            var env = new org.evochora.runtime.model.Environment(this.worldShape, this.isToroidal);
-            simulation = new Simulation(env, performanceMode);
-            if (this.randomProvider == null) {
-                this.randomProvider = new org.evochora.runtime.internal.services.SeededRandomProvider(0L);
-            }
-            simulation.setRandomProvider(this.randomProvider);
-
-            // New path: configure organisms from JSON if present; otherwise fallback to already-loaded artifacts path
-            if (organismDefinitions != null && organismDefinitions.length > 0) {
-                // Compile and place each organism set
-                Compiler compiler = new Compiler();
-                java.util.Map<String, ProgramArtifact> artifactsById = new java.util.HashMap<>();
-                int dims = this.worldShape.length;
-                for (SimulationConfiguration.OrganismDefinition def : organismDefinitions) {
-                    if (def == null || def.program == null) continue;
-                    // Load program from resources under org/evochora/organism/
-                    String resBase = "org/evochora/organism/";
-                    String resPath = resBase + def.program;
-                    java.io.InputStream is = SimulationEngine.class.getClassLoader().getResourceAsStream(resPath);
-                    java.util.List<String> lines;
-                    String logicalName = resPath;
-                    if (is != null) {
-                        try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(is, java.nio.charset.StandardCharsets.UTF_8))) {
-                            lines = br.lines().toList();
-                        }
-                    } else {
-                        // try filesystem path as fallback
-                        java.nio.file.Path fsPath = java.nio.file.Path.of(def.program);
-                        lines = java.nio.file.Files.readAllLines(fsPath, java.nio.charset.StandardCharsets.UTF_8);
-                        logicalName = fsPath.toAbsolutePath().toString();
-                    }
-                    ProgramArtifact artifact = compiler.compile(lines, logicalName, dims);
-                    artifactsById.put(artifact.programId(), artifact);
-                    if (!performanceMode) {
-                        try { queue.put(new ProgramArtifactMessage(artifact.programId(), artifact)); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
-                    }
-
-                    // Placement: only fixed strategy supported now
-                    if (def.placement != null && def.placement.positions != null) {
-                        for (int[] origin : def.placement.positions) {
-                            int[] start = origin != null ? origin : new int[dims];
-                            // Create organism first so ownership can be applied at placement time
-                            int energy = Math.max(0, def.initialEnergy);
-                            Organism organism = Organism.create(simulation, start, energy, simulation.getLogger());
-                            organism.setProgramId(artifact.programId());
-
-                            // Place machine code and initial world objects relative to origin, setting owner
-                            for (var e : artifact.machineCodeLayout().entrySet()) {
-                                int[] rel = e.getKey();
-                                int[] abs = new int[dims];
-                                for (int i = 0; i < dims; i++) abs[i] = start[i] + rel[i];
-                                env.setMolecule(org.evochora.runtime.model.Molecule.fromInt(e.getValue()), organism.getId(), abs);
-                            }
-                            for (var e : artifact.initialWorldObjects().entrySet()) {
-                                int[] rel = e.getKey();
-                                int[] abs = new int[dims];
-                                for (int i = 0; i < dims; i++) abs[i] = start[i] + rel[i];
-                                var pm = e.getValue();
-                                var mol = new org.evochora.runtime.model.Molecule(pm.type(), pm.value());
-                                env.setMolecule(mol, organism.getId(), abs);
-                            }
-
-                            // Defensive: ensure ownership is set even if a packed value was 0
-                            for (var e : artifact.machineCodeLayout().entrySet()) {
-                                int[] rel = e.getKey();
-                                int[] abs = new int[dims];
-                                for (int i = 0; i < dims; i++) abs[i] = start[i] + rel[i];
-                                env.setOwnerId(organism.getId(), abs);
-                            }
-                            for (var e : artifact.initialWorldObjects().entrySet()) {
-                                int[] rel = e.getKey();
-                                int[] abs = new int[dims];
-                                for (int i = 0; i < dims; i++) abs[i] = start[i] + rel[i];
-                                env.setOwnerId(organism.getId(), abs);
-                            }
-
-                            // Register CALL-site bindings for this placement (absolute coordinates)
-                            if (!performanceMode && artifact.callSiteBindings() != null && artifact.linearAddressToCoord() != null) {
-                                org.evochora.runtime.internal.services.CallBindingRegistry registry = org.evochora.runtime.internal.services.CallBindingRegistry.getInstance();
-                                for (var b : artifact.callSiteBindings().entrySet()) {
-                                    int linearAddr = b.getKey();
-                                    int[] rel = artifact.linearAddressToCoord().get(linearAddr);
-                                    if (rel != null) {
-                                        int[] abs = new int[dims];
-                                        for (int i = 0; i < dims; i++) abs[i] = start[i] + rel[i];
-                                        int[] drIds = b.getValue();
-                                        if (drIds != null) registry.registerBindingForAbsoluteCoord(abs, drIds);
-                                    }
-                                }
-                            }
-                            // Ensure the origin cell is marked as owned to be visible in the initial snapshot
-                            env.setOwnerId(organism.getId(), start);
-                            simulation.addOrganism(organism);
-                        }
-                    }
-                }
-                simulation.setProgramArtifacts(artifactsById);
-            } else if (programArtifacts != null && !programArtifacts.isEmpty()) {
-                simulation.setProgramArtifacts(this.programArtifacts.stream()
-                        .collect(Collectors.toMap(ProgramArtifact::programId, pa -> pa, (a, b) -> b)));
-                // legacy path: seed artifacts and create a single organism per artifact at (0,0,...)
-                int dims = this.worldShape.length;
-                for (ProgramArtifact artifact : programArtifacts) {
-                    int[] origin = UserLoadRegistry.getDesiredStart(artifact.programId());
-                    if (origin == null) origin = new int[dims];
-                    // Create organism first
-                    Organism organism = Organism.create(simulation, origin,
-                            org.evochora.runtime.Config.ERROR_PENALTY_COST + 1000, simulation.getLogger());
-                    organism.setProgramId(artifact.programId());
-                    // Place with ownership
-                    for (var e : artifact.machineCodeLayout().entrySet()) {
-                        int[] rel = e.getKey();
-                        int[] abs = new int[dims];
-                        for (int i = 0; i < dims; i++) abs[i] = origin[i] + rel[i];
-                        env.setMolecule(org.evochora.runtime.model.Molecule.fromInt(e.getValue()), organism.getId(), abs);
-                    }
-                    for (var e : artifact.initialWorldObjects().entrySet()) {
-                        int[] rel = e.getKey();
-                        int[] abs = new int[dims];
-                        for (int i = 0; i < dims; i++) abs[i] = origin[i] + rel[i];
-                        var pm = e.getValue();
-                        var mol = new org.evochora.runtime.model.Molecule(pm.type(), pm.value());
-                        env.setMolecule(mol, organism.getId(), abs);
-                    }
-
-                    // Defensive: ensure ownership is set even if a packed value was 0
-                    for (var e : artifact.machineCodeLayout().entrySet()) {
-                        int[] rel = e.getKey();
-                        int[] abs = new int[dims];
-                        for (int i = 0; i < dims; i++) abs[i] = origin[i] + rel[i];
-                        env.setOwnerId(organism.getId(), abs);
-                    }
-                    for (var e : artifact.initialWorldObjects().entrySet()) {
-                        int[] rel = e.getKey();
-                        int[] abs = new int[dims];
-                        for (int i = 0; i < dims; i++) abs[i] = origin[i] + rel[i];
-                        env.setOwnerId(organism.getId(), abs);
-                    }
-                    // Ensure the origin cell is marked as owned for initial snapshot visibility
-                    env.setOwnerId(organism.getId(), origin);
-                    simulation.addOrganism(organism);
-                }
-            }
-
-            // HOLEN DER REGISTRY-INSTANZ
-            CallBindingRegistry bindingRegistry = CallBindingRegistry.getInstance();
-            if (programArtifacts != null && !programArtifacts.isEmpty()) {
-                for (ProgramArtifact artifact : programArtifacts) {
-                    int dims = this.worldShape.length;
-                    int[] origin = UserLoadRegistry.getDesiredStart(artifact.programId());
-                    if (origin == null) origin = new int[dims];
-                    if (!performanceMode) {
-                        for (var binding : artifact.callSiteBindings().entrySet()) {
-                            int linearAddress = binding.getKey();
-                            int[] relativeCoord = artifact.linearAddressToCoord().get(linearAddress);
-                            if (relativeCoord != null) {
-                                int[] absoluteCoord = new int[dims];
-                                for (int i = 0; i < dims; i++) {
-                                    absoluteCoord[i] = origin[i] + relativeCoord[i];
-                                }
-                                bindingRegistry.registerBindingForAbsoluteCoord(absoluteCoord, binding.getValue());
-                            }
-                        }
-                    }
-                }
-            }
-
-            log.info("Saving initial state for tick 0.");
-            StatusMetricsRegistry.onTick(simulation.getCurrentTick());
-            PreparedTickState initialMsg = WorldStateAdapter.toPreparedState(simulation);
-            queue.put(initialMsg);
-
-            while (running.get()) {
-                if (paused.get()) {
-                    Thread.onSpinWait();
-                    continue;
-                }
-
-                simulation.tick();
-                // Apply configured energy strategies each tick
-                if (energyStrategies != null && !energyStrategies.isEmpty()) {
-                    for (IEnergyDistributionCreator strategy : energyStrategies) {
-                        try {
-                            strategy.distributeEnergy(simulation.getEnvironment(), simulation.getCurrentTick());
-                        } catch (Exception ex) {
-                            log.warn("Energy strategy execution failed: {}", ex.getMessage());
-                        }
-                    }
-                }
-                StatusMetricsRegistry.onTick(simulation.getCurrentTick());
-                PreparedTickState tickMsg = WorldStateAdapter.toPreparedState(simulation);
-                queue.put(tickMsg);
-            }
+            simulation.tick();
+            final RawTickState rawTickState = WorldStateAdapter.fromSimulation(simulation);
+            messageQueue.put(rawTickState);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            running.set(false);
+            logger.warn("Tick interrupted, stopping simulation engine.");
         } catch (Exception e) {
-            log.error("SimulationEngine error", e);
-        } finally {
-            log.info("SimulationEngine stopped");
+            logger.error("An error occurred during simulation tick.", e);
+            running.set(false);
         }
+    }
+
+    @Override
+    public void pause() {
+        paused.set(true);
+        logger.info("Simulation engine paused.");
+    }
+
+    @Override
+    public void resume() {
+        paused.set(false);
+        logger.info("Simulation engine resumed.");
+    }
+
+    @Override
+    public boolean isPaused() {
+        return paused.get();
+    }
+
+    @Override
+    public boolean isRunning() {
+        return running.get();
+    }
+
+    @Override
+    public void exit() {
+        running.set(false);
+        logger.info("Simulation engine stopping.");
+    }
+
+    public Simulation getSimulation() {
+        return simulation;
     }
 }

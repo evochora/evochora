@@ -1,7 +1,5 @@
 package org.evochora.server.persistence;
 
-import org.evochora.server.contracts.CellState;
-import org.evochora.server.contracts.OrganismState;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
 import org.junit.jupiter.api.Test;

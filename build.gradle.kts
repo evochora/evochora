@@ -3,7 +3,6 @@ import java.io.FileOutputStream;
 plugins {
     java
     application
-    id("org.openjfx.javafxplugin") version "0.1.0"
     jacoco
 }
 
@@ -26,6 +25,7 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.1")
     implementation("info.picocli:picocli:4.7.6")
     implementation("io.javalin:javalin:6.1.3")
+    implementation("com.google.code.gson:gson:2.10.1")
 
 }
 
@@ -65,9 +65,4 @@ tasks.jacocoTestReport {
             }
         })
     )
-}
-
-javafx {
-    version = "21"
-    modules = listOf("javafx.controls", "javafx.fxml")
 }
