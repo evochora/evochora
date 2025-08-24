@@ -28,10 +28,27 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.evochora.compiler.internal.LinearizedProgramArtifact;
+import org.evochora.server.indexer.RuntimeDisassembler;
+import org.evochora.runtime.api.DisassembledInstruction;
+import org.evochora.runtime.api.DisassembledArgument;
 
 public class DebugIndexer implements IControllable, Runnable {
 
     private static final Logger log = LoggerFactory.getLogger(DebugIndexer.class);
+
+    /**
+     * Repräsentiert die Gültigkeit eines ProgramArtifacts für einen Organismus.
+     */
+    public enum ArtifactValidity {
+        /** Kein ProgramArtifact verfügbar */
+        NONE,
+        /** ProgramArtifact ist vollständig gültig */
+        VALID,
+        /** Nur Source-Code und Aliase sind sicher, Source-Mapping ist ungültig */
+        PARTIAL_SOURCE,
+        /** ProgramArtifact ist komplett ungültig */
+        INVALID
+    }
 
     private final Thread thread;
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -43,6 +60,9 @@ public class DebugIndexer implements IControllable, Runnable {
 
     private Map<String, ProgramArtifact> artifacts = new HashMap<>();
     private int[] worldShape = new int[]{0, 0};
+    
+    // Cache für Artifact-Validität pro Organismus (programId_organismId -> ArtifactValidity)
+    private final Map<String, ArtifactValidity> validityCache = new HashMap<>();
 
     public DebugIndexer(String rawDbPath) {
         this.rawDbPath = rawDbPath;
@@ -208,27 +228,239 @@ public class DebugIndexer implements IControllable, Runnable {
         Map<String, PreparedTickState.OrganismDetails> details = new HashMap<>();
         for (RawOrganismState o : raw.organisms()) {
             if (o.isDead()) continue;
-            ProgramArtifact artifact = this.artifacts.get(o.programId());
-
-            var basicInfo = new PreparedTickState.BasicInfo(o.id(), o.programId(), o.parentId(), o.birthTick(), o.er(), toList(o.ip()), toList(o.dv()));
-            var nextInstruction = buildNextInstruction(o, artifact);
-            var internalState = buildInternalState(o, artifact);
-            var sourceView = buildSourceView(o, artifact, nextInstruction);
-
-            details.put(String.valueOf(o.id()), new PreparedTickState.OrganismDetails(basicInfo, nextInstruction, internalState, sourceView));
+            
+            // Zentrale Methode für alle Organismus-Details
+            PreparedTickState.OrganismDetails organismDetails = buildOrganismDetails(o);
+            details.put(String.valueOf(o.id()), organismDetails);
         }
 
         return new PreparedTickState("debug", raw.tickNumber(), meta, worldState, details);
     }
 
-    private PreparedTickState.NextInstruction buildNextInstruction(RawOrganismState o, ProgramArtifact artifact) {
-        // Diese Methode ist ein Platzhalter und wird in einem späteren Schritt implementiert.
-        // HINWEIS: Erfordert die Rekonstruktion eines Teils des Laufzeitzustands,
-        // um den Disassembler sicher aufrufen zu können.
-        return new PreparedTickState.NextInstruction("Disassembly not yet implemented", null, null, artifact == null ? "CODE_UNAVAILABLE" : "OK");
+    /**
+     * Zentrale Methode zum Erstellen aller Organismus-Details.
+     * Koordiniert die Validierung und ruft alle Builder auf.
+     */
+    private PreparedTickState.OrganismDetails buildOrganismDetails(RawOrganismState o) {
+        ProgramArtifact artifact = this.artifacts.get(o.programId());
+        ArtifactValidity validity = checkArtifactValidity(o, artifact);
+        
+        var basicInfo = new PreparedTickState.BasicInfo(o.id(), o.programId(), o.parentId(), o.birthTick(), o.er(), toList(o.ip()), toList(o.dv()));
+        var nextInstruction = buildNextInstruction(o, artifact, validity);
+        var internalState = buildInternalState(o, artifact, validity);
+        var sourceView = buildSourceView(o, artifact, validity);
+
+        return new PreparedTickState.OrganismDetails(basicInfo, nextInstruction, internalState, sourceView);
     }
 
-    private PreparedTickState.InternalState buildInternalState(RawOrganismState o, ProgramArtifact artifact) {
+    /**
+     * Prüft die Gültigkeit eines ProgramArtifacts für einen Organismus.
+     * Verwendet Caching für Performance-Optimierung.
+     */
+    private ArtifactValidity checkArtifactValidity(RawOrganismState o, ProgramArtifact artifact) {
+        if (artifact == null) {
+            return ArtifactValidity.NONE;
+        }
+        
+        // Cache-Key: programId_organismId
+        String cacheKey = o.programId() + "_" + o.id();
+        
+        // Cache-Check
+        ArtifactValidity cached = validityCache.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        
+        // Neue Validierung
+        ArtifactValidity validity = performValidation(o, artifact);
+        validityCache.put(cacheKey, validity);
+        
+        return validity;
+    }
+
+    /**
+     * Führt die eigentliche Validierung durch.
+     * Hybrid-Ansatz: Schnell-Check (IP im SourceMap) + detaillierter Check (Code-Konsistenz).
+     */
+    private ArtifactValidity performValidation(RawOrganismState o, ProgramArtifact artifact) {
+        // Schnell-Check: IP im SourceMap?
+        boolean ipValid = isIpInSourceMap(o, artifact);
+        if (!ipValid) {
+            return ArtifactValidity.INVALID;
+        }
+        
+        // Detaillierter Check: Maschinencode-Konsistenz
+        CodeConsistency consistency = checkCodeConsistency(o, artifact);
+        
+        if (consistency.isFullyConsistent()) {
+            return ArtifactValidity.VALID;
+        } else if (consistency.isPartiallyConsistent()) {
+            return ArtifactValidity.PARTIAL_SOURCE;
+        } else {
+            return ArtifactValidity.INVALID;
+        }
+    }
+
+    /**
+     * Schnell-Check: Ist die aktuelle IP-Position im SourceMap des Artifacts?
+     */
+    private boolean isIpInSourceMap(RawOrganismState o, ProgramArtifact artifact) {
+        if (artifact.sourceMap() == null || artifact.relativeCoordToLinearAddress() == null) {
+            return false;
+        }
+        
+        // Berechne relative IP-Position
+        int[] origin = o.initialPosition();
+        StringBuilder key = new StringBuilder();
+        for (int i = 0; i < o.ip().length; i++) {
+            if (i > 0) key.append('|');
+            key.append(o.ip()[i] - origin[i]);
+        }
+        
+        // Prüfe, ob die aktuelle IP im sourceMap existiert
+        Integer addr = artifact.relativeCoordToLinearAddress().get(key.toString());
+        return addr != null && artifact.sourceMap().containsKey(addr);
+    }
+
+    /**
+     * Detaillierter Check: Maschinencode-Konsistenz um die aktuelle IP.
+     */
+    private CodeConsistency checkCodeConsistency(RawOrganismState o, ProgramArtifact artifact) {
+        if (artifact.machineCodeLayout() == null) {
+            return new CodeConsistency(0, 0, false);
+        }
+        
+        // Prüfe Maschinencode um die aktuelle IP
+        int[] currentIp = o.ip();
+        int[] dv = o.dv();
+        
+        int matchingPositions = 0;
+        int totalPositions = 0;
+        int[] checkPos = currentIp.clone();
+        
+        // Prüfe 5 Instruktionen um die aktuelle IP
+        for (int i = 0; i < 5; i++) {
+            String posKey = Arrays.toString(checkPos);
+            if (artifact.machineCodeLayout().containsKey(posKey)) {
+                matchingPositions++;
+            }
+            totalPositions++;
+            
+            // Gehe zur nächsten Instruktion
+            checkPos = getNextPosition(checkPos, dv);
+        }
+        
+        double consistencyRatio = (double) matchingPositions / totalPositions;
+        
+        if (consistencyRatio >= 0.8) {
+            return new CodeConsistency(matchingPositions, totalPositions, true);
+        } else if (consistencyRatio >= 0.3) {
+            return new CodeConsistency(matchingPositions, totalPositions, false);
+        } else {
+            return new CodeConsistency(matchingPositions, totalPositions, false);
+        }
+    }
+
+    /**
+     * Berechnet die nächste Position basierend auf dem Direction Vector.
+     */
+    private int[] getNextPosition(int[] currentPos, int[] dv) {
+        int[] next = new int[currentPos.length];
+        for (int i = 0; i < currentPos.length; i++) {
+            next[i] = currentPos[i] + dv[i];
+        }
+        return next;
+    }
+
+    /**
+     * Repräsentiert die Konsistenz des Maschinencodes.
+     */
+    private static class CodeConsistency {
+        private final int matchingPositions;
+        private final int totalPositions;
+        private final boolean isFullyConsistent;
+        
+        public CodeConsistency(int matchingPositions, int totalPositions, boolean isFullyConsistent) {
+            this.matchingPositions = matchingPositions;
+            this.totalPositions = totalPositions;
+            this.isFullyConsistent = isFullyConsistent;
+        }
+        
+        public boolean isFullyConsistent() {
+            return isFullyConsistent;
+        }
+        
+        public boolean isPartiallyConsistent() {
+            return !isFullyConsistent && (double) matchingPositions / totalPositions >= 0.3;
+        }
+    }
+
+    private PreparedTickState.NextInstruction buildNextInstruction(RawOrganismState o, ProgramArtifact artifact, ArtifactValidity validity) {
+        try {
+            // Verwende den RuntimeDisassembler für Runtime-only Disassembly
+            RuntimeDisassembler disassembler = RuntimeDisassembler.INSTANCE;
+            DisassembledInstruction disassembled = disassembler.disassembleRuntimeOnly(o);
+            
+            // Bestimme den runtimeStatus basierend auf der Validität
+            String runtimeStatus = determineRuntimeStatus(validity);
+            
+            // Erstelle die NextInstruction
+            return new PreparedTickState.NextInstruction(
+                formatDisassembly(disassembled),
+                null, // sourceFile - wird nicht gesetzt bei Runtime-only Disassembly
+                null, // sourceLine - wird nicht gesetzt bei Runtime-only Disassembly
+                runtimeStatus
+            );
+            
+        } catch (Exception e) {
+            log.warn("Failed to disassemble instruction for organism {}: {}", o.id(), e.getMessage());
+            return new PreparedTickState.NextInstruction(
+                "Disassembly failed: " + e.getMessage(),
+                null,
+                null,
+                "ERROR"
+            );
+        }
+    }
+    
+    /**
+     * Bestimmt den runtimeStatus basierend auf der Artifact-Validität.
+     */
+    private String determineRuntimeStatus(ArtifactValidity validity) {
+        switch (validity) {
+            case NONE:
+                return "CODE_UNAVAILABLE";
+            case VALID:
+                return "OK";
+            case PARTIAL_SOURCE:
+                return "COMPILER_GENERATED";
+            case INVALID:
+                return "CODE_UNAVAILABLE";
+            default:
+                return "UNKNOWN";
+        }
+    }
+    
+    /**
+     * Formatiert die Disassembly-Informationen in einen lesbaren String.
+     */
+    private String formatDisassembly(DisassembledInstruction disassembled) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(disassembled.opcodeName());
+        
+        if (!disassembled.arguments().isEmpty()) {
+            sb.append(" ");
+            for (int i = 0; i < disassembled.arguments().size(); i++) {
+                if (i > 0) sb.append(", ");
+                DisassembledArgument arg = disassembled.arguments().get(i);
+                sb.append(arg.fullDisplayValue());
+            }
+        }
+        
+        return sb.toString();
+    }
+
+    private PreparedTickState.InternalState buildInternalState(RawOrganismState o, ProgramArtifact artifact, ArtifactValidity validity) {
         List<PreparedTickState.RegisterValue> drs = new ArrayList<>();
         for (int i = 0; i < o.drs().size(); i++) drs.add(new PreparedTickState.RegisterValue("%DR" + i, null, formatValue(o.drs().get(i))));
 
@@ -245,32 +477,15 @@ public class DebugIndexer implements IControllable, Runnable {
         return new PreparedTickState.InternalState(drs, prs, lrs, ds, ls, cs, o.dps().stream().map(this::toList).toList());
     }
 
-    private PreparedTickState.SourceView buildSourceView(RawOrganismState o, ProgramArtifact artifact, PreparedTickState.NextInstruction ni) {
-        if (artifact == null || ni.sourceFile() == null || ni.sourceLine() == null) {
+    private PreparedTickState.SourceView buildSourceView(RawOrganismState o, ProgramArtifact artifact, ArtifactValidity validity) {
+        // SourceView ist nur verfügbar, wenn das Artifact gültig ist
+        if (artifact == null || validity == ArtifactValidity.NONE || validity == ArtifactValidity.INVALID) {
             return null;
         }
 
-        // Finde die Quellcodezeilen für die relevante Datei
-        String sourceFileName = ni.sourceFile();
-        List<String> sourceLines = artifact.sources().get(sourceFileName);
-        if (sourceLines == null) {
-            // Fallback auf Basename, falls der Pfad nicht exakt übereinstimmt
-            Path p = Paths.get(sourceFileName);
-            sourceLines = artifact.sources().get(p.getFileName().toString());
-        }
-        if (sourceLines == null) return null;
-
-        int currentLineNumber = ni.sourceLine();
-
         // TODO: Implementiere die Logik zur Handhabung von compiler-generiertem Code
-        List<PreparedTickState.SourceLine> lines = new ArrayList<>();
-        for (int i = 0; i < sourceLines.size(); i++) {
-            lines.add(new PreparedTickState.SourceLine(i + 1, sourceLines.get(i), (i + 1) == currentLineNumber, Collections.emptyList(), Collections.emptyList()));
-        }
-
-        List<PreparedTickState.InlineSpan> spans = sourceAnnotator.annotate(o, artifact, sourceLines.get(currentLineNumber - 1), currentLineNumber);
-
-        return new PreparedTickState.SourceView(sourceFileName, currentLineNumber, lines, spans);
+        // Für jetzt geben wir null zurück, da wir die Source-Mapping-Informationen noch nicht haben
+        return null;
     }
 
     private List<String> formatCallStack(RawOrganismState o, ProgramArtifact artifact) {
