@@ -1,6 +1,7 @@
 package org.evochora.server;
 
 import org.evochora.server.contracts.IQueueMessage;
+import org.evochora.server.contracts.PreparedTickState;
 import org.evochora.server.engine.SimulationEngine;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;

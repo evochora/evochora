@@ -1,5 +1,6 @@
 package org.evochora.server.engine;
 
+import org.evochora.server.contracts.PreparedTickState;
 import org.evochora.runtime.Simulation;
 import org.junit.jupiter.api.Test;
 
