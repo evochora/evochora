@@ -24,17 +24,23 @@ public final class DebugServer {
     private String jdbcUrl;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public void start(String dbFilePath, int port) {
+    public void start(String dbPath, int port) {
         try {
-            this.jdbcUrl = "jdbc:sqlite:" + Path.of(dbFilePath).toAbsolutePath();
+            // Prüfe, ob es eine JDBC-URL oder ein Dateipfad ist
+            if (dbPath.startsWith("jdbc:sqlite:")) {
+                this.jdbcUrl = dbPath;  // Direkt verwenden
+            } else {
+                // Behandle es als Dateipfad
+                this.jdbcUrl = "jdbc:sqlite:" + Path.of(dbPath).toAbsolutePath();
+            }
         } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid dbFilePath: " + dbFilePath, e);
+            throw new IllegalArgumentException("Invalid dbPath: " + dbPath, e);
         }
 
         this.app = Javalin.create(config -> {
             config.staticFiles.add(staticFiles -> {
                 staticFiles.hostedPath = "/";
-                String staticDir = Path.of(System.getProperty("user.dir"), "webrenderer").toAbsolutePath().toString();
+                String staticDir = Path.of(System.getProperty("user.dir"), "webdebugger").toAbsolutePath().toString();
                 staticFiles.directory = staticDir;
                 staticFiles.location = Location.EXTERNAL;
                 staticFiles.precompress = false;
@@ -66,7 +72,7 @@ public final class DebugServer {
         });
 
         this.app.start(port);
-        log.info("DebugServer started at http://localhost:{} using DB {}", port, dbFilePath);
+        log.info("DebugServer started at http://localhost:{} using DB {}", port, dbPath);
     }
 
     public void stop() {

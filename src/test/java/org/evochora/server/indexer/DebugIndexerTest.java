@@ -3,6 +3,7 @@ package org.evochora.server.indexer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.compiler.internal.LinearizedProgramArtifact;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.server.contracts.debug.PreparedTickState;
 import org.evochora.server.contracts.raw.RawOrganismState;
@@ -35,9 +36,6 @@ class DebugIndexerTest {
 
 
     @Test
-    @Disabled("Temporarily disabled due to Jackson serialization issue with int[] map keys in ProgramArtifact. " +
-              "The DebugIndexer requires ProgramArtifact data to transform raw ticks, but Jackson cannot serialize " +
-              "maps with int[] keys. This needs to be fixed with custom serializers or data structure changes.")
     void indexer_readsRawDb_and_writesPreparedDb() throws Exception {
         // 1. Arrange: Erstelle eine temporäre Roh-Datenbank
         Path rawDbPath = tempDir.resolve("test_run_raw.sqlite");
@@ -56,21 +54,24 @@ class DebugIndexerTest {
                 new java.util.ArrayDeque<>(), new java.util.ArrayDeque<>(), new java.util.ArrayDeque<>(),
                 false, false, null, false, new int[]{0,0}, new int[]{1,0}
         );
-        RawTickState rawTick = new RawTickState(0L, List.of(rawOrganism), Collections.emptyList());
+        RawTickState rawTick = new RawTickState(1L, List.of(rawOrganism), Collections.emptyList());
 
         // Befülle die Roh-Datenbank
         try (Connection conn = DriverManager.getConnection(rawJdbcUrl); Statement st = conn.createStatement()) {
             st.execute("CREATE TABLE program_artifacts (program_id TEXT PRIMARY KEY, artifact_json TEXT)");
             st.execute("CREATE TABLE raw_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json TEXT)");
             st.execute("CREATE TABLE simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
-            // TODO: Fix Jackson serialization issue with int[] map keys in ProgramArtifact
-            // try (PreparedStatement ps = conn.prepareStatement("INSERT INTO program_artifacts VALUES (?,?)")) {
-            //     ps.setString(1, artifact.programId());
-            //     ps.setString(2, mapper.writeValueAsString(artifact));
-            //     ps.executeUpdate();
-            // }
+            
+            // ProgramArtifact in die Roh-Datenbank einfügen
+            try (PreparedStatement ps = conn.prepareStatement("INSERT INTO program_artifacts VALUES (?,?)")) {
+                ps.setString(1, artifact.programId());
+                // Verwende das linearisierte Format für Jackson-Serialisierung
+                LinearizedProgramArtifact linearized = artifact.toLinearized(new int[]{10, 10});
+                ps.setString(2, mapper.writeValueAsString(linearized));
+                ps.executeUpdate();
+            }
             try (PreparedStatement ps = conn.prepareStatement("INSERT INTO raw_ticks VALUES (?,?)")) {
-                ps.setLong(1, 0);
+                ps.setLong(1, 1); // Tick 1, da DebugIndexer bei Tick 1 startet
                 ps.setString(2, mapper.writeValueAsString(rawTick));
                 ps.executeUpdate();
             }
@@ -93,15 +94,16 @@ class DebugIndexerTest {
         String debugJdbcUrl = "jdbc:sqlite:" + debugDbPath.toAbsolutePath();
 
         assertThat(debugDbPath).exists();
+        
         try (Connection conn = DriverManager.getConnection(debugJdbcUrl);
              Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT tick_data_json FROM prepared_ticks WHERE tick_number = 0")) {
+             ResultSet rs = st.executeQuery("SELECT tick_data_json FROM prepared_ticks WHERE tick_number = 1")) {
 
             assertThat(rs.next()).isTrue();
             String preparedJson = rs.getString(1);
             PreparedTickState preparedTick = mapper.readValue(preparedJson, PreparedTickState.class);
 
-            assertThat(preparedTick.tickNumber()).isEqualTo(0);
+            assertThat(preparedTick.tickNumber()).isEqualTo(1);
             assertThat(preparedTick.organismDetails()).containsKey("1");
             // Weitere, detailliertere Assertions können hier hinzugefügt werden,
             // sobald die Transformationslogik vollständig ist.

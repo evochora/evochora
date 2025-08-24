@@ -17,6 +17,7 @@ import java.sql.*;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.evochora.compiler.internal.LinearizedProgramArtifact;
 
 /**
  * Consumes raw messages from a queue and persists them to a per-run SQLite database.
@@ -159,7 +160,20 @@ public final class PersistenceService implements IControllable, Runnable {
     private void handleProgramArtifact(ProgramArtifactMessage pam) throws Exception {
         // Im Performance-Modus werden keine Artefakte gespeichert.
         if (this.performanceMode) return;
-        String json = objectMapper.writeValueAsString(pam.programArtifact());
+        
+        // Konvertierung zu linearisiertem Format für Jackson-Serialisierung
+        // Wir brauchen den worldShape für die Linearisierung
+        int[] worldShape = this.worldShape;
+        if (worldShape == null) {
+            throw new IllegalStateException(
+                "Cannot serialize ProgramArtifact: worldShape is required for coordinate linearization. " +
+                "Ensure worldShape is provided when creating PersistenceService."
+            );
+        }
+        
+        LinearizedProgramArtifact linearized = pam.programArtifact().toLinearized(worldShape);
+        String json = objectMapper.writeValueAsString(linearized);
+        
         // GEÄNDERT: Tabellen- und Spaltennamen
         try (PreparedStatement ps = connection.prepareStatement("INSERT OR REPLACE INTO program_artifacts(program_id, artifact_json) VALUES (?, ?)")) {
             ps.setString(1, pam.programId());

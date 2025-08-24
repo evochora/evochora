@@ -27,6 +27,7 @@ import java.sql.Statement;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+import org.evochora.compiler.internal.LinearizedProgramArtifact;
 
 public class DebugIndexer implements IControllable, Runnable {
 
@@ -143,7 +144,12 @@ public class DebugIndexer implements IControllable, Runnable {
                 while (rs.next()) {
                     String id = rs.getString(1);
                     String json = rs.getString(2);
-                    ProgramArtifact artifact = objectMapper.readValue(json, ProgramArtifact.class);
+                    
+                    // Deserialisierung zu LinearizedProgramArtifact
+                    LinearizedProgramArtifact linearized = objectMapper.readValue(json, LinearizedProgramArtifact.class);
+                    
+                    // Konvertierung zurück zu ProgramArtifact
+                    ProgramArtifact artifact = linearized.toProgramArtifact();
                     this.artifacts.put(id, artifact);
                 }
             }

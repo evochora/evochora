@@ -1,0 +1,204 @@
+/* Grundlegende Stile und Farbschema */
+body {
+    font-family: 'Monospaced', 'Courier New', Courier, monospace;
+    background-color: #0a0a14;
+    color: #e0e0e0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Header-Bereich für die Steuerung */
+header {
+    background-color: #191923;
+    padding: 8px 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+    border-bottom: 1px solid #333;
+}
+
+.controls-left, .controls-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.file-label {
+    background-color: #3a3a5a;
+    border: 1px solid #5a5a7a;
+    color: #e0e0e0;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+.file-label:hover { background-color: #4a4a6a; }
+
+button {
+    background-color: #3a3a5a;
+    border: 1px solid #5a5a7a;
+    color: #e0e0e0;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+button:hover { background-color: #4a4a6a; }
+
+.tick-input-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+.tick-input-wrapper input[type="number"] {
+    width: 120px;
+    background-color: #222;
+    border: 1px solid #555;
+    color: #e0e0e0;
+    padding: 8px 44px 8px 8px; /* space for suffix */
+    border-radius: 4px;
+}
+.tick-input-wrapper .tick-total-suffix {
+    position: absolute;
+    right: 8px;
+    pointer-events: none;
+    color: #aaa;
+    font-size: 0.95em;
+}
+
+.tick-display { font-size: 1.1em; }
+
+/* Hauptcontainer (ohne Header) */
+main.container {
+    display: flex;
+    flex-grow: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Welt-Container, der das Canvas oben links ausrichtet und Scrollen erlaubt */
+.world-container {
+    flex-grow: 1;
+    display: flex;
+    justify-content: flex-start;
+    align-items: flex-start;
+    overflow: auto;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+#worldCanvas {
+    background-color: #14141e;
+    border: 1px solid #333;
+    flex-shrink: 0;
+}
+
+/* Seitenleiste (standardmäßig versteckt) */
+.sidebar {
+    width: 550px; /* Verbreitert für mehr Platz */
+    background-color: #191923;
+    border-left: 1px solid #333;
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    transform: translateX(100%);
+    transition: transform 0.3s ease-in-out;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+}
+.sidebar.visible { transform: translateX(0); }
+
+.sidebar-toggle-btn {
+    position: absolute;
+    left: -40px;
+    top: 15px;
+    width: 40px;
+    height: 40px;
+    border-right: none;
+    border-radius: 4px 0 0 4px;
+}
+
+.details { flex-grow: 1; overflow-y: auto; }
+
+#details-content {
+    background-color: #0a0a14;
+    padding: 10px;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-size: 0.9em;
+    height: 95%;
+}
+
+.code-view {
+    background-color: #000;
+    padding: 8px;
+    border-radius: 3px;
+    margin-top: 5px;
+    border: 1px solid #333;
+    white-space: pre;
+    overflow-x: auto;
+}
+
+/* --- NEUE STILE FÜR SOURCE CODE VIEW --- */
+.source-code-view {
+    max-height: 400px;
+    overflow-y: auto;
+    overflow-x: auto;
+    white-space: normal;
+}
+.source-line {
+    display: flex;
+    white-space: pre-wrap;
+    align-items: baseline;
+}
+.source-line.highlight {
+    background-color: #3c5078;
+}
+.source-line .line-number {
+    flex-shrink: 0;
+    width: 35px;
+    padding-right: 10px;
+    text-align: right;
+    color: #888;
+    user-select: none;
+}
+.source-line pre {
+    margin: 0;
+    flex-grow: 1;
+}
+.injected-value {
+    font-style: italic;
+    color: #a0e0a0; /* Helle grüne Farbe */
+    font-size: 0.9em;
+    margin-left: 4px;
+    opacity: 0.8;
+}
+.injected-value.callParam { color: #ffd27f; }
+.injected-value.popParam { color: #7fd2ff; }
+
+/* Tighter gutter in source code view to match other boxes */
+.source-code-view .line-number {
+    width: 24px;
+    padding-right: 12px;
+}
+
+/* Key/Value Layout in Sidebar-Boxen */
+.code-view .kv {
+    display: flex;
+    gap: 8px;
+}
+.code-view .kv .lbl {
+    flex: 0 0 3.2em;
+}
+.code-view .kv .val {
+    flex: 1 1 auto;
+    white-space: nowrap; /* prevent line wrapping */
+    overflow-x: auto;    /* horizontal scroll if needed */
+    word-break: normal;
+}
+
