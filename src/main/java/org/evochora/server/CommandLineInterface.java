@@ -4,6 +4,7 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.server.engine.SimulationEngine;
 import org.evochora.server.config.ConfigLoader;
 import org.evochora.server.config.SimulationConfiguration;
+import org.evochora.server.http.DebugServer;
 import org.evochora.server.persistence.PersistenceService;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
@@ -12,7 +13,6 @@ import org.evochora.server.engine.StatusMetricsRegistry;
 // import org.evochora.server.engine.WorldStateAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.evochora.server.http.AnalysisWebService;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -31,7 +31,7 @@ public final class CommandLineInterface {
         ITickMessageQueue queue = new InMemoryTickQueue();
         SimulationEngine sim = null;
         PersistenceService persist = null;
-        AnalysisWebService web = null;
+        DebugServer web = null;
         // 'load' command removed; programs are defined in config
         SimulationConfiguration loadedConfig = null;
 
@@ -100,9 +100,9 @@ public final class CommandLineInterface {
                     java.nio.file.Path dbPath = persist.getDbFilePath();
                     if (dbPath != null) {
                         if (web != null) { web.stop(); }
-                        web = new AnalysisWebService();
+                        web = new DebugServer();
                         web.start(dbPath.toString(), port);
-                        System.err.println("AnalysisWebService at http://localhost:" + port);
+                        System.err.println("DebugServer at http://localhost:" + port);
                     }
                 } catch (Exception we) {
                     System.err.println("Failed to start web service: " + we.getMessage());
@@ -145,9 +145,9 @@ public final class CommandLineInterface {
                     java.nio.file.Path dbPath = persist.getDbFilePath();
                     if (dbPath != null) {
                         if (web != null) { web.stop(); }
-                        web = new AnalysisWebService();
+                        web = new DebugServer();
                         web.start(dbPath.toString(), port);
-                        System.err.println("AnalysisWebService at http://localhost:" + port);
+                        System.err.println("DebugServer at http://localhost:" + port);
                     }
                 } catch (Exception we) {
                     System.err.println("Failed to start web service: " + we.getMessage());
@@ -203,9 +203,9 @@ public final class CommandLineInterface {
                         int port = 7070;
                         if (loadedConfig != null && loadedConfig.web != null && loadedConfig.web.port != null) port = loadedConfig.web.port;
                         if (web != null) web.stop();
-                        web = new AnalysisWebService();
+                        web = new DebugServer();
                         web.start(dbPath, port);
-                        System.err.println("AnalysisWebService at http://localhost:" + port + " (DB=" + dbPath + ")");
+                        System.err.println("DebugServer at http://localhost:" + port + " (DB=" + dbPath + ")");
                     } catch (Exception e) {
                         System.err.println("Failed to start view: " + e.getMessage());
                     }

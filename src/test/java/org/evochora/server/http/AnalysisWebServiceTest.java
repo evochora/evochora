@@ -26,7 +26,7 @@ public class AnalysisWebServiceTest {
                     "\"schemaVersion\":1,\"mode\":\"performance\",\"generatedAtUtc\":\"x\",\"tickNumber\":1,\"worldMeta\":{\"shape\":[10,10]},\"worldState\":{\"cells\":[],\"organisms\":[]},\"organismDetails\":{}}')");
         }
 
-        AnalysisWebService web = new AnalysisWebService();
+        DebugServer web = new DebugServer();
         web.start(tmp.toString(), 7089);
         try {
             HttpClient client = HttpClient.newHttpClient();

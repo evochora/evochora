@@ -1,6 +1,7 @@
 package org.evochora.server.queue;
 
 import org.evochora.server.contracts.IQueueMessage;
+import org.evochora.server.contracts.raw.RawTickState;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
@@ -15,20 +16,13 @@ class InMemoryTickQueueTest {
     @Test
     void putAndTake_shouldExchangeMessages() throws Exception {
         InMemoryTickQueue queue = new InMemoryTickQueue();
-        IQueueMessage message = org.evochora.server.contracts.PreparedTickState.of(
-            "debug", 1L, 
-            new org.evochora.server.contracts.PreparedTickState.WorldMeta(new int[]{10, 10}),
-            new org.evochora.server.contracts.PreparedTickState.WorldState(
-                Collections.emptyList(), Collections.emptyList()
-            ),
-            Collections.emptyMap()
-        );
+        IQueueMessage message = new RawTickState(1L, Collections.emptyList(), Collections.emptyList());
 
         queue.put(message);
         assertThat(queue.size()).isEqualTo(1);
 
         IQueueMessage taken = queue.take();
-        assertThat(taken).isInstanceOf(org.evochora.server.contracts.PreparedTickState.class);
+        assertThat(taken).isInstanceOf(RawTickState.class);
         assertThat(queue.size()).isZero();
     }
 
@@ -39,22 +33,16 @@ class InMemoryTickQueueTest {
         var exec = Executors.newSingleThreadExecutor();
         Future<?> producer = exec.submit(() -> {
             try {
+                // Heuristik: 1MB pro Tick, Queue-Größe ist 512MB, also ca. 512 Ticks
+                // Wir fügen nur ein paar hinzu, um den Test nicht zu verlangsamen.
                 for (int i = 0; i < 10; i++) {
-                    queue.put(org.evochora.server.contracts.PreparedTickState.of(
-                        "debug", i, 
-                        new org.evochora.server.contracts.PreparedTickState.WorldMeta(new int[]{10, 10}),
-                        new org.evochora.server.contracts.PreparedTickState.WorldState(
-                            Collections.emptyList(), Collections.emptyList()
-                        ),
-                        Collections.emptyMap()
-                    ));
+                    queue.put(new RawTickState((long)i, Collections.emptyList(), Collections.emptyList()));
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         });
 
-        // Give producer a moment to fill then consume a few
         TimeUnit.MILLISECONDS.sleep(50);
         assertThat(queue.size()).isGreaterThan(0);
 
@@ -66,5 +54,3 @@ class InMemoryTickQueueTest {
         exec.shutdownNow();
     }
 }
-
-

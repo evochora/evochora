@@ -17,8 +17,8 @@ import java.sql.ResultSet;
 /**
  * Lightweight web service serving static web renderer files and a simple API to fetch prepared ticks.
  */
-public final class AnalysisWebService {
-    private static final Logger log = LoggerFactory.getLogger(AnalysisWebService.class);
+public final class DebugServer {
+    private static final Logger log = LoggerFactory.getLogger(DebugServer.class);
 
     private Javalin app;
     private String jdbcUrl;
@@ -66,7 +66,7 @@ public final class AnalysisWebService {
         });
 
         this.app.start(port);
-        log.info("AnalysisWebService started at http://localhost:{} using DB {}", port, dbFilePath);
+        log.info("DebugServer started at http://localhost:{} using DB {}", port, dbFilePath);
     }
 
     public void stop() {

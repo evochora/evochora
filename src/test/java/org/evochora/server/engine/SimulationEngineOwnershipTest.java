@@ -1,14 +1,11 @@
 package org.evochora.server.engine;
 
-import org.evochora.compiler.api.PlacedMolecule;
-import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.server.config.SimulationConfiguration;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.junit.jupiter.api.Test;
-
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
-
-import static java.util.Collections.emptyMap;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SimulationEngineOwnershipTest {
@@ -17,57 +14,41 @@ class SimulationEngineOwnershipTest {
     void places_code_and_world_objects_with_ownership() throws Exception {
         var queue = new InMemoryTickQueue();
         var engine = new SimulationEngine(queue);
-        // Artifact with code and data
-        var artifact = new ProgramArtifact(
-                "pidX",
-                emptyMap(), // sources
-                Map.of(new int[]{0,0}, org.evochora.runtime.Config.TYPE_CODE | 0x1234), // machineCodeLayout
-                Map.of(new int[]{1,0}, new PlacedMolecule(org.evochora.runtime.Config.TYPE_DATA, 99)), // initial world
-                emptyMap(), // sourceMap
-                emptyMap(), // callSiteBindings
-                emptyMap(), // relativeCoordToLinearAddress
-                emptyMap(), // linearAddressToCoord
-                emptyMap(), // labelAddressToName
-                emptyMap(), // registerAliasMap
-                emptyMap()  // procNameToParamNames
-        );
-        engine.setProgramArtifacts(List.of(artifact));
-        // Ensure deterministic origin
-        UserLoadRegistry.registerDesiredStart("pidX", new int[]{0,0});
+
+        // KORREKTUR: Erstelle eine temporäre Quelldatei, die die Engine laden kann.
+        Path tempDir = Files.createTempDirectory("evochora-test-");
+        Path sourceFile = tempDir.resolve("owner_test.s");
+        Files.writeString(sourceFile, "NOP");
+
+        // KORREKTUR: Verwende die neue Konfigurationsmethode, um einen Organismus zu definieren.
+        SimulationConfiguration.OrganismDefinition def = new SimulationConfiguration.OrganismDefinition();
+        def.id = "test_org";
+        // Gib der Engine den Pfad zur echten Datei, die sie kompilieren kann.
+        def.program = sourceFile.toAbsolutePath().toString();
+        def.initialEnergy = 1000;
+        def.placement = new SimulationConfiguration.PlacementConfig();
+        def.placement.strategy = "fixed";
+        def.placement.positions = new int[][]{{5, 5}}; // Platzierung bei 5,5
+
+        engine.setOrganismDefinitions(new SimulationConfiguration.OrganismDefinition[]{def});
+        // Das Artefakt muss nicht mehr manuell gesetzt werden, die Engine kompiliert selbst.
 
         engine.start();
 
-        // Wait for first WorldStateMessage which is sent immediately after seeding (tick 0)
-        // Drain queue until we receive a WorldStateMessage, then check for any owned cell.
-        // Allow a couple of ticks in case ownership-only cells were not included at tick 0 in some envs.
-        boolean anyOwned = false;
-        long lastTick = -1L;
-        for (int attempts = 0; attempts < 3 && !anyOwned; attempts++) {
-            org.evochora.server.contracts.IQueueMessage msg;
-            do {
-                msg = queue.take();
-            } while (!(msg instanceof org.evochora.server.contracts.PreparedTickState));
+        // Warte auf die ersten Nachrichten, um sicherzustellen, dass die Simulation läuft
+        queue.take(); // ProgramArtifactMessage
+        queue.take(); // Tick 0
 
-            if (msg instanceof org.evochora.server.contracts.PreparedTickState) {
-                var pts = (org.evochora.server.contracts.PreparedTickState) msg;
-                lastTick = pts.tickNumber();
-                anyOwned = pts.worldState().cells().stream().anyMatch(c -> c.ownerId() != 0);
-            }
-        }
-        engine.pause();
+        // Der Test terminiert jetzt, weil ein Organismus existiert und die Simulation läuft.
+        // Wir können den Zustand der Simulation direkt überprüfen.
+        var sim = engine.getSimulation();
+        assertThat(sim).isNotNull();
+        var env = sim.getEnvironment();
 
-        if (!anyOwned) {
-            // As a fallback, check the live environment now that seeding and first snapshot are done
-            var sim = engine.getSimulation();
-            var env = sim.getEnvironment();
-            int owner00 = env.getOwnerId(0,0);
-            int owner10 = env.getOwnerId(1,0);
-            anyOwned = owner00 != 0 || owner10 != 0;
-        }
-        assertThat(anyOwned).as("ownership should be visible by tick 1 (message or env)\nlastTick=" + lastTick).isTrue();
+        // Nach Tick 0 sollte die Zelle (5,5) dem Organismus gehören.
+        int ownerId = env.getOwnerId(5, 5);
+        assertThat(ownerId).as("Cell at organism start position [5,5] should be owned.").isNotEqualTo(0);
 
         engine.shutdown();
     }
 }
-
-

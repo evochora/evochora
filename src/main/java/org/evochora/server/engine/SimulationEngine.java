@@ -9,13 +9,18 @@ import org.evochora.runtime.worldgen.IEnergyDistributionCreator;
 import org.evochora.runtime.worldgen.EnergyStrategyFactory;
 import org.evochora.runtime.model.Organism;
 import org.evochora.server.IControllable;
-// import org.evochora.server.contracts.IQueueMessage;
-import org.evochora.server.contracts.PreparedTickState;
 import org.evochora.server.contracts.ProgramArtifactMessage;
+import org.evochora.server.contracts.raw.RawCellState;
+import org.evochora.server.contracts.raw.RawOrganismState;
+import org.evochora.server.contracts.raw.RawTickState;
+import org.evochora.server.contracts.raw.SerializableProcFrame;
 import org.evochora.server.queue.ITickMessageQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -62,9 +67,6 @@ public final class SimulationEngine implements IControllable, Runnable {
         this.organismDefinitions = defs != null ? defs : new SimulationConfiguration.OrganismDefinition[0];
     }
 
-    /**
-     * Builds and installs energy distribution strategies from configuration entries.
-     */
     public void setEnergyStrategies(java.util.List<org.evochora.server.config.SimulationConfiguration.EnergyStrategyConfig> configs) {
         if (configs == null || configs.isEmpty()) {
             this.energyStrategies = java.util.Collections.emptyList();
@@ -127,7 +129,6 @@ public final class SimulationEngine implements IControllable, Runnable {
     public void step() {
         if (simulation == null) return;
         simulation.tick();
-        // Apply energy distribution after organisms executed for this tick
         if (energyStrategies != null && !energyStrategies.isEmpty()) {
             for (IEnergyDistributionCreator strategy : energyStrategies) {
                 try {
@@ -139,8 +140,9 @@ public final class SimulationEngine implements IControllable, Runnable {
         }
         StatusMetricsRegistry.onTick(simulation.getCurrentTick());
         try {
-            PreparedTickState pts = WorldStateAdapter.toPreparedState(simulation);
-            queue.put(pts);
+            // NEU: Erzeuge rohen Tick-Zustand
+            RawTickState rts = toRawState(simulation);
+            queue.put(rts);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -177,15 +179,12 @@ public final class SimulationEngine implements IControllable, Runnable {
             }
             simulation.setRandomProvider(this.randomProvider);
 
-            // New path: configure organisms from JSON if present; otherwise fallback to already-loaded artifacts path
             if (organismDefinitions != null && organismDefinitions.length > 0) {
-                // Compile and place each organism set
                 Compiler compiler = new Compiler();
                 java.util.Map<String, ProgramArtifact> artifactsById = new java.util.HashMap<>();
                 int dims = this.worldShape.length;
                 for (SimulationConfiguration.OrganismDefinition def : organismDefinitions) {
                     if (def == null || def.program == null) continue;
-                    // Load program from resources under org/evochora/organism/
                     String resBase = "org/evochora/organism/";
                     String resPath = resBase + def.program;
                     java.io.InputStream is = SimulationEngine.class.getClassLoader().getResourceAsStream(resPath);
@@ -196,7 +195,6 @@ public final class SimulationEngine implements IControllable, Runnable {
                             lines = br.lines().toList();
                         }
                     } else {
-                        // try filesystem path as fallback
                         java.nio.file.Path fsPath = java.nio.file.Path.of(def.program);
                         lines = java.nio.file.Files.readAllLines(fsPath, java.nio.charset.StandardCharsets.UTF_8);
                         logicalName = fsPath.toAbsolutePath().toString();
@@ -207,16 +205,13 @@ public final class SimulationEngine implements IControllable, Runnable {
                         try { queue.put(new ProgramArtifactMessage(artifact.programId(), artifact)); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
                     }
 
-                    // Placement: only fixed strategy supported now
                     if (def.placement != null && def.placement.positions != null) {
                         for (int[] origin : def.placement.positions) {
                             int[] start = origin != null ? origin : new int[dims];
-                            // Create organism first so ownership can be applied at placement time
                             int energy = Math.max(0, def.initialEnergy);
                             Organism organism = Organism.create(simulation, start, energy, simulation.getLogger());
                             organism.setProgramId(artifact.programId());
 
-                            // Place machine code and initial world objects relative to origin, setting owner
                             for (var e : artifact.machineCodeLayout().entrySet()) {
                                 int[] rel = e.getKey();
                                 int[] abs = new int[dims];
@@ -232,7 +227,6 @@ public final class SimulationEngine implements IControllable, Runnable {
                                 env.setMolecule(mol, organism.getId(), abs);
                             }
 
-                            // Defensive: ensure ownership is set even if a packed value was 0
                             for (var e : artifact.machineCodeLayout().entrySet()) {
                                 int[] rel = e.getKey();
                                 int[] abs = new int[dims];
@@ -246,7 +240,6 @@ public final class SimulationEngine implements IControllable, Runnable {
                                 env.setOwnerId(organism.getId(), abs);
                             }
 
-                            // Register CALL-site bindings for this placement (absolute coordinates)
                             if (!performanceMode && artifact.callSiteBindings() != null && artifact.linearAddressToCoord() != null) {
                                 org.evochora.runtime.internal.services.CallBindingRegistry registry = org.evochora.runtime.internal.services.CallBindingRegistry.getInstance();
                                 for (var b : artifact.callSiteBindings().entrySet()) {
@@ -260,7 +253,6 @@ public final class SimulationEngine implements IControllable, Runnable {
                                     }
                                 }
                             }
-                            // Ensure the origin cell is marked as owned to be visible in the initial snapshot
                             env.setOwnerId(organism.getId(), start);
                             simulation.addOrganism(organism);
                         }
@@ -270,16 +262,13 @@ public final class SimulationEngine implements IControllable, Runnable {
             } else if (programArtifacts != null && !programArtifacts.isEmpty()) {
                 simulation.setProgramArtifacts(this.programArtifacts.stream()
                         .collect(Collectors.toMap(ProgramArtifact::programId, pa -> pa, (a, b) -> b)));
-                // legacy path: seed artifacts and create a single organism per artifact at (0,0,...)
                 int dims = this.worldShape.length;
                 for (ProgramArtifact artifact : programArtifacts) {
                     int[] origin = UserLoadRegistry.getDesiredStart(artifact.programId());
                     if (origin == null) origin = new int[dims];
-                    // Create organism first
                     Organism organism = Organism.create(simulation, origin,
                             org.evochora.runtime.Config.ERROR_PENALTY_COST + 1000, simulation.getLogger());
                     organism.setProgramId(artifact.programId());
-                    // Place with ownership
                     for (var e : artifact.machineCodeLayout().entrySet()) {
                         int[] rel = e.getKey();
                         int[] abs = new int[dims];
@@ -289,13 +278,13 @@ public final class SimulationEngine implements IControllable, Runnable {
                     for (var e : artifact.initialWorldObjects().entrySet()) {
                         int[] rel = e.getKey();
                         int[] abs = new int[dims];
+                        // BUGFIX: 'start' existiert hier nicht, es muss 'origin' sein.
                         for (int i = 0; i < dims; i++) abs[i] = origin[i] + rel[i];
                         var pm = e.getValue();
                         var mol = new org.evochora.runtime.model.Molecule(pm.type(), pm.value());
                         env.setMolecule(mol, organism.getId(), abs);
                     }
 
-                    // Defensive: ensure ownership is set even if a packed value was 0
                     for (var e : artifact.machineCodeLayout().entrySet()) {
                         int[] rel = e.getKey();
                         int[] abs = new int[dims];
@@ -308,13 +297,11 @@ public final class SimulationEngine implements IControllable, Runnable {
                         for (int i = 0; i < dims; i++) abs[i] = origin[i] + rel[i];
                         env.setOwnerId(organism.getId(), abs);
                     }
-                    // Ensure the origin cell is marked as owned for initial snapshot visibility
                     env.setOwnerId(organism.getId(), origin);
                     simulation.addOrganism(organism);
                 }
             }
 
-            // HOLEN DER REGISTRY-INSTANZ
             CallBindingRegistry bindingRegistry = CallBindingRegistry.getInstance();
             if (programArtifacts != null && !programArtifacts.isEmpty()) {
                 for (ProgramArtifact artifact : programArtifacts) {
@@ -339,7 +326,7 @@ public final class SimulationEngine implements IControllable, Runnable {
 
             log.info("Saving initial state for tick 0.");
             StatusMetricsRegistry.onTick(simulation.getCurrentTick());
-            PreparedTickState initialMsg = WorldStateAdapter.toPreparedState(simulation);
+            RawTickState initialMsg = toRawState(simulation);
             queue.put(initialMsg);
 
             while (running.get()) {
@@ -349,7 +336,6 @@ public final class SimulationEngine implements IControllable, Runnable {
                 }
 
                 simulation.tick();
-                // Apply configured energy strategies each tick
                 if (energyStrategies != null && !energyStrategies.isEmpty()) {
                     for (IEnergyDistributionCreator strategy : energyStrategies) {
                         try {
@@ -360,7 +346,7 @@ public final class SimulationEngine implements IControllable, Runnable {
                     }
                 }
                 StatusMetricsRegistry.onTick(simulation.getCurrentTick());
-                PreparedTickState tickMsg = WorldStateAdapter.toPreparedState(simulation);
+                RawTickState tickMsg = toRawState(simulation);
                 queue.put(tickMsg);
             }
         } catch (InterruptedException e) {
@@ -369,6 +355,53 @@ public final class SimulationEngine implements IControllable, Runnable {
             log.error("SimulationEngine error", e);
         } finally {
             log.info("SimulationEngine stopped");
+        }
+    }
+
+    private RawTickState toRawState(Simulation simulation) {
+        final var env = simulation.getEnvironment();
+        final int[] shape = env.getShape();
+        final int dims = shape.length;
+
+        List<RawCellState> cells = new ArrayList<>();
+        int[] coord = new int[dims];
+        Arrays.fill(coord, 0);
+        iterate(shape, 0, coord, () -> {
+            var m = env.getMolecule(coord);
+            int ownerId = env.getOwnerId(coord);
+            if (m.toInt() != 0 || ownerId != 0) {
+                cells.add(new RawCellState(coord.clone(), m.toInt(), ownerId));
+            }
+        });
+
+        List<RawOrganismState> organisms = new ArrayList<>();
+        for (Organism o : simulation.getOrganisms()) {
+            java.util.Deque<SerializableProcFrame> serializableCallStack = o.getCallStack().stream()
+                    .map(f -> new SerializableProcFrame(
+                            f.procName, f.absoluteReturnIp, f.savedPrs, f.savedFprs, f.fprBindings))
+                    .collect(Collectors.toCollection(java.util.ArrayDeque::new));
+
+            organisms.add(new RawOrganismState(
+                    o.getId(), o.getParentId(), o.getBirthTick(), o.getProgramId(), o.getInitialPosition(),
+                    o.getIp(), o.getDv(), o.getDps(), o.getActiveDpIndex(), o.getEr(),
+                    o.getDrs(), o.getPrs(), o.getFprs(), o.getLrs(),
+                    o.getDataStack(), o.getLocationStack(), serializableCallStack,
+                    o.isDead(), o.isInstructionFailed(), o.getFailureReason(),
+                    o.shouldSkipIpAdvance(), o.getIpBeforeFetch(), o.getDvBeforeFetch()
+            ));
+        }
+
+        return new RawTickState(simulation.getCurrentTick(), organisms, cells);
+    }
+
+    private static void iterate(int[] shape, int dim, int[] coord, Runnable visitor) {
+        if (dim == shape.length) {
+            visitor.run();
+            return;
+        }
+        for (int i = 0; i < shape[dim]; i++) {
+            coord[dim] = i;
+            iterate(shape, dim + 1, coord, visitor);
         }
     }
 }

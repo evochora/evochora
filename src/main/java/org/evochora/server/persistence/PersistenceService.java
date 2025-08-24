@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.evochora.server.IControllable;
 import org.evochora.server.contracts.IQueueMessage;
 import org.evochora.server.contracts.ProgramArtifactMessage;
-import org.evochora.server.contracts.PreparedTickState;
-import org.evochora.server.queue.ITickMessageQueue;
+import org.evochora.server.contracts.raw.RawTickState; // NEU
 import org.evochora.runtime.Config;
+import org.evochora.server.queue.ITickMessageQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,10 +19,9 @@ import java.util.Date;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Consumes messages from a queue and persists them to a per-run SQLite database.
- * <p>
+ * Consumes raw messages from a queue and persists them to a per-run SQLite database.
  * This service runs in its own thread, decoupling the simulation engine from disk I/O.
- * In performance mode, it omits persisting expensive debug-only information like program artifacts.
+ * It handles raw data for simulation resumption and program artifacts.
  */
 public final class PersistenceService implements IControllable, Runnable {
 
@@ -42,23 +41,10 @@ public final class PersistenceService implements IControllable, Runnable {
     private String jdbcUrlInUse;
     private volatile long lastPersistedTick = -1L;
 
-    /**
-     * Constructs a new PersistenceService.
-     *
-     * @param queue The message queue to consume from.
-     * @param performanceMode If true, debug-only information will not be persisted.
-     */
     public PersistenceService(ITickMessageQueue queue, boolean performanceMode) {
         this(queue, performanceMode, null, null);
     }
 
-    /**
-     * Constructs a new PersistenceService with a specific JDBC URL, useful for testing.
-     *
-     * @param queue The message queue to consume from.
-     * @param performanceMode If true, debug-only information will not be persisted.
-     * @param jdbcUrlOverride The JDBC URL to use for the database connection.
-     */
     public PersistenceService(ITickMessageQueue queue, boolean performanceMode, String jdbcUrlOverride) {
         this(queue, performanceMode, jdbcUrlOverride, null);
     }
@@ -117,13 +103,15 @@ public final class PersistenceService implements IControllable, Runnable {
                 Path runsDir = Paths.get(Config.RUNS_DIRECTORY);
                 Files.createDirectories(runsDir);
                 String ts = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-                dbFilePath = runsDir.resolve("sim_run_" + ts + ".sqlite");
+                // NEUER DATEINAME
+                dbFilePath = runsDir.resolve("sim_run_" + ts + "_raw.sqlite");
                 jdbcUrlInUse = "jdbc:sqlite:" + dbFilePath.toAbsolutePath();
                 connection = DriverManager.getConnection(jdbcUrlInUse);
             }
             try (Statement st = connection.createStatement()) {
-                st.execute("CREATE TABLE IF NOT EXISTS programs (programId TEXT PRIMARY KEY, artifactJson TEXT)");
-                st.execute("CREATE TABLE IF NOT EXISTS prepared_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json TEXT)");
+                // NEUES SCHEMA
+                st.execute("CREATE TABLE IF NOT EXISTS program_artifacts (program_id TEXT PRIMARY KEY, artifact_json TEXT)");
+                st.execute("CREATE TABLE IF NOT EXISTS raw_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json TEXT)");
                 st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
                 try (PreparedStatement ps = connection.prepareStatement("INSERT OR REPLACE INTO simulation_metadata (key, value) VALUES (?, ?)")) {
                     if (worldShape != null) {
@@ -131,7 +119,6 @@ public final class PersistenceService implements IControllable, Runnable {
                         ps.setString(2, objectMapper.writeValueAsString(worldShape));
                         ps.executeUpdate();
                     }
-                    // Removed isaMap persistence; opcode names are included per cell in prepared tick payloads
                     ps.setString(1, "runMode");
                     ps.setString(2, performanceMode ? "performance" : "debug");
                     ps.executeUpdate();
@@ -156,8 +143,8 @@ public final class PersistenceService implements IControllable, Runnable {
                 IQueueMessage msg = queue.take();
                 if (msg instanceof ProgramArtifactMessage pam) {
                     handleProgramArtifact(pam);
-                } else if (msg instanceof PreparedTickState pts) {
-                    handlePreparedTick(pts);
+                } else if (msg instanceof RawTickState rts) { // GEÄNDERT
+                    handleRawTick(rts); // GEÄNDERT
                 }
             }
         } catch (InterruptedException e) {
@@ -170,22 +157,26 @@ public final class PersistenceService implements IControllable, Runnable {
     }
 
     private void handleProgramArtifact(ProgramArtifactMessage pam) throws Exception {
+        // Im Performance-Modus werden keine Artefakte gespeichert.
         if (this.performanceMode) return;
         String json = objectMapper.writeValueAsString(pam.programArtifact());
-        try (PreparedStatement ps = connection.prepareStatement("INSERT OR REPLACE INTO programs(programId, artifactJson) VALUES (?, ?)")) {
+        // GEÄNDERT: Tabellen- und Spaltennamen
+        try (PreparedStatement ps = connection.prepareStatement("INSERT OR REPLACE INTO program_artifacts(program_id, artifact_json) VALUES (?, ?)")) {
             ps.setString(1, pam.programId());
             ps.setString(2, json);
             ps.executeUpdate();
         }
     }
 
-    private void handlePreparedTick(PreparedTickState pts) throws Exception {
+    // KOMPLETT NEU/UMBENANNT
+    private void handleRawTick(RawTickState rts) throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
-                "INSERT OR REPLACE INTO prepared_ticks(tick_number, tick_data_json) VALUES (?, ?)")) {
-            ps.setLong(1, pts.tickNumber());
-            ps.setString(2, objectMapper.writeValueAsString(pts));
+                "INSERT OR REPLACE INTO raw_ticks(tick_number, tick_data_json) VALUES (?, ?)")) {
+            ps.setLong(1, rts.tickNumber());
+            // Serialisiere das gesamte RawTickState-Objekt als JSON
+            ps.setString(2, objectMapper.writeValueAsString(rts));
             ps.executeUpdate();
         }
-        lastPersistedTick = pts.tickNumber();
+        lastPersistedTick = rts.tickNumber();
     }
 }
