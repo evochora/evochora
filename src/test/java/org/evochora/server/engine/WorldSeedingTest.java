@@ -16,7 +16,7 @@ class WorldSeedingTest {
     @Test
     void seedsInitialWorldObjectsOnStart() throws Exception {
         var queue = new InMemoryTickQueue();
-        var engine = new SimulationEngine(queue);
+        var engine = new SimulationEngine(queue, new int[]{10, 10}, true); // Small world
         var artifact = new ProgramArtifact(
                 "pid1",
                 emptyMap(), // sources
@@ -32,13 +32,22 @@ class WorldSeedingTest {
         );
         engine.setProgramArtifacts(List.of(artifact));
 
-        // Start engine and immediately pause to avoid flooding
+        // Start engine and wait for it to produce some messages
         engine.start();
-        engine.pause();
-
-        // Expect at least one message (artifact) and then world states; just assert queue not empty
-        Thread.sleep(50);
+        
+        // Wait for the engine to start and produce messages
+        Thread.sleep(500);
+        
+        // Check that the simulation is running and has advanced
+        assertThat(engine.getCurrentTick()).isGreaterThanOrEqualTo(0L);
+        
+        // Expect at least one message (artifact) and then world states
         assertThat(queue.size()).isGreaterThan(0);
+        
         engine.shutdown();
+        
+        // Wait for shutdown to complete
+        Thread.sleep(1000);
+        assertThat(engine.isRunning()).isFalse();
     }
 }

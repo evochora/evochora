@@ -48,7 +48,7 @@
       "autoStart": true,
       "inputPath": "runs/",
       "outputPath": "runs/",
-      "batchSize": 5000
+      "batchSize": 1000
     },
     "persistence": {
       "autoStart": true,

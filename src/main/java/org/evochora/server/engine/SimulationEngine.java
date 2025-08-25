@@ -331,7 +331,13 @@ public class SimulationEngine implements IControllable, Runnable {
             // Start simulation loop
             while (running.get()) {
                 if (paused.get()) {
-                    Thread.onSpinWait();
+                    // Use a short sleep instead of busy-wait to avoid consuming CPU
+                    try {
+                        Thread.sleep(10); // 10ms sleep is much more efficient than spin-wait
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
                     continue;
                 }
 
