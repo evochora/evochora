@@ -3,16 +3,38 @@ package org.evochora.runtime.model;
 
 import java.util.Arrays;
 
-public class Environment {
+public class Environment implements IEnvironmentReader {
     private final int[] shape;
     private final boolean isToroidal;
     private final int[] grid;
     private final int[] ownerGrid;
     private final int[] strides;
+    
+    /**
+     * Environment properties that can be shared with other components.
+     * This provides coordinate calculations without exposing the full grid data.
+     */
+    public final EnvironmentProperties properties;
 
+    /**
+     * Creates a new environment with the specified shape and toroidal setting.
+     * 
+     * @param shape The dimensions of the world
+     * @param toroidal Whether the world wraps around at edges
+     */
     public Environment(int[] shape, boolean toroidal) {
-        this.shape = shape;
-        this.isToroidal = toroidal;
+        this(new EnvironmentProperties(shape, toroidal));
+    }
+    
+    /**
+     * Creates a new environment with the specified properties.
+     * 
+     * @param properties The environment properties
+     */
+    public Environment(EnvironmentProperties properties) {
+        this.properties = properties;
+        this.shape = properties.getWorldShape();
+        this.isToroidal = properties.isToroidal();
         int size = 1;
         for (int dim : shape) { size *= dim; }
         this.grid = new int[size];
@@ -106,6 +128,11 @@ public class Environment {
 
     public int[] getShape() {
         return Arrays.copyOf(this.shape, this.shape.length);
+    }
+    
+    @Override
+    public org.evochora.runtime.model.EnvironmentProperties getProperties() {
+        return this.properties;
     }
 
     /**

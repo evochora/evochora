@@ -4,244 +4,400 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.server.engine.SimulationEngine;
 import org.evochora.server.config.ConfigLoader;
 import org.evochora.server.config.SimulationConfiguration;
-import org.evochora.server.http.DebugServer;
 import org.evochora.server.persistence.PersistenceService;
+import org.evochora.server.indexer.DebugIndexer;
+import org.evochora.server.http.DebugServer;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
-// Removed unused imports
+import org.evochora.compiler.Compiler;
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.server.engine.StatusMetricsRegistry;
-// import org.evochora.server.engine.WorldStateAdapter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-// Removed unused imports
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 
 /**
- * Simple CLI REPL to control the simulation and persistence services.
+ * Simple CLI to control the Evochora simulation pipeline.
  */
 public final class CommandLineInterface {
 
-    private static final Logger log = LoggerFactory.getLogger(CommandLineInterface.class);
+    private ITickMessageQueue queue;
+    private SimulationConfiguration cfg;
 
-    public static void main(String[] args) throws Exception {
-        Instruction.init();
-
-        ITickMessageQueue queue = new InMemoryTickQueue();
-        SimulationEngine sim = null;
-        PersistenceService persist = null;
-        DebugServer web = null;
-        // 'load' command removed; programs are defined in config
-        SimulationConfiguration loadedConfig = null;
+    public static void main(String[] args) {
+        // Suppress SLF4J replay warnings
+        System.setProperty("slf4j.replay.warn", "false");
+        System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn");
+        
+        try {
+            CommandLineInterface cli = new CommandLineInterface();
+            cli.run();
+        } catch (Exception e) {
+            System.err.println("CLI error: " + e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
+        }
+    }
+    
+    public void run() throws Exception {
+        this.queue = new InMemoryTickQueue();
+        this.cfg = ConfigLoader.loadDefault();
+        
+        // Service references for status and shutdown
+        final SimulationEngine[] simRef = new SimulationEngine[1];
+        final PersistenceService[] persistRef = new PersistenceService[1];
+        final DebugIndexer[] indexerRef = new DebugIndexer[1];
+        final DebugServer[] serverRef = new DebugServer[1];
 
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-        log.info("Evochora server CLI ready. Commands: config <file> | run <file?> | run debug <file?> | view [db] | tick [n] | sim pause|resume | persist pause|resume | web stop | status | clear | exit");
+        System.out.println("Evochora CLI ready. Commands: start | pause | status | exit");
 
         while (true) {
             System.err.print(">>> ");
             String line = reader.readLine();
             if (line == null) break;
             String cmd = line.trim();
-            if (cmd.startsWith("config ")) {
-                String path = cmd.substring("config ".length()).trim();
-                if (path.isEmpty()) {
-                    System.err.println("Usage: config <filepath>");
+            
+            if (cmd.equalsIgnoreCase("start")) {
+                // Check if services are already running but paused
+                if (simRef[0] != null && simRef[0].isRunning() && simRef[0].isPaused()) {
+                    System.out.println("Resuming simulation...");
+                    simRef[0].resume();
+                    
+                    // Resume other services if they were paused
+                    if (persistRef[0] != null && persistRef[0].isPaused()) {
+                        System.out.println("Resuming persistence service...");
+                        persistRef[0].resume();
+                    }
+                    if (indexerRef[0] != null && indexerRef[0].isPaused()) {
+                        System.out.println("Resuming debug indexer...");
+                        indexerRef[0].resume();
+                    }
+                    
+                    System.out.println("Pipeline resumed successfully");
                     continue;
                 }
-                try {
-                    loadedConfig = org.evochora.server.config.ConfigLoader.loadFromFile(java.nio.file.Path.of(path));
-                    System.err.printf("Loaded config from %s: dims=%d shape=[%s] toroidal=%s%n",
-                            path,
-                            loadedConfig.getDimensions(),
-                            java.util.Arrays.stream(loadedConfig.environment.shape).mapToObj(String::valueOf).collect(java.util.stream.Collectors.joining(",")),
-                            loadedConfig.environment.toroidal);
-                } catch (Exception e) {
-                    System.err.println("Failed to load config: " + e.getMessage());
+                
+                // Check if services are already running
+                if (simRef[0] != null && simRef[0].isRunning()) {
+                    System.out.println("Pipeline is already running. Use 'pause' to pause or 'exit' to shutdown.");
+                    continue;
                 }
-                continue;
-            } else if (cmd.startsWith("run debug")) {
-                boolean performanceMode = false;
-
-                if (performanceMode) {
-                    log.info("Starting in PERFORMANCE mode.");
-                } else {
-                    log.info("Starting in DEBUG mode.");
-                }
-                SimulationConfiguration cfg;
-                String[] partsRunDbg = cmd.split("\\s+", 3);
-                if (partsRunDbg.length >= 3) {
+                
+                // Start services in separate threads
+                Thread simThread = new Thread(() -> {
+                    simRef[0] = new SimulationEngine(this.queue, this.cfg.simulation.environment.shape, this.cfg.simulation.environment.toroidal);
+                    simRef[0].setSeed(this.cfg.simulation.seed);
+                    simRef[0].setOrganismDefinitions(this.cfg.simulation.organisms);
+                    simRef[0].setEnergyStrategies(this.cfg.simulation.energyStrategies);
+                    simRef[0].start();
+                }, "SimulationEngine");
+                
+                Thread persistThread = new Thread(() -> {
+                    int batchSize = this.cfg.pipeline.persistence != null ? this.cfg.pipeline.persistence.batchSize : 1000;
+                    persistRef[0] = new PersistenceService(this.queue, this.cfg.simulation.environment.shape, batchSize);
+                    persistRef[0].start();
+                }, "PersistenceService");
+                
+                // Start debug indexer (will wait for raw data)
+                final String[] timestampRef = new String[1];
+                Thread indexerThread = new Thread(() -> {
+                    // Wait for persistence service to create its database first
                     try {
-                        cfg = ConfigLoader.loadFromFile(java.nio.file.Path.of(partsRunDbg[2]));
+                        Thread.sleep(1000); // Give persistence service time to start
+                        String rawDbPath = persistRef[0].getDbFilePath().toString();
+                        // Extract timestamp from path like "runs\sim_run_20250825_052155_raw.sqlite"
+                        int rawIndex = rawDbPath.lastIndexOf("_raw");
+                        int timestampStart = rawDbPath.lastIndexOf("_", rawIndex - 1) + 1;
+                        timestampRef[0] = rawDbPath.substring(timestampStart, rawIndex);
+                        
+                        // Get batch size from indexer config
+                        int indexerBatchSize = this.cfg.pipeline.indexer != null ? this.cfg.pipeline.indexer.batchSize : 1000;
+                        indexerRef[0] = new DebugIndexer(rawDbPath, indexerBatchSize);
+                        indexerRef[0].start();
                     } catch (Exception e) {
-                        System.err.println("Failed to load config: " + e.getMessage());
-                        continue;
+                        System.err.println("Failed to start debug indexer: " + e.getMessage());
                     }
-                } else {
-                    cfg = loadedConfig != null ? loadedConfig : ConfigLoader.loadDefault();
-                    if (loadedConfig == null) {
-                        System.err.println("No config provided. Using default resources config.json.");
-                    }
-                }
-
-                sim = new SimulationEngine(queue, performanceMode, cfg.environment.shape, cfg.environment.toroidal);
-                // Configure deterministic randomness if seed is provided
-                sim.setSeed(cfg.seed);
-                persist = new PersistenceService(queue, performanceMode, cfg.environment.shape);
-
-                sim.setOrganismDefinitions(cfg.organisms);
-                // Configure energy strategies from config if provided
-                sim.setEnergyStrategies(cfg.energyStrategies);
-                if (!sim.isRunning()) { sim.start(); System.err.println("SimulationEngine started."); }
-                if (!persist.isRunning()) { persist.start(); System.err.println("PersistenceService started."); }
-                // Also start web service in debug mode
-                try {
-                    int port = (cfg.web != null && cfg.web.port != null) ? cfg.web.port : 7070;
-                    java.nio.file.Path dbPath = persist.getDbFilePath();
-                    if (dbPath != null) {
-                        if (web != null) { web.stop(); }
-                        web = new DebugServer();
-                        web.start(dbPath.toString(), port);
-                        System.err.println("DebugServer at http://localhost:" + port);
-                    }
-                } catch (Exception we) {
-                    System.err.println("Failed to start web service: " + we.getMessage());
-                }
-                continue;
-            } else if (cmd.startsWith("run")) {
-                boolean performanceMode = true;
-
-                if (performanceMode) {
-                    log.info("Starting in PERFORMANCE mode.");
-                } else {
-                    log.info("Starting in DEBUG mode.");
-                }
-                SimulationConfiguration cfg;
-                String[] partsRun = cmd.split("\\s+", 2);
-                if (partsRun.length >= 2) {
+                }, "DebugIndexer");
+                
+                // Start debug server
+                Thread serverThread = new Thread(() -> {
+                    int port = (this.cfg.pipeline.server != null && this.cfg.pipeline.server.port != null) ? this.cfg.pipeline.server.port : 7070;
+                    // Wait for debug indexer to create its database and set timestamp
                     try {
-                        cfg = ConfigLoader.loadFromFile(java.nio.file.Path.of(partsRun[1]));
-                    } catch (Exception e) {
-                        System.err.println("Failed to load config: " + e.getMessage());
-                        continue;
-                    }
-                } else {
-                    cfg = loadedConfig != null ? loadedConfig : ConfigLoader.loadDefault();
-                    if (loadedConfig == null) {
-                        System.err.println("No config provided. Using default resources config.json.");
-                    }
-                }
-
-                sim = new SimulationEngine(queue, performanceMode, cfg.environment.shape, cfg.environment.toroidal);
-                sim.setSeed(cfg.seed);
-                persist = new PersistenceService(queue, performanceMode, cfg.environment.shape);
-                sim.setOrganismDefinitions(cfg.organisms);
-                sim.setEnergyStrategies(cfg.energyStrategies);
-                if (!sim.isRunning()) { sim.start(); System.err.println("SimulationEngine started."); }
-                if (!persist.isRunning()) { persist.start(); System.err.println("PersistenceService started."); }
-                // Start web in performance mode as well (serves reduced data)
-                try {
-                    int port = (cfg.web != null && cfg.web.port != null) ? cfg.web.port : 7070;
-                    java.nio.file.Path dbPath = persist.getDbFilePath();
-                    if (dbPath != null) {
-                        if (web != null) { web.stop(); }
-                        web = new DebugServer();
-                        web.start(dbPath.toString(), port);
-                        System.err.println("DebugServer at http://localhost:" + port);
-                    }
-                } catch (Exception we) {
-                    System.err.println("Failed to start web service: " + we.getMessage());
-                }
-                continue;
-            } else if (cmd.startsWith("tick")) {
-                if (sim == null || persist == null) {
-                    // Boot minimal debug services if not running
-                    boolean performanceMode = false;
-                    sim = new SimulationEngine(queue, performanceMode);
-                    persist = new PersistenceService(queue, performanceMode);
-                    sim.start();
-                    persist.start();
-                    // Pause immediately to gain control over stepping
-                    sim.pause();
-                } else {
-                    // Ensure paused before stepping
-                    sim.pause();
-                }
-                int n = 1;
-                String[] parts = cmd.split("\\s+");
-                if (parts.length > 1) {
-                    try { n = Integer.parseInt(parts[1]); } catch (NumberFormatException ignore) { n = 1; }
-                }
-                for (int i = 0; i < n; i++) {
-                    sim.step();
-                }
-                System.err.printf("Stepped %d tick(s). Current: %d%n", n, sim.getCurrentTick());
-                continue;
-            }
-            switch (cmd) {
-                case "sim pause" -> { if(sim != null) sim.pause(); System.err.println("SimulationEngine paused."); }
-                case "sim resume" -> { if(sim != null) sim.resume(); System.err.println("SimulationEngine resumed."); }
-                case "persist pause" -> { if(persist != null) persist.pause(); System.err.println("PersistenceService paused."); }
-                case "persist resume" -> { if(persist != null) persist.resume(); System.err.println("PersistenceService resumed."); }
-                case "web stop" -> { if (web != null) { web.stop(); web = null; System.err.println("Web service stopped."); } }
-                case "view" -> {
-                    try {
-                        // Determine DB path
-                        String dbPath;
-                        String[] parts = cmd.split("\\s+", 2);
-                        if (parts.length == 2 && !parts[1].isBlank()) {
-                            dbPath = parts[1];
-                        } else {
-                            java.nio.file.Path runs = java.nio.file.Paths.get(org.evochora.runtime.Config.RUNS_DIRECTORY);
-                            java.nio.file.Path latest = java.nio.file.Files.list(runs)
-                                    .filter(p -> p.getFileName().toString().endsWith(".sqlite"))
-                                    .max(java.util.Comparator.comparingLong(p -> p.toFile().lastModified()))
-                                    .orElse(null);
-                            if (latest == null) { System.err.println("No .sqlite file found in runs/"); break; }
-                            dbPath = latest.toString();
+                        // Wait for timestamp to be available
+                        while (timestampRef[0] == null && !Thread.currentThread().isInterrupted()) {
+                            Thread.sleep(100);
                         }
-                        int port = 7070;
-                        if (loadedConfig != null && loadedConfig.web != null && loadedConfig.web.port != null) port = loadedConfig.web.port;
-                        if (web != null) web.stop();
-                        web = new DebugServer();
-                        web.start(dbPath, port);
-                        System.err.println("DebugServer at http://localhost:" + port + " (DB=" + dbPath + ")");
+                        if (timestampRef[0] != null) {
+                            String debugDbPath = "runs/sim_run_" + timestampRef[0] + "_debug.sqlite";
+                            serverRef[0] = new DebugServer();
+                            serverRef[0].start(debugDbPath, port);
+                        }
                     } catch (Exception e) {
-                        System.err.println("Failed to start view: " + e.getMessage());
+                        System.err.println("Failed to start debug server: " + e.getMessage());
                     }
+                }, "DebugServer");
+                
+                simThread.start();
+                persistThread.start();
+                indexerThread.start();
+                serverThread.start();
+                
+                // Wait for all services to actually start
+                try {
+                    Thread.sleep(2000); // Give services time to initialize
+                    System.out.println("Pipeline started successfully");
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                 }
-                case "status" -> {
-                    long simTick = (sim != null) ? sim.getCurrentTick() : -1L;
-                    long persistTick = (persist != null) ? persist.getLastPersistedTick() : -1L;
-                    int[] orgCounts = (sim != null) ? sim.getOrganismCounts() : new int[]{0,0};
-                    double tps = StatusMetricsRegistry.getTicksPerSecond();
-                    String simState = (sim != null && sim.isPaused()) ? "paused" : ((sim != null && sim.isRunning()) ? "running" : "stopped");
-                    String persState = (persist != null && persist.isPaused()) ? "paused" : ((persist != null && persist.isRunning()) ? "running" : "stopped");
-                    String webState = (web != null) ? "running" : "stopped";
-                    System.err.printf(
-                            "sim: %s | persist: %s | web: %s | ticks (persist/sim): %d/%d | organisms (living/dead): %d/%d | queue: %d | tps: %.2f%n",
-                            simState, persState, webState, persistTick, simTick, orgCounts[0], orgCounts[1], queue.size(), tps);
+                
+            } else if (cmd.startsWith("start ")) {
+                // Start specific service
+                String serviceName = cmd.substring(6).toLowerCase();
+                switch (serviceName) {
+                    case "simulation":
+                        if (simRef[0] == null || !simRef[0].isRunning()) {
+                            simRef[0] = new SimulationEngine(this.queue, this.cfg.simulation.environment.shape, this.cfg.simulation.environment.toroidal);
+                            simRef[0].setSeed(this.cfg.simulation.seed);
+                            simRef[0].setOrganismDefinitions(this.cfg.simulation.organisms);
+                            simRef[0].setEnergyStrategies(this.cfg.simulation.energyStrategies);
+                            simRef[0].start();
+                            System.out.println("Simulation started successfully");
+                        } else {
+                            System.out.println("Simulation is already running.");
+                        }
+                        break;
+                    case "persist":
+                    case "persistence":
+                        if (persistRef[0] == null || !persistRef[0].isRunning()) {
+                            int batchSize = this.cfg.pipeline.persistence != null ? this.cfg.pipeline.persistence.batchSize : 1000;
+                            persistRef[0] = new PersistenceService(this.queue, this.cfg.simulation.environment.shape, batchSize);
+                            persistRef[0].start();
+                            System.out.println("PersistenceService started successfully");
+                        } else {
+                            System.out.println("PersistenceService is already running.");
+                        }
+                        break;
+                    case "indexer":
+                        if (indexerRef[0] == null || !indexerRef[0].isRunning()) {
+                            if (persistRef[0] != null) {
+                                String rawDbPath = persistRef[0].getDbFilePath().toString();
+                                int indexerBatchSize = this.cfg.pipeline.indexer != null ? this.cfg.pipeline.indexer.batchSize : 1000;
+                                indexerRef[0] = new DebugIndexer(rawDbPath, indexerBatchSize);
+                                indexerRef[0].start();
+                                System.out.println("DebugIndexer started successfully");
+                            } else {
+                                System.out.println("PersistenceService must be running first to start DebugIndexer.");
+                            }
+                        } else {
+                            System.out.println("DebugIndexer is already running.");
+                        }
+                        break;
+                    case "server":
+                        if (serverRef[0] == null || !serverRef[0].isRunning()) {
+                            if (indexerRef[0] != null) {
+                                // Extract timestamp from indexer's database path
+                                String rawDbPath = persistRef[0].getDbFilePath().toString();
+                                int rawIndex = rawDbPath.lastIndexOf("_raw");
+                                int timestampStart = rawDbPath.lastIndexOf("_", rawIndex - 1) + 1;
+                                String timestamp = rawDbPath.substring(timestampStart, rawIndex);
+                                String debugDbPath = "runs/sim_run_" + timestamp + "_debug.sqlite";
+                                
+                                int port = (this.cfg.pipeline.server != null && this.cfg.pipeline.server.port != null) ? this.cfg.pipeline.server.port : 7070;
+                                serverRef[0] = new DebugServer();
+                                serverRef[0].start(debugDbPath, port);
+                                System.out.println("DebugServer started successfully on port " + port);
+                            } else {
+                                System.out.println("DebugIndexer must be running first to start DebugServer.");
+                            }
+                        } else {
+                            System.out.println("DebugServer is already running.");
+                        }
+                        break;
+                    default:
+                        System.out.println("Unknown service: " + serviceName + ". Available: simulation | persist | indexer | server");
+                        break;
                 }
-                case "clear" -> {
-                    // Stop running services if necessary
-                    if (sim != null) { sim.shutdown(); sim = null; }
-                    if (persist != null) { persist.shutdown(); persist = null; }
-                    if (web != null) { web.stop(); web = null; }
-                    // Reset queue to drop any pending messages
-                    queue = new InMemoryTickQueue();
-                    // Clear user-registered starts
-                    org.evochora.server.engine.UserLoadRegistry.clearAll();
-                    System.err.println("World cleared. State reset.");
+                
+            } else if (cmd.equalsIgnoreCase("pause")) {
+                if (simRef[0] != null && simRef[0].isRunning()) {
+                    System.out.println("Pausing simulation...");
+                    simRef[0].pause();
+                    
+                    // Persistence and indexer will automatically pause when no ticks are available
+                    // and wake up periodically to check for new ticks
+                    System.out.println("Simulation paused. Persistence and indexer will auto-pause when idle.");
+                    System.out.println("Use 'start' to resume simulation or 'exit' to shutdown.");
+                    
+                } else {
+                    System.out.println("Simulation is not running or already paused.");
                 }
-                case "exit" -> {
-                    if (sim != null) sim.shutdown();
-                    if (persist != null) persist.shutdown();
-                    if (web != null) { web.stop(); web = null; }
-                    System.err.println("Services stopped. Exiting.");
-                    return;
+                
+            } else if (cmd.startsWith("pause ")) {
+                // Pause specific service
+                String serviceName = cmd.substring(6).toLowerCase();
+                switch (serviceName) {
+                    case "simulation":
+                        if (simRef[0] != null && simRef[0].isRunning()) {
+                            System.out.println("Pausing simulation...");
+                            simRef[0].pause();
+                            System.out.println("Simulation paused.");
+                        } else {
+                            System.out.println("Simulation is not running or already paused.");
+                        }
+                        break;
+                    case "persist":
+                    case "persistence":
+                        if (persistRef[0] != null && persistRef[0].isRunning()) {
+                            System.out.println("Pausing PersistenceService...");
+                            persistRef[0].pause();
+                            System.out.println("PersistenceService paused.");
+                        } else {
+                            System.out.println("PersistenceService is not running or already paused.");
+                        }
+                        break;
+                    case "indexer":
+                        if (indexerRef[0] != null && indexerRef[0].isRunning()) {
+                            System.out.println("Pausing DebugIndexer...");
+                            indexerRef[0].pause();
+                            System.out.println("DebugIndexer paused.");
+                        } else {
+                            System.out.println("DebugIndexer is not running or already paused.");
+                        }
+                        break;
+                    case "server":
+                        if (serverRef[0] != null && serverRef[0].isRunning()) {
+                            System.out.println("Pausing DebugServer...");
+                            serverRef[0].stop();
+                            System.out.println("DebugServer paused.");
+                        } else {
+                            System.out.println("DebugServer is not running or already paused.");
+                        }
+                        break;
+                    default:
+                        System.out.println("Unknown service: " + serviceName + ". Available: simulation | persist | indexer | server");
+                        break;
                 }
-                default -> System.err.println("Unknown command");
+                
+            } else if (cmd.equalsIgnoreCase("status")) {
+                if (simRef[0] != null) {
+                    System.out.println("Simulation: " + simRef[0].getStatus());
+                } else {
+                    System.out.println("Simulation: NOT_STARTED");
+                }
+                
+                if (persistRef[0] != null) {
+                    System.out.println("Persistence: " + persistRef[0].getStatus());
+                } else {
+                    System.out.println("Persistence: NOT_STARTED");
+                }
+                
+                if (indexerRef[0] != null) {
+                    System.out.println("DebugIndexer: " + indexerRef[0].getStatus());
+                } else {
+                    System.out.println("DebugIndexer: NOT_STARTED");
+                }
+                
+                if (serverRef[0] != null) {
+                    System.out.println("DebugServer: " + serverRef[0].getStatus());
+                } else {
+                    System.out.println("DebugServer: NOT_STARTED");
+                }
+                
+            } else if (cmd.equalsIgnoreCase("exit") || cmd.equalsIgnoreCase("quit")) {
+                break;
+                
+            } else if (cmd.startsWith("exit ")) {
+                // Exit specific service
+                String serviceName = cmd.substring(5).toLowerCase();
+                switch (serviceName) {
+                    case "simulation":
+                        if (simRef[0] != null) {
+                            simRef[0].shutdown();
+                            System.out.println("Simulation shutdown.");
+                        } else {
+                            System.out.println("Simulation is not running.");
+                        }
+                        break;
+                    case "persist":
+                    case "persistence":
+                        if (persistRef[0] != null) {
+                            persistRef[0].shutdown();
+                            System.out.println("PersistenceService shutdown.");
+                        } else {
+                            System.out.println("PersistenceService is not running.");
+                        }
+                        break;
+                    case "indexer":
+                        if (indexerRef[0] != null) {
+                            indexerRef[0].shutdown();
+                            System.out.println("DebugIndexer shutdown.");
+                        } else {
+                            System.out.println("DebugIndexer is not running.");
+                        }
+                        break;
+                    case "server":
+                        if (serverRef[0] != null) {
+                            serverRef[0].stop();
+                            System.out.println("DebugServer shutdown.");
+                        } else {
+                            System.out.println("DebugServer is not running.");
+                        }
+                        break;
+                    default:
+                        System.out.println("Unknown service: " + serviceName + ". Available: simulation | persist | indexer | server");
+                        break;
+                }
+                
+            } else if (cmd.isEmpty()) {
+                continue;
+            } else {
+                System.out.println("Unknown command. Available: start [service] | pause [service] | status | exit [service]");
             }
         }
+
+        // Cleanup - wait for services to finish naturally
+        if (simRef[0] != null) {
+            simRef[0].shutdown();
+            // Wait for simulation to finish
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        if (persistRef[0] != null) {
+            persistRef[0].shutdown();
+            // Wait for persistence to finish
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        if (indexerRef[0] != null) {
+            indexerRef[0].shutdown();
+            // Wait for indexer to finish
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        if (serverRef[0] != null) {
+            serverRef[0].stop();
+            // Wait for server to finish
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        System.out.println("CLI shutdown complete");
     }
 }

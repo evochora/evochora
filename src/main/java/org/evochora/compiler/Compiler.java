@@ -47,7 +47,7 @@ public class Compiler implements ICompiler {
         if (verbosity >= 0) {
             org.evochora.compiler.diagnostics.CompilerLogger.setLevel(verbosity);
         }
-        org.evochora.compiler.diagnostics.CompilerLogger.info("Start compile: " + programName);
+        // org.evochora.compiler.diagnostics.CompilerLogger.info("Compiler: " + programName);
 
         String fullSource = String.join("\n", sourceLines);
         Lexer initialLexer = new Lexer(fullSource, diagnostics, programName);
@@ -137,7 +137,7 @@ public class Compiler implements ICompiler {
             throw new org.evochora.compiler.api.CompilationException(re.getMessage(), re);
         }
 
-        org.evochora.compiler.diagnostics.CompilerLogger.info("Emit completed: programId=" + artifact.programId());
+        org.evochora.compiler.diagnostics.CompilerLogger.info("Compiler: " + programName + " programId:" + artifact.programId());
         DebugDump.dumpProgramArtifact(programName, artifact);
         return artifact;
     }

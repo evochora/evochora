@@ -25,8 +25,8 @@ public final class InMemoryTickQueue implements ITickMessageQueue {
      * This is a heuristic to bound memory; precise sizing is complex without off-heap measurement.
      */
     public InMemoryTickQueue() {
-        this.maxQueueBytes = Math.max(16 * 1024 * 1024L, Config.MAX_QUEUE_BYTES);
-        int elementCapacity = Math.max(64, (int) Math.min(Integer.MAX_VALUE, this.maxQueueBytes / 1_000_000L));
+        this.maxQueueBytes = Math.max(256 * 1024 * 1024L, Config.MAX_QUEUE_BYTES); // Increase to 256MB
+        int elementCapacity = Math.max(5000, (int) Math.min(Integer.MAX_VALUE, this.maxQueueBytes / 200_000L)); // Much more elements, smaller size estimate
         this.delegate = new LinkedBlockingQueue<>(elementCapacity);
     }
 
@@ -45,6 +45,24 @@ public final class InMemoryTickQueue implements ITickMessageQueue {
     public IQueueMessage take() throws InterruptedException {
         IQueueMessage msg = delegate.take();
         approximateBytesUsed.addAndGet(-estimateSizeBytes(msg));
+        return msg;
+    }
+
+    @Override
+    public IQueueMessage poll(long timeout, TimeUnit unit) throws InterruptedException {
+        IQueueMessage msg = delegate.poll(timeout, unit);
+        if (msg != null) {
+            approximateBytesUsed.addAndGet(-estimateSizeBytes(msg));
+        }
+        return msg;
+    }
+
+    @Override
+    public IQueueMessage poll() {
+        IQueueMessage msg = delegate.poll();
+        if (msg != null) {
+            approximateBytesUsed.addAndGet(-estimateSizeBytes(msg));
+        }
         return msg;
     }
 

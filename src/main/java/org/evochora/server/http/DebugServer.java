@@ -23,9 +23,17 @@ public final class DebugServer {
     private Javalin app;
     private String jdbcUrl;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private int port;
+    private String dbPath;
+    private boolean isRunning = false;
+    private long lastStatusTime = 0;
+    private double lastTPS = 0.0;
 
     public void start(String dbPath, int port) {
         try {
+            this.dbPath = dbPath;
+            this.port = port;
+            
             // Prüfe, ob es eine JDBC-URL oder ein Dateipfad ist
             if (dbPath.startsWith("jdbc:sqlite:")) {
                 this.jdbcUrl = dbPath;  // Direkt verwenden
@@ -34,52 +42,125 @@ public final class DebugServer {
                 this.jdbcUrl = "jdbc:sqlite:" + Path.of(dbPath).toAbsolutePath();
             }
         } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid dbPath: " + dbPath, e);
+            log.error("DebugServer failed to start, invalid configuration: {}", e.getMessage());
+            throw new IllegalArgumentException("Invalid dbPath: " + dbPath);
         }
 
-        this.app = Javalin.create(config -> {
-            config.staticFiles.add(staticFiles -> {
-                staticFiles.hostedPath = "/";
-                String staticDir = Path.of(System.getProperty("user.dir"), "webdebugger").toAbsolutePath().toString();
-                staticFiles.directory = staticDir;
-                staticFiles.location = Location.EXTERNAL;
-                staticFiles.precompress = false;
+        try {
+            this.app = Javalin.create(config -> {
+                config.staticFiles.add(staticFiles -> {
+                    staticFiles.hostedPath = "/";
+                    String staticDir = Path.of(System.getProperty("user.dir"), "webdebugger").toAbsolutePath().toString();
+                    staticFiles.directory = staticDir;
+                    staticFiles.location = Location.EXTERNAL;
+                    staticFiles.precompress = false;
+                });
             });
-        });
 
-        this.app.get("/api/tick/{tick}", ctx -> {
-            String tickStr = ctx.pathParam("tick");
-            long tick;
-            try { tick = Long.parseLong(tickStr); } catch (NumberFormatException nfe) { ctx.status(HttpStatus.BAD_REQUEST).result("Invalid tick"); return; }
-            String json = fetchTickJson(tick);
-            if (json == null) { ctx.status(HttpStatus.NOT_FOUND).result("{}"); return; }
-            try {
-                Long total = fetchTickCount();
-                java.util.Map<String, Object> map = objectMapper.readValue(json, new TypeReference<java.util.Map<String, Object>>() {});
-                map.put("totalTicks", total != null ? total : 0L);
-                // Remove ISA mapping if present
-                Object wm = map.get("worldMeta");
-                if (wm instanceof java.util.Map<?, ?> wmMap) {
-                    ((java.util.Map<?, ?>) wmMap).remove("isaMap");
+            this.app.get("/api/tick/{tick}", ctx -> {
+                try {
+                    String tickStr = ctx.pathParam("tick");
+                    long tick;
+                    try { 
+                        tick = Long.parseLong(tickStr); 
+                    } catch (NumberFormatException nfe) { 
+                        ctx.status(HttpStatus.BAD_REQUEST).result("Invalid tick"); 
+                        return; 
+                    }
+                    
+                    String json = fetchTickJson(tick);
+                    if (json == null) { 
+                        ctx.status(HttpStatus.NOT_FOUND).result("{}"); 
+                        return; 
+                    }
+                    
+                    try {
+                        Long total = fetchTickCount();
+                        java.util.Map<String, Object> map = objectMapper.readValue(json, new TypeReference<java.util.Map<String, Object>>() {});
+                        map.put("totalTicks", total != null ? total : 0L);
+                        // Remove ISA mapping if present
+                        Object wm = map.get("worldMeta");
+                        if (wm instanceof java.util.Map<?, ?> wmMap) {
+                            ((java.util.Map<?, ?>) wmMap).remove("isaMap");
+                        }
+                        // Keep inlineValues intact; UI deduplicates identical spans so only the usage will be shown once
+                        String out = objectMapper.writeValueAsString(map);
+                        ctx.contentType("application/json").result(out);
+                    } catch (Exception e) {
+                        log.warn("Failed to augment tick json for tick {}: {}", tick, e.getMessage());
+                        ctx.contentType("application/json").result(json);
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to handle tick request: {}", e.getMessage());
+                    ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).result("Internal server error");
                 }
-                // Keep inlineValues intact; UI deduplicates identical spans so only the usage will be shown once
-                String out = objectMapper.writeValueAsString(map);
-                ctx.contentType("application/json").result(out);
-            } catch (Exception e) {
-                log.warn("Failed to augment tick json: {}", e.getMessage());
-                ctx.contentType("application/json").result(json);
-            }
-        });
+            });
 
-        this.app.start(port);
-        log.info("DebugServer started at http://localhost:{} using DB {}", port, dbPath);
+            this.app.start(port);
+            this.isRunning = true;
+            String dbName = dbPath.substring(dbPath.lastIndexOf('/') + 1);
+            log.info("DebugServer: port:{} reading {}", port, dbName);
+        } catch (Exception e) {
+            log.error("DebugServer failed to start HTTP server: {}", e.getMessage());
+            throw new RuntimeException("Failed to start HTTP server", e);
+        }
     }
 
     public void stop() {
         if (this.app != null) {
-            try { this.app.stop(); } catch (Exception ignore) {}
+            try { 
+                this.app.stop(); 
+                this.isRunning = false;
+                // Log graceful termination from the service thread
+                if (Thread.currentThread().getName().equals("DebugServer")) {
+                    log.info("DebugServer: graceful termination");
+                }
+            } catch (Exception ignore) {}
             this.app = null;
         }
+    }
+    
+    public void forceStop() {
+        if (this.app != null) {
+            try { 
+                this.app.stop(); 
+            } catch (Exception ignore) {}
+            this.app = null;
+        }
+    }
+
+    public boolean isRunning() {
+        return isRunning;
+    }
+
+    public String getStatus() {
+        if (!isRunning) {
+            return "stopped";
+        }
+        
+        String dbName = dbPath != null ? dbPath.substring(dbPath.lastIndexOf('/') + 1) : "unknown";
+        return String.format("started port:%d reading %s", port, dbName);
+    }
+    
+    private double calculateTPS() {
+        long currentTime = System.currentTimeMillis();
+        
+        if (lastStatusTime == 0) {
+            lastStatusTime = currentTime;
+            return 0.0;
+        }
+        
+        long timeDiff = currentTime - lastStatusTime;
+        if (timeDiff > 0) {
+            lastTPS = 1000.0 / timeDiff; // Requests per second
+        }
+        
+        return lastTPS;
+    }
+    
+    private void resetTPS() {
+        lastStatusTime = 0;
+        lastTPS = 0.0;
     }
 
     private String fetchTickJson(long tick) {

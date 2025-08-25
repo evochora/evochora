@@ -8,6 +8,13 @@ import java.util.Map;
  */
 public final class SimulationConfiguration {
 
+    public static final class SimulationConfig {
+        public EnvironmentConfig environment;
+        public OrganismDefinition[] organisms;
+        public List<EnergyStrategyConfig> energyStrategies;
+        public Long seed;
+    }
+
     public static final class EnvironmentConfig {
         public int[] shape;
         public boolean toroidal;
@@ -30,19 +37,54 @@ public final class SimulationConfiguration {
         public Map<String, Object> params;
     }
 
-    public static final class WebConfig {
-        public Integer port; // default 7070 if null
-        public String dbFile; // optional override for view mode
+    public static final class PipelineConfig {
+        public SimulationServiceConfig simulation;
+        public IndexerServiceConfig indexer;
+        public PersistenceServiceConfig persistence;
+        public ServerServiceConfig server;
     }
 
-    public EnvironmentConfig environment;
-    public OrganismDefinition[] organisms;
-    public List<EnergyStrategyConfig> energyStrategies;
-    public Long seed;
-    public WebConfig web;
+    public static final class SimulationServiceConfig {
+        public Boolean autoStart;
+        public String outputPath;
+    }
+
+    public static final class IndexerServiceConfig {
+        public boolean autoStart;
+        public String inputPath;
+        public String outputPath;
+        public int batchSize = 1000; // Default batch size
+    }
+
+    public static final class PersistenceServiceConfig {
+        public boolean autoStart;
+        public int batchSize = 1000; // Default batch size
+    }
+
+    public static final class ServerServiceConfig {
+        public Boolean autoStart;
+        public String inputPath;
+        public String debugDbFile; // optional: specific debug DB to serve
+        public Integer port;
+        public String host;
+    }
+
+    // Configuration structure
+    public SimulationConfig simulation;
+    public PipelineConfig pipeline;
 
     public int getDimensions() {
-        return environment != null && environment.shape != null ? environment.shape.length : 2;
+        if (simulation != null && simulation.environment != null && simulation.environment.shape != null) {
+            return simulation.environment.shape.length;
+        }
+        return 2;
+    }
+
+    public Integer getWebPort() {
+        if (pipeline != null && pipeline.server != null && pipeline.server.port != null) {
+            return pipeline.server.port;
+        }
+        return 7070; // default
     }
 }
 

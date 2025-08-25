@@ -3,7 +3,6 @@ import java.io.FileOutputStream;
 plugins {
     java
     application
-    id("org.openjfx.javafxplugin") version "0.1.0"
     jacoco
 }
 
@@ -42,6 +41,27 @@ tasks.register<JavaExec>("runServer") {
     standardInput = System.`in`
 }
 
+tasks.register<Jar>("cliJar") {
+    archiveClassifier.set("cli")
+    manifest {
+        attributes["Main-Class"] = "org.evochora.server.CommandLineInterface"
+    }
+    
+    // Add JVM arguments to suppress SLF4J warnings
+    doFirst {
+        // This will be used when running the jar
+        println("To run without SLF4J warnings, use:")
+        println("java -Dslf4j.replay.warn=false -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar")
+    }
+    
+    from(sourceSets.main.get().output)
+    from(configurations.runtimeClasspath.map { config -> 
+        config.map { if (it.isDirectory) it else zipTree(it) }
+    })
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    dependsOn(tasks.jar)
+}
+
 tasks.test {
     useJUnitPlatform()
     jvmArgs("-Duser.language=en", "-Duser.country=US")
@@ -65,9 +85,4 @@ tasks.jacocoTestReport {
             }
         })
     )
-}
-
-javafx {
-    version = "21"
-    modules = listOf("javafx.controls", "javafx.fxml")
 }

@@ -21,7 +21,7 @@ class PersistenceServiceTest {
     @Test
     void writesRawTickStateRows() throws Exception {
         ITickMessageQueue q = new InMemoryTickQueue();
-        PersistenceService persist = new PersistenceService(q, false, "jdbc:sqlite:file:psvcTest?mode=memory&cache=shared");
+        PersistenceService persist = new PersistenceService(q, "jdbc:sqlite:file:psvcTest?mode=memory&cache=shared");
         persist.start();
 
         var rawCell = new RawCellState(new int[]{1, 2}, 42, 1);

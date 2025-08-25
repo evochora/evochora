@@ -39,4 +39,28 @@ public class LexerTest {
         assertThat(tokens.get(8)).extracting(Token::type, Token::text).containsExactly(TokenType.IDENTIFIER, "HELLO");
         assertThat(tokens.get(9)).extracting(Token::type).isEqualTo(TokenType.END_OF_FILE);
     }
+
+    @Test
+    void testSETIAsOpcode() {
+        // Arrange
+        String source = "SETI %DR0 DATA:42";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+
+        // Act
+        List<Token> tokens = lexer.scanTokens();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        
+        // Find SETI token
+        Token setiToken = tokens.stream()
+            .filter(t -> t.text().equals("SETI"))
+            .findFirst()
+            .orElse(null);
+        
+        assertThat(setiToken).isNotNull();
+        assertThat(setiToken.type()).isEqualTo(TokenType.OPCODE);
+        assertThat(setiToken.text()).isEqualTo("SETI");
+    }
 }

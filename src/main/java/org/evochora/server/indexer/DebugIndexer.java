@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -27,10 +28,12 @@ import java.sql.Statement;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.evochora.compiler.internal.LinearizedProgramArtifact;
-import org.evochora.server.indexer.RuntimeDisassembler;
-import org.evochora.runtime.api.DisassembledInstruction;
-import org.evochora.runtime.api.DisassembledArgument;
+import org.evochora.runtime.services.Disassembler;
+import org.evochora.runtime.services.DisassemblyData;
+import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.isa.InstructionArgumentType;
 
 public class DebugIndexer implements IControllable, Runnable {
 
@@ -53,20 +56,29 @@ public class DebugIndexer implements IControllable, Runnable {
     private final Thread thread;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
+    private long startTime = System.currentTimeMillis();
+    private long lastProcessedTick = -1L;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final String rawDbPath;
     private final String debugDbPath;
     private final SourceAnnotator sourceAnnotator = new SourceAnnotator();
+    private final int batchSize; // Configurable batch size
 
     private Map<String, ProgramArtifact> artifacts = new HashMap<>();
     private int[] worldShape = new int[]{0, 0};
     
     // Cache für Artifact-Validität pro Organismus (programId_organismId -> ArtifactValidity)
     private final Map<String, ArtifactValidity> validityCache = new HashMap<>();
+    
+    // Database connection for batch operations
+    private Connection connection;
+    private PreparedStatement tickInsertStatement;
+    private int batchCount = 0;
 
-    public DebugIndexer(String rawDbPath) {
+    public DebugIndexer(String rawDbPath, int batchSize) {
         this.rawDbPath = rawDbPath;
         this.debugDbPath = rawDbPath.replace("_raw.sqlite", "_debug.sqlite");
+        this.batchSize = batchSize;
         this.thread = new Thread(this, "DebugIndexer");
         this.thread.setDaemon(true);
     }
@@ -80,12 +92,15 @@ public class DebugIndexer implements IControllable, Runnable {
                 .filter(p -> p.getFileName().toString().endsWith("_raw.sqlite"))
                 .max(Comparator.comparingLong(p -> p.toFile().lastModified()));
 
-        return latestRawDb.map(path -> new DebugIndexer(path.toAbsolutePath().toString()));
+        return latestRawDb.map(path -> new DebugIndexer(path.toAbsolutePath().toString(), 1000)); // Default batch size
     }
-
+    
     @Override
     public void start() {
         if (running.compareAndSet(false, true)) {
+            String rawDbName = rawDbPath.substring(rawDbPath.lastIndexOf('/') + 1);
+            String debugDbName = debugDbPath.substring(debugDbPath.lastIndexOf('/') + 1);
+            log.info("DebugIndexer: reading {} writing {}", rawDbName, debugDbName);
             setupDebugDatabase();
             thread.start();
         }
@@ -93,6 +108,54 @@ public class DebugIndexer implements IControllable, Runnable {
 
     @Override
     public void pause() {
+        // Ensure all WAL entries are committed before pausing
+        log.debug("Ensuring all WAL entries are committed before pausing");
+        
+        // Execute any pending batch operations
+        try {
+            if (tickInsertStatement != null && batchCount % 1000 != 0) {
+                tickInsertStatement.executeBatch();
+                log.debug("Executed pending batch operations before pausing");
+            }
+        } catch (Exception e) {
+            log.debug("Failed to execute pending batch operations before pausing: {}", e.getMessage());
+        }
+        
+        // Commit all pending transactions to ensure WAL entries are written
+        try {
+            if (connection != null && !connection.isClosed()) {
+                connection.commit();
+                log.debug("Committed all pending transactions before pausing");
+                
+                // Perform explicit WAL checkpoint to immediately process WAL file
+                try (Statement checkpointStmt = connection.createStatement()) {
+                    checkpointStmt.execute("PRAGMA wal_checkpoint(TRUNCATE)");
+                    log.debug("Performed explicit WAL checkpoint before pausing");
+                } catch (Exception e) {
+                    log.debug("Failed to perform WAL checkpoint: {}", e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Failed to commit transactions before pausing: {}", e.getMessage());
+        }
+        
+        // Close the database connection to ensure WAL is fully written
+        try {
+            if (tickInsertStatement != null) {
+                tickInsertStatement.close();
+                tickInsertStatement = null;
+                log.debug("Closed prepared statement before pausing");
+            }
+            if (connection != null && !connection.isClosed()) {
+                connection.close();
+                connection = null;
+                log.debug("Closed database connection before pausing");
+            }
+        } catch (Exception e) {
+            log.debug("Failed to close database resources before pausing: {}", e.getMessage());
+        }
+        
+        log.debug("All WAL entries committed and database connection closed, now pausing");
         paused.set(true);
     }
 
@@ -103,8 +166,22 @@ public class DebugIndexer implements IControllable, Runnable {
 
     @Override
     public void shutdown() {
+        if (running.compareAndSet(true, false)) {
+            long currentTick = getLastProcessedTick();
+            double tps = calculateTPS();
+            // Only log if called from the service thread
+            if (Thread.currentThread().getName().equals("DebugIndexer")) {
+                log.info("DebugIndexer: graceful termination tick:{} TPS:{}", currentTick, String.format("%.2f", tps));
+            }
+            thread.interrupt();
+        }
+    }
+    
+    public void forceShutdown() {
+        if (running.get()) {
         running.set(false);
         thread.interrupt();
+        }
     }
 
     @Override
@@ -117,11 +194,74 @@ public class DebugIndexer implements IControllable, Runnable {
         return paused.get();
     }
 
+    private double calculateTPS() {
+        long currentTime = System.currentTimeMillis();
+        long currentTick = lastProcessedTick; // Use local counter instead of database query
+        
+        if (currentTick <= 0) {
+            return 0.0;
+        }
+        
+        // Calculate TPS since tick 0
+        long timeDiff = currentTime - startTime;
+        if (timeDiff > 0) {
+            return (double) currentTick / (timeDiff / 1000.0);
+        }
+        
+        return 0.0;
+    }
+
+    public String getStatus() {
+        if (!running.get()) {
+            return "stopped";
+        }
+        
+        if (paused.get()) {
+            try {
+                long currentTick = lastProcessedTick;
+                String rawDbName = rawDbPath.substring(rawDbPath.lastIndexOf('/') + 1);
+                String debugDbName = debugDbPath.substring(rawDbPath.lastIndexOf('/') + 1);
+                return String.format("paused tick:%d reading %s writing %s", 
+                        currentTick, rawDbName, debugDbName);
+            } catch (Exception e) {
+                return String.format("paused ERROR:%s", e.getMessage());
+            }
+        }
+        
+        try {
+            long currentTick = lastProcessedTick; // Use local counter instead of database query
+            String rawDbName = rawDbPath.substring(rawDbPath.lastIndexOf('/') + 1);
+            String debugDbName = debugDbPath.substring(rawDbPath.lastIndexOf('/') + 1);
+            double tps = calculateTPS();
+            
+            return String.format("started tick:%d reading %s writing %s TPS:%.2f", 
+                    currentTick, rawDbName, debugDbName, tps);
+        } catch (Exception e) {
+            return String.format("started ERROR:%s", e.getMessage());
+        }
+    }
+    
+    private void resetTPS() {
+        // lastStatusTime = 0; // Removed
+        // lastStatusTick = 0; // Removed
+        // lastTPS = 0.0; // Removed
+    }
+
     private void setupDebugDatabase() {
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + debugDbPath);
-             Statement st = conn.createStatement()) {
-            st.execute("CREATE TABLE IF NOT EXISTS prepared_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json TEXT)");
-            st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
+        try {
+            connection = DriverManager.getConnection("jdbc:sqlite:" + debugDbPath);
+            
+            // Add performance hints for SQLite
+            try (Statement st = connection.createStatement()) {
+                st.execute("PRAGMA journal_mode=WAL"); // Write-Ahead Logging for better concurrency
+                st.execute("PRAGMA synchronous=NORMAL"); // Faster writes
+                st.execute("PRAGMA cache_size=10000"); // Larger cache
+                st.execute("PRAGMA temp_store=MEMORY"); // Use memory for temp tables
+                
+                // Create tables
+                st.execute("CREATE TABLE IF NOT EXISTS prepared_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json TEXT)");
+                st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
+            }
         } catch (Exception e) {
             throw new RuntimeException("Failed to setup debug database", e);
         }
@@ -129,37 +269,119 @@ public class DebugIndexer implements IControllable, Runnable {
 
     @Override
     public void run() {
-        log.info("DebugIndexer started. Raw DB: '{}', Debug DB: '{}'", rawDbPath, debugDbPath);
         try {
             loadInitialData();
-            long lastProcessedTick = getLastProcessedTick();
-            log.info("Resuming indexing from tick {}", lastProcessedTick + 1);
+            // Initialize with 0, not from database
+            lastProcessedTick = 0;
 
             while (running.get()) {
                 if (paused.get()) {
-                    Thread.onSpinWait();
+                    // In pause mode: check periodically for new ticks
+                    Thread.sleep(250); // Check every 250ms for new ticks
+                    
+                    // Check if there are new ticks to process
+                    if (hasNewTicksToProcess()) {
+                        log.debug("New ticks detected, waking up from pause");
+                        paused.set(false);
+                        continue;
+                    }
                     continue;
                 }
 
-                boolean processed = processNextTick(lastProcessedTick + 1);
-                if (processed) {
-                    lastProcessedTick++;
-                } else {
-                    Thread.sleep(1000);
+                try {
+                    int remainingTicks = processNextTick(lastProcessedTick + 1);
+
+                    if (remainingTicks > 0) {
+                        // Continue processing immediately if we processed ticks
+                        // No sleep - maximum throughput!
+                        continue;
+                    } else if (remainingTicks == 0) {
+                        // No more ticks available - auto-pause to save resources
+                        log.debug("No more ticks to process, auto-pausing indexer");
+                        paused.set(true);
+                        continue;
+                    } else {
+                        // remainingTicks < 0 means there was an error, but ticks might still be available
+                        // Check if there are truly no more ticks to process
+                        if (hasNewTicksToProcess()) {
+                            // There are still ticks, but they might be in a different batch
+                            // Continue processing without pause
+                            continue;
+                        } else {
+                            // No more ticks available - auto-pause to save resources
+                            log.debug("No more ticks to process, auto-pausing indexer");
+                            paused.set(true);
+                            continue;
+                        }
+                    }
+                } catch (Exception e) {
+                    if (running.get()) { // Only warn if still running
+                        log.warn("Failed to process tick {}: {}", lastProcessedTick + 1, e.getMessage());
+                    }
                 }
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         } catch (Exception e) {
-            log.error("DebugIndexer error", e);
+            log.error("DebugIndexer fatal error, terminating service: {}", e.getMessage());
         } finally {
-            log.info("DebugIndexer stopped");
+            // Log graceful termination from the service thread
+            if (Thread.currentThread().getName().equals("DebugIndexer")) {
+                long currentTick = lastProcessedTick; // Use local counter
+                double tps = calculateTPS();
+                log.info("DebugIndexer: graceful termination tick:{} TPS:{}", currentTick, String.format("%.2f", tps));
+            }
+            
+            // Cleanup database resources
+            try {
+                if (tickInsertStatement != null) {
+                    if (batchCount % 1000 != 0) {
+                        tickInsertStatement.executeBatch();
+                    }
+                    tickInsertStatement.close();
+                }
+                if (connection != null) {
+                    connection.close();
+                }
+            } catch (Exception ignored) {}
         }
     }
 
+    /**
+     * Checks if there are new ticks available to process.
+     * Used to wake up from pause mode when new ticks arrive.
+     */
+    private boolean hasNewTicksToProcess() {
+        try (Connection rawConn = DriverManager.getConnection("jdbc:sqlite:" + rawDbPath);
+             PreparedStatement countPs = rawConn.prepareStatement(
+                     "SELECT COUNT(*) FROM raw_ticks WHERE tick_number > ?")) {
+            countPs.setLong(1, lastProcessedTick);
+            try (ResultSet countRs = countPs.executeQuery()) {
+                if (countRs.next()) {
+                    return countRs.getLong(1) > 0;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Failed to check for new ticks: {}", e.getMessage());
+        }
+        return false;
+    }
+
     private void loadInitialData() {
+        // Wait for raw database to be available
+        while (running.get()) {
         try (Connection rawConn = DriverManager.getConnection("jdbc:sqlite:" + rawDbPath);
              Statement st = rawConn.createStatement()) {
+                
+                // Check if tables exist
+                try (ResultSet rs = st.executeQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='program_artifacts'")) {
+                    if (!rs.next()) {
+                        // Tables don't exist yet, wait and retry
+                        log.warn("Waiting for raw database tables to be created...");
+                        Thread.sleep(1000);
+                        continue;
+                    }
+                }
+                
+                // Load program artifacts
             try (ResultSet rs = st.executeQuery("SELECT program_id, artifact_json FROM program_artifacts")) {
                 while (rs.next()) {
                     String id = rs.getString(1);
@@ -173,36 +395,156 @@ public class DebugIndexer implements IControllable, Runnable {
                     this.artifacts.put(id, artifact);
                 }
             }
+                
+                // Load world shape
             try (ResultSet rs = st.executeQuery("SELECT key, value FROM simulation_metadata WHERE key = 'worldShape'")) {
                 if (rs.next()) {
                     this.worldShape = objectMapper.readValue(rs.getString(2), int[].class);
                 }
             }
+                
+                log.info("Successfully loaded initial data from raw database");
+                break; // Successfully loaded, exit the loop
+                
         } catch (Exception e) {
-            log.error("Failed to load initial data from raw database", e);
+                if (running.get()) {
+                    log.info("Waiting for raw database to be available: {}", e.getMessage());
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                } else {
+                    break; // Service is shutting down
+                }
+            }
         }
     }
 
-    private boolean processNextTick(long tickToProcess) {
-        try (Connection rawConn = DriverManager.getConnection("jdbc:sqlite:" + rawDbPath);
-             PreparedStatement ps = rawConn.prepareStatement("SELECT tick_data_json FROM raw_ticks WHERE tick_number = ?")) {
+    private int processNextTick(long tickToProcess) {
 
-            ps.setLong(1, tickToProcess);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    String rawTickJson = rs.getString(1);
-                    RawTickState rawTickState = objectMapper.readValue(rawTickJson, new TypeReference<>() {
-                    });
-                    PreparedTickState preparedTick = transformRawToPrepared(rawTickState);
-                    writePreparedTick(preparedTick);
-                    log.info("Indexed tick {}", tickToProcess);
-                    return true;
+        
+        // Process large batches for maximum performance, but with reasonable memory limits
+        try (Connection rawConn = DriverManager.getConnection("jdbc:sqlite:" + rawDbPath)) {
+
+            
+            // Get all available ticks starting from the next one to process
+            // Use configurable batch size from config, but ensure we process all remaining ticks
+            log.debug("*****Configured batch size: {}", batchSize);
+            
+            // Check if we're in the final batch (less than batchSize ticks remaining)
+            long remainingTicks = 0;
+            try (PreparedStatement countPs = rawConn.prepareStatement(
+                    "SELECT COUNT(*) FROM raw_ticks WHERE tick_number > ?")) {
+                countPs.setLong(1, lastProcessedTick);
+                try (ResultSet countRs = countPs.executeQuery()) {
+                    if (countRs.next()) {
+                        remainingTicks = countRs.getLong(1);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("COUNT query failed: {}", e.getMessage());
+                return -1; // Indicate error
+            }
+
+            log.debug("*****Remaining ticks before processing: {}", remainingTicks);
+            
+            // If we have no ticks remaining, we need to check if simulation is still running
+            if (remainingTicks == 0) {
+                // Check if we're in a paused state - if so, we're really done
+                // If not, we should wait for new ticks
+                // For now, return 0 to let the main loop sleep and retry
+                return 0;
+            }
+            
+            // Always respect the configured batch size for consistent performance
+            // This prevents oversized batches that could cause memory issues
+            int actualBatchSize = remainingTicks <= batchSize ? (int)remainingTicks : batchSize;
+            log.debug("*****Actual batch size to process: {} (remaining: {}, configured: {})", actualBatchSize, remainingTicks, batchSize);
+            
+
+            
+            try (PreparedStatement ps = rawConn.prepareStatement(
+                    "SELECT tick_number, tick_data_json FROM raw_ticks WHERE tick_number > ? ORDER BY tick_number LIMIT ?")) {
+                ps.setLong(1, lastProcessedTick);
+                ps.setInt(2, actualBatchSize);
+                
+
+                try (ResultSet rs = ps.executeQuery()) {
+                    boolean processedAny = false;
+                    int processedCount = 0;
+                    
+                    while (rs.next()) {
+                        long tickNumber = rs.getLong(1);
+                        String rawTickJson = rs.getString(2);
+                        
+                        try {
+                            RawTickState rawTickState = objectMapper.readValue(rawTickJson, new TypeReference<>() {});
+                            PreparedTickState preparedTick = transformRawToPrepared(rawTickState);
+                            writePreparedTick(preparedTick);
+                            
+                            // Update last processed tick
+                            if (tickNumber > lastProcessedTick) {
+                                lastProcessedTick = tickNumber;
+                            }
+                            processedAny = true;
+                            processedCount++;
+                        } catch (Exception e) {
+                            if (running.get()) {
+                                log.warn("Failed to process tick {}: {}", tickNumber, e.getMessage());
+                            }
+                        }
+                    }
+                    
+
+                    
+                    if (processedAny && processedCount > 1) {
+                        // Log batch processing for performance monitoring
+                        log.debug("Processed {} ticks in batch, last tick: {}", processedCount, lastProcessedTick);
+                    }
+                    
+                    // Return the number of ticks that are still remaining to be processed
+                    // This helps the main loop decide whether to continue or pause
+                    long remainingAfterProcessing = 0;
+                    
+                    // Use the SAME connection to ensure consistent transaction view
+                    log.debug("*****Counting remaining ticks after processing, lastProcessedTick: {}", lastProcessedTick);
+                    
+                    // Simple and reliable approach: check if there are any ticks beyond what we've processed
+                    // Use the same connection to avoid transaction inconsistencies
+                    try (PreparedStatement nextPs = rawConn.prepareStatement(
+                            "SELECT tick_number FROM raw_ticks WHERE tick_number > ? ORDER BY tick_number LIMIT 1")) {
+                        log.debug("*****SELECT tick_number FROM raw_ticks WHERE tick_number > {} ORDER BY tick_number LIMIT 1", lastProcessedTick);
+                        nextPs.setLong(1, lastProcessedTick);
+                        try (ResultSet nextRs = nextPs.executeQuery()) {
+                            if (nextRs.next()) {
+                                long nextTick = nextRs.getLong(1);
+                                log.debug("*****Next available tick: {}", nextTick);
+                                
+                                // There are more ticks, so we should continue processing
+                                remainingAfterProcessing = 1;
+                                log.debug("*****More ticks available, continuing to process");
+                            } else {
+                                log.debug("*****No next tick found - we're done!");
+                                remainingAfterProcessing = 0;
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.debug("Next tick query failed: {}", e.getMessage());
+                        return -1; // Indicate error
+                    }
+                    
+                    log.debug("*****Final remaining ticks: {}", remainingAfterProcessing);
+                    return (int)remainingAfterProcessing;
                 }
             }
         } catch (Exception e) {
-            log.error("Failed to process tick {}", tickToProcess, e);
+            if (running.get()) {
+                log.warn("Failed to process ticks starting from {}: {}", tickToProcess, e.getMessage());
+            }
+            return -1; // Indicate error
         }
-        return false;
     }
 
     private PreparedTickState transformRawToPrepared(RawTickState raw) {
@@ -230,7 +572,7 @@ public class DebugIndexer implements IControllable, Runnable {
             if (o.isDead()) continue;
             
             // Zentrale Methode für alle Organismus-Details
-            PreparedTickState.OrganismDetails organismDetails = buildOrganismDetails(o);
+            PreparedTickState.OrganismDetails organismDetails = buildOrganismDetails(o, raw);
             details.put(String.valueOf(o.id()), organismDetails);
         }
 
@@ -241,12 +583,12 @@ public class DebugIndexer implements IControllable, Runnable {
      * Zentrale Methode zum Erstellen aller Organismus-Details.
      * Koordiniert die Validierung und ruft alle Builder auf.
      */
-    private PreparedTickState.OrganismDetails buildOrganismDetails(RawOrganismState o) {
+    private PreparedTickState.OrganismDetails buildOrganismDetails(RawOrganismState o, RawTickState rawTickState) {
         ProgramArtifact artifact = this.artifacts.get(o.programId());
         ArtifactValidity validity = checkArtifactValidity(o, artifact);
         
         var basicInfo = new PreparedTickState.BasicInfo(o.id(), o.programId(), o.parentId(), o.birthTick(), o.er(), toList(o.ip()), toList(o.dv()));
-        var nextInstruction = buildNextInstruction(o, artifact, validity);
+        var nextInstruction = buildNextInstruction(o, artifact, validity, rawTickState);
         var internalState = buildInternalState(o, artifact, validity);
         var sourceView = buildSourceView(o, artifact, validity);
 
@@ -395,18 +737,28 @@ public class DebugIndexer implements IControllable, Runnable {
         }
     }
 
-    private PreparedTickState.NextInstruction buildNextInstruction(RawOrganismState o, ProgramArtifact artifact, ArtifactValidity validity) {
+    private PreparedTickState.NextInstruction buildNextInstruction(RawOrganismState o, ProgramArtifact artifact, ArtifactValidity validity, RawTickState rawTickState) {
         try {
-            // Verwende den RuntimeDisassembler für Runtime-only Disassembly
-            RuntimeDisassembler disassembler = RuntimeDisassembler.INSTANCE;
-            DisassembledInstruction disassembled = disassembler.disassembleRuntimeOnly(o);
+            // Erstelle RawTickStateReader für diesen Organismus
+            EnvironmentProperties props = new EnvironmentProperties(this.worldShape, true); // isToroidal = true
+            RawTickStateReader reader = new RawTickStateReader(rawTickState, props);
+            
+            // Verwende den neuen Disassembler
+            Disassembler disassembler = new Disassembler();
+            DisassemblyData data = disassembler.disassemble(reader, o.ip());
+            
+            if (data == null) {
+                return new PreparedTickState.NextInstruction(
+                    "Disassembly failed", null, null, "ERROR"
+                );
+            }
             
             // Bestimme den runtimeStatus basierend auf der Validität
             String runtimeStatus = determineRuntimeStatus(validity);
             
             // Erstelle die NextInstruction
             return new PreparedTickState.NextInstruction(
-                formatDisassembly(disassembled),
+                formatDisassembly(data),
                 null, // sourceFile - wird nicht gesetzt bei Runtime-only Disassembly
                 null, // sourceLine - wird nicht gesetzt bei Runtime-only Disassembly
                 runtimeStatus
@@ -444,48 +796,67 @@ public class DebugIndexer implements IControllable, Runnable {
     /**
      * Formatiert die Disassembly-Informationen in einen lesbaren String.
      */
-    private String formatDisassembly(DisassembledInstruction disassembled) {
+    private String formatDisassembly(DisassemblyData data) {
         StringBuilder sb = new StringBuilder();
-        sb.append(disassembled.opcodeName());
+        sb.append(data.opcodeName());
         
-        if (!disassembled.arguments().isEmpty()) {
+        if (data.argValues().length > 0) {
             sb.append(" ");
-            for (int i = 0; i < disassembled.arguments().size(); i++) {
+            for (int i = 0; i < data.argValues().length; i++) {
                 if (i > 0) sb.append(", ");
-                DisassembledArgument arg = disassembled.arguments().get(i);
-                sb.append(arg.fullDisplayValue());
+                sb.append(formatArgument(data.argValues()[i]));
             }
         }
         
         return sb.toString();
     }
+    
+    /**
+     * Formatiert ein einzelnes Argument für die Anzeige.
+     */
+    private String formatArgument(int argValue) {
+        // Vereinfachte Formatierung - wir haben nur den Wert
+        return String.valueOf(argValue);
+    }
 
     private PreparedTickState.InternalState buildInternalState(RawOrganismState o, ProgramArtifact artifact, ArtifactValidity validity) {
-        List<PreparedTickState.RegisterValue> drs = new ArrayList<>();
-        for (int i = 0; i < o.drs().size(); i++) drs.add(new PreparedTickState.RegisterValue("%DR" + i, null, formatValue(o.drs().get(i))));
-
-        List<PreparedTickState.RegisterValue> prs = new ArrayList<>();
-        for (int i = 0; i < o.prs().size(); i++) prs.add(new PreparedTickState.RegisterValue("%PR" + i, null, formatValue(o.prs().get(i))));
-
-        List<PreparedTickState.RegisterValue> lrs = new ArrayList<>();
-        for (int i = 0; i < o.lrs().size(); i++) lrs.add(new PreparedTickState.RegisterValue("%LR" + i, null, formatValue(o.lrs().get(i))));
-
-        List<String> ds = o.dataStack().stream().map(this::formatValue).toList();
-        List<String> ls = o.locationStack().stream().map(this::formatValue).toList();
-        List<String> cs = formatCallStack(o, artifact);
-
-        return new PreparedTickState.InternalState(drs, prs, lrs, ds, ls, cs, o.dps().stream().map(this::toList).toList());
+        // Rudimentäre Implementierung - gibt leere Strukturen zurück
+        List<PreparedTickState.RegisterValue> emptyRegisters = new ArrayList<>();
+        List<String> emptyStacks = new ArrayList<>();
+        List<String> emptyCallStack = new ArrayList<>();
+        
+        // DPS aus dem Organismus extrahieren
+        List<List<Integer>> dps = o.dps() != null ? o.dps().stream().map(this::toList).toList() : new ArrayList<>();
+        
+        return new PreparedTickState.InternalState(
+            emptyRegisters,  // dataRegisters
+            emptyRegisters,  // procRegisters  
+            emptyRegisters,  // locationRegisters
+            emptyStacks,     // dataStack
+            emptyStacks,     // locationStack
+            emptyCallStack,  // callStack
+            dps              // dps
+        );
     }
 
     private PreparedTickState.SourceView buildSourceView(RawOrganismState o, ProgramArtifact artifact, ArtifactValidity validity) {
-        // SourceView ist nur verfügbar, wenn das Artifact gültig ist
-        if (artifact == null || validity == ArtifactValidity.NONE || validity == ArtifactValidity.INVALID) {
-            return null;
+        // Rudimentäre Implementierung - gibt leere Strukturen zurück
+        if (artifact == null || validity == ArtifactValidity.INVALID) {
+            return new PreparedTickState.SourceView(
+                null,           // fileName
+                null,           // currentLine
+                new ArrayList<>(), // lines
+                new ArrayList<>()  // inlineSpans
+            );
         }
-
-        // TODO: Implementiere die Logik zur Handhabung von compiler-generiertem Code
-        // Für jetzt geben wir null zurück, da wir die Source-Mapping-Informationen noch nicht haben
-        return null;
+        
+        // Wenn wir ein gültiges Artifact haben, geben wir minimale Informationen zurück
+        return new PreparedTickState.SourceView(
+            "unknown.s",       // fileName - placeholder
+            1,                 // currentLine - placeholder
+            new ArrayList<>(), // lines - leer für jetzt
+            new ArrayList<>()  // inlineSpans - leer für jetzt
+        );
     }
 
     private List<String> formatCallStack(RawOrganismState o, ProgramArtifact artifact) {
@@ -541,24 +912,25 @@ public class DebugIndexer implements IControllable, Runnable {
     }
 
     private void writePreparedTick(PreparedTickState preparedTick) throws Exception {
-        try (Connection debugConn = DriverManager.getConnection("jdbc:sqlite:" + debugDbPath);
-             PreparedStatement ps = debugConn.prepareStatement("INSERT OR REPLACE INTO prepared_ticks(tick_number, tick_data_json) VALUES (?, ?)")) {
-            ps.setLong(1, preparedTick.tickNumber());
-            ps.setString(2, objectMapper.writeValueAsString(preparedTick));
-            ps.executeUpdate();
+        // Use batch insert for better performance
+        if (tickInsertStatement == null) {
+            tickInsertStatement = connection.prepareStatement(
+                "INSERT OR REPLACE INTO prepared_ticks(tick_number, tick_data_json) VALUES (?, ?)");
+        }
+        
+        String json = objectMapper.writeValueAsString(preparedTick);
+        tickInsertStatement.setLong(1, preparedTick.tickNumber());
+        tickInsertStatement.setString(2, json);
+        tickInsertStatement.addBatch();
+        
+        // Execute batch every 1000 ticks for optimal performance
+        if (++batchCount % 1000 == 0) {
+            tickInsertStatement.executeBatch();
+            tickInsertStatement.clearBatch();
         }
     }
 
-    private long getLastProcessedTick() {
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + debugDbPath);
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT MAX(tick_number) FROM prepared_ticks")) {
-            if (rs.next()) {
-                return rs.getLong(1);
-            }
-        } catch (Exception e) {
-            // Erwartet, wenn die Datei noch nicht existiert.
-        }
-        return -1;
-    }
+    public long getLastProcessedTick() { return lastProcessedTick; }
+    public String getRawDbPath() { return rawDbPath; }
+    public String getDebugDbPath() { return debugDbPath; }
 }

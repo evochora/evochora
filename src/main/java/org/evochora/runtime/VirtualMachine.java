@@ -72,7 +72,7 @@ public class VirtualMachine {
         java.util.List<Integer> rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(this.environment), this.environment);
         organism.takeEr(instruction.getCost(organism, this.environment, rawArgs));
 
-        ExecutionContext context = new ExecutionContext(organism, this.environment, simulation.isPerformanceMode());
+        ExecutionContext context = new ExecutionContext(organism, this.environment, false); // Always run in debug mode
         ProgramArtifact artifact = simulation.getProgramArtifacts().get(organism.getProgramId());
         instruction.execute(context, artifact);
 

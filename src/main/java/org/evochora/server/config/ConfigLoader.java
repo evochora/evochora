@@ -21,11 +21,47 @@ public final class ConfigLoader {
                 return OBJECT_MAPPER.readValue(is, SimulationConfiguration.class);
             }
         } catch (Exception ignore) {}
-        // Fallback default
+        
+        // Fallback default with new structure
         SimulationConfiguration cfg = new SimulationConfiguration();
-        cfg.environment = new SimulationConfiguration.EnvironmentConfig();
-        cfg.environment.shape = new int[]{120, 80};
-        cfg.environment.toroidal = true;
+        
+        // Create simulation config
+        SimulationConfiguration.SimulationConfig simConfig = new SimulationConfiguration.SimulationConfig();
+        simConfig.environment = new SimulationConfiguration.EnvironmentConfig();
+        simConfig.environment.shape = new int[]{120, 80};
+        simConfig.environment.toroidal = true;
+        simConfig.seed = 123456789L;
+        cfg.simulation = simConfig;
+        
+        // Create pipeline config
+        SimulationConfiguration.PipelineConfig pipelineConfig = new SimulationConfiguration.PipelineConfig();
+        
+        SimulationConfiguration.SimulationServiceConfig simService = new SimulationConfiguration.SimulationServiceConfig();
+        simService.autoStart = true;
+        simService.outputPath = "runs/";
+        pipelineConfig.simulation = simService;
+        
+        SimulationConfiguration.IndexerServiceConfig indexerService = new SimulationConfiguration.IndexerServiceConfig();
+        indexerService.autoStart = true;
+        indexerService.inputPath = "runs/";
+        indexerService.outputPath = "runs/";
+        indexerService.batchSize = 1000;
+        pipelineConfig.indexer = indexerService;
+        
+        SimulationConfiguration.PersistenceServiceConfig persistenceService = new SimulationConfiguration.PersistenceServiceConfig();
+        persistenceService.autoStart = true;
+        persistenceService.batchSize = 1000;
+        pipelineConfig.persistence = persistenceService;
+        
+        SimulationConfiguration.ServerServiceConfig serverService = new SimulationConfiguration.ServerServiceConfig();
+        serverService.autoStart = true;
+        serverService.inputPath = "runs/";
+        serverService.port = 7070;
+        serverService.host = "localhost";
+        pipelineConfig.server = serverService;
+        
+        cfg.pipeline = pipelineConfig;
+        
         return cfg;
     }
 

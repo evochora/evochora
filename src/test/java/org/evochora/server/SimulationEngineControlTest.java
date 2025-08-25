@@ -28,7 +28,7 @@ class SimulationEngineControlTest {
     @Test
     void start_pause_resume_shutdown_cycle_advances_ticks() throws Exception {
         ITickMessageQueue q = new InMemoryTickQueue();
-        sim = new SimulationEngine(q, false);
+        sim = new SimulationEngine(q, new int[]{120, 80}, true);
 
         // KORREKTUR: Gib der Simulation einen Organismus, um sie zu verlangsamen und den Test robust zu machen.
         Path tempDir = Files.createTempDirectory("evochora-test-");

@@ -1,13 +1,45 @@
 <configuration>
-  <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
-    <target>System.err</target>
+  <!-- Suppress SLF4J replay warnings at JVM level -->
+  <contextListener class="ch.qos.logback.classic.jul.LevelChangePropagator">
+    <resetJUL>true</resetJUL>
+  </contextListener>
+  
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <target>System.out</target>
     <encoder>
       <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
     </encoder>
   </appender>
 
-  <root level="INFO">
-    <appender-ref ref="STDERR" />
+  <!-- Suppress ALL framework logs completely -->
+  <logger name="SLF4J" level="OFF" additivity="false"/>
+  <logger name="org.slf4j" level="OFF" additivity="false"/>
+  <logger name="ch.qos.logback" level="OFF" additivity="false"/>
+  
+  <!-- Suppress Javalin/Jetty completely -->
+  <logger name="io.javalin" level="OFF" additivity="false"/>
+  <logger name="org.eclipse.jetty" level="OFF" additivity="false"/>
+  <logger name="org.eclipse.jetty.server" level="OFF" additivity="false"/>
+  <logger name="org.eclipse.jetty.util" level="OFF" additivity="false"/>
+  <logger name="org.eclipse.jetty.io" level="OFF" additivity="false"/>
+  <logger name="org.eclipse.jetty.http" level="OFF" additivity="false"/>
+
+  <!-- Evochora-spezifische Logger auf INFO für Start/Stop-Logs -->
+  <logger name="org.evochora" level="INFO" additivity="false">
+    <appender-ref ref="STDOUT" />
+  </logger>
+
+  <logger name="org.evochora.compiler" level="INFO" additivity="false">
+    <appender-ref ref="STDOUT" />
+  </logger>
+
+  <logger name="org.evochora.server" level="INFO" additivity="false">
+    <appender-ref ref="STDOUT" />
+  </logger>
+
+  <!-- Root logger auf OFF setzen um alle anderen Logs zu unterdrücken -->
+  <root level="OFF">
+    <appender-ref ref="STDOUT" />
   </root>
 </configuration>
 

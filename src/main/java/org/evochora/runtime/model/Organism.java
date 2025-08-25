@@ -239,11 +239,7 @@ public class Organism {
      * @return The normalized coordinate of the next molecule.
      */
     public int[] getNextInstructionPosition(int[] currentIp, int[] directionVector, Environment environment) {
-        int[] nextIp = new int[currentIp.length];
-        for (int i = 0; i < currentIp.length; i++) {
-            nextIp[i] = currentIp[i] + directionVector[i];
-        }
-        return environment.getNormalizedCoordinate(nextIp);
+        return environment.properties.getNextPosition(currentIp, directionVector);
     }
 
     /**
@@ -255,11 +251,7 @@ public class Organism {
      * @return The normalized target coordinate.
      */
     public int[] getTargetCoordinate(int[] startPos, int[] vector, Environment environment) {
-        int[] targetPos = new int[startPos.length];
-        for(int i=0; i<startPos.length; i++) {
-            targetPos[i] = startPos[i] + vector[i];
-        }
-        return environment.getNormalizedCoordinate(targetPos);
+        return environment.properties.getTargetCoordinate(startPos, vector);
     }
 
     /**

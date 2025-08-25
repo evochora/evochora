@@ -20,7 +20,6 @@ public class Simulation {
     public boolean paused = true;
     private final List<Organism> newOrganismsThisTick = new ArrayList<>();
     private int nextOrganismId = 1;
-    private final boolean isPerformanceMode;
     private org.evochora.runtime.internal.services.IRandomProvider randomProvider;
 
     private Map<String, ProgramArtifact> programArtifacts = new HashMap<>();
@@ -34,18 +33,9 @@ public class Simulation {
     }
 
     public Simulation(Environment environment) {
-        this(environment, false); // Default to debug mode
-    }
-
-    public Simulation(Environment environment, boolean performanceMode) {
         this.environment = environment;
-        this.isPerformanceMode = performanceMode;
         this.organisms = new ArrayList<>();
         this.vm = new org.evochora.runtime.VirtualMachine(this);
-    }
-
-    public boolean isPerformanceMode() {
-        return isPerformanceMode;
     }
 
     public void addOrganism(Organism organism) {

@@ -22,6 +22,7 @@ public class DebugServerTest {
         
         try (Connection c = DriverManager.getConnection("jdbc:sqlite:" + dbPath)) {
             try (Statement st = c.createStatement()) {
+                st.execute("DROP TABLE IF EXISTS prepared_ticks");
                 st.execute("CREATE TABLE prepared_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json TEXT)");
                 
                 // Test-Daten einfügen
@@ -37,8 +38,8 @@ public class DebugServerTest {
         DebugServer web = new DebugServer();
         web.start(dbPath, 7089);
         try {
-            // Warte kurz, bis der Server gestartet ist
-            Thread.sleep(200);
+            // Warte länger, bis der Server gestartet ist
+            Thread.sleep(1000);
             
             // HTTP-Test
             HttpClient client = HttpClient.newHttpClient();
@@ -48,6 +49,8 @@ public class DebugServerTest {
             assertThat(resp.body()).contains("\"tickNumber\":1");
         } finally {
             web.stop();
+            // Warte kurz, bis der Server gestoppt ist
+            Thread.sleep(200);
         }
         
         // Aufräumen: Test-Datei löschen

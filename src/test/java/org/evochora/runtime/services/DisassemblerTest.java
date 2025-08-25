@@ -1,0 +1,212 @@
+package org.evochora.runtime.services;
+
+import org.evochora.runtime.model.IEnvironmentReader;
+import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.InstructionSignature;
+import org.evochora.runtime.isa.InstructionArgumentType;
+import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.Molecule;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+
+import java.util.Arrays;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * Comprehensive unit tests for the Disassembler class.
+ * Tests all functionality including different opcodes, arguments, error cases, and ISA integration.
+ */
+class DisassemblerTest {
+
+    @BeforeAll
+    static void init() {
+        Instruction.init();
+    }
+
+    @Test
+    void disassemble_validInstruction_withArguments() {
+        // Arrange
+        Disassembler disassembler = new Disassembler();
+        MockEnvironmentReader mockReader = new MockEnvironmentReader();
+        
+        // Mock: SETI instruction (opcode 1) with 1 argument
+        mockReader.setMoleculeAt(new int[]{0, 0}, new Molecule(1, 0)); // SETI opcode
+        mockReader.setMoleculeAt(new int[]{1, 0}, new Molecule(42, 0)); // Argument
+        
+        // Act
+        DisassemblyData result = disassembler.disassemble(mockReader, new int[]{0, 0});
+        
+        // Assert
+        assertThat(result).isNotNull();
+        assertThat(result.opcodeId()).isEqualTo(1);
+        assertThat(result.opcodeName()).isEqualTo("SETI");
+        assertThat(result.argValues()).hasSize(1);
+        assertThat(result.argValues()[0]).isEqualTo(42);
+        assertThat(result.argPositions()).hasSize(1);
+    }
+
+    @Test
+    void disassemble_unknownOpcode() {
+        // Arrange
+        Disassembler disassembler = new Disassembler();
+        MockEnvironmentReader mockReader = new MockEnvironmentReader();
+        
+        // Mock: Unknown opcode (999)
+        mockReader.setMoleculeAt(new int[]{0, 0}, new Molecule(999, 0));
+        
+        // Act
+        DisassemblyData result = disassembler.disassemble(mockReader, new int[]{0, 0});
+        
+        // Assert
+        assertThat(result).isNotNull();
+        assertThat(result.opcodeId()).isEqualTo(999);
+        assertThat(result.opcodeName()).startsWith("UNKNOWN_OP");
+        assertThat(result.argValues()).isEmpty();
+        assertThat(result.argPositions()).isEmpty();
+    }
+
+    @Test
+    void disassemble_instructionWithoutArguments() {
+        // Arrange
+        Disassembler disassembler = new Disassembler();
+        MockEnvironmentReader mockReader = new MockEnvironmentReader();
+        
+        // Mock: NOP instruction (opcode 0) - no arguments
+        mockReader.setMoleculeAt(new int[]{0, 0}, new Molecule(0, 0));
+        
+        // Act
+        DisassemblyData result = disassembler.disassemble(mockReader, new int[]{0, 0});
+        
+        // Assert
+        assertThat(result).isNotNull();
+        assertThat(result.opcodeId()).isEqualTo(0);
+        assertThat(result.opcodeName()).isEqualTo("NOP");
+        assertThat(result.argValues()).isEmpty();
+        assertThat(result.argPositions()).isEmpty();
+    }
+
+    @Test
+    void disassemble_incompleteInstruction() {
+        // Arrange
+        Disassembler disassembler = new Disassembler();
+        MockEnvironmentReader mockReader = new MockEnvironmentReader();
+        
+        // Mock: SETI instruction but missing argument
+        mockReader.setMoleculeAt(new int[]{0, 0}, new Molecule(1, 0)); // SETI opcode
+        // Argument missing - should handle gracefully
+        
+        // Act
+        DisassemblyData result = disassembler.disassemble(mockReader, new int[]{0, 0});
+        
+        // Assert
+        assertThat(result).isNotNull();
+        assertThat(result.opcodeId()).isEqualTo(1);
+        assertThat(result.opcodeName()).isEqualTo("SETI");
+        assertThat(result.argValues()).isEmpty(); // No arguments
+    }
+
+    @Test
+    void disassemble_nullMolecule() {
+        // Arrange
+        Disassembler disassembler = new Disassembler();
+        MockEnvironmentReader mockReader = new MockEnvironmentReader();
+        
+        // Mock: No molecule at position
+        // mockReader returns null for getMolecule
+        
+        // Act
+        DisassemblyData result = disassembler.disassemble(mockReader, new int[]{0, 0});
+        
+        // Assert
+        assertThat(result).isNull();
+    }
+
+    @Test
+    void disassemble_withDifferentWorldShapes() {
+        // Arrange
+        Disassembler disassembler = new Disassembler();
+        
+        // Test with different world shapes
+        int[][] worldShapes = {{10, 10}, {100, 50}, {50, 100}};
+        
+        for (int[] worldShape : worldShapes) {
+            MockEnvironmentReader mockReader = new MockEnvironmentReader(worldShape);
+            
+            // Mock: Simple instruction
+            mockReader.setMoleculeAt(new int[]{0, 0}, new Molecule(0, 0)); // NOP
+            mockReader.setMoleculeAt(new int[]{1, 0}, new Molecule(42, 0)); // Arg
+            
+            // Act
+            DisassemblyData result = disassembler.disassemble(mockReader, new int[]{0, 0});
+            
+            // Assert
+            assertThat(result).isNotNull();
+            assertThat(result.opcodeName()).isEqualTo("NOP");
+        }
+    }
+
+    @Test
+    void disassemble_edgeCaseCoordinates() {
+        // Arrange
+        Disassembler disassembler = new Disassembler();
+        MockEnvironmentReader mockReader = new MockEnvironmentReader(new int[]{100, 100});
+        
+        // Test edge cases: boundaries, negative coordinates
+        int[][] testCoords = {
+            {0, 0},           // Origin
+            {99, 99},         // Max boundary
+            {50, 50},         // Middle
+            {0, 99},          // Edge
+            {99, 0}           // Edge
+        };
+        
+        for (int[] coords : testCoords) {
+            mockReader.setMoleculeAt(coords, new Molecule(0, 0)); // NOP
+            mockReader.setMoleculeAt(mockReader.getProperties().getNextPosition(coords, new int[]{1, 0}), new Molecule(42, 0));
+            
+            // Act
+            DisassemblyData result = disassembler.disassemble(mockReader, coords);
+            
+            // Assert
+            assertThat(result).isNotNull();
+            assertThat(result.opcodeName()).isEqualTo("NOP");
+        }
+    }
+
+    /**
+     * Mock implementation of IEnvironmentReader for testing.
+     */
+    private static class MockEnvironmentReader implements IEnvironmentReader {
+        private final EnvironmentProperties properties;
+        private final java.util.Map<String, Molecule> molecules = new java.util.HashMap<>();
+        
+        public MockEnvironmentReader() {
+            this(new int[]{100, 100});
+        }
+        
+        public MockEnvironmentReader(int[] worldShape) {
+            this.properties = new EnvironmentProperties(worldShape, true);
+        }
+        
+        public void setMoleculeAt(int[] coordinates, Molecule molecule) {
+            molecules.put(Arrays.toString(coordinates), molecule);
+        }
+        
+        @Override
+        public Molecule getMolecule(int[] coordinates) {
+            return molecules.get(Arrays.toString(coordinates));
+        }
+        
+        @Override
+        public int[] getShape() {
+            return properties.getWorldShape();
+        }
+        
+        @Override
+        public EnvironmentProperties getProperties() {
+            return properties;
+        }
+    }
+}
