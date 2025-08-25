@@ -10,6 +10,7 @@ public interface IControllable {
     void shutdown();
     boolean isRunning();
     boolean isPaused();
+    boolean isAutoPaused();
 }
 
 

@@ -26,6 +26,7 @@ public final class DebugServer {
     private int port;
     private String dbPath;
     private boolean isRunning = false;
+    private boolean isAutoPaused = false;
     private long lastStatusTime = 0;
     private double lastTPS = 0.0;
 
@@ -98,8 +99,9 @@ public final class DebugServer {
 
             this.app.start(port);
             this.isRunning = true;
-            String dbName = dbPath.substring(dbPath.lastIndexOf('/') + 1);
-            log.info("DebugServer: port:{} reading {}", port, dbName);
+            // Show full path including directory like getStatus method does, using backslashes for consistency
+            String dbInfo = dbPath != null ? dbPath.replace('/', '\\') : "unknown";
+            log.info("DebugServer: port:{} reading {}", port, dbInfo);
         } catch (Exception e) {
             log.error("DebugServer failed to start HTTP server: {}", e.getMessage());
             throw new RuntimeException("Failed to start HTTP server", e);
@@ -111,6 +113,8 @@ public final class DebugServer {
             try { 
                 this.app.stop(); 
                 this.isRunning = false;
+                // Manual pause - mark as not auto-paused
+                this.isAutoPaused = false;
                 // Log graceful termination from the service thread
                 if (Thread.currentThread().getName().equals("DebugServer")) {
                     log.info("DebugServer: graceful termination");
@@ -132,14 +136,19 @@ public final class DebugServer {
     public boolean isRunning() {
         return isRunning;
     }
+    
+    public boolean isAutoPaused() {
+        return isAutoPaused;
+    }
 
     public String getStatus() {
         if (!isRunning) {
             return "stopped";
         }
         
-        String dbName = dbPath != null ? dbPath.substring(dbPath.lastIndexOf('/') + 1) : "unknown";
-        return String.format("started port:%d reading %s", port, dbName);
+        // Show full path including directory like DebugIndexer does, using backslashes for consistency
+        String dbInfo = dbPath != null ? dbPath.replace('/', '\\') : "unknown";
+        return String.format("started port:%d reading %s", port, dbInfo);
     }
     
     private double calculateTPS() {

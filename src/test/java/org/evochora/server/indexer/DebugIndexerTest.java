@@ -92,7 +92,7 @@ class DebugIndexerTest {
         }
 
         // 2. Act: Starte den Indexer und lass ihn einen Tick verarbeiten
-        DebugIndexer indexer = new DebugIndexer(rawDbPath.toAbsolutePath().toString());
+        DebugIndexer indexer = new DebugIndexer(rawDbPath.toAbsolutePath().toString(), 1000);
         indexer.start();
         Thread.sleep(2000); // Gib dem Indexer Zeit zu arbeiten
         indexer.shutdown();

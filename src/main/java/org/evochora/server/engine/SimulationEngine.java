@@ -129,7 +129,9 @@ public class SimulationEngine implements IControllable, Runnable {
     }
 
     @Override
-    public void pause() { paused.set(true); }
+    public void pause() { 
+        paused.set(true); 
+    }
 
     @Override
     public void resume() { paused.set(false); }
@@ -159,6 +161,9 @@ public class SimulationEngine implements IControllable, Runnable {
 
     @Override
     public boolean isPaused() { return paused.get(); }
+    
+    @Override
+    public boolean isAutoPaused() { return false; } // Simulation never auto-pauses
 
     private double calculateTPS() {
         long currentTime = System.currentTimeMillis();

@@ -56,11 +56,12 @@ public class DebugIndexer implements IControllable, Runnable {
     private final Thread thread;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
+    private final AtomicBoolean autoPaused = new AtomicBoolean(false);
     private long startTime = System.currentTimeMillis();
     private long lastProcessedTick = -1L;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final String rawDbPath;
-    private final String debugDbPath;
+    private String rawDbPath;
+    private String debugDbPath;
     private final SourceAnnotator sourceAnnotator = new SourceAnnotator();
     private final int batchSize; // Configurable batch size
 
@@ -95,6 +96,36 @@ public class DebugIndexer implements IControllable, Runnable {
         return latestRawDb.map(path -> new DebugIndexer(path.toAbsolutePath().toString(), 1000)); // Default batch size
     }
     
+    /**
+     * Updates the raw database path to match the current persistence service.
+     * This is needed when the simulation is restarted and a new database is created.
+     */
+    public void updateRawDbPath(String newRawDbPath) {
+        // Close current database connection
+        try {
+            if (tickInsertStatement != null) {
+                tickInsertStatement.close();
+                tickInsertStatement = null;
+            }
+            if (connection != null) {
+                connection.close();
+                connection = null;
+            }
+                 } catch (Exception e) {
+             // Ignore errors when closing resources
+         }
+        
+        // Update paths
+        this.rawDbPath = newRawDbPath;
+        this.debugDbPath = newRawDbPath.replace("_raw.sqlite", "_debug.sqlite");
+        
+        // Reset counters
+        this.lastProcessedTick = -1L;
+        this.batchCount = 0;
+        
+        
+    }
+    
     @Override
     public void start() {
         if (running.compareAndSet(false, true)) {
@@ -108,60 +139,41 @@ public class DebugIndexer implements IControllable, Runnable {
 
     @Override
     public void pause() {
-        // Ensure all WAL entries are committed before pausing
-        log.debug("Ensuring all WAL entries are committed before pausing");
+        // Manual pause always sets autoPaused to false
+        // Auto-pause will set autoPaused to true before calling pause()
+        autoPaused.set(false);
         
-        // Execute any pending batch operations
-        try {
-            if (tickInsertStatement != null && batchCount % 1000 != 0) {
-                tickInsertStatement.executeBatch();
-                log.debug("Executed pending batch operations before pausing");
-            }
-        } catch (Exception e) {
-            log.debug("Failed to execute pending batch operations before pausing: {}", e.getMessage());
-        }
-        
-        // Commit all pending transactions to ensure WAL entries are written
-        try {
-            if (connection != null && !connection.isClosed()) {
-                connection.commit();
-                log.debug("Committed all pending transactions before pausing");
-                
-                // Perform explicit WAL checkpoint to immediately process WAL file
-                try (Statement checkpointStmt = connection.createStatement()) {
-                    checkpointStmt.execute("PRAGMA wal_checkpoint(TRUNCATE)");
-                    log.debug("Performed explicit WAL checkpoint before pausing");
-                } catch (Exception e) {
-                    log.debug("Failed to perform WAL checkpoint: {}", e.getMessage());
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Failed to commit transactions before pausing: {}", e.getMessage());
-        }
-        
-        // Close the database connection to ensure WAL is fully written
-        try {
-            if (tickInsertStatement != null) {
-                tickInsertStatement.close();
-                tickInsertStatement = null;
-                log.debug("Closed prepared statement before pausing");
-            }
-            if (connection != null && !connection.isClosed()) {
-                connection.close();
-                connection = null;
-                log.debug("Closed database connection before pausing");
-            }
-        } catch (Exception e) {
-            log.debug("Failed to close database resources before pausing: {}", e.getMessage());
-        }
-        
-        log.debug("All WAL entries committed and database connection closed, now pausing");
+        // Set the pause flag - the service will pause after finishing current batch
         paused.set(true);
+        log.debug("Manual pause flag set, service will pause after finishing current batch and close database");
+        
+        // For manual pause: immediately close database to ensure WAL is properly flushed
+        // This prevents WAL files from remaining open
+        if (Thread.currentThread().getName().equals("DebugIndexer")) {
+            // Called from service thread - close immediately
+            log.debug("Manual pause from service thread - closing database immediately");
+            closeQuietly();
+        } else {
+            // Called from external thread - signal immediate close
+            log.debug("Manual pause from external thread - signaling immediate database close");
+        }
     }
 
     @Override
     public void resume() {
         paused.set(false);
+        autoPaused.set(false);
+        
+        // Reopen database connection if it was closed during manual pause
+        try {
+            if (connection == null || connection.isClosed()) {
+                log.debug("Resuming from manual pause - reopening database connection");
+                setupDebugDatabase();
+                batchCount = 0;
+            }
+        } catch (Exception e) {
+            log.warn("Failed to reopen database connection on resume: {}", e.getMessage());
+        }
     }
 
     @Override
@@ -193,6 +205,13 @@ public class DebugIndexer implements IControllable, Runnable {
     public boolean isPaused() {
         return paused.get();
     }
+    
+    @Override
+    public boolean isAutoPaused() {
+        return autoPaused.get();
+    }
+    
+
 
     private double calculateTPS() {
         long currentTime = System.currentTimeMillis();
@@ -219,10 +238,11 @@ public class DebugIndexer implements IControllable, Runnable {
         if (paused.get()) {
             try {
                 long currentTick = lastProcessedTick;
-                String rawDbName = rawDbPath.substring(rawDbPath.lastIndexOf('/') + 1);
-                String debugDbName = debugDbPath.substring(rawDbPath.lastIndexOf('/') + 1);
-                return String.format("paused tick:%d reading %s writing %s", 
-                        currentTick, rawDbName, debugDbName);
+                String rawDbInfo = rawDbPath != null ? rawDbPath.replace('/', '\\') : "unknown";
+                String debugDbInfo = debugDbPath != null ? debugDbPath.replace('/', '\\') : "unknown";
+                String status = autoPaused.get() ? "auto-paused" : "paused";
+                return String.format("%s tick:%d reading %s writing %s", 
+                        status, currentTick, rawDbInfo, debugDbInfo);
             } catch (Exception e) {
                 return String.format("paused ERROR:%s", e.getMessage());
             }
@@ -230,12 +250,12 @@ public class DebugIndexer implements IControllable, Runnable {
         
         try {
             long currentTick = lastProcessedTick; // Use local counter instead of database query
-            String rawDbName = rawDbPath.substring(rawDbPath.lastIndexOf('/') + 1);
-            String debugDbName = debugDbPath.substring(rawDbPath.lastIndexOf('/') + 1);
+            String rawDbInfo = rawDbPath != null ? rawDbPath.replace('/', '\\') : "unknown";
+            String debugDbInfo = debugDbPath != null ? debugDbPath.replace('/', '\\') : "unknown";
             double tps = calculateTPS();
             
             return String.format("started tick:%d reading %s writing %s TPS:%.2f", 
-                    currentTick, rawDbName, debugDbName, tps);
+                    currentTick, rawDbInfo, debugDbInfo, tps);
         } catch (Exception e) {
             return String.format("started ERROR:%s", e.getMessage());
         }
@@ -276,16 +296,43 @@ public class DebugIndexer implements IControllable, Runnable {
 
             while (running.get()) {
                 if (paused.get()) {
-                    // In pause mode: check periodically for new ticks
-                    Thread.sleep(250); // Check every 250ms for new ticks
-                    
-                    // Check if there are new ticks to process
-                    if (hasNewTicksToProcess()) {
-                        log.debug("New ticks detected, waking up from pause");
-                        paused.set(false);
-                        continue;
+                    // In pause mode: check periodically for new ticks (only if auto-paused)
+                    if (autoPaused.get()) {
+                        try {
+                            Thread.sleep(1000); // Check every second for new ticks
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                        
+                        // Check if there are new ticks to process (only if auto-paused)
+                        if (hasNewTicksToProcess()) {
+                            log.debug("New ticks detected, waking up from auto-pause");
+                            autoPaused.set(false);
+                            paused.set(false);
+                            continue;
+                        }
+                    } else {
+                        // Manually paused - ensure database is closed and just wait
+                        if (connection != null && !connection.isClosed()) {
+                            log.debug("Manual pause detected - ensuring database is closed");
+                            closeQuietly();
+                        }
+                        try {
+                            Thread.sleep(1000); // Check every second
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
                     }
                     continue;
+                }
+                
+                // Check if we need to reopen database after manual pause
+                if (connection == null || connection.isClosed()) {
+                    log.debug("Reopening database connection after manual pause");
+                    setupDebugDatabase();
+                    batchCount = 0;
                 }
 
                 try {
@@ -298,7 +345,29 @@ public class DebugIndexer implements IControllable, Runnable {
                     } else if (remainingTicks == 0) {
                         // No more ticks available - auto-pause to save resources
                         log.debug("No more ticks to process, auto-pausing indexer");
+                        // Auto-pause - mark as auto-paused and set pause flag
+                        autoPaused.set(true);
                         paused.set(true);
+                        
+                        // For auto-pause: keep database open for quick resume
+                        log.debug("Auto-pause: keeping database open for quick resume");
+                        
+                        // Wait a bit before checking for new ticks
+                        try {
+                            Thread.sleep(1000); // Check every second
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                        
+                        // Check if new ticks are available (only if not manually paused)
+                        if (hasNewTicksToProcess() && !paused.get()) {
+                            log.debug("New ticks available, resuming debug indexer");
+                            autoPaused.set(false);
+                            paused.set(false);
+                            continue;
+                        }
+                        
                         continue;
                     } else {
                         // remainingTicks < 0 means there was an error, but ticks might still be available
@@ -310,7 +379,29 @@ public class DebugIndexer implements IControllable, Runnable {
                         } else {
                             // No more ticks available - auto-pause to save resources
                             log.debug("No more ticks to process, auto-pausing indexer");
+                            // Auto-pause - mark as auto-paused and set pause flag
+                            autoPaused.set(true);
                             paused.set(true);
+                            
+                            // For auto-pause: keep database open for quick resume
+                            log.debug("Auto-pause: keeping database open for quick resume");
+                            
+                            // Wait a bit before checking for new ticks
+                            try {
+                                Thread.sleep(1000); // Check every second
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                break;
+                            }
+                            
+                            // Check if new ticks are available (only if not manually paused)
+                            if (hasNewTicksToProcess() && !paused.get()) {
+                                log.debug("New ticks available, resuming debug indexer");
+                                autoPaused.set(false);
+                                paused.set(false);
+                                continue;
+                            }
+                            
                             continue;
                         }
                     }
@@ -319,6 +410,9 @@ public class DebugIndexer implements IControllable, Runnable {
                         log.warn("Failed to process tick {}: {}", lastProcessedTick + 1, e.getMessage());
                     }
                 }
+                
+                // Manual pause is now handled immediately in the pause() method
+                // and in the main pause loop above
             }
         } catch (Exception e) {
             log.error("DebugIndexer fatal error, terminating service: {}", e.getMessage());
@@ -333,8 +427,9 @@ public class DebugIndexer implements IControllable, Runnable {
             // Cleanup database resources
             try {
                 if (tickInsertStatement != null) {
-                    if (batchCount % 1000 != 0) {
+                    if (batchCount > 0) {
                         tickInsertStatement.executeBatch();
+                        log.debug("Executed final batch of {} ticks during shutdown", batchCount);
                     }
                     tickInsertStatement.close();
                 }
@@ -359,9 +454,9 @@ public class DebugIndexer implements IControllable, Runnable {
                     return countRs.getLong(1) > 0;
                 }
             }
-        } catch (Exception e) {
-            log.debug("Failed to check for new ticks: {}", e.getMessage());
-        }
+                 } catch (Exception e) {
+             // Ignore errors when checking for new ticks
+         }
         return false;
     }
 
@@ -376,7 +471,12 @@ public class DebugIndexer implements IControllable, Runnable {
                     if (!rs.next()) {
                         // Tables don't exist yet, wait and retry
                         log.warn("Waiting for raw database tables to be created...");
-                        Thread.sleep(1000);
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
                         continue;
                     }
                 }
@@ -423,15 +523,18 @@ public class DebugIndexer implements IControllable, Runnable {
     }
 
     private int processNextTick(long tickToProcess) {
-
-        
         // Process large batches for maximum performance, but with reasonable memory limits
         try (Connection rawConn = DriverManager.getConnection("jdbc:sqlite:" + rawDbPath)) {
-
+            // Apply SQLite performance optimizations
+            try (Statement stmt = rawConn.createStatement()) {
+                stmt.execute("PRAGMA journal_mode=WAL");
+                stmt.execute("PRAGMA synchronous=NORMAL");
+                stmt.execute("PRAGMA cache_size=10000");
+                stmt.execute("PRAGMA temp_store=MEMORY");
+            }
             
             // Get all available ticks starting from the next one to process
             // Use configurable batch size from config, but ensure we process all remaining ticks
-            log.debug("*****Configured batch size: {}", batchSize);
             
             // Check if we're in the final batch (less than batchSize ticks remaining)
             long remainingTicks = 0;
@@ -447,8 +550,6 @@ public class DebugIndexer implements IControllable, Runnable {
                 log.warn("COUNT query failed: {}", e.getMessage());
                 return -1; // Indicate error
             }
-
-            log.debug("*****Remaining ticks before processing: {}", remainingTicks);
             
             // If we have no ticks remaining, we need to check if simulation is still running
             if (remainingTicks == 0) {
@@ -461,7 +562,6 @@ public class DebugIndexer implements IControllable, Runnable {
             // Always respect the configured batch size for consistent performance
             // This prevents oversized batches that could cause memory issues
             int actualBatchSize = remainingTicks <= batchSize ? (int)remainingTicks : batchSize;
-            log.debug("*****Actual batch size to process: {} (remaining: {}, configured: {})", actualBatchSize, remainingTicks, batchSize);
             
 
             
@@ -504,39 +604,33 @@ public class DebugIndexer implements IControllable, Runnable {
                         log.debug("Processed {} ticks in batch, last tick: {}", processedCount, lastProcessedTick);
                     }
                     
-                    // Return the number of ticks that are still remaining to be processed
-                    // This helps the main loop decide whether to continue or pause
-                    long remainingAfterProcessing = 0;
-                    
-                    // Use the SAME connection to ensure consistent transaction view
-                    log.debug("*****Counting remaining ticks after processing, lastProcessedTick: {}", lastProcessedTick);
-                    
-                    // Simple and reliable approach: check if there are any ticks beyond what we've processed
-                    // Use the same connection to avoid transaction inconsistencies
-                    try (PreparedStatement nextPs = rawConn.prepareStatement(
-                            "SELECT tick_number FROM raw_ticks WHERE tick_number > ? ORDER BY tick_number LIMIT 1")) {
-                        log.debug("*****SELECT tick_number FROM raw_ticks WHERE tick_number > {} ORDER BY tick_number LIMIT 1", lastProcessedTick);
-                        nextPs.setLong(1, lastProcessedTick);
-                        try (ResultSet nextRs = nextPs.executeQuery()) {
-                            if (nextRs.next()) {
-                                long nextTick = nextRs.getLong(1);
-                                log.debug("*****Next available tick: {}", nextTick);
-                                
-                                // There are more ticks, so we should continue processing
-                                remainingAfterProcessing = 1;
-                                log.debug("*****More ticks available, continuing to process");
-                            } else {
-                                log.debug("*****No next tick found - we're done!");
-                                remainingAfterProcessing = 0;
-                            }
-                        }
-                    } catch (Exception e) {
-                        log.debug("Next tick query failed: {}", e.getMessage());
-                        return -1; // Indicate error
-                    }
-                    
-                    log.debug("*****Final remaining ticks: {}", remainingAfterProcessing);
-                    return (int)remainingAfterProcessing;
+                                         // Return the number of ticks that are still remaining to be processed
+                     // This helps the main loop decide whether to continue or pause
+                     long remainingAfterProcessing = 0;
+                     
+                     // Use the SAME connection to ensure consistent transaction view
+                     
+                     // Simple and reliable approach: check if there are any ticks beyond what we've processed
+                     // Use the same connection to avoid transaction inconsistencies
+                     try (PreparedStatement nextPs = rawConn.prepareStatement(
+                             "SELECT tick_number FROM raw_ticks WHERE tick_number > ? ORDER BY tick_number LIMIT 1")) {
+                         nextPs.setLong(1, lastProcessedTick);
+                         try (ResultSet nextRs = nextPs.executeQuery()) {
+                             if (nextRs.next()) {
+                                 long nextTick = nextRs.getLong(1);
+                                 
+                                 // There are more ticks, so we should continue processing
+                                 remainingAfterProcessing = 1;
+                             } else {
+                                 remainingAfterProcessing = 0;
+                             }
+                         }
+                     } catch (Exception e) {
+                         log.warn("Next tick query failed: {}", e.getMessage());
+                         return -1; // Indicate error
+                     }
+                     
+                     return (int)remainingAfterProcessing;
                 }
             }
         } catch (Exception e) {
@@ -912,6 +1006,11 @@ public class DebugIndexer implements IControllable, Runnable {
     }
 
     private void writePreparedTick(PreparedTickState preparedTick) throws Exception {
+                 // Ensure database connection is available
+         if (connection == null || connection.isClosed()) {
+             setupDebugDatabase();
+         }
+        
         // Use batch insert for better performance
         if (tickInsertStatement == null) {
             tickInsertStatement = connection.prepareStatement(
@@ -933,4 +1032,66 @@ public class DebugIndexer implements IControllable, Runnable {
     public long getLastProcessedTick() { return lastProcessedTick; }
     public String getRawDbPath() { return rawDbPath; }
     public String getDebugDbPath() { return debugDbPath; }
+
+    private void closeQuietly() {
+        try {
+            // First, execute any remaining batch operations
+            if (tickInsertStatement != null && batchCount > 0) {
+                // Always execute remaining batch, regardless of batchCount value
+                tickInsertStatement.executeBatch();
+                log.debug("Executed final batch of {} ticks before pause", batchCount);
+                batchCount = 0; // Reset batch counter after execution
+            }
+            if (tickInsertStatement != null) {
+                tickInsertStatement.close();
+                tickInsertStatement = null;
+            }
+            
+            // Perform WAL checkpoint to ensure all changes are in the main database
+            if (connection != null && !connection.isClosed()) {
+                try (Statement st = connection.createStatement()) {
+                    // Force all pending changes to be written
+                    st.execute("PRAGMA wal_checkpoint(FULL)");
+                    log.debug("WAL checkpoint completed before closing");
+                    
+                    // Force a final checkpoint to ensure all data is flushed
+                    st.execute("PRAGMA wal_checkpoint(TRUNCATE)");
+                    log.debug("Final WAL truncate checkpoint completed");
+                    
+                    // Ensure WAL mode is properly closed and files are released
+                    st.execute("PRAGMA journal_mode=DELETE");
+                    log.debug("WAL mode disabled, journal mode set to DELETE");
+                    
+                    // Final checkpoint after disabling WAL to ensure all data is in main file
+                    st.execute("PRAGMA wal_checkpoint(FULL)");
+                    log.debug("Final checkpoint after WAL disable completed");
+                } catch (Exception e) {
+                    log.warn("Error during WAL checkpoint before closing: {}", e.getMessage());
+                }
+            }
+            
+            // Close the connection
+            if (connection != null) {
+                connection.close();
+                connection = null;
+                log.debug("Database connection closed");
+            }
+            
+            // Note: Raw database is managed by PersistenceService, not by us
+            // No need to close raw database connections
+            
+        } catch (Exception e) {
+            log.warn("Error closing database cleanly: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Close any open raw database connections to ensure WAL files are properly closed.
+     * Note: We only close our own debug database, not the raw database which is managed by PersistenceService.
+     */
+    private void closeRawDatabaseConnections() {
+        // The raw database is managed by PersistenceService, not by us
+        // We should not try to close it as it may be in use by other services
+        log.debug("Skipping raw database connection close - managed by PersistenceService");
+    }
 }
