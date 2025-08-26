@@ -41,11 +41,23 @@ public record PreparedTickState(
             List<RegisterValue> locationRegisters,
             List<String> dataStack,
             List<String> locationStack,
-            List<String> callStack,
+            List<CallStackEntry> callStack,
             List<List<Integer>> dps
     ) {}
 
     public record RegisterValue(String id, String alias, String value) {}
+
+    public record CallStackEntry(
+            String procName,
+            int[] returnCoordinates,
+            List<ParameterBinding> parameters
+    ) {}
+
+    public record ParameterBinding(
+            int drId,
+            String value,
+            String paramName
+    ) {}
 
     public record SourceView(
             String fileName,

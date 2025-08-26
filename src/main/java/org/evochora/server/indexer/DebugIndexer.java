@@ -960,8 +960,8 @@ public class DebugIndexer implements IControllable, Runnable {
         List<String> locationStack = o.locationStack() != null ? 
             o.locationStack().stream().map(this::formatVector).toList() : new ArrayList<>();
         
-        // Call Stack (CS) - vorerst leer (wird später implementiert)
-        List<String> callStack = new ArrayList<>();
+        // Call Stack (CS) - als strukturierte Daten
+        List<PreparedTickState.CallStackEntry> callStack = buildCallStack(o, artifact);
         
         // DPS aus dem Organismus extrahieren
         List<List<Integer>> dps = o.dps() != null ? o.dps().stream().map(this::toList).toList() : new ArrayList<>();
@@ -998,28 +998,59 @@ public class DebugIndexer implements IControllable, Runnable {
         );
     }
 
-    private List<String> formatCallStack(RawOrganismState o, ProgramArtifact artifact) {
+    private List<PreparedTickState.CallStackEntry> buildCallStack(RawOrganismState o, ProgramArtifact artifact) {
         if (o.callStack() == null || o.callStack().isEmpty()) return Collections.emptyList();
 
-        if (artifact == null) {
-            // Fallback, wenn kein Artefakt verfügbar ist
-            return o.callStack().stream().map(SerializableProcFrame::procName).collect(Collectors.toList());
-        }
-
-        // Vollständige Auflösung
-        // HINWEIS: Dies ist eine komplexe Logik, die den Stack durchlaufen und Bindungen auflösen muss.
-        // Vorerst eine vereinfachte Version.
         return o.callStack().stream()
-                .map(frame -> {
-                    String procName = frame.procName();
-                    List<String> paramNames = artifact.procNameToParamNames().get(procName.toUpperCase());
-                    if (paramNames == null || paramNames.isEmpty()) {
-                        return procName;
-                    }
-                    //... hier würde die vollständige Auflösung der Parameter stattfinden
-                    return procName + " (...)";
-                })
+                .map(frame -> buildCallStackEntry(frame, o, artifact))
                 .collect(Collectors.toList());
+    }
+
+    private PreparedTickState.CallStackEntry buildCallStackEntry(SerializableProcFrame frame, RawOrganismState o, ProgramArtifact artifact) {
+        // 1. Prozedurname
+        String procName = frame.procName();
+        
+        // 2. Absolute Return-IP als Koordinaten
+        int[] returnCoordinates = frame.absoluteReturnIp() != null && frame.absoluteReturnIp().length >= 2 ? 
+            frame.absoluteReturnIp() : new int[]{0, 0};
+        
+        // 3. Parameter-Bindungen
+        List<PreparedTickState.ParameterBinding> parameters = new ArrayList<>();
+        
+        if (frame.fprBindings() != null && !frame.fprBindings().isEmpty()) {
+            // Sortiere FPR-Bindings nach Index für konsistente Anzeige
+            List<Map.Entry<Integer, Integer>> sortedBindings = frame.fprBindings().entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .collect(Collectors.toList());
+            
+            for (Map.Entry<Integer, Integer> binding : sortedBindings) {
+                int fprIndex = binding.getKey() - Instruction.FPR_BASE; // FPR-Base abziehen
+                int drId = binding.getValue();
+                
+                // Hole aktuellen Register-Wert
+                String registerValue = "";
+                if (drId >= 0 && drId < o.drs().size()) {
+                    Object drValue = o.drs().get(drId);
+                    if (drValue != null) {
+                        registerValue = formatValue(drValue);
+                    }
+                }
+                
+                // Parameter-Name auflösen (falls verfügbar)
+                String paramName = null;
+                if (artifact != null && artifact.procNameToParamNames().containsKey(frame.procName().toUpperCase())) {
+                    List<String> paramNames = artifact.procNameToParamNames().get(frame.procName().toUpperCase());
+                    if (fprIndex < paramNames.size()) {
+                        paramName = paramNames.get(fprIndex);
+                    }
+                }
+                
+                // ParameterBinding erstellen
+                parameters.add(new PreparedTickState.ParameterBinding(drId, registerValue, paramName));
+            }
+        }
+        
+        return new PreparedTickState.CallStackEntry(procName, returnCoordinates, parameters);
     }
 
     private String formatValue(Object obj) {

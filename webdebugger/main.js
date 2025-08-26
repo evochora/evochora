@@ -254,16 +254,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 return formattedValues.join('');
             };
             
-            // Call Stack spezielle Behandlung
+            // Call Stack spezielle Behandlung - jetzt mit strukturierten Daten
             const formatCallStack = (callStack, previousCallStack) => {
                 if (!callStack || callStack.length === 0) return '';
                 
-                // Typen in allen Call Stack-Werten abkürzen
-                const formattedCallStack = callStack.map(value => {
-                    return value.replace(/CODE:/g, 'C:').replace(/DATA:/g, 'D:').replace(/ENERGY:/g, 'E:').replace(/STRUCTURE:/g, 'S:');
+                // Jetzt verarbeiten wir strukturierte CallStackEntry-Objekte
+                // Jeder Eintrag bekommt eine eigene Zeile
+                const formattedCallStack = callStack.map(entry => {
+                    // entry ist jetzt ein Objekt mit: { procName, returnCoordinates, parameters }
+                    let result = entry.procName || 'UNKNOWN';
+                    
+                    // Return-Koordinaten hinzufügen: [x|y] mit .injected-value Styling
+                    if (entry.returnCoordinates && entry.returnCoordinates.length >= 2) {
+                        result += ` <span class="injected-value">[${entry.returnCoordinates[0]}|${entry.returnCoordinates[1]}]</span>`;
+                    }
+                    
+                    // Parameter hinzufügen
+                    if (entry.parameters && entry.parameters.length > 0) {
+                        result += ' WITH ';
+                        const paramStrings = entry.parameters.map(param => {
+                            if (param.paramName) {
+                                // Mit ProgramArtifact: PARAM1<span class="injected-value">[%DR1=D:3]</span>
+                                return `${param.paramName}<span class="injected-value">[%DR${param.drId}=${param.value}]</span>`;
+                            } else {
+                                // Ohne ProgramArtifact: %DR1<span class="injected-value">[=D:3]</span>
+                                return `%DR${param.drId}<span class="injected-value">[=${param.value}]</span>`;
+                            }
+                        });
+                        result += paramStrings.join(' ');
+                    }
+                    
+                    return result;
                 });
                 
-                return formattedCallStack.join(' -> ');
+                // Jeder Eintrag bekommt eine eigene Zeile, nicht mit -> verketten
+                return formattedCallStack.join('\n');
             };
             
             // Verwende die ursprüngliche .code-view Struktur für perfekte Zeilenhöhe
@@ -275,7 +300,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const locationStackChanged = navigationDirection === 'forward' && 
                 (state.locationStack?.join(' ') !== (this.previousState?.locationStack?.join(' ') || ''));
             const callStackChanged = navigationDirection === 'forward' && 
-                (state.callStack?.join(' -> ') !== (this.previousState?.callStack?.join(' -> ') || ''));
+                (JSON.stringify(state.callStack) !== JSON.stringify(this.previousState?.callStack));
             
             el.innerHTML = `<div class="code-view" style="font-size:0.9em;">DP:  ${formatDPs(state.dps, this.previousState?.dps)}\nDR:  ${formatRegisters(state.dataRegisters, this.previousState?.dataRegisters)}\nPR:  ${formatRegisters(state.procRegisters, this.previousState?.procRegisters)}\nFPR: ${formatRegisters(state.fpRegisters, this.previousState?.fpRegisters)}\nLR:  ${formatRegisters(state.locationRegisters, this.previousState?.locationRegisters, true)}\n${dataStackChanged ? '<div class="changed-line">DS:  ' : 'DS:  '}${formatStack(state.dataStack, this.previousState?.dataStack, state.dataRegisters?.length || 8)}${dataStackChanged ? '</div>' : ''}\n${locationStackChanged ? '<div class="changed-line">LS:  ' : 'LS:  '}${formatStack(state.locationStack, this.previousState?.locationStack, state.dataRegisters?.length || 8, true)}${locationStackChanged ? '</div>' : ''}\n${callStackChanged ? '<div class="changed-line">CS:  ' : 'CS:  '}${formatCallStack(state.callStack, this.previousState?.callStack)}${callStackChanged ? '</div>' : ''}</div>`;
             
