@@ -35,9 +35,9 @@ class DebugIndexerPerformanceTest {
     void setUp(@TempDir Path tempDir) throws Exception {
         this.tempDir = tempDir;
         
-        // Use temporary files for reliable testing
-        this.rawDbPath = tempDir.resolve("test_raw.sqlite").toString();
-        this.debugDbPath = tempDir.resolve("test_debug.sqlite").toString();
+        // Use in-memory databases for reliable testing without file locking issues
+        this.rawDbPath = "jdbc:sqlite:file:memdb_perf_raw?mode=memory&cache=shared";
+        this.debugDbPath = "jdbc:sqlite:file:memdb_perf_debug?mode=memory&cache=shared";
         
         debugIndexer = new DebugIndexer(rawDbPath, BATCH_SIZE);
     }
@@ -50,7 +50,7 @@ class DebugIndexerPerformanceTest {
     }
 
     private void createTestDatabase(String dbPath) throws Exception {
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath)) {
+        try (Connection conn = DriverManager.getConnection(dbPath)) {
             try (Statement stmt = conn.createStatement()) {
                 // Create raw_ticks table
                 stmt.execute("""

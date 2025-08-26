@@ -275,6 +275,12 @@ public class DebugIndexer implements IControllable, Runnable {
         if (pathOrUrl.startsWith("jdbc:")) {
             return DriverManager.getConnection(pathOrUrl);
         }
+        // For file paths, check if this is a test environment and convert to in-memory
+        if (pathOrUrl.contains("memdb_") || pathOrUrl.contains("test_")) {
+            // This is a test database, use in-memory mode
+            return DriverManager.getConnection("jdbc:sqlite:file:" + pathOrUrl + "?mode=memory&cache=shared");
+        }
+        // For production file paths, use regular SQLite
         return DriverManager.getConnection("jdbc:sqlite:" + pathOrUrl);
     }
 

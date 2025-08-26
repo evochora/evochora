@@ -98,9 +98,12 @@ class PersistenceServicePerformanceTest {
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void testConfigurableBatchSize() {
-        // Test with different batch sizes
-        PersistenceService smallBatchService = new PersistenceService(queue, new int[]{100, 30}, 100);
-        PersistenceService largeBatchService = new PersistenceService(queue, new int[]{100, 30}, 5000);
+        // Test with different batch sizes - use in-memory databases
+        String smallBatchDb = "jdbc:sqlite:file:memdb_small_batch?mode=memory&cache=shared";
+        String largeBatchDb = "jdbc:sqlite:file:memdb_large_batch?mode=memory&cache=shared";
+        
+        PersistenceService smallBatchService = new PersistenceService(queue, smallBatchDb, new int[]{100, 30}, 100);
+        PersistenceService largeBatchService = new PersistenceService(queue, largeBatchDb, new int[]{100, 30}, 5000);
         
         // Note: getBatchSize() is private, but we can verify constructor works
         assertNotNull(smallBatchService);
@@ -244,10 +247,14 @@ class PersistenceServicePerformanceTest {
     @Test
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testBatchSizeImpactOnPerformance() throws Exception {
-        // Test with different batch sizes
-        PersistenceService smallBatchService = new PersistenceService(queue, new int[]{100, 30}, 100);
-        PersistenceService mediumBatchService = new PersistenceService(queue, new int[]{100, 30}, 1000);
-        PersistenceService largeBatchService = new PersistenceService(queue, new int[]{100, 30}, 5000);
+        // Test with different batch sizes - use in-memory databases
+        String smallBatchDb = "jdbc:sqlite:file:memdb_small_batch_perf?mode=memory&cache=shared";
+        String mediumBatchDb = "jdbc:sqlite:file:memdb_medium_batch_perf?mode=memory&cache=shared";
+        String largeBatchDb = "jdbc:sqlite:file:memdb_large_batch_perf?mode=memory&cache=shared";
+        
+        PersistenceService smallBatchService = new PersistenceService(queue, smallBatchDb, new int[]{100, 30}, 100);
+        PersistenceService mediumBatchService = new PersistenceService(queue, mediumBatchDb, new int[]{100, 30}, 1000);
+        PersistenceService largeBatchService = new PersistenceService(queue, largeBatchDb, new int[]{100, 30}, 5000);
         
         // Start all services
         smallBatchService.start();

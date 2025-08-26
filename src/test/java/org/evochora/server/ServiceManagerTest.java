@@ -42,9 +42,9 @@ class ServiceManagerTest {
         config.pipeline.indexer = new SimulationConfiguration.IndexerServiceConfig();
         config.pipeline.server = new SimulationConfiguration.ServerServiceConfig();
         
-        // Set default values
+        // Set default values with unique cache names to avoid shared cache locking
         config.pipeline.persistence.batchSize = 1000;
-        config.pipeline.persistence.jdbcUrl = "jdbc:sqlite:file:memdb_sm?mode=memory&cache=shared";
+        config.pipeline.persistence.jdbcUrl = "jdbc:sqlite:file:memdb_sm_persistence?mode=memory&cache=shared";
         config.pipeline.indexer.batchSize = 1000;
         config.pipeline.server.port = 0;
         

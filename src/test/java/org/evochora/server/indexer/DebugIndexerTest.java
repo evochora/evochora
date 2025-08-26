@@ -43,7 +43,6 @@ class DebugIndexerTest {
     }
 
 
-    @Disabled("This test is flaky and needs to be fixed.")
     @Test
     void indexer_readsRawDb_and_writesPreparedDb() throws Exception {
         // 1. Arrange: Use in-memory databases
@@ -91,6 +90,12 @@ class DebugIndexerTest {
                 ps.setString(2, mapper.writeValueAsString(new int[]{10, 10}));
                 ps.executeUpdate();
             }
+        }
+        
+        // Erstelle auch die Debug-Datenbank mit der prepared_ticks Tabelle
+        try (Connection debugConn = DriverManager.getConnection(debugJdbcUrl);
+             Statement st = debugConn.createStatement()) {
+            st.execute("CREATE TABLE prepared_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json TEXT)");
         }
 
         try {

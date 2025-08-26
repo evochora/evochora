@@ -334,9 +334,11 @@ public final class ServiceManager {
         if (indexer.get() == null || !indexerRunning.get()) {
             if (persistenceService.get() != null) {
                 String rawDbUrl = persistenceService.get().getJdbcUrl();
-                String debugDbUrl = rawDbUrl.replace("_raw", "_debug");
+                // Generate unique URLs for indexer to avoid shared cache conflicts
+                String indexerRawDbUrl = rawDbUrl.replace("memdb_", "memdb_indexer_");
+                String indexerDebugDbUrl = indexerRawDbUrl.replace("_raw", "_debug");
                 int batchSize = config.pipeline.indexer != null ? config.pipeline.indexer.batchSize : 1000;
-                DebugIndexer service = new DebugIndexer(rawDbUrl, debugDbUrl, batchSize);
+                DebugIndexer service = new DebugIndexer(indexerRawDbUrl, indexerDebugDbUrl, batchSize);
                 
                 indexer.set(service);
                 service.start();
