@@ -37,6 +37,7 @@ public record PreparedTickState(
     public record InternalState(
             List<RegisterValue> dataRegisters,
             List<RegisterValue> procRegisters,
+            List<RegisterValue> fpRegisters,
             List<RegisterValue> locationRegisters,
             List<String> dataStack,
             List<String> locationStack,

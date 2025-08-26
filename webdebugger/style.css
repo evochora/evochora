@@ -318,5 +318,84 @@ main.container {
     font-weight: bold;
 }
 
+/* Spezielle Regel für .code-view .changed - garantiert konstante Spaltenbreite */
+.code-view .changed {
+    color: #ffb366;
+    font-weight: bold;
+    /* Wichtig: Keine Breitenänderung durch HTML-Tags */
+    display: inline-block !important; /* Inline-Block für feste Breite */
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: none !important;
+    /* Garantierte konstante Spaltenbreite */
+    font-family: 'Monospaced', 'Courier New', Courier, monospace !important;
+    white-space: pre !important;
+    letter-spacing: normal !important;
+    word-spacing: normal !important;
+    /* Zusätzliche Sicherheit */
+    box-sizing: border-box !important;
+    line-height: inherit !important;
+    vertical-align: baseline !important;
+    /* Feste Breite basierend auf Zeichenanzahl */
+    width: fit-content !important;
+    min-width: fit-content !important;
+    max-width: fit-content !important;
+}
+
+/* Neue CSS-Klasse für geänderte Felder mit fester Breite */
+.changed-field {
+    color: #ffb366;
+    font-weight: bold;
+    /* Wichtig: Keine Breitenänderung durch HTML-Tags */
+    display: inline-block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: none !important;
+    /* Garantierte konstante Spaltenbreite */
+    font-family: 'Monospaced', 'Courier New', Courier, monospace !important;
+    white-space: pre !important;
+    letter-spacing: normal !important;
+    word-spacing: normal !important;
+    /* Zusätzliche Sicherheit */
+    box-sizing: border-box !important;
+    line-height: inherit !important;
+    vertical-align: text-top !important; /* Verhindert das Nach-oben-Rutschen */
+                 /* Feste Breite basierend auf Zeichenanzahl */
+             width: 7ch !important; /* Feste Breite für Register/DPs */
+             min-width: 7ch !important;
+             max-width: 7ch !important;
+    text-align: left !important;
+    overflow: hidden !important;
+}
+
+/* Neue CSS-Klasse für geänderte Zeilen (Stacks, Call Stack) */
+.changed-line {
+    color: #ffb366;
+    font-weight: bold;
+    /* Wichtig: Keine Breitenänderung durch HTML-Tags */
+    display: inline !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: none !important;
+    /* Garantierte konstante Spaltenbreite */
+    font-family: 'Monospaced', 'Courier New', Courier, monospace !important;
+    white-space: pre !important;
+    letter-spacing: normal !important;
+    word-spacing: normal !important;
+    /* Zusätzliche Sicherheit */
+    box-sizing: border-box !important;
+    line-height: inherit !important;
+    vertical-align: baseline !important;
+    /* Keine feste Breite - passt sich dem Inhalt an */
+    width: auto !important;
+    min-width: auto !important;
+    max-width: none !important;
+    text-align: left !important;
+    overflow: visible !important;
+}
+
 
 

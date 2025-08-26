@@ -148,51 +148,139 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     class SidebarStateView {
-        constructor(root) { this.root = root; }
-        update(state) {
+        constructor(root) { 
+            this.root = root; 
+            this.previousState = null;
+        }
+        
+        update(state, navigationDirection) {
             const el = this.root.querySelector('[data-section="state"]');
             if (!state || !el) return;
             
-            // Hilfsfunktion für Register-Formatierung mit 8 Spalten (schmalere Breite)
-            const formatRegisters = (registers) => {
+            // Hilfsfunktion für Register-Formatierung mit dynamischer Anzahl (schmalere Breite)
+            const formatRegisters = (registers, previousRegisters, removeBrackets = false) => {
+                if (!registers || registers.length === 0) return '';
+                
                 const formatted = [];
-                for (let i = 0; i < 8; i++) {
-                    const value = registers && registers[i] !== undefined ? registers[i] : '';
-                    // Schmalere Breite: 6 Zeichen für perfekte Ausrichtung ohne Scroll
-                    formatted.push(String(value).padEnd(6));
+                
+                for (let i = 0; i < registers.length; i++) {
+                    let value = '';
+                    if (registers[i] && registers[i].value !== undefined) {
+                        // RegisterValue Objekt hat eine 'value' Property
+                        value = registers[i].value || '';
+                        // Typen abkürzen: CODE: -> C:, DATA: -> D:, ENERGY: -> E:, STRUCTURE: -> S:
+                        value = value.replace(/CODE:/g, 'C:').replace(/DATA:/g, 'D:').replace(/ENERGY:/g, 'E:').replace(/STRUCTURE:/g, 'S:');
+                        
+                        // Entferne eckige Klammern falls gewünscht (für LR)
+                        if (removeBrackets) {
+                            value = value.replace(/^\[|\]$/g, '');
+                        }
+                        
+                        // Prüfe, ob sich der Wert geändert hat (nur bei "weiter" Navigation)
+                        if (navigationDirection === 'forward' && previousRegisters && previousRegisters[i] && previousRegisters[i].value !== undefined) {
+                            let previousValue = previousRegisters[i].value || '';
+                            previousValue = previousValue.replace(/CODE:/g, 'C:').replace(/DATA:/g, 'D:').replace(/ENERGY:/g, 'E:').replace(/STRUCTURE:/g, 'S:');
+                            if (removeBrackets) {
+                                previousValue = previousValue.replace(/^\[|\]$/g, '');
+                            }
+                            if (value !== previousValue) {
+                                // Markiere nur den einzelnen Wert mit .changed
+                                value = `<div class="changed-field">${value}</div>`;
+                            }
+                        }
+                    }
+                    // Breite: 7 Zeichen für perfekte Ausrichtung ohne Scroll
+                    formatted.push(String(value).padEnd(7));
                 }
+                
                 return formatted.join('');
             };
             
-            // Hilfsfunktion für DP-Formatierung mit 8 Spalten (schmalere Breite)
-            const formatDPs = (dps) => {
+            // Hilfsfunktion für DP-Formatierung mit dynamischer Anzahl (schmalere Breite)
+            const formatDPs = (dps, previousDps) => {
+                if (!dps || dps.length === 0) return '';
+                
                 const formatted = [];
-                for (let i = 0; i < 8; i++) {
+                
+                for (let i = 0; i < dps.length; i++) {
                     let value = '';
-                    if (dps && dps[i]) {
-                        value = `(${dps[i].join('|')})`;
+                    if (dps[i] && dps[i].length > 0) {
+                        value = `${dps[i].join('|')}`;
+                        
+                        // Prüfe, ob sich der DP-Wert geändert hat (nur bei "weiter" Navigation)
+                        if (navigationDirection === 'forward' && previousDps && previousDps[i] && previousDps[i].length > 0) {
+                            const previousValue = `${previousDps[i].join('|')}`;
+                            if (value !== previousValue) {
+                                // Markiere nur den einzelnen Wert mit .changed
+                                value = `<div class="changed-field">${value}</div>`;
+                            }
+                        }
                     }
-                    // Schmalere Breite: 6 Zeichen für perfekte Ausrichtung ohne Scroll
-                    formatted.push(value.padEnd(6));
+                    // Breite: 7 Zeichen für perfekte Ausrichtung ohne Scroll
+                    formatted.push(value.padEnd(7));
                 }
+                
                 return formatted.join('');
             };
             
             // Hilfsfunktion für Stack-Formatierung
-            const formatStack = (stack) => {
+            const formatStack = (stack, previousStack, maxColumns = 8, removeBrackets = false) => {
                 if (!stack || stack.length === 0) return '';
-                return stack.join(' ');
+                
+                // Typen in allen Stack-Werten abkürzen
+                const formattedStack = stack.map(value => {
+                    let formattedValue = value.replace(/CODE:/g, 'C:').replace(/DATA:/g, 'D:').replace(/ENERGY:/g, 'E:').replace(/STRUCTURE:/g, 'S:');
+                    
+                    // Entferne eckige Klammern falls gewünscht (für LS und LR)
+                    if (removeBrackets) {
+                        formattedValue = formattedValue.replace(/^\[|\]$/g, '');
+                    }
+                    
+                    return formattedValue;
+                });
+                
+                // Begrenze auf maxColumns Werte
+                let displayStack = formattedStack;
+                if (formattedStack.length > maxColumns) {
+                    displayStack = formattedStack.slice(0, maxColumns - 1); // -1 für "..."
+                    displayStack.push('...'); // Zeige an, dass es mehr gibt
+                }
+                
+                // Formatiere jeden Wert mit fester Breite (7 Zeichen wie bei Registern)
+                const formattedValues = displayStack.map(value => {
+                    return String(value).padEnd(7);
+                });
+                
+                return formattedValues.join('');
             };
             
             // Call Stack spezielle Behandlung
-            const formatCallStack = (callStack) => {
+            const formatCallStack = (callStack, previousCallStack) => {
                 if (!callStack || callStack.length === 0) return '';
-                return callStack.join(' -> ');
+                
+                // Typen in allen Call Stack-Werten abkürzen
+                const formattedCallStack = callStack.map(value => {
+                    return value.replace(/CODE:/g, 'C:').replace(/DATA:/g, 'D:').replace(/ENERGY:/g, 'E:').replace(/STRUCTURE:/g, 'S:');
+                });
+                
+                return formattedCallStack.join(' -> ');
             };
             
             // Verwende die ursprüngliche .code-view Struktur für perfekte Zeilenhöhe
             // Alle Labels haben die gleiche Breite für perfekte Spaltenausrichtung
-            el.innerHTML = `<div class="code-view" style="font-size:0.9em;">DP:  ${formatDPs(state.dps)}\nDR:  ${formatRegisters(state.dataRegisters)}\nPR:  ${formatRegisters(state.procRegisters)}\nFPR: ${formatRegisters(state.fpRegisters, '0')}\nLR:  ${formatRegisters(state.locationRegisters)}\nDS:  ${formatStack(state.dataStack)}\nLS:  ${formatStack(state.locationStack)}\nCS:  ${formatCallStack(state.callStack)}</div>`;
+            
+            // Prüfe, ob sich die Stacks geändert haben
+            const dataStackChanged = navigationDirection === 'forward' && 
+                (state.dataStack?.join(' ') !== (this.previousState?.dataStack?.join(' ') || ''));
+            const locationStackChanged = navigationDirection === 'forward' && 
+                (state.locationStack?.join(' ') !== (this.previousState?.locationStack?.join(' ') || ''));
+            const callStackChanged = navigationDirection === 'forward' && 
+                (state.callStack?.join(' -> ') !== (this.previousState?.callStack?.join(' -> ') || ''));
+            
+            el.innerHTML = `<div class="code-view" style="font-size:0.9em;">DP:  ${formatDPs(state.dps, this.previousState?.dps)}\nDR:  ${formatRegisters(state.dataRegisters, this.previousState?.dataRegisters)}\nPR:  ${formatRegisters(state.procRegisters, this.previousState?.procRegisters)}\nFPR: ${formatRegisters(state.fpRegisters, this.previousState?.fpRegisters)}\nLR:  ${formatRegisters(state.locationRegisters, this.previousState?.locationRegisters, true)}\n${dataStackChanged ? '<div class="changed-line">DS:  ' : 'DS:  '}${formatStack(state.dataStack, this.previousState?.dataStack, state.dataRegisters?.length || 8)}${dataStackChanged ? '</div>' : ''}\n${locationStackChanged ? '<div class="changed-line">LS:  ' : 'LS:  '}${formatStack(state.locationStack, this.previousState?.locationStack, state.dataRegisters?.length || 8, true)}${locationStackChanged ? '</div>' : ''}\n${callStackChanged ? '<div class="changed-line">CS:  ' : 'CS:  '}${formatCallStack(state.callStack, this.previousState?.callStack)}${callStackChanged ? '</div>' : ''}</div>`;
+            
+            // Speichere den aktuellen Zustand für den nächsten Vergleich
+            this.previousState = { ...state };
         }
     }
 
@@ -280,7 +368,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!details) return;
             this.basic.update(details.basicInfo, navigationDirection);
             this.next.update(details.nextInstruction);
-            this.state.update(details.internalState);
+            this.state.update(details.internalState, navigationDirection);
             this.source.update(details.sourceView);
         }
     }

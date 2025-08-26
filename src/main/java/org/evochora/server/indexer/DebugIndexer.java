@@ -940,22 +940,41 @@ public class DebugIndexer implements IControllable, Runnable {
     }
 
     private PreparedTickState.InternalState buildInternalState(RawOrganismState o, ProgramArtifact artifact, ArtifactValidity validity) {
-        // Rudimentäre Implementierung - gibt leere Strukturen zurück
-        List<PreparedTickState.RegisterValue> emptyRegisters = new ArrayList<>();
-        List<String> emptyStacks = new ArrayList<>();
-        List<String> emptyCallStack = new ArrayList<>();
+        // Data Registers (DR) - dynamische Anzahl
+        List<PreparedTickState.RegisterValue> dataRegisters = buildRegisterValues(o.drs(), "DR");
+        
+        // Procedure Registers (PR) - dynamische Anzahl
+        List<PreparedTickState.RegisterValue> procRegisters = buildRegisterValues(o.prs(), "PR");
+        
+        // Floating Point Registers (FPR) - dynamische Anzahl
+        List<PreparedTickState.RegisterValue> fpRegisters = buildRegisterValues(o.fprs(), "FPR");
+        
+        // Location Registers (LR) - dynamische Anzahl
+        List<PreparedTickState.RegisterValue> locationRegisters = buildRegisterValues(o.lrs(), "LR");
+        
+        // Data Stack (DS) - als String-Liste
+        List<String> dataStack = o.dataStack() != null ? 
+            o.dataStack().stream().map(this::formatValue).toList() : new ArrayList<>();
+        
+        // Location Stack (LS) - als String-Liste
+        List<String> locationStack = o.locationStack() != null ? 
+            o.locationStack().stream().map(this::formatVector).toList() : new ArrayList<>();
+        
+        // Call Stack (CS) - vorerst leer (wird später implementiert)
+        List<String> callStack = new ArrayList<>();
         
         // DPS aus dem Organismus extrahieren
         List<List<Integer>> dps = o.dps() != null ? o.dps().stream().map(this::toList).toList() : new ArrayList<>();
         
         return new PreparedTickState.InternalState(
-            emptyRegisters,  // dataRegisters
-            emptyRegisters,  // procRegisters  
-            emptyRegisters,  // locationRegisters
-            emptyStacks,     // dataStack
-            emptyStacks,     // locationStack
-            emptyCallStack,  // callStack
-            dps              // dps
+            dataRegisters,      // dataRegisters
+            procRegisters,      // procRegisters  
+            fpRegisters,        // fpRegisters
+            locationRegisters,  // locationRegisters
+            dataStack,          // dataStack
+            locationStack,      // locationStack
+            callStack,          // callStack
+            dps                 // dps
         );
     }
 
@@ -1029,6 +1048,33 @@ public class DebugIndexer implements IControllable, Runnable {
     private List<Integer> toList(int[] arr) {
         if (arr == null) return Collections.emptyList();
         return Arrays.stream(arr).boxed().collect(Collectors.toList());
+    }
+    
+    /**
+     * Erstellt eine Liste von RegisterValue-Objekten für die tatsächlich vorhandenen Register.
+     * Arbeitet dynamisch mit der Anzahl der verfügbaren Register.
+     */
+    private List<PreparedTickState.RegisterValue> buildRegisterValues(List<Object> rawRegisters, String prefix) {
+        List<PreparedTickState.RegisterValue> result = new ArrayList<>();
+        
+        if (rawRegisters == null || rawRegisters.isEmpty()) {
+            return result; // Leere Liste zurückgeben
+        }
+        
+        for (int i = 0; i < rawRegisters.size(); i++) {
+            String registerId = prefix + i;
+            String alias = ""; // Keine Aliase für jetzt
+            String value = "";
+            
+            Object rawValue = rawRegisters.get(i);
+            if (rawValue != null) {
+                value = formatValue(rawValue);
+            }
+            
+            result.add(new PreparedTickState.RegisterValue(registerId, alias, value));
+        }
+        
+        return result;
     }
 
     private void writePreparedTick(PreparedTickState preparedTick) throws Exception {
