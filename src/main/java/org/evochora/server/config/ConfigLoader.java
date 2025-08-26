@@ -5,20 +5,83 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.io.BufferedReader;
+import java.io.StringReader;
+import java.io.IOException;
 
 /**
- * Loads the simulation configuration from JSON.
+ * Loads the simulation configuration from JSONC (JSON with Comments).
+ * Supports both // and /* *\/ style comments.
  */
 public final class ConfigLoader {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final String DEFAULT_RESOURCE_PATH = "org/evochora/config/config.json";
+    private static final String DEFAULT_RESOURCE_PATH = "org/evochora/config/config.jsonc";
 
     private ConfigLoader() {}
+
+    /**
+     * Strips comments from JSONC content to make it valid JSON.
+     * Supports both // and /* *\/ style comments.
+     */
+    private static String stripComments(String jsoncContent) throws IOException {
+        StringBuilder result = new StringBuilder();
+        BufferedReader reader = new BufferedReader(new StringReader(jsoncContent));
+        String line;
+        boolean inMultiLineComment = false;
+        
+        while ((line = reader.readLine()) != null) {
+            String strippedLine = line;
+            
+            if (inMultiLineComment) {
+                // Check if multi-line comment ends on this line
+                int endComment = strippedLine.indexOf("*/");
+                if (endComment != -1) {
+                    inMultiLineComment = false;
+                    strippedLine = strippedLine.substring(endComment + 2);
+                } else {
+                    // Still in multi-line comment, skip this line
+                    continue;
+                }
+            }
+            
+            // Check for start of multi-line comment
+            int startComment = strippedLine.indexOf("/*");
+            if (startComment != -1) {
+                inMultiLineComment = true;
+                strippedLine = strippedLine.substring(0, startComment);
+                
+                // Check if comment ends on same line
+                int endComment = strippedLine.indexOf("*/");
+                if (endComment != -1) {
+                    inMultiLineComment = false;
+                    strippedLine = strippedLine.substring(0, startComment) + strippedLine.substring(endComment + 2);
+                }
+            }
+            
+            // Remove single-line comments
+            int singleLineComment = strippedLine.indexOf("//");
+            if (singleLineComment != -1) {
+                strippedLine = strippedLine.substring(0, singleLineComment);
+            }
+            
+            // Only add non-empty lines
+            if (!strippedLine.trim().isEmpty()) {
+                result.append(strippedLine).append("\n");
+            }
+        }
+        
+        return result.toString();
+    }
 
     public static SimulationConfiguration loadDefault() {
         try (InputStream is = ConfigLoader.class.getClassLoader().getResourceAsStream(DEFAULT_RESOURCE_PATH)) {
             if (is != null) {
-                return OBJECT_MAPPER.readValue(is, SimulationConfiguration.class);
+                // Read the JSONC content
+                String jsoncContent = new String(is.readAllBytes());
+                // Strip comments to get valid JSON
+                String jsonContent = stripComments(jsoncContent);
+                // Parse the JSON
+                return OBJECT_MAPPER.readValue(jsonContent, SimulationConfiguration.class);
             }
         } catch (Exception ignore) {}
         
@@ -67,7 +130,12 @@ public final class ConfigLoader {
 
     public static SimulationConfiguration loadFromFile(Path file) throws Exception {
         try (InputStream is = Files.newInputStream(file)) {
-            return OBJECT_MAPPER.readValue(is, SimulationConfiguration.class);
+            // Read the JSONC content
+            String jsoncContent = new String(is.readAllBytes());
+            // Strip comments to get valid JSON
+            String jsonContent = stripComments(jsoncContent);
+            // Parse the JSON
+            return OBJECT_MAPPER.readValue(jsonContent, SimulationConfiguration.class);
         }
     }
 }
