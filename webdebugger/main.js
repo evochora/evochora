@@ -335,12 +335,22 @@ document.addEventListener('DOMContentLoaded', () => {
                                 }
                                 console.log(`DEBUG: Register display: ${registerDisplay}`);
 
+                                // Hole den aktuellen Register-Wert aus dem Call Stack
+                                let registerValue = param.value; // Fallback
+                                if (finalRegisterId < 2000) { // Nur für DRs und PRs
+                                    const foundParam = findDrParameter(finalRegisterId, callStack);
+                                    if (foundParam) {
+                                        registerValue = foundParam.value;
+                                        console.log(`DEBUG: Found parameter value for DR${finalRegisterId}: ${registerValue}`);
+                                    }
+                                }
+                                
                                 if (param.paramName) {
                                     // Mit ProgramArtifact: PARAM1<span class="injected-value">[%DR1=D:3]</span>
-                                    return `${param.paramName}<span class="injected-value">[${registerDisplay}=${param.value}]</span>`;
+                                    return `${param.paramName}<span class="injected-value">[${registerDisplay}=${registerValue}]</span>`;
                                 } else {
                                     // Ohne ProgramArtifact: %DR1<span class="injected-value">[=D:3]</span>
-                                    return `${registerDisplay}<span class="injected-value">[=${param.value}]</span>`;
+                                    return `${registerDisplay}<span class="injected-value">[=${registerValue}]</span>`;
                                 }
                             });
                             result += paramStrings.join(' ');
