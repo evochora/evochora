@@ -77,8 +77,12 @@ public class DebugIndexer implements IControllable, Runnable {
     private int batchCount = 0;
 
     public DebugIndexer(String rawDbPath, int batchSize) {
-        this.rawDbPath = rawDbPath;
-        this.debugDbPath = rawDbPath.replace("_raw.sqlite", "_debug.sqlite");
+        this(rawDbPath, rawDbPath.replace("_raw.sqlite", "_debug.sqlite"), batchSize);
+    }
+
+    public DebugIndexer(String rawDbUrl, String debugDbUrl, int batchSize) {
+        this.rawDbPath = rawDbUrl;
+        this.debugDbPath = debugDbUrl;
         this.batchSize = batchSize;
         this.thread = new Thread(this, "DebugIndexer");
         this.thread.setDaemon(true);
@@ -267,9 +271,16 @@ public class DebugIndexer implements IControllable, Runnable {
         // lastTPS = 0.0; // Removed
     }
 
+    private Connection createConnection(String pathOrUrl) throws Exception {
+        if (pathOrUrl.startsWith("jdbc:")) {
+            return DriverManager.getConnection(pathOrUrl);
+        }
+        return DriverManager.getConnection("jdbc:sqlite:" + pathOrUrl);
+    }
+
     private void setupDebugDatabase() {
         try {
-            connection = DriverManager.getConnection("jdbc:sqlite:" + debugDbPath);
+            connection = createConnection(debugDbPath);
             
             // Add performance hints for SQLite
             try (Statement st = connection.createStatement()) {
@@ -444,7 +455,7 @@ public class DebugIndexer implements IControllable, Runnable {
      * Used to wake up from pause mode when new ticks arrive.
      */
     private boolean hasNewTicksToProcess() {
-        try (Connection rawConn = DriverManager.getConnection("jdbc:sqlite:" + rawDbPath);
+        try (Connection rawConn = createConnection(rawDbPath);
              PreparedStatement countPs = rawConn.prepareStatement(
                      "SELECT COUNT(*) FROM raw_ticks WHERE tick_number > ?")) {
             countPs.setLong(1, lastProcessedTick);
@@ -462,7 +473,7 @@ public class DebugIndexer implements IControllable, Runnable {
     private void loadInitialData() {
         // Wait for raw database to be available
         while (running.get()) {
-        try (Connection rawConn = DriverManager.getConnection("jdbc:sqlite:" + rawDbPath);
+        try (Connection rawConn = createConnection(rawDbPath);
              Statement st = rawConn.createStatement()) {
                 
                 // Check if tables exist
@@ -523,7 +534,7 @@ public class DebugIndexer implements IControllable, Runnable {
 
     private int processNextTick(long tickToProcess) {
         // Process large batches for maximum performance, but with reasonable memory limits
-        try (Connection rawConn = DriverManager.getConnection("jdbc:sqlite:" + rawDbPath)) {
+        try (Connection rawConn = createConnection(rawDbPath)) {
             // Apply SQLite performance optimizations
             try (Statement stmt = rawConn.createStatement()) {
                 stmt.execute("PRAGMA journal_mode=WAL");

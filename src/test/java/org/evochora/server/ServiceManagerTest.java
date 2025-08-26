@@ -44,8 +44,9 @@ class ServiceManagerTest {
         
         // Set default values
         config.pipeline.persistence.batchSize = 1000;
+        config.pipeline.persistence.jdbcUrl = "jdbc:sqlite:file:memdb_sm?mode=memory&cache=shared";
         config.pipeline.indexer.batchSize = 1000;
-        config.pipeline.server.port = 7070;
+        config.pipeline.server.port = 0;
         
         serviceManager = new ServiceManager(queue, config);
     }

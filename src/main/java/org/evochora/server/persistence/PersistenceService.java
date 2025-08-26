@@ -52,22 +52,22 @@ public final class PersistenceService implements IControllable, Runnable {
     private int batchCount = 0;
 
     public PersistenceService(ITickMessageQueue queue) {
-        this(queue, null, null, 1000); // Default batch size
+        this(queue, null, null, 1000);
     }
 
     public PersistenceService(ITickMessageQueue queue, String jdbcUrlOverride) {
-        this(queue, jdbcUrlOverride, null, 1000); // Default batch size
+        this(queue, jdbcUrlOverride, null, 1000);
     }
 
     public PersistenceService(ITickMessageQueue queue, int[] worldShape) {
-        this(queue, null, worldShape, 1000); // Default batch size
+        this(queue, null, worldShape, 1000);
     }
 
     public PersistenceService(ITickMessageQueue queue, int[] worldShape, int batchSize) {
         this(queue, null, worldShape, batchSize);
     }
 
-    private PersistenceService(ITickMessageQueue queue, String jdbcUrlOverride, int[] worldShape, int batchSize) {
+    public PersistenceService(ITickMessageQueue queue, String jdbcUrlOverride, int[] worldShape, int batchSize) {
         this.queue = queue;
         this.jdbcUrlOverride = jdbcUrlOverride;
         this.worldShape = worldShape != null ? java.util.Arrays.copyOf(worldShape, worldShape.length) : null;

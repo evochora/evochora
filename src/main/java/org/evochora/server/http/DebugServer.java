@@ -151,6 +151,10 @@ public final class DebugServer {
         return isAutoPaused;
     }
 
+    public int getPort() {
+        return app != null ? app.port() : -1;
+    }
+
     public String getStatus() {
         if (!isRunning) {
             return "stopped";

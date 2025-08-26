@@ -51,10 +51,11 @@ class CommandLineInterfaceTest {
         
         // Set default values
         config.pipeline.persistence.batchSize = 1000;
+        config.pipeline.persistence.jdbcUrl = "jdbc:sqlite:file:memdb_cli?mode=memory&cache=shared";
         config.pipeline.indexer.batchSize = 1000;
-        config.pipeline.server.port = 7070;
+        config.pipeline.server.port = 0;
         
-        cli = new CommandLineInterface();
+        cli = new CommandLineInterface(config);
         
         // Capture output
         outputStream = new ByteArrayOutputStream();
