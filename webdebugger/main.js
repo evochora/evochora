@@ -271,7 +271,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const resolveFprBinding = (fprId, callStack, startIndex) => {
                 let currentId = fprId;
                 // Iteriere durch den Call-Stack, beginnend beim aktuellen Frame.
-                for (let i = startIndex; i < callStack.length; i++) {
+                // WICHTIG: Wir müssen von UNTEN nach OBEN durchsuchen (ältere Frames zuerst)
+                for (let i = callStack.length - 1; i >= startIndex; i--) {
                     const frame = callStack[i];
                     if (frame.fprBindings && frame.fprBindings.hasOwnProperty(currentId)) {
                         const boundRegister = frame.fprBindings[currentId];
@@ -344,7 +345,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                         console.log(`DEBUG: Found parameter value for DR${finalRegisterId}: ${registerValue}`);
                                     }
                                 }
-                                
+
                                 if (param.paramName) {
                                     // Mit ProgramArtifact: PARAM1<span class="injected-value">[%DR1=D:3]</span>
                                     return `${param.paramName}<span class="injected-value">[${registerDisplay}=${registerValue}]</span>`;
