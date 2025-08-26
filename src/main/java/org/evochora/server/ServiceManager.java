@@ -363,20 +363,31 @@ public final class ServiceManager {
     
     private void startDebugServer() {
         if (debugServer.get() == null || !serverRunning.get()) {
+            String debugDbPath;
+            int port = config.pipeline.server != null && config.pipeline.server.port != null ? config.pipeline.server.port : 7070;
+            
+            // Try to get debug database from indexer first (normal pipeline mode)
             if (indexer.get() != null) {
-                String debugDbUrl = indexer.get().getDebugDbPath();
-                int port = config.pipeline.server != null && config.pipeline.server.port != null ? config.pipeline.server.port : 7070;
-                DebugServer server = new DebugServer();
-                
-                debugServer.set(server);
-                server.start(debugDbUrl, port);
-                serverRunning.set(true);
-                log.info("Debug server started on port {} reading {}", port, debugDbUrl);
+                debugDbPath = indexer.get().getDebugDbPath();
+                log.info("Debug server started in pipeline mode on port {} reading {}", port, debugDbPath);
             } else {
-                log.warn("Cannot start debug server: indexer not running");
+                // Standalone mode: find debug database manually
+                debugDbPath = findLatestDebugDatabase();
+                if (debugDbPath == null) {
+                    log.error("No debug database found. Please ensure a debug database exists in the runs directory.");
+                    return;
+                }
+                log.info("Debug server started in standalone mode on port {} reading {}", port, debugDbPath);
             }
+            
+            DebugServer server = new DebugServer();
+            debugServer.set(server);
+            server.start(debugDbPath, port);
+            serverRunning.set(true);
         }
     }
+    
+
     
     private String findLatestDebugDatabase() {
         try {

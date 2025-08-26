@@ -13,6 +13,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -33,6 +35,8 @@ import org.evochora.runtime.isa.InstructionArgumentType;
 import org.evochora.runtime.model.Molecule;
 
 class DebugIndexerTest {
+
+    private static final Logger log = LoggerFactory.getLogger(DebugIndexerTest.class);
 
     @TempDir
     Path tempDir;
@@ -93,16 +97,50 @@ class DebugIndexerTest {
         }
         
         // Erstelle auch die Debug-Datenbank mit der prepared_ticks Tabelle
+        // Verwende IF NOT EXISTS um Race-Conditions zu vermeiden
         try (Connection debugConn = DriverManager.getConnection(debugJdbcUrl);
              Statement st = debugConn.createStatement()) {
-            st.execute("CREATE TABLE prepared_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json TEXT)");
+            st.execute("CREATE TABLE IF NOT EXISTS prepared_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json TEXT)");
+            st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
         }
 
         try {
             // 2. Act: Starte den Indexer und lass ihn einen Tick verarbeiten
             DebugIndexer indexer = new DebugIndexer(rawJdbcUrl, debugJdbcUrl, 1000);
             indexer.start();
-            Thread.sleep(2000); // Gib dem Indexer Zeit zu arbeiten
+            
+            // Warte bis der Indexer die Verarbeitung abgeschlossen hat
+            // Verwende eine robustere Warteschleife mit Retry-Logik
+            int maxRetries = 20; // Erhöhe die Anzahl der Versuche
+            int retryCount = 0;
+            boolean processingComplete = false;
+            
+            while (retryCount < maxRetries && !processingComplete) {
+                Thread.sleep(300); // Kürzere Wartezeiten für schnellere Reaktion
+                
+                try (Connection conn = DriverManager.getConnection(debugJdbcUrl);
+                     Statement st = conn.createStatement();
+                     ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM prepared_ticks WHERE tick_number = 1")) {
+                    
+                    if (rs.next() && rs.getInt(1) > 0) {
+                        processingComplete = true;
+                        log.debug("Processing completed after {} retries", retryCount + 1);
+                        break;
+                    }
+                } catch (Exception e) {
+                    // Tabelle existiert noch nicht oder ist noch nicht bereit
+                    log.debug("Table not ready yet, retry {}: {}", retryCount + 1, e.getMessage());
+                }
+                
+                retryCount++;
+            }
+            
+            if (!processingComplete) {
+                log.warn("Processing did not complete within expected time, proceeding anyway");
+            }
+            
+            // Gib dem Indexer noch etwas Zeit für finale Verarbeitung
+            Thread.sleep(300);
             indexer.shutdown();
 
             // 3. Assert: Überprüfe die Debug-Datenbank
