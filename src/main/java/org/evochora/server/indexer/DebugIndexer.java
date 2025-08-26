@@ -58,7 +58,7 @@ public class DebugIndexer implements IControllable, Runnable {
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final AtomicBoolean autoPaused = new AtomicBoolean(false);
     private long startTime = System.currentTimeMillis();
-    private long lastProcessedTick = -1L;
+    private long lastProcessedTick = 0L; // Start at 0 to include tick 0
     private final ObjectMapper objectMapper = new ObjectMapper();
     private String rawDbPath;
     private String debugDbPath;
@@ -120,7 +120,7 @@ public class DebugIndexer implements IControllable, Runnable {
         this.debugDbPath = newRawDbPath.replace("_raw.sqlite", "_debug.sqlite");
         
         // Reset counters
-        this.lastProcessedTick = -1L;
+        this.lastProcessedTick = 0L;
         this.batchCount = 0;
         
         
@@ -291,8 +291,7 @@ public class DebugIndexer implements IControllable, Runnable {
     public void run() {
         try {
             loadInitialData();
-            // Initialize with 0, not from database
-            lastProcessedTick = 0;
+            // Start processing from tick 0 (lastProcessedTick = -1L from initialization)
 
             while (running.get()) {
                 if (paused.get()) {
@@ -539,7 +538,7 @@ public class DebugIndexer implements IControllable, Runnable {
             // Check if we're in the final batch (less than batchSize ticks remaining)
             long remainingTicks = 0;
             try (PreparedStatement countPs = rawConn.prepareStatement(
-                    "SELECT COUNT(*) FROM raw_ticks WHERE tick_number > ?")) {
+                    "SELECT COUNT(*) FROM raw_ticks WHERE tick_number >= ?")) {
                 countPs.setLong(1, lastProcessedTick);
                 try (ResultSet countRs = countPs.executeQuery()) {
                     if (countRs.next()) {
@@ -566,7 +565,7 @@ public class DebugIndexer implements IControllable, Runnable {
 
             
             try (PreparedStatement ps = rawConn.prepareStatement(
-                    "SELECT tick_number, tick_data_json FROM raw_ticks WHERE tick_number > ? ORDER BY tick_number LIMIT ?")) {
+                    "SELECT tick_number, tick_data_json FROM raw_ticks WHERE tick_number >= ? ORDER BY tick_number LIMIT ?")) {
                 ps.setLong(1, lastProcessedTick);
                 ps.setInt(2, actualBatchSize);
                 

@@ -18,6 +18,8 @@ import java.sql.ResultSet;
  * Lightweight web service serving static web renderer files and a simple API to fetch prepared ticks.
  */
 public final class DebugServer {
+    
+
     private static final Logger log = LoggerFactory.getLogger(DebugServer.class);
 
     private Javalin app;
@@ -71,7 +73,15 @@ public final class DebugServer {
                     
                     String json = fetchTickJson(tick);
                     if (json == null) { 
-                        ctx.status(HttpStatus.NOT_FOUND).result("{}"); 
+                        // Check if there are any ticks at all
+                        Long total = fetchTickCount();
+                        if (total != null && total > 0) {
+                            // There are ticks but not the requested one
+                            ctx.status(HttpStatus.NOT_FOUND).result("{\"error\":\"Tick " + tick + " not found. Available ticks: 1 to " + total + "\", \"availableTicks\":{\"min\":1,\"max\":" + total + "}}"); 
+                        } else {
+                            // No ticks available at all
+                            ctx.status(HttpStatus.NOT_FOUND).result("{\"error\":\"No simulation data available. Please ensure the pipeline is running and has processed some ticks.\"}"); 
+                        }
                         return; 
                     }
                     

@@ -10,24 +10,27 @@
 
 <header>
     <div class="controls-left">
-        <button id="btn-first">Anfang</button>
-        <button id="btn-prev">&lt; Zurück</button>
         <div class="tick-input-wrapper">
             <input type="number" id="tick-input" min="0" value="0" aria-label="Tick">
             <span class="tick-total-suffix" id="tick-total-suffix">/N/A</span>
         </div>
-        <button id="btn-next">Weiter &gt;</button>
         <button id="btn-goto">Gehe zu</button>
-        <button id="btn-last">Ende</button>
+        <button id="btn-prev">&lt; Zurück</button>
+        <button id="btn-next">Weiter &gt;</button>
     </div>
 </header>
+
+<div id="status-bar" class="status-bar" style="display: none;">
+    <div id="status-message" class="status-message"></div>
+    <button id="status-close" class="status-close">&times;</button>
+</div>
 
 <main class="container">
     <div class="world-container">
         <canvas id="worldCanvas"></canvas>
     </div>
     <div id="sidebar" class="sidebar">
-        <button id="close-sidebar" class="sidebar-toggle-btn">&gt;</button>
+        <button id="sidebar-toggle" class="sidebar-toggle-btn" style="display: none;">&lt;</button>
         <div id="organism-details" class="details">
             <div data-section="basic"></div>
             <div data-section="nextInstruction"></div>

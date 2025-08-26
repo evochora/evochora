@@ -9,6 +9,11 @@ import org.evochora.server.config.SimulationConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Comparator;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -343,23 +348,48 @@ public final class ServiceManager {
     
     private void startDebugServer() {
         if (debugServer.get() == null || !serverRunning.get()) {
-            if (indexer.get() != null && persistenceService.get() != null) {
-                String rawDbPath = persistenceService.get().getDbFilePath().toString();
-                int rawIndex = rawDbPath.lastIndexOf("_raw");
-                int timestampStart = rawDbPath.lastIndexOf("_", rawIndex - 1) + 1;
-                String timestamp = rawDbPath.substring(timestampStart, rawIndex);
-                String debugDbPath = "runs/sim_run_" + timestamp + "_debug.sqlite";
-                
+            // Try to find the latest debug database
+            String debugDbPath = findLatestDebugDatabase();
+            
+            if (debugDbPath != null) {
                 int port = config.pipeline.server != null && config.pipeline.server.port != null ? config.pipeline.server.port : 7070;
                 DebugServer server = new DebugServer();
                 
                 debugServer.set(server);
                 server.start(debugDbPath, port);
                 serverRunning.set(true);
-                log.info("Debug server started on port {}", port);
+                log.info("Debug server started on port {} reading {}", port, debugDbPath);
             } else {
-                log.warn("Cannot start debug server: indexer or persistence service not running");
+                log.warn("Cannot start debug server: no debug database found");
             }
+        }
+    }
+    
+    private String findLatestDebugDatabase() {
+        try {
+            // First check if there's a specific debug database configured
+            if (config.pipeline.server != null && config.pipeline.server.debugDbFile != null) {
+                String configuredPath = config.pipeline.server.debugDbFile;
+                if (Files.exists(Paths.get(configuredPath))) {
+                    return configuredPath;
+                }
+                log.warn("Configured debug database not found: {}", configuredPath);
+            }
+            
+            // Otherwise find the latest debug database in runs directory
+            Path runsDir = Paths.get("runs");
+            if (!Files.exists(runsDir)) {
+                return null;
+            }
+            
+            Optional<Path> latestDebugDb = Files.list(runsDir)
+                    .filter(p -> p.getFileName().toString().endsWith("_debug.sqlite"))
+                    .max(Comparator.comparingLong(p -> p.toFile().lastModified()));
+            
+            return latestDebugDb.map(Path::toString).orElse(null);
+        } catch (Exception e) {
+            log.warn("Error finding debug database: {}", e.getMessage());
+            return null;
         }
     }
 }

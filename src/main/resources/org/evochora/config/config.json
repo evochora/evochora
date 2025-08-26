@@ -57,6 +57,7 @@
     "server": {
       "autoStart": true,
       "inputPath": "runs/",
+      "debugDbFile": null,
       "port": 7070,
       "host": "localhost"
     }

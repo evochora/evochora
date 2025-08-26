@@ -328,6 +328,16 @@ public class SimulationEngine implements IControllable, Runnable {
                 }
             }
 
+            // Send initial tick state (tick 0) before starting the simulation loop
+            try {
+                RawTickState initialTickMsg = toRawState(simulation);
+                queue.put(initialTickMsg);
+                log.debug("Sent initial tick state (tick 0) to queue");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            
             // Start simulation loop
             while (running.get()) {
                 if (paused.get()) {
