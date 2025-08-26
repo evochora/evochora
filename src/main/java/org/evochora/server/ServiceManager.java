@@ -320,7 +320,8 @@ public final class ServiceManager {
     private void startPersistence() {
         if (persistenceService.get() == null || !persistenceRunning.get()) {
             int batchSize = config.pipeline.persistence != null ? config.pipeline.persistence.batchSize : 1000;
-            PersistenceService service = new PersistenceService(queue, config.simulation.environment.shape, batchSize);
+            String jdbcUrl = config.pipeline.persistence != null ? config.pipeline.persistence.jdbcUrl : null;
+            PersistenceService service = new PersistenceService(queue, jdbcUrl, config.simulation.environment.shape, batchSize);
             
             persistenceService.set(service);
             service.start();
@@ -332,9 +333,10 @@ public final class ServiceManager {
     private void startIndexer() {
         if (indexer.get() == null || !indexerRunning.get()) {
             if (persistenceService.get() != null) {
-                String rawDbPath = persistenceService.get().getDbFilePath().toString();
+                String rawDbUrl = persistenceService.get().getJdbcUrl();
+                String debugDbUrl = rawDbUrl.replace("_raw", "_debug");
                 int batchSize = config.pipeline.indexer != null ? config.pipeline.indexer.batchSize : 1000;
-                DebugIndexer service = new DebugIndexer(rawDbPath, batchSize);
+                DebugIndexer service = new DebugIndexer(rawDbUrl, debugDbUrl, batchSize);
                 
                 indexer.set(service);
                 service.start();
@@ -348,19 +350,17 @@ public final class ServiceManager {
     
     private void startDebugServer() {
         if (debugServer.get() == null || !serverRunning.get()) {
-            // Try to find the latest debug database
-            String debugDbPath = findLatestDebugDatabase();
-            
-            if (debugDbPath != null) {
+            if (indexer.get() != null) {
+                String debugDbUrl = indexer.get().getDebugDbPath();
                 int port = config.pipeline.server != null && config.pipeline.server.port != null ? config.pipeline.server.port : 7070;
                 DebugServer server = new DebugServer();
                 
                 debugServer.set(server);
-                server.start(debugDbPath, port);
+                server.start(debugDbUrl, port);
                 serverRunning.set(true);
-                log.info("Debug server started on port {} reading {}", port, debugDbPath);
+                log.info("Debug server started on port {} reading {}", port, debugDbUrl);
             } else {
-                log.warn("Cannot start debug server: no debug database found");
+                log.warn("Cannot start debug server: indexer not running");
             }
         }
     }

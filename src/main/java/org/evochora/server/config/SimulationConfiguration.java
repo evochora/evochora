@@ -59,6 +59,7 @@ public final class SimulationConfiguration {
     public static final class PersistenceServiceConfig {
         public boolean autoStart;
         public int batchSize = 1000; // Default batch size
+        public String jdbcUrl;
     }
 
     public static final class ServerServiceConfig {

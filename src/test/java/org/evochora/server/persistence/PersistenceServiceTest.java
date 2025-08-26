@@ -22,7 +22,7 @@ class PersistenceServiceTest {
     void writesRawTickStateRows() throws Exception {
         ITickMessageQueue q = new InMemoryTickQueue();
         // Use the available constructor with worldShape and batchSize
-        PersistenceService persist = new PersistenceService(q, new int[]{10, 10}, 1);
+        PersistenceService persist = new PersistenceService(q, "jdbc:sqlite:file:memdb_persistence?mode=memory&cache=shared", new int[]{10, 10}, 1);
         persist.start();
 
         var rawCell = new RawCellState(new int[]{1, 2}, 42, 1);

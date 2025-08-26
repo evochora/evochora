@@ -36,14 +36,14 @@ public class DebugServerTest {
         
         // Test der Web-Service-Funktionalität
         DebugServer web = new DebugServer();
-        web.start(dbPath, 7089);
+        web.start(dbPath, 0);
         try {
             // Warte länger, bis der Server gestartet ist
             Thread.sleep(1000);
             
             // HTTP-Test
             HttpClient client = HttpClient.newHttpClient();
-            HttpRequest req = HttpRequest.newBuilder(URI.create("http://localhost:7089/api/tick/1")).GET().build();
+            HttpRequest req = HttpRequest.newBuilder(URI.create("http://localhost:" + web.getPort() + "/api/tick/1")).GET().build();
             HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
             assertThat(resp.statusCode()).isEqualTo(200);
             assertThat(resp.body()).contains("\"tickNumber\":1");

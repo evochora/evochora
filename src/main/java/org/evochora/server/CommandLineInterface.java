@@ -18,6 +18,14 @@ public final class CommandLineInterface {
     private SimulationConfiguration cfg;
     private ServiceManager serviceManager;
 
+    public CommandLineInterface() {
+        // Default constructor
+    }
+
+    public CommandLineInterface(SimulationConfiguration config) {
+        this.cfg = config;
+    }
+
     public static void main(String[] args) {
         // Suppress SLF4J replay warnings
         System.setProperty("slf4j.replay.warn", "false");
@@ -35,7 +43,9 @@ public final class CommandLineInterface {
     
     public void run() throws Exception {
         this.queue = new InMemoryTickQueue();
-        this.cfg = ConfigLoader.loadDefault();
+        if (this.cfg == null) {
+            this.cfg = ConfigLoader.loadDefault();
+        }
         this.serviceManager = new ServiceManager(queue, cfg);
 
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));

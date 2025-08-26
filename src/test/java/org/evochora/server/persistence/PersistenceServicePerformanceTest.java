@@ -39,10 +39,10 @@ class PersistenceServicePerformanceTest {
     void setUp(@TempDir Path tempDir) throws Exception {
         this.tempDir = tempDir;
         // Use temporary SQLite for faster tests
-        this.dbPath = tempDir.resolve("test_persistence.sqlite").toString();
+        this.dbPath = "jdbc:sqlite:file:memdb_perf?mode=memory&cache=shared";
         
         queue = new InMemoryTickQueue();
-        persistenceService = new PersistenceService(queue, new int[]{100, 30}, BATCH_SIZE);
+        persistenceService = new PersistenceService(queue, dbPath, new int[]{100, 30}, BATCH_SIZE);
     }
 
     @AfterEach
