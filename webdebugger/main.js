@@ -254,47 +254,127 @@ document.addEventListener('DOMContentLoaded', () => {
                 return formattedValues.join('');
             };
             
+            // Rekursive FPR-Auflösung durch den Call Stack
+            const resolveFprBinding = (fprId, callStack, currentIndex) => {
+                console.log(`DEBUG: resolveFprBinding(${fprId}, callStack[${currentIndex}])`);
+                
+                // Gehe durch den Call Stack von oben nach unten (neueste zuerst)
+                // Aber nur den aktuellen Frame und die aufrufenden Frames (darunter liegende)
+                for (let i = currentIndex; i < callStack.length; i++) {
+                    const frame = callStack[i];
+                    console.log(`DEBUG: Checking frame ${i}:`, frame);
+                    console.log(`DEBUG: frame.fprBindings:`, frame.fprBindings);
+                    
+                    if (frame.fprBindings && frame.fprBindings[fprId]) {
+                        const boundRegister = frame.fprBindings[fprId];
+                        console.log(`DEBUG: Found binding ${fprId} -> ${boundRegister}`);
+                        
+                        // Wenn es ein FPR ist (>= 2000), rekursiv auflösen
+                        if (boundRegister >= 2000) {
+                            console.log(`DEBUG: Recursive call for FPR ${boundRegister} from frame ${i}`);
+                            console.log(`DEBUG: About to call resolveFprBinding(${boundRegister}, callStack, ${i + 1})`);
+                            const result = resolveFprBinding(boundRegister, callStack, i + 1); // Gehe zum aufrufenden Frame
+                            console.log(`DEBUG: Recursive result for ${boundRegister}: ${result}`);
+                            console.log(`DEBUG: Returning recursive result: ${result}`);
+                            return result;
+                        }
+                        
+                        // Wenn es ein DR/PR ist, fertig
+                        console.log(`DEBUG: Final register: ${boundRegister}`);
+                        console.log(`DEBUG: Returning final register: ${boundRegister}`);
+                        return boundRegister;
+                    }
+                }
+                console.log(`DEBUG: No binding found, returning ${fprId}`);
+                return fprId; // Fallback: konnte nicht aufgelöst werden
+            };
+            
             // Call Stack spezielle Behandlung - jetzt mit strukturierten Daten
             const formatCallStack = (callStack, previousCallStack) => {
                 if (!callStack || callStack.length === 0) return '';
                 
-                // Jetzt verarbeiten wir strukturierte CallStackEntry-Objekte
-                // Jeder Eintrag bekommt eine eigene Zeile
-                const formattedCallStack = callStack.map((entry, index) => {
-                    // entry ist jetzt ein Objekt mit: { procName, returnCoordinates, parameters }
-                    let result = entry.procName || 'UNKNOWN';
-                    
-                    // Return-Koordinaten hinzufügen: [x|y] mit .injected-value Styling
-                    if (entry.returnCoordinates && entry.returnCoordinates.length >= 2) {
-                        result += ` <span class="injected-value">[${entry.returnCoordinates[0]}|${entry.returnCoordinates[1]}]</span>`;
-                    }
-                    
-                    // Parameter hinzufügen
-                    if (entry.parameters && entry.parameters.length > 0) {
-                        result += ' WITH ';
-                        const paramStrings = entry.parameters.map(param => {
-                            if (param.paramName) {
-                                // Mit ProgramArtifact: PARAM1<span class="injected-value">[%DR1=D:3]</span>
-                                return `${param.paramName}<span class="injected-value">[%DR${param.drId}=${param.value}]</span>`;
-                            } else {
-                                // Ohne ProgramArtifact: %DR1<span class="injected-value">[=D:3]</span>
-                                return `%DR${param.drId}<span class="injected-value">[=${param.value}]</span>`;
-                            }
-                        });
-                        result += paramStrings.join(' ');
-                    }
-                    
-                    // Erste Zeile: keine Einrückung, weitere Zeilen: Einrückung
-                    if (index === 0) {
-                        return result;
-                    } else {
-                        // Einrückung: 5 Leerzeichen (entspricht "CS:  ")
-                        return '     ' + result;
-                    }
-                });
+                // Prüfe, ob wir Prozedurnamen haben (ProgramArtifact verfügbar)
+                const hasProcNames = callStack.some(entry => entry.procName && entry.procName.trim() !== '');
                 
-                // Jeder Eintrag bekommt eine eigene Zeile, nicht mit -> verketten
-                return formattedCallStack.join('\n');
+                if (hasProcNames) {
+                    // Mit ProgramArtifact: Eine Zeile pro Eintrag mit Prozedurnamen
+                    const formattedCallStack = callStack.map((entry, index) => {
+                        let result = entry.procName || 'UNKNOWN';
+                        
+                        // Return-Koordinaten hinzufügen: [x|y] mit .injected-value Styling
+                        if (entry.returnCoordinates && entry.returnCoordinates.length >= 2) {
+                            result += ` <span class="injected-value">[${entry.returnCoordinates[0]}|${entry.returnCoordinates[1]}]</span>`;
+                        }
+                        
+                        // Parameter hinzufügen
+                        if (entry.parameters && entry.parameters.length > 0) {
+                            result += ' WITH ';
+                            
+                            const paramStrings = entry.parameters.map(param => {
+                                console.log(`DEBUG: Processing parameter:`, param);
+                                
+                                // Rekursive FPR-Auflösung für diesen Parameter
+                                // WICHTIG: param.drId ist eigentlich die FPR-ID (2000, 2001, etc.)
+                                const finalRegisterId = resolveFprBinding(param.drId, callStack, index);
+                                console.log(`DEBUG: Final register ID for ${param.drId}: ${finalRegisterId}`);
+                                console.log(`DEBUG: finalRegisterId type: ${typeof finalRegisterId}, value: ${finalRegisterId}`);
+                                
+                                // Bestimme Register-Typ und Index
+                                let registerDisplay;
+                                if (finalRegisterId >= 2000) {
+                                    registerDisplay = `%FPR${finalRegisterId - 2000}`;
+                                    console.log(`DEBUG: FPR branch: ${finalRegisterId} >= 2000`);
+                                } else if (finalRegisterId >= 1000) {
+                                    registerDisplay = `%PR${finalRegisterId - 1000}`;
+                                    console.log(`DEBUG: PR branch: ${finalRegisterId} >= 1000`);
+                                } else {
+                                    registerDisplay = `%DR${finalRegisterId}`;
+                                    console.log(`DEBUG: DR branch: ${finalRegisterId} < 1000`);
+                                }
+                                console.log(`DEBUG: Register display: ${registerDisplay}`);
+                                
+                                if (param.paramName) {
+                                    // Mit ProgramArtifact: PARAM1<span class="injected-value">[%DR1=D:3]</span>
+                                    return `${param.paramName}<span class="injected-value">[${registerDisplay}=${param.value}]</span>`;
+                                } else {
+                                    // Ohne ProgramArtifact: %DR1<span class="injected-value">[=D:3]</span>
+                                    return `${registerDisplay}<span class="injected-value">[=${param.value}]</span>`;
+                                }
+                            });
+                            result += paramStrings.join(' ');
+                        }
+                        
+                        // Erste Zeile: keine Einrückung, weitere Zeilen: Einrückung
+                        if (index === 0) {
+                            return result;
+                        } else {
+                            // Einrückung: 5 Leerzeichen (entspricht "CS:  ")
+                            return '     ' + result;
+                        }
+                    });
+                    
+                    return formattedCallStack.join('\n');
+                } else {
+                    // Ohne ProgramArtifact: Alle Einträge in einer Zeile wie andere Stacks
+                    const formattedEntries = callStack.map(entry => {
+                        if (entry.returnCoordinates && entry.returnCoordinates.length >= 2) {
+                            // Ohne ProgramArtifact: normale Darstellung, keine grünen Klammern
+                            return `${entry.returnCoordinates[0]}|${entry.returnCoordinates[1]}`;
+                        }
+                        return '';
+                    }).filter(entry => entry !== '');
+                    
+                    // Dynamische Abkürzung wie bei anderen Stacks (basierend auf DR-Anzahl)
+                    const maxColumns = 8; // Standard, könnte dynamisch sein
+                    let displayEntries = formattedEntries;
+                    if (formattedEntries.length > maxColumns) {
+                        displayEntries = formattedEntries.slice(0, maxColumns - 1); // -1 für "..."
+                        displayEntries.push('...'); // Zeige an, dass es mehr gibt
+                    }
+                    
+                    // Verteile auf Spalten statt mit -> verketten
+                    return displayEntries.map(entry => String(entry).padEnd(7)).join('');
+                }
             };
             
             // Verwende die ursprüngliche .code-view Struktur für perfekte Zeilenhöhe

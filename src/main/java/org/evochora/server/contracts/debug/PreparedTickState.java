@@ -50,7 +50,8 @@ public record PreparedTickState(
     public record CallStackEntry(
             String procName,
             int[] returnCoordinates,
-            List<ParameterBinding> parameters
+            List<ParameterBinding> parameters,
+            Map<Integer, Integer> fprBindings  // NEU: Rohe FPR-Bindings für rekursive Auflösung
     ) {}
 
     public record ParameterBinding(

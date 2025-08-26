@@ -1050,7 +1050,7 @@ public class DebugIndexer implements IControllable, Runnable {
             }
         }
         
-        return new PreparedTickState.CallStackEntry(procName, returnCoordinates, parameters);
+        return new PreparedTickState.CallStackEntry(procName, returnCoordinates, parameters, frame.fprBindings());
     }
 
     private String formatValue(Object obj) {

@@ -305,7 +305,13 @@ public final class ServiceManager {
     
     private void startSimulation() {
         if (simulationEngine.get() == null || !simulationRunning.get()) {
-            SimulationEngine engine = new SimulationEngine(queue, config.simulation.environment.shape, config.simulation.environment.toroidal);
+            // Lade skipProgramArtefact Konfiguration
+            boolean skipProgramArtefact = false; // Default: ProgramArtifact features enabled
+            if (config.pipeline.simulation != null && config.pipeline.simulation.skipProgramArtefact != null) {
+                skipProgramArtefact = config.pipeline.simulation.skipProgramArtefact;
+            }
+            
+            SimulationEngine engine = new SimulationEngine(queue, config.simulation.environment.shape, config.simulation.environment.toroidal, null, null, null, skipProgramArtefact);
             engine.setSeed(config.simulation.seed);
             engine.setOrganismDefinitions(config.simulation.organisms);
             engine.setEnergyStrategies(config.simulation.energyStrategies);
@@ -318,7 +324,7 @@ public final class ServiceManager {
             simulationEngine.set(engine);
             engine.start();
             simulationRunning.set(true);
-            log.info("Simulation engine started");
+            log.info("Simulation engine started with ProgramArtifact features: {}", skipProgramArtefact ? "disabled" : "enabled");
         }
     }
     

@@ -48,6 +48,10 @@ public class SimulationEngine implements IControllable, Runnable {
     private long startTime = 0;
     private int[] autoPauseTicks = null; // Configuration for auto-pause ticks
     private int nextAutoPauseIndex = 0; // Index of next auto-pause tick to check
+    
+    // TEST FLAG: ProgramArtifact-Funktionalität ein-/ausschalten
+    // true = normal (mit ProgramArtifact), false = nur Code platzieren (ohne ProgramArtifact)
+    private boolean enableProgramArtifactFeatures = true; // Default-Wert
 
     public SimulationEngine(ITickMessageQueue queue, int[] worldShape, boolean isToroidal) {
         this(queue, worldShape, isToroidal, null, null, null);
@@ -58,6 +62,10 @@ public class SimulationEngine implements IControllable, Runnable {
     }
 
     public SimulationEngine(ITickMessageQueue queue, int[] worldShape, boolean isToroidal, List<ProgramArtifact> programArtifacts, List<SimulationConfiguration.OrganismDefinition> organismDefinitions, List<IEnergyDistributionCreator> energyStrategies) {
+        this(queue, worldShape, isToroidal, programArtifacts, organismDefinitions, energyStrategies, false); // Default: ProgramArtifact features enabled
+    }
+    
+    public SimulationEngine(ITickMessageQueue queue, int[] worldShape, boolean isToroidal, List<ProgramArtifact> programArtifacts, List<SimulationConfiguration.OrganismDefinition> organismDefinitions, List<IEnergyDistributionCreator> energyStrategies, boolean skipProgramArtefact) {
         this.queue = queue;
         this.worldShape = worldShape != null ? java.util.Arrays.copyOf(worldShape, worldShape.length) : null;
         this.isToroidal = isToroidal;
@@ -68,6 +76,11 @@ public class SimulationEngine implements IControllable, Runnable {
         this.thread = new Thread(this, "SimulationEngine");
         this.thread.setDaemon(true);
         this.logger = LoggerFactory.getLogger(SimulationEngine.class);
+        
+        // Setze ProgramArtifact-Konfiguration direkt
+        this.enableProgramArtifactFeatures = !skipProgramArtefact;
+        log.info("ProgramArtifact features: {} (skipProgramArtefact={})", 
+                this.enableProgramArtifactFeatures ? "enabled" : "disabled", skipProgramArtefact);
     }
 
     // Simple constructor for tests
@@ -102,6 +115,8 @@ public class SimulationEngine implements IControllable, Runnable {
         }
         this.energyStrategies = java.util.Collections.unmodifiableList(built);
     }
+    
+
 
     public void setSeed(java.lang.Long seed) {
         this.seed = seed;
@@ -343,22 +358,26 @@ public class SimulationEngine implements IControllable, Runnable {
                                     }
                                     
                                     // NEU: Registriere die Call-Site-Bindungen im CallBindingRegistry
-                                    org.evochora.runtime.internal.services.CallBindingRegistry registry = org.evochora.runtime.internal.services.CallBindingRegistry.getInstance();
-                                    for (Map.Entry<Integer, int[]> binding : artifact.callSiteBindings().entrySet()) {
-                                        int linearAddress = binding.getKey();
-                                        int[] relativeCoord = artifact.linearAddressToCoord().get(linearAddress);
-                                        if (relativeCoord != null) {
-                                            int[] absoluteCoord = new int[pos.length];
-                                            for (int i = 0; i < pos.length; i++) {
-                                                absoluteCoord[i] = pos[i] + relativeCoord[i];
+                                    if (enableProgramArtifactFeatures) {
+                                        org.evochora.runtime.internal.services.CallBindingRegistry registry = org.evochora.runtime.internal.services.CallBindingRegistry.getInstance();
+                                        for (Map.Entry<Integer, int[]> binding : artifact.callSiteBindings().entrySet()) {
+                                            int linearAddress = binding.getKey();
+                                            int[] relativeCoord = artifact.linearAddressToCoord().get(linearAddress);
+                                            if (relativeCoord != null) {
+                                                int[] absoluteCoord = new int[pos.length];
+                                                for (int i = 0; i < pos.length; i++) {
+                                                    absoluteCoord[i] = pos[i] + relativeCoord[i];
+                                                }
+                                                registry.registerBindingForAbsoluteCoord(absoluteCoord, binding.getValue());
                                             }
-                                            registry.registerBindingForAbsoluteCoord(absoluteCoord, binding.getValue());
                                         }
                                     }
                                     
                                     // Create and add organism
                                     org.evochora.runtime.model.Organism organism = org.evochora.runtime.model.Organism.create(simulation, pos, def.initialEnergy, simulation.getLogger());
-                                    organism.setProgramId(artifact.programId());
+                                    if (enableProgramArtifactFeatures) {
+                                        organism.setProgramId(artifact.programId());
+                                    }
                                     simulation.addOrganism(organism);
                                     
                                     log.info("Created organism {} at position {} with program {}", organism.getId(), java.util.Arrays.toString(pos), def.program);
@@ -372,37 +391,43 @@ public class SimulationEngine implements IControllable, Runnable {
                     }
                 }
                 
-                simulation.setProgramArtifacts(artifactsById);
+                if (enableProgramArtifactFeatures) {
+                    simulation.setProgramArtifacts(artifactsById);
+                }
                 
                 // Send ProgramArtifacts to persistence service
-                for (Map.Entry<String, ProgramArtifact> entry : artifactsById.entrySet()) {
-                    try {
-                        ProgramArtifactMessage artifactMsg = new ProgramArtifactMessage(entry.getKey(), entry.getValue());
-                        queue.put(artifactMsg);
-                        log.debug("Sent ProgramArtifact {} to persistence queue", entry.getKey());
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        return;
-                    } catch (Exception e) {
-                        log.warn("Failed to send ProgramArtifact {} to persistence queue: {}", entry.getKey(), e.getMessage());
-                    }
-                }
-            } else if (programArtifacts != null && !programArtifacts.isEmpty()) {
-                try {
-                    simulation.setProgramArtifacts(this.programArtifacts.stream()
-                            .collect(java.util.stream.Collectors.toMap(ProgramArtifact::programId, pa -> pa, (a, b) -> b)));
-                    
-                    // Send ProgramArtifacts to persistence service
-                    for (ProgramArtifact artifact : this.programArtifacts) {
+                if (enableProgramArtifactFeatures) {
+                    for (Map.Entry<String, ProgramArtifact> entry : artifactsById.entrySet()) {
                         try {
-                            ProgramArtifactMessage artifactMsg = new ProgramArtifactMessage(artifact.programId(), artifact);
+                            ProgramArtifactMessage artifactMsg = new ProgramArtifactMessage(entry.getKey(), entry.getValue());
                             queue.put(artifactMsg);
-                            log.debug("Sent ProgramArtifact {} to persistence queue", artifact.programId());
+                            log.debug("Sent ProgramArtifact {} to persistence queue", entry.getKey());
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                             return;
                         } catch (Exception e) {
-                            log.warn("Failed to send ProgramArtifact {} to persistence queue: {}", artifact.programId(), e.getMessage());
+                            log.warn("Failed to send ProgramArtifact {} to persistence queue: {}", entry.getKey(), e.getMessage());
+                        }
+                    }
+                }
+            } else if (programArtifacts != null && !programArtifacts.isEmpty()) {
+                try {
+                    if (enableProgramArtifactFeatures) {
+                        simulation.setProgramArtifacts(this.programArtifacts.stream()
+                                .collect(java.util.stream.Collectors.toMap(ProgramArtifact::programId, pa -> pa, (a, b) -> b)));
+                        
+                        // Send ProgramArtifacts to persistence service
+                        for (ProgramArtifact artifact : this.programArtifacts) {
+                            try {
+                                ProgramArtifactMessage artifactMsg = new ProgramArtifactMessage(artifact.programId(), artifact);
+                                queue.put(artifactMsg);
+                                log.debug("Sent ProgramArtifact {} to persistence queue", artifact.programId());
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                return;
+                            } catch (Exception e) {
+                                log.warn("Failed to send ProgramArtifact {} to persistence queue: {}", artifact.programId(), e.getMessage());
+                            }
                         }
                     }
                 } catch (Exception e) {

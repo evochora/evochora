@@ -48,6 +48,7 @@ public final class SimulationConfiguration {
         public Boolean autoStart;
         public String outputPath;
         public int[] autoPauseTicks; // Array of tick values where simulation should auto-pause
+        public Boolean skipProgramArtefact; // Whether to skip ProgramArtifact features (default: false)
     }
 
     public static final class IndexerServiceConfig {

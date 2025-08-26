@@ -48,7 +48,7 @@ public class ProcedureCallHandler {
         Object[] prsSnapshot = organism.getPrs().toArray();
         Object[] fprsSnapshot = organism.getFprs().toArray();
 
-        String procName = "UNKNOWN";
+        String procName = "";
 
         int[] targetIp = organism.getTargetCoordinate(organism.getInitialPosition(), targetDelta, environment);
 
