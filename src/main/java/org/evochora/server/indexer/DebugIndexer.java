@@ -241,7 +241,7 @@ public class DebugIndexer implements IControllable, Runnable {
         
         if (paused.get()) {
             try {
-                long currentTick = nextTickToProcess;
+                long currentTick = getLastProcessedTick(); // Use last processed tick instead of next tick to process
                 String rawDbInfo = rawDbPath != null ? rawDbPath.replace('/', '\\') : "unknown";
                 String debugDbInfo = debugDbPath != null ? debugDbPath.replace('/', '\\') : "unknown";
                 String status = autoPaused.get() ? "auto-paused" : "paused";
@@ -253,7 +253,7 @@ public class DebugIndexer implements IControllable, Runnable {
         }
         
         try {
-            long currentTick = nextTickToProcess; // Use local counter instead of database query
+            long currentTick = getLastProcessedTick(); // Use last processed tick instead of next tick to process
             String rawDbInfo = rawDbPath != null ? rawDbPath.replace('/', '\\') : "unknown";
             String debugDbInfo = debugDbPath != null ? debugDbPath.replace('/', '\\') : "unknown";
             double tps = calculateTPS();
@@ -369,6 +369,20 @@ public class DebugIndexer implements IControllable, Runnable {
                         } else {
                             // No more ticks available - auto-pause to save resources
                             log.debug("No more ticks to process, auto-pausing indexer");
+                            
+                            // For auto-pause: execute any remaining incomplete batches before pausing
+                            // This ensures all data is committed and available to other threads
+                            if (tickInsertStatement != null && batchCount > 0) {
+                                try {
+                                    int[] result = tickInsertStatement.executeBatch();
+                                    log.debug("Executed final batch of {} ticks before auto-pause, result: {}", batchCount, java.util.Arrays.toString(result));
+                                    tickInsertStatement.clearBatch();
+                                    batchCount = 0; // Reset batch counter after execution
+                                } catch (Exception e) {
+                                    log.warn("Error executing final batch before auto-pause: {}", e.getMessage());
+                                }
+                            }
+                            
                             // Auto-pause - mark as auto-paused and set pause flag
                             autoPaused.set(true);
                             paused.set(true);
@@ -404,6 +418,20 @@ public class DebugIndexer implements IControllable, Runnable {
                         } else {
                             // No more ticks available - auto-pause to save resources
                             log.debug("No more ticks to process, auto-pausing indexer");
+                            
+                            // For auto-pause: execute any remaining incomplete batches before pausing
+                            // This ensures all data is committed and available to other threads
+                            if (tickInsertStatement != null && batchCount > 0) {
+                                try {
+                                    int[] result = tickInsertStatement.executeBatch();
+                                    log.debug("Executed final batch of {} ticks before auto-pause, result: {}", batchCount, java.util.Arrays.toString(result));
+                                    tickInsertStatement.clearBatch();
+                                    batchCount = 0; // Reset batch counter after execution
+                                } catch (Exception e) {
+                                    log.warn("Error executing final batch before auto-pause: {}", e.getMessage());
+                                }
+                            }
+                            
                             // Auto-pause - mark as auto-paused and set pause flag
                             autoPaused.set(true);
                             paused.set(true);

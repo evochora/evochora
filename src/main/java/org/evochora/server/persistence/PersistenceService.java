@@ -378,6 +378,21 @@ public final class PersistenceService implements IControllable, Runnable {
                     } else {
                         // No more ticks to process - auto-pause to save resources
                         log.debug("No more ticks in queue, auto-pausing persistence service");
+                        
+                        // For auto-pause: execute any remaining incomplete batches before pausing
+                        // This ensures all data is committed and available to other threads
+                        if (tickInsertStatement != null && batchCount % batchSize != 0) {
+                            try {
+                                int remainingCount = batchCount % batchSize;
+                                int[] result = tickInsertStatement.executeBatch();
+                                log.debug("Executed final batch of {} ticks before auto-pause, result: {}", remainingCount, java.util.Arrays.toString(result));
+                                tickInsertStatement.clearBatch();
+                                batchCount = 0; // Reset batch counter after execution
+                            } catch (Exception e) {
+                                log.warn("Error executing final batch before auto-pause: {}", e.getMessage());
+                            }
+                        }
+                        
                         // Auto-pause - mark as auto-paused and set pause flag
                         autoPaused.set(true);
                         paused.set(true);
