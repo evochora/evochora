@@ -148,21 +148,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     class SidebarStateView {
-        constructor(root) { 
-            this.root = root; 
+        constructor(root) {
+            this.root = root;
             this.previousState = null;
         }
-        
+
         update(state, navigationDirection) {
             const el = this.root.querySelector('[data-section="state"]');
             if (!state || !el) return;
-            
+
             // Hilfsfunktion für Register-Formatierung mit dynamischer Anzahl (schmalere Breite)
             const formatRegisters = (registers, previousRegisters, removeBrackets = false) => {
                 if (!registers || registers.length === 0) return '';
-                
+
                 const formatted = [];
-                
+
                 for (let i = 0; i < registers.length; i++) {
                     let value = '';
                     if (registers[i] && registers[i].value !== undefined) {
@@ -170,12 +170,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         value = registers[i].value || '';
                         // Typen abkürzen: CODE: -> C:, DATA: -> D:, ENERGY: -> E:, STRUCTURE: -> S:
                         value = value.replace(/CODE:/g, 'C:').replace(/DATA:/g, 'D:').replace(/ENERGY:/g, 'E:').replace(/STRUCTURE:/g, 'S:');
-                        
+
                         // Entferne eckige Klammern falls gewünscht (für LR)
                         if (removeBrackets) {
                             value = value.replace(/^\[|\]$/g, '');
                         }
-                        
+
                         // Prüfe, ob sich der Wert geändert hat (nur bei "weiter" Navigation)
                         if (navigationDirection === 'forward' && previousRegisters && previousRegisters[i] && previousRegisters[i].value !== undefined) {
                             let previousValue = previousRegisters[i].value || '';
@@ -192,21 +192,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Breite: 7 Zeichen für perfekte Ausrichtung ohne Scroll
                     formatted.push(String(value).padEnd(7));
                 }
-                
+
                 return formatted.join('');
             };
-            
+
             // Hilfsfunktion für DP-Formatierung mit dynamischer Anzahl (schmalere Breite)
             const formatDPs = (dps, previousDps) => {
                 if (!dps || dps.length === 0) return '';
-                
+
                 const formatted = [];
-                
+
                 for (let i = 0; i < dps.length; i++) {
                     let value = '';
                     if (dps[i] && dps[i].length > 0) {
                         value = `${dps[i].join('|')}`;
-                        
+
                         // Prüfe, ob sich der DP-Wert geändert hat (nur bei "weiter" Navigation)
                         if (navigationDirection === 'forward' && previousDps && previousDps[i] && previousDps[i].length > 0) {
                             const previousValue = `${previousDps[i].join('|')}`;
@@ -219,106 +219,108 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Breite: 7 Zeichen für perfekte Ausrichtung ohne Scroll
                     formatted.push(value.padEnd(7));
                 }
-                
+
                 return formatted.join('');
             };
-            
+
             // Hilfsfunktion für Stack-Formatierung
             const formatStack = (stack, previousStack, maxColumns = 8, removeBrackets = false) => {
                 if (!stack || stack.length === 0) return '';
-                
+
                 // Typen in allen Stack-Werten abkürzen
                 const formattedStack = stack.map(value => {
                     let formattedValue = value.replace(/CODE:/g, 'C:').replace(/DATA:/g, 'D:').replace(/ENERGY:/g, 'E:').replace(/STRUCTURE:/g, 'S:');
-                    
+
                     // Entferne eckige Klammern falls gewünscht (für LS und LR)
                     if (removeBrackets) {
                         formattedValue = formattedValue.replace(/^\[|\]$/g, '');
                     }
-                    
+
                     return formattedValue;
                 });
-                
+
                 // Begrenze auf maxColumns Werte
                 let displayStack = formattedStack;
                 if (formattedStack.length > maxColumns) {
                     displayStack = formattedStack.slice(0, maxColumns - 1); // -1 für "..."
                     displayStack.push('...'); // Zeige an, dass es mehr gibt
                 }
-                
+
                 // Formatiere jeden Wert mit fester Breite (7 Zeichen wie bei Registern)
                 const formattedValues = displayStack.map(value => {
                     return String(value).padEnd(7);
                 });
-                
+
                 return formattedValues.join('');
             };
-            
-            // Rekursive FPR-Auflösung durch den Call Stack
-            const resolveFprBinding = (fprId, callStack, currentIndex) => {
-                console.log(`DEBUG: resolveFprBinding(${fprId}, callStack[${currentIndex}])`);
-                
-                // Gehe durch den Call Stack von oben nach unten (neueste zuerst)
-                // Aber nur den aktuellen Frame und die aufrufenden Frames (darunter liegende)
-                for (let i = currentIndex; i < callStack.length; i++) {
-                    const frame = callStack[i];
-                    console.log(`DEBUG: Checking frame ${i}:`, frame);
-                    console.log(`DEBUG: frame.fprBindings:`, frame.fprBindings);
-                    
-                    if (frame.fprBindings && frame.fprBindings[fprId]) {
-                        const boundRegister = frame.fprBindings[fprId];
-                        console.log(`DEBUG: Found binding ${fprId} -> ${boundRegister}`);
-                        
-                        // Wenn es ein FPR ist (>= 2000), rekursiv auflösen
-                        if (boundRegister >= 2000) {
-                            console.log(`DEBUG: Recursive call for FPR ${boundRegister} from frame ${i}`);
-                            console.log(`DEBUG: About to call resolveFprBinding(${boundRegister}, callStack, ${i + 1})`);
-                            const result = resolveFprBinding(boundRegister, callStack, i + 1); // Gehe zum aufrufenden Frame
-                            console.log(`DEBUG: Recursive result for ${boundRegister}: ${result}`);
-                            console.log(`DEBUG: Returning recursive result: ${result}`);
-                            return result;
-                        }
-                        
-                        // Wenn es ein DR/PR ist, fertig
-                        console.log(`DEBUG: Final register: ${boundRegister}`);
-                        console.log(`DEBUG: Returning final register: ${boundRegister}`);
-                        return boundRegister;
+
+            /**
+             * Sucht den gesamten Call-Stack nach einem Parameter mit der angegebenen DR-ID.
+             */
+            const findDrParameter = (drId, callStack) => {
+                for (const frame of callStack) {
+                    const foundParam = frame.parameters.find(p => p.drId === drId);
+                    if (foundParam) {
+                        return foundParam;
                     }
                 }
-                console.log(`DEBUG: No binding found, returning ${fprId}`);
-                return fprId; // Fallback: konnte nicht aufgelöst werden
+                return null; // Parameter nicht gefunden
             };
-            
+
+            // Rekursive FPR-Auflösung durch den Call Stack
+            const resolveFprBinding = (fprId, callStack, startIndex) => {
+                let currentId = fprId;
+                // Iteriere durch den Call-Stack, beginnend beim aktuellen Frame.
+                for (let i = startIndex; i < callStack.length; i++) {
+                    const frame = callStack[i];
+                    if (frame.fprBindings && frame.fprBindings.hasOwnProperty(currentId)) {
+                        const boundRegister = frame.fprBindings[currentId];
+                        if (boundRegister < 2000) {
+                            // Aufgelöst zu einem DR/PR (Register < 2000), wir sind fertig.
+                            return boundRegister;
+                        }
+                        // Es ist ein anderes FPR (>= 2000), also aktualisieren wir die ID,
+                        // nach der wir im nächsten Frame suchen.
+                        currentId = boundRegister;
+                    } else {
+                        // Wenn in einem Frame keine Bindung gefunden wird, ist die Kette hier zu Ende.
+                        break;
+                    }
+                }
+                // Wenn wir am Ende des Stacks ankommen und immer noch ein FPR haben, geben wir es zurück.
+                return currentId;
+            };
+
             // Call Stack spezielle Behandlung - jetzt mit strukturierten Daten
             const formatCallStack = (callStack, previousCallStack) => {
                 if (!callStack || callStack.length === 0) return '';
-                
+
                 // Prüfe, ob wir Prozedurnamen haben (ProgramArtifact verfügbar)
                 const hasProcNames = callStack.some(entry => entry.procName && entry.procName.trim() !== '');
-                
+
                 if (hasProcNames) {
                     // Mit ProgramArtifact: Eine Zeile pro Eintrag mit Prozedurnamen
                     const formattedCallStack = callStack.map((entry, index) => {
                         let result = entry.procName || 'UNKNOWN';
-                        
+
                         // Return-Koordinaten hinzufügen: [x|y] mit .injected-value Styling
                         if (entry.returnCoordinates && entry.returnCoordinates.length >= 2) {
                             result += ` <span class="injected-value">[${entry.returnCoordinates[0]}|${entry.returnCoordinates[1]}]</span>`;
                         }
-                        
+
                         // Parameter hinzufügen
                         if (entry.parameters && entry.parameters.length > 0) {
                             result += ' WITH ';
-                            
+
                             const paramStrings = entry.parameters.map(param => {
                                 console.log(`DEBUG: Processing parameter:`, param);
-                                
+
                                 // Rekursive FPR-Auflösung für diesen Parameter
                                 // WICHTIG: param.drId ist eigentlich die FPR-ID (2000, 2001, etc.)
                                 const finalRegisterId = resolveFprBinding(param.drId, callStack, index);
                                 console.log(`DEBUG: Final register ID for ${param.drId}: ${finalRegisterId}`);
                                 console.log(`DEBUG: finalRegisterId type: ${typeof finalRegisterId}, value: ${finalRegisterId}`);
-                                
+
                                 // Bestimme Register-Typ und Index
                                 let registerDisplay;
                                 if (finalRegisterId >= 2000) {
@@ -332,7 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     console.log(`DEBUG: DR branch: ${finalRegisterId} < 1000`);
                                 }
                                 console.log(`DEBUG: Register display: ${registerDisplay}`);
-                                
+
                                 if (param.paramName) {
                                     // Mit ProgramArtifact: PARAM1<span class="injected-value">[%DR1=D:3]</span>
                                     return `${param.paramName}<span class="injected-value">[${registerDisplay}=${param.value}]</span>`;
@@ -343,7 +345,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             });
                             result += paramStrings.join(' ');
                         }
-                        
+
                         // Erste Zeile: keine Einrückung, weitere Zeilen: Einrückung
                         if (index === 0) {
                             return result;
@@ -352,7 +354,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             return '     ' + result;
                         }
                     });
-                    
+
                     return formattedCallStack.join('\n');
                 } else {
                     // Ohne ProgramArtifact: Alle Einträge in einer Zeile wie andere Stacks
@@ -363,7 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         return '';
                     }).filter(entry => entry !== '');
-                    
+
                     // Dynamische Abkürzung wie bei anderen Stacks (basierend auf DR-Anzahl)
                     const maxColumns = 8; // Standard, könnte dynamisch sein
                     let displayEntries = formattedEntries;
@@ -371,25 +373,25 @@ document.addEventListener('DOMContentLoaded', () => {
                         displayEntries = formattedEntries.slice(0, maxColumns - 1); // -1 für "..."
                         displayEntries.push('...'); // Zeige an, dass es mehr gibt
                     }
-                    
+
                     // Verteile auf Spalten statt mit -> verketten
                     return displayEntries.map(entry => String(entry).padEnd(7)).join('');
                 }
             };
-            
+
             // Verwende die ursprüngliche .code-view Struktur für perfekte Zeilenhöhe
             // Alle Labels haben die gleiche Breite für perfekte Spaltenausrichtung
-            
+
             // Prüfe, ob sich die Stacks geändert haben
-            const dataStackChanged = navigationDirection === 'forward' && 
+            const dataStackChanged = navigationDirection === 'forward' &&
                 (state.dataStack?.join(' ') !== (this.previousState?.dataStack?.join(' ') || ''));
-            const locationStackChanged = navigationDirection === 'forward' && 
+            const locationStackChanged = navigationDirection === 'forward' &&
                 (state.locationStack?.join(' ') !== (this.previousState?.locationStack?.join(' ') || ''));
-            const callStackChanged = navigationDirection === 'forward' && 
+            const callStackChanged = navigationDirection === 'forward' &&
                 (JSON.stringify(state.callStack) !== JSON.stringify(this.previousState?.callStack));
-            
+
             el.innerHTML = `<div class="code-view" style="font-size:0.9em;">DP:  ${formatDPs(state.dps, this.previousState?.dps)}\nDR:  ${formatRegisters(state.dataRegisters, this.previousState?.dataRegisters)}\nPR:  ${formatRegisters(state.procRegisters, this.previousState?.procRegisters)}\nFPR: ${formatRegisters(state.fpRegisters, this.previousState?.fpRegisters)}\nLR:  ${formatRegisters(state.locationRegisters, this.previousState?.locationRegisters, true)}\n${dataStackChanged ? '<div class="changed-line">DS:  ' : 'DS:  '}${formatStack(state.dataStack, this.previousState?.dataStack, state.dataRegisters?.length || 8)}${dataStackChanged ? '</div>' : ''}\n${locationStackChanged ? '<div class="changed-line">LS:  ' : 'LS:  '}${formatStack(state.locationStack, this.previousState?.locationStack, state.dataRegisters?.length || 8, true)}${locationStackChanged ? '</div>' : ''}\n${callStackChanged ? '<div class="changed-line">CS:  ' : 'CS:  '}${formatCallStack(state.callStack, this.previousState?.callStack)}${callStackChanged ? '</div>' : ''}</div>`;
-            
+
             // Speichere den aktuellen Zustand für den nächsten Vergleich
             this.previousState = { ...state };
         }
