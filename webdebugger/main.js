@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         async fetchTickData(tick) {
             try {
-                const res = await fetch(`/api/tick/${tick}`);
+            const res = await fetch(`/api/tick/${tick}`);
                 if (!res.ok) {
                     if (res.status === 404) {
                         const errorData = await res.json().catch(() => ({}));
@@ -54,7 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     throw new Error(`HTTP ${res.status}`);
                 }
-                return await res.json();
+            return await res.json();
             } catch (error) {
                 throw error;
             }
@@ -152,15 +152,47 @@ document.addEventListener('DOMContentLoaded', () => {
         update(state) {
             const el = this.root.querySelector('[data-section="state"]');
             if (!state || !el) return;
-            const fmt = r => `${r.value}`;
-            const dr = (state.dataRegisters||[]).map(fmt).join(' ');
-            const pr = (state.procRegisters||[]).map(fmt).join(' ');
-            const ds = (state.dataStack||[]).join(' ');
-            const cs = (state.callStack||[]).join(' -> ');
-            const lr = (state.locationRegisters||[]).join(' ');
-            const ls = (state.locationStack||[]).join(' ');
-            const dps = (state.dps||[]).map(p=>`(${(p||[]).join('|')})`).join(' ');
-            el.innerHTML = `<div class="code-view" style="font-size:0.9em;">DR: ${dr}\nPR: ${pr}\nLR: ${lr}\nLS: ${ls}\nDPs: ${dps}\nDS: ${ds}\nCS: ${cs}</div>`;
+            
+            // Hilfsfunktion für Register-Formatierung mit 8 Spalten (schmalere Breite)
+            const formatRegisters = (registers) => {
+                const formatted = [];
+                for (let i = 0; i < 8; i++) {
+                    const value = registers && registers[i] !== undefined ? registers[i] : '';
+                    // Schmalere Breite: 6 Zeichen für perfekte Ausrichtung ohne Scroll
+                    formatted.push(String(value).padEnd(6));
+                }
+                return formatted.join('');
+            };
+            
+            // Hilfsfunktion für DP-Formatierung mit 8 Spalten (schmalere Breite)
+            const formatDPs = (dps) => {
+                const formatted = [];
+                for (let i = 0; i < 8; i++) {
+                    let value = '';
+                    if (dps && dps[i]) {
+                        value = `(${dps[i].join('|')})`;
+                    }
+                    // Schmalere Breite: 6 Zeichen für perfekte Ausrichtung ohne Scroll
+                    formatted.push(value.padEnd(6));
+                }
+                return formatted.join('');
+            };
+            
+            // Hilfsfunktion für Stack-Formatierung
+            const formatStack = (stack) => {
+                if (!stack || stack.length === 0) return '';
+                return stack.join(' ');
+            };
+            
+            // Call Stack spezielle Behandlung
+            const formatCallStack = (callStack) => {
+                if (!callStack || callStack.length === 0) return '';
+                return callStack.join(' -> ');
+            };
+            
+            // Verwende die ursprüngliche .code-view Struktur für perfekte Zeilenhöhe
+            // Alle Labels haben die gleiche Breite für perfekte Spaltenausrichtung
+            el.innerHTML = `<div class="code-view" style="font-size:0.9em;">DP:  ${formatDPs(state.dps)}\nDR:  ${formatRegisters(state.dataRegisters)}\nPR:  ${formatRegisters(state.procRegisters)}\nFPR: ${formatRegisters(state.fpRegisters, '0')}\nLR:  ${formatRegisters(state.locationRegisters)}\nDS:  ${formatStack(state.dataStack)}\nLS:  ${formatStack(state.locationStack)}\nCS:  ${formatCallStack(state.callStack)}</div>`;
         }
     }
 
@@ -382,32 +414,32 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             try {
-                const data = await this.api.fetchTickData(target);
-                this.state.currentTick = target;
-                this.state.lastTickData = data;
-                if (typeof data.totalTicks === 'number') {
-                    this.state.totalTicks = data.totalTicks;
-                }
-                if (data.worldMeta && Array.isArray(data.worldMeta.shape)) {
-                    this.renderer.config.WORLD_SHAPE = data.worldMeta.shape;
-                }
-                // ISA-Mapping is intentionally not used; rely solely on cell.opcodeName provided by backend
-                const typeToId = t => ({ CODE:0, DATA:1, ENERGY:2, STRUCTURE:3 })[t] ?? 1;
-                const cells = (data.worldState?.cells||[]).map(c => ({ position: JSON.stringify(c.position), type: typeToId(c.type), value: c.value, opcodeName: c.opcodeName }));
-                const organisms = (data.worldState?.organisms||[]).map(o => ({ organismId: o.id, programId: o.programId, energy: o.energy, positionJson: JSON.stringify(o.position), dps: o.dps, dv: o.dv }));
-                this.renderer.draw({ cells, organisms, selectedOrganismId: this.state.selectedOrganismId });
-                const ids = Object.keys(data.organismDetails||{});
-                const sel = this.state.selectedOrganismId && ids.includes(this.state.selectedOrganismId) ? this.state.selectedOrganismId : null;
-                if (sel) {
+            const data = await this.api.fetchTickData(target);
+            this.state.currentTick = target;
+            this.state.lastTickData = data;
+            if (typeof data.totalTicks === 'number') {
+                this.state.totalTicks = data.totalTicks;
+            }
+            if (data.worldMeta && Array.isArray(data.worldMeta.shape)) {
+                this.renderer.config.WORLD_SHAPE = data.worldMeta.shape;
+            }
+            // ISA-Mapping is intentionally not used; rely solely on cell.opcodeName provided by backend
+            const typeToId = t => ({ CODE:0, DATA:1, ENERGY:2, STRUCTURE:3 })[t] ?? 1;
+            const cells = (data.worldState?.cells||[]).map(c => ({ position: JSON.stringify(c.position), type: typeToId(c.type), value: c.value, opcodeName: c.opcodeName }));
+            const organisms = (data.worldState?.organisms||[]).map(o => ({ organismId: o.id, programId: o.programId, energy: o.energy, positionJson: JSON.stringify(o.position), dps: o.dps, dv: o.dv }));
+            this.renderer.draw({ cells, organisms, selectedOrganismId: this.state.selectedOrganismId });
+            const ids = Object.keys(data.organismDetails||{});
+            const sel = this.state.selectedOrganismId && ids.includes(this.state.selectedOrganismId) ? this.state.selectedOrganismId : null;
+            if (sel) {
                     this.sidebar.update(data.organismDetails[sel], this.lastNavigationDirection);
                     this.sidebarManager.autoShow();
                     this.sidebarManager.setToggleButtonVisible(true);
-                } else {
+            } else {
                     // No organism selected - auto-hide sidebar
                     this.sidebarManager.autoHide();
                     this.sidebarManager.setToggleButtonVisible(false);
-                }
-                this.updateTickUi();
+            }
+            this.updateTickUi();
             } catch (error) {
                 // Error is already displayed by ApiService
                 console.error('Failed to navigate to tick:', error);
