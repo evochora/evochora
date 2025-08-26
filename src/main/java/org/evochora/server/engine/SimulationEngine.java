@@ -342,6 +342,20 @@ public class SimulationEngine implements IControllable, Runnable {
                                         simulation.getEnvironment().setMolecule(new org.evochora.runtime.model.Molecule(pm.type(), pm.value()), abs);
                                     }
                                     
+                                    // NEU: Registriere die Call-Site-Bindungen im CallBindingRegistry
+                                    org.evochora.runtime.internal.services.CallBindingRegistry registry = org.evochora.runtime.internal.services.CallBindingRegistry.getInstance();
+                                    for (Map.Entry<Integer, int[]> binding : artifact.callSiteBindings().entrySet()) {
+                                        int linearAddress = binding.getKey();
+                                        int[] relativeCoord = artifact.linearAddressToCoord().get(linearAddress);
+                                        if (relativeCoord != null) {
+                                            int[] absoluteCoord = new int[pos.length];
+                                            for (int i = 0; i < pos.length; i++) {
+                                                absoluteCoord[i] = pos[i] + relativeCoord[i];
+                                            }
+                                            registry.registerBindingForAbsoluteCoord(absoluteCoord, binding.getValue());
+                                        }
+                                    }
+                                    
                                     // Create and add organism
                                     org.evochora.runtime.model.Organism organism = org.evochora.runtime.model.Organism.create(simulation, pos, def.initialEnergy, simulation.getLogger());
                                     organism.setProgramId(artifact.programId());
