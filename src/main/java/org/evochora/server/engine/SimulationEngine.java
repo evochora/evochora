@@ -359,10 +359,38 @@ public class SimulationEngine implements IControllable, Runnable {
                 }
                 
                 simulation.setProgramArtifacts(artifactsById);
+                
+                // Send ProgramArtifacts to persistence service
+                for (Map.Entry<String, ProgramArtifact> entry : artifactsById.entrySet()) {
+                    try {
+                        ProgramArtifactMessage artifactMsg = new ProgramArtifactMessage(entry.getKey(), entry.getValue());
+                        queue.put(artifactMsg);
+                        log.debug("Sent ProgramArtifact {} to persistence queue", entry.getKey());
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    } catch (Exception e) {
+                        log.warn("Failed to send ProgramArtifact {} to persistence queue: {}", entry.getKey(), e.getMessage());
+                    }
+                }
             } else if (programArtifacts != null && !programArtifacts.isEmpty()) {
                 try {
                     simulation.setProgramArtifacts(this.programArtifacts.stream()
                             .collect(java.util.stream.Collectors.toMap(ProgramArtifact::programId, pa -> pa, (a, b) -> b)));
+                    
+                    // Send ProgramArtifacts to persistence service
+                    for (ProgramArtifact artifact : this.programArtifacts) {
+                        try {
+                            ProgramArtifactMessage artifactMsg = new ProgramArtifactMessage(artifact.programId(), artifact);
+                            queue.put(artifactMsg);
+                            log.debug("Sent ProgramArtifact {} to persistence queue", artifact.programId());
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        } catch (Exception e) {
+                            log.warn("Failed to send ProgramArtifact {} to persistence queue: {}", artifact.programId(), e.getMessage());
+                        }
+                    }
                 } catch (Exception e) {
                     log.warn("Failed to setup program artifacts: {}", e.getMessage());
                 }
