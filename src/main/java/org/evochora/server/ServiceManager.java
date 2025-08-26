@@ -310,6 +310,11 @@ public final class ServiceManager {
             engine.setOrganismDefinitions(config.simulation.organisms);
             engine.setEnergyStrategies(config.simulation.energyStrategies);
             
+            // Set auto-pause configuration if available
+            if (config.pipeline.simulation != null && config.pipeline.simulation.autoPauseTicks != null) {
+                engine.setAutoPauseTicks(config.pipeline.simulation.autoPauseTicks);
+            }
+            
             simulationEngine.set(engine);
             engine.start();
             simulationRunning.set(true);

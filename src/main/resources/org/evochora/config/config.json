@@ -1,7 +1,7 @@
 {
   "simulation": {
     "seed": 123456789,
-    "environment": {
+      "environment": {
       "shape": [100, 30],
       "toroidal": true
     },
@@ -42,7 +42,8 @@
   "pipeline": {
     "simulation": {
       "autoStart": true,
-      "outputPath": "runs/"
+      "outputPath": "runs/",
+      "autoPauseTicks": [500, 1000]
     },
     "indexer": {
       "autoStart": true,

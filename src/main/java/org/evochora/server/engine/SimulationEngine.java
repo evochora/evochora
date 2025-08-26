@@ -35,6 +35,7 @@ public class SimulationEngine implements IControllable, Runnable {
     private final Thread thread;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
+    private final AtomicBoolean autoPaused = new AtomicBoolean(false);
     private final int[] worldShape;
     private final boolean isToroidal;
     private final Logger logger;
@@ -45,6 +46,8 @@ public class SimulationEngine implements IControllable, Runnable {
     private IRandomProvider randomProvider;
     private Long seed = null;
     private long startTime = 0;
+    private int[] autoPauseTicks = null; // Configuration for auto-pause ticks
+    private int nextAutoPauseIndex = 0; // Index of next auto-pause tick to check
 
     public SimulationEngine(ITickMessageQueue queue, int[] worldShape, boolean isToroidal) {
         this(queue, worldShape, isToroidal, null, null, null);
@@ -109,6 +112,21 @@ public class SimulationEngine implements IControllable, Runnable {
         }
     }
 
+    /**
+     * Sets the auto-pause ticks configuration.
+     * @param autoPauseTicks Array of tick values where simulation should auto-pause, or null to disable
+     */
+    public void setAutoPauseTicks(int[] autoPauseTicks) {
+        this.autoPauseTicks = autoPauseTicks != null ? java.util.Arrays.copyOf(autoPauseTicks, autoPauseTicks.length) : null;
+        this.nextAutoPauseIndex = 0;
+        if (this.autoPauseTicks != null) {
+            java.util.Arrays.sort(this.autoPauseTicks); // Ensure ticks are in ascending order
+            log.info("Auto-pause ticks configured: {}", java.util.Arrays.toString(this.autoPauseTicks));
+        } else {
+            log.info("Auto-pause ticks disabled");
+        }
+    }
+
     @Override
     public void start() {
         if (running.compareAndSet(false, true)) {
@@ -134,7 +152,10 @@ public class SimulationEngine implements IControllable, Runnable {
     }
 
     @Override
-    public void resume() { paused.set(false); }
+    public void resume() { 
+        paused.set(false); 
+        autoPaused.set(false);
+    }
 
     @Override
     public void shutdown() {
@@ -163,7 +184,7 @@ public class SimulationEngine implements IControllable, Runnable {
     public boolean isPaused() { return paused.get(); }
     
     @Override
-    public boolean isAutoPaused() { return false; } // Simulation never auto-pauses
+    public boolean isAutoPaused() { return autoPaused.get(); }
 
     private double calculateTPS() {
         long currentTime = System.currentTimeMillis();
@@ -210,6 +231,24 @@ public class SimulationEngine implements IControllable, Runnable {
         }
     }
 
+    /**
+     * Checks if the simulation should auto-pause at the current tick.
+     * @return true if auto-pause should occur, false otherwise
+     */
+    private boolean shouldAutoPause() {
+        if (autoPauseTicks == null || autoPauseTicks.length == 0 || nextAutoPauseIndex >= autoPauseTicks.length) {
+            return false;
+        }
+        
+        long currentTick = simulation.getCurrentTick();
+        if (currentTick == autoPauseTicks[nextAutoPauseIndex]) {
+            nextAutoPauseIndex++;
+            return true;
+        }
+        
+        return false;
+    }
+
     public int[] getOrganismCounts() {
         if (simulation == null) return new int[]{0, 0};
         int living = 0, dead = 0;
@@ -232,8 +271,9 @@ public class SimulationEngine implements IControllable, Runnable {
         double tps = calculateTPS();
         
         if (isPaused) {
-            return String.format("paused tick:%d organisms:[%d,%d] queue:%d", 
-                    currentTick, counts[0], counts[1], queueSize);
+            String pauseType = autoPaused.get() ? "auto-paused" : "paused";
+            return String.format("%s tick:%d organisms:[%d,%d] queue:%d", 
+                    pauseType, currentTick, counts[0], counts[1], queueSize);
         }
         
         return String.format("%s tick:%d organisms:[%d,%d] queue:%d TPS:%.2f", 
@@ -352,6 +392,14 @@ public class SimulationEngine implements IControllable, Runnable {
                 }
 
                 try {
+                    // Check if we should auto-pause at this tick
+                    if (shouldAutoPause()) {
+                        log.info("Auto-pausing simulation at tick {}", simulation.getCurrentTick());
+                        autoPaused.set(true);
+                        paused.set(true);
+                        continue;
+                    }
+                    
                     simulation.tick();
                     
                     // Always create raw tick state, but throttle simulation if queue is too full

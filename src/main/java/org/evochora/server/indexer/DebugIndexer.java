@@ -58,7 +58,7 @@ public class DebugIndexer implements IControllable, Runnable {
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final AtomicBoolean autoPaused = new AtomicBoolean(false);
     private long startTime = System.currentTimeMillis();
-    private long lastProcessedTick = 0L; // Start at 0 to include tick 0
+    private long nextTickToProcess = 0L; // Start at 0 to include tick 0
     private final ObjectMapper objectMapper = new ObjectMapper();
     private String rawDbPath;
     private String debugDbPath;
@@ -124,7 +124,7 @@ public class DebugIndexer implements IControllable, Runnable {
         this.debugDbPath = newRawDbPath.replace("_raw.sqlite", "_debug.sqlite");
         
         // Reset counters
-        this.lastProcessedTick = 0L;
+        this.nextTickToProcess = 0L;
         this.batchCount = 0;
         
         
@@ -219,7 +219,7 @@ public class DebugIndexer implements IControllable, Runnable {
 
     private double calculateTPS() {
         long currentTime = System.currentTimeMillis();
-        long currentTick = lastProcessedTick; // Use local counter instead of database query
+        long currentTick = nextTickToProcess; // Use local counter instead of database query
         
         if (currentTick <= 0) {
             return 0.0;
@@ -241,7 +241,7 @@ public class DebugIndexer implements IControllable, Runnable {
         
         if (paused.get()) {
             try {
-                long currentTick = lastProcessedTick;
+                long currentTick = nextTickToProcess;
                 String rawDbInfo = rawDbPath != null ? rawDbPath.replace('/', '\\') : "unknown";
                 String debugDbInfo = debugDbPath != null ? debugDbPath.replace('/', '\\') : "unknown";
                 String status = autoPaused.get() ? "auto-paused" : "paused";
@@ -253,7 +253,7 @@ public class DebugIndexer implements IControllable, Runnable {
         }
         
         try {
-            long currentTick = lastProcessedTick; // Use local counter instead of database query
+            long currentTick = nextTickToProcess; // Use local counter instead of database query
             String rawDbInfo = rawDbPath != null ? rawDbPath.replace('/', '\\') : "unknown";
             String debugDbInfo = debugDbPath != null ? debugDbPath.replace('/', '\\') : "unknown";
             double tps = calculateTPS();
@@ -308,7 +308,7 @@ public class DebugIndexer implements IControllable, Runnable {
     public void run() {
         try {
             loadInitialData();
-            // Start processing from tick 0 (lastProcessedTick = -1L from initialization)
+            // Start processing from tick 0 (nextTickToProcess = 0L from initialization)
 
             while (running.get()) {
                 if (paused.get()) {
@@ -352,39 +352,48 @@ public class DebugIndexer implements IControllable, Runnable {
                 }
 
                 try {
-                    int remainingTicks = processNextTick(lastProcessedTick + 1);
+                    int remainingTicks = processNextBatch();
 
                     if (remainingTicks > 0) {
                         // Continue processing immediately if we processed ticks
                         // No sleep - maximum throughput!
                         continue;
                     } else if (remainingTicks == 0) {
-                        // No more ticks available - auto-pause to save resources
-                        log.debug("No more ticks to process, auto-pausing indexer");
-                        // Auto-pause - mark as auto-paused and set pause flag
-                        autoPaused.set(true);
-                        paused.set(true);
-                        
-                        // For auto-pause: keep database open for quick resume
-                        log.debug("Auto-pause: keeping database open for quick resume");
-                        
-                        // Wait a bit before checking for new ticks
-                        try {
-                            Thread.sleep(1000); // Check every second
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
-                        
-                        // Check if new ticks are available (only if not manually paused)
-                        if (hasNewTicksToProcess() && !paused.get()) {
-                            log.debug("New ticks available, resuming debug indexer");
-                            autoPaused.set(false);
-                            paused.set(false);
+                        // remainingTicks == 0 means no more ticks are currently available
+                        // But we need to check if new ticks arrived while we were processing
+                        // If new ticks arrived, continue immediately; otherwise auto-pause
+                        if (hasNewTicksToProcess()) {
+                            // New ticks arrived while we were processing - continue immediately
+                            log.debug("New ticks available after processing batch, continuing immediately");
+                            continue;
+                        } else {
+                            // No more ticks available - auto-pause to save resources
+                            log.debug("No more ticks to process, auto-pausing indexer");
+                            // Auto-pause - mark as auto-paused and set pause flag
+                            autoPaused.set(true);
+                            paused.set(true);
+                            
+                            // For auto-pause: keep database open for quick resume
+                            log.debug("Auto-pause: keeping database open for quick resume");
+                            
+                            // Wait a bit before checking for new ticks
+                            try {
+                                Thread.sleep(1000); // Check every second
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                break;
+                            }
+                            
+                            // Check if new ticks are available (only if not manually paused)
+                            if (hasNewTicksToProcess() && !paused.get()) {
+                                log.debug("New ticks available, resuming debug indexer");
+                                autoPaused.set(false);
+                                paused.set(false);
+                                continue;
+                            }
+                            
                             continue;
                         }
-                        
-                        continue;
                     } else {
                         // remainingTicks < 0 means there was an error, but ticks might still be available
                         // Check if there are truly no more ticks to process
@@ -423,7 +432,7 @@ public class DebugIndexer implements IControllable, Runnable {
                     }
                 } catch (Exception e) {
                     if (running.get()) { // Only warn if still running
-                        log.warn("Failed to process tick {}: {}", lastProcessedTick + 1, e.getMessage());
+                        log.warn("Failed to process tick {}: {}", nextTickToProcess, e.getMessage());
                     }
                 }
                 
@@ -435,7 +444,7 @@ public class DebugIndexer implements IControllable, Runnable {
         } finally {
             // Log graceful termination from the service thread
             if (Thread.currentThread().getName().equals("DebugIndexer")) {
-                long currentTick = lastProcessedTick; // Use local counter
+                long currentTick = getLastProcessedTick(); // Use getter method
                 double tps = calculateTPS();
                 log.info("DebugIndexer: graceful termination tick:{} TPS:{}", currentTick, String.format("%.2f", tps));
             }
@@ -463,8 +472,8 @@ public class DebugIndexer implements IControllable, Runnable {
     private boolean hasNewTicksToProcess() {
         try (Connection rawConn = createConnection(rawDbPath);
              PreparedStatement countPs = rawConn.prepareStatement(
-                     "SELECT COUNT(*) FROM raw_ticks WHERE tick_number > ?")) {
-            countPs.setLong(1, lastProcessedTick);
+                     "SELECT COUNT(*) FROM raw_ticks WHERE tick_number >= ?")) {
+            countPs.setLong(1, nextTickToProcess);
             try (ResultSet countRs = countPs.executeQuery()) {
                 if (countRs.next()) {
                     return countRs.getLong(1) > 0;
@@ -538,8 +547,12 @@ public class DebugIndexer implements IControllable, Runnable {
         }
     }
 
-    private int processNextTick(long tickToProcess) {
-        // Process large batches for maximum performance, but with reasonable memory limits
+    /**
+     * Process next batch of ticks, up to the batch size limit.
+     * If fewer ticks than batch size are available, process them anyway.
+     * @return Number of ticks still remaining to be processed, or -1 for error
+     */
+    private int processNextBatch() {
         try (Connection rawConn = createConnection(rawDbPath)) {
             // Apply SQLite performance optimizations
             try (Statement stmt = rawConn.createStatement()) {
@@ -549,17 +562,14 @@ public class DebugIndexer implements IControllable, Runnable {
                 stmt.execute("PRAGMA temp_store=MEMORY");
             }
             
-            // Get all available ticks starting from the next one to process
-            // Use configurable batch size from config, but ensure we process all remaining ticks
-            
-            // Check if we're in the final batch (less than batchSize ticks remaining)
-            long remainingTicks = 0;
+            // Count available ticks starting from the next one to process
+            long totalAvailableTicks = 0;
             try (PreparedStatement countPs = rawConn.prepareStatement(
                     "SELECT COUNT(*) FROM raw_ticks WHERE tick_number >= ?")) {
-                countPs.setLong(1, lastProcessedTick);
+                countPs.setLong(1, nextTickToProcess);
                 try (ResultSet countRs = countPs.executeQuery()) {
                     if (countRs.next()) {
-                        remainingTicks = countRs.getLong(1);
+                        totalAvailableTicks = countRs.getLong(1);
                     }
                 }
             } catch (Exception e) {
@@ -567,26 +577,23 @@ public class DebugIndexer implements IControllable, Runnable {
                 return -1; // Indicate error
             }
             
-            // If we have no ticks remaining, we need to check if simulation is still running
-            if (remainingTicks == 0) {
-                // Check if we're in a paused state - if so, we're really done
-                // If not, we should wait for new ticks
-                // For now, return 0 to let the main loop sleep and retry
+            // If we have no ticks remaining, return 0
+            if (totalAvailableTicks == 0) {
                 return 0;
             }
             
-            // Always respect the configured batch size for consistent performance
-            // This prevents oversized batches that could cause memory issues
-            int actualBatchSize = remainingTicks <= batchSize ? (int)remainingTicks : batchSize;
+            // Process up to batch size ticks, but process fewer if that's all that's available
+            // This ensures we don't wait for a full batch - we process whatever is available
+            int actualBatchSize = Math.min((int)totalAvailableTicks, batchSize);
             
-
+            log.debug("Processing {} ticks (available: {}, batch limit: {})", 
+                     actualBatchSize, totalAvailableTicks, batchSize);
             
             try (PreparedStatement ps = rawConn.prepareStatement(
                     "SELECT tick_number, tick_data_json FROM raw_ticks WHERE tick_number >= ? ORDER BY tick_number LIMIT ?")) {
-                ps.setLong(1, lastProcessedTick);
+                ps.setLong(1, nextTickToProcess);
                 ps.setInt(2, actualBatchSize);
                 
-
                 try (ResultSet rs = ps.executeQuery()) {
                     boolean processedAny = false;
                     int processedCount = 0;
@@ -600,9 +607,9 @@ public class DebugIndexer implements IControllable, Runnable {
                             PreparedTickState preparedTick = transformRawToPrepared(rawTickState);
                             writePreparedTick(preparedTick);
                             
-                            // Update last processed tick
-                            if (tickNumber > lastProcessedTick) {
-                                lastProcessedTick = tickNumber;
+                            // Update next tick to process
+                            if (tickNumber >= nextTickToProcess) {
+                                nextTickToProcess = tickNumber + 1;
                             }
                             processedAny = true;
                             processedCount++;
@@ -613,45 +620,20 @@ public class DebugIndexer implements IControllable, Runnable {
                         }
                     }
                     
-
-                    
-                    if (processedAny && processedCount > 1) {
-                        // Log batch processing for performance monitoring
-                        log.debug("Processed {} ticks in batch, last tick: {}", processedCount, lastProcessedTick);
+                    if (processedAny) {
+                        log.debug("Processed {} ticks in batch, next tick to process: {}", processedCount, nextTickToProcess);
                     }
                     
-                                         // Return the number of ticks that are still remaining to be processed
-                     // This helps the main loop decide whether to continue or pause
-                     long remainingAfterProcessing = 0;
-                     
-                     // Use the SAME connection to ensure consistent transaction view
-                     
-                     // Simple and reliable approach: check if there are any ticks beyond what we've processed
-                     // Use the same connection to avoid transaction inconsistencies
-                     try (PreparedStatement nextPs = rawConn.prepareStatement(
-                             "SELECT tick_number FROM raw_ticks WHERE tick_number > ? ORDER BY tick_number LIMIT 1")) {
-                         nextPs.setLong(1, lastProcessedTick);
-                         try (ResultSet nextRs = nextPs.executeQuery()) {
-                             if (nextRs.next()) {
-                                 long nextTick = nextRs.getLong(1);
-                                 
-                                 // There are more ticks, so we should continue processing
-                                 remainingAfterProcessing = 1;
-                             } else {
-                                 remainingAfterProcessing = 0;
-                             }
-                         }
-                     } catch (Exception e) {
-                         log.warn("Next tick query failed: {}", e.getMessage());
-                         return -1; // Indicate error
-                     }
-                     
-                     return (int)remainingAfterProcessing;
+                    // Calculate remaining ticks after processing
+                    long remainingAfterProcessing = totalAvailableTicks - processedCount;
+                    
+                    // Return the number of ticks that are still remaining to be processed
+                    return (int)remainingAfterProcessing;
                 }
             }
         } catch (Exception e) {
             if (running.get()) {
-                log.warn("Failed to process ticks starting from {}: {}", tickToProcess, e.getMessage());
+                log.warn("Failed to process next batch: {}", e.getMessage());
             }
             return -1; // Indicate error
         }
@@ -1045,7 +1027,9 @@ public class DebugIndexer implements IControllable, Runnable {
         }
     }
 
-    public long getLastProcessedTick() { return lastProcessedTick; }
+    public long getLastProcessedTick() { 
+        return nextTickToProcess > 0 ? nextTickToProcess - 1 : 0; 
+    }
     public String getRawDbPath() { return rawDbPath; }
     public String getDebugDbPath() { return debugDbPath; }
 

@@ -47,6 +47,7 @@ public final class SimulationConfiguration {
     public static final class SimulationServiceConfig {
         public Boolean autoStart;
         public String outputPath;
+        public int[] autoPauseTicks; // Array of tick values where simulation should auto-pause
     }
 
     public static final class IndexerServiceConfig {
