@@ -260,7 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Jetzt verarbeiten wir strukturierte CallStackEntry-Objekte
                 // Jeder Eintrag bekommt eine eigene Zeile
-                const formattedCallStack = callStack.map(entry => {
+                const formattedCallStack = callStack.map((entry, index) => {
                     // entry ist jetzt ein Objekt mit: { procName, returnCoordinates, parameters }
                     let result = entry.procName || 'UNKNOWN';
                     
@@ -284,7 +284,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         result += paramStrings.join(' ');
                     }
                     
-                    return result;
+                    // Erste Zeile: keine Einrückung, weitere Zeilen: Einrückung
+                    if (index === 0) {
+                        return result;
+                    } else {
+                        // Einrückung: 5 Leerzeichen (entspricht "CS:  ")
+                        return '     ' + result;
+                    }
                 });
                 
                 // Jeder Eintrag bekommt eine eigene Zeile, nicht mit -> verketten
