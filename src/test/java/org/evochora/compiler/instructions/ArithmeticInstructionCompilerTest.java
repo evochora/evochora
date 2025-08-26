@@ -7,6 +7,9 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.isa.Instruction;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -15,6 +18,11 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class ArithmeticInstructionCompilerTest {
+
+	@BeforeAll
+	static void setUp() {
+		Instruction.init();
+	}
 
 	private static class RunResult {
 		final Simulation sim;

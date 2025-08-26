@@ -9,6 +9,7 @@ import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -53,6 +54,7 @@ public class VMControlFlowInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testJmpi() {
         int[] jumpDelta = new int[]{10};
         int[] expectedIp = org.getTargetCoordinate(org.getIp(), jumpDelta, environment);
@@ -64,6 +66,7 @@ public class VMControlFlowInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testCall() {
         int[] jumpDelta = new int[]{7};
         int[] expectedIp = org.getTargetCoordinate(org.getIp(), jumpDelta, environment);
@@ -76,6 +79,7 @@ public class VMControlFlowInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testJmpr() {
         int[] jumpVector = new int[]{12};
         int[] currentIp = org.getIp();
@@ -90,6 +94,7 @@ public class VMControlFlowInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testJmps() {
         int[] jumpDelta = new int[]{8};
         int[] expectedIp = org.getTargetCoordinate(org.getIp(), jumpDelta, environment);
@@ -102,6 +107,7 @@ public class VMControlFlowInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testRet() {
         int[] expectedIp = new int[]{6};
         Object[] prsSnapshot = org.getPrs().toArray(new Object[0]);

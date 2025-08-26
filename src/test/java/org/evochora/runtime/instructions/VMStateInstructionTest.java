@@ -9,6 +9,7 @@ import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -65,6 +66,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testTurn() {
         int[] vec = new int[]{1, 0};
         org.setDr(0, vec);
@@ -74,6 +76,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testSync() {
         int[] expected = org.getIp();
         placeInstruction("SYNC");
@@ -82,6 +85,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testNrg() {
         placeInstruction("NRG", 0);
         sim.tick();
@@ -91,6 +95,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testNrgs() {
         placeInstruction("NRGS");
         sim.tick();
@@ -99,6 +104,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testDiff() {
         org.setDp(0, org.getIp()); // CORRECTED
         placeInstruction("DIFF", 0);
@@ -107,6 +113,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testPos() {
         placeInstruction("POS", 0);
         sim.tick();
@@ -114,6 +121,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testRand() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
         placeInstruction("RAND", 0);
@@ -123,6 +131,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testRnds() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
         placeInstruction("RNDS");
@@ -132,6 +141,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testTrniSetsDirection() {
         int[] vec = new int[]{0, 1};
         placeInstructionWithVectorOnly("TRNI", vec);
@@ -140,6 +150,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testTrnsSetsDirectionFromStack() {
         int[] vec = new int[]{-1, 0};
         org.getDataStack().push(vec);
@@ -149,6 +160,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testPossPushesRelativeIp() {
         placeInstruction("POSS");
         sim.tick();
@@ -158,6 +170,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testDifsPushesDeltaBetweenActiveDpAndIp() {
         // Ensure DP0 = IP then SEEK to move DP by +1 on Y
         placeInstruction("SYNC");
@@ -178,6 +191,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testAdpiSetsActiveDpIndex() {
         // Set active DP to 1, then SYNC should set DP1 to IP
         int dpIndexLiteral = new Molecule(Config.TYPE_DATA, 1).toInt();
@@ -192,6 +206,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testAdprSetsActiveDpIndexFromRegister() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("ADPR", 0);
@@ -203,6 +218,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testAdpsSetsActiveDpIndexFromStack() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("ADPS");
@@ -214,6 +230,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testSeek() {
         org.setDp(0, org.getIp()); // CORRECTED
         int[] vec = new int[]{0, 1};
@@ -225,6 +242,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testSeki() {
         org.setDp(0, org.getIp()); // CORRECTED
         int[] vec = new int[]{0, 1};
@@ -235,6 +253,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testSeks() {
         org.setDp(0, org.getIp()); // CORRECTED
         int[] vec = new int[]{-1, 0};
@@ -246,6 +265,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testScan() {
         org.setDp(0, org.getIp()); // CORRECTED
         int[] vec = new int[]{0, 1};
@@ -262,6 +282,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testScni() {
         org.setDp(0, org.getIp()); // CORRECTED
         int[] vec = new int[]{0, 1};
@@ -277,6 +298,7 @@ public class VMStateInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testScns() {
         org.setDp(0, org.getIp()); // CORRECTED
         int[] vec = new int[]{-1, 0};

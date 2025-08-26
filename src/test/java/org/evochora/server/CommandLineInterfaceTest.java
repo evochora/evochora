@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.Tag;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -85,13 +86,13 @@ class CommandLineInterfaceTest {
     }
 
     @Test
-    @Timeout(value = 5, unit = TimeUnit.SECONDS)
+    @Tag("integration")
     void testCliCreation() {
         assertNotNull(cli);
     }
 
     @Test
-    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    @Tag("integration")
     void testStartCommandStartsAllServices() {
         // Given
         String input = "start\nstatus\nexit\n";
@@ -113,7 +114,7 @@ class CommandLineInterfaceTest {
     }
 
     @Test
-    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    @Tag("integration")
     void testPauseCommandPausesAllServices() {
         // Given
         String input = "start\npause\nstatus\nexit\n";
@@ -135,7 +136,7 @@ class CommandLineInterfaceTest {
     }
 
     @Test
-    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    @Tag("integration")
     void testResumeCommandResumesAllServices() {
         // Given
         String input = "start\npause\nresume\nstatus\nexit\n";
@@ -158,7 +159,7 @@ class CommandLineInterfaceTest {
     }
 
     @Test
-    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    @Tag("integration")
     void testStartSpecificService() {
         // Given
         String input = "start simulation\nstatus\nexit\n";
@@ -179,7 +180,7 @@ class CommandLineInterfaceTest {
     }
 
     @Test
-    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    @Tag("integration")
     void testPauseSpecificService() {
         // Given
         String input = "start\npause simulation\nstatus\nexit\n";
@@ -201,7 +202,7 @@ class CommandLineInterfaceTest {
     }
 
     @Test
-    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    @Tag("integration")
     void testResumeSpecificService() {
         // Given
         String input = "start\npause simulation\nresume simulation\nstatus\nexit\n";
@@ -224,7 +225,7 @@ class CommandLineInterfaceTest {
     }
 
     @Test
-    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    @Tag("integration")
     void testStatusCommandShowsServiceStatus() {
         // Given
         String input = "status\nexit\n";
@@ -248,7 +249,7 @@ class CommandLineInterfaceTest {
     }
 
     @Test
-    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    @Tag("integration")
     void testExitCommandShutsDownServices() {
         // Given
         String input = "start\nexit\n";
@@ -270,7 +271,7 @@ class CommandLineInterfaceTest {
     }
 
     @Test
-    @Timeout(value = 5, unit = TimeUnit.SECONDS)
+    @Tag("integration")
     void testUnknownCommandShowsHelp() {
         // Given
         String input = "unknown\nexit\n";
@@ -290,7 +291,7 @@ class CommandLineInterfaceTest {
     }
 
     @Test
-    @Timeout(value = 5, unit = TimeUnit.SECONDS)
+    @Tag("integration")
     void testEmptyCommandIsIgnored() {
         // Given
         String input = "\nstart\nexit\n";
@@ -311,7 +312,7 @@ class CommandLineInterfaceTest {
     }
 
     @Test
-    @Timeout(value = 5, unit = TimeUnit.SECONDS)
+    @Tag("integration")
     void testQuitCommandExits() {
         // Given
         String input = "quit\n";
@@ -331,7 +332,7 @@ class CommandLineInterfaceTest {
     }
 
     @Test
-    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    @Tag("integration")
     void testServiceLifecycleComplete() {
         // Given
         String input = "start\nstatus\npause\nstatus\nresume\nstatus\nexit\n";

@@ -4,6 +4,7 @@ import org.evochora.server.contracts.raw.RawCellState;
 import org.evochora.server.contracts.raw.RawTickState;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
@@ -19,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 class PersistenceServiceTest {
 
     @Test
+    @Tag("unit")
     void writesRawTickStateRows() throws Exception {
         ITickMessageQueue q = new InMemoryTickQueue();
         // Use the available constructor with worldShape and batchSize

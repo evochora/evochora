@@ -2,6 +2,7 @@ package org.evochora.server.queue;
 
 import org.evochora.server.contracts.IQueueMessage;
 import org.evochora.server.contracts.raw.RawTickState;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
@@ -14,6 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class InMemoryTickQueueTest {
 
     @Test
+    @Tag("unit")
     void putAndTake_shouldExchangeMessages() throws Exception {
         InMemoryTickQueue queue = new InMemoryTickQueue();
         IQueueMessage message = new RawTickState(1L, Collections.emptyList(), Collections.emptyList());
@@ -27,6 +29,7 @@ class InMemoryTickQueueTest {
     }
 
     @Test
+    @Tag("unit")
     void capacity_shouldApplyBackpressureByBytesHeuristic() throws Exception {
         InMemoryTickQueue queue = new InMemoryTickQueue();
 

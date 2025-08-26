@@ -9,6 +9,7 @@ import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -55,6 +56,7 @@ public class VMDataInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testSeti() {
         int immediateValue = new Molecule(Config.TYPE_DATA, 123).toInt();
         placeInstruction("SETI", 0, immediateValue);
@@ -63,6 +65,7 @@ public class VMDataInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testSetr() {
         int srcValue = new Molecule(Config.TYPE_DATA, 456).toInt();
         org.setDr(1, srcValue);
@@ -72,6 +75,7 @@ public class VMDataInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testSetv() {
         int[] vec = new int[]{3, 4};
         placeInstructionWithVector("SETV", 0, vec);
@@ -82,6 +86,7 @@ public class VMDataInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testPush() {
         int value = new Molecule(Config.TYPE_DATA, 789).toInt();
         org.setDr(0, value);
@@ -91,6 +96,7 @@ public class VMDataInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testPop() {
         int value = new Molecule(Config.TYPE_DATA, 321).toInt();
         org.getDataStack().push(value);
@@ -100,6 +106,7 @@ public class VMDataInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testPusi() {
         int literal = new Molecule(Config.TYPE_DATA, 42).toInt();
         placeInstruction("PUSI", literal);

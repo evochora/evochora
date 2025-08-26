@@ -7,6 +7,7 @@ import org.evochora.runtime.model.Environment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -38,6 +39,7 @@ public class EnergyCostTest {
     }
 
     @Test
+    @Tag("unit")
     void testPokeConsumesEnergyOnSuccess() {
         Organism org = Organism.create(sim, new int[]{10, 10}, 1000, sim.getLogger());
         sim.addOrganism(org);
@@ -65,6 +67,7 @@ public class EnergyCostTest {
     }
 
     @Test
+    @Tag("unit")
     void testPokeConsumesEnergyEvenOnOccupiedTarget() {
         Organism org = Organism.create(sim, new int[]{20, 20}, 1000, sim.getLogger());
         sim.addOrganism(org);
@@ -94,6 +97,7 @@ public class EnergyCostTest {
     }
 
     @Test
+    @Tag("unit")
     void testPeekDataConsumesEnergy() {
         Organism org = Organism.create(sim, new int[]{30, 30}, 1000, sim.getLogger());
         sim.addOrganism(org);
@@ -118,6 +122,7 @@ public class EnergyCostTest {
     }
 
     @Test
+    @Tag("unit")
     void testPeekStructureOwnedBySelf_NoEnergyCost() {
         Organism org = Organism.create(sim, new int[]{40, 40}, 1000, sim.getLogger());
         sim.addOrganism(org);
@@ -144,6 +149,7 @@ public class EnergyCostTest {
     }
 
     @Test
+    @Tag("unit")
     void testPeekStructureForeignConsumesEnergy() {
         Organism org = Organism.create(sim, new int[]{50, 50}, 1000, sim.getLogger());
         sim.addOrganism(org);
@@ -169,6 +175,7 @@ public class EnergyCostTest {
     }
 
     @Test
+    @Tag("unit")
     void testPeekEnergyHarvestsAndClampsToMax() {
         Organism org = Organism.create(sim, new int[]{60, 60}, 100, sim.getLogger());
         sim.addOrganism(org);

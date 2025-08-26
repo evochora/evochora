@@ -9,6 +9,7 @@ import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -75,6 +76,7 @@ public class VMConditionalInstructionTest {
 
     // IFR: True then False
     @Test
+    @Tag("unit")
     void testIfr_TrueCondition_ExecutesNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -89,6 +91,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testIfr_FalseCondition_SkipsNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -104,6 +107,7 @@ public class VMConditionalInstructionTest {
 
     // IFI: True then False
     @Test
+    @Tag("unit")
     void testIfi_TrueCondition_ExecutesNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         placeInstruction("IFI", 0, 0);
@@ -117,6 +121,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testIfi_FalseCondition_SkipsNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("IFI", 0, 0);
@@ -131,6 +136,7 @@ public class VMConditionalInstructionTest {
 
     // IFS: True then False
     @Test
+    @Tag("unit")
     void testIfs_TrueCondition_ExecutesNext() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
@@ -145,6 +151,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testIfs_FalseCondition_SkipsNext() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 10).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
@@ -160,6 +167,7 @@ public class VMConditionalInstructionTest {
 
     // LTR: True then False
     @Test
+    @Tag("unit")
     void testLtr_TrueCondition_ExecutesNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 2).toInt());
@@ -174,6 +182,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testLtr_FalseCondition_SkipsNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -189,6 +198,7 @@ public class VMConditionalInstructionTest {
 
     // LTI: True then False
     @Test
+    @Tag("unit")
     void testLti_TrueCondition_ExecutesNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("LTI", 0, 2);
@@ -202,6 +212,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testLti_FalseCondition_SkipsNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("LTI", 0, 1);
@@ -216,6 +227,7 @@ public class VMConditionalInstructionTest {
 
     // LTS: True then False
     @Test
+    @Tag("unit")
     void testLts_TrueCondition_ExecutesNext() {
         // op1 (top) < op2 -> true: push 2, then 1 -> op1=1, op2=2
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 2).toInt());
@@ -231,6 +243,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testLts_FalseCondition_SkipsNext() {
         // op1 (top) < op2 -> false: push 1, then 2 -> op1=2, op2=1
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -247,6 +260,7 @@ public class VMConditionalInstructionTest {
 
     // GTR: True then False
     @Test
+    @Tag("unit")
     void testGtr_TrueCondition_ExecutesNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 3).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 2).toInt());
@@ -261,6 +275,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testGtr_FalseCondition_SkipsNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 2).toInt());
@@ -276,6 +291,7 @@ public class VMConditionalInstructionTest {
 
     // GTI: True then False
     @Test
+    @Tag("unit")
     void testGti_TrueCondition_ExecutesNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("GTI", 0, 1);
@@ -289,6 +305,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testGti_FalseCondition_SkipsNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("GTI", 0, 2);
@@ -303,6 +320,7 @@ public class VMConditionalInstructionTest {
 
     // GTS: True then False
     @Test
+    @Tag("unit")
     void testGts_TrueCondition_ExecutesNext() {
         // op1 (top) > op2 -> true: push 1, then 2 -> op1=2, op2=1
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -318,6 +336,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testGts_FalseCondition_SkipsNext() {
         // op1 (top) > op2 -> false: push 2, then 1 -> op1=1, op2=2
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 2).toInt());
@@ -334,6 +353,7 @@ public class VMConditionalInstructionTest {
 
     // IFTR: True then False
     @Test
+    @Tag("unit")
     void testIftr_TrueCondition_ExecutesNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 7).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 9).toInt());
@@ -348,6 +368,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testIftr_FalseCondition_SkipsNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         org.setDr(1, new Molecule(Config.TYPE_CODE, 2).toInt());
@@ -363,6 +384,7 @@ public class VMConditionalInstructionTest {
 
     // IFTI: True then False
     @Test
+    @Tag("unit")
     void testIfti_TrueCondition_ExecutesNext() {
         // Register TYPE_DATA, Immediate TYPE_DATA (von placeInstruction) -> true
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -377,6 +399,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testIfti_FalseCondition_SkipsNext() {
         // Register TYPE_CODE, Immediate TYPE_DATA -> false
         org.setDr(0, new Molecule(Config.TYPE_CODE, 5).toInt());
@@ -392,6 +415,7 @@ public class VMConditionalInstructionTest {
 
     // IFTS: True then False
     @Test
+    @Tag("unit")
     void testIfts_TrueCondition_ExecutesNext() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 2).toInt());
@@ -406,6 +430,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testIfmr_NotOwned_SkipsNext() {
         org.setDr(1, new int[]{0, 1}); // unit vector
         placeInstruction("IFMR", 1);
@@ -417,6 +442,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testIfmr_Owned_ExecutesNext() {
         org.setDr(1, new int[]{0, 1}); // unit vector
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment); // CORRECTED
@@ -430,6 +456,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testIfmi_NotOwned_SkipsNext() {
         placeInstructionWithVector("IFMI", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMI")));
@@ -440,6 +467,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testIfms_NotOwned_SkipsNext() {
         org.getDataStack().push(new int[]{0, 1});
         placeInstruction("IFMS");
@@ -451,6 +479,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testIfmr_InvalidVector_Fails() {
         org.setDr(1, new int[]{1, 1}); // not a unit vector
         placeInstruction("IFMR", 1);
@@ -460,6 +489,7 @@ public class VMConditionalInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testIfts_FalseCondition_SkipsNext() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_CODE, 2).toInt());

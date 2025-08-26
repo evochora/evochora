@@ -5,6 +5,7 @@ import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.features.scope.ScopeNode;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -16,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class ScopeDirectiveTest {
 
     @Test
+    @Tag("unit")
     void testSimpleScopeDirective() {
         // Arrange
         String source = String.join(System.lineSeparator(),
@@ -38,6 +40,7 @@ public class ScopeDirectiveTest {
     }
 
     @Test
+    @Tag("unit")
     void testUnclosedScopeReportsError() {
         // Arrange
         String source = String.join(System.lineSeparator(),
@@ -56,6 +59,7 @@ public class ScopeDirectiveTest {
     }
 
     @Test
+    @Tag("unit")
     void testNestedScopesAreParsedCorrectly() {
         // Arrange
         String source = String.join(System.lineSeparator(),

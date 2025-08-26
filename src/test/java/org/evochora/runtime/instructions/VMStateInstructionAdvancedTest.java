@@ -9,6 +9,7 @@ import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -43,6 +44,7 @@ public class VMStateInstructionAdvancedTest {
 
     // RBIT tests
     @Test
+    @Tag("unit")
     void testRbirSelectsSingleBitSubsetOfSource() {
         int sourceMask = new Molecule(Config.TYPE_DATA, (1 << 0) | (1 << 2) | (1 << 3)).toInt();
         org.setDr(1, sourceMask);
@@ -58,6 +60,7 @@ public class VMStateInstructionAdvancedTest {
 
     // SPNP (Scan Passable Neighbors) tests
     @Test
+    @Tag("unit")
     void testSpnrAllBlockedReturnsZero() {
         // Place non-empty, foreign-owned molecules around DP to block
         int[] dp = org.getActiveDp();
@@ -81,6 +84,7 @@ public class VMStateInstructionAdvancedTest {
     }
 
     @Test
+    @Tag("unit")
     void testSpnsDetectsEmptyNeighbors() {
         // Ensure +X and -Y are empty, others blocked
         int[] dp = org.getActiveDp();
@@ -102,6 +106,7 @@ public class VMStateInstructionAdvancedTest {
 
     // SNT* (Scan Neighbors by Type) tests
     @Test
+    @Tag("unit")
     void testSntrDetectsStructureNeighborsIntoDest() {
         int[] dp = org.getActiveDp();
         // Place STRUCTURE at +X and -Y
@@ -122,6 +127,7 @@ public class VMStateInstructionAdvancedTest {
     }
 
     @Test
+    @Tag("unit")
     void testSntiDetectsEnergyNeighborImmediate() {
         int[] dp = org.getActiveDp();
         // Place ENERGY at -X only
@@ -141,6 +147,7 @@ public class VMStateInstructionAdvancedTest {
     }
 
     @Test
+    @Tag("unit")
     void testSntsStackVariantConsumesTypeAndPushesMask() {
         int[] dp = org.getActiveDp();
         // Make +X non-CODE to exclude it; others remain CODE:0
@@ -158,6 +165,7 @@ public class VMStateInstructionAdvancedTest {
     }
 
     @Test
+    @Tag("unit")
     void testRbiiZeroMaskProducesZero() {
         int zero = new Molecule(Config.TYPE_DATA, 0).toInt();
         placeInstruction("RBII", 0, zero); // %DR0, DATA:0
@@ -168,6 +176,7 @@ public class VMStateInstructionAdvancedTest {
     }
 
     @Test
+    @Tag("unit")
     void testRbisStackVariant() {
         int maskVal = new Molecule(Config.TYPE_DATA, (1 << 1) | (1 << 4)).toInt();
         org.getDataStack().push(maskVal);

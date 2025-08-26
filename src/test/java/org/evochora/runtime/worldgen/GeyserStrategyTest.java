@@ -3,6 +3,7 @@ package org.evochora.runtime.worldgen;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -10,6 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class GeyserStrategyTest {
 
     @Test
+    @Tag("unit")
     void initializesGeysersAndPlacesEnergyOnAxisAdjacentCells_inND() {
         // 3D world 3x3x3 to allow neighbors around random geyser locations
         Environment env = new Environment(new int[]{3, 3, 3}, true);

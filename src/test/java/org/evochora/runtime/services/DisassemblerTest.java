@@ -8,6 +8,7 @@ import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import java.util.Arrays;
 import java.util.List;
@@ -26,6 +27,7 @@ class DisassemblerTest {
     }
 
     @Test
+    @Tag("unit")
     void disassemble_validInstruction_withArguments() {
         // Arrange
         Disassembler disassembler = new Disassembler();
@@ -48,6 +50,7 @@ class DisassemblerTest {
     }
 
     @Test
+    @Tag("unit")
     void disassemble_unknownOpcode() {
         // Arrange
         Disassembler disassembler = new Disassembler();
@@ -68,6 +71,7 @@ class DisassemblerTest {
     }
 
     @Test
+    @Tag("unit")
     void disassemble_instructionWithoutArguments() {
         // Arrange
         Disassembler disassembler = new Disassembler();
@@ -88,6 +92,7 @@ class DisassemblerTest {
     }
 
     @Test
+    @Tag("unit")
     void disassemble_incompleteInstruction() {
         // Arrange
         Disassembler disassembler = new Disassembler();
@@ -108,6 +113,7 @@ class DisassemblerTest {
     }
 
     @Test
+    @Tag("unit")
     void disassemble_nullMolecule() {
         // Arrange
         Disassembler disassembler = new Disassembler();
@@ -124,6 +130,7 @@ class DisassemblerTest {
     }
 
     @Test
+    @Tag("unit")
     void disassemble_withDifferentWorldShapes() {
         // Arrange
         Disassembler disassembler = new Disassembler();
@@ -148,6 +155,7 @@ class DisassemblerTest {
     }
 
     @Test
+    @Tag("unit")
     void disassemble_edgeCaseCoordinates() {
         // Arrange
         Disassembler disassembler = new Disassembler();

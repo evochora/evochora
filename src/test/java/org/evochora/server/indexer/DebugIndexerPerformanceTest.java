@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -119,6 +120,7 @@ class DebugIndexerPerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 8, unit = TimeUnit.SECONDS)
     void testBatchProcessingPerformance() throws Exception {
         // Create test database with data
@@ -139,6 +141,7 @@ class DebugIndexerPerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 8, unit = TimeUnit.SECONDS)
     void testSQLiteOptimizations() throws Exception {
         // Create test database with data
@@ -159,6 +162,7 @@ class DebugIndexerPerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 8, unit = TimeUnit.SECONDS)
     void testWALCheckpointing() throws Exception {
         // Create test database with data
@@ -179,6 +183,7 @@ class DebugIndexerPerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 8, unit = TimeUnit.SECONDS)
     void testAutoPauseResume() throws Exception {
         // Create test database with data
@@ -199,6 +204,7 @@ class DebugIndexerPerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 8, unit = TimeUnit.SECONDS)
     void testThrottlingAndPerformance() throws Exception {
         // Create test database with data
@@ -219,6 +225,7 @@ class DebugIndexerPerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 8, unit = TimeUnit.SECONDS)
     void testGracefulShutdown() throws Exception {
         // Create test database with data
@@ -246,6 +253,7 @@ class DebugIndexerPerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 8, unit = TimeUnit.SECONDS)
     void testDataIntegrity() throws Exception {
         // Create test database with data
@@ -266,6 +274,7 @@ class DebugIndexerPerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 8, unit = TimeUnit.SECONDS)
     void testBatchSizeImpactOnPerformance() throws Exception {
         // Test with different batch sizes

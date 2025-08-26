@@ -6,6 +6,7 @@ import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.ir.*;
 import org.junit.jupiter.api.Test;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
+import org.junit.jupiter.api.Tag;
 
 import java.util.HashMap;
 import java.util.List;
@@ -20,6 +21,7 @@ public class LayoutEngineTest {
 	}
 
 	@Test
+	@Tag("unit")
 	void laysOutOrgDirPlaceAndInstructions() {
 		// Build a small IR program manually
 		Map<String, IrValue> orgArgs = new HashMap<>();

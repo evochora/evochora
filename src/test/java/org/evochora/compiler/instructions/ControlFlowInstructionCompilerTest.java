@@ -7,6 +7,7 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -36,6 +37,7 @@ public class ControlFlowInstructionCompilerTest {
 	}
 
 	@Test
+	@Tag("unit")
 	void testJMPI_JMPR_JMPS_CALL_RET() throws Exception {
 		String program = String.join("\n",
 				"SETV %DR0 1|0",     // DR0 holds a jump vector to label L1 (will be resolved to actual delta by compiler when used as label)

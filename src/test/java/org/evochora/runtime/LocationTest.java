@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Deque;
+import org.junit.jupiter.api.Tag;
 
 /**
  * Unit tests for the new location-based architecture features of the Organism class,
@@ -42,6 +43,7 @@ public class LocationTest {
     // --- Data Pointer (DP) Tests ---
 
     @Test
+    @Tag("unit")
     void testMultipleDpInitialization() {
         assertThat(org.getDps()).hasSize(Config.NUM_DATA_POINTERS);
         // All DPs should be initialized to the organism's start position
@@ -51,6 +53,7 @@ public class LocationTest {
     }
 
     @Test
+    @Tag("unit")
     void testSetAndGetSpecificDp() {
         int[] newPosition = {5, 5};
         org.setDp(1, newPosition);
@@ -61,6 +64,7 @@ public class LocationTest {
     }
 
     @Test
+    @Tag("unit")
     void testAccessingInvalidDpReportsFailure() {
         // Test getting out of bounds
         assertThat(org.getDp(Config.NUM_DATA_POINTERS)).isNull();
@@ -78,6 +82,7 @@ public class LocationTest {
     // --- Location Register (LR) Tests ---
 
     @Test
+    @Tag("unit")
     void testLocationRegisterInitialization() {
         // LRs should be initialized to zero vectors
         for (int i = 0; i < Config.NUM_LOCATION_REGISTERS; i++) {
@@ -86,6 +91,7 @@ public class LocationTest {
     }
 
     @Test
+    @Tag("unit")
     void testSetAndGetSpecificLr() {
         int[] newLocation = {1, 2};
         org.setLr(0, newLocation);
@@ -93,6 +99,7 @@ public class LocationTest {
     }
 
     @Test
+    @Tag("unit")
     void testSettingNonVectorToLrFails() {
         // The setLr method now only accepts int[], so this test is implicitly handled by the compiler.
         // We can test the generic `writeOperand` logic once LRs are integrated there.
@@ -103,6 +110,7 @@ public class LocationTest {
     // --- Location Stack (LS) Tests ---
 
     @Test
+    @Tag("unit")
     void testLocationStackPushAndPop() {
         Deque<int[]> ls = org.getLocationStack();
         int[] locationA = {3, 3};
@@ -118,6 +126,7 @@ public class LocationTest {
     }
 
     @org.junit.jupiter.api.Test
+    @Tag("unit")
     void testLocationInstructions_ls_lr_roundtrip() {
         org.setDp(0, org.getIp());
         // DPLS: push active DP to LS
@@ -143,6 +152,7 @@ public class LocationTest {
     }
 
     @Test
+    @Tag("unit")
     void testLocationStackOverflow() {
         Deque<int[]> ls = org.getLocationStack();
         // Fill the stack to its maximum capacity

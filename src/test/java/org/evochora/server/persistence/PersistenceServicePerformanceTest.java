@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 import java.nio.file.Path;
 import java.nio.file.Files;
@@ -96,6 +97,7 @@ class PersistenceServicePerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void testConfigurableBatchSize() {
         // Test with different batch sizes - use in-memory databases
@@ -114,6 +116,7 @@ class PersistenceServicePerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testBatchInserts() throws Exception {
         // Start persistence service
@@ -133,6 +136,7 @@ class PersistenceServicePerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testSQLiteOptimizations() throws Exception {
         // Start persistence service
@@ -150,6 +154,7 @@ class PersistenceServicePerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testThrottling() throws Exception {
         // Start persistence service
@@ -175,6 +180,7 @@ class PersistenceServicePerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testGracefulShutdown() throws Exception {
         // Start persistence service
@@ -201,6 +207,7 @@ class PersistenceServicePerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testDataIntegrity() throws Exception {
         // Start persistence service
@@ -220,6 +227,7 @@ class PersistenceServicePerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testPerformanceUnderLoad() throws Exception {
         // Start persistence service
@@ -245,6 +253,7 @@ class PersistenceServicePerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testBatchSizeImpactOnPerformance() throws Exception {
         // Test with different batch sizes - use in-memory databases
@@ -284,6 +293,7 @@ class PersistenceServicePerformanceTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testPauseResume() throws Exception {
         // Start persistence service

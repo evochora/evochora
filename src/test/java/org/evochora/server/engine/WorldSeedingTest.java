@@ -3,6 +3,7 @@ package org.evochora.server.engine;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.server.queue.InMemoryTickQueue;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
@@ -14,6 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class WorldSeedingTest {
     @Test
+    @Tag("unit")
     void seedsInitialWorldObjectsOnStart() throws Exception {
         var queue = new InMemoryTickQueue();
         var engine = new SimulationEngine(queue, new int[]{10, 10}, true); // Small world

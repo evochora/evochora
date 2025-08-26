@@ -6,6 +6,7 @@ import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.ir.*;
 import org.evochora.compiler.api.SourceInfo;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import java.util.HashMap;
 import java.util.List;
@@ -18,6 +19,7 @@ public class EmissionProcedureMarshallingTest {
     private static SourceInfo src(String file, int line) { return new SourceInfo(file, line, ""); }
 
 	@Test
+	@Tag("unit")
 	void insertsPrologAndEpilogBasedOnArity() {
 		Map<String, IrValue> enter = new HashMap<>();
 		enter.put("name", new IrValue.Str("INC"));

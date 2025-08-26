@@ -6,6 +6,7 @@ import org.evochora.compiler.frontend.lexer.TokenType;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -15,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class MacroDirectiveTest {
 
     @Test
+    @Tag("unit")
     void testMacroExpansion() {
         // Arrange
         String source = String.join("\n",

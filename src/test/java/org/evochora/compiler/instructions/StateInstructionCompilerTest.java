@@ -7,6 +7,7 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -36,6 +37,7 @@ public class StateInstructionCompilerTest {
 	}
 
 	@Test
+	@Tag("unit")
 	void testTURN_SYNC_NRG_POS_DIFF_RAND_SEEK_SCAN_FORK() throws Exception {
 		String program = String.join("\n",
 				"SETV %DR0 1|0",

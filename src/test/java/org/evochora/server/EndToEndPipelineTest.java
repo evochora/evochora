@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
@@ -111,6 +112,7 @@ class EndToEndPipelineTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void testFullPipelineStartup() throws Exception {
         // Start all services
@@ -130,6 +132,7 @@ class EndToEndPipelineTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 25, unit = TimeUnit.SECONDS)
     void testPipelinePauseResume() throws Exception {
         // Start all services
@@ -199,6 +202,7 @@ class EndToEndPipelineTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 25, unit = TimeUnit.SECONDS)
     void testDataFlowThroughPipeline() throws Exception {
         // Start all services
@@ -229,6 +233,7 @@ class EndToEndPipelineTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 25, unit = TimeUnit.SECONDS)
     void testPipelinePerformanceUnderLoad() throws Exception {
         // Start all services
@@ -262,6 +267,7 @@ class EndToEndPipelineTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 25, unit = TimeUnit.SECONDS)
     void testServiceInteraction() throws Exception {
         // Start all services
@@ -309,6 +315,7 @@ class EndToEndPipelineTest {
     }
 
     @Test
+    @Tag("integration")
     @Timeout(value = 25, unit = TimeUnit.SECONDS)
     void testGracefulShutdown() throws Exception {
         // Start all services

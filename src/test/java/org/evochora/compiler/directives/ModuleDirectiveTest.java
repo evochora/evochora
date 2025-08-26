@@ -6,6 +6,7 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.parser.features.require.RequireNode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -14,6 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class ModuleDirectiveTest {
     @Test
+    @Tag("unit")
     void testRequireDirective() {
         // Arrange
         String source = ".REQUIRE \"lib/math.s\" AS math";

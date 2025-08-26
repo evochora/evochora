@@ -4,6 +4,7 @@ import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,6 +30,7 @@ class SimulationEngineAutoPauseTest {
     }
 
     @Test
+    @Tag("integration")
     void testAutoPauseConfiguration() {
         ITickMessageQueue queue = new InMemoryTickQueue();
         engine = new SimulationEngine(queue, new int[]{10, 10}, true);
@@ -42,6 +44,7 @@ class SimulationEngineAutoPauseTest {
     }
 
     @Test
+    @Tag("integration")
     void testAutoPauseDisabled() throws Exception {
         ITickMessageQueue queue = new InMemoryTickQueue();
         engine = new SimulationEngine(queue, new int[]{10, 10}, true);
@@ -55,6 +58,7 @@ class SimulationEngineAutoPauseTest {
     }
 
     @Test
+    @Tag("integration")
     void testAutoPauseWithEmptyArray() throws Exception {
         ITickMessageQueue queue = new InMemoryTickQueue();
         engine = new SimulationEngine(queue, new int[]{10, 10}, true);
@@ -69,6 +73,7 @@ class SimulationEngineAutoPauseTest {
     }
 
     @Test
+    @Tag("integration")
     void testAutoPauseWithNullConfiguration() throws Exception {
         ITickMessageQueue queue = new InMemoryTickQueue();
         engine = new SimulationEngine(queue, new int[]{10, 10}, true);

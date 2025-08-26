@@ -7,6 +7,7 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.InstructionNode;
 import org.evochora.compiler.frontend.parser.ast.RegisterNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -17,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class RegDirectiveTest {
     @Test
+    @Tag("unit")
     void testRegDirectiveAndAliasUsage() {
         // Arrange
         String source = String.join("\n",

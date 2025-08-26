@@ -1,6 +1,7 @@
 package org.evochora.server.http;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -16,7 +17,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class DebugServerTest {
 
     @Test
-    void testPreparedTicksEndpoint() throws Exception {
+    @Tag("integration")
+    void testDebugServer() throws Exception {
         // Use in-memory database for reliable testing without file locking issues
         String dbPath = "jdbc:sqlite:file:memdb_debugserver?mode=memory&cache=shared";
         

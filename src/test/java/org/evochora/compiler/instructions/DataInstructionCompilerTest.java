@@ -7,6 +7,7 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -36,6 +37,7 @@ public class DataInstructionCompilerTest {
 	}
 
 	@Test
+	@Tag("unit")
 	void testSETI_SETR_SETV_PUSH_POP_PUSI() throws Exception {
 		String program = String.join("\n",
 				"SETI %DR0 DATA:42",

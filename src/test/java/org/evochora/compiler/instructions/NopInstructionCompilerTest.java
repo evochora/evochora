@@ -7,6 +7,7 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -17,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class NopInstructionCompilerTest {
 
 	@Test
+	@Tag("unit")
 	void testNOP_executes() throws Exception {
 		String program = String.join("\n",
 				"NOP",

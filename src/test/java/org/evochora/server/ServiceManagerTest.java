@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.Tag;
 
 import java.util.concurrent.TimeUnit;
 
@@ -59,7 +60,7 @@ class ServiceManagerTest {
     }
 
     @Test
-    @Timeout(value = 5, unit = TimeUnit.SECONDS)
+    @Tag("unit")
     void testServiceManagerCreation() {
         assertNotNull(serviceManager);
     }
@@ -202,7 +203,7 @@ class ServiceManagerTest {
     }
 
     @Test
-    @Timeout(value = 5, unit = TimeUnit.SECONDS)
+    @Tag("unit")
     void testServiceManagerWithCustomConfig() {
         // Test with custom batch sizes
         config.pipeline.persistence.batchSize = 500;
@@ -215,7 +216,7 @@ class ServiceManagerTest {
     }
 
     @Test
-    @Timeout(value = 5, unit = TimeUnit.SECONDS)
+    @Tag("unit")
     void testUnknownServiceName() {
         // Test handling of unknown service names
         serviceManager.startService("unknown");

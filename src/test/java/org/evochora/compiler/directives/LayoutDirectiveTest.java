@@ -10,6 +10,7 @@ import org.evochora.compiler.frontend.parser.features.dir.DirNode;
 import org.evochora.compiler.frontend.parser.features.org.OrgNode;
 import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -18,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class LayoutDirectiveTest {
     @Test
+    @Tag("unit")
     void testOrgDirective() {
         // Arrange
         String source = ".ORG 10|20";
@@ -32,6 +34,7 @@ public class LayoutDirectiveTest {
     }
 
     @Test
+    @Tag("unit")
     void testDirDirective() {
         // Arrange
         String source = ".DIR 1|0";
@@ -46,6 +49,7 @@ public class LayoutDirectiveTest {
     }
 
     @Test
+    @Tag("unit")
     void testPlaceDirective() {
         // Arrange
         String source = ".PLACE DATA:100 5|-5";

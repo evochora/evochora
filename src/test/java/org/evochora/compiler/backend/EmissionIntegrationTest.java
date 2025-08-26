@@ -16,6 +16,9 @@ import org.evochora.compiler.ir.IrDirective;
 import org.evochora.compiler.ir.IrInstruction;
 import org.evochora.compiler.ir.IrItem;
 import org.evochora.compiler.ir.IrProgram;
+import org.evochora.runtime.isa.Instruction;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -26,7 +29,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class EmissionIntegrationTest {
 
+    @BeforeAll
+    static void setUp() {
+        Instruction.init();
+    }
+
     @Test
+    @Tag("integration")
     void endToEnd_CallerAndCalleeMarshalling() {
         String src = String.join("\n",
                 ".PROC INC WITH A",

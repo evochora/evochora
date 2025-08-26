@@ -7,6 +7,7 @@ import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -47,6 +48,7 @@ public class OwnershipTests {
     }
 
     @Test
+    @Tag("unit")
     void testSeekVariants_SucceedOnOwnedNonEmptyCell() {
         int[] vec = new int[]{0, 1};
         int payload = new Molecule(Config.TYPE_DATA, 42).toInt();
@@ -109,6 +111,7 @@ public class OwnershipTests {
     }
 
     @Test
+    @Tag("unit")
     void testSeekVariants_FailOnForeignOwnedCell() {
         int[] vec = new int[]{0, 1};
         int payload = new Molecule(Config.TYPE_DATA, 77).toInt();

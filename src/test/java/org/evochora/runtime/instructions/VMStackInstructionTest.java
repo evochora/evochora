@@ -9,6 +9,7 @@ import org.evochora.runtime.model.Environment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -38,6 +39,7 @@ public class VMStackInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testDup() {
         int value = new Molecule(Config.TYPE_DATA, 123).toInt();
         org.getDataStack().push(value);
@@ -49,6 +51,7 @@ public class VMStackInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testSwap() {
         int a = new Molecule(Config.TYPE_DATA, 1).toInt();
         int b = new Molecule(Config.TYPE_DATA, 2).toInt();
@@ -62,6 +65,7 @@ public class VMStackInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testDrop() {
         int a = new Molecule(Config.TYPE_DATA, 1).toInt();
         int b = new Molecule(Config.TYPE_DATA, 2).toInt();
@@ -75,6 +79,7 @@ public class VMStackInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testRot() {
         int a = new Molecule(Config.TYPE_DATA, 1).toInt();
         int b = new Molecule(Config.TYPE_DATA, 2).toInt();

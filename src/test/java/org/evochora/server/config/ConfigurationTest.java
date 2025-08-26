@@ -3,6 +3,7 @@ package org.evochora.server.config;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 import java.nio.file.Path;
 import java.nio.file.Files;
@@ -13,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class ConfigurationTest {
 
     @Test
+    @Tag("unit")
     @Timeout(value = 5, unit = TimeUnit.SECONDS)
     void testConfigurationCanBeLoaded() {
         SimulationConfiguration config = ConfigLoader.loadDefault();
@@ -22,6 +24,7 @@ class ConfigurationTest {
     }
 
     @Test
+    @Tag("unit")
     @Timeout(value = 5, unit = TimeUnit.SECONDS)
     void testSimulationSectionExists() {
         SimulationConfiguration config = ConfigLoader.loadDefault();
@@ -35,6 +38,7 @@ class ConfigurationTest {
     }
 
     @Test
+    @Tag("unit")
     @Timeout(value = 5, unit = TimeUnit.SECONDS)
     void testPipelineSectionExists() {
         SimulationConfiguration config = ConfigLoader.loadDefault();
@@ -48,6 +52,7 @@ class ConfigurationTest {
     }
 
     @Test
+    @Tag("unit")
     @Timeout(value = 5, unit = TimeUnit.SECONDS)
     void testRequiredConfigurationFieldsArePresent() {
         SimulationConfiguration config = ConfigLoader.loadDefault();
@@ -67,6 +72,7 @@ class ConfigurationTest {
     }
 
     @Test
+    @Tag("unit")
     @Timeout(value = 5, unit = TimeUnit.SECONDS)
     void testConfigurationStructureIsValid() {
         SimulationConfiguration config = ConfigLoader.loadDefault();
@@ -87,6 +93,7 @@ class ConfigurationTest {
     }
 
     @Test
+    @Tag("unit")
     @Timeout(value = 5, unit = TimeUnit.SECONDS)
     void testConfigurationIsAccessible() {
         SimulationConfiguration config = ConfigLoader.loadDefault();

@@ -9,6 +9,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.parser.features.require.RequireNode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -18,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class ProcedureDirectiveTest {
     @Test
+    @Tag("unit")
     void testParserProcedureBlock() {
         // Arrange
         String source = String.join("\n",
@@ -56,6 +58,7 @@ public class ProcedureDirectiveTest {
     }
 
     @Test
+    @Tag("unit")
     void testParserProcedureWithParameters() {
         // Arrange
         String source = String.join("\n",
@@ -83,6 +86,7 @@ public class ProcedureDirectiveTest {
     }
 
     @Test
+    @Tag("unit")
     void testFullProcedureDefinition() {
         // Arrange
         String source = String.join("\n",

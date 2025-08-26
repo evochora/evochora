@@ -4,6 +4,7 @@ import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.server.contracts.raw.RawCellState;
 import org.evochora.server.contracts.raw.RawTickState;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -18,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RawTickStateReaderTest {
 
     @Test
+    @Tag("unit")
     void getMolecule_existingCell() {
         // Arrange
         int[] worldShape = {10, 10};
@@ -44,6 +46,7 @@ class RawTickStateReaderTest {
     }
 
     @Test
+    @Tag("unit")
     void getMolecule_nonExistentCell() {
         // Arrange
         int[] worldShape = {10, 10};
@@ -61,6 +64,7 @@ class RawTickStateReaderTest {
     }
 
     @Test
+    @Tag("unit")
     void getMolecule_emptyTickState() {
         // Arrange
         int[] worldShape = {10, 10};
@@ -78,6 +82,7 @@ class RawTickStateReaderTest {
     }
 
     @Test
+    @Tag("unit")
     void getShape_returnsCorrectWorldShape() {
         // Arrange
         int[] worldShape = {25, 50};
@@ -97,6 +102,7 @@ class RawTickStateReaderTest {
     }
 
     @Test
+    @Tag("unit")
     void getProperties_returnsCorrectProperties() {
         // Arrange
         int[] worldShape = {15, 15};
@@ -116,6 +122,7 @@ class RawTickStateReaderTest {
     }
 
     @Test
+    @Tag("unit")
     void coordinateCalculation_withToroidalWorld() {
         // Arrange
         int[] worldShape = {10, 10};
@@ -132,6 +139,7 @@ class RawTickStateReaderTest {
     }
 
     @Test
+    @Tag("unit")
     void coordinateCalculation_withNonToroidalWorld() {
         // Arrange
         int[] worldShape = {10, 10};
@@ -148,6 +156,7 @@ class RawTickStateReaderTest {
     }
 
     @Test
+    @Tag("unit")
     void performance_largeNumberOfCells() {
         // Arrange: Create a large number of cells
         int[] worldShape = {100, 100};
@@ -188,6 +197,7 @@ class RawTickStateReaderTest {
     }
 
     @Test
+    @Tag("unit")
     void edgeCases_boundaryCoordinates() {
         // Arrange
         int[] worldShape = {5, 5};
@@ -217,6 +227,7 @@ class RawTickStateReaderTest {
     }
 
     @Test
+    @Tag("unit")
     void moleculeTypeHandling_differentTypes() {
         // Arrange
         int[] worldShape = {10, 10};

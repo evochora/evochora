@@ -9,6 +9,7 @@ import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -59,6 +60,7 @@ public class VMEnvironmentInteractionInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testPoke() {
         int[] vec = new int[]{0, 1};
         int payload = new Molecule(Config.TYPE_DATA, 77).toInt();
@@ -77,6 +79,7 @@ public class VMEnvironmentInteractionInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testPoki() {
         int payload = new Molecule(Config.TYPE_DATA, 88).toInt();
         org.setDr(0, payload);
@@ -94,6 +97,7 @@ public class VMEnvironmentInteractionInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testPoks() {
         int payload = new Molecule(Config.TYPE_DATA, 33).toInt();
         int[] vec = new int[]{0, 1};
@@ -112,6 +116,7 @@ public class VMEnvironmentInteractionInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testPeek() {
         org.setDp(0, org.getIp()); // CORRECTED
         int[] vec = new int[]{0, 1};
@@ -128,6 +133,7 @@ public class VMEnvironmentInteractionInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testPeki() {
         org.setDp(0, org.getIp()); // CORRECTED
         int[] vec = new int[]{0, 1};
@@ -143,6 +149,7 @@ public class VMEnvironmentInteractionInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testPeks() {
         org.setDp(0, org.getIp()); // CORRECTED
         int[] vec = new int[]{-1, 0};

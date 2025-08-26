@@ -1,4 +1,5 @@
 import java.io.FileOutputStream;
+import java.time.Duration;
 
 plugins {
     java
@@ -30,16 +31,17 @@ dependencies {
 
 // Definiert die Hauptklasse für den 'run'-Task
 application {
-    mainClass.set("org.evochora.app.Main")
+    mainClass.set("org.evochora.server.CommandLineInterface")
 }
 
-tasks.register<JavaExec>("runServer") {
+// Konfiguriere den run-Task für interaktive Eingabe
+tasks.named<JavaExec>("run") {
     group = "application"
-    description = "Run the Evochora server CLI"
-    classpath = sourceSets.main.get().runtimeClasspath
-    mainClass.set("org.evochora.server.CommandLineInterface")
+    description = "Run the Evochora server CLI with interactive input"
     standardInput = System.`in`
 }
+
+// Der runServer Task wurde entfernt - verwende stattdessen: ./gradlew run
 
 tasks.register<Jar>("cliJar") {
     archiveClassifier.set("cli")
@@ -71,6 +73,36 @@ tasks.test {
         showStandardStreams = true
     }
     include("org/evochora/**")
+    // Läuft alle Tests (wie vorher) - für CI/CD und vollständige Test-Suite
+}
+
+// Unit Tests - Fast, isolated tests without external dependencies
+tasks.register<Test>("unit") {
+    group = "verification"
+    description = "Run fast unit tests"
+    useJUnitPlatform {
+        includeTags("unit")
+    }
+    maxParallelForks = 1
+    jvmArgs("-Duser.language=en", "-Duser.country=US")
+    testLogging {
+        events("passed", "skipped", "failed")
+        showStandardStreams = false
+    }
+}
+
+// Integration Tests - Medium speed, test service interactions
+tasks.register<Test>("integration") {
+    group = "verification"
+    description = "Run integration tests"
+    useJUnitPlatform {
+        includeTags("integration")
+    }
+    maxParallelForks = 1 // Integration tests often can't run in parallel
+    testLogging {
+        events("passed", "skipped", "failed")
+        showStandardStreams = true
+    }
 }
 
 tasks.jacocoTestReport {

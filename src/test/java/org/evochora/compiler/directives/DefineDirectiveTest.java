@@ -7,6 +7,7 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.parser.features.def.DefineNode;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -17,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class DefineDirectiveTest {
     @Test
+    @Tag("unit")
     void testDefineDirectiveCreatesCorrectAstNode() {
         // Arrange
         String source = ".DEFINE MY_CONST DATA:123";

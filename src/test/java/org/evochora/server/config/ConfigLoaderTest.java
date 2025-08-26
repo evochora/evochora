@@ -2,10 +2,12 @@ package org.evochora.server.config;
 
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Tag;
 
 class ConfigLoaderTest {
 
     @Test
+    @Tag("unit")
     void loadDefault_shouldCreateValidConfiguration() {
         SimulationConfiguration config = ConfigLoader.loadDefault();
         
@@ -37,12 +39,14 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @Tag("unit")
     void getDimensions_shouldWorkWithNewStructure() {
         SimulationConfiguration config = ConfigLoader.loadDefault();
         assertThat(config.getDimensions()).isEqualTo(2);
     }
 
     @Test
+    @Tag("unit")
     void getWebPort_shouldWorkWithNewStructure() {
         SimulationConfiguration config = ConfigLoader.loadDefault();
         assertThat(config.getWebPort()).isEqualTo(7070);

@@ -4,6 +4,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -11,6 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class EnergySafetyTest {
 
     @Test
+    @Tag("unit")
     void solar_does_not_place_within_safety_radius_of_owned_cells() {
         Environment env = new Environment(new int[]{5, 5}, true);
         // Mark center owned
@@ -36,6 +38,7 @@ public class EnergySafetyTest {
     }
 
     @Test
+    @Tag("unit")
     void geyser_sources_and_eruptions_respect_safety_radius() {
         Environment env = new Environment(new int[]{7, 7}, true);
         // Create an owned block in the middle (3x3) to create a forbidden zone with radius 1-2

@@ -3,6 +3,7 @@ package org.evochora.runtime.worldgen;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -10,6 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class SolarRadiationStrategyTest {
 
     @Test
+    @Tag("unit")
     void placesEnergyInNDEnvironment_whenAreaIsUnowned() {
         // 3D world with a single cell ensures deterministic coordinate selection
         Environment env = new Environment(new int[]{1, 1, 1}, true);
@@ -23,6 +25,7 @@ public class SolarRadiationStrategyTest {
     }
 
     @Test
+    @Tag("unit")
     void respectsSafetyRadius_andDoesNotPlaceEnergyNearOwnedCells() {
         // 3D world with single cell; mark it as owned to violate safety radius
         Environment env = new Environment(new int[]{1, 1, 1}, true);

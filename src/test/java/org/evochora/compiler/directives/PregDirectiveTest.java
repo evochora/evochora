@@ -5,6 +5,7 @@ import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -16,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class PregDirectiveTest {
 
     @Test
+    @Tag("unit")
     void testPregIsParsedCorrectlyInsideProc() {
         // Arrange
         String source = String.join(System.lineSeparator(),
@@ -35,6 +37,7 @@ public class PregDirectiveTest {
     }
 
     @Test
+    @Tag("unit")
     void testPregWithInvalidIndexReportsError() {
         // Arrange
         String source = String.join(System.lineSeparator(),

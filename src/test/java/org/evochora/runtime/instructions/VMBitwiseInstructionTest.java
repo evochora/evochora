@@ -9,6 +9,7 @@ import org.evochora.runtime.model.Environment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -56,6 +57,7 @@ public class VMBitwiseInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testAnds() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
@@ -65,6 +67,7 @@ public class VMBitwiseInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testAndi() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         placeInstruction("ANDI", 0, 0b1100);
@@ -73,6 +76,7 @@ public class VMBitwiseInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testAndr() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 0b1100).toInt());
@@ -82,6 +86,7 @@ public class VMBitwiseInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testOrs() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
@@ -91,6 +96,7 @@ public class VMBitwiseInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testOri() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         placeInstruction("ORI", 0, 0b0101);
@@ -99,6 +105,7 @@ public class VMBitwiseInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testOrr() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 0b0101).toInt());
@@ -108,6 +115,7 @@ public class VMBitwiseInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testXors() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
@@ -116,6 +124,7 @@ public class VMBitwiseInstructionTest {
         assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 0b0110).toInt());
     }
     @Test
+    @Tag("unit")
     void testXori() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         placeInstruction("XORI", 0, 0b0110);
@@ -124,6 +133,7 @@ public class VMBitwiseInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testXorr() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 0b0110).toInt());
@@ -133,6 +143,7 @@ public class VMBitwiseInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testNot() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         placeInstruction("NOT", 0);
@@ -141,6 +152,7 @@ public class VMBitwiseInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testNots() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         placeInstruction("NOTS");
@@ -149,6 +161,7 @@ public class VMBitwiseInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testShiftRegisterVariants() {
         // SHLR / SHRR
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -167,6 +180,7 @@ public class VMBitwiseInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testRotateRegisterAndImmediateAndStack() {
         // ROTR: rotate left by positive amount in register; negative rotates right
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0b0001_0011).toInt());
@@ -200,6 +214,7 @@ public class VMBitwiseInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testPopulationCountRegisterAndStack() {
         // PCNR
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -218,6 +233,7 @@ public class VMBitwiseInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testBitScanNthSuccessAndEdges() {
         // BSNR with N=1 (first set bit from right)
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -253,6 +269,7 @@ public class VMBitwiseInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testBitScanNthFailure() {
         // N=0 -> failure, dest set to 0
         org.setDr(0, new Molecule(Config.TYPE_DATA, 123).toInt());

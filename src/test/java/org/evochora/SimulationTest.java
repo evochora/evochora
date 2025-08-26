@@ -9,6 +9,7 @@ import org.evochora.runtime.model.Environment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -44,6 +45,7 @@ public class SimulationTest {
     }
 
     @Test
+    @Tag("unit")
     void testConflictResolutionSameTargetLowerIdWins() {
         Organism orgLow = Organism.create(sim, new int[]{0, 0}, 2000, sim.getLogger());
         orgLow.setDv(new int[]{1, 0});
@@ -76,6 +78,7 @@ public class SimulationTest {
     }
 
     @Test
+    @Tag("unit")
     void testNoConflictDifferentTargetsBothExecute() {
         Organism o1 = Organism.create(sim, new int[]{0, 0}, 2000, sim.getLogger());
         o1.setDv(new int[]{1, 0});
@@ -107,6 +110,7 @@ public class SimulationTest {
     }
 
     @Test
+    @Tag("unit")
     void testSingleOrganismNoTargetStillExecutes() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 2000, sim.getLogger());
         org.setDv(new int[]{1, 0});

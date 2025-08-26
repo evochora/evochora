@@ -7,6 +7,7 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -36,6 +37,7 @@ public class ConditionalInstructionCompilerTest {
 	}
 
 	@Test
+	@Tag("unit")
 	void testIF_equal_less_greater_and_type_and_IFM_variants() throws Exception {
 		String program = String.join("\n",
 				"SETI %DR0 DATA:10",

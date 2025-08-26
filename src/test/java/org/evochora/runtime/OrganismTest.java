@@ -7,6 +7,7 @@ import org.evochora.runtime.model.Environment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import java.util.Deque;
 
@@ -29,6 +30,7 @@ public class OrganismTest {
     }
 
     @Test
+    @Tag("unit")
     void testPlanTickStrictTypingOnNonCodeCell() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
         sim.addOrganism(org);
@@ -44,6 +46,7 @@ public class OrganismTest {
     }
 
     @Test
+    @Tag("unit")
     void testPlanTickUnknownOpcodeProducesNop() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
         sim.addOrganism(org);
@@ -59,6 +62,7 @@ public class OrganismTest {
     }
 
     @Test
+    @Tag("unit")
     void testEnergyDecreasesAndDeath() {
         // Start with small energy; execute NOP until dead
         Organism org = Organism.create(sim, new int[]{0, 0}, 2, sim.getLogger());
@@ -76,6 +80,7 @@ public class OrganismTest {
     }
 
     @Test
+    @Tag("unit")
     void testIpAdvancesAlongDv() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 10, sim.getLogger());
         sim.addOrganism(org);
@@ -94,6 +99,7 @@ public class OrganismTest {
     }
 
     @Test
+    @Tag("unit")
     void testGetTargetCoordinateFromDp() {
         Organism org = Organism.create(sim, new int[]{10, 10}, 100, sim.getLogger());
         sim.addOrganism(org);
@@ -104,6 +110,7 @@ public class OrganismTest {
     }
 
     @Test
+    @Tag("unit")
     void testDataStackPushPopOrder() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
         Deque<Object> ds = org.getDataStack();
@@ -119,6 +126,7 @@ public class OrganismTest {
     }
 
     @Test
+    @Tag("unit")
     void testRegisterAccessDrPrFpr() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
 

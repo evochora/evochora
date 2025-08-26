@@ -9,6 +9,7 @@ import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -57,6 +58,7 @@ public class VMArithmeticInstructionTest {
 
     // --- ADD ---
     @Test
+    @Tag("unit")
     void testAddi() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
         placeInstruction("ADDI", 0, 5);
@@ -65,6 +67,7 @@ public class VMArithmeticInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testAddr() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 3).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 4).toInt());
@@ -74,6 +77,7 @@ public class VMArithmeticInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testAdds() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 3).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 4).toInt());
@@ -84,6 +88,7 @@ public class VMArithmeticInstructionTest {
 
     // --- SUB ---
     @Test
+    @Tag("unit")
     void testSubi() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
         placeInstruction("SUBI", 0, 3);
@@ -92,6 +97,7 @@ public class VMArithmeticInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testSubr() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 6).toInt());
@@ -101,6 +107,7 @@ public class VMArithmeticInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testSubs() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 3).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 10).toInt());
@@ -111,6 +118,7 @@ public class VMArithmeticInstructionTest {
 
     // --- MUL ---
     @Test
+    @Tag("unit")
     void testMuli() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 7).toInt());
         placeInstruction("MULI", 0, 6);
@@ -119,6 +127,7 @@ public class VMArithmeticInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testMulr() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 7).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 6).toInt());
@@ -128,6 +137,7 @@ public class VMArithmeticInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testMuls() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 7).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 6).toInt());
@@ -138,6 +148,7 @@ public class VMArithmeticInstructionTest {
 
     // --- DIV ---
     @Test
+    @Tag("unit")
     void testDivi() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 42).toInt());
         placeInstruction("DIVI", 0, 6);
@@ -146,6 +157,7 @@ public class VMArithmeticInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testDivr() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 42).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 6).toInt());
@@ -155,6 +167,7 @@ public class VMArithmeticInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testDivs() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 6).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 42).toInt());
@@ -165,6 +178,7 @@ public class VMArithmeticInstructionTest {
 
     // --- MOD ---
     @Test
+    @Tag("unit")
     void testModi() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 43).toInt());
         placeInstruction("MODI", 0, 6);
@@ -173,6 +187,7 @@ public class VMArithmeticInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testModr() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 43).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 6).toInt());
@@ -182,6 +197,7 @@ public class VMArithmeticInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testMods() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 6).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 43).toInt());
@@ -192,6 +208,7 @@ public class VMArithmeticInstructionTest {
 
     // --- Vector arithmetic (register variants only) ---
     @Test
+    @Tag("unit")
     void testAddrVector() {
         int[] v1 = new int[]{1, 2};
         int[] v2 = new int[]{3, 4};
@@ -205,6 +222,7 @@ public class VMArithmeticInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testDotAndCrossProducts() {
         // Prepare vectors
         int[] v1 = new int[]{2, 3};
@@ -239,6 +257,7 @@ public class VMArithmeticInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testSubrVector() {
         int[] v1 = new int[]{5, 7};
         int[] v2 = new int[]{2, 3};

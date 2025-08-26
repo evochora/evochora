@@ -9,6 +9,7 @@ import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -45,6 +46,7 @@ public class VMVectorInstructionTest {
 
     // VGET Tests
     @Test
+    @Tag("unit")
     void testVgti() {
         org.setDr(1, new int[]{10, 20});
         placeInstruction("VGTI", 0, 1, new Molecule(Config.TYPE_DATA, 1).toInt()); // VGTI %DR0 %DR1 DATA:1
@@ -54,6 +56,7 @@ public class VMVectorInstructionTest {
 
     // VSET Tests
     @Test
+    @Tag("unit")
     void testVsti() {
         org.setDr(0, new int[]{10, 20});
         placeInstruction("VSTI", 0, new Molecule(Config.TYPE_DATA, 0).toInt(), new Molecule(Config.TYPE_DATA, 99).toInt()); // VSTI %DR0 DATA:0 DATA:99
@@ -63,6 +66,7 @@ public class VMVectorInstructionTest {
 
     // VBLD Tests
     @Test
+    @Tag("unit")
     void testVbld() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 50).toInt()); // Y-Komponente
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 40).toInt()); // X-Komponente
@@ -73,6 +77,7 @@ public class VMVectorInstructionTest {
 
     // B2V Tests
     @Test
+    @Tag("unit")
     void testB2viPositiveX() {
         int mask = new Molecule(Config.TYPE_DATA, 1 << 0).toInt(); // +X
         placeInstruction("B2VI", 0, mask); // %DR0, DATA:mask
@@ -82,6 +87,7 @@ public class VMVectorInstructionTest {
 
     // V2B Tests
     @Test
+    @Tag("unit")
     void testV2biPositiveX() {
         // Immediate vector literal: write DATA mask into %DR0
         placeInstruction("V2BI", 0, 1, 0); // %DR0, Vector: 1|0
@@ -91,6 +97,7 @@ public class VMVectorInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testV2brNegativeY() {
         org.setDr(1, new int[]{0, -1});
         placeInstruction("V2BR", 0, 1); // %DR0, %DR1
@@ -100,6 +107,7 @@ public class VMVectorInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testV2bsStackVariant() {
         org.getDataStack().push(new int[]{0, 1});
         placeInstruction("V2BS");
@@ -110,6 +118,7 @@ public class VMVectorInstructionTest {
 
     // RTR* Tests
     @Test
+    @Tag("unit")
     void testRtri2d() {
         org.setDr(0, new int[]{1, 0});
         placeInstruction("RTRI", 0, new Molecule(Config.TYPE_DATA, 0).toInt(), new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -118,6 +127,7 @@ public class VMVectorInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testRtrr2d() {
         org.setDr(0, new int[]{1, 0});
         org.setDr(1, new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -128,6 +138,7 @@ public class VMVectorInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testRtrs2d() {
         // Stack order top->bottom: Axis2, Axis1, Vector
         // Push Vector, then Axis1, then Axis2
@@ -140,6 +151,7 @@ public class VMVectorInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testRtri3dOtherAxesUnaffected() {
         Environment env3d = new Environment(new int[]{50, 50, 50}, true);
         Simulation sim3d = new Simulation(env3d);
@@ -163,6 +175,7 @@ public class VMVectorInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testRtriFailsOnSameAxes() {
         org.setDr(0, new int[]{1, 0});
         placeInstruction("RTRI", 0, new Molecule(Config.TYPE_DATA, 0).toInt(), new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -176,6 +189,7 @@ public class VMVectorInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testB2viNegativeY() {
         int mask = new Molecule(Config.TYPE_DATA, 1 << 3).toInt(); // 2*d+1 for d=1 => bit 3 = -Y
         placeInstruction("B2VI", 0, mask);
@@ -184,6 +198,7 @@ public class VMVectorInstructionTest {
     }
 
     @Test
+    @Tag("unit")
     void testB2vsStackVariant() {
         int mask = new Molecule(Config.TYPE_DATA, 1 << 2).toInt(); // +Y
         org.getDataStack().push(mask);
