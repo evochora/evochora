@@ -11,6 +11,7 @@ import org.evochora.server.contracts.raw.RawTickState;
 import org.evochora.server.contracts.raw.RawOrganismState;
 import org.evochora.server.contracts.raw.RawCellState;
 import org.evochora.server.contracts.raw.SerializableProcFrame;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -55,7 +56,7 @@ class EndToEndPipelineTest {
         this.debugDbPath = "jdbc:sqlite:file:memdb_e2e_debug?mode=memory&cache=shared";
         
         simulationEngine = new SimulationEngine(queue, new int[]{100, 30}, true);
-        persistenceService = new PersistenceService(queue, rawDbPath, new int[]{100, 30}, config.pipeline.persistence.batchSize);
+        persistenceService = new PersistenceService(queue, rawDbPath, new EnvironmentProperties(new int[]{100, 30}, true), config.pipeline.persistence.batchSize);
         debugIndexer = new DebugIndexer(rawDbPath, debugDbPath, config.pipeline.indexer.batchSize);
         debugServer = new DebugServer();
     }

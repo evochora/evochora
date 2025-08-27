@@ -4,6 +4,7 @@ import org.evochora.server.contracts.raw.RawTickState;
 import org.evochora.server.contracts.raw.RawOrganismState;
 import org.evochora.server.contracts.raw.RawCellState;
 import org.evochora.server.contracts.raw.SerializableProcFrame;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
@@ -88,6 +89,7 @@ class DebugIndexerPerformanceTest {
                 )
             """);
             stmt.execute("INSERT OR REPLACE INTO simulation_metadata (key, value) VALUES ('worldShape', '[10,10]')");
+            stmt.execute("INSERT OR REPLACE INTO simulation_metadata (key, value) VALUES ('isToroidal', 'true')");
 
             // Insert test data into raw_ticks
             com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -111,7 +113,7 @@ class DebugIndexerPerformanceTest {
                 java.util.Collections.emptyMap(),
                 java.util.Collections.emptyMap()
             );
-            String artifactJson = objectMapper.writeValueAsString(artifact.toLinearized(new int[]{10,10}));
+            String artifactJson = objectMapper.writeValueAsString(artifact.toLinearized(new EnvironmentProperties(new int[]{10,10}, true)));
             stmt.execute("INSERT OR REPLACE INTO program_artifacts (program_id, artifact_json) VALUES ('test123', '" + artifactJson.replace("'", "''") + "')");
         }
         return conn;

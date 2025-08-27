@@ -2,6 +2,7 @@ package org.evochora.compiler.internal;
 
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.evochora.runtime.model.EnvironmentProperties;
 
 /**
  * Utility class for bidirectional conversion between int[] coordinates
@@ -9,8 +10,9 @@ import java.util.stream.Collectors;
  * 
  * <h3>Usage</h3>
  * <pre>{@code
- * // 2D world with shape [100, 100]
- * CoordinateConverter converter = new CoordinateConverter(new int[]{100, 100});
+ * // 2D world with shape [100, 100] and toroidal=true
+ * EnvironmentProperties envProps = new EnvironmentProperties(new int[]{100, 100}, true);
+ * CoordinateConverter converter = new CoordinateConverter(envProps);
  * 
  * // Coordinate [5, 10] to linearized index
  * int[] coord = {5, 10};
@@ -43,13 +45,13 @@ import java.util.stream.Collectors;
  * @since 1.0
  */
 public class CoordinateConverter {
-    private final int[] worldShape;
+    private final EnvironmentProperties envProps;
     
-    public CoordinateConverter(int[] worldShape) {
-        if (worldShape == null || worldShape.length == 0) {
-            throw new IllegalArgumentException("World shape must not be null or empty");
+    public CoordinateConverter(EnvironmentProperties envProps) {
+        if (envProps == null) {
+            throw new IllegalArgumentException("EnvironmentProperties must not be null");
         }
-        this.worldShape = worldShape.clone();
+        this.envProps = envProps;
     }
     
     /**
@@ -90,49 +92,60 @@ public class CoordinateConverter {
      * @return The flat integer index.
      */
     private int linearizeCoordinate(int[] coord) {
-        if (coord == null || coord.length != worldShape.length) {
+        if (coord == null || coord.length != envProps.getWorldShape().length) {
             throw new IllegalArgumentException("Coordinate dimensions must match world shape");
         }
         
+        // Koordinaten normalisieren, falls toroidal
+        int[] normalizedCoord = normalizeCoordinate(coord);
+
         int flatIndex = 0;
         int stride = 1;
-        for (int i = 0; i < coord.length; i++) {
-            flatIndex += coord[i] * stride;
-            stride *= worldShape[i];
+        for (int i = 0; i < normalizedCoord.length; i++) {
+            flatIndex += normalizedCoord[i] * stride;
+            stride *= envProps.getWorldShape()[i];
         }
         return flatIndex;
     }
     
+    /**
+     * Normalize a coordinate based on EnvironmentProperties.
+     * For toroidal environments the coordinates will be set to valid boundaries.
+     */
+    private int[] normalizeCoordinate(int[] coord) {
+        if (!envProps.isToroidal()) {
+            return coord; // Keine Normalisierung bei nicht-toroidalen Welten
+        }
+
+        int[] normalized = new int[coord.length];
+        for (int i = 0; i < coord.length; i++) {
+            normalized[i] = Math.floorMod(coord[i], envProps.getWorldShape()[i]);
+        }
+        return normalized;
+    }
+
     /**
      * Delinearizes a flat integer index back to a coordinate.
      * @param flatIndex The flat integer index to delinearize.
      * @return The coordinate.
      */
     private int[] delinearizeCoordinate(int flatIndex) {
-        int[] coord = new int[worldShape.length];
+        int[] coord = new int[envProps.getWorldShape().length];
         int remaining = flatIndex;
         
-        for (int i = worldShape.length - 1; i >= 0; i--) {
-            coord[i] = remaining % worldShape[i];
-            remaining /= worldShape[i];
+        for (int i = envProps.getWorldShape().length - 1; i >= 0; i--) {
+            coord[i] = remaining % envProps.getWorldShape()[i];
+            remaining /= envProps.getWorldShape()[i];
         }
         
         return coord;
     }
     
     /**
-     * Returns the world shape.
-     * @return The world shape.
+     * Returns the environment properties.
+     * @return the EnvironmentProperties
      */
-    public int[] getWorldShape() {
-        return worldShape.clone();
-    }
-    
-    /**
-     * Returns the number of dimensions.
-     * @return The number of dimensions.
-     */
-    public int getDimensions() {
-        return worldShape.length;
+    public EnvironmentProperties getEnvironmentProperties() {
+        return envProps;
     }
 }

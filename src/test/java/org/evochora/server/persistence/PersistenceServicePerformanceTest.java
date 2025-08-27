@@ -5,6 +5,7 @@ import org.evochora.server.contracts.raw.RawTickState;
 import org.evochora.server.contracts.raw.RawOrganismState;
 import org.evochora.server.contracts.raw.RawCellState;
 import org.evochora.server.contracts.raw.SerializableProcFrame;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
@@ -43,7 +44,7 @@ class PersistenceServicePerformanceTest {
         this.dbPath = "jdbc:sqlite:file:memdb_perf?mode=memory&cache=shared";
         
         queue = new InMemoryTickQueue();
-        persistenceService = new PersistenceService(queue, dbPath, new int[]{100, 30}, BATCH_SIZE);
+        persistenceService = new PersistenceService(queue, dbPath, new EnvironmentProperties(new int[]{100, 30}, true), BATCH_SIZE);
     }
 
     @AfterEach
@@ -104,8 +105,8 @@ class PersistenceServicePerformanceTest {
         String smallBatchDb = "jdbc:sqlite:file:memdb_small_batch?mode=memory&cache=shared";
         String largeBatchDb = "jdbc:sqlite:file:memdb_large_batch?mode=memory&cache=shared";
         
-        PersistenceService smallBatchService = new PersistenceService(queue, smallBatchDb, new int[]{100, 30}, 100);
-        PersistenceService largeBatchService = new PersistenceService(queue, largeBatchDb, new int[]{100, 30}, 5000);
+        PersistenceService smallBatchService = new PersistenceService(queue, smallBatchDb, new EnvironmentProperties(new int[]{100, 30}, true), 100);
+        PersistenceService largeBatchService = new PersistenceService(queue, largeBatchDb, new EnvironmentProperties(new int[]{100, 30}, true), 5000);
         
         // Note: getBatchSize() is private, but we can verify constructor works
         assertNotNull(smallBatchService);
@@ -266,9 +267,9 @@ class PersistenceServicePerformanceTest {
         String mediumBatchDb = "jdbc:sqlite:file:memdb_medium_batch_perf?mode=memory&cache=shared";
         String largeBatchDb = "jdbc:sqlite:file:memdb_large_batch_perf?mode=memory&cache=shared";
         
-        PersistenceService smallBatchService = new PersistenceService(queue, smallBatchDb, new int[]{100, 30}, 100);
-        PersistenceService mediumBatchService = new PersistenceService(queue, mediumBatchDb, new int[]{100, 30}, 1000);
-        PersistenceService largeBatchService = new PersistenceService(queue, largeBatchDb, new int[]{100, 30}, 5000);
+        PersistenceService smallBatchService = new PersistenceService(queue, smallBatchDb, new EnvironmentProperties(new int[]{100, 30}, true), 100);
+        PersistenceService mediumBatchService = new PersistenceService(queue, mediumBatchDb, new EnvironmentProperties(new int[]{100, 30}, true), 1000);
+        PersistenceService largeBatchService = new PersistenceService(queue, largeBatchDb, new EnvironmentProperties(new int[]{100, 30}, true), 5000);
         
         // Start all services
         smallBatchService.start();

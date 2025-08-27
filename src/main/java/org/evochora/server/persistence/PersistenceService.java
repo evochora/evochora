@@ -6,6 +6,7 @@ import org.evochora.server.contracts.IQueueMessage;
 import org.evochora.server.contracts.ProgramArtifactMessage;
 import org.evochora.server.contracts.raw.RawTickState; // NEU
 import org.evochora.runtime.Config;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.server.queue.ITickMessageQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,7 +39,7 @@ public final class PersistenceService implements IControllable, Runnable {
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final AtomicBoolean autoPaused = new AtomicBoolean(false);
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final int[] worldShape;
+    private final EnvironmentProperties envProps;
     private final int batchSize; // Configurable batch size
 
     private Connection connection;
@@ -59,18 +60,18 @@ public final class PersistenceService implements IControllable, Runnable {
         this(queue, jdbcUrlOverride, null, 1000);
     }
 
-    public PersistenceService(ITickMessageQueue queue, int[] worldShape) {
-        this(queue, null, worldShape, 1000);
+    public PersistenceService(ITickMessageQueue queue, EnvironmentProperties envProps) {
+        this(queue, null, envProps, 1000);
     }
 
-    public PersistenceService(ITickMessageQueue queue, int[] worldShape, int batchSize) {
-        this(queue, null, worldShape, batchSize);
+    public PersistenceService(ITickMessageQueue queue, EnvironmentProperties envProps, int batchSize) {
+        this(queue, null, envProps, batchSize);
     }
 
-    public PersistenceService(ITickMessageQueue queue, String jdbcUrlOverride, int[] worldShape, int batchSize) {
+    public PersistenceService(ITickMessageQueue queue, String jdbcUrlOverride, EnvironmentProperties envProps, int batchSize) {
         this.queue = queue;
         this.jdbcUrlOverride = jdbcUrlOverride;
-        this.worldShape = worldShape != null ? java.util.Arrays.copyOf(worldShape, worldShape.length) : null;
+        this.envProps = envProps;
         this.batchSize = batchSize; // Use passed batch size
         this.thread = new Thread(this, "PersistenceService");
         this.thread.setDaemon(true);
@@ -234,9 +235,9 @@ public final class PersistenceService implements IControllable, Runnable {
                 st.execute("CREATE TABLE IF NOT EXISTS raw_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json TEXT)");
                 st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
                 try (PreparedStatement ps = connection.prepareStatement("INSERT OR REPLACE INTO simulation_metadata (key, value) VALUES (?, ?)")) {
-                    if (worldShape != null) {
+                    if (envProps != null) {
                         ps.setString(1, "worldShape");
-                        ps.setString(2, objectMapper.writeValueAsString(worldShape));
+                        ps.setString(2, objectMapper.writeValueAsString(envProps.getWorldShape()));
                         ps.executeUpdate();
                     }
                     ps.setString(1, "runMode");
@@ -439,17 +440,16 @@ public final class PersistenceService implements IControllable, Runnable {
 
     private void handleProgramArtifact(ProgramArtifactMessage pam) throws Exception {
         // Konvertierung zu linearisiertem Format für Jackson-Serialisierung
-        // Wir brauchen den worldShape für die Linearisierung
-        int[] worldShape = this.worldShape;
-        if (worldShape == null) {
+        // Wir brauchen die EnvironmentProperties für die Linearisierung
+        if (envProps == null) {
             throw new IllegalStateException(
-                "Cannot serialize ProgramArtifact: worldShape is required for coordinate linearization. " +
-                "Ensure worldShape is provided when creating PersistenceService."
+                "Cannot serialize ProgramArtifact: EnvironmentProperties are required for coordinate linearization. " +
+                "Ensure EnvironmentProperties are provided when creating PersistenceService."
             );
         }
         
         try {
-            LinearizedProgramArtifact linearized = pam.programArtifact().toLinearized(worldShape);
+            LinearizedProgramArtifact linearized = pam.programArtifact().toLinearized(envProps);
             String json = objectMapper.writeValueAsString(linearized);
             
             try (PreparedStatement ps = connection.prepareStatement("INSERT OR REPLACE INTO program_artifacts(program_id, artifact_json) VALUES (?, ?)")) {

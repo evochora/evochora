@@ -5,6 +5,7 @@ import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.internal.LinearizedProgramArtifact;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.server.contracts.debug.PreparedTickState;
 import org.evochora.server.contracts.raw.RawOrganismState;
 import org.evochora.server.contracts.raw.RawTickState;
@@ -94,7 +95,7 @@ class DebugIndexerTestHelper implements AutoCloseable {
         // Füge Test-Daten ein
         try (PreparedStatement ps = rawConn.prepareStatement("INSERT INTO program_artifacts VALUES (?,?)")) {
             ps.setString(1, testArtifact.programId());
-            LinearizedProgramArtifact linearized = testArtifact.toLinearized(new int[]{10, 10});
+            LinearizedProgramArtifact linearized = testArtifact.toLinearized(new EnvironmentProperties(new int[]{10, 10}, true));
             ps.setString(2, mapper.writeValueAsString(linearized));
             ps.executeUpdate();
         }
@@ -108,6 +109,12 @@ class DebugIndexerTestHelper implements AutoCloseable {
         try (PreparedStatement ps = rawConn.prepareStatement("INSERT INTO simulation_metadata VALUES (?,?)")) {
             ps.setString(1, "worldShape");
             ps.setString(2, mapper.writeValueAsString(new int[]{10, 10}));
+            ps.executeUpdate();
+        }
+        
+        try (PreparedStatement ps = rawConn.prepareStatement("INSERT INTO simulation_metadata VALUES (?,?)")) {
+            ps.setString(1, "isToroidal");
+            ps.setString(2, mapper.writeValueAsString(true));
             ps.executeUpdate();
         }
 

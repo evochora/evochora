@@ -1,5 +1,8 @@
 package org.evochora.runtime.model;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 /**
  * Represents the properties of a simulation environment without the full grid data.
  * This class provides coordinate calculations and world properties that can be shared
@@ -15,7 +18,8 @@ public class EnvironmentProperties {
      * @param worldShape The dimensions of the world (e.g., [100, 100] for 2D)
      * @param isToroidal Whether the world wraps around at edges
      */
-    public EnvironmentProperties(int[] worldShape, boolean isToroidal) {
+    @JsonCreator
+    public EnvironmentProperties(@JsonProperty("worldShape") int[] worldShape, @JsonProperty("isToroidal") boolean isToroidal) {
         this.worldShape = worldShape.clone();
         this.isToroidal = isToroidal;
     }
@@ -25,6 +29,7 @@ public class EnvironmentProperties {
      * 
      * @return A copy of the world shape array
      */
+    @JsonProperty("worldShape")
     public int[] getWorldShape() {
         return worldShape.clone();
     }
@@ -34,6 +39,7 @@ public class EnvironmentProperties {
      * 
      * @return true if toroidal, false otherwise
      */
+    @JsonProperty("isToroidal")
     public boolean isToroidal() {
         return isToroidal;
     }

@@ -3,6 +3,7 @@ package org.evochora.compiler.internal;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.runtime.model.EnvironmentProperties;
 
 import java.util.Collections;
 import java.util.List;
@@ -20,8 +21,8 @@ import java.util.Map;
  * <pre>{@code
  * // Convert ProgramArtifact to LinearizedProgramArtifact
  * ProgramArtifact original = ...;
- * int[] worldShape = {100, 100};
- * LinearizedProgramArtifact linearized = LinearizedProgramArtifact.from(original, worldShape);
+ * EnvironmentProperties envProps = new EnvironmentProperties(new int[]{100, 100}, true);
+ * LinearizedProgramArtifact linearized = LinearizedProgramArtifact.from(original, envProps);
  * 
  * // Jackson serialization
  * String json = objectMapper.writeValueAsString(linearized);
@@ -76,7 +77,7 @@ public record LinearizedProgramArtifact(
         Map<Integer, String> labelAddressToName,
         Map<String, Integer> registerAliasMap,
         Map<String, List<String>> procNameToParamNames,
-        int[] worldShape
+        EnvironmentProperties envProps
 ) {
     
     public LinearizedProgramArtifact {
@@ -90,7 +91,7 @@ public record LinearizedProgramArtifact(
         labelAddressToName = labelAddressToName != null ? Collections.unmodifiableMap(labelAddressToName) : Collections.emptyMap();
         registerAliasMap = registerAliasMap != null ? Collections.unmodifiableMap(registerAliasMap) : Collections.emptyMap();
         procNameToParamNames = procNameToParamNames != null ? Collections.unmodifiableMap(procNameToParamNames) : Collections.emptyMap();
-        worldShape = worldShape != null ? worldShape.clone() : new int[0];
+        envProps = envProps != null ? envProps : new EnvironmentProperties(new int[0], false);
     }
     
     /**
@@ -99,8 +100,8 @@ public record LinearizedProgramArtifact(
      * @param worldShape The shape of the world.
      * @return A new LinearizedProgramArtifact.
      */
-    public static LinearizedProgramArtifact from(ProgramArtifact artifact, int[] worldShape) {
-        CoordinateConverter converter = new CoordinateConverter(worldShape);
+    public static LinearizedProgramArtifact from(ProgramArtifact artifact, EnvironmentProperties envProps) {
+        CoordinateConverter converter = new CoordinateConverter(envProps);
         
         return new LinearizedProgramArtifact(
                 artifact.programId(),
@@ -114,7 +115,7 @@ public record LinearizedProgramArtifact(
                 artifact.labelAddressToName(),
                 artifact.registerAliasMap(),
                 artifact.procNameToParamNames(),
-                worldShape
+                envProps
         );
     }
     
@@ -123,7 +124,7 @@ public record LinearizedProgramArtifact(
      * @return A new ProgramArtifact.
      */
     public ProgramArtifact toProgramArtifact() {
-        CoordinateConverter converter = new CoordinateConverter(worldShape);
+        CoordinateConverter converter = new CoordinateConverter(envProps);
         
         return new ProgramArtifact(
                 programId,

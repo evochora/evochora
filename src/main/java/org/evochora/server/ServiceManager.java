@@ -6,6 +6,7 @@ import org.evochora.server.indexer.DebugIndexer;
 import org.evochora.server.http.DebugServer;
 import org.evochora.server.queue.ITickMessageQueue;
 import org.evochora.server.config.SimulationConfiguration;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -332,7 +333,8 @@ public final class ServiceManager {
         if (persistenceService.get() == null || !persistenceRunning.get()) {
             int batchSize = config.pipeline.persistence != null ? config.pipeline.persistence.batchSize : 1000;
             String jdbcUrl = config.pipeline.persistence != null ? config.pipeline.persistence.jdbcUrl : null;
-            PersistenceService service = new PersistenceService(queue, jdbcUrl, config.simulation.environment.shape, batchSize);
+            EnvironmentProperties envProps = new EnvironmentProperties(config.simulation.environment.shape, config.simulation.environment.toroidal);
+            PersistenceService service = new PersistenceService(queue, jdbcUrl, envProps, batchSize);
             
             persistenceService.set(service);
             service.start();
@@ -349,6 +351,7 @@ public final class ServiceManager {
                 String indexerRawDbUrl = rawDbUrl.replace("memdb_", "memdb_indexer_");
                 String indexerDebugDbUrl = indexerRawDbUrl.replace("_raw", "_debug");
                 int batchSize = config.pipeline.indexer != null ? config.pipeline.indexer.batchSize : 1000;
+                // DebugIndexer lädt EnvironmentProperties aus der Datenbank
                 DebugIndexer service = new DebugIndexer(indexerRawDbUrl, indexerDebugDbUrl, batchSize);
                 
                 indexer.set(service);

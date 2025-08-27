@@ -65,9 +65,9 @@ public class DebugIndexer implements IControllable, Runnable {
     private String debugDbPath;
     private final SourceAnnotator sourceAnnotator = new SourceAnnotator();
     private final int batchSize; // Configurable batch size
+    private EnvironmentProperties envProps; // Environment properties loaded from database
 
     private Map<String, ProgramArtifact> artifacts = new HashMap<>();
-    private int[] worldShape = new int[]{0, 0};
     
     // Cache für Artifact-Validität pro Organismus (programId_organismId -> ArtifactValidity)
     private final Map<String, ArtifactValidity> validityCache = new HashMap<>();
@@ -550,12 +550,20 @@ public class DebugIndexer implements IControllable, Runnable {
                 }
             }
                 
-                // Load world shape
-            try (ResultSet rs = st.executeQuery("SELECT key, value FROM simulation_metadata WHERE key = 'worldShape'")) {
-                if (rs.next()) {
-                    this.worldShape = objectMapper.readValue(rs.getString(2), int[].class);
+                // Load world shape from database
+                try (ResultSet rs = st.executeQuery("SELECT key, value FROM simulation_metadata WHERE key = 'worldShape'")) {
+                    if (rs.next()) {
+                        int[] dbWorldShape = objectMapper.readValue(rs.getString(2), int[].class);
+                        // Also load isToroidal if available, otherwise assume true for backward compatibility
+                        boolean isToroidal = true;
+                        try (ResultSet toroidalRs = st.executeQuery("SELECT key, value FROM simulation_metadata WHERE key = 'isToroidal'")) {
+                            if (toroidalRs.next()) {
+                                isToroidal = objectMapper.readValue(toroidalRs.getString(2), Boolean.class);
+                            }
+                        }
+                        this.envProps = new EnvironmentProperties(dbWorldShape, isToroidal);
+                    }
                 }
-            }
                 
                 log.info("Successfully loaded initial data from raw database");
                 break; // Successfully loaded, exit the loop
@@ -669,7 +677,10 @@ public class DebugIndexer implements IControllable, Runnable {
     }
 
     private PreparedTickState transformRawToPrepared(RawTickState raw) {
-        PreparedTickState.WorldMeta meta = new PreparedTickState.WorldMeta(this.worldShape);
+        if (envProps == null) {
+            throw new IllegalStateException("EnvironmentProperties not available for transformRawToPrepared");
+        }
+        PreparedTickState.WorldMeta meta = new PreparedTickState.WorldMeta(envProps.getWorldShape());
 
         List<PreparedTickState.Cell> cells = raw.cells().stream()
                 .map(c -> {
@@ -861,8 +872,10 @@ public class DebugIndexer implements IControllable, Runnable {
     private PreparedTickState.NextInstruction buildNextInstruction(RawOrganismState o, ProgramArtifact artifact, ArtifactValidity validity, RawTickState rawTickState) {
         try {
             // Erstelle RawTickStateReader für diesen Organismus
-            EnvironmentProperties props = new EnvironmentProperties(this.worldShape, true); // isToroidal = true
-            RawTickStateReader reader = new RawTickStateReader(rawTickState, props);
+            if (envProps == null) {
+                throw new IllegalStateException("EnvironmentProperties not available for buildNextInstruction");
+            }
+            RawTickStateReader reader = new RawTickStateReader(rawTickState, envProps);
             
             // Verwende den neuen Disassembler
             Disassembler disassembler = new Disassembler();

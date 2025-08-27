@@ -1,6 +1,7 @@
 package org.evochora.compiler.api;
 
 import org.evochora.compiler.internal.LinearizedProgramArtifact;
+import org.evochora.runtime.model.EnvironmentProperties;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -58,8 +59,8 @@ public record ProgramArtifact(
      * <h3>Usage</h3>
      * <pre>{@code
      * ProgramArtifact artifact = ...;
-     * int[] worldShape = {100, 100};
-     * LinearizedProgramArtifact linearized = artifact.toLinearized(worldShape);
+     * EnvironmentProperties envProps = new EnvironmentProperties(new int[]{100, 100}, true);
+     * LinearizedProgramArtifact linearized = artifact.toLinearized(envProps);
      * 
      * // Jackson serialization
      * String json = objectMapper.writeValueAsString(linearized);
@@ -71,14 +72,14 @@ public record ProgramArtifact(
      *   <li><strong>initialWorldObjects</strong>: Map<int[], PlacedMolecule> → Map<Integer, PlacedMolecule></li>
      * </ul>
      * 
-     * @param worldShape The world shape for coordinate linearization
+     * @param envProps The environment properties containing world shape and toroidal information
      * @return A LinearizedProgramArtifact with Integer keys for Jackson serialization
-     * @throws IllegalArgumentException if worldShape is null or empty
+     * @throws IllegalArgumentException if envProps is null
      * @see LinearizedProgramArtifact
      * @see CoordinateConverter
      */
-    public LinearizedProgramArtifact toLinearized(int[] worldShape) {
-        return LinearizedProgramArtifact.from(this, worldShape);
+    public LinearizedProgramArtifact toLinearized(EnvironmentProperties envProps) {
+        return LinearizedProgramArtifact.from(this, envProps);
     }
     
     /**
