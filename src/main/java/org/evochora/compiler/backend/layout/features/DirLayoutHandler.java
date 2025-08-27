@@ -10,6 +10,9 @@ import org.evochora.compiler.ir.IrValue;
  * Handles core:dir directive during layout.
  */
 public final class DirLayoutHandler implements ILayoutDirectiveHandler {
+	/**
+	 * {@inheritDoc}
+	 */
 	@Override
 	public void handle(IrDirective directive, LayoutContext context) {
 		IrValue.Vector vec = (IrValue.Vector) directive.args().get("direction");

@@ -13,11 +13,17 @@ import java.util.Optional;
  */
 public final class RuntimeInstructionSetAdapter implements IInstructionSet {
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public Optional<Integer> getInstructionIdByName(String name) {
         return Optional.ofNullable(Instruction.getInstructionIdByName(name));
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public Optional<Signature> getSignatureById(int id) {
         Optional<InstructionSignature> sig = Instruction.getSignatureById(id);
@@ -29,14 +35,20 @@ public final class RuntimeInstructionSetAdapter implements IInstructionSet {
         }).toList());
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public int getInstructionLengthById(int id) {
         return Instruction.getInstructionLengthById(id);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public Optional<Integer> resolveRegisterToken(String token) {
-        // Ruft jetzt die zentrale Methode auf
+        // Now calls the central method
         return Instruction.resolveRegToken(token);
     }
 }

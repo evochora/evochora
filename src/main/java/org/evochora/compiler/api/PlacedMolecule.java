@@ -1,11 +1,11 @@
 package org.evochora.compiler.api;
 
 /**
- * Repräsentiert ein Molecule, das an einer bestimmten Koordinate in der Welt platziert werden soll.
- * Diese Klasse ist Teil der öffentlichen API und entkoppelt die API von der internen
- * {@code org.evochora.runtime.model.Molecule}-Implementierung.
+ * Represents a molecule to be placed at a specific coordinate in the world.
+ * This class is part of the public API and decouples the API from the internal
+ * {@code org.evochora.runtime.model.Molecule} implementation.
  *
- * @param type Der Typ des Symbols (z.B. CODE, DATA, ENERGY).
- * @param value Der Wert des Symbols.
+ * @param type The type of the symbol (e.g., CODE, DATA, ENERGY).
+ * @param value The value of the symbol.
  */
 public record PlacedMolecule(int type, int value) {}

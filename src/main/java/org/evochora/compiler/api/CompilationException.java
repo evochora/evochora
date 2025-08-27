@@ -1,17 +1,25 @@
 package org.evochora.compiler.api;
 
 /**
- * Eine Exception, die geworfen wird, wenn während des Kompilierungsvorgangs
- * ein oder mehrere Fehler auftreten.
+ * An exception that is thrown when one or more errors occur during the compilation process.
  * <p>
- * Sie ist Teil der öffentlichen API und verbirgt die internen Exception-Typen des Compilers.
+ * It is part of the public API and hides the internal exception types of the compiler.
  */
 public class CompilationException extends Exception {
 
+    /**
+     * Constructs a new compilation exception with the specified detail message.
+     * @param message The detail message.
+     */
     public CompilationException(String message) {
         super(message, null);
     }
 
+    /**
+     * Constructs a new compilation exception with the specified detail message and cause.
+     * @param message The detail message.
+     * @param cause The cause.
+     */
     public CompilationException(String message, Throwable cause) {
         super(message, cause);
     }

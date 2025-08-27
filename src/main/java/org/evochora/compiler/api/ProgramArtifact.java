@@ -5,6 +5,23 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Represents the complete, self-contained output of the compilation process.
+ * This is an immutable data carrier that includes the compiled machine code,
+ * source mapping, and various metadata required by the runtime and debugger.
+ *
+ * @param programId A unique identifier for the compiled program.
+ * @param sources A map of source file names to their content.
+ * @param machineCodeLayout A map from relative coordinates to the integer representation of a molecule.
+ * @param initialWorldObjects A map from relative coordinates to molecules that should be placed in the world initially.
+ * @param sourceMap A map from linear address to source information, for debugging.
+ * @param callSiteBindings A map from linear address of a CALL instruction to its target coordinates.
+ * @param relativeCoordToLinearAddress A map from relative coordinate string to linear address.
+ * @param linearAddressToCoord A map from linear address to relative coordinates.
+ * @param labelAddressToName A map from linear address of a label to its name.
+ * @param registerAliasMap A map from register alias names (e.g., "%MY_REG") to their physical register index.
+ * @param procNameToParamNames A map from procedure names to a list of their parameter names.
+ */
 public record ProgramArtifact(
         String programId,
         Map<String, List<String>> sources,

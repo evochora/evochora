@@ -12,10 +12,18 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Utility class for dumping debug information during compilation.
+ */
 public final class DebugDump {
 
 	private DebugDump() {}
 
+	/**
+	 * Dumps the contents of a {@link ProgramArtifact} to files in the build directory.
+	 * @param programName The name of the program, used for creating the dump directory.
+	 * @param artifact The program artifact to dump.
+	 */
 	public static void dumpProgramArtifact(String programName, ProgramArtifact artifact) {
 		Path root = Path.of("build", "compiler-dumps", sanitize(programName));
 		try {
@@ -42,6 +50,12 @@ public final class DebugDump {
 		} catch (IOException ignored) {}
 	}
 
+	/**
+	 * Dumps the a list of IR items to a file.
+	 * @param programName The name of the program, used for creating the dump directory.
+	 * @param phase The name of the compilation phase, used for the file name.
+	 * @param items The list of IR items to dump.
+	 */
 	public static void dumpIr(String programName, String phase, List<IrItem> items) {
 		Path root = Path.of("build", "compiler-dumps", sanitize(programName));
 		try {

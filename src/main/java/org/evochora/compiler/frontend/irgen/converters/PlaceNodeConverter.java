@@ -17,6 +17,14 @@ import java.util.Map;
  */
 public final class PlaceNodeConverter implements IAstNodeToIrConverter<PlaceNode> {
 
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * This implementation converts the {@link PlaceNode} to an {@link IrDirective}.
+	 *
+	 * @param node The node to convert.
+	 * @param ctx  The generation context.
+	 */
 	@Override
 	public void convert(PlaceNode node, IrGenContext ctx) {
 		Map<String, IrValue> args = new HashMap<>();

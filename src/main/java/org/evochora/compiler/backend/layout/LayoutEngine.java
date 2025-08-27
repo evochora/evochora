@@ -13,6 +13,13 @@ import java.util.Map;
  */
 public final class LayoutEngine {
 
+    /**
+     * Lays out the given IR program in an n-dimensional grid.
+     * @param program The IR program to lay out.
+     * @param isa The instruction set for determining operand sizes.
+     * @param dims The number of dimensions in the world.
+     * @return The result of the layout process.
+     */
     public LayoutResult layout(IrProgram program, IInstructionSet isa, int dims) {
         if (dims <= 0) dims = 2;
         LayoutContext ctx = new LayoutContext(dims);

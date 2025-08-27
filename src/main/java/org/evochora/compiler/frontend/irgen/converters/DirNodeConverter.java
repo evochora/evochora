@@ -15,6 +15,14 @@ import java.util.Map;
  */
 public final class DirNodeConverter implements IAstNodeToIrConverter<DirNode> {
 
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * This implementation converts the {@link DirNode} to an {@link IrDirective}.
+	 *
+	 * @param node The node to convert.
+	 * @param ctx  The generation context.
+	 */
 	@Override
 	public void convert(DirNode node, IrGenContext ctx) {
 		if (node.directionVector() instanceof VectorLiteralNode v) {

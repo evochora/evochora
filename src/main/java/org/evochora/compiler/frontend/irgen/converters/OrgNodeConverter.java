@@ -15,6 +15,14 @@ import java.util.Map;
  */
 public final class OrgNodeConverter implements IAstNodeToIrConverter<OrgNode> {
 
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * This implementation converts the {@link OrgNode} to an {@link IrDirective}.
+	 *
+	 * @param node The node to convert.
+	 * @param ctx  The generation context.
+	 */
 	@Override
 	public void convert(OrgNode node, IrGenContext ctx) {
 		if (node.originVector() instanceof VectorLiteralNode v) {

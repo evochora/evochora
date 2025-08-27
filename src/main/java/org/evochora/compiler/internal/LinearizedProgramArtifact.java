@@ -67,15 +67,15 @@ import java.util.Map;
 public record LinearizedProgramArtifact(
         String programId,
         Map<String, List<String>> sources,
-        Map<Integer, Integer> machineCodeLayout,        // Linearisiert von int[]
-        Map<Integer, PlacedMolecule> initialWorldObjects, // Linearisiert von int[]
-        Map<Integer, SourceInfo> sourceMap,             // Unverändert
-        Map<Integer, int[]> callSiteBindings,           // Unverändert
-        Map<String, Integer> relativeCoordToLinearAddress, // Unverändert
-        Map<Integer, int[]> linearAddressToCoord,       // Unverändert
-        Map<Integer, String> labelAddressToName,        // Unverändert
-        Map<String, Integer> registerAliasMap,          // Unverändert
-        Map<String, List<String>> procNameToParamNames, // Unverändert
+        Map<Integer, Integer> machineCodeLayout,
+        Map<Integer, PlacedMolecule> initialWorldObjects,
+        Map<Integer, SourceInfo> sourceMap,
+        Map<Integer, int[]> callSiteBindings,
+        Map<String, Integer> relativeCoordToLinearAddress,
+        Map<Integer, int[]> linearAddressToCoord,
+        Map<Integer, String> labelAddressToName,
+        Map<String, Integer> registerAliasMap,
+        Map<String, List<String>> procNameToParamNames,
         int[] worldShape
 ) {
     
@@ -94,7 +94,10 @@ public record LinearizedProgramArtifact(
     }
     
     /**
-     * Konvertiert ein ProgramArtifact zu einem LinearizedProgramArtifact.
+     * Converts a ProgramArtifact to a LinearizedProgramArtifact.
+     * @param artifact The ProgramArtifact to convert.
+     * @param worldShape The shape of the world.
+     * @return A new LinearizedProgramArtifact.
      */
     public static LinearizedProgramArtifact from(ProgramArtifact artifact, int[] worldShape) {
         CoordinateConverter converter = new CoordinateConverter(worldShape);
@@ -105,18 +108,19 @@ public record LinearizedProgramArtifact(
                 converter.linearizeMap(artifact.machineCodeLayout()),
                 converter.linearizeMap(artifact.initialWorldObjects()),
                 artifact.sourceMap(),
-                artifact.callSiteBindings(), // Map<Integer, int[]> - unverändert
-                artifact.relativeCoordToLinearAddress(), // Map<String, Integer> - unverändert
-                artifact.linearAddressToCoord(), // Map<Integer, int[]> - unverändert
-                artifact.labelAddressToName(), // Map<Integer, String> - unverändert
-                artifact.registerAliasMap(), // Map<String, Integer> - unverändert
+                artifact.callSiteBindings(),
+                artifact.relativeCoordToLinearAddress(),
+                artifact.linearAddressToCoord(),
+                artifact.labelAddressToName(),
+                artifact.registerAliasMap(),
                 artifact.procNameToParamNames(),
                 worldShape
         );
     }
     
     /**
-     * Konvertiert ein LinearizedProgramArtifact zurück zu einem ProgramArtifact.
+     * Converts this LinearizedProgramArtifact back to a ProgramArtifact.
+     * @return A new ProgramArtifact.
      */
     public ProgramArtifact toProgramArtifact() {
         CoordinateConverter converter = new CoordinateConverter(worldShape);
@@ -127,11 +131,11 @@ public record LinearizedProgramArtifact(
                 converter.delinearizeMap(machineCodeLayout()),
                 converter.delinearizeMap(initialWorldObjects()),
                 sourceMap,
-                callSiteBindings(), // Map<Integer, int[]> - unverändert
-                relativeCoordToLinearAddress(), // Map<String, Integer> - unverändert
-                linearAddressToCoord(), // Map<Integer, int[]> - unverändert
-                labelAddressToName(), // Map<Integer, String> - unverändert
-                registerAliasMap(), // Map<String, Integer> - unverändert
+                callSiteBindings(),
+                relativeCoordToLinearAddress(),
+                linearAddressToCoord(),
+                labelAddressToName(),
+                registerAliasMap(),
                 procNameToParamNames
         );
     }

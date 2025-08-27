@@ -3,28 +3,33 @@ package org.evochora.compiler.api;
 import java.util.List;
 
 /**
- * Definiert die öffentliche, saubere Schnittstelle für den Evochora-Compiler.
+ * Defines the public, clean interface for the Evochora compiler.
  */
 public interface ICompiler {
 
     /**
-     * Kompiliert den gegebenen Quellcode.
+     * Compiles the given source code.
      *
-     * @param sourceLines Eine Liste von Strings, die die Zeilen des Haupt-Quellcodes darstellen.
-     * @param programName Ein Name für das Programm, der für Debugging-Zwecke verwendet wird.
-     * @return Ein {@link ProgramArtifact}, das das kompilierte Programm und alle zugehörigen Metadaten enthält.
-     * @throws CompilationException wenn während des Kompilierungsvorgangs Fehler auftreten.
+     * @param sourceLines A list of strings representing the lines of the main source code.
+     * @param programName A name for the program, used for debugging purposes.
+     * @return A {@link ProgramArtifact} containing the compiled program and all associated metadata.
+     * @throws CompilationException if errors occur during the compilation process.
      */
     ProgramArtifact compile(List<String> sourceLines, String programName) throws CompilationException;
 
     /**
      * Compiles with explicit world dimensions for vector/label argument sizing.
+     * @param sourceLines A list of strings representing the lines of the main source code.
+     * @param programName A name for the program, used for debugging purposes.
+     * @param worldDimensions The number of dimensions in the target world (e.g., 2 for 2D, 3 for 3D).
+     * @return A {@link ProgramArtifact} containing the compiled program and all associated metadata.
+     * @throws CompilationException if errors occur during the compilation process.
      */
     ProgramArtifact compile(List<String> sourceLines, String programName, int worldDimensions) throws CompilationException;
 
     /**
-     * Setzt das Level für die Ausführlichkeit der Log-Ausgaben.
-     * @param level Das Verbosity-Level (z.B. 0=leise, 1=normal, 2=verbose, 3=trace).
+     * Sets the verbosity level for log output.
+     * @param level The verbosity level (e.g., 0=quiet, 1=normal, 2=verbose, 3=trace).
      */
     void setVerbosity(int level);
 }

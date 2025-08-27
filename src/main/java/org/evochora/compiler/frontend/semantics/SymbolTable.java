@@ -9,8 +9,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * A symbol table for managing scopes and symbols during semantic analysis.
+ * It supports nested scopes and resolving symbols based on the current scope.
+ * It also handles cross-file symbol resolution via require/import aliases.
+ */
 public class SymbolTable {
 
+    /**
+     * Represents a single scope in the symbol table.
+     */
     public static class Scope {
         private final Scope parent;
         private final List<Scope> children = new ArrayList<>();
@@ -30,16 +38,27 @@ public class SymbolTable {
     private final DiagnosticsEngine diagnostics;
     private final Map<String, Map<String, String>> fileToAliasToTarget = new HashMap<>();
 
+    /**
+     * Constructs a new symbol table.
+     * @param diagnostics The diagnostics engine for reporting errors.
+     */
     public SymbolTable(DiagnosticsEngine diagnostics) {
         this.diagnostics = diagnostics;
         this.rootScope = new Scope(null);
         this.currentScope = this.rootScope;
     }
 
+    /**
+     * Resets the current scope to the root scope.
+     */
     public void resetScope() {
         this.currentScope = this.rootScope;
     }
 
+    /**
+     * Enters a new scope.
+     * @return The new scope.
+     */
     public Scope enterScope() {
         Scope newScope = new Scope(currentScope);
         currentScope.addChild(newScope);
@@ -47,16 +66,28 @@ public class SymbolTable {
         return newScope;
     }
 
+    /**
+     * Leaves the current scope and moves to the parent scope.
+     */
     public void leaveScope() {
         if (currentScope.parent != null) {
             currentScope = currentScope.parent;
         }
     }
 
+    /**
+     * Sets the current scope to the given scope.
+     * @param scope The scope to set as current.
+     */
     public void setCurrentScope(Scope scope) {
         this.currentScope = scope;
     }
 
+    /**
+     * Defines a new symbol in the current scope.
+     * Reports an error if the symbol is already defined in the same file within the current scope.
+     * @param symbol The symbol to define.
+     */
     public void define(Symbol symbol) {
         String name = symbol.name().text().toUpperCase();
         String file = symbol.name().fileName();
@@ -72,6 +103,13 @@ public class SymbolTable {
         }
     }
 
+    /**
+     * Resolves a symbol by name, searching from the current scope upwards to the root.
+     * If the symbol is not found, it attempts to resolve it as a qualified name
+     * (e.g., `alias.SYMBOL`) using registered import aliases.
+     * @param name The token of the symbol to resolve.
+     * @return An optional containing the found symbol, or empty if not found.
+     */
     public Optional<Symbol> resolve(Token name) {
         String key = name.text().toUpperCase();
         String requestingFile = name.fileName();
@@ -124,12 +162,24 @@ public class SymbolTable {
         return Optional.empty();
     }
 
+    /**
+     * Registers a require alias for a specific file.
+     * @param fileName The file in which the alias is defined.
+     * @param aliasUpper The upper-case alias name.
+     * @param targetFilePath The file path the alias points to.
+     */
     public void registerRequireAlias(String fileName, String aliasUpper, String targetFilePath) {
         if (fileName == null || targetFilePath == null) return;
         fileToAliasToTarget.computeIfAbsent(fileName, k -> new HashMap<>()).put(aliasUpper, targetFilePath);
     }
 
     private final Map<String, Boolean> procExportedByFileAndName = new HashMap<>();
+
+    /**
+     * Registers metadata for a procedure, such as whether it is exported.
+     * @param procName The name token of the procedure.
+     * @param exported True if the procedure is exported, false otherwise.
+     */
     public void registerProcedureMeta(Token procName, boolean exported) {
         String key = procName.fileName() + "|" + procName.text().toUpperCase();
         procExportedByFileAndName.put(key, exported);

@@ -12,6 +12,9 @@ import org.evochora.compiler.ir.IrValue;
  * Handles core:place directive during layout.
  */
 public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
+	/**
+	 * {@inheritDoc}
+	 */
 	@Override
 	public void handle(IrDirective directive, LayoutContext context) {
 		IrValue.Vector vec = (IrValue.Vector) directive.args().get("position");

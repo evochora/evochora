@@ -14,6 +14,9 @@ import java.util.List;
  */
 public final class CallBindingCaptureRule implements IEmissionRule {
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public List<IrItem> apply(List<IrItem> items, LinkingContext linkingContext) {
         for (int i = 0; i < items.size(); i++) {

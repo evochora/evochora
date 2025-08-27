@@ -53,7 +53,10 @@ public class CoordinateConverter {
     }
     
     /**
-     * Konvertiert eine Map mit int[]-Keys zu einer Map mit Integer-Keys (Linearisierung).
+     * Converts a map with int[] keys to a map with Integer keys (linearization).
+     * @param original The original map with int[] keys.
+     * @return A new map with Integer keys.
+     * @param <V> The value type of the map.
      */
     public <V> Map<Integer, V> linearizeMap(Map<int[], V> original) {
         if (original == null) return Map.of();
@@ -66,7 +69,10 @@ public class CoordinateConverter {
     }
     
     /**
-     * Konvertiert eine Map mit Integer-Keys zurück zu einer Map mit int[]-Keys (Delinearisierung).
+     * Converts a map with Integer keys back to a map with int[] keys (delinearization).
+     * @param original The original map with Integer keys.
+     * @return A new map with int[] keys.
+     * @param <V> The value type of the map.
      */
     public <V> Map<int[], V> delinearizeMap(Map<Integer, V> original) {
         if (original == null) return Map.of();
@@ -79,7 +85,9 @@ public class CoordinateConverter {
     }
     
     /**
-     * Linearisiert eine Koordinate zu einem flachen Integer-Index.
+     * Linearizes a coordinate to a flat integer index.
+     * @param coord The coordinate to linearize.
+     * @return The flat integer index.
      */
     private int linearizeCoordinate(int[] coord) {
         if (coord == null || coord.length != worldShape.length) {
@@ -96,7 +104,9 @@ public class CoordinateConverter {
     }
     
     /**
-     * Delinearisiert einen flachen Integer-Index zurück zu einer Koordinate.
+     * Delinearizes a flat integer index back to a coordinate.
+     * @param flatIndex The flat integer index to delinearize.
+     * @return The coordinate.
      */
     private int[] delinearizeCoordinate(int flatIndex) {
         int[] coord = new int[worldShape.length];
@@ -111,14 +121,16 @@ public class CoordinateConverter {
     }
     
     /**
-     * Gibt den World-Shape zurück.
+     * Returns the world shape.
+     * @return The world shape.
      */
     public int[] getWorldShape() {
         return worldShape.clone();
     }
     
     /**
-     * Gibt die Anzahl der Dimensionen zurück.
+     * Returns the number of dimensions.
+     * @return The number of dimensions.
      */
     public int getDimensions() {
         return worldShape.length;
