@@ -16,6 +16,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class DebugServerTest {
 
+    private void waitForServerStart(DebugServer server, long timeoutMillis) throws InterruptedException {
+        long startTime = System.currentTimeMillis();
+        while (!server.isRunning() && (System.currentTimeMillis() - startTime) < timeoutMillis) {
+            Thread.sleep(50);
+        }
+    }
+
+    private void waitForServerStop(DebugServer server, long timeoutMillis) throws InterruptedException {
+        long startTime = System.currentTimeMillis();
+        while (server.isRunning() && (System.currentTimeMillis() - startTime) < timeoutMillis) {
+            Thread.sleep(50);
+        }
+    }
+
     @Test
     @Tag("integration")
     void testDebugServer() throws Exception {
@@ -41,8 +55,8 @@ public class DebugServerTest {
             DebugServer web = new DebugServer();
             web.start(dbPath, 0);
             try {
-                // Warte länger, bis der Server gestartet ist
-                Thread.sleep(1000);
+                // Wait for the server to start
+                waitForServerStart(web, 5000);
                 
                 // HTTP-Test
                 HttpClient client = HttpClient.newHttpClient();
@@ -52,8 +66,8 @@ public class DebugServerTest {
                 assertThat(resp.body()).contains("\"tickNumber\":1");
             } finally {
                 web.stop();
-                // Warte kurz, bis der Server gestoppt ist
-                Thread.sleep(200);
+                // Wait for the server to stop
+                waitForServerStop(web, 5000);
             }
         } finally {
             // Close the database connection after the test
