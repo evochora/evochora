@@ -11,8 +11,17 @@ import org.evochora.runtime.model.Organism;
 import java.util.List;
 import java.util.NoSuchElementException;
 
+/**
+ * Handles control flow instructions like CALL, RET, and JMP.
+ * It uses a ProcedureCallHandler for CALL and RET instructions.
+ */
 public class ControlFlowInstruction extends Instruction {
 
+    /**
+     * Constructs a new ControlFlowInstruction.
+     * @param organism The organism executing the instruction.
+     * @param fullOpcodeId The full opcode ID of the instruction.
+     */
     public ControlFlowInstruction(Organism organism, int fullOpcodeId) {
         super(organism, fullOpcodeId);
     }
@@ -50,7 +59,7 @@ public class ControlFlowInstruction extends Instruction {
             switch (opName) {
                 case "CALL":
                     int[] targetDelta = (int[]) operands.get(0).value();
-                    callHandler.executeCall(targetDelta, artifact); // Korrekt!
+                    callHandler.executeCall(targetDelta, artifact); // Correct!
                     break;
                 case "RET":
                     callHandler.executeReturn();
@@ -74,6 +83,12 @@ public class ControlFlowInstruction extends Instruction {
         }
     }
 
+    /**
+     * Plans the execution of a control flow instruction.
+     * @param organism The organism that will execute the instruction.
+     * @param environment The environment in which the instruction will be executed.
+     * @return The planned instruction.
+     */
     public static Instruction plan(Organism organism, Environment environment) {
         int fullOpcodeId = environment.getMolecule(organism.getIp()).toInt();
         return new ControlFlowInstruction(organism, fullOpcodeId);

@@ -5,59 +5,104 @@ import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.internal.services.IRandomProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Manages the core simulation loop, including organism lifecycle, instruction execution,
+ * and environment interaction. It orchestrates the simulation tick by tick, handling
+ * instruction planning, conflict resolution, and execution.
+ */
 public class Simulation {
     private static final Logger LOG = LoggerFactory.getLogger(Simulation.class);
     private final Environment environment;
-    private final org.evochora.runtime.VirtualMachine vm;
+    private final VirtualMachine vm;
     private final List<Organism> organisms;
     private long currentTick = 0L;
+    /**
+     * A flag to pause or resume the simulation.
+     */
     public boolean paused = true;
     private final List<Organism> newOrganismsThisTick = new ArrayList<>();
     private int nextOrganismId = 1;
-    private org.evochora.runtime.internal.services.IRandomProvider randomProvider;
+    private IRandomProvider randomProvider;
 
     private Map<String, ProgramArtifact> programArtifacts = new HashMap<>();
 
+    /**
+     * Sets the program artifacts used in the simulation.
+     * @param artifacts A map of program names to their compiled artifacts.
+     */
     public void setProgramArtifacts(Map<String, ProgramArtifact> artifacts) {
         this.programArtifacts = artifacts;
     }
 
+    /**
+     * Retrieves the program artifacts used in the simulation.
+     * @return A map of program artifacts.
+     */
     public Map<String, ProgramArtifact> getProgramArtifacts() {
         return programArtifacts;
     }
 
+    /**
+     * Constructs a new Simulation instance.
+     * @param environment The simulation environment.
+     */
     public Simulation(Environment environment) {
         this.environment = environment;
         this.organisms = new ArrayList<>();
-        this.vm = new org.evochora.runtime.VirtualMachine(this);
+        this.vm = new VirtualMachine(this);
     }
 
+    /**
+     * Adds a new organism to the simulation.
+     * @param organism The organism to add.
+     */
     public void addOrganism(Organism organism) {
         this.organisms.add(organism);
     }
 
-    public void setRandomProvider(org.evochora.runtime.internal.services.IRandomProvider provider) {
+    /**
+     * Sets the random number provider for the simulation.
+     * @param provider The random provider to use.
+     */
+    public void setRandomProvider(IRandomProvider provider) {
         this.randomProvider = provider;
     }
 
-    public org.evochora.runtime.internal.services.IRandomProvider getRandomProvider() {
+    /**
+     * Gets the random number provider for the simulation.
+     * @return The current random provider.
+     */
+    public IRandomProvider getRandomProvider() {
         return this.randomProvider;
     }
 
+    /**
+     * Returns the next available unique ID for an organism.
+     * @return A unique organism ID.
+     */
     public int getNextOrganismId() {
         return nextOrganismId++;
     }
 
+    /**
+     * Returns the logger for this class.
+     * @return The SLF4J logger.
+     */
     public Logger getLogger() {
         return LOG;
     }
 
+    /**
+     * Executes a single simulation tick. During a tick, each organism plans an instruction,
+     * conflicts are resolved, and the winning instructions are executed.
+     */
     public void tick() {
         newOrganismsThisTick.clear();
 
@@ -101,6 +146,11 @@ public class Simulation {
         this.currentTick++;
     }
 
+    /**
+     * Resolves conflicts between organisms attempting to modify the same environment coordinates.
+     * The winning instruction is determined based on organism ID.
+     * @param allPlannedInstructions A list of all instructions planned for the current tick.
+     */
     private void resolveConflicts(List<Instruction> allPlannedInstructions) {
         Map<List<Integer>, List<IEnvironmentModifyingInstruction>> actionsByCoordinate = new HashMap<>();
 
@@ -147,10 +197,34 @@ public class Simulation {
         }
     }
 
+    /**
+     * Returns the list of all organisms in the simulation.
+     * @return A list of organisms.
+     */
     public List<Organism> getOrganisms() { return organisms; }
+
+    /**
+     * Returns the simulation environment.
+     * @return The environment.
+     */
     public Environment getEnvironment() { return environment; }
-    public org.evochora.runtime.VirtualMachine getVirtualMachine() { return vm; }
+
+    /**
+     * Returns the virtual machine instance used by the simulation.
+     * @return The virtual machine.
+     */
+    public VirtualMachine getVirtualMachine() { return vm; }
+
+    /**
+     * Returns the current simulation tick count.
+     * @return The current tick.
+     */
     public long getCurrentTick() { return currentTick; }
+
+    /**
+     * Adds a new organism that will be introduced in the next tick.
+     * @param organism The new organism to add.
+     */
     public void addNewOrganism(Organism organism) {
         this.newOrganismsThisTick.add(organism);
     }

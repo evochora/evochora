@@ -9,45 +9,45 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Entkoppelt die Strategien zur Auflösung von Parameterbindungen für Prozeduraufrufe.
- * Löst z.B. `.WITH`-Klauseln auf.
+ * Decouples the strategies for resolving parameter bindings for procedure calls.
+ * For example, it resolves `.WITH` clauses.
  */
 public class CallBindingResolver {
 
     private final ExecutionContext context;
 
     /**
-     * Erstellt einen neuen Resolver, der auf dem gegebenen Ausführungskontext operiert.
+     * Creates a new resolver that operates on the given execution context.
      *
-     * @param context Der Kontext, der den Organismus und die Welt enthält.
+     * @param context The context containing the organism and the world.
      */
     public CallBindingResolver(ExecutionContext context) {
         this.context = context;
     }
 
     /**
-     * Löst die Parameterbindungen für die aktuelle CALL-Instruktion auf.
+     * Resolves the parameter bindings for the current CALL instruction.
      * <p>
-     * Die einzige zulässige Methode ist, die vorkompilierten Bindungen aus der
-     * globalen Registry abzurufen. Ein Fallback auf das Parsen des Quellcodes
-     * zur Laufzeit ist nicht erlaubt, da dies die evolutionäre Stabilität untergräbt.
+     * The only permitted method is to retrieve the pre-compiled bindings from the
+     * global registry. A fallback to parsing the source code at runtime is not
+     * allowed as it undermines evolutionary stability.
      *
-     * @return Array der gebundenen Register-IDs oder null.
+     * @return An array of bound register IDs, or null if not found.
      */
     public int[] resolveBindings() {
         Organism organism = context.getOrganism();
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
 
-        // Die einzige korrekte Methode: Globale Registry (absolute Koordinate)
+        // The only correct method: Global Registry (absolute coordinate)
         CallBindingRegistry registry = CallBindingRegistry.getInstance();
         int[] bindings = registry.getBindingForAbsoluteCoord(ipBeforeFetch);
         if (bindings != null) {
             return bindings;
         }
 
-        // Der alte Fallback-Pfad, der das Artefakt zur Laufzeit parst, wurde
-        // entfernt, da er die Bedingung verletzt, dass die Laufzeitlogik
-        // unabhängig vom Artefakt sein muss.
+        // The old fallback path that parsed the artifact at runtime has been
+        // removed because it violates the condition that runtime logic
+        // must be independent of the artifact.
 
         return null;
     }

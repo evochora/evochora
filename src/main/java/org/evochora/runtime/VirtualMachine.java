@@ -8,31 +8,31 @@ import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
 
 /**
- * Der Kern der Ausführungsumgebung.
- * Diese Klasse ist für die Orchestrierung der Ausführung von Organismus-Code
- * innerhalb einer Umgebung verantwortlich. Sie respektiert die Trennung von
- * Planung und Ausführung, um zukünftiges Multithreading zu ermöglichen.
+ * The core of the execution environment.
+ * This class is responsible for orchestrating the execution of organism code
+ * within an environment. It respects the separation of planning and execution
+ * to allow for future multithreading.
  */
 public class VirtualMachine {
 
     private final Environment environment;
 
     /**
-     * Erstellt eine neue VM, die an eine bestimmte Umgebung gebunden ist.
+     * Creates a new VM bound to a specific environment.
      *
-     * @param simulation Die Simulation, die den Kontext für die Ausführung bereitstellt.
+     * @param simulation The simulation that provides the context for execution.
      */
     public VirtualMachine(Simulation simulation) {
         this.environment = simulation.getEnvironment();
     }
 
     /**
-     * Phase 1: Plant die nächste Instruktion für einen Organismus.
-     * Liest den Opcode an der aktuellen Position des Organismus und verwendet
-     * die Instruction-Registry, um die entsprechende Instruktions-Klasse zu instanziieren.
+     * Phase 1: Plans the next instruction for an organism.
+     * Reads the opcode at the organism's current instruction pointer and uses
+     * the instruction registry to instantiate the corresponding instruction class.
      *
-     * @param organism Der Organismus, für den die Instruktion geplant werden soll.
-     * @return Die geplante, aber noch nicht ausgeführte Instruktion.
+     * @param organism The organism for which the instruction is to be planned.
+     * @return The planned, but not yet executed, instruction.
      */
     public Instruction plan(Organism organism) {
         organism.resetTickState();
@@ -56,11 +56,11 @@ public class VirtualMachine {
     }
 
     /**
-     * Phase 2: Führt eine bereits geplante Instruktion aus.
-     * Diese Methode modifiziert potenziell den Zustand des Organismus und der Umgebung.
+     * Phase 2: Executes a previously planned instruction.
+     * This method potentially modifies the state of the organism and the environment.
      *
-     * @param instruction Die geplante Instruktion, die ausgeführt werden soll.
-     * @param simulation  Die Simulation, die den Kontext für die Ausführung bereitstellt.
+     * @param instruction The planned instruction to be executed.
+     * @param simulation  The simulation that provides the context for execution.
      */
     public void execute(Instruction instruction, Simulation simulation) {
         Organism organism = instruction.getOrganism();
@@ -68,7 +68,7 @@ public class VirtualMachine {
             return;
         }
 
-        // Logik wurde aus Organism.processTickAction() hierher verschoben
+        // Logic moved from Organism.processTickAction() here
         java.util.List<Integer> rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(this.environment), this.environment);
         organism.takeEr(instruction.getCost(organism, this.environment, rawArgs));
 

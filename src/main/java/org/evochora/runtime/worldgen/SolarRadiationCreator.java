@@ -6,6 +6,10 @@ import org.evochora.runtime.model.Molecule;
 import java.util.Random;
 import org.evochora.runtime.internal.services.IRandomProvider;
 
+/**
+ * A solar radiation-based energy distribution strategy. It randomly spawns
+ * energy in free cells based on a given probability.
+ */
 public class SolarRadiationCreator implements IEnergyDistributionCreator {
 
     private final Random random;
@@ -21,11 +25,11 @@ public class SolarRadiationCreator implements IEnergyDistributionCreator {
     /**
      * Creates a solar radiation distributor.
      *
-     * @param randomProvider Source of randomness
-     * @param probability Probability per execution to spawn energy in a random free cell
-     * @param amount Energy amount placed when an execution succeeds
-     * @param safetyRadius Radius around placement that must be unowned
-     * @param executionsPerTick How many independent executions to run per tick (each with its own probability check)
+     * @param randomProvider Source of randomness.
+     * @param probability Probability per execution to spawn energy in a random free cell.
+     * @param amount Energy amount placed when an execution succeeds.
+     * @param safetyRadius Radius around placement that must be unowned.
+     * @param executionsPerTick How many independent executions to run per tick (each with its own probability check).
      */
     public SolarRadiationCreator(IRandomProvider randomProvider, double probability, int amount, int safetyRadius, int executionsPerTick) {
         this.random = randomProvider.asJavaRandom();
@@ -37,18 +41,31 @@ public class SolarRadiationCreator implements IEnergyDistributionCreator {
 
     /**
      * Backward-compatible constructor (defaults executionsPerTick to 1).
+     * @param randomProvider Source of randomness.
+     * @param probability Probability per execution to spawn energy in a random free cell.
+     * @param amount Energy amount placed when an execution succeeds.
+     * @param safetyRadius Radius around placement that must be unowned.
      */
     public SolarRadiationCreator(IRandomProvider randomProvider, double probability, int amount, int safetyRadius) {
         this(randomProvider, probability, amount, safetyRadius, 1);
     }
 
-    // Backward-compatible constructor for tests and legacy code
+    /**
+     * Backward-compatible constructor for tests and legacy code.
+     * @param probability Probability per execution to spawn energy in a random free cell.
+     * @param amount Energy amount placed when an execution succeeds.
+     * @param safetyRadius Radius around placement that must be unowned.
+     */
     public SolarRadiationCreator(double probability, int amount, int safetyRadius) {
         this(new org.evochora.runtime.internal.services.SeededRandomProvider(0L), probability, amount, safetyRadius, 1);
     }
 
     /**
      * Convenience constructor for tests allowing executionsPerTick configuration.
+     * @param probability Probability per execution to spawn energy in a random free cell.
+     * @param amount Energy amount placed when an execution succeeds.
+     * @param safetyRadius Radius around placement that must be unowned.
+     * @param executionsPerTick How many independent executions to run per tick (each with its own probability check).
      */
     public SolarRadiationCreator(double probability, int amount, int safetyRadius, int executionsPerTick) {
         this(new org.evochora.runtime.internal.services.SeededRandomProvider(0L), probability, amount, safetyRadius, executionsPerTick);
@@ -64,7 +81,7 @@ public class SolarRadiationCreator implements IEnergyDistributionCreator {
                     coord[i] = random.nextInt(shape[i]);
                 }
 
-                // Bereich muss unbesessen sein (Abstand zu Organismus-Zellen)
+                // Area must be unowned (distance to organism cells)
                 if (environment.getMolecule(coord).isEmpty() && environment.isAreaUnowned(coord, this.safetyRadius)) {
                     environment.setMolecule(new Molecule(Config.TYPE_ENERGY, spawnAmount), coord);
                 }

@@ -11,8 +11,17 @@ import org.evochora.runtime.model.Organism;
 import java.util.List;
 import java.util.NoSuchElementException;
 
+/**
+ * Handles all arithmetic instructions, including scalar and vector operations.
+ * It supports different operand sources like registers, immediate values, and the stack.
+ */
 public class ArithmeticInstruction extends Instruction {
 
+    /**
+     * Constructs a new ArithmeticInstruction.
+     * @param organism The organism executing the instruction.
+     * @param fullOpcodeId The full opcode ID of the instruction.
+     */
     public ArithmeticInstruction(Organism organism, int fullOpcodeId) {
         super(organism, fullOpcodeId);
     }
@@ -32,12 +41,12 @@ public class ArithmeticInstruction extends Instruction {
                 return;
             }
 
-            Operand op1 = operands.get(0); // Ist immer das Ziel (Register oder Stack)
+            Operand op1 = operands.get(0); // Always the destination (register or stack)
             Operand op2 = operands.get(1);
 
             Object result;
 
-            // --- Vektor-Arithmetik ---
+            // Vector Arithmetic
             if (op1.value() instanceof int[] v1 && op2.value() instanceof int[] v2) {
                 if (v1.length != v2.length) {
                     organism.instructionFailed("Vector dimensions must match.");
@@ -56,7 +65,7 @@ public class ArithmeticInstruction extends Instruction {
                 }
                 result = resVec;
             }
-            // --- Skalar-Arithmetik ---
+            // Scalar Arithmetic
             else if (op1.value() instanceof Integer i1 && op2.value() instanceof Integer i2) {
                 Molecule s1 = org.evochora.runtime.model.Molecule.fromInt(i1);
 
@@ -103,8 +112,8 @@ public class ArithmeticInstruction extends Instruction {
                 return;
             }
 
-            // Ergebnis zurückschreiben (entweder ins Register oder auf den Stack)
-            if (op1.rawSourceId() != -1) { // -1 bedeutet, der Operand kam vom Stack
+            // Write result back (either to register or stack)
+            if (op1.rawSourceId() != -1) { // -1 means the operand came from the stack
                 writeOperand(op1.rawSourceId(), result);
             } else {
                 organism.getDataStack().push(result);
@@ -167,6 +176,12 @@ public class ArithmeticInstruction extends Instruction {
         return a[0] * b[1] - a[1] * b[0];
     }
 
+    /**
+     * Plans the execution of an arithmetic instruction.
+     * @param organism The organism that will execute the instruction.
+     * @param environment The environment in which the instruction will be executed.
+     * @return The planned instruction.
+     */
     public static Instruction plan(Organism organism, Environment environment) {
         int fullOpcodeId = environment.getMolecule(organism.getIp()).toInt();
         return new ArithmeticInstruction(organism, fullOpcodeId);

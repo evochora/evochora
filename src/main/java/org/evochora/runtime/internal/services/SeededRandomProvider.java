@@ -12,11 +12,20 @@ public final class SeededRandomProvider implements IRandomProvider {
     private final long seed;
     private final Random rng;
 
+    /**
+     * Creates a new seeded random provider.
+     * @param seed The initial seed for the random number generator.
+     */
     public SeededRandomProvider(long seed) {
         this.seed = seed;
         this.rng = new Random(seed);
     }
 
+    /**
+     * Private constructor for derived providers.
+     * @param seed The seed for the new provider.
+     * @param alreadyHashed A flag to indicate if the seed is already hashed.
+     */
     private SeededRandomProvider(long seed, boolean alreadyHashed) {
         this.seed = seed;
         this.rng = new Random(seed);
@@ -45,6 +54,11 @@ public final class SeededRandomProvider implements IRandomProvider {
         return new SeededRandomProvider(h, true);
     }
 
+    /**
+     * Hashes a string using the FNV-1a 64-bit algorithm.
+     * @param s The string to hash.
+     * @return The hashed value.
+     */
     private static long hashString(String s) {
         if (s == null) return 0L;
         byte[] b = s.getBytes(StandardCharsets.UTF_8);
@@ -56,7 +70,11 @@ public final class SeededRandomProvider implements IRandomProvider {
         return h;
     }
 
-    // SplitMix64 mix function for good bit diffusion
+    /**
+     * A SplitMix64 mix function for good bit diffusion.
+     * @param z The value to mix.
+     * @return The mixed value.
+     */
     private static long mix64(long z) {
         z = (z ^ (z >>> 33)) * 0xff51afd7ed558ccdL;
         z = (z ^ (z >>> 33)) * 0xc4ceb9fe1a85ec53L;

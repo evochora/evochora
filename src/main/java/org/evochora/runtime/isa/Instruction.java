@@ -15,19 +15,28 @@ import java.util.*;
 import java.util.function.BiFunction;
 
 /**
- * Die abstrakte Basisklasse für alle Instruktionen der Evochora VM.
- * Diese Klasse ist nun frei von Legacy-Compiler-Abhängigkeiten und konzentriert
- * sich ausschließlich auf die Laufzeit-Logik.
+ * The abstract base class for all instructions in the Evochora VM.
+ * This class is now free from legacy compiler dependencies and focuses
+ * exclusively on runtime logic.
  */
 public abstract class Instruction {
 
     protected final Organism organism;
     protected final int fullOpcodeId;
 
+    /**
+     * Defines the possible sources for an instruction's operands.
+     */
     public enum OperandSource { REGISTER, IMMEDIATE, STACK, VECTOR, LABEL }
+
+    /**
+     * Represents a resolved operand, containing its value and raw source ID.
+     * @param value The resolved value of the operand.
+     * @param rawSourceId The raw source ID (e.g., register number).
+     */
     public record Operand(Object value, int rawSourceId) {}
 
-    // --- Laufzeit-Registries ---
+    // Runtime Registries
     private static final Map<Integer, Class<? extends Instruction>> REGISTERED_INSTRUCTIONS_BY_ID = new HashMap<>();
     private static final Map<String, Integer> NAME_TO_ID = new HashMap<>();
     private static final Map<Integer, String> ID_TO_NAME = new HashMap<>();
@@ -36,23 +45,49 @@ public abstract class Instruction {
     protected static final Map<Integer, List<OperandSource>> OPERAND_SOURCES = new HashMap<>();
     private static final Map<Integer, InstructionSignature> SIGNATURES_BY_ID = new HashMap<>();
 
-    // --- Register-Konstanten ---
+    /**
+     * Base address for procedure registers.
+     */
     public static final int PR_BASE = 1000;
+    /**
+     * Base address for formal parameter registers.
+     */
     public static final int FPR_BASE = 2000;
 
+    /**
+     * Constructs a new instruction.
+     * @param organism The organism executing the instruction.
+     * @param fullOpcodeId The full opcode ID of the instruction.
+     */
     public Instruction(Organism organism, int fullOpcodeId) {
         this.organism = organism;
         this.fullOpcodeId = fullOpcodeId;
     }
 
+    /**
+     * Reads an operand's value from the organism.
+     * @param id The ID of the operand to read.
+     * @return The value of the operand.
+     */
     protected Object readOperand(int id) {
         return organism.readOperand(id);
     }
 
+    /**
+     * Writes a value to an operand in the organism.
+     * @param id The ID of the operand to write to.
+     * @param value The value to write.
+     * @return true if the write was successful, false otherwise.
+     */
     protected boolean writeOperand(int id, Object value) {
         return organism.writeOperand(id, value);
     }
 
+    /**
+     * Resolves the operands for this instruction based on their sources.
+     * @param environment The environment in which the instruction is executed.
+     * @return A list of resolved operands.
+     */
     public List<Operand> resolveOperands(Environment environment) {
         List<Operand> resolved = new ArrayList<>();
         List<OperandSource> sources = OPERAND_SOURCES.get(fullOpcodeId);
@@ -106,19 +141,34 @@ public abstract class Instruction {
         return resolved;
     }
 
+    /**
+     * Executes the instruction.
+     * @param context The execution context.
+     * @param artifact The program artifact.
+     */
     public abstract void execute(ExecutionContext context, ProgramArtifact artifact);
 
+    /**
+     * Gets the energy cost of executing this instruction.
+     * @param organism The organism executing the instruction.
+     * @param environment The environment.
+     * @param rawArguments The raw arguments of the instruction.
+     * @return The energy cost.
+     */
     public int getCost(Organism organism, Environment environment, List<Integer> rawArguments) {
         return 1;
     }
 
+    /**
+     * Initializes the instruction set by registering all instruction families.
+     */
     public static void init() {
-        // Arithmetik-Familie
+        // Arithmetic-Family
         registerFamily(ArithmeticInstruction.class, Map.of(4, "ADDR", 6, "SUBR", 40, "MULR", 42, "DIVR", 44, "MODR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(ArithmeticInstruction.class, Map.of(30, "ADDI", 31, "SUBI", 41, "MULI", 43, "DIVI", 45, "MODI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
         registerFamily(ArithmeticInstruction.class, Map.of(70, "ADDS", 71, "SUBS", 72, "MULS", 73, "DIVS", 74, "MODS"), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // Bitwise-Familie
+        // Bitwise-Family
         registerFamily(BitwiseInstruction.class, Map.of(5, "NADR", 46, "ANDR", 48, "ORR", 50, "XORR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(BitwiseInstruction.class, Map.of(32, "NADI", 47, "ANDI", 49, "ORI", 51, "XORI", 53, "SHLI", 54, "SHRI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
         registerFamily(BitwiseInstruction.class, Map.of(78, "NADS", 75, "ANDS", 76, "ORS", 77, "XORS", 80, "SHLS", 81, "SHRS"), List.of(OperandSource.STACK, OperandSource.STACK));
@@ -140,7 +190,7 @@ public abstract class Instruction {
         registerFamily(BitwiseInstruction.class, Map.of(141, "BSNI"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.IMMEDIATE));
         registerFamily(BitwiseInstruction.class, Map.of(142, "BSNS"), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // Data-Familie
+        // Data-Family
         registerFamily(DataInstruction.class, Map.of(1, "SETI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
         registerFamily(DataInstruction.class, Map.of(2, "SETR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(DataInstruction.class, Map.of(3, "SETV"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
@@ -148,10 +198,10 @@ public abstract class Instruction {
         registerFamily(DataInstruction.class, Map.of(23, "POP"), List.of(OperandSource.REGISTER));
         registerFamily(DataInstruction.class, Map.of(58, "PUSI"), List.of(OperandSource.IMMEDIATE));
 
-        // Stack-Familie
+        // Stack-Family
         registerFamily(StackInstruction.class, Map.of(60, "DUP", 61, "SWAP", 62, "DROP", 63, "ROT"), List.of());
 
-        // Conditional-Familie
+        // Conditional-Family
         registerFamily(ConditionalInstruction.class, Map.of(7, "IFR", 8, "LTR", 9, "GTR", 33, "IFTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(ConditionalInstruction.class, Map.of(24, "IFI", 25, "LTI", 26, "GTI", 29, "IFTI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
         registerFamily(ConditionalInstruction.class, Map.of(85, "IFS", 86, "GTS", 87, "LTS", 88, "IFTS"), List.of(OperandSource.STACK, OperandSource.STACK));
@@ -159,7 +209,7 @@ public abstract class Instruction {
         registerFamily(ConditionalInstruction.class, Map.of(94, "IFMI"), List.of(OperandSource.VECTOR));
         registerFamily(ConditionalInstruction.class, Map.of(95, "IFMS"), List.of(OperandSource.STACK));
 
-        // ControlFlow-Familie
+        // ControlFlow-Family
         registerFamily(ControlFlowInstruction.class, Map.of(20, "JMPI", 34, "CALL"), List.of(OperandSource.LABEL));
         registerFamily(ControlFlowInstruction.class, Map.of(10, "JMPR"), List.of(OperandSource.REGISTER));
         registerFamily(ControlFlowInstruction.class, Map.of(89, "JMPS"), List.of(OperandSource.STACK));
@@ -216,13 +266,13 @@ public abstract class Instruction {
         registerFamily(LocationInstruction.class, Map.of(124, "LRDR"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
         registerFamily(LocationInstruction.class, Map.of(126, "LSDR"), List.of(OperandSource.REGISTER));
 
-        // Vector Manipulation Instruction Family (neu)
+        // Vector Manipulation Instruction Family
         registerFamily(VectorInstruction.class, Map.of(127, "VGTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(VectorInstruction.class, Map.of(128, "VGTI"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.IMMEDIATE));
-        registerFamily(VectorInstruction.class, Map.of(129, "VGTS"), List.of()); // Operands vom Stack
+        registerFamily(VectorInstruction.class, Map.of(129, "VGTS"), List.of()); // Operands from stack
         registerFamily(VectorInstruction.class, Map.of(130, "VSTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(VectorInstruction.class, Map.of(131, "VSTI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE, OperandSource.IMMEDIATE));
-        registerFamily(VectorInstruction.class, Map.of(132, "VSTS"), List.of()); // Operands vom Stack
+        registerFamily(VectorInstruction.class, Map.of(132, "VSTS"), List.of()); // Operands from stack
         registerFamily(VectorInstruction.class, Map.of(133, "VBLD"), List.of(OperandSource.REGISTER));
         registerFamily(VectorInstruction.class, Map.of(134, "VBLS"), List.of());
 
@@ -299,6 +349,11 @@ public abstract class Instruction {
         SIGNATURES_BY_ID.put(fullId, signature);
     }
 
+    /**
+     * Resolves a register token (e.g., "%DR0") to its corresponding integer ID.
+     * @param token The register token to resolve.
+     * @return An Optional containing the integer ID, or empty if the token is invalid.
+     */
     public static Optional<Integer> resolveRegToken(String token) {
         if (token == null) {
             return Optional.empty();
@@ -315,20 +370,58 @@ public abstract class Instruction {
                 return Optional.of(FPR_BASE + Integer.parseInt(u.substring(4)));
             }
         } catch (NumberFormatException ignore) {
-            // Fällt durch zum leeren Optional, wenn z.B. "%DR" ohne Zahl kommt.
+            // Falls through to empty Optional if, e.g., "%DR" has no number.
         }
         return Optional.empty();
     }
 
-    // --- Statische Getter für Laufzeit-Informationen ---
+    // --- Static Getters for Runtime Information ---
 
+    /**
+     * Gets the length of the instruction in the environment.
+     * @return The length of the instruction.
+     */
     public int getLength() { return getInstructionLengthById(this.fullOpcodeId); }
+
+    /**
+     * Gets the length of the instruction in the given environment.
+     * @param env The environment.
+     * @return The length of the instruction.
+     */
     public int getLength(Environment env) { return getInstructionLengthById(this.fullOpcodeId, env); }
+
+    /**
+     * Gets the organism executing this instruction.
+     * @return The organism.
+     */
     public final Organism getOrganism() { return this.organism; }
+
+    /**
+     * Gets the name of this instruction.
+     * @return The instruction's name.
+     */
     public final String getName() { return ID_TO_NAME.getOrDefault(this.fullOpcodeId, "UNKNOWN"); }
+
+    /**
+     * Gets the name of an instruction by its ID.
+     * @param id The instruction ID.
+     * @return The name of the instruction.
+     */
     public static String getInstructionNameById(int id) { return ID_TO_NAME.getOrDefault(id, "UNKNOWN"); }
+
+    /**
+     * Gets the length of an instruction by its ID.
+     * @param id The instruction ID.
+     * @return The length of the instruction.
+     */
     public static int getInstructionLengthById(int id) { return ID_TO_LENGTH.getOrDefault(id, 1); }
 
+    /**
+     * Gets the length of an instruction by its ID in a given environment.
+     * @param id The instruction ID.
+     * @param env The environment.
+     * @return The length of the instruction.
+     */
     public static int getInstructionLengthById(int id, Environment env) {
         int baseId = id;
         List<OperandSource> sources = OPERAND_SOURCES.get(baseId);
@@ -345,19 +438,59 @@ public abstract class Instruction {
         }
         return length;
     }
-    public static Integer getInstructionIdByName(String name) { return NAME_TO_ID.get(name.toUpperCase()); }
-    public static BiFunction<Organism, Environment, Instruction> getPlannerById(int id) { return REGISTERED_PLANNERS_BY_ID.get(id); }
-    public static Optional<InstructionSignature> getSignatureById(int id) { return Optional.ofNullable(SIGNATURES_BY_ID.get(id)); }
-    // getIdToNameMap removed: opcode names are rendered directly in HTTP responses where needed
 
-    // --- Konfliktlösungs-Logik ---
+    /**
+     * Gets the ID of an instruction by its name.
+     * @param name The name of the instruction.
+     * @return The instruction ID.
+     */
+    public static Integer getInstructionIdByName(String name) { return NAME_TO_ID.get(name.toUpperCase()); }
+
+    /**
+     * Gets the planner function for an instruction by its ID.
+     * @param id The instruction ID.
+     * @return The planner function.
+     */
+    public static BiFunction<Organism, Environment, Instruction> getPlannerById(int id) { return REGISTERED_PLANNERS_BY_ID.get(id); }
+
+    /**
+     * Gets the signature of an instruction by its ID.
+     * @param id The instruction ID.
+     * @return An Optional containing the instruction signature.
+     */
+    public static Optional<InstructionSignature> getSignatureById(int id) { return Optional.ofNullable(SIGNATURES_BY_ID.get(id)); }
+
+    // --- Conflict Resolution Logic ---
 
     protected boolean executedInTick = false;
+
+    /**
+     * Represents the status of an instruction after conflict resolution.
+     */
     public enum ConflictResolutionStatus { NOT_APPLICABLE, WON_EXECUTION, LOST_TARGET_OCCUPIED, LOST_TARGET_EMPTY, LOST_LOWER_ID_WON, LOST_OTHER_REASON }
     protected ConflictResolutionStatus conflictStatus = ConflictResolutionStatus.NOT_APPLICABLE;
 
+    /**
+     * Checks if the instruction was executed in the current tick.
+     * @return true if executed, false otherwise.
+     */
     public boolean isExecutedInTick() { return executedInTick; }
+
+    /**
+     * Sets whether the instruction was executed in the current tick.
+     * @param executedInTick true if executed, false otherwise.
+     */
     public void setExecutedInTick(boolean executedInTick) { this.executedInTick = executedInTick; }
+
+    /**
+     * Gets the conflict resolution status of the instruction.
+     * @return The conflict resolution status.
+     */
     public ConflictResolutionStatus getConflictStatus() { return conflictStatus; }
+
+    /**
+     * Sets the conflict resolution status of the instruction.
+     * @param conflictStatus The new conflict resolution status.
+     */
     public void setConflictStatus(ConflictResolutionStatus conflictStatus) { this.conflictStatus = conflictStatus; }
 }

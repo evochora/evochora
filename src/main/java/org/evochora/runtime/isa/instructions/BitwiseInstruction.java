@@ -11,8 +11,18 @@ import org.evochora.runtime.model.Organism;
 import java.util.List;
 import java.util.NoSuchElementException;
 
+/**
+ * Handles all bitwise instructions, including standard operations like AND, OR, XOR, NOT,
+ * and shifts, as well as newer ones like rotate, population count, and bit scan.
+ * It supports different operand sources.
+ */
 public class BitwiseInstruction extends Instruction {
 
+    /**
+     * Constructs a new BitwiseInstruction.
+     * @param organism The organism executing the instruction.
+     * @param fullOpcodeId The full opcode ID of the instruction.
+     */
     public BitwiseInstruction(Organism organism, int fullOpcodeId) {
         super(organism, fullOpcodeId);
     }
@@ -255,6 +265,12 @@ public class BitwiseInstruction extends Instruction {
         }
     }
 
+    /**
+     * Plans the execution of a bitwise instruction.
+     * @param organism The organism that will execute the instruction.
+     * @param environment The environment in which the instruction will be executed.
+     * @return The planned instruction.
+     */
     public static Instruction plan(Organism organism, Environment environment) {
         int fullOpcodeId = environment.getMolecule(organism.getIp()).toInt();
         return new BitwiseInstruction(organism, fullOpcodeId);

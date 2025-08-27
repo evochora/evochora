@@ -23,7 +23,18 @@ import java.util.stream.Collectors;
  */
 public class Organism {
     private static final Logger LOG = LoggerFactory.getLogger(Organism.class);
+    /**
+     * A record to hold information about a fork request.
+     * @param childIp The initial IP of the child.
+     * @param childEnergy The initial energy of the child.
+     * @param childDv The initial DV of the child.
+     */
     record ForkRequest(int[] childIp, int childEnergy, int[] childDv) {}
+    /**
+     * A record to hold the result of a fetch operation.
+     * @param value The fetched value.
+     * @param nextIp The IP of the next instruction.
+     */
     public record FetchResult(int value, int[] nextIp) {}
 
     private final int id;
@@ -59,6 +70,14 @@ public class Organism {
         public final Object[] savedFprs;
         public final java.util.Map<Integer, Integer> fprBindings;
 
+        /**
+         * Constructs a new ProcFrame.
+         * @param procName The name of the procedure.
+         * @param absoluteReturnIp The absolute return IP.
+         * @param savedPrs The saved PRs.
+         * @param savedFprs The saved FPRs.
+         * @param fprBindings The FPR bindings.
+         */
         public ProcFrame(String procName, int[] absoluteReturnIp, Object[] savedPrs, Object[] savedFprs, java.util.Map<Integer, Integer> fprBindings) {
             this.procName = procName;
             this.absoluteReturnIp = absoluteReturnIp;
@@ -393,6 +412,7 @@ public class Organism {
 
     /**
      * Gets the index of the currently active Data Pointer (DP).
+     * @return the active DP index.
      */
     public int getActiveDpIndex() {
         return this.activeDpIndex;
@@ -414,14 +434,17 @@ public class Organism {
     }
 
     /**
-     * Convenience: returns a copy of the active DP coordinate.
+     * Returns a copy of the active DP coordinate.
+     * @return a copy of the active DP coordinate.
      */
     public int[] getActiveDp() {
         return getDp(this.activeDpIndex);
     }
 
     /**
-     * Convenience: sets the active DP coordinate.
+     * Sets the active DP coordinate.
+     * @param newDp The new coordinate.
+     * @return true if successful, false otherwise.
      */
     public boolean setActiveDp(int[] newDp) {
         return setDp(this.activeDpIndex, newDp);
@@ -466,11 +489,13 @@ public class Organism {
      */
     public void setSkipIpAdvance(boolean skip) { this.skipIpAdvance = skip; }
 
-    /** Gets the unique ID of the organism. */
+    /** @return The unique ID of the organism. */
     public int getId() { return id; }
-    /** Gets the ID of the parent organism, or {@code null} if it has no parent. */
+    /** @return The ID of the parent organism, or {@code null} if it has no parent. */
     public Integer getParentId() { return parentId; }
-    /** Sets the ID of the parent organism. */
+    /** Sets the ID of the parent organism.
+     * @param parentId The parent ID.
+     */
     public void setParentId(Integer parentId) { this.parentId = parentId; }
 
     /**
@@ -494,48 +519,54 @@ public class Organism {
         return false;
     }
 
-    /** Gets the simulation tick number at which the organism was born. */
+    /** @return The simulation tick number at which the organism was born. */
     public long getBirthTick() { return birthTick; }
-    /** Sets the birth tick of the organism. */
+    /** Sets the birth tick of the organism.
+     * @param birthTick The birth tick.
+     */
     public void setBirthTick(long birthTick) { this.birthTick = birthTick; }
-    /** Gets the program ID associated with this organism. */
+    /** @return The program ID associated with this organism. */
     public String getProgramId() { return programId; }
-    /** Sets the program ID for this organism. */
+    /** Sets the program ID for this organism.
+     * @param programId The program ID.
+     */
     public void setProgramId(String programId) { this.programId = programId; }
-    /** Gets a copy of the current Instruction Pointer (IP) coordinate. */
+    /** @return A copy of the current Instruction Pointer (IP) coordinate. */
     public int[] getIp() { return Arrays.copyOf(ip, ip.length); }
-    /** Gets a copy of the IP coordinate as it was at the beginning of the tick. */
+    /** @return A copy of the IP coordinate as it was at the beginning of the tick. */
     public int[] getIpBeforeFetch() { return Arrays.copyOf(ipBeforeFetch, ipBeforeFetch.length); }
-    /** Gets a copy of the DV as it was at the beginning of the tick. */
+    /** @return A copy of the DV as it was at the beginning of the tick. */
     public int[] getDvBeforeFetch() { return Arrays.copyOf(dvBeforeFetch, dvBeforeFetch.length); }
-    /** Gets the current energy level (ER). */
+    /** @return The current energy level (ER). */
     public int getEr() { return er; }
-    /** Gets a copy of the list of Data Registers (DRs). */
+    /** @return A copy of the list of Data Registers (DRs). */
     public List<Object> getDrs() { return new ArrayList<>(drs); }
-    /** Checks if the organism is dead. */
+    /** @return true if the organism is dead, false otherwise. */
     public boolean isDead() { return isDead; }
-    /** Checks if detailed logging is enabled for this organism. */
+    /** @return true if detailed logging is enabled for this organism. */
     public boolean isLoggingEnabled() { return loggingEnabled; }
-    /** Enables or disables detailed logging for this organism. */
+    /** Enables or disables detailed logging for this organism.
+     * @param loggingEnabled true to enable logging, false to disable.
+     */
     public void setLoggingEnabled(boolean loggingEnabled) { this.loggingEnabled = loggingEnabled; }
-    /** Checks if the last instruction failed. */
+    /** @return true if the last instruction failed. */
     public boolean isInstructionFailed() { return instructionFailed; }
-    /** Gets the reason for the last instruction failure. */
+    /** @return The reason for the last instruction failure. */
     public String getFailureReason() { return failureReason; }
-    /** Gets the logger instance. */
+    /** @return The logger instance. */
     public Logger getLogger() { return logger; }
-    /** Gets a copy of the current Direction Vector (DV). */
+    /** @return A copy of the current Direction Vector (DV). */
     public int[] getDv() { return Arrays.copyOf(dv, dv.length); }
-    /** Gets the simulation instance. */
+    /** @return The simulation instance. */
     public Simulation getSimulation() { return simulation; }
-    /** Gets a copy of the organism's initial starting position. */
+    /** @return A copy of the organism's initial starting position. */
     public int[] getInitialPosition() { return Arrays.copyOf(this.initialPosition, this.initialPosition.length); }
-    /** Gets a reference to the Data Stack (DS). */
+    /** @return A reference to the Data Stack (DS). */
     public Deque<Object> getDataStack() { return this.dataStack; }
-    /** Gets a reference to the Call Stack (CS). */
+    /** @return A reference to the Call Stack (CS). */
     public Deque<ProcFrame> getCallStack() { return this.callStack; }
 
-    /** Gets a copy of the list of Procedure-local Registers (PRs). */
+    /** @return A copy of the list of Procedure-local Registers (PRs). */
     public List<Object> getPrs() { return new ArrayList<>(this.prs); }
 
     /**
@@ -587,7 +618,7 @@ public class Organism {
         }
     }
 
-    /** Gets a copy of the list of Formal Parameter Registers (FPRs). */
+    /** @return A copy of the list of Formal Parameter Registers (FPRs). */
     public List<Object> getFprs() { return new ArrayList<>(this.fprs); }
 
     /**

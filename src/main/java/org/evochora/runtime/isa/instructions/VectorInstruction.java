@@ -13,10 +13,16 @@ import java.util.List;
 import java.util.NoSuchElementException;
 
 /**
- * Implements n-dimensional vector manipulation instructions: VGET, VSET, and VBLD.
+ * Implements n-dimensional vector manipulation instructions, including VGET, VSET, VBLD,
+ * bit-to-vector/vector-to-bit conversions, and vector rotation.
  */
 public class VectorInstruction extends Instruction {
 
+    /**
+     * Constructs a new VectorInstruction.
+     * @param organism The organism executing the instruction.
+     * @param fullOpcodeId The full opcode ID of the instruction.
+     */
     public VectorInstruction(Organism organism, int fullOpcodeId) {
         super(organism, fullOpcodeId);
     }
@@ -371,7 +377,7 @@ public class VectorInstruction extends Instruction {
 
         int[] newVector = new int[dims];
 
-        // Das erste gepoppte Element (X-Wert) kommt an Index 0.
+        // The first popped element (X value) goes to index 0.
         for (int i = 0; i < dims; i++) {
             Object valObj = ds.pop();
             if (!(valObj instanceof Integer val)) {

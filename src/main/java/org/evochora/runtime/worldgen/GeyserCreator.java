@@ -10,6 +10,10 @@ import java.util.List;
 import java.util.Random;
 import org.evochora.runtime.internal.services.IRandomProvider;
 
+/**
+ * A geyser-based energy distribution strategy. It creates geysers that erupt
+ * at regular intervals, distributing energy to nearby cells.
+ */
 public class GeyserCreator implements IEnergyDistributionCreator {
 
     private final int geyserCount;
@@ -18,16 +22,16 @@ public class GeyserCreator implements IEnergyDistributionCreator {
     /** Radius around a candidate cell that must be free of organism-owned cells. */
     private final int safetyRadius;
     private final Random random;
-    private List<int[]> geyserLocations = null; // Wird beim ersten Aufruf initialisiert
+    private List<int[]> geyserLocations = null; // Initialized on first call
 
     /**
      * Creates a geyser-based energy distributor.
      *
-     * @param randomProvider Source of randomness
-     * @param count Number of geysers to spawn
-     * @param interval Tick interval for eruptions
-     * @param amount Energy amount placed per eruption
-     * @param safetyRadius Radius around placement that must be unowned
+     * @param randomProvider Source of randomness.
+     * @param count Number of geysers to spawn.
+     * @param interval Tick interval for eruptions.
+     * @param amount Energy amount placed per eruption.
+     * @param safetyRadius Radius around placement that must be unowned.
      */
     public GeyserCreator(IRandomProvider randomProvider, int count, int interval, int amount, int safetyRadius) {
         this.random = randomProvider.asJavaRandom();
@@ -37,12 +41,23 @@ public class GeyserCreator implements IEnergyDistributionCreator {
         this.safetyRadius = Math.max(0, safetyRadius);
     }
 
-    // Backward-compatible constructor for existing callers (defaults safetyRadius to 2)
+    /**
+     * Backward-compatible constructor for existing callers.
+     * @param randomProvider Source of randomness.
+     * @param count Number of geysers to spawn.
+     * @param interval Tick interval for eruptions.
+     * @param amount Energy amount placed per eruption.
+     */
     public GeyserCreator(IRandomProvider randomProvider, int count, int interval, int amount) {
         this(randomProvider, count, interval, amount, 2);
     }
 
-    // Backward-compatible constructor for legacy code/tests
+    /**
+     * Backward-compatible constructor for legacy code/tests.
+     * @param count Number of geysers to spawn.
+     * @param interval Tick interval for eruptions.
+     * @param amount Energy amount placed per eruption.
+     */
     public GeyserCreator(int count, int interval, int amount) {
         this(new org.evochora.runtime.internal.services.SeededRandomProvider(0L), count, interval, amount, 2);
     }
@@ -55,7 +70,7 @@ public class GeyserCreator implements IEnergyDistributionCreator {
 
         if (currentTick > 0 && currentTick % tickInterval == 0) {
             for (int[] geyserPos : geyserLocations) {
-                // Finde alle gültigen Nachbarzellen (leer und sicherer Abstand zu Besitz) in N Dimensionen
+                // Find all valid neighbor cells (empty and safe distance from owned cells) in N dimensions
                 List<int[]> validTargets = new ArrayList<>();
                 int dims = environment.getShape().length;
                 for (int axis = 0; axis < dims; axis++) {
@@ -68,7 +83,7 @@ public class GeyserCreator implements IEnergyDistributionCreator {
                     }
                 }
 
-                // Wähle ein zufälliges gültiges Ziel und platziere die Energie
+                // Choose a random valid target and place the energy
                 if (!validTargets.isEmpty()) {
                     Collections.shuffle(validTargets, random);
                     int[] targetCell = validTargets.get(0);
@@ -83,7 +98,7 @@ public class GeyserCreator implements IEnergyDistributionCreator {
         int[] shape = environment.getShape();
         for (int i = 0; i < geyserCount; i++) {
             int[] coord = null;
-            // Versuche, eine sichere Quelle zu finden: Zelle leer und Sicherheitsradius unbesessen
+            // Try to find a safe source: cell is empty and safety radius is unowned
             for (int attempt = 0; attempt < 1000; attempt++) {
                 int[] c = new int[shape.length];
                 for (int d = 0; d < shape.length; d++) {
@@ -95,11 +110,11 @@ public class GeyserCreator implements IEnergyDistributionCreator {
                 }
             }
             if (coord == null) {
-                // Fallback: keine sichere Position gefunden, überspringen
+                // Fallback: no safe position found, skip
                 continue;
             }
             geyserLocations.add(coord);
-            // Markiere die Quelle selbst als unzerstörbar, um Konflikte zu vermeiden
+            // Mark the source itself as indestructible to avoid conflicts
             environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, -1), coord);
         }
     }

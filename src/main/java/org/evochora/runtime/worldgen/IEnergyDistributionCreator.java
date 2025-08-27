@@ -3,15 +3,15 @@ package org.evochora.runtime.worldgen;
 import org.evochora.runtime.model.Environment;
 
 /**
- * Eine Schnittstelle für verschiedene Strategien, um Energie in der Welt zu verteilen.
+ * An interface for different strategies to distribute energy in the world.
  */
 public interface IEnergyDistributionCreator {
     /**
-     * Diese Methode wird von der Simulation in jedem Tick aufgerufen, um potenziell
-     * neue Energie in die Umgebung einzubringen.
+     * This method is called by the simulation in each tick to potentially
+     * introduce new energy into the environment.
      *
-     * @param environment Die Weltumgebung, die modifiziert werden soll.
-     * @param currentTick Die aktuelle Tick-Nummer der Simulation.
+     * @param environment The world environment to be modified.
+     * @param currentTick The current tick number of the simulation.
      */
     void distributeEnergy(Environment environment, long currentTick);
 }

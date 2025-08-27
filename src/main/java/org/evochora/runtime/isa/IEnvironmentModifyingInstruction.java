@@ -3,17 +3,17 @@ package org.evochora.runtime.isa;
 import java.util.List;
 
 /**
- * Eine "Markierungs-Schnittstelle" für Instruktionen, die direkt Zellen in der Welt verändern
- * und daher an der Konfliktlösung beteiligt sein müssen.
- * Sie enthält keine eigenen Methoden mehr, da alle benötigten Methoden
- * von der Instruction-Basisklasse geerbt werden.
+ * A "marker interface" for instructions that directly modify cells in the world
+ * and therefore must be involved in conflict resolution.
+ * It no longer contains its own methods, as all required methods
+ * are inherited from the Instruction base class.
  */
 public interface IEnvironmentModifyingInstruction {
 
     /**
-     * Gibt eine Liste der n-dimensionalen Koordinaten zurück, die diese Instruktion
-     * zu verändern versucht. Dies ist entscheidend für die Konfliktlösung.
-     * @return Eine Liste von int[] Arrays, wobei jedes Array eine Koordinate darstellt.
+     * Returns a list of the n-dimensional coordinates that this instruction
+     * attempts to modify. This is crucial for conflict resolution.
+     * @return A list of int[] arrays, where each array represents a coordinate.
      */
     List<int[]> getTargetCoordinates();
 

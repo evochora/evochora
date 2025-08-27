@@ -5,36 +5,48 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 
 /**
- * Kapselt alle zur Laufzeit einer Instruktion benötigten Informationen und Abhängigkeiten.
- * Dieses Objekt wird von der VirtualMachine erstellt und an die ausführenden
- * Einheiten übergeben, um globale Zugriffe zu vermeiden.
+ * Encapsulates all the information and dependencies required at the runtime of an instruction.
+ * This object is created by the VirtualMachine and passed to the executing
+ * units to avoid global access.
  */
 public class ExecutionContext {
 
     private final Organism organism;
     private final Environment environment;
-    // private final ProgramArtifact artifact; // ENTFERNT
     private final boolean isPerformanceMode;
 
+    /**
+     * Constructs a new ExecutionContext.
+     * @param organism The organism executing the instruction.
+     * @param environment The environment in which the instruction is executed.
+     * @param isPerformanceMode A flag indicating if the simulation is in performance mode.
+     */
     public ExecutionContext(Organism organism, Environment environment, boolean isPerformanceMode) {
         this.organism = organism;
         this.environment = environment;
-        // this.artifact = artifact; // ENTFERNT
         this.isPerformanceMode = isPerformanceMode;
     }
 
+    /**
+     * Returns the organism associated with this execution context.
+     * @return The organism.
+     */
     public Organism getOrganism() {
         return organism;
     }
 
+    /**
+     * Returns the environment associated with this execution context.
+     * @return The environment.
+     */
     public Environment getWorld() {
         return environment;
     }
 
-    // public ProgramArtifact getArtifact() { // ENTFERNT
-    //     return artifact;
-    // }
-
+    /**
+     * Checks if the simulation is running in performance mode.
+     * @return true if in performance mode, false otherwise.
+     */
     public boolean isPerformanceMode() {
         return isPerformanceMode;
     }

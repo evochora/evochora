@@ -19,9 +19,9 @@ public class Disassembler {
      * Disassembles an instruction at the given coordinates.
      * Returns simple data structure without objects for maximum performance.
      *
-     * @param reader The environment reader to use
-     * @param instructionPointer The coordinates of the instruction
-     * @return The disassembled instruction data, or null if disassembly fails
+     * @param reader The environment reader to use.
+     * @param instructionPointer The coordinates of the instruction.
+     * @return The disassembled instruction data, or null if disassembly fails.
      */
     public DisassemblyData disassemble(IEnvironmentReader reader, int[] instructionPointer) {
         try {
@@ -58,7 +58,7 @@ public class Disassembler {
                 InstructionArgumentType argType = signature.argumentTypes().get(i);
                 
                 if (argType == InstructionArgumentType.VECTOR) {
-                    // VECTOR: Lese n-Dimensionen
+                    // VECTOR: Read n-dimensions
                     int dims = reader.getShape().length;
                     for (int dim = 0; dim < dims; dim++) {
                         // Move to the next position
@@ -76,7 +76,7 @@ public class Disassembler {
                         actualArgCount++;
                     }
                 } else if (argType == InstructionArgumentType.LABEL) {
-                    // LABEL: Lese n-Dimensionen (weil Label ein Vektor-Alias ist)
+                    // LABEL: Read n-dimensions (because a label is a vector alias)
                     int dims = reader.getShape().length;
                     for (int dim = 0; dim < dims; dim++) {
                         // Move to the next position
@@ -94,7 +94,7 @@ public class Disassembler {
                         actualArgCount++;
                     }
                 } else {
-                    // REGISTER/LITERAL: Lese ein Argument
+                    // REGISTER/LITERAL: Read one argument
                     // Move to the next position
                     currentPos = reader.getProperties().getNextPosition(currentPos, new int[]{1, 0});
                     
@@ -126,8 +126,11 @@ public class Disassembler {
     }
 
     /**
-     * Berechnet die Gesamtanzahl der Argumente basierend auf der Signatur.
-     * VECTOR/LABEL zählen als n-Dimensionen, REGISTER/LITERAL als 1.
+     * Calculates the total number of arguments based on the signature.
+     * VECTOR/LABEL count as n-dimensions, REGISTER/LITERAL as 1.
+     * @param signature The instruction signature.
+     * @param worldDimensions The number of dimensions in the world.
+     * @return The total number of arguments.
      */
     private int calculateTotalArguments(InstructionSignature signature, int worldDimensions) {
         int total = 0;

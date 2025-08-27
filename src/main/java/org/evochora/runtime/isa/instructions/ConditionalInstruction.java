@@ -12,8 +12,17 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.NoSuchElementException;
 
+/**
+ * Handles conditional instructions, which compare values and skip the next instruction
+ * if the condition is not met. It supports different operand types and sources.
+ */
 public class ConditionalInstruction extends Instruction {
 
+    /**
+     * Constructs a new ConditionalInstruction.
+     * @param organism The organism executing the instruction.
+     * @param fullOpcodeId The full opcode ID of the instruction.
+     */
     public ConditionalInstruction(Organism organism, int fullOpcodeId) {
         super(organism, fullOpcodeId);
     }

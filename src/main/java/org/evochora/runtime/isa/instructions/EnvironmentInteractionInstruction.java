@@ -13,10 +13,20 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 
+/**
+ * Handles environment interaction instructions like POKE and PEEK.
+ * Implements the IEnvironmentModifyingInstruction interface, which means it's
+ * involved in conflict resolution.
+ */
 public class EnvironmentInteractionInstruction extends Instruction implements IEnvironmentModifyingInstruction {
 
     private int[] targetCoordinate;
 
+    /**
+     * Constructs a new EnvironmentInteractionInstruction.
+     * @param organism The organism executing the instruction.
+     * @param fullOpcodeId The full opcode ID of the instruction.
+     */
     public EnvironmentInteractionInstruction(Organism organism, int fullOpcodeId) {
         super(organism, fullOpcodeId);
     }

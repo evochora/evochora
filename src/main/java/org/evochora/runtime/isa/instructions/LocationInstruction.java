@@ -10,8 +10,17 @@ import org.evochora.runtime.model.Organism;
 import java.util.Deque;
 import java.util.List;
 
+/**
+ * Handles location-related instructions, which manipulate the location stack
+ * and location registers.
+ */
 public class LocationInstruction extends Instruction {
 
+    /**
+     * Constructs a new LocationInstruction.
+     * @param organism The organism executing the instruction.
+     * @param fullOpcodeId The full opcode ID of the instruction.
+     */
     public LocationInstruction(Organism organism, int fullOpcodeId) {
         super(organism, fullOpcodeId);
     }

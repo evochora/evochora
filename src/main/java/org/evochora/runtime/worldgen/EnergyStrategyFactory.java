@@ -5,6 +5,10 @@ import java.util.Map;
 import java.util.Objects;
 import org.evochora.runtime.internal.services.IRandomProvider;
 
+/**
+ * A factory for creating energy distribution strategies.
+ * It uses a registry to store different types of strategies.
+ */
 public class EnergyStrategyFactory {
 
     private static final Map<String, IEnergyStrategyCreator> registry = new HashMap<>();
@@ -27,10 +31,23 @@ public class EnergyStrategyFactory {
         });
     }
 
+    /**
+     * Registers a new energy strategy creator.
+     * @param type The type of the strategy.
+     * @param creator The creator for the strategy.
+     */
     public static void register(String type, IEnergyStrategyCreator creator) {
         registry.put(type.toLowerCase(), creator);
     }
 
+    /**
+     * Creates a new energy distribution creator.
+     * @param type The type of the strategy to create.
+     * @param params The parameters for the strategy.
+     * @param rngProvider The random number provider.
+     * @return The created energy distribution creator.
+     * @throws IllegalArgumentException if the strategy type is unknown.
+     */
     public static IEnergyDistributionCreator create(String type, Map<String, Object> params, IRandomProvider rngProvider) {
         Objects.requireNonNull(type, "Strategy type cannot be null.");
         IEnergyStrategyCreator creator = registry.get(type.toLowerCase());

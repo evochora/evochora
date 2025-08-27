@@ -10,8 +10,17 @@ import org.evochora.runtime.model.Organism;
 import java.util.List;
 import java.util.NoSuchElementException;
 
+/**
+ * Handles data movement instructions like SET, PUSH, and POP.
+ * It supports different operand sources and destinations.
+ */
 public class DataInstruction extends Instruction {
 
+    /**
+     * Constructs a new DataInstruction.
+     * @param organism The organism executing the instruction.
+     * @param fullOpcodeId The full opcode ID of the instruction.
+     */
     public DataInstruction(Organism organism, int fullOpcodeId) {
         super(organism, fullOpcodeId);
     }
@@ -65,6 +74,12 @@ public class DataInstruction extends Instruction {
         }
     }
 
+    /**
+     * Plans the execution of a data instruction.
+     * @param organism The organism that will execute the instruction.
+     * @param environment The environment in which the instruction will be executed.
+     * @return The planned instruction.
+     */
     public static Instruction plan(Organism organism, Environment environment) {
         int fullOpcodeId = environment.getMolecule(organism.getIp()).toInt();
         return new DataInstruction(organism, fullOpcodeId);

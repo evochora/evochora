@@ -3,6 +3,9 @@ package org.evochora.runtime.model;
 
 import java.util.Arrays;
 
+/**
+ * Represents the simulation environment, managing the grid of molecules and their owners.
+ */
 public class Environment implements IEnvironmentReader {
     private final int[] shape;
     private final boolean isToroidal;
@@ -19,8 +22,8 @@ public class Environment implements IEnvironmentReader {
     /**
      * Creates a new environment with the specified shape and toroidal setting.
      * 
-     * @param shape The dimensions of the world
-     * @param toroidal Whether the world wraps around at edges
+     * @param shape The dimensions of the world.
+     * @param toroidal Whether the world wraps around at edges.
      */
     public Environment(int[] shape, boolean toroidal) {
         this(new EnvironmentProperties(shape, toroidal));
@@ -29,7 +32,7 @@ public class Environment implements IEnvironmentReader {
     /**
      * Creates a new environment with the specified properties.
      * 
-     * @param properties The environment properties
+     * @param properties The environment properties.
      */
     public Environment(EnvironmentProperties properties) {
         this.properties = properties;
@@ -49,6 +52,11 @@ public class Environment implements IEnvironmentReader {
         }
     }
 
+    /**
+     * Normalizes a coordinate based on the environment's toroidal setting.
+     * @param coord The coordinate to normalize.
+     * @return The normalized coordinate.
+     */
     public int[] getNormalizedCoordinate(int... coord) {
         if (coord.length != this.shape.length) {
             throw new IllegalArgumentException("Coordinate dimensions do not match world dimensions.");
@@ -80,6 +88,11 @@ public class Environment implements IEnvironmentReader {
         return flatIndex;
     }
 
+    /**
+     * Gets the molecule at the specified coordinate.
+     * @param coord The coordinate to get the molecule from.
+     * @return The molecule at the specified coordinate.
+     */
     public Molecule getMolecule(int... coord) {
         int index = getFlatIndex(coord);
         if (index == -1) {
@@ -88,6 +101,11 @@ public class Environment implements IEnvironmentReader {
         return org.evochora.runtime.model.Molecule.fromInt(this.grid[index]);
     }
 
+    /**
+     * Sets the molecule at the specified coordinate.
+     * @param molecule The molecule to set.
+     * @param coord The coordinate to set the molecule at.
+     */
     public void setMolecule(Molecule molecule, int... coord) {
         int index = getFlatIndex(coord);
         if (index != -1) {
@@ -95,7 +113,12 @@ public class Environment implements IEnvironmentReader {
         }
     }
 
-    // Overload: set molecule and owner in one call; owner is only updated for non-empty symbols
+    /**
+     * Sets the molecule and its owner at the specified coordinate.
+     * @param molecule The molecule to set.
+     * @param ownerId The ID of the owner.
+     * @param coord The coordinate to set the molecule at.
+     */
     public void setMolecule(Molecule molecule, int ownerId, int... coord) {
         int index = getFlatIndex(coord);
         if (index != -1) {
@@ -105,7 +128,11 @@ public class Environment implements IEnvironmentReader {
         }
     }
 
-    // Owner grid accessors
+    /**
+     * Gets the owner ID of the cell at the specified coordinate.
+     * @param coord The coordinate to get the owner ID from.
+     * @return The owner ID.
+     */
     public int getOwnerId(int... coord) {
         int index = getFlatIndex(coord);
         if (index == -1) {
@@ -114,6 +141,11 @@ public class Environment implements IEnvironmentReader {
         return this.ownerGrid[index];
     }
 
+    /**
+     * Sets the owner ID of the cell at the specified coordinate.
+     * @param ownerId The owner ID to set.
+     * @param coord The coordinate to set the owner ID at.
+     */
     public void setOwnerId(int ownerId, int... coord) {
         int index = getFlatIndex(coord);
         if (index != -1) {
@@ -121,11 +153,18 @@ public class Environment implements IEnvironmentReader {
         }
     }
 
+    /**
+     * Clears the owner of the cell at the specified coordinate.
+     * @param coord The coordinate to clear the owner of.
+     */
     public void clearOwner(int... coord) {
         setOwnerId(0, coord);
     }
 
-
+    /**
+     * Gets the shape of the environment.
+     * @return The shape of the environment.
+     */
     public int[] getShape() {
         return Arrays.copyOf(this.shape, this.shape.length);
     }
@@ -146,7 +185,7 @@ public class Environment implements IEnvironmentReader {
         if (centerCoord.length != this.shape.length) {
             throw new IllegalArgumentException("Coordinate dimensions do not match world dimensions.");
         }
-        // N-dimensionale Iteration über einen hyperkubischen Bereich mit gegebenem Radius
+        // N-dimensional iteration over a hypercubic area with a given radius
         int dims = this.shape.length;
         int[] offsets = new int[dims];
         for (int i = 0; i < dims; i++) offsets[i] = -radius;
@@ -159,13 +198,13 @@ public class Environment implements IEnvironmentReader {
             if (getOwnerId(checkCoord) != 0) {
                 return false;
             }
-            // Inkrementiere die Offsets wie ein Zähler von -radius..+radius je Dimension
+            // Increment the offsets like a counter from -radius to +radius per dimension
             int dim = dims - 1;
             while (dim >= 0 && offsets[dim] == radius) {
                 offsets[dim] = -radius;
                 dim--;
             }
-            if (dim < 0) break; // alle Kombinationen durchlaufen
+            if (dim < 0) break; // all combinations have been checked
             offsets[dim]++;
         }
         return true;

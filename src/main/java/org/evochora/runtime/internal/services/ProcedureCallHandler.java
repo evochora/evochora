@@ -9,14 +9,28 @@ import org.evochora.runtime.model.Environment;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Handles the logic for procedure call (CALL) and return (RET) instructions.
+ * This class manages the call stack, parameter bindings, and processor state restoration.
+ */
 public class ProcedureCallHandler {
 
     private final ExecutionContext context;
 
+    /**
+     * Constructs a new ProcedureCallHandler.
+     * @param context The execution context for the current instruction.
+     */
     public ProcedureCallHandler(ExecutionContext context) {
         this.context = context;
     }
 
+    /**
+     * Executes a procedure call. This involves resolving parameter bindings,
+     * saving the current processor state, and jumping to the target procedure's address.
+     * @param targetDelta The relative coordinates of the target procedure.
+     * @param artifact The program artifact containing metadata about the procedure.
+     */
     public void executeCall(int[] targetDelta, ProgramArtifact artifact) {
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
@@ -86,6 +100,10 @@ public class ProcedureCallHandler {
         organism.setSkipIpAdvance(true);
     }
 
+    /**
+     * Executes a procedure return. This involves restoring the processor state
+     * from the call stack and jumping back to the return address.
+     */
     public void executeReturn() {
         Organism organism = context.getOrganism();
 

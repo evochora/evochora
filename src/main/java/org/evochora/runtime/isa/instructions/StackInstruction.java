@@ -10,8 +10,16 @@ import org.evochora.runtime.model.Organism;
 import java.util.Deque;
 import java.util.NoSuchElementException;
 
+/**
+ * Handles stack manipulation instructions like DUP, SWAP, DROP, and ROT.
+ */
 public class StackInstruction extends Instruction {
 
+    /**
+     * Constructs a new StackInstruction.
+     * @param organism The organism executing the instruction.
+     * @param fullOpcodeId The full opcode ID of the instruction.
+     */
     public StackInstruction(Organism organism, int fullOpcodeId) {
         super(organism, fullOpcodeId);
     }
@@ -61,6 +69,12 @@ public class StackInstruction extends Instruction {
         }
     }
 
+    /**
+     * Plans the execution of a stack instruction.
+     * @param organism The organism that will execute the instruction.
+     * @param environment The environment in which the instruction will be executed.
+     * @return The planned instruction.
+     */
     public static Instruction plan(Organism organism, Environment environment) {
         int fullOpcodeId = environment.getMolecule(organism.getIp()).toInt();
         return new StackInstruction(organism, fullOpcodeId);

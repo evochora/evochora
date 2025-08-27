@@ -12,8 +12,17 @@ import org.evochora.runtime.model.Environment;
 import java.util.List;
 import java.util.Random;
 
+/**
+ * Handles a wide variety of state-related instructions, such as TURN, SYNC, NRG, FORK,
+ * DIFF, POS, RAND, SEEK, and various scanning instructions.
+ */
 public class StateInstruction extends Instruction {
 
+    /**
+     * Constructs a new StateInstruction.
+     * @param organism The organism executing the instruction.
+     * @param fullOpcodeId The full opcode ID of the instruction.
+     */
     public StateInstruction(Organism organism, int fullOpcodeId) {
         super(organism, fullOpcodeId);
     }
