@@ -115,13 +115,19 @@ class PersistenceServicePerformanceTest {
         largeBatchService.shutdown();
     }
 
+    private void waitForQueueToEmpty(int timeoutMillis) throws InterruptedException {
+        long startTime = System.currentTimeMillis();
+        while (queue.size() > 0 && (System.currentTimeMillis() - startTime) < timeoutMillis) {
+            Thread.sleep(50); // Check every 50ms
+        }
+    }
+
     @Test
     @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testBatchInserts() throws Exception {
         // Start persistence service
         persistenceService.start();
-        Thread.sleep(200);
         
         // Add multiple ticks to queue
         for (int i = 1; i <= 100; i++) {
@@ -129,10 +135,11 @@ class PersistenceServicePerformanceTest {
         }
         
         // Wait for processing
-        Thread.sleep(500);
+        waitForQueueToEmpty(5000); // 5 second timeout
         
-        // Verify service is running
+        // Verify service is running and queue is empty
         assertTrue(persistenceService.isRunning());
+        assertEquals(0, queue.size(), "Queue should be empty after processing");
     }
 
     @Test
@@ -141,16 +148,16 @@ class PersistenceServicePerformanceTest {
     void testSQLiteOptimizations() throws Exception {
         // Start persistence service
         persistenceService.start();
-        Thread.sleep(200);
         
         // Add some data to trigger database creation
         for (int i = 1; i <= 50; i++) {
             queue.put(createTestTickState(i));
         }
-        Thread.sleep(200);
+        waitForQueueToEmpty(5000);
         
-        // For in-memory database, just verify the service is running
+        // For in-memory database, just verify the service is running and queue is empty
         assertTrue(persistenceService.isRunning());
+        assertEquals(0, queue.size(), "Queue should be empty after processing");
     }
 
     @Test
@@ -185,7 +192,6 @@ class PersistenceServicePerformanceTest {
     void testGracefulShutdown() throws Exception {
         // Start persistence service
         persistenceService.start();
-        Thread.sleep(200);
         
         // Add some data
         for (int i = 1; i <= 50; i++) {
@@ -193,14 +199,13 @@ class PersistenceServicePerformanceTest {
         }
         
         // Wait for some processing
-        Thread.sleep(200);
+        waitForQueueToEmpty(5000);
         
         // Verify it's running
         assertTrue(persistenceService.isRunning());
         
         // Shutdown gracefully
         persistenceService.shutdown();
-        Thread.sleep(200);
         
         // Verify shutdown
         assertFalse(persistenceService.isRunning());
@@ -212,7 +217,6 @@ class PersistenceServicePerformanceTest {
     void testDataIntegrity() throws Exception {
         // Start persistence service
         persistenceService.start();
-        Thread.sleep(200);
         
         // Add test data
         for (int i = 1; i <= 100; i++) {
@@ -220,10 +224,11 @@ class PersistenceServicePerformanceTest {
         }
         
         // Wait for processing
-        Thread.sleep(300);
+        waitForQueueToEmpty(5000);
         
-        // Verify service is running
+        // Verify service is running and queue is empty
         assertTrue(persistenceService.isRunning());
+        assertEquals(0, queue.size(), "Queue should be empty after processing");
     }
 
     @Test
@@ -232,7 +237,6 @@ class PersistenceServicePerformanceTest {
     void testPerformanceUnderLoad() throws Exception {
         // Start persistence service
         persistenceService.start();
-        Thread.sleep(200);
         
         // Monitor performance over time
         long startTime = System.currentTimeMillis();
@@ -243,13 +247,14 @@ class PersistenceServicePerformanceTest {
         }
         
         // Wait for processing
-        Thread.sleep(500);
+        waitForQueueToEmpty(10000); // Increased timeout for larger load
         
         long processingTime = System.currentTimeMillis() - startTime;
         
         // Verify processing occurred
         assertTrue(processingTime > 0, "Pipeline should be running");
         assertTrue(persistenceService.isRunning(), "Service should be running");
+        assertEquals(0, queue.size(), "Queue should be empty after processing");
     }
 
     @Test
@@ -270,21 +275,19 @@ class PersistenceServicePerformanceTest {
         mediumBatchService.start();
         largeBatchService.start();
         
-        // Let them run for a bit
-        Thread.sleep(200);
-        
         // Add test data
         for (int i = 1; i <= 100; i++) {
             queue.put(createTestTickState(i));
         }
         
         // Let them process
-        Thread.sleep(300);
+        waitForQueueToEmpty(5000);
         
-        // All should be running
+        // All should be running and queue should be empty
         assertTrue(smallBatchService.isRunning());
         assertTrue(mediumBatchService.isRunning());
         assertTrue(largeBatchService.isRunning());
+        assertEquals(0, queue.size(), "Queue should be empty after processing");
         
         // Cleanup
         smallBatchService.shutdown();

@@ -81,14 +81,14 @@ public record LinearizedProgramArtifact(
     
     public LinearizedProgramArtifact {
         sources = sources != null ? Collections.unmodifiableMap(sources) : Collections.emptyMap();
-        machineCodeLayout = Collections.unmodifiableMap(machineCodeLayout);
-        initialWorldObjects = Collections.unmodifiableMap(initialWorldObjects);
-        sourceMap = Collections.unmodifiableMap(sourceMap);
-        callSiteBindings = Collections.unmodifiableMap(callSiteBindings);
-        relativeCoordToLinearAddress = Collections.unmodifiableMap(relativeCoordToLinearAddress);
-        linearAddressToCoord = Collections.unmodifiableMap(linearAddressToCoord);
-        labelAddressToName = Collections.unmodifiableMap(labelAddressToName);
-        registerAliasMap = Collections.unmodifiableMap(registerAliasMap);
+        machineCodeLayout = machineCodeLayout != null ? Collections.unmodifiableMap(machineCodeLayout) : Collections.emptyMap();
+        initialWorldObjects = initialWorldObjects != null ? Collections.unmodifiableMap(initialWorldObjects) : Collections.emptyMap();
+        sourceMap = sourceMap != null ? Collections.unmodifiableMap(sourceMap) : Collections.emptyMap();
+        callSiteBindings = callSiteBindings != null ? Collections.unmodifiableMap(callSiteBindings) : Collections.emptyMap();
+        relativeCoordToLinearAddress = relativeCoordToLinearAddress != null ? Collections.unmodifiableMap(relativeCoordToLinearAddress) : Collections.emptyMap();
+        linearAddressToCoord = linearAddressToCoord != null ? Collections.unmodifiableMap(linearAddressToCoord) : Collections.emptyMap();
+        labelAddressToName = labelAddressToName != null ? Collections.unmodifiableMap(labelAddressToName) : Collections.emptyMap();
+        registerAliasMap = registerAliasMap != null ? Collections.unmodifiableMap(registerAliasMap) : Collections.emptyMap();
         procNameToParamNames = procNameToParamNames != null ? Collections.unmodifiableMap(procNameToParamNames) : Collections.emptyMap();
         worldShape = worldShape != null ? worldShape.clone() : new int[0];
     }

@@ -35,6 +35,20 @@ class SimulationEngineControlTest {
         }
     }
 
+    private void waitForTick(long tick, long timeoutMillis) throws InterruptedException {
+        long startTime = System.currentTimeMillis();
+        while (sim.getCurrentTick() < tick && (System.currentTimeMillis() - startTime) < timeoutMillis) {
+            Thread.sleep(50);
+        }
+    }
+
+    private void waitForShutdown(long timeoutMillis) throws InterruptedException {
+        long startTime = System.currentTimeMillis();
+        while (sim.isRunning() && (System.currentTimeMillis() - startTime) < timeoutMillis) {
+            Thread.sleep(50);
+        }
+    }
+
     @Test
     @Tag("integration")
     void simple_start_shutdown_test() throws Exception {
@@ -44,14 +58,14 @@ class SimulationEngineControlTest {
         sim.start();
 
         // Wait for simulation to start and produce some ticks
-        Thread.sleep(500);
+        waitForTick(0, 5000);
         assertThat(sim.getCurrentTick()).isGreaterThanOrEqualTo(0L);
 
         // Shutdown
         sim.shutdown();
         
         // Wait for shutdown to complete
-        Thread.sleep(1000);
+        waitForShutdown(5000);
         
         assertThat(sim.isRunning()).isFalse();
     }
@@ -64,76 +78,42 @@ class SimulationEngineControlTest {
 
         sim.start();
 
-        // 1. Warten, bis die Simulation initialisiert ist (erste Nachrichten).
-        q.take(); // Nimm die Artefakt-Nachricht heraus
-        
-        // Wait for initial message with timeout
-        long startTime = System.currentTimeMillis();
-        IQueueMessage initialMessage = null;
-        while (System.currentTimeMillis() - startTime < 5000) {
-            try {
-                initialMessage = q.poll(100, TimeUnit.MILLISECONDS);
-                if (initialMessage != null) break;
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-        
-        if (initialMessage == null) {
-            throw new RuntimeException("Simulation failed to start within 5 seconds");
-        }
-        
-        // The simulation might have advanced a few ticks before we get the first message
+        // 1. Wait for the simulation to initialize and produce the first tick.
+        waitForTick(0, 5000);
+        IQueueMessage initialMessage = q.poll(5, TimeUnit.SECONDS);
+        assertThat(initialMessage).isNotNull();
         long initialTick = ((RawTickState) initialMessage).tickNumber();
         assertThat(initialTick).isGreaterThanOrEqualTo(0L);
 
-        // 2. Lassen Sie die Simulation kurz laufen.
-        Thread.sleep(100); // Increased from 50ms
+        // 2. Let the simulation run briefly.
+        waitForTick(initialTick + 1, 5000);
         long t1 = sim.getCurrentTick();
-        assertThat(t1).isGreaterThan(0L);
+        assertThat(t1).isGreaterThan(initialTick);
 
-        // 3. Pausieren und dem Thread Zeit geben, die Pause zu registrieren.
+        // 3. Pause and wait for it to take effect.
         sim.pause();
-        Thread.sleep(200); // Increased from 100ms to ensure pause takes effect
+        Thread.sleep(100); // Give a moment for the pause to register
         long t3 = sim.getCurrentTick();
 
-        // 4. Leeren Sie die Warteschlange NACH dem Pausieren.
-        while (q.size() > 0) {
-            q.take();
+        // 4. Drain the queue AFTER pausing.
+        while (q.poll() != null) {
+            // do nothing
         }
 
-        // 5. Warten Sie erneut und stellen Sie sicher, dass die Warteschlange leer BLEIBT.
-        Thread.sleep(300); // Increased from 200ms
+        // 5. Wait again and assert that the queue REMAINS empty.
+        Thread.sleep(100);
         assertThat(q.size()).as("Queue should remain empty while paused").isZero();
         assertThat(sim.getCurrentTick()).isEqualTo(t3);
 
-        // 6. Fortsetzen und auf die nächste Nachricht warten.
+        // 6. Resume and wait for the next message.
         sim.resume();
-        Thread.sleep(100); // Increased from 50ms to give simulation time to resume
-        
-        // Wait for next message with timeout
-        startTime = System.currentTimeMillis();
-        IQueueMessage nextMessage = null;
-        while (System.currentTimeMillis() - startTime < 5000) {
-            try {
-                nextMessage = q.poll(100, TimeUnit.MILLISECONDS);
-                if (nextMessage != null) break;
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-        
-        if (nextMessage == null) {
-            throw new RuntimeException("Simulation did not resume within 5 seconds");
-        }
-
+        IQueueMessage nextMessage = q.poll(5, TimeUnit.SECONDS);
+        assertThat(nextMessage).isNotNull();
         assertThat(((RawTickState) nextMessage).tickNumber()).isGreaterThan(t3);
 
-        // 7. Herunterfahren.
+        // 7. Shutdown.
         sim.shutdown();
-        Thread.sleep(200); // Increased from 50ms to give thread time to terminate
+        waitForShutdown(5000);
         assertThat(sim.isRunning()).isFalse();
     }
 
@@ -146,14 +126,14 @@ class SimulationEngineControlTest {
         sim.start();
 
         // Wait for simulation to start
-        Thread.sleep(100);
+        waitForTick(0, 5000);
         assertThat(sim.getCurrentTick()).isGreaterThanOrEqualTo(0L);
 
         // Shutdown
         sim.shutdown();
         
         // Wait for shutdown to complete
-        Thread.sleep(1000);
+        waitForShutdown(5000);
         
         assertThat(sim.isRunning()).isFalse();
     }
@@ -170,7 +150,7 @@ class SimulationEngineControlTest {
         sim.shutdown();
         
         // Wait for shutdown to complete
-        Thread.sleep(2000);
+        waitForShutdown(5000);
         
         assertThat(sim.isRunning()).isFalse();
     }
