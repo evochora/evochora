@@ -19,25 +19,37 @@ public final class CompilerRunner {
 
     private CompilerRunner() {}
 
+    /**
+     * Compiles the given source code and loads the resulting program into the simulation environment.
+     * This creates a new organism and places its molecules (both code and initial objects)
+     * into the world.
+     *
+     * @param simulation The simulation instance.
+     * @param sourceLines The lines of source code to compile.
+     * @param programName The name of the program, used for diagnostics.
+     * @param startPos The starting position (coordinates) for the new organism.
+     * @return The newly created organism.
+     * @throws CompilationException if any errors occur during compilation.
+     */
     public static Organism loadIntoEnvironment(Simulation simulation, List<String> sourceLines, String programName, int[] startPos) throws CompilationException {
         Compiler compiler = new Compiler();
         ProgramArtifact artifact = compiler.compile(sourceLines, programName);
 
         Environment environment = simulation.getEnvironment();
         
-        // Erstelle zuerst den Organismus, damit wir den ownerId haben
+        // First, create the organism so we have the ownerId
         Organism org = Organism.create(simulation, startPos, 1000, simulation.getLogger());
         org.setProgramId(artifact.programId());
         simulation.addOrganism(org);
         
-        // Place code mit ownerId
+        // Place code with ownerId
         for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
             int[] rel = e.getKey();
             int[] abs = new int[startPos.length];
             for (int i = 0; i < startPos.length; i++) abs[i] = startPos[i] + rel[i];
             environment.setMolecule(Molecule.fromInt(e.getValue()), org.getId(), abs);
         }
-        // Place initial world objects mit ownerId
+        // Place initial world objects with ownerId
         for (Map.Entry<int[], org.evochora.compiler.api.PlacedMolecule> e : artifact.initialWorldObjects().entrySet()) {
             int[] rel = e.getKey();
             int[] abs = new int[startPos.length];
@@ -46,7 +58,7 @@ public final class CompilerRunner {
             environment.setMolecule(new Molecule(pm.type(), pm.value()), org.getId(), abs);
         }
 
-        // NEU: Registriere die Call-Site-Bindungen
+        // NEW: Register the call site bindings
         CallBindingRegistry registry = CallBindingRegistry.getInstance();
         for (Map.Entry<Integer, int[]> binding : artifact.callSiteBindings().entrySet()) {
             int linearAddress = binding.getKey();

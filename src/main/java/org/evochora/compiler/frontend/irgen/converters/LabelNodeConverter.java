@@ -11,6 +11,15 @@ import org.evochora.compiler.ir.IrLabelDef;
  */
 public final class LabelNodeConverter implements IAstNodeToIrConverter<LabelNode> {
 
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * This implementation converts the {@link LabelNode} to an {@link IrLabelDef}
+	 * and then recursively converts the labeled statement.
+	 *
+	 * @param node The node to convert.
+	 * @param ctx  The generation context.
+	 */
 	@Override
 	public void convert(LabelNode node, IrGenContext ctx) {
 		ctx.emit(new IrLabelDef(node.labelToken().text(), ctx.sourceOf(node)));

@@ -13,6 +13,9 @@ import java.util.List;
  */
 public final class CallerMarshallingRule implements IEmissionRule {
 
+	/**
+	 * {@inheritDoc}
+	 */
 	@Override
 	public List<IrItem> apply(List<IrItem> items, LinkingContext linkingContext) {
 		List<IrItem> out = new ArrayList<>(items.size() + 8);

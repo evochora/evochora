@@ -15,8 +15,28 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * The Emitter is the final stage of the compiler backend. It takes the linked
+ * Intermediate Representation (IR) and the layout information to produce the
+
+ * final, self-contained {@link ProgramArtifact}. This includes generating the
+ * machine code, source maps, and other metadata needed by the runtime.
+ */
 public class Emitter {
 
+    /**
+     * Emits the final program artifact from the IR and layout information.
+     *
+     * @param program The linked IR program.
+     * @param layout The layout result, containing coordinate and source mapping.
+     * @param linkingContext The context from the linking phase, containing call site bindings.
+     * @param isa The instruction set architecture for opcode and register resolution.
+     * @param registerAliasMap A map of register aliases to their physical indices.
+     * @param procNameToParamNames A map of procedure names to their parameter names.
+     * @param sources A map of source file names to their content.
+     * @return The final, compiled {@link ProgramArtifact}.
+     * @throws CompilationException if an error occurs during emission.
+     */
     public ProgramArtifact emit(IrProgram program,
                                 LayoutResult layout,
                                 LinkingContext linkingContext,
@@ -104,6 +124,14 @@ public class Emitter {
         );
     }
 
+    /**
+     * Encodes a single IR operand into its integer representation for machine code.
+     * @param op The IR operand to encode.
+     * @param isa The instruction set for resolving register names.
+     * @param ctx The source information for error reporting.
+     * @return The integer representation of the operand.
+     * @throws CompilationException if the operand type is unsupported.
+     */
     private Integer encodeOperand(IrOperand op, IInstructionSet isa, SourceInfo ctx) throws CompilationException {
         if (op instanceof IrReg r) {
             int regId = isa.resolveRegisterToken(r.name()).orElseThrow(() -> new RuntimeException(formatSource(ctx, "Unknown register: " + r.name())));
@@ -127,6 +155,12 @@ public class Emitter {
         throw new CompilationException(formatSource(ctx, "Unsupported operand type: " + op.getClass().getSimpleName()));
     }
 
+    /**
+     * Formats an error message with source information.
+     * @param src The source information.
+     * @param message The error message.
+     * @return The formatted error string.
+     */
     private String formatSource(SourceInfo src, String message) {
         if (src == null) return message;
         String file = src.fileName() != null ? src.fileName() : "<unknown>";

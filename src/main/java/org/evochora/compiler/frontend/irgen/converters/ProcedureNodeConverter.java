@@ -15,6 +15,16 @@ import java.util.Map;
  */
 public final class ProcedureNodeConverter implements IAstNodeToIrConverter<ProcedureNode> {
 
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * This implementation converts the {@link ProcedureNode} to a sequence of
+	 * `proc_enter` directive, the converted body, and a `proc_exit` directive.
+	 * It also manages the procedure parameter scope.
+	 *
+	 * @param node The node to convert.
+	 * @param ctx  The generation context.
+	 */
 	@Override
 	public void convert(ProcedureNode node, IrGenContext ctx) {
 		// Define a label at the procedure entry so CALL <name> can link to it

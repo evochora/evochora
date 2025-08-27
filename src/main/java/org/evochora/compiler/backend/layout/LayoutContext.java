@@ -26,12 +26,16 @@ public final class LayoutContext {
     private String lastFile = null;
 
     private final Map<Integer, int[]> linearToCoord = new HashMap<>();
-    private final Map<String, Integer> coordToLinear = new HashMap<>(); // GEÄNDERT
+    private final Map<String, Integer> coordToLinear = new HashMap<>();
     private final Map<String, Integer> labelToAddress = new HashMap<>();
     private final Map<Integer, SourceInfo> sourceMap = new HashMap<>();
     private final Map<int[], PlacedMolecule> initialWorldObjects = new HashMap<>();
     private int linearAddress = 0;
 
+    /**
+     * Constructs a new layout context.
+     * @param dims The number of dimensions in the world.
+     */
     public LayoutContext(int dims) {
         this.currentPos = new int[dims];
         this.currentDv = new int[dims];
@@ -49,6 +53,10 @@ public final class LayoutContext {
     public int[] anchorPos() { return anchorPos; }
     public void setAnchorPos(int[] p) { this.anchorPos = p; }
 
+    /**
+     * Handles the change of the current file being processed.
+     * @param newFile The new file name.
+     */
     public void onFileChanged(String newFile) {
         if (lastFile != null) {
             basePosStack.push(Nd.copy(basePos));
@@ -62,24 +70,32 @@ public final class LayoutContext {
         return Arrays.stream(coord).mapToObj(String::valueOf).collect(Collectors.joining("|"));
     }
 
+    /**
+     * Places an opcode at the current position and advances the cursor.
+     * @param src The source information for the opcode.
+     */
     public void placeOpcode(SourceInfo src) {
         linearToCoord.put(linearAddress, Nd.copy(currentPos));
-        coordToLinear.put(coordToStringKey(currentPos), linearAddress); // GEÄNDERT
+        coordToLinear.put(coordToStringKey(currentPos), linearAddress);
         sourceMap.put(linearAddress, src);
         linearAddress++;
         currentPos = Nd.add(currentPos, currentDv);
     }
 
+    /**
+     * Places an operand at the current position and advances the cursor.
+     * @param src The source information for the operand.
+     */
     public void placeOperand(SourceInfo src) {
         linearToCoord.put(linearAddress, Nd.copy(currentPos));
-        coordToLinear.put(coordToStringKey(currentPos), linearAddress); // GEÄNDERT
+        coordToLinear.put(coordToStringKey(currentPos), linearAddress);
         sourceMap.put(linearAddress, src);
         linearAddress++;
         currentPos = Nd.add(currentPos, currentDv);
     }
 
     public Map<Integer, int[]> linearToCoord() { return linearToCoord; }
-    public Map<String, Integer> coordToLinear() { return coordToLinear; } // GEÄNDERT
+    public Map<String, Integer> coordToLinear() { return coordToLinear; }
     public Map<String, Integer> labelToAddress() { return labelToAddress; }
     public Map<Integer, SourceInfo> sourceMap() { return sourceMap; }
     public Map<int[], PlacedMolecule> initialWorldObjects() { return initialWorldObjects; }

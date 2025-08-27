@@ -1,11 +1,11 @@
 package org.evochora.compiler.api;
 
 /**
- * Eine reine Datenklasse, die eine Position im Quellcode repräsentiert.
- * Sie ist Teil der öffentlichen Compiler-API und frei von Implementierungsdetails.
+ * A pure data class representing a position in the source code.
+ * It is part of the public compiler API and free of implementation details.
  *
- * @param fileName Die Datei, in der sich der Code befindet.
- * @param lineNumber Die Zeilennummer.
- * @param lineContent Der Inhalt der Zeile.
+ * @param fileName The file where the code is located.
+ * @param lineNumber The line number.
+ * @param lineContent The content of the line.
  */
 public record SourceInfo(String fileName, int lineNumber, String lineContent) {}

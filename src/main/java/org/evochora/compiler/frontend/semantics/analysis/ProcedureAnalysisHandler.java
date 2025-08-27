@@ -15,15 +15,22 @@ import java.util.Map;
  */
 public class ProcedureAnalysisHandler extends ScopeAnalysisHandler {
 
+    /**
+     * Constructs a new procedure analysis handler.
+     * @param scopeMap The map to store the scope for each node.
+     */
     public ProcedureAnalysisHandler(Map<AstNode, SymbolTable.Scope> scopeMap) {
         super(scopeMap);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void analyze(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
-        // Rufe die Logik der Basisklasse auf, um den Scope zu betreten.
+        // Call the base class logic to enter the scope.
         super.analyze(node, symbolTable, diagnostics);
-        // Die Parameter wurden bereits in collectLabels definiert, hier ist nichts mehr zu tun.
+        // The parameters have already been defined in collectLabels, nothing more to do here.
     }
 }
 

@@ -14,6 +14,15 @@ import java.util.Map;
  */
 public final class ScopeNodeConverter implements IAstNodeToIrConverter<ScopeNode> {
 
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * This implementation converts the {@link ScopeNode} to a sequence of
+	 * `scope_enter` directive, the converted body, and a `scope_exit` directive.
+	 *
+	 * @param node The node to convert.
+	 * @param ctx  The generation context.
+	 */
 	@Override
 	public void convert(ScopeNode node, IrGenContext ctx) {
 		Map<String, IrValue> enter = new HashMap<>();

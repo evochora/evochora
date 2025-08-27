@@ -6,8 +6,8 @@ import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 
 /**
- * Interne i18n-Fassade für Compiler- und Legacy-Komponenten.
- * Verwendet ResourceBundles mit dem Basisnamen "compiler_messages".
+ * Internal i18n facade for compiler and legacy components.
+ * Uses ResourceBundles with the base name "compiler_messages".
  */
 public final class Messages {
 
@@ -16,10 +16,19 @@ public final class Messages {
 
     private Messages() {}
 
+    /**
+     * Sets the locale for the message bundle.
+     * @param locale The new locale.
+     */
     public static void setLocale(Locale locale) {
         bundle = loadBundle(locale);
     }
 
+    /**
+     * Gets a message for the given key.
+     * @param key The key of the message.
+     * @return The message, or "!key!" if not found.
+     */
     public static String get(String key) {
         try {
             return bundle.getString(key);
@@ -28,6 +37,12 @@ public final class Messages {
         }
     }
 
+    /**
+     * Gets a formatted message for the given key.
+     * @param key The key of the message.
+     * @param args The arguments for the message format.
+     * @return The formatted message.
+     */
     public static String get(String key, Object... args) {
         String pattern = get(key);
         return MessageFormat.format(pattern, args);
@@ -37,7 +52,7 @@ public final class Messages {
         try {
             return ResourceBundle.getBundle(BUNDLE_BASE_NAME, locale);
         } catch (MissingResourceException e) {
-            // Fallback auf Englisch, wenn die Locale nicht gefunden wird.
+            // Fallback to English if the locale is not found.
             return ResourceBundle.getBundle(BUNDLE_BASE_NAME, Locale.ENGLISH);
         }
     }

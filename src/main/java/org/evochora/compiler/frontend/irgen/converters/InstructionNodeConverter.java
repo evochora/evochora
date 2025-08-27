@@ -19,6 +19,15 @@ import java.util.List;
  */
 public final class InstructionNodeConverter implements IAstNodeToIrConverter<InstructionNode> {
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * This implementation converts the {@link InstructionNode} to an {@link IrInstruction}.
+     * It also handles the special case of `CALL ... WITH ...` by emitting a `core.call_with` directive.
+     *
+     * @param node The node to convert.
+     * @param ctx  The generation context.
+     */
     @Override
     public void convert(InstructionNode node, IrGenContext ctx) {
         List<IrOperand> operands = new ArrayList<>();
@@ -65,6 +74,14 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
         ctx.emit(new IrInstruction(opcode, operands, ctx.sourceOf(node)));
     }
 
+    /**
+     * Converts an AST node for an instruction argument into an {@link IrOperand}.
+     * This involves resolving identifiers as constants, procedure parameters, or labels.
+     *
+     * @param arg The AST node of the argument.
+     * @param ctx The generation context for resolving symbols.
+     * @return The corresponding {@link IrOperand}.
+     */
     private IrOperand convertOperand(AstNode arg, IrGenContext ctx) {
         if (arg instanceof RegisterNode r) {
             return new IrReg(r.registerToken().text());
@@ -88,6 +105,12 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
         return new IrLabelRef(arg.toString());
     }
 
+    /**
+     * Parses an integer literal string, supporting different bases (0x, 0b, 0o) and underscores.
+     *
+     * @param text The string to parse.
+     * @return The parsed integer value.
+     */
     private int parseIntegerLiteral(String text) {
         if (text == null || text.isEmpty()) return 0;
         String s = text.trim();

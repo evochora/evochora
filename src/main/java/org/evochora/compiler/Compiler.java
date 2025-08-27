@@ -32,16 +32,34 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * The main compiler implementation. This class orchestrates the entire compilation
+ * pipeline from source code to a program artifact. It is not thread-safe.
+ */
 public class Compiler implements ICompiler {
 
     private final DiagnosticsEngine diagnostics = new DiagnosticsEngine();
     private int verbosity = -1;
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * This implementation defaults to a 2-dimensional world.
+     */
     @Override
     public ProgramArtifact compile(List<String> sourceLines, String programName) throws CompilationException {
         return compile(sourceLines, programName, 2);
     }
 
+    /**
+     * Compiles the given source code into a program artifact.
+     *
+     * @param sourceLines The lines of source code to compile.
+     * @param programName The name of the program, used for diagnostics and artifact metadata.
+     * @param worldDimensions The number of dimensions in the target world (e.g., 2 for 2D, 3 for 3D).
+     * @return The compiled program artifact.
+     * @throws CompilationException if any errors occur during compilation.
+     */
     public ProgramArtifact compile(List<String> sourceLines, String programName, int worldDimensions) throws CompilationException {
 
         if (verbosity >= 0) {
@@ -142,6 +160,9 @@ public class Compiler implements ICompiler {
         return artifact;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void setVerbosity(int level) {
         this.verbosity = level;

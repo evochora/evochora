@@ -19,6 +19,15 @@ import org.evochora.compiler.ir.IrVec;
  */
 public final class DefineNodeConverter implements IAstNodeToIrConverter<DefineNode> {
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * This implementation registers the constant in the {@link IrGenContext} for later use.
+     * It does not emit any {@link org.evochora.compiler.ir.IrItem}s.
+     *
+     * @param node The node to convert.
+     * @param ctx  The generation context.
+     */
     @Override
     public void convert(DefineNode node, IrGenContext ctx) {
         String nameUpper = node.name().text().toUpperCase();
@@ -32,6 +41,12 @@ public final class DefineNodeConverter implements IAstNodeToIrConverter<DefineNo
         // .DEFINE does not emit IR by itself
     }
 
+    /**
+     * Converts an AST node representing a literal value into an {@link IrOperand}.
+     *
+     * @param value The AST node to convert.
+     * @return The corresponding {@link IrOperand}, or {@code null} if the node type is not a literal.
+     */
     private IrOperand toOperand(AstNode value) {
         if (value instanceof NumberLiteralNode n) {
             return new IrImm(n.getValue());

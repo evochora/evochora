@@ -12,16 +12,28 @@ import org.evochora.runtime.Config;
 
 import java.util.Optional;
 
+/**
+ * Handles the semantic analysis of {@link InstructionNode}s.
+ * This involves checking the instruction's arity, argument types, and other constraints.
+ */
 public class InstructionAnalysisHandler implements IAnalysisHandler {
 
     private final SymbolTable symbolTable;
     private final DiagnosticsEngine diagnostics;
 
+    /**
+     * Constructs a new instruction analysis handler.
+     * @param symbolTable The symbol table for resolving symbols.
+     * @param diagnostics The diagnostics engine for reporting errors.
+     */
     public InstructionAnalysisHandler(SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         this.symbolTable = symbolTable;
         this.diagnostics = diagnostics;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void analyze(AstNode node, SymbolTable ignored, DiagnosticsEngine ignoredDiags) {
         if (!(node instanceof InstructionNode instructionNode)) {
@@ -41,16 +53,16 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
             InstructionSignature signature = signatureOpt.get();
             int expectedArity = signature.getArity();
 
-            // Sonderfall: CALL ... [WITH] ACTUALS
-            // Für CALL zählt nur das Ziel (1 Argument). Zusätzliche Operanden
-            // nach dem Ziel oder nach WITH werden toleriert als 'actuals'.
+            // Special case: CALL ... [WITH] ACTUALS
+            // For CALL, only the target (1 argument) counts. Additional operands
+            // after the target or after WITH are tolerated as 'actuals'.
             java.util.List<AstNode> argsForSignature = instructionNode.arguments();
             if ("CALL".equalsIgnoreCase(instructionName)) {
-                // Nur das Ziel-Label als Signatur-Argument werten
+                // Only count the target label as a signature argument
                 if (!instructionNode.arguments().isEmpty()) {
                     argsForSignature = instructionNode.arguments().subList(0, 1);
                 }
-                // Validierung der Actuals: Register oder formale Parameternamen zulassen
+                // Validation of actuals: allow registers or formal parameter names
                 int withIdx = -1;
                 for (int i = 0; i < instructionNode.arguments().size(); i++) {
                     AstNode a = instructionNode.arguments().get(i);
@@ -59,7 +71,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         if ("WITH".equals(t) || ".WITH".equals(t)) { withIdx = i; break; }
                     }
                 }
-                // Keine Zusatztoken zwischen Ziel und WITH erlauben (verhindert z.B. "EXPORT" dazwischen)
+                // Do not allow additional tokens between target and WITH (prevents e.g. "EXPORT" in between)
                 int unexpectedEnd = withIdx >= 0 ? withIdx : instructionNode.arguments().size();
                 if (unexpectedEnd > 1) {
                     diagnostics.reportError(
@@ -102,7 +114,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                 AstNode argumentNode = argsForSignature.get(i);
                 InstructionArgumentType expectedType = signature.argumentTypes().get(i);
 
-                // Behandle Konstanten-Ersetzung
+                // Handle constant substitution
                 if (argumentNode instanceof IdentifierNode idNode) {
                     Optional<Symbol> symbolOpt = symbolTable.resolve(idNode.identifierToken());
                     if (symbolOpt.isPresent()) {
@@ -127,7 +139,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                 );
                             }
                         } else if (symbol.type() == Symbol.Type.VARIABLE) {
-                            // Formale Parameter als Register-Platzhalter akzeptieren
+                            // Accept formal parameters as register placeholders
                             if (expectedType != InstructionArgumentType.REGISTER) {
                                 diagnostics.reportError(
                                         String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got PARAMETER.",
@@ -148,7 +160,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         }
                     }
                 } else {
-                    // Normale Typprüfung für Nicht-Identifier
+                    // Normal type checking for non-identifiers
                     InstructionArgumentType actualType = getArgumentTypeFromNode(argumentNode);
                     if (expectedType != actualType) {
                         diagnostics.reportError(
@@ -159,8 +171,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         );
                     }
 
-                    // Zusätzliche Validierungen
-                    // 1) Register-Gültigkeit (%DRx, %PRx, %FPRx) – Aliasse werden bereits im Parser ersetzt
+                    // Additional validations
+                    // 1) Register validity (%DRx, %PRx, %FPRx) - aliases are already replaced in the parser
                     if (expectedType == InstructionArgumentType.REGISTER && argumentNode instanceof RegisterNode regNode) {
                         String tokenText = regNode.registerToken().text();
                         Optional<Integer> regId = Instruction.resolveRegToken(tokenText);
@@ -171,7 +183,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                     regNode.registerToken().line()
                             );
                         } else {
-                            // Verbot: Direkter Zugriff auf %FPRx soll nicht erlaubt sein
+                            // Prohibition: Direct access to %FPRx should not be allowed
                             String u = tokenText.toUpperCase();
                             if (u.startsWith("%FPR")) {
                                 diagnostics.reportError(
@@ -183,7 +195,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         }
                     }
 
-                    // 2) Strict typing: ungetypte Literale verbieten, wenn Typ erwartet wird
+                    // 2) Strict typing: prohibit untyped literals when a type is expected
                     if (Config.STRICT_TYPING && expectedType == InstructionArgumentType.LITERAL && argumentNode instanceof NumberLiteralNode) {
                         diagnostics.reportError(
                                 String.format("Argument %d for instruction '%s' requires a typed literal (e.g., DATA:42).",
@@ -201,7 +213,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
         if (node instanceof RegisterNode) return InstructionArgumentType.REGISTER;
         if (node instanceof NumberLiteralNode || node instanceof TypedLiteralNode) return InstructionArgumentType.LITERAL;
         if (node instanceof VectorLiteralNode) return InstructionArgumentType.VECTOR;
-        if (node instanceof IdentifierNode) return InstructionArgumentType.LABEL; // Wird als Label behandelt, bis Symbol aufgelöst ist
+        if (node instanceof IdentifierNode) return InstructionArgumentType.LABEL; // Is treated as a label until the symbol is resolved
         return null;
     }
 }

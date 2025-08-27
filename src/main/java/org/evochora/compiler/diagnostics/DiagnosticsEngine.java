@@ -6,55 +6,59 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Eine Engine zum Sammeln und Verwalten von Diagnose-Nachrichten (Fehler, Warnungen),
- * die während des Kompilierungsvorgangs auftreten.
+ * An engine for collecting and managing diagnostic messages (errors, warnings)
+ * that occur during the compilation process.
  * <p>
- * Dies entkoppelt die Fehlerberichterstattung von der eigentlichen Compiler-Logik (Parser, etc.).
+ * This decouples error reporting from the actual compiler logic (parser, etc.).
  */
 public class DiagnosticsEngine {
 
     private final List<Diagnostic> diagnostics = new ArrayList<>();
 
     /**
-     * Meldet einen Fehler.
+     * Reports an error.
      *
-     * @param message    Die Fehlermeldung.
-     * @param fileName   Die Datei, in der der Fehler aufgetreten ist.
-     * @param lineNumber Die Zeilennummer des Fehlers.
+     * @param message    The error message.
+     * @param fileName   The file in which the error occurred.
+     * @param lineNumber The line number of the error.
      */
     public void reportError(String message, String fileName, int lineNumber) {
         diagnostics.add(new Diagnostic(Diagnostic.Type.ERROR, message, fileName, lineNumber));
     }
 
     /**
-     * Meldet eine Warnung.
+     * Reports a warning.
      *
-     * @param message    Die Warnmeldung.
-     * @param fileName   Die Datei, in der die Warnung aufgetreten ist.
-     * @param lineNumber Die Zeilennummer der Warnung.
+     * @param message    The warning message.
+     * @param fileName   The file in which the warning occurred.
+     * @param lineNumber The line number of the warning.
      */
     public void reportWarning(String message, String fileName, int lineNumber) {
         diagnostics.add(new Diagnostic(Diagnostic.Type.WARNING, message, fileName, lineNumber));
     }
 
     /**
-     * Prüft, ob Fehler gemeldet wurden.
+     * Checks if errors have been reported.
      *
-     * @return {@code true}, wenn mindestens ein Fehler existiert, sonst {@code false}.
+     * @return {@code true} if at least one error exists, otherwise {@code false}.
      */
     public boolean hasErrors() {
         return diagnostics.stream().anyMatch(d -> d.type() == Diagnostic.Type.ERROR);
     }
 
     /**
-     * Gibt eine unveränderliche Liste aller gesammelten Diagnosen zurück.
+     * Returns an unmodifiable list of all collected diagnostics.
+     *
+     * @return An unmodifiable list of diagnostics.
      */
     public List<Diagnostic> getDiagnostics() {
         return Collections.unmodifiableList(diagnostics);
     }
 
     /**
-     * Gibt alle gesammelten Diagnosen als einen einzigen, formatierten String zurück.
+     * Returns all collected diagnostics as a single, formatted string.
+     *
+     * @return A formatted string summary of all diagnostics.
      */
     public String summary() {
         return diagnostics.stream()

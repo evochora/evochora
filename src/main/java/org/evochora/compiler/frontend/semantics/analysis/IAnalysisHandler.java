@@ -5,16 +5,16 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 
 /**
- * Interface für spezialisierte Handler in der semantischen Analyse.
- * Jeder Handler ist für die Analyse eines bestimmten Typs von AST-Knoten zuständig.
+ * Interface for specialized handlers in semantic analysis.
+ * Each handler is responsible for analyzing a specific type of AST node.
  */
 @FunctionalInterface
 public interface IAnalysisHandler {
     /**
-     * Analysiert einen einzelnen AST-Knoten.
-     * @param node Der zu analysierende Knoten.
-     * @param symbolTable Die Symboltabelle für den aktuellen Scope.
-     * @param diagnostics Die Engine zum Melden von Fehlern.
+     * Analyzes a single AST node.
+     * @param node The node to analyze.
+     * @param symbolTable The symbol table for the current scope.
+     * @param diagnostics The engine for reporting errors.
      */
     void analyze(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics);
 }

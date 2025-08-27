@@ -13,8 +13,13 @@ import org.evochora.compiler.frontend.semantics.analysis.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.nio.file.Path; // NEUER IMPORT
+import java.nio.file.Path; // NEW IMPORT
 
+/**
+ * Performs semantic analysis on the AST. This includes tasks like symbol table management,
+ * type checking (in a broader sense), and ensuring that the program logic is sound.
+ * It operates by traversing the AST and dispatching nodes to specific handlers.
+ */
 public class SemanticAnalyzer {
 
     private final DiagnosticsEngine diagnostics;
@@ -22,6 +27,11 @@ public class SemanticAnalyzer {
     private final Map<Class<? extends AstNode>, IAnalysisHandler> handlers = new HashMap<>();
     private final Map<AstNode, SymbolTable.Scope> scopeMap = new HashMap<>();
 
+    /**
+     * Constructs a new semantic analyzer.
+     * @param diagnostics The diagnostics engine for reporting errors.
+     * @param symbolTable The symbol table to use for analysis.
+     */
     public SemanticAnalyzer(DiagnosticsEngine diagnostics, SymbolTable symbolTable) {
         this.diagnostics = diagnostics;
         this.symbolTable = symbolTable;
@@ -36,6 +46,13 @@ public class SemanticAnalyzer {
         handlers.put(InstructionNode.class, new InstructionAnalysisHandler(symbolTable, diagnostics));
     }
 
+    /**
+     * Analyzes the given list of AST statements.
+     * This is the main entry point for the semantic analysis phase.
+     * It performs two passes: one to collect top-level symbols (labels, procedures),
+     * and a second to analyze the statements in detail.
+     * @param statements The list of top-level AST nodes to analyze.
+     */
     public void analyze(List<AstNode> statements) {
         collectLabels(statements);
         symbolTable.resetScope();
@@ -56,7 +73,7 @@ public class SemanticAnalyzer {
                     String file = req.alias().fileName();
                     String target = (String) req.path().value();
 
-                    // KORREKTUR: Sicherstellen, dass der Pfad normalisiert ist
+                    // CORRECTION: Ensure that the path is normalized
                     String normalizedTarget = Path.of(target).normalize().toString().replace('\\', '/');
                     symbolTable.registerRequireAlias(file, aliasU, normalizedTarget);
                 }

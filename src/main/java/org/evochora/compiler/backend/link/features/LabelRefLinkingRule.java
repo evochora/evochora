@@ -18,10 +18,17 @@ public class LabelRefLinkingRule implements ILinkingRule {
 
     private final SymbolTable symbolTable;
 
+    /**
+     * Constructs a new label reference linking rule.
+     * @param symbolTable The symbol table for resolving symbols.
+     */
     public LabelRefLinkingRule(SymbolTable symbolTable) {
         this.symbolTable = symbolTable;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public IrInstruction apply(IrInstruction instruction, LinkingContext context, LayoutResult layout) {
         List<IrOperand> ops = instruction.operands();

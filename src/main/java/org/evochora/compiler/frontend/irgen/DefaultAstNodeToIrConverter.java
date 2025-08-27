@@ -8,6 +8,14 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
  */
 public final class DefaultAstNodeToIrConverter implements IAstNodeToIrConverter<AstNode> {
 
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * This implementation does nothing but report a warning.
+	 *
+	 * @param node The node to convert.
+	 * @param ctx  The generation context.
+	 */
 	@Override
 	public void convert(AstNode node, IrGenContext ctx) {
 		ctx.diagnostics().reportWarning(
