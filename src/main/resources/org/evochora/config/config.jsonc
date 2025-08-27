@@ -83,7 +83,7 @@
       // [OPTIONAL] Tick numbers at which simulation should automatically pause (default: null)
       "autoPauseTicks": [500, 1000],
       // [OPTIONAL] Whether to skip ProgramArtifact features (default: false)
-      "skipProgramArtefact": false
+      "skipProgramArtefact": true
     },
     
     // [OPTIONAL] Debug indexer service configuration (default: autoStart=true, batchSize=1000)

@@ -197,11 +197,108 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     class SidebarNextInstructionView {
-        constructor(root) { this.root = root; }
-        update(next) {
-            const el = this.root.querySelector('[data-section="nextInstruction"]');
-            if (!el) return;
-            el.innerHTML = next && next.disassembly ? `<div class="code-view">${next.disassembly}</div>` : '';
+        constructor(root) { 
+            this.root = root; 
+            this.previousState = null;
+        }
+        
+                       /**
+            * Formatiert einen numerischen Register-Wert in einen lesbaren Namen.
+            */
+           formatRegisterName(registerValue) {
+               const value = parseInt(registerValue);
+               if (isNaN(value)) return registerValue;
+               
+               // FPR-Base ist 2000, PR-Base ist 1000
+               if (value >= 2000) {
+                   // Floating Point Register
+                   return `%FPR${value - 2000}`;
+               } else if (value >= 1000) {
+                   // Procedure Register
+                   return `%PR${value - 1000}`;
+               } else {
+                   // Data Register
+                   return `%DR${value}`;
+               }
+           }
+
+           /**
+            * Extrahiert den Wert aus einem Molekül-String (z.B. "DATA:0" -> 0).
+            */
+           extractValueFromMolecule(moleculeText) {
+               const colonIndex = moleculeText.indexOf(':');
+               if (colonIndex === -1) return moleculeText;
+               
+               const valuePart = moleculeText.substring(colonIndex + 1);
+               const value = parseInt(valuePart);
+               return isNaN(value) ? valuePart : value;
+           }
+
+    update(next, navigationDirection) {
+        const el = this.root.querySelector('[data-section="nextInstruction"]');
+        if (!el) return;
+
+        if (!next) {
+            el.innerHTML = '';
+            return;
+        }
+            
+            // Formatiere die nächste Instruktion
+            let instructionText = '';
+            
+            if (next.opcodeName && next.opcodeName !== 'UNKNOWN') {
+                instructionText = next.opcodeName;
+                
+                // Formatiere Argumente basierend auf ISA-Signatur und Molekül-Typen
+                if (next.arguments && next.arguments.length > 0) {
+                    const formattedArgs = next.arguments.map((arg, index) => {
+                        let argText = String(arg);
+                        let argType = next.argumentTypes && next.argumentTypes[index] ? next.argumentTypes[index] : 'UNKNOWN';
+                        
+                        // Formatiere basierend auf ISA-Typ
+                        if (argType === 'REGISTER') {
+                            // Register: Extrahiere den Wert aus "DATA:0" und formatiere als %DR0
+                            let value = this.extractValueFromMolecule(argText);
+                            let registerName = this.formatRegisterName(value);
+                            return `<span class="injected-value register">${registerName}</span>`;
+                        } else if (argType === 'LITERAL') {
+                            // Literal: Zeige den Molekül-Typ direkt (z.B. "DATA:1")
+                            return `<span class="injected-value literal">${argText}</span>`;
+                        } else if (argType === 'VECTOR') {
+                            // Vector: Zeige den Molekül-Typ direkt
+                            return `<span class="injected-value vector">${argText}</span>`;
+                        } else if (argType === 'LABEL') {
+                            // Label: Zeige den Molekül-Typ direkt
+                            return `<span class="injected-value label">${argText}</span>`;
+                        } else {
+                            // Unbekannter Typ: Zeige den Molekül-Typ direkt
+                            return `<span class="injected-value">${argText}</span>`;
+                        }
+                    });
+                    
+                    instructionText += ' ' + formattedArgs.join(' ');
+                }
+                
+                // Füge Execution Status hinzu
+                if (next.lastExecutionStatus) {
+                    const status = next.lastExecutionStatus.status;
+                    const reason = next.lastExecutionStatus.failureReason;
+                    
+                    if (status === 'FAILED') {
+                        instructionText += ` <span class="injected-value error">[FAILED: ${reason || 'Unknown error'}]</span>`;
+                    } else if (status === 'CONFLICT_LOST') {
+                        instructionText += ` <span class="injected-value warning">[CONFLICT_LOST]</span>`;
+                    }
+                }
+            } else {
+                instructionText = 'No instruction available';
+            }
+            
+            // Erstelle die Box im gleichen Layout wie Internal State
+            el.innerHTML = `<div class="code-view" style="font-size:0.9em;">Next: ${instructionText}</div>`;
+            
+            // Speichere den aktuellen Zustand für den nächsten Vergleich
+            this.previousState = { ...next };
         }
     }
 
@@ -403,6 +500,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                         console.log(`DEBUG: Found parameter value for DR${finalRegisterId}: ${registerValue}`);
                                     }
                                 }
+                                
+                                // Typen in Kurzform anzeigen (wie bei anderen Stacks)
+                                if (registerValue) {
+                                    registerValue = registerValue.replace(/CODE:/g, 'C:').replace(/DATA:/g, 'D:').replace(/ENERGY:/g, 'E:').replace(/STRUCTURE:/g, 'S:');
+                                }
 
                                 if (param.paramName) {
                                     // Mit ProgramArtifact: PARAM1<span class="injected-value">[%DR1=D:3]</span>
@@ -549,7 +651,7 @@ document.addEventListener('DOMContentLoaded', () => {
         update(details, navigationDirection) {
             if (!details) return;
             this.basic.update(details.basicInfo, navigationDirection);
-            this.next.update(details.nextInstruction);
+            this.next.update(details.nextInstruction, navigationDirection);
             this.state.update(details.internalState, navigationDirection);
             this.source.update(details.sourceView);
         }

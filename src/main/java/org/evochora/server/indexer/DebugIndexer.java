@@ -34,6 +34,7 @@ import org.evochora.runtime.services.Disassembler;
 import org.evochora.runtime.services.DisassemblyData;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.isa.InstructionArgumentType;
+import org.evochora.runtime.isa.InstructionSignature;
 
 public class DebugIndexer implements IControllable, Runnable {
 
@@ -869,48 +870,152 @@ public class DebugIndexer implements IControllable, Runnable {
             
             if (data == null) {
                 return new PreparedTickState.NextInstruction(
-                    "Disassembly failed", null, null, "ERROR"
+                    0, "UNKNOWN", new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), 
+                    new PreparedTickState.LastExecutionStatus("ERROR", "Disassembly failed")
                 );
             }
             
-            // Bestimme den runtimeStatus basierend auf der Validität
-            String runtimeStatus = determineRuntimeStatus(validity);
+            // Bestimme den lastExecutionStatus basierend auf der Validität und dem Organismus-Status
+            PreparedTickState.LastExecutionStatus lastExecutionStatus = buildExecutionStatus(o, validity);
             
-            // Erstelle die NextInstruction
+            // Konvertiere argPositions von int[][] zu List<int[]>
+            List<int[]> argPositions = Arrays.stream(data.argPositions())
+                .map(pos -> pos.clone())
+                .collect(Collectors.toList());
+            
+            // Formatiere die Argumente basierend auf ihren Typen
+            List<Object> formattedArguments = formatArguments(data);
+            
+            // Erstelle die NextInstruction mit der neuen Struktur
             return new PreparedTickState.NextInstruction(
-                formatDisassembly(data),
-                null, // sourceFile - wird nicht gesetzt bei Runtime-only Disassembly
-                null, // sourceLine - wird nicht gesetzt bei Runtime-only Disassembly
-                runtimeStatus
+                data.opcodeId(),
+                data.opcodeName(),
+                formattedArguments,
+                buildArgumentTypes(data),
+                argPositions,
+                lastExecutionStatus
             );
             
         } catch (Exception e) {
             log.warn("Failed to disassemble instruction for organism {}: {}", o.id(), e.getMessage());
             return new PreparedTickState.NextInstruction(
-                "Disassembly failed: " + e.getMessage(),
-                null,
-                null,
-                "ERROR"
+                0, "UNKNOWN", new ArrayList<>(), new ArrayList<>(), new ArrayList<>(),
+                new PreparedTickState.LastExecutionStatus("ERROR", "Disassembly failed: " + e.getMessage())
             );
         }
     }
     
     /**
-     * Bestimmt den runtimeStatus basierend auf der Artifact-Validität.
+     * Bestimmt den executionStatus basierend auf der Artifact-Validität und dem Organismus-Status.
      */
-    private String determineRuntimeStatus(ArtifactValidity validity) {
+    private PreparedTickState.LastExecutionStatus buildExecutionStatus(RawOrganismState o, ArtifactValidity validity) {
+        // Prüfe zuerst, ob die letzte Instruktion fehlgeschlagen ist
+        if (o.instructionFailed()) {
+            return new PreparedTickState.LastExecutionStatus("FAILED", o.failureReason());
+        }
+        
+        // Ansonsten basierend auf der Artifact-Validität
         switch (validity) {
             case NONE:
-                return "CODE_UNAVAILABLE";
+                return new PreparedTickState.LastExecutionStatus("SUCCESS", null);
             case VALID:
-                return "OK";
+                return new PreparedTickState.LastExecutionStatus("SUCCESS", null);
             case PARTIAL_SOURCE:
-                return "COMPILER_GENERATED";
+                return new PreparedTickState.LastExecutionStatus("SUCCESS", null);
             case INVALID:
-                return "CODE_UNAVAILABLE";
+                return new PreparedTickState.LastExecutionStatus("SUCCESS", null);
             default:
-                return "UNKNOWN";
+                return new PreparedTickState.LastExecutionStatus("SUCCESS", null);
         }
+    }
+    
+    /**
+     * Formatiert die Argumente basierend auf ihren tatsächlichen Molekül-Typen.
+     * Das Backend extrahiert nur die Molekül-Typen, die ISA-Interpretation macht das Frontend.
+     */
+    private List<Object> formatArguments(DisassemblyData data) {
+        List<Object> formattedArgs = new ArrayList<>();
+        
+        for (int argValue : data.argValues()) {
+            // Extrahiere den tatsächlichen Molekül-Typ aus der Raw DB (wie bei Internal State)
+            Molecule m = Molecule.fromInt(argValue);
+            String formattedValue = String.format("%s:%d", typeIdToName(m.type()), m.toScalarValue());
+            formattedArgs.add(formattedValue);
+        }
+        
+        return formattedArgs;
+    }
+    
+    /**
+     * Formatiert einen Register-Wert als lesbaren Namen.
+     */
+    private String formatRegisterName(int registerValue) {
+        if (registerValue >= Instruction.FPR_BASE) {
+            // Floating Point Register
+            return "%FPR" + (registerValue - Instruction.FPR_BASE);
+        } else if (registerValue >= Instruction.PR_BASE) {
+            // Procedure Register
+            return "%PR" + (registerValue - Instruction.PR_BASE);
+        } else {
+            // Data Register
+            return "%DR" + registerValue;
+        }
+    }
+    
+    /**
+     * Formatiert einen Vektor-Wert.
+     */
+    private String formatVector(int vectorValue) {
+        // Für jetzt: einfache Formatierung
+        return "[" + vectorValue + "]";
+    }
+
+    /**
+     * Baut die Argument-Typen basierend auf der ISA-Signatur.
+     */
+    private List<String> buildArgumentTypes(DisassemblyData data) {
+        List<String> types = new ArrayList<>();
+        
+        // Hole die ISA-Signatur für den Opcode
+        try {
+            Optional<InstructionSignature> signatureOpt = Instruction.getSignatureById(data.opcodeId());
+            if (signatureOpt.isPresent()) {
+                InstructionSignature signature = signatureOpt.get();
+                // Verwende die echte ISA-Signatur
+                for (InstructionArgumentType argType : signature.argumentTypes()) {
+                    switch (argType) {
+                        case REGISTER:
+                            types.add("REGISTER");
+                            break;
+                        case LITERAL:
+                            types.add("LITERAL");
+                            break;
+                        case VECTOR:
+                            types.add("VECTOR");
+                            break;
+                        case LABEL:
+                            types.add("LABEL");
+                            break;
+                        default:
+                            types.add("UNKNOWN");
+                            break;
+                    }
+                }
+            } else {
+                // Fallback: Alle Argumente als UNKNOWN
+                for (int i = 0; i < data.argValues().length; i++) {
+                    types.add("UNKNOWN");
+                }
+            }
+        } catch (Exception e) {
+            // Bei Fehlern: Alle Argumente als UNKNOWN
+            log.debug("Could not determine argument types for opcode {}: {}", data.opcodeId(), e.getMessage());
+            for (int i = 0; i < data.argValues().length; i++) {
+                types.add("UNKNOWN");
+            }
+        }
+        
+        return types;
     }
     
     /**

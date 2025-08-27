@@ -8,5 +8,5 @@ public record DisassemblyData(
     int opcodeId,
     String opcodeName,
     int[] argValues,
-    int[] argPositions
+    int[][] argPositions
 ) {}

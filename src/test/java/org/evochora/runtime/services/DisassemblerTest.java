@@ -46,7 +46,8 @@ class DisassemblerTest {
         assertThat(result.opcodeName()).isEqualTo("SETI");
         assertThat(result.argValues()).hasSize(1);
         assertThat(result.argValues()[0]).isEqualTo(42);
-        assertThat(result.argPositions()).hasSize(1);
+        assertThat(result.argPositions()).hasDimensions(1, 2);
+        assertThat(result.argPositions()[0]).isEqualTo(new int[]{1, 0});
     }
 
     @Test

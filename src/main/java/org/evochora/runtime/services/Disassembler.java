@@ -35,20 +35,20 @@ public class Disassembler {
 
             // Handle unknown opcodes
             if ("UNKNOWN".equals(opcodeName)) {
-                return new DisassemblyData(opcodeId, "UNKNOWN_OP (" + opcodeId + ")", new int[0], new int[0]);
+                return new DisassemblyData(opcodeId, "UNKNOWN_OP (" + opcodeId + ")", new int[0], new int[0][]);
             }
 
             // Get the instruction signature
             Optional<InstructionSignature> signatureOpt = Instruction.getSignatureById(opcodeId);
             if (signatureOpt.isEmpty()) {
-                return new DisassemblyData(opcodeId, opcodeName, new int[0], new int[0]);
+                return new DisassemblyData(opcodeId, opcodeName, new int[0], new int[0][]);
             }
 
             InstructionSignature signature = signatureOpt.get();
 
             // Read the arguments
             int[] argValues = new int[signature.argumentTypes().size()];
-            int[] argPositions = new int[signature.argumentTypes().size()];
+            int[][] argPositions = new int[signature.argumentTypes().size()][];
             int[] currentPos = instructionPointer.clone();
             int actualArgCount = 0;
 
@@ -64,13 +64,13 @@ public class Disassembler {
                 }
 
                 argValues[actualArgCount] = argMolecule.toInt();
-                argPositions[actualArgCount] = currentPos[0]; // Simplified position tracking
+                argPositions[actualArgCount] = currentPos.clone(); // Store complete n-D coordinates
                 actualArgCount++;
             }
 
             // Create properly sized arrays with only the arguments we actually found
             int[] finalArgValues = new int[actualArgCount];
-            int[] finalArgPositions = new int[actualArgCount];
+            int[][] finalArgPositions = new int[actualArgCount][];
             System.arraycopy(argValues, 0, finalArgValues, 0, actualArgCount);
             System.arraycopy(argPositions, 0, finalArgPositions, 0, actualArgCount);
 

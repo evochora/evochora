@@ -242,6 +242,14 @@ main.container {
 .injected-value.callParam { color: #ffd27f; }
 .injected-value.popParam { color: #7fd2ff; }
 
+/* Next Instruction Annotation Styles */
+.injected-value.register { color: #a0e0a0; } /* Standard grüne Farbe für Register */
+.injected-value.literal { color: #a0e0a0; } /* Standard grüne Farbe für Literale */
+.injected-value.vector { color: #a0e0a0; } /* Standard grüne Farbe für Vektoren */
+.injected-value.label { color: #a0e0a0; } /* Standard grüne Farbe für Labels */
+.injected-value.error { color: #ff7f7f; } /* Rote Farbe für Fehler */
+.injected-value.warning { color: #ffb366; } /* Orange Farbe für Warnungen */
+
 /* Tighter gutter in source code view to match other boxes */
 .source-code-view .line-number {
     width: 24px;

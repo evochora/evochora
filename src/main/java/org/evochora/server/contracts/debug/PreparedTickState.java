@@ -31,8 +31,19 @@ public record PreparedTickState(
 
     public record BasicInfo(int id, String programId, Integer parentId, long birthTick, long energy, List<Integer> ip, List<Integer> dv) {}
 
-    // GEÄNDERT: runtimeStatus hinzugefügt
-    public record NextInstruction(String disassembly, String sourceFile, Integer sourceLine, String runtimeStatus) {}
+    public record NextInstruction(
+            int opcodeId,
+            String opcodeName, 
+            List<Object> arguments,
+            List<String> argumentTypes,
+            List<int[]> argPositions,
+            LastExecutionStatus lastExecutionStatus
+    ) {}
+
+    public record LastExecutionStatus(
+            String status,  // "SUCCESS", "FAILED", "CONFLICT_LOST"
+            String failureReason  // nur wenn status = "FAILED"
+    ) {}
 
     public record InternalState(
             List<RegisterValue> dataRegisters,
