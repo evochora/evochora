@@ -22,7 +22,7 @@ public class LayoutEngineTest {
 
 	@Test
 	@Tag("unit")
-	void laysOutOrgDirPlaceAndInstructions() {
+	void laysOutOrgDirPlaceAndInstructions() throws Exception {
 		// Build a small IR program manually
 		Map<String, IrValue> orgArgs = new HashMap<>();
 		orgArgs.put("position", new IrValue.Vector(new int[]{2, 3}));

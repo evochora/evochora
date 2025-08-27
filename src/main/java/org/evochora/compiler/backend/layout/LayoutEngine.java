@@ -1,6 +1,7 @@
 package org.evochora.compiler.backend.layout;
 
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.ir.*;
 
@@ -19,8 +20,9 @@ public final class LayoutEngine {
      * @param isa The instruction set for determining operand sizes.
      * @param dims The number of dimensions in the world.
      * @return The result of the layout process.
+     * @throws CompilationException if address conflicts are detected during layout.
      */
-    public LayoutResult layout(IrProgram program, IInstructionSet isa, int dims) {
+    public LayoutResult layout(IrProgram program, IInstructionSet isa, int dims) throws CompilationException {
         if (dims <= 0) dims = 2;
         LayoutContext ctx = new LayoutContext(dims);
         LayoutDirectiveRegistry registry = LayoutDirectiveRegistry.initializeWithDefaults();

@@ -2,6 +2,7 @@ package org.evochora.compiler.backend.layout;
 
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.api.CompilationException;
 
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -72,25 +73,77 @@ public final class LayoutContext {
 
     /**
      * Places an opcode at the current position and advances the cursor.
+     * If coordinate is already occupied, throws a CompilationException with detailed information.
      * @param src The source information for the opcode.
+     * @throws CompilationException if the coordinate is already occupied.
      */
-    public void placeOpcode(SourceInfo src) {
+    public void placeOpcode(SourceInfo src) throws CompilationException {
+        String coordKey = coordToStringKey(currentPos);
+        
+        if (coordToLinear.containsKey(coordKey)) {
+            // Koordinate bereits besetzt - detaillierte Fehlermeldung
+            Integer oldLinearAddress = coordToLinear.get(coordKey);
+            SourceInfo oldSource = sourceMap.get(oldLinearAddress);
+            
+            String currentLocation = String.format("%s:%d", 
+                src != null ? src.fileName() : "unknown", 
+                src != null ? src.lineNumber() : 0);
+            
+            String originalLocation = String.format("%s:%d", 
+                oldSource != null ? oldSource.fileName() : "unknown", 
+                oldSource != null ? oldSource.lineNumber() : 0);
+            
+            throw new CompilationException(String.format(
+                "Address conflict: Coordinate %s is already occupied by an instruction at %s. " +
+                "Cannot place new opcode instruction at %s.",
+                Arrays.toString(currentPos), originalLocation, currentLocation
+            ));
+        }
+        
+        // Normale neue Koordinate
         linearToCoord.put(linearAddress, Nd.copy(currentPos));
-        coordToLinear.put(coordToStringKey(currentPos), linearAddress);
+        coordToLinear.put(coordKey, linearAddress);
         sourceMap.put(linearAddress, src);
         linearAddress++;
+        
         currentPos = Nd.add(currentPos, currentDv);
     }
 
     /**
      * Places an operand at the current position and advances the cursor.
+     * If coordinate is already occupied, throws a CompilationException with detailed information.
      * @param src The source information for the operand.
+     * @throws CompilationException if the coordinate is already occupied.
      */
-    public void placeOperand(SourceInfo src) {
+    public void placeOperand(SourceInfo src) throws CompilationException {
+        String coordKey = coordToStringKey(currentPos);
+        
+        if (coordToLinear.containsKey(coordKey)) {
+            // Koordinate bereits besetzt - detaillierte Fehlermeldung
+            Integer oldLinearAddress = coordToLinear.get(coordKey);
+            SourceInfo oldSource = sourceMap.get(oldLinearAddress);
+            
+            String currentLocation = String.format("%s:%d", 
+                src != null ? src.fileName() : "unknown", 
+                src != null ? src.lineNumber() : 0);
+            
+            String originalLocation = String.format("%s:%d", 
+                oldSource != null ? oldSource.fileName() : "unknown", 
+                oldSource != null ? oldSource.lineNumber() : 0);
+            
+            throw new CompilationException(String.format(
+                "Address conflict: Coordinate %s is already occupied by an instruction at %s. " +
+                "Cannot place new operand instruction at %s.",
+                Arrays.toString(currentPos), originalLocation, currentLocation
+            ));
+        }
+        
+        // Normale neue Koordinate
         linearToCoord.put(linearAddress, Nd.copy(currentPos));
-        coordToLinear.put(coordToStringKey(currentPos), linearAddress);
+        coordToLinear.put(coordKey, linearAddress);
         sourceMap.put(linearAddress, src);
         linearAddress++;
+        
         currentPos = Nd.add(currentPos, currentDv);
     }
 
