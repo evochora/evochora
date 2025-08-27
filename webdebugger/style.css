@@ -21,6 +21,52 @@ header {
     border-bottom: 1px solid #333;
 }
 
+/* Tooltip */
+.cell-tooltip {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.9);
+    color: #ffffff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: 'Courier New', monospace;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+    /* Position wird dynamisch gesetzt */
+}
+
+.cell-tooltip.show {
+    opacity: 1;
+}
+
+.cell-tooltip .tooltip-coords {
+    color: #a0e0a0;
+    font-weight: bold;
+}
+
+.cell-tooltip .tooltip-type {
+    color: #ffd700;
+}
+
+.cell-tooltip .tooltip-owner {
+    color: #87ceeb;
+}
+
+.cell-tooltip .tooltip-opcode {
+    color: #dda0dd;
+}
+
+.cell-tooltip .tooltip-separator {
+    color: #666;
+    margin: 0 4px;
+}
+
 /* Statuszeile für Fehler und Informationen */
 .status-bar {
     background-color: #2a2a3a;

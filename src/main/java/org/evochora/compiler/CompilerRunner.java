@@ -24,20 +24,26 @@ public final class CompilerRunner {
         ProgramArtifact artifact = compiler.compile(sourceLines, programName);
 
         Environment environment = simulation.getEnvironment();
-        // Place code
+        
+        // Erstelle zuerst den Organismus, damit wir den ownerId haben
+        Organism org = Organism.create(simulation, startPos, 1000, simulation.getLogger());
+        org.setProgramId(artifact.programId());
+        simulation.addOrganism(org);
+        
+        // Place code mit ownerId
         for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
             int[] rel = e.getKey();
             int[] abs = new int[startPos.length];
             for (int i = 0; i < startPos.length; i++) abs[i] = startPos[i] + rel[i];
-            environment.setMolecule(Molecule.fromInt(e.getValue()), abs);
+            environment.setMolecule(Molecule.fromInt(e.getValue()), org.getId(), abs);
         }
-        // Place initial world objects
+        // Place initial world objects mit ownerId
         for (Map.Entry<int[], org.evochora.compiler.api.PlacedMolecule> e : artifact.initialWorldObjects().entrySet()) {
             int[] rel = e.getKey();
             int[] abs = new int[startPos.length];
             for (int i = 0; i < startPos.length; i++) abs[i] = startPos[i] + rel[i];
             org.evochora.compiler.api.PlacedMolecule pm = e.getValue();
-            environment.setMolecule(new Molecule(pm.type(), pm.value()), abs);
+            environment.setMolecule(new Molecule(pm.type(), pm.value()), org.getId(), abs);
         }
 
         // NEU: Registriere die Call-Site-Bindungen
@@ -54,9 +60,6 @@ public final class CompilerRunner {
             }
         }
 
-        Organism org = Organism.create(simulation, startPos, 1000, simulation.getLogger());
-        org.setProgramId(artifact.programId());
-        simulation.addOrganism(org);
         return org;
     }
 }

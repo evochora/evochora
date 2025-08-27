@@ -57,8 +57,26 @@ public class Disassembler {
             for (int i = 0; i < signature.argumentTypes().size(); i++) {
                 InstructionArgumentType argType = signature.argumentTypes().get(i);
                 
-                if (argType == InstructionArgumentType.VECTOR || argType == InstructionArgumentType.LABEL) {
-                    // VECTOR/LABEL: Lese n-Dimensionen
+                if (argType == InstructionArgumentType.VECTOR) {
+                    // VECTOR: Lese n-Dimensionen
+                    int dims = reader.getShape().length;
+                    for (int dim = 0; dim < dims; dim++) {
+                        // Move to the next position
+                        currentPos = reader.getProperties().getNextPosition(currentPos, new int[]{1, 0});
+                        
+                        // Read the argument
+                        Molecule argMolecule = reader.getMolecule(currentPos);
+                        if (argMolecule == null) {
+                            // Handle incomplete instruction
+                            break;
+                        }
+                        
+                        argValues[actualArgCount] = argMolecule.toInt();
+                        argPositions[actualArgCount] = currentPos.clone();
+                        actualArgCount++;
+                    }
+                } else if (argType == InstructionArgumentType.LABEL) {
+                    // LABEL: Lese n-Dimensionen (weil Label ein Vektor-Alias ist)
                     int dims = reader.getShape().length;
                     for (int dim = 0; dim < dims; dim++) {
                         // Move to the next position

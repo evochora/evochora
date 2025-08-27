@@ -11,6 +11,17 @@ class WorldRenderer {
         this.isa = isa;
         this.cellFont = `normal ${this.config.CELL_SIZE * 0.4}px 'Monospaced', 'Courier New'`;
         this.organismColorMap = new Map();
+        
+        // Tooltip-Referenz
+        this.tooltip = document.getElementById('cell-tooltip');
+        
+        // Tooltip-Delay
+        this.tooltipDelay = 300; // 300ms Verzögerung
+        this.tooltipTimeout = null;
+        this.lastMousePosition = null;
+        
+        // Mouse-Event-Handler für Tooltip
+        this.setupTooltipEvents();
     }
 
     draw(worldState) {
@@ -18,6 +29,9 @@ class WorldRenderer {
         const worldShape = this.config.WORLD_SHAPE;
 
         if (!worldShape || !worldShape[0] || !worldShape[1]) return;
+
+        // Speichere aktuelle Zellen für Tooltip
+        this.currentCells = cells;
 
         this.canvas.width = worldShape[0] * this.config.CELL_SIZE;
         this.canvas.height = worldShape[1] * this.config.CELL_SIZE;
@@ -157,6 +171,153 @@ class WorldRenderer {
             case C.TYPE_DATA: return C.COLOR_DATA_TEXT;
             case C.TYPE_CODE: return C.COLOR_CODE_TEXT;
             default: return C.COLOR_TEXT;
+        }
+    }
+
+    setupTooltipEvents() {
+        this.canvas.addEventListener('mousemove', (event) => this.handleMouseMove(event));
+        this.canvas.addEventListener('mouseleave', () => {
+            this.hideTooltip();
+            if (this.tooltipTimeout) {
+                clearTimeout(this.tooltipTimeout);
+                this.tooltipTimeout = null;
+            }
+            this.lastMousePosition = null;
+        });
+    }
+
+    handleMouseMove(event) {
+        const rect = this.canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        
+        // Prüfe, ob Maus über dem Canvas ist
+        if (x < 0 || y < 0 || x >= this.canvas.width || y >= this.canvas.height) {
+            this.hideTooltip();
+            if (this.tooltipTimeout) {
+                clearTimeout(this.tooltipTimeout);
+                this.tooltipTimeout = null;
+            }
+            this.lastMousePosition = null;
+            return;
+        }
+        
+        // Konvertiere zu Grid-Koordinaten
+        const gridX = Math.floor(x / this.config.CELL_SIZE);
+        const gridY = Math.floor(y / this.config.CELL_SIZE);
+        
+        // Prüfe, ob sich die Position geändert hat
+        const currentPos = `${gridX},${gridY}`;
+        if (this.lastMousePosition === currentPos) {
+            return; // Keine Änderung, nichts tun
+        }
+        
+        // Position hat sich geändert - Tooltip ausblenden und Timer zurücksetzen
+        this.hideTooltip();
+        this.lastMousePosition = currentPos;
+        
+        // Verzögerung für Tooltip
+        if (this.tooltipTimeout) {
+            clearTimeout(this.tooltipTimeout);
+        }
+        
+        // Suche nach Zelle an dieser Position
+        const cell = this.findCellAt(gridX, gridY);
+        
+        if (cell) {
+            // Tooltip nach Verzögerung anzeigen
+            this.tooltipTimeout = setTimeout(() => {
+                this.showTooltip(event, cell, gridX, gridY);
+            }, this.tooltipDelay);
+        }
+    }
+
+    findCellAt(gridX, gridY) {
+        if (!this.currentCells) return null;
+        
+        // Suche nach existierender Zelle
+        const existingCell = this.currentCells.find(cell => {
+            const pos = this.parsePosition(cell.position);
+            return pos && pos[0] === gridX && pos[1] === gridY;
+        });
+        
+        if (existingCell) {
+            return existingCell;
+        }
+        
+        // Erstelle virtuelle Zelle für leere Positionen
+        return {
+            type: this.config.TYPE_CODE,
+            value: 0,
+            ownerId: 0,
+            opcodeName: 'NOP'
+        };
+    }
+
+    showTooltip(event, cell, gridX, gridY) {
+        if (!this.tooltip) return;
+        
+        // Tooltip-Inhalt erstellen
+        const typeName = this.getTypeName(cell.type);
+        const opcodeInfo = cell.opcodeName ? `(${cell.opcodeName})` : '';
+        
+        this.tooltip.innerHTML = `
+            <span class="tooltip-coords">[${gridX}|${gridY}]</span>
+            <span class="tooltip-type">${typeName}:${cell.value}${opcodeInfo}</span>
+            <span class="tooltip-separator">•</span>
+            <span class="tooltip-owner">Owner: ${cell.ownerId || 0}</span>
+        `;
+        
+        // Tooltip-Position berechnen (verhindert Überlappung mit Fensterrand)
+        const tooltipRect = this.tooltip.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        
+        let left = event.clientX;
+        let top = event.clientY - 8; // 8px über der Maus
+        
+        // Verhindere Überlappung mit rechten Rand
+        if (left + tooltipRect.width > viewportWidth) {
+            left = viewportWidth - tooltipRect.width - 10;
+        }
+        
+        // Verhindere Überlappung mit linken Rand
+        if (left < 10) {
+            left = 10;
+        }
+        
+        // Verhindere Überlappung mit oberen Rand
+        if (top < 10) {
+            top = event.clientY + 20; // Unter der Maus
+        }
+        
+        // Verhindere Überlappung mit unteren Rand
+        if (top + tooltipRect.height > viewportHeight) {
+            top = viewportHeight - tooltipRect.height - 10;
+        }
+        
+        // Tooltip-Position setzen
+        this.tooltip.style.left = left + 'px';
+        this.tooltip.style.top = top + 'px';
+        
+        // Tooltip anzeigen
+        this.tooltip.classList.add('show');
+    }
+
+    hideTooltip() {
+        if (this.tooltip) {
+            this.tooltip.classList.remove('show');
+        }
+    }
+
+    getTypeName(typeId) {
+        const C = this.config;
+        switch (typeId) {
+            case C.TYPE_CODE: return 'CODE';
+            case C.TYPE_DATA: return 'DATA';
+            case C.TYPE_ENERGY: return 'ENERGY';
+            case C.TYPE_STRUCTURE: return 'STRUCTURE';
+            default: return 'UNKNOWN';
         }
     }
 }

@@ -160,8 +160,7 @@ public abstract class Instruction {
         registerFamily(ConditionalInstruction.class, Map.of(95, "IFMS"), List.of(OperandSource.STACK));
 
         // ControlFlow-Familie
-        registerFamily(ControlFlowInstruction.class, Map.of(20, "JMPI"), List.of(OperandSource.VECTOR));
-        registerFamily(ControlFlowInstruction.class, Map.of(34, "CALL"), List.of(OperandSource.LABEL));
+        registerFamily(ControlFlowInstruction.class, Map.of(20, "JMPI", 34, "CALL"), List.of(OperandSource.LABEL));
         registerFamily(ControlFlowInstruction.class, Map.of(10, "JMPR"), List.of(OperandSource.REGISTER));
         registerFamily(ControlFlowInstruction.class, Map.of(89, "JMPS"), List.of(OperandSource.STACK));
         registerFamily(ControlFlowInstruction.class, Map.of(35, "RET"), List.of());

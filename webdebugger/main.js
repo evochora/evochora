@@ -876,7 +876,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             // ISA-Mapping is intentionally not used; rely solely on cell.opcodeName provided by backend
             const typeToId = t => ({ CODE:0, DATA:1, ENERGY:2, STRUCTURE:3 })[t] ?? 1;
-            const cells = (data.worldState?.cells||[]).map(c => ({ position: JSON.stringify(c.position), type: typeToId(c.type), value: c.value, opcodeName: c.opcodeName }));
+            const cells = (data.worldState?.cells||[]).map(c => ({ position: JSON.stringify(c.position), type: typeToId(c.type), value: c.value, ownerId: c.ownerId, opcodeName: c.opcodeName }));
             const organisms = (data.worldState?.organisms||[]).map(o => ({ organismId: o.id, programId: o.programId, energy: o.energy, positionJson: JSON.stringify(o.position), dps: o.dps, dv: o.dv }));
             this.renderer.draw({ cells, organisms, selectedOrganismId: this.state.selectedOrganismId });
             const ids = Object.keys(data.organismDetails||{});
@@ -924,7 +924,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.sidebarManager.setToggleButtonVisible(true);
                     const typeToId = t => ({ CODE:0, DATA:1, ENERGY:2, STRUCTURE:3 })[t] ?? 1;
                     this.renderer.draw({
-                        cells: (this.state.lastTickData.worldState?.cells||[]).map(c=>({position: JSON.stringify(c.position), type: typeToId(c.type), value: c.value, opcodeName: c.opcodeName })),
+                        cells: (this.state.lastTickData.worldState?.cells||[]).map(c=>({position: JSON.stringify(c.position), type: typeToId(c.type), value: c.value, ownerId: c.ownerId, opcodeName: c.opcodeName })),
                         organisms: (organisms||[]).map(o2=>({ organismId: o2.id, programId: o2.programId, energy: o2.energy, positionJson: JSON.stringify(o2.position), dps: o2.dps, dv: o2.dv })),
                         selectedOrganismId: o.id
                     });

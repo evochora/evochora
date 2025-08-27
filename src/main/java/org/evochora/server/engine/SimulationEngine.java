@@ -340,21 +340,28 @@ public class SimulationEngine implements IControllable, Runnable {
                         if (def.placement != null && "fixed".equals(def.placement.strategy) && def.placement.positions != null) {
                             for (int[] pos : def.placement.positions) {
                                 try {
-                                    // Place code in environment
+                                    // Erstelle zuerst den Organismus, damit wir den ownerId haben
+                                    org.evochora.runtime.model.Organism organism = org.evochora.runtime.model.Organism.create(simulation, pos, def.initialEnergy, simulation.getLogger());
+                                    if (enableProgramArtifactFeatures) {
+                                        organism.setProgramId(artifact.programId());
+                                    }
+                                    simulation.addOrganism(organism);
+                                    
+                                    // Place code in environment mit ownerId
                                     for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
                                         int[] rel = e.getKey();
                                         int[] abs = new int[pos.length];
                                         for (int i = 0; i < pos.length; i++) abs[i] = pos[i] + rel[i];
-                                        simulation.getEnvironment().setMolecule(org.evochora.runtime.model.Molecule.fromInt(e.getValue()), abs);
+                                        simulation.getEnvironment().setMolecule(org.evochora.runtime.model.Molecule.fromInt(e.getValue()), organism.getId(), abs);
                                     }
                                     
-                                    // Place initial world objects
+                                    // Place initial world objects mit ownerId
                                     for (Map.Entry<int[], org.evochora.compiler.api.PlacedMolecule> e : artifact.initialWorldObjects().entrySet()) {
                                         int[] rel = e.getKey();
                                         int[] abs = new int[pos.length];
                                         for (int i = 0; i < pos.length; i++) abs[i] = pos[i] + rel[i];
                                         org.evochora.compiler.api.PlacedMolecule pm = e.getValue();
-                                        simulation.getEnvironment().setMolecule(new org.evochora.runtime.model.Molecule(pm.type(), pm.value()), abs);
+                                        simulation.getEnvironment().setMolecule(new org.evochora.runtime.model.Molecule(pm.type(), pm.value()), organism.getId(), abs);
                                     }
                                     
                                     // NEU: Registriere die Call-Site-Bindungen im CallBindingRegistry
@@ -372,13 +379,6 @@ public class SimulationEngine implements IControllable, Runnable {
                                             }
                                         }
                                     }
-                                    
-                                    // Create and add organism
-                                    org.evochora.runtime.model.Organism organism = org.evochora.runtime.model.Organism.create(simulation, pos, def.initialEnergy, simulation.getLogger());
-                                    if (enableProgramArtifactFeatures) {
-                                        organism.setProgramId(artifact.programId());
-                                    }
-                                    simulation.addOrganism(organism);
                                     
                                     log.info("Created organism {} at position {} with program {}", organism.getId(), java.util.Arrays.toString(pos), def.program);
                                 } catch (Exception e) {
