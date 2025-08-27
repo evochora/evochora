@@ -16,17 +16,35 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * A registry for directive handlers. This class holds a map of directive names
+ * to their corresponding handlers.
+ */
 public class DirectiveHandlerRegistry {
     private final Map<String, IDirectiveHandler> handlers = new HashMap<>();
 
+    /**
+     * Registers a new directive handler.
+     * @param directiveName The name of the directive (e.g., ".DEFINE").
+     * @param handler The handler for the directive.
+     */
     public void register(String directiveName, IDirectiveHandler handler) {
         handlers.put(directiveName.toUpperCase(), handler);
     }
 
+    /**
+     * Gets the handler for a given directive name.
+     * @param directiveName The name of the directive.
+     * @return An {@link Optional} containing the handler if it exists, otherwise empty.
+     */
     public Optional<IDirectiveHandler> get(String directiveName) {
         return Optional.ofNullable(handlers.get(directiveName.toUpperCase()));
     }
 
+    /**
+     * Initializes the directive handler registry with all the built-in handlers.
+     * @return A new instance of {@link DirectiveHandlerRegistry} with all handlers registered.
+     */
     public static DirectiveHandlerRegistry initialize() {
         DirectiveHandlerRegistry registry = new DirectiveHandlerRegistry();
         registry.register(".DEFINE", new DefineDirectiveHandler());
@@ -40,7 +58,7 @@ public class DirectiveHandlerRegistry {
         registry.register(".DIR", new DirDirectiveHandler());
         registry.register(".PLACE", new PlaceDirectiveHandler());
 
-        // Präprozessor-Handler
+        // Preprocessor handlers
         IncludeDirectiveHandler includeHandler = new IncludeDirectiveHandler();
         registry.register(".INCLUDE", includeHandler);
         registry.register(".MACRO", new MacroDirectiveHandler());

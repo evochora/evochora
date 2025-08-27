@@ -6,10 +6,10 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import java.util.List;
 
 /**
- * Ein AST-Knoten, der eine .DEFINE-Direktive repräsentiert.
+ * An AST node that represents a <code>.define</code> directive.
  *
- * @param name  Das Token des Konstantennamens.
- * @param value Der AST-Knoten, der den Wert der Konstante darstellt.
+ * @param name  The token of the constant name.
+ * @param value The AST node that represents the value of the constant.
  */
 public record DefineNode(
         Token name,

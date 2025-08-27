@@ -6,10 +6,10 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import java.util.List;
 
 /**
- * Ein AST-Knoten, der eine Label-Definition repräsentiert (z.B. "L1:").
+ * An AST node that represents a label definition (e.g., "L1:").
  *
- * @param labelToken Das Token, das den Namen des Labels enthält.
- * @param statement Das Statement (typischerweise eine Instruktion), das diesem Label folgt.
+ * @param labelToken The token containing the name of the label.
+ * @param statement The statement (typically an instruction) that follows this label.
  */
 public record LabelNode(
         Token labelToken,
@@ -18,7 +18,7 @@ public record LabelNode(
 
     @Override
     public List<AstNode> getChildren() {
-        // Ein Label hat genau ein Kind: das Statement, das darauf folgt.
+        // A label has exactly one child: the statement that follows it.
         return statement != null ? List.of(statement) : List.of();
     }
 }

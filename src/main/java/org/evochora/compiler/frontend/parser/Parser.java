@@ -19,6 +19,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * The main parser for the assembly language. It consumes a list of tokens
+ * from the {@link org.evochora.compiler.frontend.lexer.Lexer} and produces an Abstract Syntax Tree (AST).
+ * The parser is also responsible for handling directives and managing scopes.
+ */
 public class Parser implements ParsingContext {
 
     private final List<Token> tokens;
@@ -30,6 +35,12 @@ public class Parser implements ParsingContext {
     private final Deque<Map<String, Token>> registerAliasScopes = new ArrayDeque<>();
     private final Map<String, ProcedureNode> procedureTable = new HashMap<>();
 
+    /**
+     * Constructs a new Parser.
+     * @param tokens The list of tokens to parse.
+     * @param diagnostics The engine for reporting errors and warnings.
+     * @param basePath The base path of the source file, used for resolving includes.
+     */
     public Parser(List<Token> tokens, DiagnosticsEngine diagnostics, Path basePath) {
         this.tokens = tokens;
         this.diagnostics = diagnostics;
@@ -38,16 +49,27 @@ public class Parser implements ParsingContext {
         registerAliasScopes.push(new HashMap<>());
     }
 
+    /**
+     * Pushes a new scope for register aliases onto the stack. Used for procedures and scopes.
+     */
     public void pushRegisterAliasScope() {
         registerAliasScopes.push(new HashMap<>());
     }
 
+    /**
+     * Pops the current register alias scope from the stack.
+     */
     public void popRegisterAliasScope() {
         if (registerAliasScopes.size() > 1) {
             registerAliasScopes.pop();
         }
     }
 
+    /**
+     * Adds a new register alias to the current scope.
+     * @param name The alias name.
+     * @param registerToken The token representing the actual register.
+     */
     public void addRegisterAlias(String name, Token registerToken) {
         registerAliasScopes.peek().put(name.toUpperCase(), registerToken);
     }
@@ -62,10 +84,18 @@ public class Parser implements ParsingContext {
         return null;
     }
 
+    /**
+     * Gets the global register aliases.
+     * @return A map of global register aliases.
+     */
     public Map<String, Token> getGlobalRegisterAliases() {
         return new HashMap<>(registerAliasScopes.getLast()); // Global scope is the last element
     }
 
+    /**
+     * Parses the entire token stream and returns a list of top-level AST nodes.
+     * @return A list of parsed {@link AstNode}s.
+     */
     public List<AstNode> parse() {
         List<AstNode> statements = new ArrayList<>();
         while (!isAtEnd()) {
@@ -80,6 +110,10 @@ public class Parser implements ParsingContext {
         return statements;
     }
 
+    /**
+     * Parses a single declaration, which can be a directive or a statement.
+     * @return The parsed {@link AstNode}, or null if an error occurs.
+     */
     public AstNode declaration() {
         try {
             while (check(TokenType.NEWLINE)) {
@@ -141,6 +175,10 @@ public class Parser implements ParsingContext {
         return null;
     }
 
+    /**
+     * Parses an expression, which can be a literal, a register, an identifier, or a vector.
+     * @return The parsed {@link AstNode} for the expression.
+     */
     public AstNode expression() {
         if (check(TokenType.NUMBER) && checkNext(TokenType.PIPE)) {
             List<Token> components = new ArrayList<>();
@@ -206,6 +244,11 @@ public class Parser implements ParsingContext {
         return peek().type() == type;
     }
 
+    /**
+     * Checks the type of the next token without consuming it.
+     * @param type The token type to check.
+     * @return true if the next token is of the given type, false otherwise.
+     */
     public boolean checkNext(TokenType type) {
         if (isAtEnd() || current + 1 >= tokens.size()) return false;
         return tokens.get(current + 1).type() == type;
@@ -240,6 +283,10 @@ public class Parser implements ParsingContext {
         throw new RuntimeException(errorMessage);
     }
 
+    /**
+     * Registers a new procedure in the parser's procedure table.
+     * @param procedure The procedure node to register.
+     */
     public void registerProcedure(ProcedureNode procedure) {
         String name = procedure.name().text().toUpperCase();
         if (procedureTable.containsKey(name)) {
@@ -249,6 +296,10 @@ public class Parser implements ParsingContext {
         }
     }
 
+    /**
+     * Gets the table of defined procedures.
+     * @return The procedure table.
+     */
     public Map<String, ProcedureNode> getProcedureTable() { return procedureTable; }
     @Override public DiagnosticsEngine getDiagnostics() { return diagnostics; }
     @Override public void injectTokens(List<Token> tokens, int tokensToRemove) { throw new UnsupportedOperationException("Not supported in parsing phase."); }

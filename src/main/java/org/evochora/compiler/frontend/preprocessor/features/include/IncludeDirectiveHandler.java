@@ -17,18 +17,29 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.stream.Collectors;
 
+/**
+ * Handles the <code>.include</code> directive in the preprocessor phase.
+ * This directive reads another source file and injects its tokens into the current token stream.
+ * It handles both file system paths and classpath resources.
+ */
 public class IncludeDirectiveHandler implements IDirectiveHandler {
     @Override
     public CompilerPhase getPhase() {
         return CompilerPhase.PREPROCESSING;
     }
 
+    /**
+     * Parses an <code>.include</code> directive. It reads the specified file,
+     * tokenizes its content, and injects the new tokens into the stream.
+     * @param context The parsing context, which must be a {@link PreProcessor}.
+     * @return null, as this directive does not produce an AST node.
+     */
     @Override
     public AstNode parse(ParsingContext context) {
         PreProcessor pass = (PreProcessor) context;
         int startIndex = pass.getCurrentIndex();
 
-        context.advance(); // .INCLUDE konsumieren
+        context.advance(); // consume .INCLUDE
         Token pathToken = context.consume(TokenType.STRING, "Expected a file path in quotes after .INCLUDE.");
         if (pathToken == null) return null;
 

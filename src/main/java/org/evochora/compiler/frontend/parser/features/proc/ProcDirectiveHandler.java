@@ -11,23 +11,33 @@ import org.evochora.compiler.frontend.parser.ParsingContext;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Handles the parsing of the <code>.proc</code> and <code>.endp</code> directives, which define a procedure block.
+ * Procedures can be exported and can have parameters.
+ */
 public class ProcDirectiveHandler implements IDirectiveHandler {
     @Override
     public CompilerPhase getPhase() {
         return CompilerPhase.PARSING;
     }
 
+    /**
+     * Parses a procedure definition, including its body, until an <code>.endp</code> directive is found.
+     * The syntax is <code>.proc &lt;name&gt; [EXPORT] [WITH &lt;param1&gt; &lt;param2&gt; ...] ... .endp</code>.
+     * @param context The parsing context.
+     * @return A {@link ProcedureNode} representing the parsed procedure.
+     */
     @Override
     public AstNode parse(ParsingContext context) {
         Parser parser = (Parser) context;
-        context.advance(); // .PROC konsumieren
+        context.advance(); // consume .PROC
 
         Token procName = context.consume(TokenType.IDENTIFIER, "Expected procedure name after .PROC.");
         boolean exported = false;
         List<Token> parameters = new ArrayList<>();
         boolean withFound = false;
 
-        // Flexible Schleife zum Parsen von optionalen Keywords wie EXPORT und WITH
+        // Flexible loop to parse optional keywords like EXPORT and WITH
         while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
             if (context.check(TokenType.IDENTIFIER)) {
                 String keyword = context.peek().text();
@@ -37,14 +47,14 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
                 } else if ("WITH".equalsIgnoreCase(keyword)) {
                     context.advance();
                     withFound = true;
-                    break; // Nach WITH kommen nur noch Parameter
+                    break; // After WITH, only parameters follow
                 } else {
-                    // Unbekanntes Keyword in der Deklaration
+                    // Unknown keyword in declaration
                     context.getDiagnostics().reportError("Unexpected token '" + keyword + "' in procedure declaration.", procName.fileName(), procName.line());
                     break;
                 }
             } else {
-                break; // Kein Identifier, also keine optionalen Keywords mehr
+                break; // Not an identifier, so no more optional keywords
             }
         }
 
@@ -58,7 +68,7 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
             context.consume(TokenType.NEWLINE, "Expected newline after .PROC declaration.");
         }
 
-        // Scope für prozedur-lokale Aliase öffnen
+        // Open scope for procedure-local aliases
         parser.pushRegisterAliasScope();
 
         List<AstNode> body = new ArrayList<>();
@@ -70,13 +80,13 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
             }
         }
 
-        // Scope für prozedur-lokale Aliase schließen
+        // Close scope for procedure-local aliases
         parser.popRegisterAliasScope();
 
         if (context.isAtEnd() || !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
             context.getDiagnostics().reportError("Expected .ENDP to close procedure block.", "Syntax Error", procName.line());
         } else {
-            context.advance(); // .ENDP konsumieren
+            context.advance(); // consume .ENDP
         }
 
         ProcedureNode procNode = new ProcedureNode(procName, exported, parameters, body);

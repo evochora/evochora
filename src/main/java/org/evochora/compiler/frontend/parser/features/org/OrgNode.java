@@ -5,9 +5,9 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import java.util.List;
 
 /**
- * Ein AST-Knoten, der eine .ORG-Direktive repräsentiert.
+ * An AST node that represents an <code>.org</code> directive.
  *
- * @param originVector Das Vektor-Literal, das den Ursprung angibt.
+ * @param originVector The vector literal that specifies the origin.
  */
 public record OrgNode(
         AstNode originVector
@@ -15,7 +15,7 @@ public record OrgNode(
 
     @Override
     public List<AstNode> getChildren() {
-        // Das Kind eines .ORG-Knotens ist der Vektor, der den Ursprung definiert.
+        // The child of an .ORG node is the vector that defines the origin.
         return List.of(originVector);
     }
 }

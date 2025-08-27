@@ -3,17 +3,21 @@ package org.evochora.compiler.frontend.parser.ast;
 import org.evochora.compiler.frontend.lexer.Token;
 
 /**
- * Ein AST-Knoten, der ein numerisches Literal repräsentiert.
+ * An AST node that represents a numeric literal.
  *
- * @param numberToken Das Token, das die Zahl enthält.
+ * @param numberToken The token containing the number.
  */
 public record NumberLiteralNode(
         Token numberToken
 ) implements AstNode {
 
+    /**
+     * Gets the integer value of the numeric literal.
+     * @return The integer value.
+     */
     public int getValue() {
         return (int) numberToken.value();
     }
 
-    // Dieser Knoten hat keine Kinder und erbt die leere Liste von getChildren().
+    // This node has no children and inherits the empty list from getChildren().
 }

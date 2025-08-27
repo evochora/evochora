@@ -5,10 +5,10 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import java.util.List;
 
 /**
- * Ein AST-Knoten, der eine .PLACE-Direktive repräsentiert.
+ * An AST node that represents a <code>.place</code> directive.
  *
- * @param literal Das zu platzierende Literal.
- * @param position Das Vektor-Literal, das die Position angibt.
+ * @param literal The literal to be placed.
+ * @param position The vector literal that specifies the position.
  */
 public record PlaceNode(
         AstNode literal,
@@ -17,7 +17,7 @@ public record PlaceNode(
 
     @Override
     public List<AstNode> getChildren() {
-        // Die Kinder eines Place-Knotens sind das Literal und die Position.
+        // The children of a PlaceNode are the literal and the position.
         return List.of(literal, position);
     }
 }

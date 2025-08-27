@@ -13,8 +13,8 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Handler für die .SCOPE- und .ENDS-Direktiven.
- * Parst einen gesamten Geltungsbereichs-Block.
+ * Handler for the <code>.scope</code> and <code>.ends</code> directives.
+ * Parses an entire scope block.
  */
 public class ScopeDirectiveHandler implements IDirectiveHandler {
     @Override
@@ -22,9 +22,15 @@ public class ScopeDirectiveHandler implements IDirectiveHandler {
         return CompilerPhase.PARSING;
     }
 
+    /**
+     * Parses a scope block, which starts with <code>.scope</code> and ends with <code>.ends</code>.
+     * The syntax is <code>.scope &lt;name&gt; ... .ends</code>.
+     * @param context The parsing context.
+     * @return A {@link ScopeNode} representing the parsed scope.
+     */
     @Override
     public AstNode parse(ParsingContext context) {
-        context.advance(); // .SCOPE konsumieren
+        context.advance(); // consume .SCOPE
 
         Token scopeName = context.consume(TokenType.IDENTIFIER, "Expected scope name after .SCOPE.");
         context.consume(TokenType.NEWLINE, "Expected newline after scope name.");

@@ -5,12 +5,12 @@ import org.evochora.compiler.frontend.lexer.Token;
 import java.util.List;
 
 /**
- * Ein AST-Knoten, der ein Vektor-Literal repräsentiert, z.B. "3|21".
+ * An AST node that represents a vector literal, e.g., "3|21".
  *
- * @param components Eine Liste von Tokens, die die einzelnen Zahlen des Vektors darstellen.
+ * @param components A list of tokens that represent the individual numbers of the vector.
  */
 public record VectorLiteralNode(
         List<Token> components
 ) implements AstNode {
-    // Dieser Knoten hat keine Kinder und erbt die leere Liste von getChildren().
+    // This node has no children and inherits the empty list from getChildren().
 }

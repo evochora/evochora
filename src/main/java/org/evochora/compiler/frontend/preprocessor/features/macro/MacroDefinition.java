@@ -5,11 +5,11 @@ import org.evochora.compiler.frontend.lexer.Token;
 import java.util.List;
 
 /**
- * Eine Datenstruktur, die eine einzelne Makro-Definition für den Präprozessor speichert.
+ * A data structure that stores a single macro definition for the preprocessor.
  *
- * @param name         Das Token, das den Namen des Makros enthält.
- * @param parameters   Eine Liste der formalen Parameter-Namen (als Tokens).
- * @param body         Eine Liste der Tokens, die den Körper des Makros bilden.
+ * @param name       The token containing the name of the macro.
+ * @param parameters A list of the formal parameter names (as tokens).
+ * @param body       A list of tokens that make up the body of the macro.
  */
 public record MacroDefinition(
         Token name,

@@ -12,6 +12,11 @@ import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDefinitio
 import java.nio.file.Path;
 import java.util.*;
 
+/**
+ * The preprocessor for the assembly language. It runs after the lexer and before the parser.
+ * Its main responsibilities are handling file includes and expanding macros.
+ * It operates directly on the token stream.
+ */
 public class PreProcessor implements ParsingContext {
 
     private final List<Token> tokens;
@@ -23,6 +28,12 @@ public class PreProcessor implements ParsingContext {
     private final PreProcessorContext ppContext = new PreProcessorContext();
     private final Map<String, String> includedFileContents = new HashMap<>();
 
+    /**
+     * Constructs a new PreProcessor.
+     * @param initialTokens The initial list of tokens from the lexer.
+     * @param diagnostics The engine for reporting errors and warnings.
+     * @param basePath The base path of the main source file.
+     */
     public PreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics, Path basePath) {
         this.tokens = new ArrayList<>(initialTokens);
         this.diagnostics = diagnostics;
@@ -30,6 +41,11 @@ public class PreProcessor implements ParsingContext {
         this.directiveRegistry = DirectiveHandlerRegistry.initialize();
     }
 
+    /**
+     * Runs the preprocessor on the token stream. It iterates through the tokens,
+     * handling directives and expanding macros until no more expansions can be made.
+     * @return The final list of tokens after preprocessing.
+     */
     public List<Token> expand() {
         while (current < tokens.size()) {
             Token token = peek();
@@ -56,10 +72,19 @@ public class PreProcessor implements ParsingContext {
         return tokens;
     }
 
+    /**
+     * Gets the content of all files that were included during preprocessing.
+     * @return A map where keys are file paths and values are file contents.
+     */
     public Map<String, String> getIncludedFileContents() {
         return includedFileContents;
     }
 
+    /**
+     * Adds the content of a source file to the tracking map.
+     * @param path The path of the file.
+     * @param content The content of the file.
+     */
     public void addSourceContent(String path, String content) {
         includedFileContents.put(path, content);
     }
@@ -198,16 +223,29 @@ public class PreProcessor implements ParsingContext {
         includedFiles.add(path);
     }
 
+    /**
+     * Gets the current index in the token stream.
+     * @return The current index.
+     */
     public int getCurrentIndex() {
         return current;
     }
 
+    /**
+     * Removes a specified number of tokens from the stream starting at a given index.
+     * @param startIndex The starting index.
+     * @param count The number of tokens to remove.
+     */
     public void removeTokens(int startIndex, int count) {
         if (startIndex < 0 || (startIndex + count) > tokens.size()) return;
         tokens.subList(startIndex, startIndex + count).clear();
         this.current = startIndex;
     }
 
+    /**
+     * Gets the shared context for the preprocessor.
+     * @return The preprocessor context.
+     */
     public PreProcessorContext getPreProcessorContext() {
         return this.ppContext;
     }

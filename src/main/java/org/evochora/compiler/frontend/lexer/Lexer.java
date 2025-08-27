@@ -6,8 +6,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Der Lexer (auch Tokenizer oder Scanner) ist verantwortlich für die Umwandlung
- * einer Sequenz von Zeichen (Quellcode) in eine Sequenz von Tokens.
+ * The Lexer (also known as Tokenizer or Scanner) is responsible for converting
+ * a sequence of characters (source code) into a sequence of tokens.
  */
 public class Lexer {
 
@@ -21,16 +21,19 @@ public class Lexer {
     private int column = 1;
 
     /**
-     * Erstellt einen neuen Lexer.
-     * @param source Der Quellcode als einzelner String.
-     * @param diagnostics Die Engine zum Melden von Fehlern.
+     * Creates a new Lexer.
+     * @param source The source code as a single string.
+     * @param diagnostics The engine for reporting errors.
      */
     public Lexer(String source, DiagnosticsEngine diagnostics) {
         this(source, diagnostics, "<memory>");
     }
 
     /**
-     * Erstellt einen neuen Lexer mit explizitem logischen Dateinamen.
+     * Creates a new Lexer with an explicit logical file name.
+     * @param source The source code as a single string.
+     * @param diagnostics The engine for reporting errors.
+     * @param logicalFileName The name of the file being parsed, for error reporting.
      */
     public Lexer(String source, DiagnosticsEngine diagnostics, String logicalFileName) {
         this.source = source;
@@ -39,8 +42,8 @@ public class Lexer {
     }
 
     /**
-     * Führt die Tokenisierung des gesamten Quellcodes durch.
-     * @return Eine Liste der erkannten Tokens.
+     * Performs the tokenization of the entire source code.
+     * @return A list of the recognized tokens.
      */
     public List<Token> scanTokens() {
         while (!isAtEnd()) {
@@ -58,19 +61,19 @@ public class Lexer {
             case '|': addToken(TokenType.PIPE); break;
             case ':': addToken(TokenType.COLON); break;
             case '#':
-                // Ein Kommentar geht bis zum Ende der Zeile.
+                // A comment goes until the end of the line.
                 while (peek() != '\n' && !isAtEnd()) advance();
                 break;
             case '-':
-                // Wenn ein Minus von einer Ziffer gefolgt wird, ist es eine negative Zahl.
+                // If a minus is followed by a digit, it's a negative number.
                 if (isDigit(peek())) {
                     number();
                 } else {
-                    // Andernfalls ist es ein Fehler (später vielleicht ein Operator).
+                    // Otherwise, it's an error (maybe an operator later).
                     diagnostics.reportError("Unexpected character: " + c, logicalFileName, line);
                 }
                 break;
-            // Ignoriere Whitespace
+            // Ignore whitespace
             case ' ', '\r', '\t':
                 break;
             case '\n':
@@ -95,16 +98,16 @@ public class Lexer {
         String text = source.substring(start, current);
         TokenType type = TokenType.IDENTIFIER;
 
-        // Ist es ein Register?
+        // Is it a register?
         if (text.startsWith("%")) {
             type = TokenType.REGISTER;
         }
-        // Ist es eine Direktive?
+        // Is it a directive?
         else if (text.startsWith(".")) {
             type = TokenType.DIRECTIVE;
         }
 
-        // Ist es ein bekannter Opcode? Wir prüfen das, indem wir versuchen, eine ID dafür zu bekommen.
+        // Is it a known opcode? We check this by trying to get an ID for it.
         else if (org.evochora.runtime.isa.Instruction.getInstructionIdByName(text) != null) {
             type = TokenType.OPCODE;
         }
@@ -113,15 +116,15 @@ public class Lexer {
     }
 
     private void number() {
-        // Erkenne Hex/Binär-Präfixe direkt am Anfang einer Zahl
+        // Recognize hex/binary prefixes right at the start of a number
         if (previous() == '0' && (peek() == 'x' || peek() == 'X' || peek() == 'b' || peek() == 'B')) {
-            advance(); // 'x' oder 'b' konsumieren
-            while (isAlphaNumeric(peek())) advance(); // Hex-Ziffern (A-F) sind auch alphanumerisch
+            advance(); // consume 'x' or 'b'
+            while (isAlphaNumeric(peek())) advance(); // Hex digits (A-F) are also alphanumeric
         } else {
-            // Normale Dezimalzahlen oder Gleitkommazahlen
+            // Normal decimal or floating-point numbers
             while (isDigit(peek())) advance();
             if (peek() == '.' && isDigit(peekNext())) {
-                advance(); // den '.' konsumieren
+                advance(); // consume the '.'
                 while (isDigit(peek())) advance();
             }
         }
@@ -135,7 +138,7 @@ public class Lexer {
         }
     }
 
-    // *** BEGINN DER KORREKTUR: Die Logik des NumericParser ist jetzt hier. ***
+    // *** START OF CORRECTION: The logic of NumericParser is now here. ***
     private int parseInt(String token) throws NumberFormatException {
         if (token == null) throw new NumberFormatException("null");
         String s = token.trim();
@@ -164,14 +167,14 @@ public class Lexer {
         int value = Integer.parseInt(s, radix);
         return negative ? -value : value;
     }
-    // *** ENDE DER KORREKTUR ***
+    // *** END OF CORRECTION ***
 
     private char advance() {
         column++;
         return source.charAt(current++);
     }
 
-    // ... Rest der Klasse bleibt unverändert ...
+    // ... Rest of the class remains unchanged ...
 
     private void string() {
         while (peek() != '"' && !isAtEnd()) {
@@ -187,12 +190,12 @@ public class Lexer {
             return;
         }
 
-        // Das schließende "
+        // The closing "
         advance();
 
-        // Extrahiere den Wert des Strings ohne die Anführungszeichen.
+        // Extract the value of the string without the quotes.
         String value = source.substring(start + 1, current - 1);
-        // Der Text des Tokens ist der String *mit* Anführungszeichen, der Wert ist der Inhalt.
+        // The text of the token is the string *with* quotes, the value is the content.
         addToken(TokenType.STRING, value, source.substring(start, current));
     }
     private void addToken(TokenType type) {

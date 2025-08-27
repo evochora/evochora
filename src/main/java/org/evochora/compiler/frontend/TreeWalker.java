@@ -7,33 +7,45 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * Eine generische Klasse zum Durchlaufen (Traversieren) eines Abstract Syntax Tree.
- * Anstatt des Visitor-Patterns verwendet dieser Walker ein Handler-basiertes System,
- * um die Kopplung zwischen den Compiler-Phasen und der AST-Struktur zu minimieren.
+ * A generic class for traversing an Abstract Syntax Tree.
+ * Instead of the Visitor pattern, this walker uses a handler-based system
+ * to minimize coupling between compiler phases and the AST structure.
  */
 public class TreeWalker {
 
     private final Map<Class<? extends AstNode>, Consumer<AstNode>> handlers;
 
+    /**
+     * Constructs a new TreeWalker.
+     * @param handlers A map from AST node classes to their corresponding handlers.
+     */
     public TreeWalker(Map<Class<? extends AstNode>, Consumer<AstNode>> handlers) {
         this.handlers = handlers;
     }
 
+    /**
+     * Walks a list of AST nodes.
+     * @param nodes The list of nodes to walk.
+     */
     public void walk(List<AstNode> nodes) {
         for (AstNode node : nodes) {
             walk(node);
         }
     }
 
+    /**
+     * Walks a single AST node and its children recursively.
+     * @param node The node to walk.
+     */
     public void walk(AstNode node) {
         if (node == null) {
             return;
         }
 
-        // Führe den Handler für den aktuellen Knoten aus, falls einer registriert ist.
+        // Execute the handler for the current node if one is registered.
         handlers.getOrDefault(node.getClass(), n -> {}).accept(node);
 
-        // Steige rekursiv in ALLE Kinder ab, ohne ihren Typ zu kennen.
+        // Descend recursively into ALL children without knowing their type.
         for (AstNode child : node.getChildren()) {
             walk(child);
         }

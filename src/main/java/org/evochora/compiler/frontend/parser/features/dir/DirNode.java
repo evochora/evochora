@@ -5,9 +5,9 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import java.util.List;
 
 /**
- * Ein AST-Knoten, der eine .DIR-Direktive repräsentiert.
+ * An AST node that represents a <code>.dir</code> directive.
  *
- * @param directionVector Das Vektor-Literal, das die Richtung angibt.
+ * @param directionVector The vector literal that specifies the direction.
  */
 public record DirNode(
         AstNode directionVector
@@ -15,7 +15,7 @@ public record DirNode(
 
     @Override
     public List<AstNode> getChildren() {
-        // Das Kind eines .DIR-Knotens ist der Vektor, der die Richtung definiert.
+        // The child of a .DIR node is the vector that defines the direction.
         return List.of(directionVector);
     }
 }

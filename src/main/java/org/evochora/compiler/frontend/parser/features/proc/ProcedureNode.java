@@ -6,12 +6,12 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import java.util.List;
 
 /**
- * Ein AST-Knoten, der eine Prozedur-Definition repräsentiert (.PROC ... .ENDP).
+ * An AST node that represents a procedure definition (<code>.proc</code> ... <code>.endp</code>).
  *
- * @param name Das Token, das den Namen der Prozedur enthält.
- * @param exported Ob die Prozedur exportiert ist (Sichtbarkeit für andere Module).
- * @param parameters Eine Liste von Tokens, die die Parameter der Prozedur darstellen (aus .WITH).
- * @param body Eine Liste von AST-Knoten, die den Inhalt der Prozedur darstellen.
+ * @param name The token containing the name of the procedure.
+ * @param exported Whether the procedure is exported (visibility for other modules).
+ * @param parameters A list of tokens representing the parameters of the procedure (from <code>.with</code>).
+ * @param body A list of AST nodes representing the content of the procedure.
  */
 public record ProcedureNode(
         Token name,
@@ -22,7 +22,7 @@ public record ProcedureNode(
 
     @Override
     public List<AstNode> getChildren() {
-        // Die Kinder einer Prozedur sind alle Anweisungen in ihrem Körper.
+        // The children of a procedure are all the statements in its body.
         return body;
     }
 }

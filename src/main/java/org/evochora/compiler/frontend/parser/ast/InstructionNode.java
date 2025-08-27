@@ -5,10 +5,10 @@ import org.evochora.compiler.frontend.lexer.Token;
 import java.util.List;
 
 /**
- * Ein AST-Knoten, der eine einzelne Maschinen-Instruktion repräsentiert.
+ * An AST node that represents a single machine instruction.
  *
- * @param opcode Das Token des Opcodes (z.B. SETI).
- * @param arguments Eine Liste von AST-Knoten, die die Argumente der Instruktion darstellen.
+ * @param opcode The token of the opcode (e.g., SETI).
+ * @param arguments A list of AST nodes that represent the arguments of the instruction.
  */
 public record InstructionNode(
         Token opcode,
@@ -17,7 +17,7 @@ public record InstructionNode(
 
     @Override
     public List<AstNode> getChildren() {
-        // Die Kinder einer Instruktion sind ihre Argumente.
+        // The children of an instruction are its arguments.
         return arguments;
     }
 }

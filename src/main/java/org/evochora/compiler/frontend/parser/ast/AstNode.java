@@ -4,15 +4,15 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Das Basis-Interface für alle Knoten im Abstract Syntax Tree (AST).
+ * The base interface for all nodes in the Abstract Syntax Tree (AST).
  */
 public interface AstNode {
     /**
-     * Gibt eine Liste der direkten Kind-Knoten zurück.
-     * Dies ermöglicht einem generischen TreeWalker, den Baum zu durchlaufen,
-     * ohne die spezifische Struktur jedes Knotens zu kennen.
+     * Returns a list of the direct child nodes.
+     * This allows a generic TreeWalker to traverse the tree
+     * without knowing the specific structure of each node.
      *
-     * @return Eine Liste von Kind-Knoten. Gibt eine leere Liste zurück, wenn der Knoten keine Kinder hat.
+     * @return A list of child nodes. Returns an empty list if the node has no children.
      */
     default List<AstNode> getChildren() {
         return Collections.emptyList();

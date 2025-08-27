@@ -4,12 +4,12 @@ import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 
 /**
- * Ein AST-Knoten, der eine .EXPORT-Direktive innerhalb einer Prozedur repräsentiert.
+ * An AST node that represents an <code>.export</code> directive within a procedure.
  *
- * @param exportedName Das Token des Namens, der exportiert wird.
+ * @param exportedName The token of the name being exported.
  */
 public record ExportNode(
         Token exportedName
 ) implements AstNode {
-    // Dieser Knoten hat keine Kinder, daher wird die default-Methode von AstNode verwendet.
+    // This node has no children, so the default method from AstNode is used.
 }

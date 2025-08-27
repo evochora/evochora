@@ -2,15 +2,15 @@ package org.evochora.compiler.frontend.parser.features.reg;
 
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
-import org.evochora.compiler.frontend.directive.IDirectiveHandler; // Platzhalter, wird später korrigiert
-import org.evochora.compiler.frontend.CompilerPhase;       // Platzhalter, wird später korrigiert
-import org.evochora.compiler.frontend.parser.Parser;            // Platzhalter, wird später korrigiert
-import org.evochora.compiler.frontend.parser.ParsingContext;    // Platzhalter, wird später korrigiert
+import org.evochora.compiler.frontend.directive.IDirectiveHandler;
+import org.evochora.compiler.frontend.CompilerPhase;
+import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 
 /**
- * Handler für die .REG-Direktive.
- * Parst einen Register-Alias und fügt ihn zur Alias-Tabelle des Parsers hinzu.
+ * Handler for the .REG directive.
+ * Parses a register alias and adds it to the parser's alias table.
  */
 public class RegDirectiveHandler implements IDirectiveHandler {
 
@@ -20,14 +20,14 @@ public class RegDirectiveHandler implements IDirectiveHandler {
     }
 
     /**
-     * Parst eine .REG-Anweisung.
-     * Erwartetes Format: .REG <ALIAS_NAME> <REGISTER_NAME>
-     * @param context Der Kontext, der den Parser kapselt.
-     * @return {@code null}, da diese Direktive keinen AST-Knoten erzeugt.
+     * Parses a .REG directive.
+     * Expected format: .REG <ALIAS_NAME> <REGISTER_NAME>
+     * @param context The context that encapsulates the parser.
+     * @return {@code null} because this directive does not produce an AST node.
      */
     @Override
     public AstNode parse(ParsingContext context) {
-        context.advance(); // .REG konsumieren
+        context.advance(); // consume .REG
 
         // Alias name can be IDENTIFIER (e.g., DR_A) or REGISTER (e.g., %DR_A)
         Token name;
@@ -61,12 +61,12 @@ public class RegDirectiveHandler implements IDirectiveHandler {
         }
 
         if (name != null && register != null) {
-            // Wir müssen auf die Parser-Implementierung casten, um Zugriff auf die Alias-Tabelle zu bekommen.
-            // Eine sauberere Lösung könnte ein Interface sein, aber das ist für jetzt pragmatisch.
+            // We have to cast to the Parser implementation to get access to the alias table.
+            // A cleaner solution might be an interface, but this is pragmatic for now.
             ((Parser) context).addRegisterAlias(name.text(), register);
         }
 
-        // .REG erzeugt keinen eigenen Knoten im AST
+        // .REG does not produce its own node in the AST
         return null;
     }
 }

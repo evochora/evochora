@@ -4,14 +4,14 @@ import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 
 /**
- * Ein AST-Knoten, der eine .REQUIRE-Direktive repräsentiert.
+ * An AST node that represents a <code>.require</code> directive.
  *
- * @param path Das String-Token des Dateipfads.
- * @param alias Das optionale Alias-Token (kann null sein).
+ * @param path The string token of the file path.
+ * @param alias The optional alias token (can be null).
  */
 public record RequireNode(
         Token path,
         Token alias
 ) implements AstNode {
-    // Dieser Knoten hat keine Kinder.
+    // This node has no children.
 }

@@ -6,10 +6,10 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import java.util.List;
 
 /**
- * Ein AST-Knoten, der einen benannten Geltungsbereich repräsentiert (.SCOPE ... .ENDS).
+ * An AST node that represents a named scope (<code>.scope</code> ... <code>.ends</code>).
  *
- * @param name Das Token, das den Namen des Scopes enthält.
- * @param body Eine Liste von AST-Knoten, die den Inhalt des Scopes darstellen.
+ * @param name The token containing the name of the scope.
+ * @param body A list of AST nodes representing the content of the scope.
  */
 public record ScopeNode(
         Token name,
@@ -18,7 +18,7 @@ public record ScopeNode(
 
     @Override
     public List<AstNode> getChildren() {
-        // Die Kinder eines Scopes sind alle Anweisungen in seinem Körper.
+        // The children of a scope are all the statements in its body.
         return body;
     }
 }

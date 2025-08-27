@@ -1,18 +1,18 @@
 package org.evochora.compiler.frontend;
 
 /**
- * Definiert die verschiedenen Phasen des Kompilierungsprozesses.
- * Handler können sich für eine dieser Phasen registrieren.
+ * Defines the different phases of the compilation process.
+ * Handlers can register for one of these phases.
  */
 public enum CompilerPhase {
     /**
-     * Phase 0: Verarbeitet Direktiven, die die Struktur der Quelldateien
-     * verändern, wie z.B. .FILE.
+     * Phase 0: Processes directives that change the structure of the source files,
+     * such as <code>.include</code> or <code>.macro</code>.
      */
     PREPROCESSING,
 
     /**
-     * Phase 1: Verarbeitet die meisten Direktiven und baut den AST auf.
+     * Phase 1: Processes most directives and builds the AST.
      */
     PARSING
 }
