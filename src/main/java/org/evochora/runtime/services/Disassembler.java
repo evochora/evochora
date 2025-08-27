@@ -2,6 +2,7 @@ package org.evochora.runtime.services;
 
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.InstructionSignature;
+import org.evochora.runtime.isa.InstructionArgumentType;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.IEnvironmentReader;
 
@@ -47,25 +48,49 @@ public class Disassembler {
             InstructionSignature signature = signatureOpt.get();
 
             // Read the arguments
-            int[] argValues = new int[signature.argumentTypes().size()];
-            int[][] argPositions = new int[signature.argumentTypes().size()][];
+            int totalArgs = calculateTotalArguments(signature, reader.getShape().length);
+            int[] argValues = new int[totalArgs];
+            int[][] argPositions = new int[totalArgs][];
             int[] currentPos = instructionPointer.clone();
             int actualArgCount = 0;
 
             for (int i = 0; i < signature.argumentTypes().size(); i++) {
-                // Move to the next position
-                currentPos = reader.getProperties().getNextPosition(currentPos, new int[]{1, 0}); // Default direction
-
-                // Read the argument
-                Molecule argMolecule = reader.getMolecule(currentPos);
-                if (argMolecule == null) {
-                    // Handle incomplete instruction
-                    break;
+                InstructionArgumentType argType = signature.argumentTypes().get(i);
+                
+                if (argType == InstructionArgumentType.VECTOR || argType == InstructionArgumentType.LABEL) {
+                    // VECTOR/LABEL: Lese n-Dimensionen
+                    int dims = reader.getShape().length;
+                    for (int dim = 0; dim < dims; dim++) {
+                        // Move to the next position
+                        currentPos = reader.getProperties().getNextPosition(currentPos, new int[]{1, 0});
+                        
+                        // Read the argument
+                        Molecule argMolecule = reader.getMolecule(currentPos);
+                        if (argMolecule == null) {
+                            // Handle incomplete instruction
+                            break;
+                        }
+                        
+                        argValues[actualArgCount] = argMolecule.toInt();
+                        argPositions[actualArgCount] = currentPos.clone();
+                        actualArgCount++;
+                    }
+                } else {
+                    // REGISTER/LITERAL: Lese ein Argument
+                    // Move to the next position
+                    currentPos = reader.getProperties().getNextPosition(currentPos, new int[]{1, 0});
+                    
+                    // Read the argument
+                    Molecule argMolecule = reader.getMolecule(currentPos);
+                    if (argMolecule == null) {
+                        // Handle incomplete instruction
+                        break;
+                    }
+                    
+                    argValues[actualArgCount] = argMolecule.toInt();
+                    argPositions[actualArgCount] = currentPos.clone();
+                    actualArgCount++;
                 }
-
-                argValues[actualArgCount] = argMolecule.toInt();
-                argPositions[actualArgCount] = currentPos.clone(); // Store complete n-D coordinates
-                actualArgCount++;
             }
 
             // Create properly sized arrays with only the arguments we actually found
@@ -82,5 +107,20 @@ public class Disassembler {
         }
     }
 
+    /**
+     * Berechnet die Gesamtanzahl der Argumente basierend auf der Signatur.
+     * VECTOR/LABEL zählen als n-Dimensionen, REGISTER/LITERAL als 1.
+     */
+    private int calculateTotalArguments(InstructionSignature signature, int worldDimensions) {
+        int total = 0;
+        for (InstructionArgumentType argType : signature.argumentTypes()) {
+            if (argType == InstructionArgumentType.VECTOR || argType == InstructionArgumentType.LABEL) {
+                total += worldDimensions;
+            } else {
+                total += 1;
+            }
+        }
+        return total;
+    }
 
 }

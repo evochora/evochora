@@ -44,7 +44,7 @@ public class RawTickStateReader implements IEnvironmentReader {
     public Molecule getMolecule(int[] coordinates) {
         String key = Arrays.toString(coordinates);
         RawCellState cell = cellMap.get(key);
-        return cell != null ? new Molecule(cell.ownerId(), cell.molecule()) : null; // ownerId als Typ, molecule als Wert
+        return cell != null ? Molecule.fromInt(cell.molecule()) : null; // Korrekt: molecule enthält Typ+Wert
     }
     
     @Override

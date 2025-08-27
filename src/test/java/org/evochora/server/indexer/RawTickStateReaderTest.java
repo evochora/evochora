@@ -2,6 +2,7 @@ package org.evochora.server.indexer;
 
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.Config;
 import org.evochora.server.contracts.raw.RawCellState;
 import org.evochora.server.contracts.raw.RawTickState;
 import org.junit.jupiter.api.Tag;
@@ -25,9 +26,11 @@ class RawTickStateReaderTest {
         int[] worldShape = {10, 10};
         EnvironmentProperties props = new EnvironmentProperties(worldShape, true);
         
-        // Create test data
-        RawCellState cell1 = new RawCellState(new int[]{5, 5}, 42, 0);
-        RawCellState cell2 = new RawCellState(new int[]{3, 7}, 100, 1);
+        // Create test data - molecule enthält jetzt den vollen 32-bit Wert (Typ + Wert)
+        // DATA:42 = Typ DATA (0x00010000) + Wert 42
+        RawCellState cell1 = new RawCellState(new int[]{5, 5}, new Molecule(Config.TYPE_DATA, 42).toInt(), 0);
+        // CODE:100 = Typ CODE (0x00000000) + Wert 100  
+        RawCellState cell2 = new RawCellState(new int[]{3, 7}, new Molecule(Config.TYPE_CODE, 100).toInt(), 1);
         List<RawCellState> cells = Arrays.asList(cell1, cell2);
         
         RawTickState rawTickState = new RawTickState(1L, List.of(), cells);
@@ -36,13 +39,13 @@ class RawTickStateReaderTest {
         // Act & Assert
         Molecule molecule1 = reader.getMolecule(new int[]{5, 5});
         assertThat(molecule1).isNotNull();
+        assertThat(molecule1.type()).isEqualTo(Config.TYPE_DATA); // DATA = 0x00010000
         assertThat(molecule1.toScalarValue()).isEqualTo(42);
-        assertThat(molecule1.type()).isEqualTo(0);
         
         Molecule molecule2 = reader.getMolecule(new int[]{3, 7});
         assertThat(molecule2).isNotNull();
+        assertThat(molecule2.type()).isEqualTo(Config.TYPE_CODE); // CODE = 0x00000000
         assertThat(molecule2.toScalarValue()).isEqualTo(100);
-        assertThat(molecule2.type()).isEqualTo(1);
     }
 
     @Test
@@ -233,10 +236,10 @@ class RawTickStateReaderTest {
         int[] worldShape = {10, 10};
         EnvironmentProperties props = new EnvironmentProperties(worldShape, true);
         
-        // Create cells with different types
-        RawCellState cell1 = new RawCellState(new int[]{1, 1}, 42, 0);
-        RawCellState cell2 = new RawCellState(new int[]{2, 2}, 100, 1);
-        RawCellState cell3 = new RawCellState(new int[]{3, 3}, 200, 2);
+        // Create cells with different types - molecule enthält jetzt den vollen 32-bit Wert
+        RawCellState cell1 = new RawCellState(new int[]{1, 1}, new Molecule(Config.TYPE_CODE, 42).toInt(), 0);
+        RawCellState cell2 = new RawCellState(new int[]{2, 2}, new Molecule(Config.TYPE_DATA, 100).toInt(), 1);
+        RawCellState cell3 = new RawCellState(new int[]{3, 3}, new Molecule(Config.TYPE_ENERGY, 200).toInt(), 2);
         
         List<RawCellState> cells = Arrays.asList(cell1, cell2, cell3);
         RawTickState rawTickState = new RawTickState(1L, List.of(), cells);
@@ -244,12 +247,12 @@ class RawTickStateReaderTest {
         
         // Act & Assert: Test different molecule types
         Molecule mol1 = reader.getMolecule(new int[]{1, 1});
-        assertThat(mol1.type()).isEqualTo(0);
+        assertThat(mol1.type()).isEqualTo(Config.TYPE_CODE);
         
         Molecule mol2 = reader.getMolecule(new int[]{2, 2});
-        assertThat(mol2.type()).isEqualTo(1);
+        assertThat(mol2.type()).isEqualTo(Config.TYPE_DATA);
         
         Molecule mol3 = reader.getMolecule(new int[]{3, 3});
-        assertThat(mol3.type()).isEqualTo(2);
+        assertThat(mol3.type()).isEqualTo(Config.TYPE_ENERGY);
     }
 }

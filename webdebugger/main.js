@@ -222,7 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
                }
            }
 
-           /**
+                      /**
             * Extrahiert den Wert aus einem Molekül-String (z.B. "DATA:0" -> 0).
             */
            extractValueFromMolecule(moleculeText) {
@@ -234,7 +234,108 @@ document.addEventListener('DOMContentLoaded', () => {
                return isNaN(value) ? valuePart : value;
            }
 
-    update(next, navigationDirection) {
+           /**
+            * Formatiert Argumente basierend auf ihren ISA-Typen.
+            * VECTOR/LABEL werden als [x|y] gruppiert, andere einzeln.
+            */
+           formatArgumentsByType(args, argTypes, internalState) {
+               if (!args || !argTypes) return [];
+               
+               const formattedArgs = [];
+               let i = 0;
+               
+               // Hole die Welt-Dimensionen aus dem Renderer
+               const worldDimensions = window.EvoDebugger.renderer?.config?.WORLD_SHAPE?.length || 2;
+               
+               while (i < argTypes.length) {
+                   const argType = argTypes[i];
+                   
+                   if (argType === 'VECTOR' || argType === 'LABEL') {
+                       // VECTOR/LABEL: Gruppiere n-Dimensionen als [x|y]
+                       const vectorArgs = [];
+                       
+                       for (let dim = 0; dim < worldDimensions && i < args.length; dim++) {
+                           const argText = String(args[i]);
+                           const value = this.extractValueFromMolecule(argText);
+                           vectorArgs.push(value);
+                           i++;
+                       }
+                       
+                       if (vectorArgs.length > 0) {
+                           formattedArgs.push(`[${vectorArgs.join('|')}]`);
+                       }
+                   } else if (argType === 'REGISTER') {
+                       // Register: %DR0[=CODE:0] (aktueller Wert aus Internal State)
+                       const argText = String(args[i]);
+                       const value = this.extractValueFromMolecule(argText);
+                       const registerName = this.formatRegisterName(value);
+                       const currentValue = this.getCurrentRegisterValue(value, internalState);
+                       formattedArgs.push(`${registerName}<span class="injected-value">[=${currentValue}]</span>`);
+                       i++;
+                   } else {
+                       // LITERAL/UNKNOWN: Zeige einzeln
+                       const argText = String(args[i]);
+                       formattedArgs.push(argText);
+                       i++;
+                   }
+               }
+               
+               return formattedArgs;
+           }
+
+           /**
+            * Holt den aktuellen Wert eines Registers aus dem Internal State.
+            */
+           getCurrentRegisterValue(registerId, internalState) {
+               if (!internalState) return 'N/A';
+               
+               // Bestimme den Register-Typ basierend auf der ID
+               let registerList;
+               if (registerId >= 2000) {
+                   // FPR (Floating Point Register)
+                   registerList = internalState.fpRegisters;
+                   registerId = registerId - 2000;
+               } else if (registerId >= 1000) {
+                   // PR (Procedure Register)
+                   registerList = internalState.procRegisters;
+                   registerId = registerId - 1000;
+               } else {
+                   // DR (Data Register)
+                   registerList = internalState.dataRegisters;
+               }
+               
+               // Suche nach dem Register mit der passenden ID
+               if (registerList && registerList[registerId]) {
+                   return registerList[registerId].value;
+               }
+               
+               return 'N/A';
+           }
+
+           /**
+            * Holt den Internal State aus dem AppController.
+            */
+           getInternalStateFromAppController() {
+               // Versuche den Internal State aus dem aktuell ausgewählten Organismus zu holen
+               if (window.EvoDebugger.controller && 
+                   window.EvoDebugger.controller.state && 
+                   window.EvoDebugger.controller.state.lastTickData) {
+                   
+                   const selectedOrganismId = window.EvoDebugger.controller.state.selectedOrganismId;
+                   
+                   if (selectedOrganismId) {
+                       const organismDetails = window.EvoDebugger.controller.state.lastTickData.organismDetails[selectedOrganismId];
+                       
+                       if (organismDetails && organismDetails.internalState) {
+                           return organismDetails.internalState;
+                       }
+                   }
+               }
+               
+               return null;
+           }
+
+      update(next, navigationDirection) {
         const el = this.root.querySelector('[data-section="nextInstruction"]');
         if (!el) return;
 
@@ -251,31 +352,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Formatiere Argumente basierend auf ISA-Signatur und Molekül-Typen
                 if (next.arguments && next.arguments.length > 0) {
-                    const formattedArgs = next.arguments.map((arg, index) => {
-                        let argText = String(arg);
-                        let argType = next.argumentTypes && next.argumentTypes[index] ? next.argumentTypes[index] : 'UNKNOWN';
-                        
-                        // Formatiere basierend auf ISA-Typ
-                        if (argType === 'REGISTER') {
-                            // Register: Extrahiere den Wert aus "DATA:0" und formatiere als %DR0
-                            let value = this.extractValueFromMolecule(argText);
-                            let registerName = this.formatRegisterName(value);
-                            return `<span class="injected-value register">${registerName}</span>`;
-                        } else if (argType === 'LITERAL') {
-                            // Literal: Zeige den Molekül-Typ direkt (z.B. "DATA:1")
-                            return `<span class="injected-value literal">${argText}</span>`;
-                        } else if (argType === 'VECTOR') {
-                            // Vector: Zeige den Molekül-Typ direkt
-                            return `<span class="injected-value vector">${argText}</span>`;
-                        } else if (argType === 'LABEL') {
-                            // Label: Zeige den Molekül-Typ direkt
-                            return `<span class="injected-value label">${argText}</span>`;
-                        } else {
-                            // Unbekannter Typ: Zeige den Molekül-Typ direkt
-                            return `<span class="injected-value">${argText}</span>`;
-                        }
-                    });
-                    
+                    // Der Internal State ist nicht direkt verfügbar, aber wir können ihn aus dem AppController holen
+                    const internalState = this.getInternalStateFromAppController();
+                    const formattedArgs = this.formatArgumentsByType(next.arguments, next.argumentTypes, internalState);
                     instructionText += ' ' + formattedArgs.join(' ');
                 }
                 
