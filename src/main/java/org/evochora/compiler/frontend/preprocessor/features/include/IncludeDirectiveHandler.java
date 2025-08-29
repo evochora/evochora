@@ -15,6 +15,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.stream.Collectors;
 
 /**
@@ -78,8 +79,19 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
             pass.addSourceContent(logicalName, content);
 
             Lexer lexer = new Lexer(content, context.getDiagnostics(), logicalName);
+            List<Token> newTokens = lexer.scanTokens();
+
+            // Remove the EOF token from the included file
+            if (!newTokens.isEmpty() && newTokens.get(newTokens.size() - 1).type() == TokenType.END_OF_FILE) {
+                newTokens.remove(newTokens.size() - 1);
+            }
+
+            // Inject context management directives
+            newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", null, pathToken.line(), 0, pathToken.fileName()));
+            newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", null, pathToken.line(), 0, pathToken.fileName()));
+
             pass.removeTokens(startIndex, endIndex - startIndex);
-            pass.injectTokens(lexer.scanTokens(), 0);
+            pass.injectTokens(newTokens, 0);
 
         } catch (IOException e) {
             context.getDiagnostics().reportError("Could not read included file: " + relativePath, pathToken.fileName(), pathToken.line());

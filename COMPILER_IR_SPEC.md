@@ -44,6 +44,7 @@ This represents a compiler directive, which provides instructions to the compile
 -   `core:org`: Sets the layout origin.
 -   `core:dir`: Sets the layout direction.
 -   `core:place`: Places a molecule at a specific location.
+-   `core:push_ctx` / `core:pop_ctx`: Internal directives injected by the preprocessor around an included file's content. These instruct the layout engine to push and pop the current layout context (base position and direction vector), enabling relative addressing and context restoration.
 -   `core:scope_enter` / `core:scope_exit`: Mark the boundaries of a named scope.
 -   `core:proc_enter` / `core:proc_exit`: Mark the boundaries of a procedure, carrying metadata like arity and export status.
 -   `core:call_with`: Precedes a `CALL` instruction to specify the actual register arguments, enabling the backend to inject parameter marshalling code.

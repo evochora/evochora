@@ -54,18 +54,8 @@ public final class LayoutContext {
     public int[] anchorPos() { return anchorPos; }
     public void setAnchorPos(int[] p) { this.anchorPos = p; }
 
-    /**
-     * Handles the change of the current file being processed.
-     * @param newFile The new file name.
-     */
-    public void onFileChanged(String newFile) {
-        if (lastFile != null) {
-            basePosStack.push(Nd.copy(basePos));
-            dvStack.push(Nd.copy(currentDv));
-        }
-        basePos = Nd.copy(anchorPos);
-        lastFile = newFile;
-    }
+    public Deque<int[]> basePosStack() { return basePosStack; }
+    public Deque<int[]> dvStack() { return dvStack; }
 
     private String coordToStringKey(int[] coord) {
         return Arrays.stream(coord).mapToObj(String::valueOf).collect(Collectors.joining("|"));
