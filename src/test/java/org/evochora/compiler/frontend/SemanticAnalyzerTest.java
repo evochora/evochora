@@ -16,6 +16,12 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains unit tests for the {@link SemanticAnalyzer}.
+ * These tests verify that the semantic analyzer correctly identifies a wide range of semantic errors,
+ * such as scope violations, type mismatches, incorrect argument counts, and duplicate definitions.
+ * All tests are pure unit tests and do not require external resources.
+ */
 public class SemanticAnalyzerTest {
 
     private List<AstNode> getAst(String source, DiagnosticsEngine diagnostics) {
@@ -24,6 +30,11 @@ public class SemanticAnalyzerTest {
         Parser parser = new Parser(tokens, diagnostics, Path.of(""));
         return parser.parse();
     }
+
+    /**
+     * Verifies that defining the same label twice in the global scope is reported as an error.
+     * This is a unit test for symbol table management.
+     */
     @Test
     @Tag("unit")
     void testDuplicateLabelInGlobalScopeIsReported() {
@@ -38,7 +49,6 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -51,6 +61,10 @@ public class SemanticAnalyzerTest {
         assertThat(errors.get(0).message()).contains("Symbol 'START' is already defined in this scope.");
     }
 
+    /**
+     * Verifies that using the same label name in different, non-overlapping scopes is allowed.
+     * This is a unit test for scope-based symbol resolution.
+     */
     @Test
     @Tag("unit")
     void testSameLabelInDifferentScopesIsAllowed() {
@@ -67,7 +81,6 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -78,6 +91,10 @@ public class SemanticAnalyzerTest {
                 .isFalse();
     }
 
+    /**
+     * Verifies that defining the same label twice within the same scope is reported as an error.
+     * This is a unit test for symbol table management within a single scope.
+     */
     @Test
     @Tag("unit")
     void testDuplicateLabelWithinSameScopeIsReported() {
@@ -92,7 +109,6 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -105,6 +121,10 @@ public class SemanticAnalyzerTest {
         assertThat(errors.get(0).message()).contains("Symbol 'LOOP' is already defined in this scope.");
     }
 
+    /**
+     * Verifies that using an instruction with too few arguments is reported as an error.
+     * This is a unit test for instruction arity checking.
+     */
     @Test
     @Tag("unit")
     void testInstructionWithTooFewArgumentsReportsError() {
@@ -114,7 +134,6 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -125,6 +144,10 @@ public class SemanticAnalyzerTest {
                 .isEqualTo("Instruction 'ADDI' expects 2 argument(s), but got 1.");
     }
 
+    /**
+     * Verifies that using an instruction with too many arguments is reported as an error.
+     * This is a unit test for instruction arity checking.
+     */
     @Test
     @Tag("unit")
     void testInstructionWithTooManyArgumentsReportsError() {
@@ -134,7 +157,6 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -145,6 +167,10 @@ public class SemanticAnalyzerTest {
                 .isEqualTo("Instruction 'NOP' expects 0 argument(s), but got 1.");
     }
 
+    /**
+     * Verifies that an instruction with the correct number of arguments passes semantic analysis.
+     * This is a unit test for instruction arity checking.
+     */
     @Test
     @Tag("unit")
     void testInstructionWithCorrectNumberOfArgumentsIsAllowed() {
@@ -154,7 +180,6 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -163,6 +188,10 @@ public class SemanticAnalyzerTest {
         assertThat(diagnostics.hasErrors()).isFalse();
     }
 
+    /**
+     * Verifies that an instruction with an argument of the wrong type is reported as an error.
+     * This is a unit test for instruction argument type checking.
+     */
     @Test
     @Tag("unit")
     void testInstructionWithWrongArgumentTypeReportsError() {
@@ -172,7 +201,6 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -183,6 +211,10 @@ public class SemanticAnalyzerTest {
                 .isEqualTo("Argument 1 for instruction 'SETI' has the wrong type. Expected REGISTER, but got VECTOR.");
     }
 
+    /**
+     * Verifies that an instruction with multiple arguments of the wrong type reports multiple errors.
+     * This is a unit test for instruction argument type checking.
+     */
     @Test
     @Tag("unit")
     void testInstructionWithMultipleWrongArgumentTypesReportsMultipleErrors() {
@@ -192,7 +224,6 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -205,6 +236,10 @@ public class SemanticAnalyzerTest {
         assertThat(errors.get(1).message()).contains("Argument 2 for instruction 'ADDI' has the wrong type. Expected LITERAL, but got REGISTER.");
     }
 
+    /**
+     * Verifies that an instruction with the correct argument types passes semantic analysis.
+     * This is a unit test for instruction argument type checking.
+     */
     @Test
     @Tag("unit")
     void testInstructionWithCorrectArgumentTypesIsAllowed() {
@@ -214,7 +249,6 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -223,6 +257,11 @@ public class SemanticAnalyzerTest {
         assertThat(diagnostics.hasErrors()).isFalse();
     }
 
+    /**
+     * Verifies that attempting to access a label defined in an inner scope from an outer scope
+     * is reported as an undefined symbol error.
+     * This is a unit test for scope-based symbol resolution.
+     */
     @Test
     @Tag("unit")
     void testAccessingInnerScopeLabelFromOuterScopeReportsError() {
@@ -237,7 +276,6 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -248,6 +286,11 @@ public class SemanticAnalyzerTest {
                 .isEqualTo("Symbol 'INNER_LABEL' is not defined.");
     }
 
+    /**
+     * Verifies that attempting to access a label defined inside a procedure from outside
+     * that procedure is reported as an undefined symbol error.
+     * This is a unit test for procedure scope rules.
+     */
     @Test
     @Tag("unit")
     void testAccessingProcedureInternalLabelFromOutsideReportsError() {
@@ -263,7 +306,6 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -274,6 +316,11 @@ public class SemanticAnalyzerTest {
                 .isEqualTo("Symbol 'INTERNAL_LABEL' is not defined.");
     }
 
+    /**
+     * Verifies that attempting to use a constant symbol where a label is expected
+     * (e.g., in a jump instruction) is reported as a type error.
+     * This is a unit test for symbol type checking.
+     */
     @Test
     @Tag("unit")
     void testJumpingToAConstantReportsError() {
@@ -286,7 +333,6 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -297,6 +343,10 @@ public class SemanticAnalyzerTest {
                 .isEqualTo("Argument 1 for instruction 'JMPI' has the wrong type. Expected LABEL, but got CONSTANT.");
     }
 
+    /**
+     * Verifies that using a label that has not been defined is reported as an error.
+     * This is a unit test for undefined symbol checking.
+     */
     @Test
     @Tag("unit")
     void testUsingUndefinedLabelReportsError() {
@@ -306,7 +356,6 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -317,6 +366,10 @@ public class SemanticAnalyzerTest {
                 .isEqualTo("Symbol 'NON_EXISTENT_LABEL' is not defined.");
     }
 
+    /**
+     * Verifies that a defined constant can be correctly used as a literal value in an instruction.
+     * This is a unit test for constant symbol resolution.
+     */
     @Test
     @Tag("unit")
     void testUsingDefinedConstantAsLiteralIsAllowed() {
@@ -329,7 +382,6 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -338,6 +390,10 @@ public class SemanticAnalyzerTest {
         assertThat(diagnostics.hasErrors()).isFalse();
     }
 
+    /**
+     * Verifies that using an unknown or invalid register name is reported as an error.
+     * This is a unit test for ISA validation.
+     */
     @Test
     @Tag("unit")
     void testUnknownRegisterIsReported() {
@@ -346,7 +402,6 @@ public class SemanticAnalyzerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -355,6 +410,11 @@ public class SemanticAnalyzerTest {
         assertThat(diagnostics.getDiagnostics().get(0).message()).contains("Unknown register '%0'");
     }
 
+    /**
+     * Verifies that using an untyped number where a typed literal is required
+     * (based on compiler config) is reported as an error.
+     * This is a unit test for strict typing rules.
+     */
     @Test
     @Tag("unit")
     void testStrictTypingRejectsUntypedLiteral() {
@@ -363,7 +423,6 @@ public class SemanticAnalyzerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -373,6 +432,11 @@ public class SemanticAnalyzerTest {
                 .contains("requires a typed literal");
     }
 
+    /**
+     * Verifies that direct access to formal parameter registers (e.g., %FPR0) is forbidden
+     * outside of the compiler-generated procedure prologue/epilogue.
+     * This is a unit test for ISA rule enforcement.
+     */
     @Test
     @Tag("unit")
     void testDirectAccessToFprIsForbidden() {
@@ -380,7 +444,6 @@ public class SemanticAnalyzerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -390,6 +453,11 @@ public class SemanticAnalyzerTest {
                 .contains("Access to formal parameter registers (%FPRx) is not allowed");
     }
 
+    /**
+     * Verifies that a label defined after a `RET` instruction but before the end of the procedure (`.ENDP`)
+     * is still correctly recognized and resolved within that procedure's scope.
+     * This is a unit test for symbol resolution within procedure scopes.
+     */
     @Test
     @Tag("unit")
     void testLabelAfterRetInProcedureIsFound() {
@@ -404,7 +472,6 @@ public class SemanticAnalyzerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);

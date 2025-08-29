@@ -4,8 +4,20 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Tag;
 
+/**
+ * Contains unit tests for the {@link ConfigLoader}.
+ * These tests verify that the default simulation and server configuration
+ * can be loaded correctly and contains the expected values.
+ * These are unit tests and do not require external resources.
+ */
 class ConfigLoaderTest {
 
+    /**
+     * Verifies that loading the default configuration produces a valid, non-null
+     * {@link SimulationConfiguration} object with all expected default values for
+     * the simulation, pipeline, and server settings.
+     * This is a unit test for the configuration loading logic.
+     */
     @Test
     @Tag("unit")
     void loadDefault_shouldCreateValidConfiguration() {
@@ -38,6 +50,11 @@ class ConfigLoaderTest {
         assertThat(config.pipeline.server.host).isEqualTo("localhost");
     }
 
+    /**
+     * Verifies that the getDimensions() helper method correctly retrieves the world dimensions
+     * from the nested configuration structure.
+     * This is a unit test for a configuration accessor.
+     */
     @Test
     @Tag("unit")
     void getDimensions_shouldWorkWithNewStructure() {
@@ -45,6 +62,11 @@ class ConfigLoaderTest {
         assertThat(config.getDimensions()).isEqualTo(2);
     }
 
+    /**
+     * Verifies that the getWebPort() helper method correctly retrieves the web server port
+     * from the nested configuration structure.
+     * This is a unit test for a configuration accessor.
+     */
     @Test
     @Tag("unit")
     void getWebPort_shouldWorkWithNewStructure() {

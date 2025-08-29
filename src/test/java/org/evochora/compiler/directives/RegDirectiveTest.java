@@ -16,7 +16,18 @@ import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests the `.REG` directive for creating register aliases.
+ * This test ensures that the parser correctly defines and resolves these aliases.
+ * This is a unit test and does not require external resources.
+ */
 public class RegDirectiveTest {
+    /**
+     * Verifies that the parser correctly handles a `.REG` directive and subsequent usage of the alias.
+     * The test defines a register alias and then uses it in an instruction, checking that the
+     * parser resolves the alias back to the original register in the AST.
+     * This is a unit test for the parser.
+     */
     @Test
     @Tag("unit")
     void testRegDirectiveAndAliasUsage() {

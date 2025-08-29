@@ -4,16 +4,25 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 
 /**
- * Zuverlässiger Integrationstest für DebugIndexer.
- * 
- * Dieser Test verwendet den DebugIndexerTestHelper, um Race-Conditions zu eliminieren
- * und macht den Test stabil ohne Retries oder lange Timeouts.
- * 
- * Der Test ist genauso aussagekräftig wie der ursprüngliche Test, aber zuverlässiger.
+ * Contains reliable integration tests for the {@link DebugIndexer}.
+ * <p>
+ * These tests use the {@link DebugIndexerTestHelper} to encapsulate database setup,
+ * teardown, and processing logic. This approach avoids race conditions and eliminates
+ * the need for arbitrary `Thread.sleep()` calls, making the tests more stable and reliable.
+ * <p>
+ * The tests verify the core functionality of the indexer: reading data from a raw database,
+ * processing it, and writing the prepared data to a debug database.
  */
 @Tag("integration")
 class DebugIndexerReliableTest {
 
+    /**
+     * Verifies that the indexer can reliably process a single tick. It sets up the
+     * necessary database state, processes one tick, and then verifies the output
+     * in the prepared database.
+     * This is an integration test using in-memory databases.
+     * @throws Exception if database or helper operations fail.
+     */
     @Test
     void indexer_readsRawDbAnd_writesPreparedDb_reliable() throws Exception {
         // Verwende den Test-Helper für zuverlässiges Setup und Teardown
@@ -36,6 +45,11 @@ class DebugIndexerReliableTest {
         // Helper wird automatisch aufgeräumt durch try-with-resources
     }
 
+    /**
+     * Verifies that the indexer can reliably process multiple ticks in sequence.
+     * This is an integration test using in-memory databases.
+     * @throws Exception if database or helper operations fail.
+     */
     @Test
     void indexer_processesMultipleTicks_reliable() throws Exception {
         // Teste die Verarbeitung mehrerer Ticks
@@ -62,6 +76,12 @@ class DebugIndexerReliableTest {
         }
     }
 
+    /**
+     * Verifies that the indexer correctly processes a standard tick, which may not have
+     * organisms or cells. The name implies testing an "empty" tick.
+     * This is an integration test using in-memory databases.
+     * @throws Exception if database or helper operations fail.
+     */
     @Test
     void indexer_handlesEmptyTick_reliable() throws Exception {
         // Teste das Verhalten bei leeren Ticks

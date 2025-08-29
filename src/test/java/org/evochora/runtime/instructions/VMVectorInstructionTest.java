@@ -13,6 +13,11 @@ import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains low-level unit tests for the execution of vector-specific instructions by the virtual machine.
+ * Each test sets up a specific state, executes a single vector instruction, and verifies the precise outcome.
+ * These tests operate on an in-memory simulation and do not require external resources.
+ */
 public class VMVectorInstructionTest {
 
     private Environment environment;
@@ -44,7 +49,10 @@ public class VMVectorInstructionTest {
         }
     }
 
-    // VGET Tests
+    /**
+     * Tests the VGTI (Vector Get Immediate) instruction to extract a component from a vector.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testVgti() {
@@ -54,7 +62,10 @@ public class VMVectorInstructionTest {
         assertThat(Molecule.fromInt((Integer)org.getDr(0)).toScalarValue()).isEqualTo(20);
     }
 
-    // VSET Tests
+    /**
+     * Tests the VSTI (Vector Set Immediate) instruction to set a component of a vector.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testVsti() {
@@ -64,7 +75,10 @@ public class VMVectorInstructionTest {
         assertThat((int[])org.getDr(0)).containsExactly(99, 20);
     }
 
-    // VBLD Tests
+    /**
+     * Tests the VBLD (Vector Build) instruction, which creates a vector from two scalars on the stack.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testVbld() {
@@ -75,7 +89,10 @@ public class VMVectorInstructionTest {
         assertThat((int[])org.getDr(0)).containsExactly(40, 50);
     }
 
-    // B2V Tests
+    /**
+     * Tests the B2VI (Bitmask to Vector Immediate) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testB2viPositiveX() {
@@ -85,7 +102,10 @@ public class VMVectorInstructionTest {
         assertThat((int[]) org.getDr(0)).containsExactly(1, 0);
     }
 
-    // V2B Tests
+    /**
+     * Tests the V2BI (Vector to Bitmask Immediate) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testV2biPositiveX() {
@@ -96,6 +116,10 @@ public class VMVectorInstructionTest {
         assertThat(result).isEqualTo(1 << 0);
     }
 
+    /**
+     * Tests the V2BR (Vector to Bitmask Register) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testV2brNegativeY() {
@@ -106,6 +130,10 @@ public class VMVectorInstructionTest {
         assertThat(result).isEqualTo(1 << 3);
     }
 
+    /**
+     * Tests the V2BS (Vector to Bitmask Stack) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testV2bsStackVariant() {
@@ -116,7 +144,10 @@ public class VMVectorInstructionTest {
         assertThat(mask).isEqualTo(1 << 2);
     }
 
-    // RTR* Tests
+    /**
+     * Tests the RTRI (Rotate Immediate) instruction for 2D vectors.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testRtri2d() {
@@ -126,6 +157,10 @@ public class VMVectorInstructionTest {
         assertThat((int[]) org.getDr(0)).containsExactly(0, -1);
     }
 
+    /**
+     * Tests the RTR R(Rotate Register) instruction for 2D vectors.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testRtrr2d() {
@@ -137,6 +172,10 @@ public class VMVectorInstructionTest {
         assertThat((int[]) org.getDr(0)).containsExactly(0, -1);
     }
 
+    /**
+     * Tests the RTRS (Rotate Stack) instruction for 2D vectors.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testRtrs2d() {
@@ -150,6 +189,10 @@ public class VMVectorInstructionTest {
         assertThat((int[]) org.getDataStack().pop()).containsExactly(0, -1);
     }
 
+    /**
+     * Tests the RTRI instruction for 3D vectors, ensuring other axes are unaffected.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testRtri3dOtherAxesUnaffected() {
@@ -174,6 +217,10 @@ public class VMVectorInstructionTest {
         assertThat((int[]) org3d.getDr(0)).containsExactly(0, -1, 5);
     }
 
+    /**
+     * Tests that RTRI fails when the rotation axes are the same.
+     * This is a unit test for the VM's error handling.
+     */
     @Test
     @Tag("unit")
     void testRtriFailsOnSameAxes() {
@@ -188,6 +235,10 @@ public class VMVectorInstructionTest {
         sim.addOrganism(org);
     }
 
+    /**
+     * Tests the B2VI instruction with a negative direction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testB2viNegativeY() {
@@ -197,6 +248,10 @@ public class VMVectorInstructionTest {
         assertThat((int[]) org.getDr(0)).containsExactly(0, -1);
     }
 
+    /**
+     * Tests the B2VS (Bitmask to Vector Stack) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testB2vsStackVariant() {

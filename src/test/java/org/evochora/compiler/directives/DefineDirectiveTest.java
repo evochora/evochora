@@ -16,7 +16,17 @@ import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests the parsing of the `.DEFINE` directive.
+ * These tests ensure that the parser correctly creates an AST node for the directive.
+ * These are unit tests and do not require external resources.
+ */
 public class DefineDirectiveTest {
+    /**
+     * Verifies that the parser correctly parses a `.DEFINE` directive into a {@link DefineNode}.
+     * The test checks that the constant's name and its value are correctly represented in the AST.
+     * This is a unit test that involves the lexer and parser components.
+     */
     @Test
     @Tag("unit")
     void testDefineDirectiveCreatesCorrectAstNode() {

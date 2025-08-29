@@ -20,6 +20,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Contains integration tests for the {@link PersistenceService}.
+ * These tests verify the core functionality of the service, ensuring it can
+ * consume tick data from a queue and correctly persist it to a database.
+ */
 class PersistenceServiceTest {
 
     /**
@@ -32,7 +37,7 @@ class PersistenceServiceTest {
     private boolean waitForCondition(BooleanSupplier condition, long timeoutMs, String description) {
         long startTime = System.currentTimeMillis();
         long checkInterval = 10; // Check every 10ms for faster response
-        
+
         while (!condition.getAsBoolean()) {
             if (System.currentTimeMillis() - startTime > timeoutMs) {
                 System.out.println("Timeout waiting for: " + description);
@@ -48,6 +53,15 @@ class PersistenceServiceTest {
         return true;
     }
 
+    /**
+     * Verifies that the PersistenceService correctly consumes a RawTickState from the queue,
+     * serializes it to JSON, and writes it as a new row in the target database.
+     * <p>
+     * This is an integration test as it involves a live, threaded service and a
+     * real (in-memory) database connection.
+     *
+     * @throws Exception if thread or database operations fail.
+     */
     @Test
     @Tag("unit")
     void writesRawTickStateRows() throws Exception {

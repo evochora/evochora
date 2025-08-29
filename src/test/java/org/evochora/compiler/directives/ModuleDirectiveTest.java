@@ -13,7 +13,16 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests the parsing of module-related directives, specifically `.REQUIRE`.
+ * These are unit tests for the parser and do not require external resources.
+ */
 public class ModuleDirectiveTest {
+    /**
+     * Verifies that the parser correctly parses a `.REQUIRE` directive into a {@link RequireNode}.
+     * The test checks that the file path and the alias are correctly captured in the AST node.
+     * This is a unit test for the parser.
+     */
     @Test
     @Tag("unit")
     void testRequireDirective() {

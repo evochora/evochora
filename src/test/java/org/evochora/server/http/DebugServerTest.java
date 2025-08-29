@@ -14,8 +14,20 @@ import java.sql.Statement;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains integration tests for the {@link DebugServer}.
+ * These tests verify that the embedded web server can start, connect to a database,
+ * and serve debug data correctly via its REST API.
+ * This is an integration test as it involves a live HTTP server and a database connection.
+ */
 public class DebugServerTest {
 
+    /**
+     * Helper method to wait until the DebugServer has started.
+     * @param server The server instance.
+     * @param timeoutMillis The maximum time to wait.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     private void waitForServerStart(DebugServer server, long timeoutMillis) throws InterruptedException {
         long startTime = System.currentTimeMillis();
         while (!server.isRunning() && (System.currentTimeMillis() - startTime) < timeoutMillis) {
@@ -23,6 +35,12 @@ public class DebugServerTest {
         }
     }
 
+    /**
+     * Helper method to wait until the DebugServer has stopped.
+     * @param server The server instance.
+     * @param timeoutMillis The maximum time to wait.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     private void waitForServerStop(DebugServer server, long timeoutMillis) throws InterruptedException {
         long startTime = System.currentTimeMillis();
         while (server.isRunning() && (System.currentTimeMillis() - startTime) < timeoutMillis) {
@@ -30,6 +48,14 @@ public class DebugServerTest {
         }
     }
 
+    /**
+     * An end-to-end test for the DebugServer. It sets up an in-memory SQLite database,
+     * inserts mock tick data, starts the server, makes an HTTP client request to the
+     * API endpoint, and verifies that the correct data is returned with a 200 OK status.
+     * This is an integration test.
+     *
+     * @throws Exception if the database connection, server lifecycle, or HTTP request fails.
+     */
     @Test
     @Tag("integration")
     void testDebugServer() throws Exception {
@@ -77,5 +103,3 @@ public class DebugServerTest {
         // No cleanup needed for in-memory database
     }
 }
-
-

@@ -17,6 +17,12 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains integration tests for the compilation and execution of bitwise instructions.
+ * These tests run the full pipeline from source code compilation to execution in a simulated environment,
+ * verifying that the program runs to completion without errors.
+ * These are tagged as "integration" tests because they span the compiler and runtime subsystems.
+ */
 public class BitwiseInstructionCompilerTest {
 
     @BeforeAll
@@ -26,6 +32,15 @@ public class BitwiseInstructionCompilerTest {
 
     private static class RunResult { final Simulation sim; final Environment env; final Organism org; RunResult(Simulation s, Environment e, Organism o){sim=s;env=e;org=o;} }
 
+	/**
+	 * Compiles the given source code, loads it into a new simulation, creates an organism,
+	 * runs the simulation for a specified number of ticks, and returns the final state.
+	 *
+	 * @param source The source code to compile.
+	 * @param ticks The number of simulation ticks to execute.
+	 * @return A {@link RunResult} containing the final state of the simulation, environment, and organism.
+	 * @throws Exception if compilation or simulation fails.
+	 */
 	private RunResult compileAndRun(String source, int ticks) throws Exception {
 		Compiler compiler = new Compiler();
 		ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "bit_auto.s");
@@ -43,8 +58,15 @@ public class BitwiseInstructionCompilerTest {
 		return new RunResult(sim, env, org);
 	}
 
+	/**
+	 * Verifies the end-to-end functionality of a suite of bitwise and shift instructions,
+	 * including AND, OR, XOR, NAND, NOT, and shift left/right.
+	 * This is an integration test.
+	 *
+	 * @throws Exception if compilation or simulation fails.
+	 */
 	@Test
-	@Tag("unit")
+	@Tag("integration")
 	void testAND_OR_XOR_NAND_NOT_and_shifts() throws Exception {
 		String program = String.join("\n",
 				"SETI %DR0 DATA:10",
@@ -69,5 +91,3 @@ public class BitwiseInstructionCompilerTest {
 		assertThat(o3).isInstanceOf(Integer.class);
 	}
 }
-
-

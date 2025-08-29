@@ -13,6 +13,11 @@ import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests the {@link Simulation} class, focusing on conflict resolution and instruction execution.
+ * These tests use an in-memory {@link Environment} and do not require any external resources like
+ * a database or filesystem.
+ */
 public class SimulationTest {
 
     private Environment environment;
@@ -44,6 +49,12 @@ public class SimulationTest {
         return org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
     }
 
+    /**
+     * Tests conflict resolution when two organisms target the same location.
+     * The test verifies that the organism with the lower ID successfully writes its data,
+     * while the other organism's write is ignored.
+     * This is a unit test and relies on the in-memory {@link Simulation} and {@link Environment}.
+     */
     @Test
     @Tag("unit")
     void testConflictResolutionSameTargetLowerIdWins() {
@@ -77,6 +88,11 @@ public class SimulationTest {
         assertThat(orgHigh.isInstructionFailed()).as("Loser failed: " + orgHigh.getFailureReason()).isFalse();
     }
 
+    /**
+     * Tests that two organisms can execute instructions on different targets without conflict.
+     * The test verifies that both organisms successfully write their data to their respective targets.
+     * This is a unit test and relies on the in-memory {@link Simulation} and {@link Environment}.
+     */
     @Test
     @Tag("unit")
     void testNoConflictDifferentTargetsBothExecute() {
@@ -109,6 +125,12 @@ public class SimulationTest {
         assertThat(o2.isInstructionFailed()).as("o2 failed: " + o2.getFailureReason()).isFalse();
     }
 
+    /**
+     * Tests that an instruction fails gracefully when its operands are invalid.
+     * In this case, the 'POKS' instruction is executed without valid operands,
+     * and the test verifies that the organism's state reflects the failure.
+     * This is a unit test and relies on the in-memory {@link Simulation} and {@link Environment}.
+     */
     @Test
     @Tag("unit")
     void testSingleOrganismNoTargetStillExecutes() {

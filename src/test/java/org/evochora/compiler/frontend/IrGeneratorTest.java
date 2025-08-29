@@ -20,10 +20,20 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Integration-like test for the IR generator: runs Lexer -> Parser -> Semantics -> IR.
+ * Tests for the {@link IrGenerator}, covering the pipeline from Lexer to IR generation.
+ * These tests verify that the frontend of the compiler correctly processes source code
+ * into an Intermediate Representation. While they integrate several components, they are
+ * tagged as "unit" tests because they operate on in-memory data and do not use external
+ * resources like the filesystem.
  */
 public class IrGeneratorTest {
 
+    /**
+     * Verifies that the IR generator produces a correct {@link IrProgram} for a simple source snippet.
+     * This test runs the source through the lexer, parser, semantic analyzer, and finally the IR generator,
+     * asserting that the resulting IR items (directive, label, instruction) are structured as expected.
+     * This is a multi-component unit test of the compiler frontend.
+     */
     @Test
     @Tag("unit")
     void generatesIrForSimpleProgram() {
@@ -77,6 +87,14 @@ public class IrGeneratorTest {
         assertTrue(seti.operands().get(1) instanceof IrTypedImm);
     }
 
+    /**
+     * An end-to-end test that verifies the correctness of the source map in the final compiled artifact.
+     * It compiles a simple instruction and then checks that the source information stored for the
+     * resulting machine code correctly points back to the original line of code.
+     * This is a unit test for the compiler's source mapping functionality.
+     *
+     * @throws org.evochora.compiler.api.CompilationException if the compilation fails.
+     */
     @Test
     @Tag("unit")
     void endToEnd_sourceMapContentIsCorrect() throws org.evochora.compiler.api.CompilationException {

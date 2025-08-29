@@ -25,6 +25,11 @@ import java.util.LinkedList;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Contains integration tests for the {@link DebugIndexer}, with a focus on performance and reliability.
+ * These tests use in-memory SQLite databases to test the indexer's ability to process data from a
+ * source database and write to a destination database in a threaded environment.
+ */
 class DebugIndexerPerformanceTest {
 
     private DebugIndexer debugIndexer;
@@ -61,6 +66,12 @@ class DebugIndexerPerformanceTest {
         }
     }
 
+    /**
+     * Helper method to create and populate a mock raw data database for testing.
+     * @param dbPath The JDBC path for the in-memory database.
+     * @return An open connection to the database.
+     * @throws Exception if database setup fails.
+     */
     private Connection createTestDatabase(String dbPath) throws Exception {
         System.out.println("Creating test database at: " + dbPath);
         conn = DriverManager.getConnection(dbPath);
@@ -119,6 +130,11 @@ class DebugIndexerPerformanceTest {
         return conn;
     }
 
+    /**
+     * Verifies that the indexer starts and processes at least one batch of ticks from the raw database.
+     * This is an integration test of the indexer's basic processing loop.
+     * @throws Exception if database or thread operations fail.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 8, unit = TimeUnit.SECONDS)
@@ -139,6 +155,12 @@ class DebugIndexerPerformanceTest {
         assertTrue(debugIndexer.getLastProcessedTick() > 0, "Indexer should have processed some ticks");
     }
 
+    /**
+     * Verifies that the indexer can start and process ticks. The name suggests a test for
+     * SQLite optimizations, but the implementation is a generic run check.
+     * This is an integration test.
+     * @throws Exception if database or thread operations fail.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 8, unit = TimeUnit.SECONDS)
@@ -159,6 +181,12 @@ class DebugIndexerPerformanceTest {
         assertTrue(debugIndexer.getLastProcessedTick() > 0, "Indexer should have processed some ticks");
     }
 
+    /**
+     * Verifies that the indexer can start and process ticks. The name suggests a test for
+     * WAL checkpointing, but the implementation is a generic run check.
+     * This is an integration test.
+     * @throws Exception if database or thread operations fail.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 8, unit = TimeUnit.SECONDS)
@@ -179,6 +207,12 @@ class DebugIndexerPerformanceTest {
         assertTrue(debugIndexer.getLastProcessedTick() > 0, "Indexer should have processed some ticks");
     }
 
+    /**
+     * Verifies that the indexer can start and process ticks. The name suggests a test for
+     * auto-pause/resume, but the implementation is a generic run check.
+     * This is an integration test.
+     * @throws Exception if database or thread operations fail.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 8, unit = TimeUnit.SECONDS)
@@ -199,6 +233,12 @@ class DebugIndexerPerformanceTest {
         assertTrue(debugIndexer.getLastProcessedTick() > 0, "Indexer should have processed some ticks");
     }
 
+    /**
+     * Verifies that the indexer can start and process ticks. The name suggests a test for
+     * throttling, but the implementation is a generic run check.
+     * This is an integration test.
+     * @throws Exception if database or thread operations fail.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 8, unit = TimeUnit.SECONDS)
@@ -219,6 +259,11 @@ class DebugIndexerPerformanceTest {
         assertTrue(debugIndexer.getLastProcessedTick() > 0, "Indexer should have processed some ticks");
     }
 
+    /**
+     * Verifies that the indexer can be gracefully shut down after it has started processing data.
+     * This is an integration test of the service lifecycle.
+     * @throws Exception if database or thread operations fail.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 8, unit = TimeUnit.SECONDS)
@@ -249,6 +294,12 @@ class DebugIndexerPerformanceTest {
         assertFalse(debugIndexer.isRunning());
     }
 
+    /**
+     * Verifies that the indexer can start and process ticks. The name suggests a test for
+     * data integrity, but the implementation is a generic run check.
+     * This is an integration test.
+     * @throws Exception if database or thread operations fail.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 8, unit = TimeUnit.SECONDS)
@@ -269,6 +320,11 @@ class DebugIndexerPerformanceTest {
         assertTrue(debugIndexer.getLastProcessedTick() > 0, "Indexer should have processed some ticks");
     }
 
+    /**
+     * Verifies that the indexer can be started with different batch size configurations.
+     * This is an integration test of the service configuration.
+     * @throws Exception if database or thread operations fail.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 8, unit = TimeUnit.SECONDS)

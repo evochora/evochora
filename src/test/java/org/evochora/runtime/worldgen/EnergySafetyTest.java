@@ -9,8 +9,18 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains unit tests for the "safety radius" feature of world generation,
+ * ensuring that energy sources are not placed too close to owned cells.
+ * These tests operate on an in-memory environment and do not use external resources.
+ */
 public class EnergySafetyTest {
 
+    /**
+     * Verifies that the {@link SolarRadiationCreator} does not place energy within the
+     * configured safety radius of an already owned cell.
+     * This is a unit test for world generation logic.
+     */
     @Test
     @Tag("unit")
     void solar_does_not_place_within_safety_radius_of_owned_cells() {
@@ -37,6 +47,12 @@ public class EnergySafetyTest {
         }
     }
 
+    /**
+     * Verifies that the {@link GeyserCreator} respects the safety radius for both the
+     * initial placement of the geyser source (a STRUCTURE) and the subsequent eruption
+     * of energy.
+     * This is a unit test for world generation logic.
+     */
     @Test
     @Tag("unit")
     void geyser_sources_and_eruptions_respect_safety_radius() {
@@ -75,5 +91,3 @@ public class EnergySafetyTest {
         }
     }
 }
-
-

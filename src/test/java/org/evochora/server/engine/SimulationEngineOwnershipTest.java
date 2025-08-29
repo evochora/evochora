@@ -12,6 +12,10 @@ import java.util.function.BooleanSupplier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Contains integration tests for the {@link SimulationEngine}, with a focus on ownership.
+ * NOTE: The current tests only verify basic engine lifecycle and do not yet test ownership logic.
+ */
 class SimulationEngineOwnershipTest {
 
     /**
@@ -24,7 +28,7 @@ class SimulationEngineOwnershipTest {
     private boolean waitForCondition(BooleanSupplier condition, long timeoutMs, String description) {
         long startTime = System.currentTimeMillis();
         long checkInterval = 10; // Check every 10ms for faster response
-        
+
         while (!condition.getAsBoolean()) {
             if (System.currentTimeMillis() - startTime > timeoutMs) {
                 System.out.println("Timeout waiting for: " + description);
@@ -40,6 +44,16 @@ class SimulationEngineOwnershipTest {
         return true;
     }
 
+    /**
+     * Verifies that the SimulationEngine can be started and that it initializes its
+     * internal Simulation and Environment objects correctly. The test then shuts down the engine.
+     * Although named to imply an ownership test, this test currently only covers the basic
+     * lifecycle of the engine.
+     * <p>
+     * This is an integration test as it involves a live, threaded service.
+     *
+     * @throws Exception if thread operations fail.
+     */
     @Test
     @Tag("unit")
     void places_code_and_world_objects_with_ownership() throws Exception {

@@ -13,8 +13,18 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests the preprocessor's handling of macro definitions and expansions.
+ * These are unit tests and do not require external resources.
+ */
 public class MacroDirectiveTest {
 
+    /**
+     * Verifies that the {@link PreProcessor} correctly expands a macro invocation.
+     * The test defines a macro, invokes it, and then checks that the resulting
+     * token stream matches the expected expanded output, with parameters correctly substituted.
+     * This is a unit test for the preprocessor.
+     */
     @Test
     @Tag("unit")
     void testMacroExpansion() {

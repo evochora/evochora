@@ -17,6 +17,11 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains integration tests for the compilation and execution of the NOP instruction.
+ * This test runs the full pipeline from source code compilation to execution in a simulated environment.
+ * It is tagged as an "integration" test because it spans the compiler and runtime subsystems.
+ */
 public class NopInstructionCompilerTest {
 
     @BeforeAll
@@ -24,7 +29,15 @@ public class NopInstructionCompilerTest {
         Instruction.init();
     }
 
-    @Test
+	/**
+	 * Verifies the end-to-end functionality of the NOP instruction.
+	 * It compiles and runs a program with NOPs and asserts that the organism
+	 * executes them without error and remains alive.
+	 * This is an integration test.
+	 *
+	 * @throws Exception if compilation or simulation fails.
+	 */
+	@Test
 	@Tag("unit")
 	void testNOP_executes() throws Exception {
 		String program = String.join("\n",
@@ -47,5 +60,3 @@ public class NopInstructionCompilerTest {
 		assertThat(org.isDead()).isFalse();
 	}
 }
-
-

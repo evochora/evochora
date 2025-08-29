@@ -17,6 +17,11 @@ import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests the compiler's handling of scoped includes, particularly how layout directives
+ * like `.ORG` and `.DIR` behave across nested file inclusions.
+ * This is an integration test as it involves the filesystem and the full compiler pipeline.
+ */
 public class ScopedIncludeTest {
 
     @TempDir
@@ -30,6 +35,19 @@ public class ScopedIncludeTest {
         compiler = new Compiler();
     }
 
+    /**
+     * Verifies that the compiler correctly manages layout contexts (origin and direction)
+     * across nested `.INCLUDE` directives. The test creates a chain of included files,
+     * each modifying the layout context with relative `.ORG` and `.DIR` commands. It then
+     * compiles the top-level file and asserts that the final coordinates of all instructions
+     * are correct, proving that the layout context is properly saved and restored at each
+     * include boundary.
+     * <p>
+     * This test uses the filesystem to create temporary source files and runs the full
+     * compiler, making it an integration test.
+     *
+     * @throws Exception if file operations or compilation fail.
+     */
     @Test
     @Tag("integration")
     void testNestedIncludesWithRelativeOrgAndDirContext() throws Exception {

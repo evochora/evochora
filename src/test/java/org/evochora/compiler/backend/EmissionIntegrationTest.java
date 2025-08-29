@@ -27,6 +27,13 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Integration tests for the emission phase of the compiler.
+ * These tests verify that the entire pipeline from source code to final IR
+ * correctly handles complex scenarios like function call marshalling.
+ * These tests are tagged as integration tests because they involve multiple components
+ * of the compiler pipeline.
+ */
 public class EmissionIntegrationTest {
 
     @BeforeAll
@@ -34,6 +41,14 @@ public class EmissionIntegrationTest {
         Instruction.init();
     }
 
+    /**
+     * An end-to-end test that verifies both caller and callee marshalling for a function call.
+     * It compiles a source string containing a procedure and a call to it, then checks that
+     * the correct PUSH/POP sequences are generated for argument passing and for the procedure's
+     * prologue and epilogue.
+     * This is an integration test as it covers the lexer, parser, semantic analyzer, IR generator,
+     * and emission rule engine.
+     */
     @Test
     @Tag("integration")
     void endToEnd_CallerAndCalleeMarshalling() {

@@ -14,11 +14,18 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Unit tests for the RawTickStateReader class.
- * Tests the debug implementation of IEnvironmentReader.
+ * Contains unit tests for the {@link RawTickStateReader} class.
+ * These tests verify that the reader correctly provides an {@link org.evochora.runtime.model.IEnvironmentReader}
+ * interface over a static {@link RawTickState} object, allowing other services to "read" from a
+ * snapshot of the simulation environment.
+ * These are unit tests and do not require external resources.
  */
 class RawTickStateReaderTest {
 
+    /**
+     * Verifies that the reader can correctly retrieve a molecule that exists in the raw tick state.
+     * This is a unit test for the core reading logic.
+     */
     @Test
     @Tag("unit")
     void getMolecule_existingCell() {
@@ -48,6 +55,10 @@ class RawTickStateReaderTest {
         assertThat(molecule2.toScalarValue()).isEqualTo(100);
     }
 
+    /**
+     * Verifies that the reader returns null when trying to access a coordinate where no cell exists.
+     * This is a unit test for handling sparse environment data.
+     */
     @Test
     @Tag("unit")
     void getMolecule_nonExistentCell() {
@@ -66,6 +77,10 @@ class RawTickStateReaderTest {
         assertThat(molecule).isNull();
     }
 
+    /**
+     * Verifies that the reader correctly handles a tick state with no cell data at all.
+     * This is a unit test for handling empty tick states.
+     */
     @Test
     @Tag("unit")
     void getMolecule_emptyTickState() {
@@ -84,6 +99,10 @@ class RawTickStateReaderTest {
         assertThat(molecule).isNull();
     }
 
+    /**
+     * Verifies that the reader correctly reports the world shape from its properties.
+     * This is a unit test for property delegation.
+     */
     @Test
     @Tag("unit")
     void getShape_returnsCorrectWorldShape() {
@@ -104,6 +123,10 @@ class RawTickStateReaderTest {
         assertThat(shape[1]).isEqualTo(50);
     }
 
+    /**
+     * Verifies that the reader correctly returns the {@link EnvironmentProperties} it was constructed with.
+     * This is a unit test for property delegation.
+     */
     @Test
     @Tag("unit")
     void getProperties_returnsCorrectProperties() {
@@ -124,6 +147,10 @@ class RawTickStateReaderTest {
         assertThat(returnedProps.isToroidal()).isEqualTo(isToroidal);
     }
 
+    /**
+     * Verifies that the reader's environment properties correctly handle coordinate calculations for a toroidal world.
+     * This is a unit test for property delegation.
+     */
     @Test
     @Tag("unit")
     void coordinateCalculation_withToroidalWorld() {
@@ -141,6 +168,10 @@ class RawTickStateReaderTest {
         assertThat(nextPos2).isEqualTo(new int[]{5, 0}); // Wraps around Y-axis
     }
 
+    /**
+     * Verifies that the reader's environment properties correctly handle coordinate calculations for a non-toroidal world.
+     * This is a unit test for property delegation.
+     */
     @Test
     @Tag("unit")
     void coordinateCalculation_withNonToroidalWorld() {
@@ -158,6 +189,10 @@ class RawTickStateReaderTest {
         assertThat(nextPos2).isEqualTo(new int[]{5, 10}); // Goes beyond boundary
     }
 
+    /**
+     * Verifies that the reader performs efficiently when accessing cells from a large dataset.
+     * This is a performance-based unit test.
+     */
     @Test
     @Tag("unit")
     void performance_largeNumberOfCells() {
@@ -199,6 +234,10 @@ class RawTickStateReaderTest {
                           (totalTime / 1_000_000.0) + " ms");
     }
 
+    /**
+     * Verifies that the reader correctly handles cells located at the boundaries of the world.
+     * This is a unit test for edge case handling.
+     */
     @Test
     @Tag("unit")
     void edgeCases_boundaryCoordinates() {
@@ -229,6 +268,10 @@ class RawTickStateReaderTest {
         assertThat(reader.getMolecule(new int[]{0, 5})).isNull();
     }
 
+    /**
+     * Verifies that the reader correctly deserializes and reports the type of different molecules.
+     * This is a unit test for data correctness.
+     */
     @Test
     @Tag("unit")
     void moleculeTypeHandling_differentTypes() {

@@ -17,6 +17,12 @@ import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Contains integration tests for the {@link ServiceManager}.
+ * These tests verify that the manager can correctly orchestrate the lifecycle
+ * (start, pause, resume, stop) of the entire suite of server services.
+ * These are integration tests as they manage the interaction of multiple threaded services.
+ */
 class ServiceManagerTest {
 
     private ServiceManager serviceManager;
@@ -70,7 +76,7 @@ class ServiceManagerTest {
     private boolean waitForCondition(BooleanSupplier condition, long timeoutMs, String description) {
         long startTime = System.currentTimeMillis();
         long checkInterval = 10; // Check every 10ms for faster response
-        
+
         while (!condition.getAsBoolean()) {
             if (System.currentTimeMillis() - startTime > timeoutMs) {
                 System.out.println("Timeout waiting for: " + description);
@@ -151,12 +157,21 @@ class ServiceManagerTest {
         );
     }
 
+    /**
+     * Verifies that the ServiceManager can be created without errors.
+     * This is an integration test.
+     */
     @Test
     @Tag("unit")
     void testServiceManagerCreation() {
         assertNotNull(serviceManager);
     }
 
+    /**
+     * Verifies that the ServiceManager can start all registered services.
+     * This is an integration test of the service lifecycle.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
@@ -176,6 +191,11 @@ class ServiceManagerTest {
         assertTrue(status.contains("DebugServer: running"));
     }
 
+    /**
+     * Verifies that the ServiceManager can pause all registered services.
+     * This is an integration test of the service lifecycle.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
@@ -198,6 +218,11 @@ class ServiceManagerTest {
         assertTrue(status.contains("DebugServer: stopped"));
     }
 
+    /**
+     * Verifies that the ServiceManager can resume all paused services.
+     * This is an integration test of the service lifecycle.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
@@ -223,6 +248,11 @@ class ServiceManagerTest {
         assertTrue(status.contains("DebugServer: running"));
     }
 
+    /**
+     * Verifies that the ServiceManager can start a single, specific service by name.
+     * This is an integration test of the service lifecycle.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
@@ -245,6 +275,11 @@ class ServiceManagerTest {
         assertTrue(status.contains("DebugServer: NOT_STARTED"));
     }
 
+    /**
+     * Verifies that the ServiceManager can pause a single, specific service by name.
+     * This is an integration test of the service lifecycle.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
@@ -271,6 +306,11 @@ class ServiceManagerTest {
         assertTrue(status.contains("DebugServer: running"));
     }
 
+    /**
+     * Verifies that the ServiceManager can resume a single, specific service by name.
+     * This is an integration test of the service lifecycle.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
@@ -308,6 +348,11 @@ class ServiceManagerTest {
         assertTrue(status.contains("DebugServer: running"));
     }
 
+    /**
+     * Verifies that the ServiceManager can gracefully shut down all services.
+     * This is an integration test of the service lifecycle.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
@@ -329,6 +374,10 @@ class ServiceManagerTest {
         assertTrue(stoppedStatus.contains("NOT_STARTED") || stoppedStatus.contains("stopped"));
     }
 
+    /**
+     * Verifies that the ServiceManager can be initialized with a custom configuration.
+     * This is an integration test.
+     */
     @Test
     @Tag("unit")
     void testServiceManagerWithCustomConfig() {
@@ -342,6 +391,10 @@ class ServiceManagerTest {
         customManager.stopAll();
     }
 
+    /**
+     * Verifies that the ServiceManager handles requests for unknown service names gracefully.
+     * This is an integration test for error handling.
+     */
     @Test
     @Tag("unit")
     void testUnknownServiceName() {

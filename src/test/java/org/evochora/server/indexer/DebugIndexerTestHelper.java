@@ -26,10 +26,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Helper-Klasse für DebugIndexer-Integrationstests.
- * Stellt zuverlässiges Setup und Teardown für Datenbank-Tests bereit.
- * 
- * Verwendung:
+ * A helper class for creating reliable integration tests for the {@link DebugIndexer}.
+ * It encapsulates the logic for setting up and tearing down in-memory databases,
+ * populating them with test data, and running the indexer in a controlled manner.
+ * <p>
+ * This class implements {@link AutoCloseable} to ensure resources are cleaned up
+ * when used with a try-with-resources statement in tests.
+ * <p>
+ * Example Usage:
+ * <pre>
+ * {@code
  * try (DebugIndexerTestHelper helper = new DebugIndexerTestHelper()) {
  *     helper.setupRawDatabase();
  *     helper.setupDebugDatabase();
@@ -37,8 +43,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *     helper.processTick(indexer, 1L);
  *     helper.verifyPreparedTick(1L);
  * }
- * 
- * Diese Klasse eliminiert Race-Conditions und macht Tests zuverlässig.
+ * }
+ * </pre>
  */
 @Tag("integration")
 class DebugIndexerTestHelper implements AutoCloseable {
@@ -53,7 +59,7 @@ class DebugIndexerTestHelper implements AutoCloseable {
     private ProgramArtifact testArtifact;
 
     /**
-     * Erstellt einen neuen Test-Helper mit eindeutigen Datenbank-URLs.
+     * Creates a new test helper, initializing unique in-memory database URLs for test isolation.
      */
     public DebugIndexerTestHelper() {
         // Verwende eindeutige URLs für jeden Test-Lauf
@@ -64,7 +70,9 @@ class DebugIndexerTestHelper implements AutoCloseable {
     }
 
     /**
-     * Richtet die Raw-Datenbank mit allen erforderlichen Tabellen und Test-Daten ein.
+     * Sets up the 'raw' source database with all required tables and populates it with
+     * default test data for one tick and one program artifact.
+     * @throws Exception if database setup or data insertion fails.
      */
     public void setupRawDatabase() throws Exception {
         log.debug("Setting up raw database: {}", rawJdbcUrl);
@@ -124,8 +132,9 @@ class DebugIndexerTestHelper implements AutoCloseable {
     }
 
     /**
-     * Fügt zusätzliche Ticks zur Raw-Datenbank hinzu.
-     * Nützlich für Tests, die mehrere Ticks verarbeiten sollen.
+     * Adds additional mock ticks to the raw database for testing multi-tick processing.
+     * @param tickNumbers The numbers of the ticks to add.
+     * @throws Exception if database insertion fails.
      */
     public void addAdditionalTicks(int... tickNumbers) throws Exception {
         log.debug("Adding additional ticks: {}", java.util.Arrays.toString(tickNumbers));
@@ -153,9 +162,9 @@ class DebugIndexerTestHelper implements AutoCloseable {
     }
 
     /**
-     * Richtet die Debug-Datenbank mit allen erforderlichen Tabellen ein.
-     * WICHTIG: Diese Methode erstellt die prepared_ticks Tabelle VOR dem Start des Indexers,
-     * was Race-Conditions eliminiert.
+     * Sets up the 'debug' destination database with the required table schema.
+     * This is called before the indexer is started to avoid race conditions.
+     * @throws Exception if database setup fails.
      */
     public void setupDebugDatabase() throws Exception {
         log.debug("Setting up debug database: {}", debugJdbcUrl);
@@ -173,7 +182,8 @@ class DebugIndexerTestHelper implements AutoCloseable {
     }
 
     /**
-     * Erstellt einen neuen DebugIndexer mit den konfigurierten Datenbank-URLs.
+     * Creates a new {@link DebugIndexer} instance configured for reliable testing (batch size 1).
+     * @return A new DebugIndexer.
      */
     public DebugIndexer createIndexer() {
         log.debug("Creating DebugIndexer with batch size 1 for reliable testing");
@@ -181,8 +191,10 @@ class DebugIndexerTestHelper implements AutoCloseable {
     }
 
     /**
-     * Verarbeitet einen spezifischen Tick mit dem gegebenen Indexer.
-     * Wartet zuverlässig auf den Abschluss der Verarbeitung.
+     * Runs the indexer and waits reliably for a specific tick to be processed.
+     * @param indexer The indexer instance to run.
+     * @param tickNumber The tick to wait for.
+     * @throws Exception if the tick is not processed within the timeout.
      */
     public void processTick(DebugIndexer indexer, long tickNumber) throws Exception {
         log.debug("Processing tick {} with indexer", tickNumber);
@@ -200,7 +212,9 @@ class DebugIndexerTestHelper implements AutoCloseable {
     }
 
     /**
-     * Wartet darauf, dass der Indexer gestartet ist.
+     * Waits for the indexer thread to enter the running state.
+     * @param indexer The indexer instance.
+     * @throws InterruptedException if the thread is interrupted.
      */
     private void waitForIndexerStarted(DebugIndexer indexer) throws InterruptedException {
         assertTrue(waitForCondition(
@@ -212,7 +226,9 @@ class DebugIndexerTestHelper implements AutoCloseable {
     }
 
     /**
-     * Wartet darauf, dass ein spezifischer Tick verarbeitet wurde.
+     * Waits by polling the debug database until the specified tick number appears.
+     * @param tickNumber The tick to wait for.
+     * @throws Exception if the tick does not appear within the timeout.
      */
     private void waitForTickProcessed(long tickNumber) throws Exception {
         assertTrue(waitForCondition(
@@ -261,7 +277,9 @@ class DebugIndexerTestHelper implements AutoCloseable {
     }
 
     /**
-     * Überprüft, dass ein vorbereiteter Tick korrekt in der Debug-Datenbank gespeichert wurde.
+     * Connects to the debug database and verifies that the data for the specified tick is present and correct.
+     * @param tickNumber The tick number to verify.
+     * @throws Exception if database access or deserialization fails.
      */
     public void verifyPreparedTick(long tickNumber) throws Exception {
         log.debug("Verifying prepared tick {}", tickNumber);
@@ -287,21 +305,25 @@ class DebugIndexerTestHelper implements AutoCloseable {
     }
 
     /**
-     * Gibt die Raw-Datenbank-URL zurück (für Debugging).
+     * Gets the JDBC URL for the raw database.
+     * @return The JDBC URL string.
      */
     public String getRawJdbcUrl() {
         return rawJdbcUrl;
     }
 
     /**
-     * Gibt die Debug-Datenbank-URL zurück (für Debugging).
+     * Gets the JDBC URL for the debug database.
+     * @return The JDBC URL string.
      */
     public String getDebugJdbcUrl() {
         return debugJdbcUrl;
     }
 
     /**
-     * Räumt alle Ressourcen sauber auf.
+     * Closes database connections to clean up resources.
+     * Called automatically when used in a try-with-resources block.
+     * @throws Exception if closing connections fails.
      */
     @Override
     public void close() throws Exception {

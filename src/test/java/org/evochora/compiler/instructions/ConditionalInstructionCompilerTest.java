@@ -17,6 +17,12 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains integration tests for the compilation and execution of conditional instructions.
+ * These tests run the full pipeline from source code compilation to execution in a simulated environment,
+ * verifying that conditional skips behave as expected.
+ * These are tagged as "integration" tests because they span the compiler and runtime subsystems.
+ */
 public class ConditionalInstructionCompilerTest {
 
     @BeforeAll
@@ -26,6 +32,15 @@ public class ConditionalInstructionCompilerTest {
 
     private static class RunResult { final Simulation sim; final Environment env; final Organism org; RunResult(Simulation s, Environment e, Organism o){sim=s;env=e;org=o;} }
 
+	/**
+	 * Compiles the given source code, loads it into a new simulation, creates an organism,
+	 * runs the simulation for a specified number of ticks, and returns the final state.
+	 *
+	 * @param source The source code to compile.
+	 * @param ticks The number of simulation ticks to execute.
+	 * @return A {@link RunResult} containing the final state of the simulation, environment, and organism.
+	 * @throws Exception if compilation or simulation fails.
+	 */
 	private RunResult compileAndRun(String source, int ticks) throws Exception {
 		Compiler compiler = new Compiler();
 		ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "cond_auto.s");
@@ -43,8 +58,16 @@ public class ConditionalInstructionCompilerTest {
 		return new RunResult(sim, env, org);
 	}
 
+	/**
+	 * Verifies the end-to-end functionality of a suite of conditional instructions,
+	 * including checks for equality, greater/less than, type equality, and memory ownership.
+	 * It tests immediate, register, and stack-based variants.
+	 * This is an integration test.
+	 *
+	 * @throws Exception if compilation or simulation fails.
+	 */
 	@Test
-	@Tag("unit")
+	@Tag("integration")
 	void testIF_equal_less_greater_and_type_and_IFM_variants() throws Exception {
 		String program = String.join("\n",
 				"SETI %DR0 DATA:10",
@@ -87,5 +110,3 @@ public class ConditionalInstructionCompilerTest {
 		assertThat(d8 == null || d8 instanceof Integer).isTrue();
 	}
 }
-
-

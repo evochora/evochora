@@ -17,6 +17,12 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains integration tests for the compilation and execution of arithmetic instructions.
+ * These tests run the full pipeline from source code compilation to execution in a simulated environment,
+ * verifying that the final state of the organism's registers is correct.
+ * These are tagged as "integration" tests because they span the compiler and runtime subsystems.
+ */
 public class ArithmeticInstructionCompilerTest {
 
 	@BeforeAll
@@ -31,6 +37,15 @@ public class ArithmeticInstructionCompilerTest {
 		RunResult(Simulation sim, Environment env, Organism org) { this.sim = sim; this.env = env; this.org = org; }
 	}
 
+	/**
+	 * Compiles the given source code, loads it into a new simulation, creates an organism,
+	 * runs the simulation for a specified number of ticks, and returns the final state.
+	 *
+	 * @param source The source code to compile.
+	 * @param ticks The number of simulation ticks to execute.
+	 * @return A {@link RunResult} containing the final state of the simulation, environment, and organism.
+	 * @throws Exception if compilation or simulation fails.
+	 */
 	private RunResult compileAndRun(String source, int ticks) throws Exception {
 		Compiler compiler = new Compiler();
 		ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "arith_auto.s");
@@ -53,6 +68,13 @@ public class ArithmeticInstructionCompilerTest {
 		return new RunResult(sim, env, org);
 	}
 
+	/**
+	 * Verifies the end-to-end functionality of a suite of scalar arithmetic instructions,
+	 * including both register-based (ADDR, ADDI, etc.) and stack-based (ADDS, SUBS, etc.) variants.
+	 * This is an integration test.
+	 *
+	 * @throws Exception if compilation or simulation fails.
+	 */
 	@Test
     @Tag("unit")
 	void testADDR_ADDI_SUBR_SUBI_MULI_DIVI_MODI_and_stack_variants() throws Exception {
@@ -94,6 +116,12 @@ public class ArithmeticInstructionCompilerTest {
 		assertThat(dr2).isInstanceOf(Integer.class);
 	}
 
+	/**
+	 * Verifies the end-to-end functionality of vector addition using the ADDR instruction.
+	 * This is an integration test.
+	 *
+	 * @throws Exception if compilation or simulation fails.
+	 */
 	@Test
     @Tag("unit")
 	void testVectorADD_SUB_register_variant() throws Exception {
@@ -111,5 +139,3 @@ public class ArithmeticInstructionCompilerTest {
 		assertThat(v[1]).isEqualTo(2);
 	}
 }
-
-

@@ -12,8 +12,9 @@ import java.util.Deque;
 import org.junit.jupiter.api.Tag;
 
 /**
- * Unit tests for the new location-based architecture features of the Organism class,
+ * Unit tests for the location-based architecture features of the {@link Organism} class,
  * including multiple Data Pointers (DPs), Location Registers (LRs), and the Location Stack (LS).
+ * These tests use an in-memory simulation and do not require external resources.
  */
 public class LocationTest {
 
@@ -42,6 +43,10 @@ public class LocationTest {
 
     // --- Data Pointer (DP) Tests ---
 
+    /**
+     * Verifies that all Data Pointers (DPs) are correctly initialized to the organism's starting position.
+     * This is a unit test for the Organism's initial state.
+     */
     @Test
     @Tag("unit")
     void testMultipleDpInitialization() {
@@ -52,6 +57,10 @@ public class LocationTest {
         }
     }
 
+    /**
+     * Verifies that a specific Data Pointer can be set and retrieved without affecting others.
+     * This is a unit test for the Organism's state management.
+     */
     @Test
     @Tag("unit")
     void testSetAndGetSpecificDp() {
@@ -63,6 +72,11 @@ public class LocationTest {
         assertThat(org.getDp(0)).isEqualTo(new int[]{0, 0});
     }
 
+    /**
+     * Verifies that attempting to access a Data Pointer with an out-of-bounds index
+     * correctly sets the organism's failure state.
+     * This is a unit test for Organism error handling.
+     */
     @Test
     @Tag("unit")
     void testAccessingInvalidDpReportsFailure() {
@@ -81,6 +95,10 @@ public class LocationTest {
 
     // --- Location Register (LR) Tests ---
 
+    /**
+     * Verifies that all Location Registers (LRs) are correctly initialized to a zero vector.
+     * This is a unit test for the Organism's initial state.
+     */
     @Test
     @Tag("unit")
     void testLocationRegisterInitialization() {
@@ -90,6 +108,10 @@ public class LocationTest {
         }
     }
 
+    /**
+     * Verifies that a specific Location Register can be set and retrieved correctly.
+     * This is a unit test for the Organism's state management.
+     */
     @Test
     @Tag("unit")
     void testSetAndGetSpecificLr() {
@@ -98,6 +120,10 @@ public class LocationTest {
         assertThat(org.getLr(0)).isEqualTo(newLocation);
     }
 
+    /**
+     * Confirms the type safety of the `setLr` method, which should only accept vector types.
+     * This test is conceptual as a direct call with a non-vector type would be a compile-time error.
+     */
     @Test
     @Tag("unit")
     void testSettingNonVectorToLrFails() {
@@ -109,6 +135,10 @@ public class LocationTest {
 
     // --- Location Stack (LS) Tests ---
 
+    /**
+     * Verifies the basic push and pop functionality of the Location Stack (LS).
+     * This is a unit test for the Organism's stack data structures.
+     */
     @Test
     @Tag("unit")
     void testLocationStackPushAndPop() {
@@ -125,7 +155,12 @@ public class LocationTest {
         assertThat(ls.isEmpty()).isTrue();
     }
 
-    @org.junit.jupiter.api.Test
+    /**
+     * Simulates the execution of a series of location-based instructions to test
+     * their interaction with the Location Stack and Location Registers.
+     * This is a unit test verifying the runtime behavior of these specific instructions.
+     */
+    @Test
     @Tag("unit")
     void testLocationInstructions_ls_lr_roundtrip() {
         org.setDp(0, org.getIp());
@@ -151,6 +186,11 @@ public class LocationTest {
         assertThat(org.getActiveDp()).isEqualTo(org.getLr(0));
     }
 
+    /**
+     * Verifies that the Location Stack's maximum depth is correctly handled.
+     * This test simulates filling the stack to capacity to check overflow conditions.
+     * This is a unit test for the Organism's stack limits.
+     */
     @Test
     @Tag("unit")
     void testLocationStackOverflow() {

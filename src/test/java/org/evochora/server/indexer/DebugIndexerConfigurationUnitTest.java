@@ -7,11 +7,10 @@ import org.junit.jupiter.api.Tag;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Fast unit tests for DebugIndexer configuration and validation logic.
- * These tests focus only on configuration validation and parameter handling
+ * Contains fast unit tests for the {@link DebugIndexer}'s configuration and validation logic.
+ * These tests focus only on constructor logic and parameter handling
  * without any real database operations or threading.
- * 
- * Performance requirement: All tests must complete in < 0.1 seconds.
+ * All tests are tagged as "unit" and should complete very quickly.
  */
 @Tag("unit")
 class DebugIndexerConfigurationUnitTest {
@@ -24,6 +23,10 @@ class DebugIndexerConfigurationUnitTest {
         indexer = new DebugIndexer("jdbc:sqlite:file:memdb_config?mode=memory&cache=shared", 1000);
     }
 
+    /**
+     * Verifies that a new DebugIndexer instance has the correct default state (not running, not paused).
+     * This is a unit test for the initial state of the service.
+     */
     @Test
     @Tag("unit")
     void testDefaultConfiguration() {
@@ -34,6 +37,10 @@ class DebugIndexerConfigurationUnitTest {
         assertThat(indexer.isAutoPaused()).isFalse();
     }
 
+    /**
+     * Verifies that the DebugIndexer can be instantiated with various valid batch sizes.
+     * This is a unit test for the constructor logic.
+     */
     @Test
     @Tag("unit")
     void testBatchSizeValidation() {
@@ -48,6 +55,10 @@ class DebugIndexerConfigurationUnitTest {
         assertThat(largeBatch).isNotNull();
     }
 
+    /**
+     * Verifies that the DebugIndexer can be instantiated with various valid database URL formats.
+     * This is a unit test for the constructor logic.
+     */
     @Test
     @Tag("unit")
     void testDatabaseUrlValidation() {
@@ -62,6 +73,10 @@ class DebugIndexerConfigurationUnitTest {
         assertThat(inMemory).isNotNull();
     }
 
+    /**
+     * Verifies that all constructor overloads of the DebugIndexer can be called without error.
+     * This is a unit test for the constructor logic.
+     */
     @Test
     @Tag("unit")
     void testConstructorOverloads() {
@@ -74,6 +89,10 @@ class DebugIndexerConfigurationUnitTest {
         assertThat(twoParams).isNotNull();
     }
 
+    /**
+     * Verifies that multiple instances of the DebugIndexer are created with the same consistent initial state.
+     * This is a unit test for the initial state of the service.
+     */
     @Test
     @Tag("unit")
     void testConfigurationConsistency() {
@@ -90,6 +109,10 @@ class DebugIndexerConfigurationUnitTest {
         assertThat(indexer1.isAutoPaused()).isEqualTo(indexer2.isAutoPaused());
     }
 
+    /**
+     * Verifies that creating DebugIndexer instances with in-memory databases is a fast operation.
+     * This is a performance-based unit test.
+     */
     @Test
     @Tag("unit")
     void testMemoryDatabasePerformance() {
@@ -109,6 +132,10 @@ class DebugIndexerConfigurationUnitTest {
         assertThat(durationSeconds).isLessThan(0.1);
     }
 
+    /**
+     * Verifies that the state of one DebugIndexer instance is isolated and does not affect another.
+     * This is a unit test for state isolation.
+     */
     @Test
     @Tag("unit")
     void testConfigurationIsolation() {
@@ -127,6 +154,10 @@ class DebugIndexerConfigurationUnitTest {
         assertThat(config3.isRunning()).isFalse();
     }
 
+    /**
+     * Verifies that the initial status string is consistent.
+     * This is a unit test for the status reporting logic.
+     */
     @Test
     @Tag("unit")
     void testStatusFormatConsistency() {
@@ -141,6 +172,10 @@ class DebugIndexerConfigurationUnitTest {
         assertThat(status2).isEqualTo("stopped");
     }
 
+    /**
+     * Verifies that the configuration state is not mutated by calls to status methods.
+     * This is a unit test for the immutability of the service state.
+     */
     @Test
     @Tag("unit")
     void testConfigurationPersistence() {

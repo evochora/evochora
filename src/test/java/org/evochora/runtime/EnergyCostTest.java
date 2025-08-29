@@ -11,6 +11,12 @@ import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests the energy consumption and harvesting logic for various instructions.
+ * These tests use an in-memory {@link Simulation} and {@link Environment} to verify
+ * that instructions like PEEK and POKE affect an organism's energy as expected.
+ * These are unit tests and do not require external resources.
+ */
 public class EnergyCostTest {
 
     private Environment environment;
@@ -38,6 +44,10 @@ public class EnergyCostTest {
         }
     }
 
+    /**
+     * Verifies that a successful POKE instruction consumes the correct amount of energy.
+     * This is a unit test using an in-memory simulation.
+     */
     @Test
     @Tag("unit")
     void testPokeConsumesEnergyOnSuccess() {
@@ -66,6 +76,11 @@ public class EnergyCostTest {
         assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 1 - 5);
     }
 
+    /**
+     * Verifies that a failed POKE instruction (due to an occupied target cell)
+     * still consumes the base energy cost for the instruction attempt.
+     * This is a unit test using an in-memory simulation.
+     */
     @Test
     @Tag("unit")
     void testPokeConsumesEnergyEvenOnOccupiedTarget() {
@@ -96,6 +111,10 @@ public class EnergyCostTest {
         assertThat(environment.getMolecule(target).toInt()).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
+    /**
+     * Verifies that peeking a data molecule from a foreign cell consumes energy.
+     * This is a unit test using an in-memory simulation.
+     */
     @Test
     @Tag("unit")
     void testPeekDataConsumesEnergy() {
@@ -121,6 +140,10 @@ public class EnergyCostTest {
         assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 5);
     }
 
+    /**
+     * Verifies that peeking a structure molecule owned by the organism itself does not cost energy.
+     * This is a unit test using an in-memory simulation.
+     */
     @Test
     @Tag("unit")
     void testPeekStructureOwnedBySelf_NoEnergyCost() {
@@ -148,6 +171,10 @@ public class EnergyCostTest {
         assertThat(org.getEr()).isLessThanOrEqualTo(initialEr);
     }
 
+    /**
+     * Verifies that peeking a structure molecule owned by a different organism costs energy.
+     * This is a unit test using an in-memory simulation.
+     */
     @Test
     @Tag("unit")
     void testPeekStructureForeignConsumesEnergy() {
@@ -174,6 +201,11 @@ public class EnergyCostTest {
         assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 12);
     }
 
+    /**
+     * Verifies that peeking an energy molecule correctly harvests energy and that the
+     * organism's total energy is clamped to its maximum capacity.
+     * This is a unit test using an in-memory simulation.
+     */
     @Test
     @Tag("unit")
     void testPeekEnergyHarvestsAndClampsToMax() {

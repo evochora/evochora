@@ -13,6 +13,12 @@ import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains low-level unit tests for the execution of various state-related instructions
+ * by the virtual machine. Each test verifies that an instruction correctly reads or modifies
+ * the organism's internal state (e.g., energy, position, direction).
+ * These tests operate on an in-memory simulation and do not require external resources.
+ */
 public class VMStateInstructionTest {
 
     private Environment environment;
@@ -65,6 +71,10 @@ public class VMStateInstructionTest {
         }
     }
 
+    /**
+     * Tests the TURN instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testTurn() {
@@ -75,6 +85,10 @@ public class VMStateInstructionTest {
         assertThat(org.getDv()).isEqualTo(vec);
     }
 
+    /**
+     * Tests the SYNC instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testSync() {
@@ -84,6 +98,10 @@ public class VMStateInstructionTest {
         assertThat(org.getDp(0)).isEqualTo(expected); // CORRECTED
     }
 
+    /**
+     * Tests the NRG instruction (get energy to register).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testNrg() {
@@ -94,6 +112,10 @@ public class VMStateInstructionTest {
         assertThat(Molecule.fromInt(regVal).toScalarValue()).isEqualTo(er);
     }
 
+    /**
+     * Tests the NRGS instruction (get energy to stack).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testNrgs() {
@@ -103,6 +125,10 @@ public class VMStateInstructionTest {
         assertThat(Molecule.fromInt(val).toScalarValue()).isEqualTo(org.getEr());
     }
 
+    /**
+     * Tests the DIFF instruction (get difference vector between DP and IP).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testDiff() {
@@ -112,6 +138,10 @@ public class VMStateInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new int[]{0, 0});
     }
 
+    /**
+     * Tests the POS instruction (get current position).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testPos() {
@@ -120,6 +150,10 @@ public class VMStateInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new int[]{0,0});
     }
 
+    /**
+     * Tests the RAND instruction (get random number into register).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testRand() {
@@ -130,6 +164,10 @@ public class VMStateInstructionTest {
         assertThat(val).isGreaterThanOrEqualTo(0).isLessThan(10);
     }
 
+    /**
+     * Tests the RNDS instruction (get random number to stack).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testRnds() {
@@ -140,6 +178,10 @@ public class VMStateInstructionTest {
         assertThat(val).isGreaterThanOrEqualTo(0).isLessThan(5);
     }
 
+    /**
+     * Tests the TRNI instruction (turn to immediate vector).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testTrniSetsDirection() {
@@ -149,6 +191,10 @@ public class VMStateInstructionTest {
         assertThat(org.getDv()).isEqualTo(vec);
     }
 
+    /**
+     * Tests the TRNS instruction (turn to stack vector).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testTrnsSetsDirectionFromStack() {
@@ -159,6 +205,10 @@ public class VMStateInstructionTest {
         assertThat(org.getDv()).isEqualTo(vec);
     }
 
+    /**
+     * Tests the POSS instruction (push current position to stack).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testPossPushesRelativeIp() {
@@ -169,6 +219,10 @@ public class VMStateInstructionTest {
         assertThat((int[]) top).isEqualTo(new int[]{0,0});
     }
 
+    /**
+     * Tests the DIFS instruction (push difference vector to stack).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testDifsPushesDeltaBetweenActiveDpAndIp() {
@@ -190,6 +244,10 @@ public class VMStateInstructionTest {
         assertThat(delta[1]).isGreaterThan(0);
     }
 
+    /**
+     * Tests the ADPI instruction (set active data pointer from immediate).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testAdpiSetsActiveDpIndex() {
@@ -205,6 +263,10 @@ public class VMStateInstructionTest {
         assertThat(org.getDp(0)).isEqualTo(startPos);
     }
 
+    /**
+     * Tests the ADPR instruction (set active data pointer from register).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testAdprSetsActiveDpIndexFromRegister() {
@@ -217,6 +279,10 @@ public class VMStateInstructionTest {
         assertThat(org.getDp(1)).isEqualTo(expected);
     }
 
+    /**
+     * Tests the ADPS instruction (set active data pointer from stack).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testAdpsSetsActiveDpIndexFromStack() {
@@ -229,6 +295,10 @@ public class VMStateInstructionTest {
         assertThat(org.getDp(1)).isEqualTo(expected);
     }
 
+    /**
+     * Tests the SEEK instruction (move DP by vector in register).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testSeek() {
@@ -241,6 +311,10 @@ public class VMStateInstructionTest {
         assertThat(org.getDp(0)).isEqualTo(expected); // CORRECTED
     }
 
+    /**
+     * Tests the SEKI instruction (move DP by immediate vector).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testSeki() {
@@ -252,6 +326,10 @@ public class VMStateInstructionTest {
         assertThat(org.getDp(0)).isEqualTo(expected); // CORRECTED
     }
 
+    /**
+     * Tests the SEKS instruction (move DP by stack vector).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testSeks() {
@@ -264,6 +342,10 @@ public class VMStateInstructionTest {
         assertThat(org.getDp(0)).isEqualTo(expected); // CORRECTED
     }
 
+    /**
+     * Tests the SCAN instruction (read cell content without consuming).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testScan() {
@@ -281,6 +363,10 @@ public class VMStateInstructionTest {
         assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
     }
 
+    /**
+     * Tests the SCNI instruction (scan with immediate vector).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testScni() {
@@ -297,6 +383,10 @@ public class VMStateInstructionTest {
         assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
     }
 
+    /**
+     * Tests the SCNS instruction (scan with stack vector).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testScns() {

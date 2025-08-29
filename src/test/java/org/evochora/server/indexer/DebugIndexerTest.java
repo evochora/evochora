@@ -35,6 +35,11 @@ import org.evochora.runtime.isa.InstructionArgumentType;
 import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.Tag;
 
+/**
+ * A test class for the {@link DebugIndexer}.
+ * NOTE: This class currently contains no active tests and appears to be a stub
+ * or to contain helper methods for other tests.
+ */
 class DebugIndexerTest {
 
     private static final Logger log = LoggerFactory.getLogger(DebugIndexerTest.class);
@@ -48,7 +53,10 @@ class DebugIndexerTest {
     }
 
     /**
-     * Simuliert die aktuelle Runtime-Methode (direkte Interpretation).
+     * Simulates the runtime's direct interpretation of an instruction from a mock environment.
+     * This method is not currently used in any active test.
+     * @param env The mock environment to read from.
+     * @param ip The instruction pointer coordinates.
      */
     private void simulateDirectRuntimeMethod(MockEnvironment env, int[] ip) {
         try {
@@ -79,7 +87,8 @@ class DebugIndexerTest {
     }
     
     /**
-     * Mock-Environment für den Performance-Test.
+     * A mock environment implementation for performance testing purposes.
+     * This class is not currently used in any active test.
      */
     private static class MockEnvironment implements IEnvironmentReader {
         private final EnvironmentProperties properties;

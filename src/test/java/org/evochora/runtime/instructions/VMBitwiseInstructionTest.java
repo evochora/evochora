@@ -13,6 +13,11 @@ import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains low-level unit tests for the execution of bitwise instructions by the virtual machine.
+ * Each test sets up a specific state, executes a single instruction, and verifies the precise bitwise outcome.
+ * These tests operate on an in-memory simulation and do not require external resources.
+ */
 public class VMBitwiseInstructionTest {
 
     private Environment environment;
@@ -56,6 +61,10 @@ public class VMBitwiseInstructionTest {
         environment.setMolecule(Molecule.fromInt(immediateValue), currentPos);
     }
 
+    /**
+     * Tests the ANDS (Bitwise AND Stack) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testAnds() {
@@ -66,6 +75,10 @@ public class VMBitwiseInstructionTest {
         assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1000).toInt());
     }
 
+    /**
+     * Tests the ANDI (Bitwise AND Immediate) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testAndi() {
@@ -75,6 +88,10 @@ public class VMBitwiseInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1000).toInt());
     }
 
+    /**
+     * Tests the ANDR (Bitwise AND Register) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testAndr() {
@@ -85,6 +102,10 @@ public class VMBitwiseInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1000).toInt());
     }
 
+    /**
+     * Tests the ORS (Bitwise OR Stack) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testOrs() {
@@ -95,6 +116,10 @@ public class VMBitwiseInstructionTest {
         assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1110).toInt());
     }
 
+    /**
+     * Tests the ORI (Bitwise OR Immediate) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testOri() {
@@ -104,6 +129,10 @@ public class VMBitwiseInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1111).toInt());
     }
 
+    /**
+     * Tests the ORR (Bitwise OR Register) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testOrr() {
@@ -114,6 +143,10 @@ public class VMBitwiseInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1111).toInt());
     }
 
+    /**
+     * Tests the XORS (Bitwise XOR Stack) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testXors() {
@@ -123,6 +156,11 @@ public class VMBitwiseInstructionTest {
         sim.tick();
         assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 0b0110).toInt());
     }
+
+    /**
+     * Tests the XORI (Bitwise XOR Immediate) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testXori() {
@@ -132,6 +170,10 @@ public class VMBitwiseInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
     }
 
+    /**
+     * Tests the XORR (Bitwise XOR Register) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testXorr() {
@@ -142,6 +184,10 @@ public class VMBitwiseInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
     }
 
+    /**
+     * Tests the NOT (Bitwise NOT Register) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testNot() {
@@ -151,6 +197,10 @@ public class VMBitwiseInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1010).toInt());
     }
 
+    /**
+     * Tests the NOTS (Bitwise NOT Stack) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testNots() {
@@ -160,6 +210,10 @@ public class VMBitwiseInstructionTest {
         assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1010).toInt());
     }
 
+    /**
+     * Tests the SHLR (Shift Left Register) and SHRR (Shift Right Register) instructions.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testShiftRegisterVariants() {
@@ -179,6 +233,10 @@ public class VMBitwiseInstructionTest {
         assertThat(valR).isEqualTo(8 >> 2);
     }
 
+    /**
+     * Tests the bitwise rotation instructions (ROTR, ROTI, ROTS).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testRotateRegisterAndImmediateAndStack() {
@@ -213,6 +271,10 @@ public class VMBitwiseInstructionTest {
         assertThat(rotW).isEqualTo(0b1010_0001);
     }
 
+    /**
+     * Tests the population count instructions (PCNR, PCNS), which count set bits.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testPopulationCountRegisterAndStack() {
@@ -232,6 +294,11 @@ public class VMBitwiseInstructionTest {
         assertThat(cntS).isEqualTo(4);
     }
 
+    /**
+     * Tests the success cases for the Bit Scan Nth instructions (BSNR, BSNI, BSNS),
+     * which find the Nth set bit from the right or left.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testBitScanNthSuccessAndEdges() {
@@ -268,6 +335,11 @@ public class VMBitwiseInstructionTest {
         assertThat(maskS2).isEqualTo(0b0100_0000);
     }
 
+    /**
+     * Tests the failure cases for the Bit Scan Nth instructions, such as when N is zero
+     * or out of bounds.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testBitScanNthFailure() {

@@ -12,8 +12,19 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains unit tests for the {@link InMemoryTickQueue}.
+ * These tests verify the basic functionality and thread-safety of the queue.
+ * These are unit tests and do not require external resources.
+ */
 class InMemoryTickQueueTest {
 
+    /**
+     * Verifies the basic put and take operations on the queue, ensuring that
+     * a message can be added and then removed, and that the queue size is updated correctly.
+     * This is a unit test for the queue's core logic.
+     * @throws Exception if queue operations fail.
+     */
     @Test
     @Tag("unit")
     void putAndTake_shouldExchangeMessages() throws Exception {
@@ -28,6 +39,13 @@ class InMemoryTickQueueTest {
         assertThat(queue.size()).isZero();
     }
 
+    /**
+     * Verifies that the queue can be safely accessed by a producer and a consumer
+     * running in different threads. While named to suggest a backpressure test, this
+     * test's primary value is in confirming the thread-safety of the put/take operations.
+     * This is a multi-threaded unit test.
+     * @throws Exception if thread or queue operations fail.
+     */
     @Test
     @Tag("unit")
     void capacity_shouldApplyBackpressureByBytesHeuristic() throws Exception {

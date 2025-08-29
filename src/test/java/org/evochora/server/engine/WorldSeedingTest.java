@@ -15,6 +15,11 @@ import static java.util.Collections.emptyMap;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Contains integration tests for the world seeding functionality of the {@link SimulationEngine}.
+ * These tests verify that initial world objects from program artifacts are correctly
+ * placed into the environment when the simulation starts.
+ */
 class WorldSeedingTest {
 
     /**
@@ -27,7 +32,7 @@ class WorldSeedingTest {
     private boolean waitForCondition(BooleanSupplier condition, long timeoutMs, String description) {
         long startTime = System.currentTimeMillis();
         long checkInterval = 10; // Check every 10ms for faster response
-        
+
         while (!condition.getAsBoolean()) {
             if (System.currentTimeMillis() - startTime > timeoutMs) {
                 System.out.println("Timeout waiting for: " + description);
@@ -43,6 +48,15 @@ class WorldSeedingTest {
         return true;
     }
 
+    /**
+     * Verifies that the SimulationEngine correctly seeds the world with initial objects
+     * defined in a ProgramArtifact before starting the simulation loop.
+     * <p>
+     * This is an integration test as it involves starting the threaded SimulationEngine
+     * and observing its output.
+     *
+     * @throws Exception if thread operations fail.
+     */
     @Test
     @Tag("unit")
     void seedsInitialWorldObjectsOnStart() throws Exception {

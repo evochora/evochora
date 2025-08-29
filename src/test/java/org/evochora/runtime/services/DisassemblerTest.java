@@ -16,8 +16,11 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Comprehensive unit tests for the Disassembler class.
- * Tests all functionality including different opcodes, arguments, error cases, and ISA integration.
+ * Contains comprehensive unit tests for the {@link Disassembler} class.
+ * These tests verify that the disassembler can correctly read machine code from a mock environment
+ * and translate it into a structured, human-readable format. It covers valid instructions,
+ * various argument types, error conditions, and edge cases.
+ * These are unit tests and do not require external resources.
  */
 class DisassemblerTest {
 
@@ -26,6 +29,10 @@ class DisassemblerTest {
         Instruction.init();
     }
 
+    /**
+     * Verifies that the disassembler can correctly process a valid instruction with its arguments.
+     * This is a unit test for the disassembler's core logic.
+     */
     @Test
     @Tag("unit")
     void disassemble_validInstruction_withArguments() {
@@ -50,6 +57,11 @@ class DisassemblerTest {
         assertThat(result.argPositions()[0]).isEqualTo(new int[]{1, 0});
     }
 
+    /**
+     * Verifies that the disassembler handles an unknown opcode gracefully,
+     * returning a result with a special "UNKNOWN" name.
+     * This is a unit test for the disassembler's error handling.
+     */
     @Test
     @Tag("unit")
     void disassemble_unknownOpcode() {
@@ -71,6 +83,10 @@ class DisassemblerTest {
         assertThat(result.argPositions()).isEmpty();
     }
 
+    /**
+     * Verifies that the disassembler correctly processes a valid instruction that has no arguments.
+     * This is a unit test for the disassembler's core logic.
+     */
     @Test
     @Tag("unit")
     void disassemble_instructionWithoutArguments() {
@@ -92,6 +108,10 @@ class DisassemblerTest {
         assertThat(result.argPositions()).isEmpty();
     }
 
+    /**
+     * Verifies that the disassembler handles an instruction that is missing its arguments in the environment.
+     * This is a unit test for the disassembler's robustness.
+     */
     @Test
     @Tag("unit")
     void disassemble_incompleteInstruction() {
@@ -113,6 +133,10 @@ class DisassemblerTest {
         assertThat(result.argValues()).isEmpty(); // No arguments
     }
 
+    /**
+     * Verifies that the disassembler returns null when attempting to disassemble an empty cell.
+     * This is a unit test for the disassembler's handling of empty space.
+     */
     @Test
     @Tag("unit")
     void disassemble_nullMolecule() {
@@ -130,6 +154,10 @@ class DisassemblerTest {
         assertThat(result).isNull();
     }
 
+    /**
+     * Verifies that the disassembler works correctly with different world shapes and coordinate systems.
+     * This is a unit test for the disassembler's coordinate handling.
+     */
     @Test
     @Tag("unit")
     void disassemble_withDifferentWorldShapes() {
@@ -155,6 +183,10 @@ class DisassemblerTest {
         }
     }
 
+    /**
+     * Verifies that the disassembler works correctly at various edge and corner coordinates.
+     * This is a unit test for the disassembler's boundary condition handling.
+     */
     @Test
     @Tag("unit")
     void disassemble_edgeCaseCoordinates() {
@@ -185,7 +217,8 @@ class DisassemblerTest {
     }
 
     /**
-     * Mock implementation of IEnvironmentReader for testing.
+     * A mock implementation of {@link IEnvironmentReader} for providing a controlled
+     * environment for the Disassembler tests.
      */
     private static class MockEnvironmentReader implements IEnvironmentReader {
         private final EnvironmentProperties properties;

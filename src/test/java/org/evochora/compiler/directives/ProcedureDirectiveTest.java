@@ -17,7 +17,18 @@ import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests the parsing of procedure-related directives, primarily `.PROC` and `.ENDP`.
+ * These tests ensure that the parser correctly constructs a {@link ProcedureNode}
+ * with its name, parameters, export status, and body.
+ * These are unit tests for the parser and do not require external resources.
+ */
 public class ProcedureDirectiveTest {
+    /**
+     * Verifies that the parser can handle a basic procedure block with a simple instruction inside.
+     * It checks the procedure's name, body content, and its registration in the parser's symbol table.
+     * This is a unit test for the parser.
+     */
     @Test
     @Tag("unit")
     void testParserProcedureBlock() {
@@ -57,6 +68,11 @@ public class ProcedureDirectiveTest {
         assertThat(procTable.get("MY_PROC")).isSameAs(procNode);
     }
 
+    /**
+     * Verifies that the parser correctly handles a procedure definition with parameters.
+     * It checks that the parameter names are correctly extracted and stored in the {@link ProcedureNode}.
+     * This is a unit test for the parser.
+     */
     @Test
     @Tag("unit")
     void testParserProcedureWithParameters() {
@@ -85,6 +101,11 @@ public class ProcedureDirectiveTest {
         assertThat(procNode.parameters().get(1).text()).isEqualTo("B");
     }
 
+    /**
+     * Verifies that the parser can handle a full procedure definition including the EXPORT keyword,
+     * parameters, and nested directives like `.PREG` and `.REQUIRE`.
+     * This is a unit test for the parser.
+     */
     @Test
     @Tag("unit")
     void testFullProcedureDefinition() {

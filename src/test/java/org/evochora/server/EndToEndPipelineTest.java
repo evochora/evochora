@@ -37,6 +37,13 @@ import java.sql.ResultSet;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+/**
+ * Contains end-to-end integration tests for the entire server pipeline.
+ * These tests verify the lifecycle and data flow between the SimulationEngine,
+ * PersistenceService, DebugIndexer, and DebugServer.
+ * These tests use an in-memory queue and in-memory SQLite databases for speed
+ * and isolation, but test the full interaction between the services.
+ */
 class EndToEndPipelineTest {
 
     private SimulationEngine simulationEngine;
@@ -85,11 +92,11 @@ class EndToEndPipelineTest {
     private void waitForCondition(BooleanSupplier condition, long timeoutMs, String description) throws InterruptedException {
         long startTime = System.currentTimeMillis();
         long checkInterval = 50; // Check every 50ms
-        
+
         while (!condition.getAsBoolean() && (System.currentTimeMillis() - startTime) < timeoutMs) {
             Thread.sleep(checkInterval);
         }
-        
+
         if (!condition.getAsBoolean()) {
             throw new AssertionError("Timeout waiting for: " + description);
         }
@@ -137,6 +144,11 @@ class EndToEndPipelineTest {
         waitForCondition(() -> queue.size() < threshold, timeoutMs, "queue to be processed below threshold " + threshold);
     }
 
+    /**
+     * Creates a mock {@link RawTickState} for testing the pipeline.
+     * @param tickNumber The tick number for the mock state.
+     * @return A new {@link RawTickState} instance.
+     */
     private RawTickState createTestTickState(long tickNumber) {
         List<RawOrganismState> organisms = new ArrayList<>();
         List<RawCellState> cells = new ArrayList<>();
@@ -180,6 +192,11 @@ class EndToEndPipelineTest {
         return new RawTickState(tickNumber, organisms, cells);
     }
 
+    /**
+     * Verifies that all services in the pipeline can be started successfully.
+     * This is an integration test of the service lifecycle.
+     * @throws Exception if service startup fails.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
@@ -203,6 +220,11 @@ class EndToEndPipelineTest {
         assertTrue(debugServer.isRunning(), "DebugServer should be running");
     }
 
+    /**
+     * Verifies that all services can be paused and resumed correctly.
+     * This is an integration test of the service lifecycle.
+     * @throws Exception if service control fails.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 25, unit = TimeUnit.SECONDS)
@@ -258,6 +280,11 @@ class EndToEndPipelineTest {
         assertTrue(debugServer.isRunning());
     }
 
+    /**
+     * Verifies that data flows correctly through the pipeline from the queue to the services.
+     * This is an integration test of the core data path.
+     * @throws Exception if service interaction fails.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 25, unit = TimeUnit.SECONDS)
@@ -292,6 +319,11 @@ class EndToEndPipelineTest {
         assertTrue(queue.size() < 50, "Queue should have been processed");
     }
 
+    /**
+     * A basic performance test to ensure the pipeline can handle a load of data without crashing.
+     * This is an integration test of the pipeline's stability.
+     * @throws Exception if service interaction fails.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 25, unit = TimeUnit.SECONDS)
@@ -323,7 +355,7 @@ class EndToEndPipelineTest {
         
         // Verify processing occurred
         assertTrue(processingTime > 0, "Pipeline should be running");
-        
+
         // Check if services are still running (they might have stopped due to queue being empty)
         if (simulationEngine.isRunning()) {
             assertTrue(simulationEngine.isRunning(), "SimulationEngine should be running");
@@ -339,6 +371,11 @@ class EndToEndPipelineTest {
         }
     }
 
+    /**
+     * Verifies the interaction between services, specifically pausing and resuming.
+     * This is an integration test of the service control logic.
+     * @throws Exception if service interaction fails.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 25, unit = TimeUnit.SECONDS)
@@ -383,6 +420,11 @@ class EndToEndPipelineTest {
         assertTrue(simulationEngine.isRunning());
     }
 
+    /**
+     * Verifies that all services can be shut down gracefully.
+     * This is an integration test of the service lifecycle.
+     * @throws Exception if service shutdown fails.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 25, unit = TimeUnit.SECONDS)
@@ -431,22 +473,22 @@ class EndToEndPipelineTest {
         // Start core services first
         simulationEngine.start();
         persistenceService.start();
-        
+
         // Wait for core services to be ready
         waitForServiceRunning(simulationEngine, "SimulationEngine", 2000);
         waitForServiceRunning(persistenceService, "PersistenceService", 2000);
-        
+
         // Add minimal test data for one tick BEFORE starting debug services
         RawTickState testTick = createTestTickState(1);
         queue.put(testTick);
-        
+
         // Wait for the persistence service to write the first tick to the raw database
         waitForCondition(() -> {
             try {
                 // Check if raw database has data
                 try (Connection conn = DriverManager.getConnection(rawDbPath);
                      Statement stmt = conn.createStatement()) {
-                    
+
                     // Check if raw_ticks table has data
                     try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM raw_ticks")) {
                         if (rs.next()) {
@@ -460,31 +502,31 @@ class EndToEndPipelineTest {
             }
             return false;
         }, 10000, "persistence service to write first tick to raw database");
-        
+
         // NOW start debug services after data is already in raw database
         debugIndexer.start();
         debugServer.start(debugDbPath, 0);
-        
+
         // Wait for debug services
         waitForServiceRunning(debugIndexer, "DebugIndexer", 2000);
         waitForDebugServerRunning(debugServer, "DebugServer", 2000);
-        
+
         // Verify all services are running
         assertTrue(simulationEngine.isRunning(), "SimulationEngine should be running");
         assertTrue(persistenceService.isRunning(), "PersistenceService should be running");
         assertTrue(debugIndexer.isRunning(), "DebugIndexer should be running");
         assertTrue(debugServer.isRunning(), "DebugServer should be running");
-        
+
         // Wait for the tick to be processed through the pipeline
         waitForQueueProcessed(queue, 1, 10000); // Wait up to 10 seconds for processing
-        
+
         // Wait for the debug indexer to process the data from raw to debug database
         waitForCondition(() -> {
             try {
                 // Check if data exists in debug database
                 try (Connection conn = DriverManager.getConnection(debugDbPath);
                      Statement stmt = conn.createStatement()) {
-                    
+
                     // Check if prepared_ticks table has data
                     try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM prepared_ticks")) {
                         if (rs.next()) {
@@ -498,37 +540,37 @@ class EndToEndPipelineTest {
             }
             return false;
         }, 10000, "debug indexer to process data from raw to debug database");
-        
+
         // Verify that the simulation engine processed the tick
         assertTrue(simulationEngine.getCurrentTick() >= 1, "SimulationEngine should have processed at least one tick");
-        
+
         // Verify that the persistence service processed the tick
         // We can't directly access the raw database, but we can verify the service is working
-        
+
         // Verify that the debug indexer processed the tick
         // The indexer should have moved data from raw to debug database
-        
+
         // Verify that all services are still running
         assertTrue(simulationEngine.isRunning(), "SimulationEngine should still be running");
         assertTrue(persistenceService.isRunning(), "PersistenceService should still be running");
         assertTrue(debugIndexer.isRunning(), "DebugIndexer should still be running");
         assertTrue(debugServer.isRunning(), "DebugServer should still be running");
-        
+
         // Verify that simulation metadata is available in debug database
         verifySimulationMetadataInDebugDatabase();
-        
+
         // Shutdown all services
         simulationEngine.shutdown();
         persistenceService.shutdown();
         debugIndexer.shutdown();
         debugServer.stop();
-        
+
         // Wait for shutdown
         waitForServiceStopped(simulationEngine, "SimulationEngine", 2000);
         waitForServiceStopped(persistenceService, "PersistenceService", 2000);
         waitForServiceStopped(debugIndexer, "DebugIndexer", 2000);
         waitForDebugServerStopped(debugServer, "DebugServer", 2000);
-        
+
         // Verify all services are stopped
         assertFalse(simulationEngine.isRunning());
         assertFalse(persistenceService.isRunning());
@@ -544,7 +586,7 @@ class EndToEndPipelineTest {
                     // Check if simulation metadata exists in debug database
                     try (Connection conn = DriverManager.getConnection(debugDbPath);
                          Statement stmt = conn.createStatement()) {
-                        
+
                         try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM simulation_metadata")) {
                             if (rs.next()) {
                                 int count = rs.getInt(1);
@@ -557,54 +599,54 @@ class EndToEndPipelineTest {
                 }
                 return false;
             }, 10000, "simulation metadata to be available in debug database");
-            
+
             // Now verify the actual content
             try (Connection conn = DriverManager.getConnection(debugDbPath);
                  Statement stmt = conn.createStatement()) {
-                
+
                 // Check if simulation_metadata table exists and has data
                 try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM simulation_metadata")) {
                     assertTrue(rs.next(), "Should be able to query simulation_metadata table");
                     int count = rs.getInt(1);
                     assertTrue(count > 0, "Simulation metadata table should contain data, but has " + count + " rows");
                 }
-                
+
                 // Check if worldShape is present
                 try (ResultSet rs = stmt.executeQuery("SELECT value FROM simulation_metadata WHERE key = 'worldShape'")) {
                     assertTrue(rs.next(), "worldShape should be present in simulation metadata");
                     String worldShapeJson = rs.getString(1);
                     assertNotNull(worldShapeJson, "worldShape value should not be null");
                     assertFalse(worldShapeJson.isEmpty(), "worldShape value should not be empty");
-                    
+
                     // Parse the JSON to verify it's valid
                     ObjectMapper mapper = new ObjectMapper();
                     int[] worldShape = mapper.readValue(worldShapeJson, int[].class);
                     assertEquals(100, worldShape[0], "World width should be 100");
                     assertEquals(30, worldShape[1], "World height should be 30");
                 }
-                
+
                 // Check if isToroidal is present
                 try (ResultSet rs = stmt.executeQuery("SELECT value FROM simulation_metadata WHERE key = 'isToroidal'")) {
                     assertTrue(rs.next(), "isToroidal should be present in simulation metadata");
                     String isToroidalJson = rs.getString(1);
                     assertNotNull(isToroidalJson, "isToroidal value should not be null");
                     assertFalse(isToroidalJson.isEmpty(), "isToroidal value should not be empty");
-                    
+
                     // Parse the JSON to verify it's valid
                     ObjectMapper mapper = new ObjectMapper();
                     boolean isToroidal = mapper.readValue(isToroidalJson, Boolean.class);
                     assertTrue(isToroidal, "isToroidal should be true");
                 }
-                
+
                 // Check if runMode is present
                 try (ResultSet rs = stmt.executeQuery("SELECT value FROM simulation_metadata WHERE key = 'runMode'")) {
                     assertTrue(rs.next(), "runMode should be present in simulation metadata");
                     String runMode = rs.getString(1);
                     assertEquals("debug", runMode, "runMode should be 'debug'");
                 }
-                
+
                 System.out.println("Simulation metadata verified successfully in debug database.");
-                
+
             } catch (Exception e) {
                 fail("Failed to verify simulation metadata in debug database: " + e.getMessage());
             }

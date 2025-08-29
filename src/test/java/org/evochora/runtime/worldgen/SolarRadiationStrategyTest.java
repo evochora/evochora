@@ -8,8 +8,18 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains unit tests for the {@link SolarRadiationCreator} world generation strategy.
+ * These tests verify that energy is placed correctly and that safety rules are respected.
+ * They operate on an in-memory environment and do not require external resources.
+ */
 public class SolarRadiationStrategyTest {
 
+    /**
+     * Verifies that the solar radiation strategy correctly places an energy molecule
+     * in an available, unowned cell in a dimension-agnostic way.
+     * This is a unit test for the world generation logic.
+     */
     @Test
     @Tag("unit")
     void placesEnergyInNDEnvironment_whenAreaIsUnowned() {
@@ -24,6 +34,11 @@ public class SolarRadiationStrategyTest {
         assertThat(cell.toScalarValue()).isEqualTo(42);
     }
 
+    /**
+     * Verifies that the solar radiation strategy respects the configured safety radius
+     * and does not place energy in or near an already owned cell.
+     * This is a unit test for the world generation safety logic.
+     */
     @Test
     @Tag("unit")
     void respectsSafetyRadius_andDoesNotPlaceEnergyNearOwnedCells() {
@@ -39,5 +54,3 @@ public class SolarRadiationStrategyTest {
         assertThat(cell.isEmpty()).isTrue();
     }
 }
-
-

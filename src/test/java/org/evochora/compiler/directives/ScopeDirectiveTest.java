@@ -14,8 +14,18 @@ import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests the parsing of scope blocks defined by `.SCOPE` and `.ENDS` directives.
+ * These tests ensure the parser can handle simple, nested, and malformed scope blocks.
+ * These are unit tests for the parser and do not require external resources.
+ */
 public class ScopeDirectiveTest {
 
+    /**
+     * Verifies that a simple, well-formed `.SCOPE`/`.ENDS` block is correctly parsed
+     * into a {@link ScopeNode} with the correct name and body.
+     * This is a unit test for the parser.
+     */
     @Test
     @Tag("unit")
     void testSimpleScopeDirective() {
@@ -39,6 +49,10 @@ public class ScopeDirectiveTest {
         assertThat(scopeNode.body()).hasSize(1);
     }
 
+    /**
+     * Verifies that the parser reports an error if a `.SCOPE` block is not closed with `.ENDS`.
+     * This is a unit test for the parser's error handling.
+     */
     @Test
     @Tag("unit")
     void testUnclosedScopeReportsError() {
@@ -58,6 +72,11 @@ public class ScopeDirectiveTest {
         assertThat(diagnostics.summary()).contains("Expected .ENDS directive to close scope block.");
     }
 
+    /**
+     * Verifies that the parser can correctly handle nested `.SCOPE` blocks,
+     * creating a corresponding nested structure of {@link ScopeNode}s in the AST.
+     * This is a unit test for the parser.
+     */
     @Test
     @Tag("unit")
     void testNestedScopesAreParsedCorrectly() {

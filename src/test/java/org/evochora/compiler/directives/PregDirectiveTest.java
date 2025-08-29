@@ -14,8 +14,17 @@ import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests the parsing of the `.PREG` directive, likely for procedure-local register aliases.
+ * These are unit tests for the parser and do not require external resources.
+ */
 public class PregDirectiveTest {
 
+    /**
+     * Verifies that the parser can correctly parse a `.PREG` directive within a procedure definition.
+     * This test ensures that the syntax is accepted without errors.
+     * This is a unit test for the parser.
+     */
     @Test
     @Tag("unit")
     void testPregIsParsedCorrectlyInsideProc() {
@@ -36,6 +45,12 @@ public class PregDirectiveTest {
         assertThat(ast).hasSize(1).first().isInstanceOf(ProcedureNode.class);
     }
 
+    /**
+     * Verifies that the parser accepts a `.PREG` directive even if the index might be semantically invalid.
+     * The test confirms that the parser's responsibility is only syntactic correctness,
+     * and range checking should be handled later by the semantic analyzer.
+     * This is a unit test for the parser.
+     */
     @Test
     @Tag("unit")
     void testPregWithInvalidIndexReportsError() {

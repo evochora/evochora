@@ -7,11 +7,10 @@ import org.junit.jupiter.api.Tag;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Fast unit tests for DebugIndexer validation logic and business rules.
- * These tests focus only on validation logic and business rule enforcement
+ * Contains fast unit tests for the {@link DebugIndexer}'s validation and business rules.
+ * These tests focus only on validation of initial state and configuration parameters
  * without any real database operations or threading.
- * 
- * Performance requirement: All tests must complete in < 0.1 seconds.
+ * All tests are tagged as "unit" and should complete very quickly.
  */
 @Tag("unit")
 class DebugIndexerValidationUnitTest {
@@ -24,6 +23,10 @@ class DebugIndexerValidationUnitTest {
         indexer = new DebugIndexer("jdbc:sqlite:file:memdb_validation?mode=memory&cache=shared", 1000);
     }
 
+    /**
+     * Performs a basic validation that the indexer is initialized correctly.
+     * This is a unit test for the constructor and initial state.
+     */
     @Test
     @Tag("unit")
     void testBasicValidation() {
@@ -34,6 +37,10 @@ class DebugIndexerValidationUnitTest {
         assertThat(indexer.isAutoPaused()).isFalse();
     }
 
+    /**
+     * Verifies that the initial state flags of the indexer are consistent and correct.
+     * This is a unit test for the default state of the service.
+     */
     @Test
     @Tag("unit")
     void testStateValidation() {
@@ -51,6 +58,10 @@ class DebugIndexerValidationUnitTest {
         assertThat(isRunning || isPaused || isAutoPaused).isFalse();
     }
 
+    /**
+     * Validates that the initial status string of the indexer is correct.
+     * This is a unit test for the status reporting logic.
+     */
     @Test
     @Tag("unit")
     void testStatusValidation() {
@@ -65,6 +76,10 @@ class DebugIndexerValidationUnitTest {
         assertThat(status).contains("stopped");
     }
 
+    /**
+     * Verifies that the indexer can be instantiated with various valid configurations.
+     * This is a unit test for the constructor logic.
+     */
     @Test
     @Tag("unit")
     void testConfigurationValidation() {
@@ -82,6 +97,10 @@ class DebugIndexerValidationUnitTest {
         assertThat(config3).isNotNull();
     }
 
+    /**
+     * Verifies that the indexer constructor accepts various valid database URL formats.
+     * This is a unit test for the constructor logic.
+     */
     @Test
     @Tag("unit")
     void testDatabaseUrlValidation() {
@@ -96,6 +115,10 @@ class DebugIndexerValidationUnitTest {
         assertThat(inMemory).isNotNull();
     }
 
+    /**
+     * Verifies that the indexer can be instantiated with different batch sizes.
+     * This is a unit test for the constructor logic.
+     */
     @Test
     @Tag("unit")
     void testBatchSizeValidation() {
@@ -114,6 +137,10 @@ class DebugIndexerValidationUnitTest {
         assertThat(batch1000.isRunning()).isFalse();
     }
 
+    /**
+     * Verifies that all constructor overloads for the indexer can be called successfully.
+     * This is a unit test for the constructor logic.
+     */
     @Test
     @Tag("unit")
     void testConstructorValidation() {
@@ -130,6 +157,10 @@ class DebugIndexerValidationUnitTest {
         assertThat(twoParams).isInstanceOf(DebugIndexer.class);
     }
 
+    /**
+     * Verifies that the initial state of multiple indexer instances is consistent.
+     * This is a unit test for the default state of the service.
+     */
     @Test
     @Tag("unit")
     void testStateConsistencyValidation() {
@@ -146,6 +177,10 @@ class DebugIndexerValidationUnitTest {
         assertThat(indexer1.isAutoPaused()).isEqualTo(indexer2.isAutoPaused());
     }
 
+    /**
+     * Verifies that creating indexer instances is a fast operation.
+     * This is a performance-based unit test for the constructor.
+     */
     @Test
     @Tag("unit")
     void testPerformanceValidation() {
@@ -166,6 +201,10 @@ class DebugIndexerValidationUnitTest {
         assertThat(durationSeconds).isLessThan(0.1);
     }
 
+    /**
+     * Verifies that different indexer instances are isolated from each other.
+     * This is a unit test for state isolation.
+     */
     @Test
     @Tag("unit")
     void testIsolationValidation() {

@@ -13,6 +13,12 @@ import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains low-level unit tests for the execution of control flow instructions by the virtual machine.
+ * Each test sets up a specific state, executes a single jump, call, or return instruction,
+ * and verifies that the organism's instruction pointer and call stack are updated correctly.
+ * These tests operate on an in-memory simulation and do not require external resources.
+ */
 public class VMControlFlowInstructionTest {
 
     private Environment environment;
@@ -53,6 +59,10 @@ public class VMControlFlowInstructionTest {
         }
     }
 
+    /**
+     * Tests the JMPI (Jump Immediate) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testJmpi() {
@@ -65,6 +75,11 @@ public class VMControlFlowInstructionTest {
         assertThat(org.getIp()).isEqualTo(expectedIp);
     }
 
+    /**
+     * Tests the CALL instruction. Verifies that the instruction pointer moves
+     * and a new frame is pushed to the call stack.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testCall() {
@@ -78,6 +93,10 @@ public class VMControlFlowInstructionTest {
         assertThat(org.getCallStack().peek()).isInstanceOf(Organism.ProcFrame.class);
     }
 
+    /**
+     * Tests the JMPR (Jump Register) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testJmpr() {
@@ -93,6 +112,10 @@ public class VMControlFlowInstructionTest {
         assertThat(org.getIp()).isEqualTo(expectedIp);
     }
 
+    /**
+     * Tests the JMPS (Jump Stack) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testJmps() {
@@ -106,6 +129,11 @@ public class VMControlFlowInstructionTest {
         assertThat(org.getIp()).isEqualTo(expectedIp);
     }
 
+    /**
+     * Tests the RET (Return) instruction. Verifies that the instruction pointer
+     * is restored from the call stack.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testRet() {

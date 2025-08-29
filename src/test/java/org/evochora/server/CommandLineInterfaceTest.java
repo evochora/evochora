@@ -19,6 +19,13 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Contains integration tests for the {@link CommandLineInterface}.
+ * These tests verify that the CLI can correctly parse commands and manage the lifecycle
+ * (start, pause, resume, exit) of the various server services.
+ * These are integration tests as they involve the interaction of multiple server components.
+ * They use an in-memory database and do not require the filesystem.
+ */
 class CommandLineInterfaceTest {
 
     private CommandLineInterface cli;
@@ -85,12 +92,20 @@ class CommandLineInterfaceTest {
         }
     }
 
+    /**
+     * Verifies that the CommandLineInterface can be created without errors.
+     * This is an integration test.
+     */
     @Test
     @Tag("integration")
     void testCliCreation() {
         assertNotNull(cli);
     }
 
+    /**
+     * Verifies that the 'start' command successfully starts all services.
+     * This is an integration test of the service lifecycle.
+     */
     @Test
     @Tag("integration")
     void testStartCommandStartsAllServices() {
@@ -113,6 +128,10 @@ class CommandLineInterfaceTest {
         assertTrue(output.contains("Service Status:"));
     }
 
+    /**
+     * Verifies that the 'pause' command successfully pauses all running services.
+     * This is an integration test of the service lifecycle.
+     */
     @Test
     @Tag("integration")
     void testPauseCommandPausesAllServices() {
@@ -135,6 +154,10 @@ class CommandLineInterfaceTest {
         assertTrue(output.contains("Service Status:"));
     }
 
+    /**
+     * Verifies that the 'resume' command successfully resumes all paused services.
+     * This is an integration test of the service lifecycle.
+     */
     @Test
     @Tag("integration")
     void testResumeCommandResumesAllServices() {
@@ -158,6 +181,10 @@ class CommandLineInterfaceTest {
         assertTrue(output.contains("Service Status:"));
     }
 
+    /**
+     * Verifies that a specific service can be started individually.
+     * This is an integration test of the service lifecycle.
+     */
     @Test
     @Tag("integration")
     void testStartSpecificService() {
@@ -179,6 +206,10 @@ class CommandLineInterfaceTest {
         assertTrue(output.contains("Service Status:"));
     }
 
+    /**
+     * Verifies that a specific service can be paused individually.
+     * This is an integration test of the service lifecycle.
+     */
     @Test
     @Tag("integration")
     void testPauseSpecificService() {
@@ -201,6 +232,10 @@ class CommandLineInterfaceTest {
         assertTrue(output.contains("Service Status:"));
     }
 
+    /**
+     * Verifies that a specific service can be resumed individually.
+     * This is an integration test of the service lifecycle.
+     */
     @Test
     @Tag("integration")
     void testResumeSpecificService() {
@@ -224,6 +259,10 @@ class CommandLineInterfaceTest {
         assertTrue(output.contains("Service Status:"));
     }
 
+    /**
+     * Verifies that the 'status' command correctly displays the initial status of all services.
+     * This is an integration test of the CLI's state reporting.
+     */
     @Test
     @Tag("integration")
     void testStatusCommandShowsServiceStatus() {
@@ -248,6 +287,10 @@ class CommandLineInterfaceTest {
         assertTrue(output.contains("DebugServer: NOT_STARTED"));
     }
 
+    /**
+     * Verifies that the 'exit' command correctly shuts down all running services.
+     * This is an integration test of the service lifecycle.
+     */
     @Test
     @Tag("integration")
     void testExitCommandShutsDownServices() {
@@ -270,6 +313,10 @@ class CommandLineInterfaceTest {
         assertTrue(output.contains("CLI shutdown complete"));
     }
 
+    /**
+     * Verifies that an unknown command displays the help message.
+     * This is an integration test of the CLI's command parsing.
+     */
     @Test
     @Tag("integration")
     void testUnknownCommandShowsHelp() {
@@ -290,6 +337,10 @@ class CommandLineInterfaceTest {
         assertTrue(output.contains("Unknown command. Available: start [service] | pause [service] | resume [service] | status | exit"));
     }
 
+    /**
+     * Verifies that an empty command is ignored and does not disrupt execution.
+     * This is an integration test of the CLI's command parsing.
+     */
     @Test
     @Tag("integration")
     void testEmptyCommandIsIgnored() {
@@ -311,6 +362,10 @@ class CommandLineInterfaceTest {
         assertTrue(output.contains("All services started successfully"));
     }
 
+    /**
+     * Verifies that the 'quit' command is recognized as an alias for 'exit'.
+     * This is an integration test of the CLI's command parsing.
+     */
     @Test
     @Tag("integration")
     void testQuitCommandExits() {
@@ -331,6 +386,10 @@ class CommandLineInterfaceTest {
         assertTrue(output.contains("Evochora CLI ready. Commands: start | pause | resume | status | exit"));
     }
 
+    /**
+     * Verifies the complete service lifecycle: start, pause, resume, and exit.
+     * This is an integration test of the service lifecycle management.
+     */
     @Test
     @Tag("integration")
     void testServiceLifecycleComplete() {

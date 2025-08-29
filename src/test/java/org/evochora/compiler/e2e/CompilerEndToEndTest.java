@@ -10,8 +10,21 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains end-to-end tests for the {@link Compiler}.
+ * These tests compile source code from an in-memory string and verify the output artifact.
+ * While they test the entire pipeline, they are tagged as "unit" tests because they do not
+ * rely on external resources like the filesystem or network.
+ */
 public class CompilerEndToEndTest {
 
+	/**
+	 * Tests the end-to-end compilation of a procedure definition with parameters and a call to it.
+	 * It verifies that the compilation succeeds and produces a valid, non-empty program artifact.
+	 * This test covers a large part of the compiler pipeline.
+	 *
+	 * @throws Exception if compilation fails.
+	 */
 	@Test
     @Tag("unit")
 	void compilesProcedureAndCallEndToEnd() throws Exception {
@@ -43,6 +56,13 @@ public class CompilerEndToEndTest {
 		assertThat(opcodeCount).isGreaterThan(0);
 	}
 
+	/**
+	 * Verifies that the compiler correctly parses and handles the `EXPORT` keyword
+	 * in a procedure header.
+	 * It compiles a simple exported procedure and a call to it, ensuring the compilation is successful.
+	 *
+	 * @throws Exception if compilation fails.
+	 */
 	@Test
     @Tag("unit")
 	void acceptsExportOnProcHeader() throws Exception {
@@ -61,5 +81,3 @@ public class CompilerEndToEndTest {
 		assertThat(artifact.machineCodeLayout()).isNotEmpty();
 	}
 }
-
-
