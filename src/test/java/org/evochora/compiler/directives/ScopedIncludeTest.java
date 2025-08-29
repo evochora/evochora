@@ -4,6 +4,7 @@ import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -30,6 +31,7 @@ public class ScopedIncludeTest {
     }
 
     @Test
+    @Tag("integration")
     void testNestedIncludesWithRelativeOrgAndDirContext() throws Exception {
         // === Create test files ===
 

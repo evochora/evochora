@@ -113,4 +113,76 @@ public class VMDataInstructionTest {
         sim.tick();
         assertThat(org.getDataStack().pop()).isEqualTo(literal);
     }
+
+    @Test
+    @Tag("unit")
+    void testSetvJsonSerialization() throws Exception {
+        System.out.println("=== JSON Serialization Test ===");
+        
+        // Simuliere genau das, was im Web Debugger passiert
+        org.evochora.compiler.Compiler compiler = new org.evochora.compiler.Compiler();
+        java.util.List<String> lines = java.util.Arrays.asList(
+            "SETV %DR5 1|0",
+            "NOP"
+        );
+        
+        org.evochora.compiler.api.ProgramArtifact artifact = compiler.compile(lines, "test.s");
+        
+        // Erstelle eine neue Simulation mit dem kompilierten Code
+        Environment testEnv = new Environment(new int[]{100, 100}, true);
+        Simulation testSim = new Simulation(testEnv);
+        Organism testOrg = Organism.create(testSim, new int[]{0, 0}, 1000, testSim.getLogger());
+        testSim.addOrganism(testOrg);
+        
+        // Platziere den kompilierten Code im Environment
+        for (java.util.Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+            int[] coord = e.getKey();
+            int value = e.getValue();
+            testEnv.setMolecule(Molecule.fromInt(value), testOrg.getId(), coord);
+        }
+        
+        // Führe einen Tick aus (SETV sollte ausgeführt werden)
+        testSim.tick();
+        
+        // Prüfe ob DR5 korrekt gesetzt wurde
+        Object dr5Value = testOrg.getDr(5);
+        System.out.println("DR5 after SETV execution: " + dr5Value);
+        assertThat(dr5Value).isInstanceOf(int[].class);
+        
+        // Jetzt teste ich, ob der Wert bei der JSON-Serialisierung verloren geht
+        System.out.println("Testing JSON serialization...");
+        
+        // Erstelle einen RawOrganismState (wie in SimulationEngine.toRawState)
+        java.util.List<Object> drsCopy = new java.util.ArrayList<>(testOrg.getDrs());
+        org.evochora.server.contracts.raw.RawOrganismState rawState = new org.evochora.server.contracts.raw.RawOrganismState(
+            testOrg.getId(), testOrg.getParentId(), testOrg.getBirthTick(), testOrg.getProgramId(), testOrg.getInitialPosition(),
+            testOrg.getIp(), testOrg.getDv(), testOrg.getDps(), testOrg.getActiveDpIndex(), testOrg.getEr(),
+            drsCopy, testOrg.getPrs(), testOrg.getFprs(), testOrg.getLrs(),
+            testOrg.getDataStack(), testOrg.getLocationStack(), new java.util.ArrayDeque<org.evochora.server.contracts.raw.SerializableProcFrame>(),
+            testOrg.isDead(), testOrg.isInstructionFailed(), testOrg.getFailureReason(),
+            testOrg.shouldSkipIpAdvance(), testOrg.getIpBeforeFetch(), testOrg.getDvBeforeFetch()
+        );
+        
+        // Erstelle einen RawTickState
+        org.evochora.server.contracts.raw.RawTickState rawTickState = new org.evochora.server.contracts.raw.RawTickState(
+            1L, java.util.Arrays.asList(rawState), new java.util.ArrayList<>()
+        );
+        
+        // Teste JSON-Serialisierung (wie in DebugIndexer.writePreparedTick)
+        com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        String json = objectMapper.writeValueAsString(rawTickState);
+        System.out.println("JSON serialization successful, length: " + json.length());
+        
+        // Prüfe ob der Vektor in der JSON enthalten ist
+        assertThat(json).contains("[1,0]");
+        System.out.println("SUCCESS: VECTOR value preserved in JSON serialization!");
+        
+        // Teste JSON-Deserialisierung
+        org.evochora.server.contracts.raw.RawTickState deserialized = objectMapper.readValue(json, org.evochora.server.contracts.raw.RawTickState.class);
+        Object dr5Deserialized = deserialized.organisms().get(0).drs().get(5);
+        System.out.println("DR5 after JSON deserialization: " + dr5Deserialized);
+        assertThat(dr5Deserialized).isInstanceOf(java.util.List.class);
+        
+        System.out.println("SUCCESS: VECTOR value preserved through JSON round-trip!");
+    }
 }

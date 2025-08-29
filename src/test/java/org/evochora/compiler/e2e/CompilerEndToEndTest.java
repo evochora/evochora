@@ -2,6 +2,7 @@ package org.evochora.compiler.e2e;
 
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -12,6 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class CompilerEndToEndTest {
 
 	@Test
+    @Tag("unit")
 	void compilesProcedureAndCallEndToEnd() throws Exception {
 		String source = String.join("\n",
 				".PROC ADD2 EXPORT WITH A B",
@@ -42,6 +44,7 @@ public class CompilerEndToEndTest {
 	}
 
 	@Test
+    @Tag("unit")
 	void acceptsExportOnProcHeader() throws Exception {
 		String source = String.join("\n",
 				".PROC BAR EXPORT",

@@ -6,6 +6,7 @@ import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.ast.*;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -17,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class ParserTest {
 
     @Test
+    @Tag("unit")
     void testParserSimpleInstruction() {
         // Arrange
         String source = "SETI %DR0 42";
@@ -47,6 +49,7 @@ public class ParserTest {
     }
 
     @Test
+    @Tag("unit")
     void testParserLabelStatement() {
         // Arrange
         String source = "L1: NOP";
@@ -73,6 +76,7 @@ public class ParserTest {
     }
 
     @Test
+    @Tag("unit")
     void testParserVectorLiteral() {
         // Arrange
         String source = "SETV %DR0 10|-20";

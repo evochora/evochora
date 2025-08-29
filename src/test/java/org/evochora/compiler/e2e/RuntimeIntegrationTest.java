@@ -8,6 +8,7 @@ import org.evochora.runtime.internal.services.CallBindingRegistry;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -20,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class RuntimeIntegrationTest {
 
 	@Test
+    @Tag("unit")
 	void procedureWithParametersAddsValuesAtRuntime() throws Exception {
 		String source = String.join("\n",
 				".PROC ADD2 EXPORT WITH A B",
@@ -67,6 +69,7 @@ public class RuntimeIntegrationTest {
      * Dies stellt sicher, dass die Logik vollständig im Maschinencode enthalten ist.
      */
     @Test
+    @Tag("unit")
     void procedureCopyOut_worksWithoutProgramArtifact() throws Exception {
         // Arrange: Eine Prozedur, die ihren Parameter inkrementiert
         String source = String.join("\n",
@@ -116,6 +119,7 @@ public class RuntimeIntegrationTest {
     }
 
     @Test
+    @Tag("unit")
     void procedureCall_worksCorrectlyWithCorruptedProgramArtifact() throws Exception {
         // Arrange: Ein einfaches Programm, das 10 + 20 addieren soll.
         String sourceCode = String.join("\n",

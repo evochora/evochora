@@ -5,6 +5,7 @@ import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -21,6 +22,7 @@ public class PreProcessorTest {
     Path tempDir;
 
     @Test
+    @Tag("unit")
     void testIncludeDirectiveExpandsTokens() throws IOException {
         // Arrange
         Path libFile = tempDir.resolve("test.s");

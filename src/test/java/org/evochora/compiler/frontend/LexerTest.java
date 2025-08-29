@@ -4,6 +4,7 @@ import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -13,6 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class LexerTest {
 
     @Test
+    @Tag("unit")
     void testLexerTokenization() {
         // Arrange
         String source = String.join("\n",
@@ -41,6 +43,7 @@ public class LexerTest {
     }
 
     @Test
+    @Tag("unit")
     void testSETIAsOpcode() {
         // Arrange
         String source = "SETI %DR0 DATA:42";

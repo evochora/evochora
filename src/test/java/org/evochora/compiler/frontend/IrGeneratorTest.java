@@ -10,6 +10,7 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.SymbolTable; // NEUER IMPORT
 import org.evochora.compiler.ir.*;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -24,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class IrGeneratorTest {
 
     @Test
+    @Tag("unit")
     void generatesIrForSimpleProgram() {
         String src = ".ORG 0|0\n" +
                 "L1: \n" +
@@ -76,6 +78,7 @@ public class IrGeneratorTest {
     }
 
     @Test
+    @Tag("unit")
     void endToEnd_sourceMapContentIsCorrect() throws org.evochora.compiler.api.CompilationException {
         // Arrange: Ein einfacher Befehl, der mehrere Speicherplätze belegt.
         String source = "SETI %DR0 DATA:42";

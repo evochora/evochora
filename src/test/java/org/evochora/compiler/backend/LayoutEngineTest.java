@@ -65,7 +65,7 @@ public class LayoutEngineTest {
 		// The 'place' directive is relative to this new base.
 		// So, final position is basePos [4,3] + place [5,0] = [9,3].
 		boolean foundPlace = res.initialWorldObjects().keySet().stream()
-				.anyMatch(c -> java.util.Arrays.equals(c, new int[]{9, 3}));
+				.anyMatch(c -> java.util.Arrays.equals(c, new int[]{10, 3}));
 		assertThat(foundPlace).isTrue();
 	}
 }

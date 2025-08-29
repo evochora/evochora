@@ -1177,6 +1177,9 @@ public class DebugIndexer implements IControllable, Runnable {
             return String.format("%s:%d", typeIdToName(m.type()), m.toScalarValue());
         } else if (obj instanceof int[] v) {
             return formatVector(v);
+        } else if (obj instanceof java.util.List<?> list) {
+            // Nach JSON-Deserialisierung werden Arrays als List<Integer> gelesen
+            return formatListAsVector(list);
         }
         return "null";
     }
@@ -1184,6 +1187,11 @@ public class DebugIndexer implements IControllable, Runnable {
     private String formatVector(int[] vector) {
         if (vector == null) return "[]";
         return "[" + Arrays.stream(vector).mapToObj(String::valueOf).collect(Collectors.joining("|")) + "]";
+    }
+    
+    private String formatListAsVector(java.util.List<?> list) {
+        if (list == null) return "[]";
+        return "[" + list.stream().map(String::valueOf).collect(Collectors.joining("|")) + "]";
     }
 
     private String typeIdToName(int typeId) {
