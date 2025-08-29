@@ -4,6 +4,7 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.layout.LayoutEngine;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.ir.*;
+import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.Test;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.junit.jupiter.api.Tag;
@@ -23,6 +24,7 @@ public class LayoutEngineTest {
 	@Test
 	@Tag("unit")
 	void laysOutOrgDirPlaceAndInstructions() throws Exception {
+		Instruction.init();
 		// Build a small IR program manually
 		Map<String, IrValue> orgArgs = new HashMap<>();
 		orgArgs.put("position", new IrValue.Vector(new int[]{2, 3}));
@@ -36,13 +38,16 @@ public class LayoutEngineTest {
 
 		IrInstruction seti = new IrInstruction("SETI", List.of(new IrReg("%DR0"), new IrTypedImm("DATA", 1)), src("main.s", 4));
 
+		// Simulate entering an include file
+		IrDirective push = new IrDirective("core", "push_ctx", new HashMap<>(), src("lib.inc", 9));
+
 		Map<String, IrValue> placeArgs = new HashMap<>();
 		placeArgs.put("type", new IrValue.Str("ENERGY"));
 		placeArgs.put("value", new IrValue.Int64(50));
 		placeArgs.put("position", new IrValue.Vector(new int[]{5, 0}));
 		IrDirective place = new IrDirective("core", "place", placeArgs, src("lib.inc", 10));
 
-		IrProgram ir = new IrProgram("Test", List.of(org, dir, label, seti, place));
+		IrProgram ir = new IrProgram("Test", List.of(org, dir, label, seti, push, place));
 
         LayoutEngine engine = new LayoutEngine();
         LayoutResult res = engine.layout(ir, new RuntimeInstructionSetAdapter(), 2);
@@ -56,8 +61,11 @@ public class LayoutEngineTest {
 		// label L before SETI should point to address 0
 		assertThat(res.labelToAddress().get("L")).isEqualTo(0);
 
-		// place at basePos(=currentPos at include enter) + 5|0 => 7|3
-		boolean foundPlace = res.initialWorldObjects().keySet().stream().anyMatch(c -> c[0] == 7 && c[1] == 3);
+		// After 'seti', currentPos is [4,3]. PUSH_CTX sets basePos to [4,3].
+		// The 'place' directive is relative to this new base.
+		// So, final position is basePos [4,3] + place [5,0] = [9,3].
+		boolean foundPlace = res.initialWorldObjects().keySet().stream()
+				.anyMatch(c -> java.util.Arrays.equals(c, new int[]{9, 3}));
 		assertThat(foundPlace).isTrue();
 	}
 }

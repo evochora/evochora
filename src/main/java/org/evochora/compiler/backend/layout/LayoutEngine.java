@@ -31,8 +31,6 @@ public final class LayoutEngine {
 
 		for (IrItem item : program.items()) {
 			SourceInfo src = item.source();
-            String file = src != null ? src.fileName() : null;
-            if (file != null) ctx.onFileChanged(file);
 
 			if (item instanceof IrDirective dir) {
                 registry.resolve(dir).handle(dir, ctx);

@@ -1,5 +1,7 @@
 package org.evochora.compiler.frontend.directive;
 
+import org.evochora.compiler.frontend.parser.features.ctx.PopCtxDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.ctx.PushCtxDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.def.DefineDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.frontend.preprocessor.features.include.IncludeDirectiveHandler;
@@ -62,6 +64,10 @@ public class DirectiveHandlerRegistry {
         IncludeDirectiveHandler includeHandler = new IncludeDirectiveHandler();
         registry.register(".INCLUDE", includeHandler);
         registry.register(".MACRO", new MacroDirectiveHandler());
+
+        // Internal directives for context management
+        registry.register(".PUSH_CTX", new PushCtxDirectiveHandler());
+        registry.register(".POP_CTX", new PopCtxDirectiveHandler());
 
         return registry;
     }

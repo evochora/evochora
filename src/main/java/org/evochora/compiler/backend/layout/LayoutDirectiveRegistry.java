@@ -3,6 +3,8 @@ package org.evochora.compiler.backend.layout;
 import org.evochora.compiler.backend.layout.features.DirLayoutHandler;
 import org.evochora.compiler.backend.layout.features.OrgLayoutHandler;
 import org.evochora.compiler.backend.layout.features.PlaceLayoutHandler;
+import org.evochora.compiler.backend.layout.features.PopCtxLayoutHandler;
+import org.evochora.compiler.backend.layout.features.PushCtxLayoutHandler;
 import org.evochora.compiler.ir.IrDirective;
 
 import java.util.HashMap;
@@ -65,6 +67,8 @@ public final class LayoutDirectiveRegistry {
         reg.register("core", "org", new OrgLayoutHandler());
         reg.register("core", "dir", new DirLayoutHandler());
         reg.register("core", "place", new PlaceLayoutHandler());
+        reg.register("core", "push_ctx", new PushCtxLayoutHandler());
+        reg.register("core", "pop_ctx", new PopCtxLayoutHandler());
 		return reg;
 	}
 }

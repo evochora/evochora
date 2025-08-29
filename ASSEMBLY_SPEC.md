@@ -390,8 +390,8 @@ Directives are special commands that instruct the compiler on how to assemble th
 
 ### Layout Control
 
-* `.ORG <Vector>`: Sets the absolute starting coordinate for the following code or data.
-* `.DIR <Vector>`: Sets the direction in which the compiler places subsequent instructions and arguments in the grid.
+* `.ORG <Vector>`: Sets the starting coordinate for the following code. In the main source file, this coordinate is absolute. Inside a file included via `.INCLUDE`, the coordinate is **relative** to the position where the `.INCLUDE` directive was invoked.
+* `.DIR <Vector>`: Sets the direction in which the compiler places subsequent instructions. This is always an absolute direction vector. When an included file finishes, the direction is restored to what it was before the include.
 * `.PLACE <Literal> <Vector>`: Places a molecule with the specified `<Literal>` value at a coordinate relative to the current origin.
 
 ### Macros

@@ -41,10 +41,17 @@ public class PreProcessorTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
 
-        // KORREKTUR: Wir erwarten nur 2 Tokens: NOP und das finale END_OF_FILE.
-        assertThat(expandedTokens).hasSize(2);
-        assertThat(expandedTokens.get(0).type()).isEqualTo(TokenType.OPCODE);
-        assertThat(expandedTokens.get(0).text()).isEqualTo("NOP");
-        assertThat(expandedTokens.get(1).type()).isEqualTo(TokenType.END_OF_FILE);
+        // Print tokens for debugging
+        expandedTokens.forEach(System.out::println);
+
+        // We now expect 4 tokens: PUSH_CTX, NOP, POP_CTX, and the final END_OF_FILE.
+        assertThat(expandedTokens).hasSize(4);
+        assertThat(expandedTokens.get(0).type()).isEqualTo(TokenType.DIRECTIVE);
+        assertThat(expandedTokens.get(0).text()).isEqualTo(".PUSH_CTX");
+        assertThat(expandedTokens.get(1).type()).isEqualTo(TokenType.OPCODE);
+        assertThat(expandedTokens.get(1).text()).isEqualTo("NOP");
+        assertThat(expandedTokens.get(2).type()).isEqualTo(TokenType.DIRECTIVE);
+        assertThat(expandedTokens.get(2).text()).isEqualTo(".POP_CTX");
+        assertThat(expandedTokens.get(3).type()).isEqualTo(TokenType.END_OF_FILE);
     }
 }
