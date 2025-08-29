@@ -14,11 +14,39 @@ import java.sql.ResultSet;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PersistenceServiceTest {
+
+    /**
+     * Wait for a condition to be true, checking every 10ms
+     * @param condition The condition to wait for
+     * @param timeoutMs Maximum time to wait in milliseconds
+     * @param description Description of what we're waiting for
+     * @return true if condition was met, false if timeout occurred
+     */
+    private boolean waitForCondition(BooleanSupplier condition, long timeoutMs, String description) {
+        long startTime = System.currentTimeMillis();
+        long checkInterval = 10; // Check every 10ms for faster response
+        
+        while (!condition.getAsBoolean()) {
+            if (System.currentTimeMillis() - startTime > timeoutMs) {
+                System.out.println("Timeout waiting for: " + description);
+                return false;
+            }
+            try {
+                Thread.sleep(checkInterval);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return true;
+    }
 
     @Test
     @Tag("unit")

@@ -299,6 +299,7 @@ public class DebugIndexer implements IControllable, Runnable {
                 // Create tables
                 st.execute("CREATE TABLE IF NOT EXISTS prepared_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json TEXT)");
                 st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
+                st.execute("CREATE TABLE IF NOT EXISTS program_artifacts (program_id TEXT PRIMARY KEY, artifact_json TEXT)");
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to setup debug database", e);
@@ -514,17 +515,23 @@ public class DebugIndexer implements IControllable, Runnable {
         return false;
     }
 
+    /**
+     * Loads initial data from the raw database, including program artifacts and world configuration.
+     * This method waits for the first tick to be available before loading program artifacts to ensure
+     * all artifacts have been written by the persistence service.
+     */
     private void loadInitialData() {
         // Wait for raw database to be available
         while (running.get()) {
-        try (Connection rawConn = createConnection(rawDbPath);
-             Statement st = rawConn.createStatement()) {
+            try (Connection rawConn = createConnection(rawDbPath);
+                 Statement st = rawConn.createStatement()) {
                 
-                // Check if tables exist
-                try (ResultSet rs = st.executeQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='program_artifacts'")) {
-                    if (!rs.next()) {
-                        // Tables don't exist yet, wait and retry
-                        log.warn("Waiting for raw database tables to be created...");
+                // First: Wait for raw_ticks table to exist and contain at least one tick
+                // This ensures all program artifacts have been written by the persistence service
+                try (ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM raw_ticks")) {
+                    if (!rs.next() || rs.getLong(1) == 0) {
+                        // No ticks available yet, wait and retry
+                        log.info("Waiting for first tick to be available in raw database...");
                         try {
                             Thread.sleep(1000);
                         } catch (InterruptedException e) {
@@ -535,22 +542,22 @@ public class DebugIndexer implements IControllable, Runnable {
                     }
                 }
                 
-                // Load program artifacts
-            try (ResultSet rs = st.executeQuery("SELECT program_id, artifact_json FROM program_artifacts")) {
-                while (rs.next()) {
-                    String id = rs.getString(1);
-                    String json = rs.getString(2);
-                    
-                    // Deserialisierung zu LinearizedProgramArtifact
-                    LinearizedProgramArtifact linearized = objectMapper.readValue(json, LinearizedProgramArtifact.class);
-                    
-                    // Konvertierung zurück zu ProgramArtifact
-                    ProgramArtifact artifact = linearized.toProgramArtifact();
-                    this.artifacts.put(id, artifact);
+                // Second: Load program artifacts (now safe to do so)
+                try (ResultSet rs = st.executeQuery("SELECT program_id, artifact_json FROM program_artifacts")) {
+                    while (rs.next()) {
+                        String id = rs.getString(1);
+                        String json = rs.getString(2);
+                        
+                        // Deserialize to LinearizedProgramArtifact
+                        LinearizedProgramArtifact linearized = objectMapper.readValue(json, LinearizedProgramArtifact.class);
+                        
+                        // Convert back to ProgramArtifact
+                        ProgramArtifact artifact = linearized.toProgramArtifact();
+                        this.artifacts.put(id, artifact);
+                    }
                 }
-            }
                 
-                // Load world shape from database
+                // Third: Load world shape from database
                 try (ResultSet rs = st.executeQuery("SELECT key, value FROM simulation_metadata WHERE key = 'worldShape'")) {
                     if (rs.next()) {
                         int[] dbWorldShape = objectMapper.readValue(rs.getString(2), int[].class);
@@ -565,20 +572,175 @@ public class DebugIndexer implements IControllable, Runnable {
                     }
                 }
                 
+                // Fourth: Write all program artifacts to debug database
+                try {
+                    writeProgramArtifacts();
+                    log.info("Successfully wrote {} program artifacts to debug database", this.artifacts.size());
+                } catch (Exception e) {
+                    // WARN: Database error, but we can continue
+                    log.warn("Failed to write program artifacts to debug database: {}", e.getMessage());
+                    // Don't throw e - we continue anyway
+                }
+                
+                // Fifth: Copy simulation metadata to debug database
+                try {
+                    writeSimulationMetadata();
+                    log.info("Successfully wrote simulation metadata to debug database");
+                } catch (Exception e) {
+                    // WARN: Database error, but we can continue
+                    log.warn("Failed to write simulation metadata to debug database: {}", e.getMessage());
+                    // Don't throw e - we continue anyway
+                }
+                
                 log.info("Successfully loaded initial data from raw database");
                 break; // Successfully loaded, exit the loop
                 
-        } catch (Exception e) {
+            } catch (Exception e) {
                 if (running.get()) {
                     log.info("Waiting for raw database to be available: {}", e.getMessage());
                     try {
-                        Thread.sleep(1000);
+                        Thread.sleep(100); // Reduced from 1000ms to 100ms for faster response
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                         break;
                     }
                 } else {
                     break; // Service is shutting down
+                }
+            }
+        }
+    }
+
+    private void waitForFirstTick() {
+        log.info("Waiting for first tick to be available in raw database...");
+        
+        // Wait for the PersistenceService to finish writing the first batch
+        // This reduces contention between reading and writing
+        int retryCount = 0;
+        final int maxRetries = 30; // Wait up to 30 seconds
+        
+        while (running.get() && retryCount < maxRetries) {
+            try {
+                // Check if we can read from the database without contention
+                try (Connection rawConn = createConnection(rawDbPath)) {
+                    // Apply SQLite performance optimizations
+                    try (Statement stmt = rawConn.createStatement()) {
+                        stmt.execute("PRAGMA journal_mode=WAL");
+                        stmt.execute("PRAGMA synchronous=NORMAL");
+                        stmt.execute("PRAGMA cache_size=10000");
+                        stmt.execute("PRAGMA temp_store=MEMORY");
+                        stmt.execute("PRAGMA busy_timeout=5000"); // Wait up to 5 seconds for locks
+                    }
+                    
+                    // Try to read the first tick
+                    try (PreparedStatement ps = rawConn.prepareStatement(
+                            "SELECT tick_number FROM raw_ticks ORDER BY tick_number ASC LIMIT 1")) {
+                        try (ResultSet rs = ps.executeQuery()) {
+                            if (rs.next()) {
+                                long firstTick = rs.getLong(1);
+                                log.info("First tick {} found in raw database, proceeding with indexing", firstTick);
+                                return; // Successfully found first tick
+                            }
+                        }
+                    }
+                }
+                
+                // If no tick found, wait a bit before retrying
+                retryCount++;
+                if (running.get()) {
+                    log.debug("No ticks found yet, retrying in 100ms (attempt {}/{})", retryCount, maxRetries);
+                    try {
+                        Thread.sleep(100); // Reduced from 1000ms to 100ms for faster response
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+                
+            } catch (Exception e) {
+                if (running.get()) {
+                    retryCount++;
+                    log.debug("Database not ready yet (attempt {}/{}): {}", retryCount, maxRetries, e.getMessage());
+                    try {
+                        Thread.sleep(100); // Reduced from 1000ms to 100ms for faster response
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                } else {
+                    break; // Service is shutting down
+                }
+            }
+        }
+        
+        if (retryCount >= maxRetries) {
+            log.warn("Timed out waiting for first tick after {} attempts", maxRetries);
+        }
+    }
+    
+    /**
+     * Writes simulation metadata to the debug database.
+     * This method ensures that all simulation-specific metadata (like world shape, toroidal status, etc.)
+     * are available in the debug database for the web debugger to access.
+     * 
+     * @throws Exception if there is a critical database error that prevents writing any metadata
+     */
+    private void writeSimulationMetadata() throws Exception {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "INSERT OR REPLACE INTO simulation_metadata(key, value) VALUES (?, ?)")) {
+            
+            // World shape
+            String worldShapeJson = objectMapper.writeValueAsString(envProps.getWorldShape());
+            ps.setString(1, "worldShape");
+            ps.setString(2, worldShapeJson);
+            ps.addBatch();
+            
+            // Toroidal status
+            String isToroidalJson = objectMapper.writeValueAsString(envProps.isToroidal());
+            ps.setString(1, "isToroidal");
+            ps.setString(2, isToroidalJson);
+            ps.addBatch();
+            
+            // Execute batch
+            int[] results = ps.executeBatch();
+            log.debug("Executed {} batch operations for simulation metadata", results.length);
+            ps.clearBatch();
+        }
+    }
+
+    /**
+     * Writes all loaded program artifacts to the debug database.
+     * This method is called once after loading initial data and ensures that all program artifacts
+     * are available in the debug database for the web debugger to access.
+     * 
+     * <p>Program artifacts are written as JSON strings using the program ID as the primary key.
+     * If an artifact with the same ID already exists, it will be replaced (INSERT OR REPLACE).
+     * 
+     * <p>Individual artifact write failures are logged as warnings but do not stop the process.
+     * If no artifacts are available, this method returns silently as this is normal for
+     * simulations without compiled programs.
+     * 
+     * @throws Exception if there is a critical database error that prevents writing any artifacts
+     */
+    private void writeProgramArtifacts() throws Exception {
+        if (this.artifacts.isEmpty()) {
+            log.debug("No program artifacts to write - this is normal for simulations without compiled programs");
+            return;
+        }
+        
+        try (PreparedStatement ps = connection.prepareStatement(
+                "INSERT OR REPLACE INTO program_artifacts(program_id, artifact_json) VALUES (?, ?)")) {
+            
+            for (Map.Entry<String, ProgramArtifact> entry : this.artifacts.entrySet()) {
+                try {
+                    String json = objectMapper.writeValueAsString(entry.getValue());
+                    ps.setString(1, entry.getKey());
+                    ps.setString(2, json);
+                    ps.executeUpdate();
+                    log.debug("Wrote program artifact {} to debug database", entry.getKey());
+                } catch (Exception e) {
+                    // WARN: Individual artifact failed, continue with others
+                    log.warn("Failed to write program artifact {}: {}", entry.getKey(), e.getMessage());
                 }
             }
         }

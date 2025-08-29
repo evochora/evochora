@@ -25,6 +25,7 @@ class DebugIndexerValidationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testBasicValidation() {
         // Test basic validation that indexer is properly initialized
         assertThat(indexer).isNotNull();
@@ -34,6 +35,7 @@ class DebugIndexerValidationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testStateValidation() {
         // Test that state validation is consistent
         boolean isRunning = indexer.isRunning();
@@ -50,6 +52,7 @@ class DebugIndexerValidationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testStatusValidation() {
         // Test status validation
         String status = indexer.getStatus();
@@ -63,6 +66,7 @@ class DebugIndexerValidationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testConfigurationValidation() {
         // Test configuration validation
         DebugIndexer validConfig = new DebugIndexer("jdbc:sqlite:file:memdb_valid?mode=memory&cache=shared", 1000);
@@ -79,6 +83,7 @@ class DebugIndexerValidationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testDatabaseUrlValidation() {
         // Test database URL validation
         DebugIndexer jdbcUrl = new DebugIndexer("jdbc:sqlite:file:memdb_jdbc?mode=memory&cache=shared", 1000);
@@ -92,6 +97,7 @@ class DebugIndexerValidationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testBatchSizeValidation() {
         // Test batch size validation
         DebugIndexer batch1 = new DebugIndexer("jdbc:sqlite:file:memdb_batch1?mode=memory&cache=shared", 1);
@@ -109,6 +115,7 @@ class DebugIndexerValidationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testConstructorValidation() {
         // Test constructor validation
         DebugIndexer singleParam = new DebugIndexer("jdbc:sqlite:file:memdb_single?mode=memory&cache=shared", 1000);
@@ -124,6 +131,7 @@ class DebugIndexerValidationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testStateConsistencyValidation() {
         // Test state consistency validation
         DebugIndexer indexer1 = new DebugIndexer("jdbc:sqlite:file:memdb_consist1?mode=memory&cache=shared", 500);
@@ -139,6 +147,7 @@ class DebugIndexerValidationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testPerformanceValidation() {
         // Test performance validation - should be fast
         long startTime = System.nanoTime();
@@ -158,6 +167,7 @@ class DebugIndexerValidationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testIsolationValidation() {
         // Test isolation validation - different instances shouldn't interfere
         DebugIndexer isolated1 = new DebugIndexer("jdbc:sqlite:file:memdb_isol1?mode=memory&cache=shared", 100);

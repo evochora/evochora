@@ -25,6 +25,7 @@ class DebugIndexerConfigurationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testDefaultConfiguration() {
         // Test default configuration values
         assertThat(indexer).isNotNull();
@@ -34,6 +35,7 @@ class DebugIndexerConfigurationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testBatchSizeValidation() {
         // Test different batch sizes
         DebugIndexer smallBatch = new DebugIndexer("jdbc:sqlite:file:memdb_small?mode=memory&cache=shared", 1);
@@ -47,6 +49,7 @@ class DebugIndexerConfigurationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testDatabaseUrlValidation() {
         // Test various database URL formats
         DebugIndexer jdbcUrl = new DebugIndexer("jdbc:sqlite:file:memdb_jdbc?mode=memory&cache=shared", 1000);
@@ -60,6 +63,7 @@ class DebugIndexerConfigurationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testConstructorOverloads() {
         // Test constructor overloads
         DebugIndexer singleParam = new DebugIndexer("jdbc:sqlite:file:memdb_single?mode=memory&cache=shared", 1000);
@@ -71,6 +75,7 @@ class DebugIndexerConfigurationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testConfigurationConsistency() {
         // Test that configuration is consistent across multiple instances
         DebugIndexer indexer1 = new DebugIndexer("jdbc:sqlite:file:memdb_consist1?mode=memory&cache=shared", 500);
@@ -86,6 +91,7 @@ class DebugIndexerConfigurationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testMemoryDatabasePerformance() {
         // Test that memory databases are fast to initialize
         long startTime = System.nanoTime();
@@ -104,6 +110,7 @@ class DebugIndexerConfigurationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testConfigurationIsolation() {
         // Test that different configurations don't interfere
         DebugIndexer config1 = new DebugIndexer("jdbc:sqlite:file:memdb_isol1?mode=memory&cache=shared", 100);
@@ -121,6 +128,7 @@ class DebugIndexerConfigurationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testStatusFormatConsistency() {
         // Test that status format is consistent
         String status = indexer.getStatus();
@@ -134,6 +142,7 @@ class DebugIndexerConfigurationUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testConfigurationPersistence() {
         // Test that configuration persists across method calls
         assertThat(indexer.isRunning()).isFalse();

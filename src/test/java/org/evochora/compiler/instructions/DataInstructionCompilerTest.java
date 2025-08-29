@@ -4,9 +4,11 @@ import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -17,7 +19,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class DataInstructionCompilerTest {
 
-	private static class RunResult { final Simulation sim; final Environment env; final Organism org; RunResult(Simulation s, Environment e, Organism o){sim=s;env=e;org=o;} }
+    @BeforeAll
+    static void setUp() {
+        Instruction.init();
+    }
+
+    private static class RunResult { final Simulation sim; final Environment env; final Organism org; RunResult(Simulation s, Environment e, Organism o){sim=s;env=e;org=o;} }
 
 	private RunResult compileAndRun(String source, int ticks) throws Exception {
 		Compiler compiler = new Compiler();

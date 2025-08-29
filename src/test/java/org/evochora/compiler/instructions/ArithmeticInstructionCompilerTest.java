@@ -54,6 +54,7 @@ public class ArithmeticInstructionCompilerTest {
 	}
 
 	@Test
+    @Tag("unit")
 	void testADDR_ADDI_SUBR_SUBI_MULI_DIVI_MODI_and_stack_variants() throws Exception {
 		String program = String.join("\n",
 				"SETI %DR0 DATA:5",
@@ -94,6 +95,7 @@ public class ArithmeticInstructionCompilerTest {
 	}
 
 	@Test
+    @Tag("unit")
 	void testVectorADD_SUB_register_variant() throws Exception {
 		String program = String.join("\n",
 				"SETV %DR0 1|0",

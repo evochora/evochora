@@ -4,9 +4,11 @@ import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -17,7 +19,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class NopInstructionCompilerTest {
 
-	@Test
+    @BeforeAll
+    static void setUp() {
+        Instruction.init();
+    }
+
+    @Test
 	@Tag("unit")
 	void testNOP_executes() throws Exception {
 		String program = String.join("\n",

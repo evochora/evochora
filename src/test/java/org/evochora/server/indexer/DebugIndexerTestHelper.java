@@ -20,8 +20,10 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Helper-Klasse für DebugIndexer-Integrationstests.
@@ -201,45 +203,61 @@ class DebugIndexerTestHelper implements AutoCloseable {
      * Wartet darauf, dass der Indexer gestartet ist.
      */
     private void waitForIndexerStarted(DebugIndexer indexer) throws InterruptedException {
-        int maxWaitTime = 1000; // 1 Sekunde maximal
-        int waitInterval = 50; // Alle 50ms prüfen
-        
-        for (int waited = 0; waited < maxWaitTime; waited += waitInterval) {
-            if (indexer.isRunning()) {
-                log.debug("Indexer started after {}ms", waited);
-                return;
-            }
-            Thread.sleep(waitInterval);
-        }
-        
-        throw new RuntimeException("Indexer did not start within " + maxWaitTime + "ms");
+        assertTrue(waitForCondition(
+            indexer::isRunning,
+            1000,
+            "indexer to start"
+        ));
+        log.debug("Indexer started successfully");
     }
 
     /**
      * Wartet darauf, dass ein spezifischer Tick verarbeitet wurde.
      */
     private void waitForTickProcessed(long tickNumber) throws Exception {
-        int maxWaitTime = 2000; // 2 Sekunden maximal
-        int waitInterval = 100; // Alle 100ms prüfen
-        
-        for (int waited = 0; waited < maxWaitTime; waited += waitInterval) {
-            try (Connection conn = DriverManager.getConnection(debugJdbcUrl);
-                 Statement st = conn.createStatement();
-                 ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM prepared_ticks WHERE tick_number = " + tickNumber)) {
-                
-                if (rs.next() && rs.getInt(1) > 0) {
-                    log.debug("Tick {} processed after {}ms", tickNumber, waited);
-                    return;
+        assertTrue(waitForCondition(
+            () -> {
+                try (Connection conn = DriverManager.getConnection(debugJdbcUrl);
+                     Statement st = conn.createStatement();
+                     ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM prepared_ticks WHERE tick_number = " + tickNumber)) {
+                    
+                    return rs.next() && rs.getInt(1) > 0;
+                } catch (Exception e) {
+                    // Tabelle existiert noch nicht oder ist noch nicht bereit
+                    log.debug("Tick {} not ready yet, retry in next iteration", tickNumber);
+                    return false;
                 }
-            } catch (Exception e) {
-                // Tabelle existiert noch nicht oder ist noch nicht bereit
-                log.debug("Tick {} not ready yet, retry in {}ms", tickNumber, waitInterval);
-            }
-            
-            Thread.sleep(waitInterval);
-        }
+            },
+            2000,
+            "tick " + tickNumber + " to be processed"
+        ));
+        log.debug("Tick {} processed successfully", tickNumber);
+    }
+
+    /**
+     * Wait for a condition to be true, checking every 10ms
+     * @param condition The condition to wait for
+     * @param timeoutMs Maximum time to wait in milliseconds
+     * @param description Description of what we're waiting for
+     * @return true if condition was met, false if timeout occurred
+     */
+    private boolean waitForCondition(BooleanSupplier condition, long timeoutMs, String description) {
+        long startTime = System.currentTimeMillis();
+        long checkInterval = 10; // Check every 10ms for faster response
         
-        throw new RuntimeException("Tick " + tickNumber + " was not processed within " + maxWaitTime + "ms");
+        while (!condition.getAsBoolean()) {
+            if (System.currentTimeMillis() - startTime > timeoutMs) {
+                log.warn("Timeout waiting for: {}", description);
+                return false;
+            }
+            try {
+                Thread.sleep(checkInterval);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

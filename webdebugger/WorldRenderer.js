@@ -9,7 +9,7 @@ class WorldRenderer {
         this.ctx = canvas.getContext('2d');
         this.config = config;
         this.isa = isa;
-        this.cellFont = `normal ${this.config.CELL_SIZE * 0.4}px 'Monospaced', 'Courier New'`;
+        this.cellFont = `normal ${this.config.cellSize * 0.4}px 'Monospaced', 'Courier New'`;
         this.organismColorMap = new Map();
         
         // Tooltip-Referenz
@@ -22,20 +22,53 @@ class WorldRenderer {
         
         // Mouse-Event-Handler für Tooltip
         this.setupTooltipEvents();
+        
+        // Initialize canvas size - wird erst nach dem Laden der Metadaten gesetzt
+        // this.updateCanvasSize(); // Entfernt - wird erst nach dem Laden der Metadaten aufgerufen
+    }
+    
+    /**
+     * Updates the world shape and resizes the canvas accordingly
+     * @param {Array} worldShape - [width, height] of the world
+     */
+    updateWorldShape(worldShape) {
+        if (worldShape && Array.isArray(worldShape) && worldShape.length >= 2) {
+            this.config.worldSize = worldShape;
+            this.updateCanvasSize();
+            console.log('World shape updated to:', worldShape);
+        }
+    }
+    
+    /**
+     * Updates the canvas size based on the current world shape and cell size
+     */
+    updateCanvasSize() {
+        if (!this.config.worldSize || !Array.isArray(this.config.worldSize) || this.config.worldSize.length < 2) {
+            throw new Error('World size not available. Please load simulation metadata first.');
+        }
+        
+        const [width, height] = this.config.worldSize;
+        this.canvas.width = width * this.config.cellSize;
+        this.canvas.height = height * this.config.cellSize;
+        console.log(`Canvas resized to ${this.canvas.width}x${this.canvas.height} for world ${width}x${height}`);
     }
 
     draw(worldState) {
         const { cells, organisms, selectedOrganismId } = worldState;
-        const worldShape = this.config.WORLD_SHAPE;
-
-        if (!worldShape || !worldShape[0] || !worldShape[1]) return;
+        
+        if (!this.config.worldSize || !Array.isArray(this.config.worldSize) || this.config.worldSize.length < 2) {
+            console.error('Cannot draw world: World size not available');
+            return;
+        }
+        
+        const worldShape = this.config.worldSize;
 
         // Speichere aktuelle Zellen für Tooltip
         this.currentCells = cells;
 
-        this.canvas.width = worldShape[0] * this.config.CELL_SIZE;
-        this.canvas.height = worldShape[1] * this.config.CELL_SIZE;
-        this.ctx.fillStyle = this.config.COLOR_BG;
+        this.canvas.width = worldShape[0] * this.config.cellSize;
+        this.canvas.height = worldShape[1] * this.config.cellSize;
+        this.ctx.fillStyle = this.config.backgroundColor;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         if (cells) {
@@ -57,25 +90,25 @@ class WorldRenderer {
         const pos = this.parsePosition(cell.position);
         if (!pos) return;
 
-        const x = pos[0] * this.config.CELL_SIZE;
-        const y = pos[1] * this.config.CELL_SIZE;
+        const x = pos[0] * this.config.cellSize;
+        const y = pos[1] * this.config.cellSize;
 
         this.ctx.fillStyle = this.getBackgroundColorForType(cell.type);
-        this.ctx.fillRect(x, y, this.config.CELL_SIZE, this.config.CELL_SIZE);
+        this.ctx.fillRect(x, y, this.config.cellSize, this.config.cellSize);
 
-        if ((cell.type === this.config.TYPE_CODE && cell.value !== 0) || cell.type !== this.config.TYPE_CODE) {
+        if ((cell.type === this.config.typeCode && cell.value !== 0) || cell.type !== this.config.typeCode) {
             this.ctx.fillStyle = this.getTextColorForType(cell.type);
             this.ctx.font = this.cellFont;
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
 
             let text;
-            if (cell.type === this.config.TYPE_CODE) {
+            if (cell.type === this.config.typeCode) {
                 text = (cell.opcodeName && typeof cell.opcodeName === 'string') ? cell.opcodeName : String(cell.value);
             } else {
                 text = cell.value.toString();
             }
-            this.ctx.fillText(text, x + this.config.CELL_SIZE / 2, y + this.config.CELL_SIZE / 2 + 1);
+            this.ctx.fillText(text, x + this.config.cellSize / 2, y + this.config.cellSize / 2 + 1);
         }
     }
 
@@ -84,12 +117,12 @@ class WorldRenderer {
         if (!pos) return;
 
         const color = this.getOrganismColor(organism.organismId);
-        const x = pos[0] * this.config.CELL_SIZE;
-        const y = pos[1] * this.config.CELL_SIZE;
+        const x = pos[0] * this.config.cellSize;
+        const y = pos[1] * this.config.cellSize;
 
-        this.ctx.strokeStyle = organism.energy <= 0 ? this.config.COLOR_DEAD : color;
+        this.ctx.strokeStyle = organism.energy <= 0 ? this.config.colorDead : color;
         this.ctx.lineWidth = 2.5;
-        this.ctx.strokeRect(x, y, this.config.CELL_SIZE, this.config.CELL_SIZE);
+        this.ctx.strokeRect(x, y, this.config.cellSize, this.config.cellSize);
 
         // Draw all DPs for the organism (selected or not)
         const dpsArray = Array.isArray(organism.dps) ? organism.dps
@@ -114,34 +147,34 @@ class WorldRenderer {
             dvVec = organism.dv;
         }
         if (Array.isArray(dvVec)) {
-            const edgeOffset = this.config.CELL_SIZE * 0.5;
+            const edgeOffset = this.config.cellSize * 0.5;
             this.ctx.fillStyle = color;
-            const cx = x + this.config.CELL_SIZE / 2;
-            const cy = y + this.config.CELL_SIZE / 2;
+            const cx = x + this.config.cellSize / 2;
+            const cy = y + this.config.cellSize / 2;
             const px = cx + Math.sign(dvVec[0]||0) * edgeOffset * 0.9;
             const py = cy + Math.sign(dvVec[1]||0) * edgeOffset * 0.9;
             this.ctx.beginPath();
-            this.ctx.arc(px, py, this.config.CELL_SIZE * 0.1, 0, 2*Math.PI);
+            this.ctx.arc(px, py, this.config.cellSize * 0.1, 0, 2*Math.PI);
             this.ctx.fill();
         }
 
     }
 
     drawDp(pos, color, indices) {
-        const x = pos[0] * this.config.CELL_SIZE;
-        const y = pos[1] * this.config.CELL_SIZE;
+        const x = pos[0] * this.config.cellSize;
+        const y = pos[1] * this.config.cellSize;
         this.ctx.strokeStyle = color;
         this.ctx.lineWidth = 1.5;
         this.ctx.setLineDash([3, 3]); // Gestrichelte Linie für DP
-        this.ctx.strokeRect(x + 2, y + 2, this.config.CELL_SIZE - 4, this.config.CELL_SIZE - 4);
+        this.ctx.strokeRect(x + 2, y + 2, this.config.cellSize - 4, this.config.cellSize - 4);
         this.ctx.setLineDash([]); // Linienstil zurücksetzen
         if (Array.isArray(indices) && indices.length > 0) {
             this.ctx.fillStyle = color;
-            this.ctx.font = `bold ${this.config.CELL_SIZE * 0.35}px 'Monospaced', 'Courier New'`;
+            this.ctx.font = `bold ${this.config.cellSize * 0.35}px 'Monospaced', 'Courier New'`;
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
             const text = indices.join(',');
-            this.ctx.fillText(text, x + this.config.CELL_SIZE / 2, y + this.config.CELL_SIZE / 2 + 1);
+            this.ctx.fillText(text, x + this.config.cellSize / 2, y + this.config.cellSize / 2 + 1);
         }
     }
 
@@ -155,22 +188,22 @@ class WorldRenderer {
     getBackgroundColorForType(typeId) {
         const C = this.config;
         switch (typeId) {
-            case C.TYPE_CODE: return C.COLOR_CODE_BG;
-            case C.TYPE_DATA: return C.COLOR_DATA_BG;
-            case C.TYPE_ENERGY: return C.COLOR_ENERGY_BG;
-            case C.TYPE_STRUCTURE: return C.COLOR_STRUCTURE_BG;
-            default: return C.COLOR_EMPTY_BG;
+            case C.typeCode: return C.colorCodeBg;
+            case C.typeData: return C.colorDataBg;
+            case C.typeEnergy: return C.colorEnergyBg;
+            case C.typeStructure: return C.colorStructureBg;
+            default: return C.colorEmptyBg;
         }
     }
 
     getTextColorForType(typeId) {
         const C = this.config;
          switch (typeId) {
-            case C.TYPE_STRUCTURE: return C.COLOR_STRUCTURE_TEXT;
-            case C.TYPE_ENERGY: return C.COLOR_ENERGY_TEXT;
-            case C.TYPE_DATA: return C.COLOR_DATA_TEXT;
-            case C.TYPE_CODE: return C.COLOR_CODE_TEXT;
-            default: return C.COLOR_TEXT;
+            case C.typeStructure: return C.colorStructureText;
+            case C.typeEnergy: return C.colorEnergyText;
+            case C.typeData: return C.colorDataText;
+            case C.typeCode: return C.colorCodeText;
+            default: return C.colorText;
         }
     }
 
@@ -203,8 +236,8 @@ class WorldRenderer {
         }
         
         // Konvertiere zu Grid-Koordinaten
-        const gridX = Math.floor(x / this.config.CELL_SIZE);
-        const gridY = Math.floor(y / this.config.CELL_SIZE);
+        const gridX = Math.floor(x / this.config.cellSize);
+        const gridY = Math.floor(y / this.config.cellSize);
         
         // Prüfe, ob sich die Position geändert hat
         const currentPos = `${gridX},${gridY}`;
@@ -247,7 +280,7 @@ class WorldRenderer {
         
         // Erstelle virtuelle Zelle für leere Positionen
         return {
-            type: this.config.TYPE_CODE,
+            type: this.config.typeCode,
             value: 0,
             ownerId: 0,
             opcodeName: 'NOP'
@@ -313,10 +346,10 @@ class WorldRenderer {
     getTypeName(typeId) {
         const C = this.config;
         switch (typeId) {
-            case C.TYPE_CODE: return 'CODE';
-            case C.TYPE_DATA: return 'DATA';
-            case C.TYPE_ENERGY: return 'ENERGY';
-            case C.TYPE_STRUCTURE: return 'STRUCTURE';
+            case C.typeCode: return 'CODE';
+            case C.typeData: return 'DATA';
+            case C.typeEnergy: return 'ENERGY';
+            case C.typeStructure: return 'STRUCTURE';
             default: return 'UNKNOWN';
         }
     }

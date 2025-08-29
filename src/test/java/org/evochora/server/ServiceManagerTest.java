@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.Tag;
 
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -43,9 +44,9 @@ class ServiceManagerTest {
         config.pipeline.indexer = new SimulationConfiguration.IndexerServiceConfig();
         config.pipeline.server = new SimulationConfiguration.ServerServiceConfig();
         
-        // Set default values with unique cache names to avoid shared cache locking
+        // Set default values with in-memory databases for faster tests
         config.pipeline.persistence.batchSize = 1000;
-        config.pipeline.persistence.jdbcUrl = "jdbc:sqlite:file:memdb_sm_persistence?mode=memory&cache=shared";
+        config.pipeline.persistence.jdbcUrl = "jdbc:sqlite::memory:";
         config.pipeline.indexer.batchSize = 1000;
         config.pipeline.server.port = 0;
         
@@ -59,6 +60,97 @@ class ServiceManagerTest {
         }
     }
 
+    /**
+     * Wait for a condition to be true, checking every 10ms
+     * @param condition The condition to wait for
+     * @param timeoutMs Maximum time to wait in milliseconds
+     * @param description Description of what we're waiting for
+     * @return true if condition was met, false if timeout occurred
+     */
+    private boolean waitForCondition(BooleanSupplier condition, long timeoutMs, String description) {
+        long startTime = System.currentTimeMillis();
+        long checkInterval = 10; // Check every 10ms for faster response
+        
+        while (!condition.getAsBoolean()) {
+            if (System.currentTimeMillis() - startTime > timeoutMs) {
+                System.out.println("Timeout waiting for: " + description);
+                return false;
+            }
+            try {
+                Thread.sleep(checkInterval);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Wait for services to start running
+     */
+    private boolean waitForServicesStarted(long timeoutMs) {
+        return waitForCondition(
+            () -> {
+                String status = serviceManager.getStatus();
+                return status.contains("Simulation: started") &&
+                       status.contains("Persistence: started") &&
+                       status.contains("Indexer: started") &&
+                       status.contains("DebugServer: running");
+            },
+            timeoutMs,
+            "all services to start"
+        );
+    }
+
+    /**
+     * Wait for services to pause
+     */
+    private boolean waitForServicesPaused(long timeoutMs) {
+        return waitForCondition(
+            () -> {
+                String status = serviceManager.getStatus();
+                return status.contains("Simulation: paused") &&
+                       status.contains("Persistence: paused") &&
+                       status.contains("Indexer: paused") &&
+                       status.contains("DebugServer: stopped");
+            },
+            timeoutMs,
+            "all services to pause"
+        );
+    }
+
+    /**
+     * Wait for services to resume
+     */
+    private boolean waitForServicesResumed(long timeoutMs) {
+        return waitForCondition(
+            () -> {
+                String status = serviceManager.getStatus();
+                return status.contains("Simulation: started") &&
+                       status.contains("Persistence: started") &&
+                       status.contains("Indexer: started") &&
+                       status.contains("DebugServer: running");
+            },
+            timeoutMs,
+            "all services to resume"
+        );
+    }
+
+    /**
+     * Wait for services to stop
+     */
+    private boolean waitForServicesStopped(long timeoutMs) {
+        return waitForCondition(
+            () -> {
+                String status = serviceManager.getStatus();
+                return status.contains("NOT_STARTED") || status.contains("stopped");
+            },
+            timeoutMs,
+            "all services to stop"
+        );
+    }
+
     @Test
     @Tag("unit")
     void testServiceManagerCreation() {
@@ -66,13 +158,14 @@ class ServiceManagerTest {
     }
 
     @Test
-    @Timeout(value = 15, unit = TimeUnit.SECONDS)
+    @Tag("integration")
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void testStartAllServices() throws InterruptedException {
         // Start all services
         serviceManager.startAll();
         
         // Wait for services to start
-        Thread.sleep(200);
+        assertTrue(waitForServicesStarted(2000));
         
         // Get status to verify services are running
         String status = serviceManager.getStatus();
@@ -84,15 +177,16 @@ class ServiceManagerTest {
     }
 
     @Test
-    @Timeout(value = 20, unit = TimeUnit.SECONDS)
+    @Tag("integration")
+    @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testPauseAllServices() throws InterruptedException {
         // Start all services
         serviceManager.startAll();
-        Thread.sleep(200);
+        assertTrue(waitForServicesStarted(2000));
         
         // Pause all services
         serviceManager.pauseAll();
-        Thread.sleep(100);
+        assertTrue(waitForServicesPaused(2000));
         
         // Get status to verify services are paused
         String status = serviceManager.getStatus();
@@ -105,19 +199,20 @@ class ServiceManagerTest {
     }
 
     @Test
-    @Timeout(value = 20, unit = TimeUnit.SECONDS)
+    @Tag("integration")
+    @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testResumeAllServices() throws InterruptedException {
         // Start all services
         serviceManager.startAll();
-        Thread.sleep(200);
+        assertTrue(waitForServicesStarted(2000));
         
         // Pause all services
         serviceManager.pauseAll();
-        Thread.sleep(100);
+        assertTrue(waitForServicesPaused(2000));
         
         // Resume all services
         serviceManager.resumeAll();
-        Thread.sleep(100);
+        assertTrue(waitForServicesResumed(2000));
         
         // Get status to verify services are running again
         String status = serviceManager.getStatus();
@@ -129,11 +224,19 @@ class ServiceManagerTest {
     }
 
     @Test
-    @Timeout(value = 15, unit = TimeUnit.SECONDS)
+    @Tag("integration")
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void testStartSpecificService() throws InterruptedException {
         // Start only simulation service
         serviceManager.startService("simulation");
-        Thread.sleep(100);
+        assertTrue(waitForCondition(
+            () -> {
+                String status = serviceManager.getStatus();
+                return status.contains("Simulation: started");
+            },
+            1000,
+            "simulation service to start"
+        ));
         
         String status = serviceManager.getStatus();
         assertTrue(status.contains("Simulation: started"));
@@ -143,15 +246,23 @@ class ServiceManagerTest {
     }
 
     @Test
-    @Timeout(value = 20, unit = TimeUnit.SECONDS)
+    @Tag("integration")
+    @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testPauseSpecificService() throws InterruptedException {
         // Start all services
         serviceManager.startAll();
-        Thread.sleep(200);
+        assertTrue(waitForServicesStarted(2000));
         
         // Pause only persistence service
         serviceManager.pauseService("persistence");
-        Thread.sleep(100);
+        assertTrue(waitForCondition(
+            () -> {
+                String status = serviceManager.getStatus();
+                return status.contains("Persistence: paused");
+            },
+            2000,
+            "persistence service to pause"
+        ));
         
         String status = serviceManager.getStatus();
         assertTrue(status.contains("Simulation: started"));
@@ -161,19 +272,34 @@ class ServiceManagerTest {
     }
 
     @Test
-    @Timeout(value = 20, unit = TimeUnit.SECONDS)
+    @Tag("integration")
+    @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testResumeSpecificService() throws InterruptedException {
         // Start all services
         serviceManager.startAll();
-        Thread.sleep(200);
+        assertTrue(waitForServicesStarted(2000));
         
         // Pause persistence service
         serviceManager.pauseService("persistence");
-        Thread.sleep(100);
+        assertTrue(waitForCondition(
+            () -> {
+                String status = serviceManager.getStatus();
+                return status.contains("Persistence: paused");
+            },
+            2000,
+            "persistence service to pause"
+        ));
         
         // Resume persistence service
         serviceManager.resumeService("persistence");
-        Thread.sleep(100);
+        assertTrue(waitForCondition(
+            () -> {
+                String status = serviceManager.getStatus();
+                return status.contains("Persistence: started");
+            },
+            2000,
+            "persistence service to resume"
+        ));
         
         String status = serviceManager.getStatus();
         assertTrue(status.contains("Simulation: started"));
@@ -183,11 +309,12 @@ class ServiceManagerTest {
     }
 
     @Test
-    @Timeout(value = 20, unit = TimeUnit.SECONDS)
+    @Tag("integration")
+    @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testShutdownAllServices() throws InterruptedException {
         // Start all services
         serviceManager.startAll();
-        Thread.sleep(200);
+        assertTrue(waitForServicesStarted(2000));
         
         // Verify services are running
         String runningStatus = serviceManager.getStatus();
@@ -195,7 +322,7 @@ class ServiceManagerTest {
         
         // Shutdown all services
         serviceManager.stopAll();
-        Thread.sleep(100);
+        assertTrue(waitForServicesStopped(2000));
         
         // Verify all services are stopped
         String stoppedStatus = serviceManager.getStatus();

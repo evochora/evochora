@@ -33,7 +33,7 @@ public class DebugServerTest {
     @Test
     @Tag("integration")
     void testDebugServer() throws Exception {
-        // Use in-memory database for reliable testing without file locking issues
+        // Use shared in-memory database for reliable testing
         String dbPath = "jdbc:sqlite:file:memdb_debugserver?mode=memory&cache=shared";
         
         // Create the table and keep connection open to maintain table existence

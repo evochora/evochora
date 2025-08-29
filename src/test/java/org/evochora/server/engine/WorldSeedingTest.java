@@ -9,11 +9,40 @@ import org.junit.jupiter.api.Test;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 
 import static java.util.Collections.emptyMap;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WorldSeedingTest {
+
+    /**
+     * Wait for a condition to be true, checking every 10ms
+     * @param condition The condition to wait for
+     * @param timeoutMs Maximum time to wait in milliseconds
+     * @param description Description of what we're waiting for
+     * @return true if condition was met, false if timeout occurred
+     */
+    private boolean waitForCondition(BooleanSupplier condition, long timeoutMs, String description) {
+        long startTime = System.currentTimeMillis();
+        long checkInterval = 10; // Check every 10ms for faster response
+        
+        while (!condition.getAsBoolean()) {
+            if (System.currentTimeMillis() - startTime > timeoutMs) {
+                System.out.println("Timeout waiting for: " + description);
+                return false;
+            }
+            try {
+                Thread.sleep(checkInterval);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return true;
+    }
+
     @Test
     @Tag("unit")
     void seedsInitialWorldObjectsOnStart() throws Exception {
@@ -38,7 +67,11 @@ class WorldSeedingTest {
         engine.start();
         
         // Wait for the engine to start and produce messages
-        Thread.sleep(500);
+        assertTrue(waitForCondition(
+            () -> engine.getCurrentTick() >= 0L && queue.size() > 0,
+            2000,
+            "engine to start and produce messages (tick: " + engine.getCurrentTick() + ", queue size: " + queue.size() + ")"
+        ));
         
         // Check that the simulation is running and has advanced
         assertThat(engine.getCurrentTick()).isGreaterThanOrEqualTo(0L);
@@ -49,7 +82,11 @@ class WorldSeedingTest {
         engine.shutdown();
         
         // Wait for shutdown to complete
-        Thread.sleep(1000);
+        assertTrue(waitForCondition(
+            () -> !engine.isRunning(),
+            2000,
+            "engine to shutdown"
+        ));
         assertThat(engine.isRunning()).isFalse();
     }
 }

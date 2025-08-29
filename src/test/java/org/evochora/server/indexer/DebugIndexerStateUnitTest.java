@@ -25,6 +25,7 @@ class DebugIndexerStateUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testInitialState() {
         // Test initial state - should be instant
         assertThat(indexer.isRunning()).isFalse();
@@ -33,6 +34,7 @@ class DebugIndexerStateUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testStatusWhenStopped() {
         // Test status when stopped
         String status = indexer.getStatus();
@@ -40,6 +42,7 @@ class DebugIndexerStateUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testBatchSizeConfiguration() {
         // Test that batch size is properly configured
         DebugIndexer smallBatchIndexer = new DebugIndexer("jdbc:sqlite:file:memdb_test2?mode=memory&cache=shared", 100);
@@ -50,6 +53,7 @@ class DebugIndexerStateUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testDatabaseUrlHandling() {
         // Test different database URL formats
         DebugIndexer jdbcIndexer = new DebugIndexer("jdbc:sqlite:file:memdb_jdbc?mode=memory&cache=shared", 1000);
@@ -60,6 +64,7 @@ class DebugIndexerStateUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testMultipleIndexerCreation() {
         // Test that multiple indexers can be created quickly
         DebugIndexer indexer1 = new DebugIndexer("jdbc:sqlite:file:memdb1?mode=memory&cache=shared", 100);
@@ -76,6 +81,7 @@ class DebugIndexerStateUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testStateFlagsInitialization() {
         // Test all state flags are properly initialized
         assertThat(indexer.isRunning()).isFalse();
@@ -84,6 +90,7 @@ class DebugIndexerStateUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testConfigurationValidation() {
         // Test configuration validation through available methods
         assertThat(indexer).isNotNull();
@@ -91,6 +98,7 @@ class DebugIndexerStateUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testIndexerCreationPerformance() {
         // Test that indexer creation is fast and doesn't start threads
         assertThat(indexer.isRunning()).isFalse();
@@ -103,6 +111,7 @@ class DebugIndexerStateUnitTest {
     }
 
     @Test
+    @Tag("unit")
     void testStateTransitionsWithoutStarting() {
         // Test state transitions without actually starting the indexer
         assertThat(indexer.isRunning()).isFalse();

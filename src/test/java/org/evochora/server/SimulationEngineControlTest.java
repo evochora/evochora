@@ -14,9 +14,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SimulationEngineControlTest {
 
@@ -26,27 +28,55 @@ class SimulationEngineControlTest {
     void tearDown() {
         if (sim != null && sim.isRunning()) {
             sim.shutdown();
-            // Give the thread time to terminate
+            // Wait for shutdown to complete
             try {
-                Thread.sleep(100);
+                waitForShutdown(1000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         }
     }
 
-    private void waitForTick(long tick, long timeoutMillis) throws InterruptedException {
+    /**
+     * Wait for a condition to be true, checking every 10ms
+     * @param condition The condition to wait for
+     * @param timeoutMs Maximum time to wait in milliseconds
+     * @param description Description of what we're waiting for
+     * @return true if condition was met, false if timeout occurred
+     */
+    private boolean waitForCondition(BooleanSupplier condition, long timeoutMs, String description) {
         long startTime = System.currentTimeMillis();
-        while (sim.getCurrentTick() < tick && (System.currentTimeMillis() - startTime) < timeoutMillis) {
-            Thread.sleep(50);
+        long checkInterval = 10; // Check every 10ms for faster response
+        
+        while (!condition.getAsBoolean()) {
+            if (System.currentTimeMillis() - startTime > timeoutMs) {
+                System.out.println("Timeout waiting for: " + description);
+                return false;
+            }
+            try {
+                Thread.sleep(checkInterval);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
         }
+        return true;
+    }
+
+    private void waitForTick(long tick, long timeoutMillis) throws InterruptedException {
+        assertTrue(waitForCondition(
+            () -> sim.getCurrentTick() >= tick,
+            timeoutMillis,
+            "tick to reach " + tick + " (current: " + sim.getCurrentTick() + ")"
+        ));
     }
 
     private void waitForShutdown(long timeoutMillis) throws InterruptedException {
-        long startTime = System.currentTimeMillis();
-        while (sim.isRunning() && (System.currentTimeMillis() - startTime) < timeoutMillis) {
-            Thread.sleep(50);
-        }
+        assertTrue(waitForCondition(
+            () -> !sim.isRunning(),
+            timeoutMillis,
+            "simulation engine to shutdown"
+        ));
     }
 
     @Test
@@ -92,7 +122,11 @@ class SimulationEngineControlTest {
 
         // 3. Pause and wait for it to take effect.
         sim.pause();
-        Thread.sleep(100); // Give a moment for the pause to register
+        assertTrue(waitForCondition(
+            sim::isPaused,
+            1000,
+            "simulation to pause"
+        ));
         long t3 = sim.getCurrentTick();
 
         // 4. Drain the queue AFTER pausing.
@@ -100,8 +134,12 @@ class SimulationEngineControlTest {
             // do nothing
         }
 
-        // 5. Wait again and assert that the queue REMAINS empty.
-        Thread.sleep(100);
+        // 5. Wait and assert that the queue REMAINS empty.
+        assertTrue(waitForCondition(
+            () -> q.size() == 0,
+            1000,
+            "queue to remain empty while paused"
+        ));
         assertThat(q.size()).as("Queue should remain empty while paused").isZero();
         assertThat(sim.getCurrentTick()).isEqualTo(t3);
 

@@ -833,20 +833,48 @@ document.addEventListener('DOMContentLoaded', () => {
             this.statusManager = new StatusManager();
             this.api = new ApiService(this.statusManager);
             this.canvas = document.getElementById('worldCanvas');
-            this.renderer = new WorldRenderer(this.canvas, { WORLD_SHAPE: [100,30], CELL_SIZE: 22, TYPE_CODE:0, TYPE_DATA:1, TYPE_ENERGY:2, TYPE_ENERGY:2, TYPE_STRUCTURE:3, COLOR_BG:'#0a0a14', COLOR_EMPTY_BG:'#14141e', COLOR_CODE_BG:'#3c5078', COLOR_DATA_BG:'#32323c', COLOR_STRUCTURE_BG:'#ff7878', COLOR_ENERGY_BG:'#ffe664', COLOR_CODE_TEXT:'#ffffff', COLOR_DATA_TEXT:'#ffffff', COLOR_STRUCTURE_TEXT:'#323232', COLOR_ENERGY_TEXT:'#323232', COLOR_DEAD:'#505050' }, {});
+            
+            // Default configuration - will be overridden by actual simulation metadata
+            const defaultConfig = { 
+                worldSize: [100,30], 
+                cellSize: 22, 
+                typeCode: 0, 
+                typeData: 1, 
+                typeEnergy: 2, 
+                typeStructure: 3, 
+                backgroundColor: '#0a0a14', 
+                colorEmptyBg: '#14141e', 
+                colorCodeBg: '#3c5078', 
+                colorDataBg: '#32323c', 
+                colorStructureBg: '#ff7878', 
+                colorEnergyBg: '#ffe664', 
+                colorCodeText: '#ffffff', 
+                colorDataText: '#ffffff', 
+                colorStructureText: '#323232', 
+                colorEnergyText: '#323232', 
+                colorDead: '#505050' 
+            };
+            
+            this.renderer = new WorldRenderer(this.canvas, defaultConfig, {});
             this.sidebar = new SidebarView(document.getElementById('sidebar'), this);
             this.sidebarManager = new SidebarManager();
             this.toolbar = new ToolbarView(this);
             this.state = { currentTick: 0, selectedOrganismId: null, lastTickData: null, totalTicks: null };
             this.canvas.addEventListener('click', (e) => this.onCanvasClick(e));
             
-                    // Tracking für Navigationsrichtung (für Änderungs-Hervorhebung)
-        this.lastNavigationDirection = null; // 'forward', 'backward', 'goto'
-        
-        // Referenz auf den AppController für Parent-Navigation
-        this.appController = null;
+            // Tracking für Navigationsrichtung (für Änderungs-Hervorhebung)
+            this.lastNavigationDirection = null; // 'forward', 'backward', 'goto'
+            
+            // Referenz auf den AppController für Parent-Navigation
+            this.appController = null;
         }
-        async init() { await this.navigateToTick(0); }
+        
+        async init() {
+            // Load simulation metadata first to get correct world dimensions
+            // NEU: Kein separater /api/meta Request mehr - worldMeta kommt aus Tick-Response
+            await this.navigateToTick(0); 
+        }
+        
         async navigateToTick(tick) {
             let target = typeof tick === 'number' ? tick : 0;
             if (target < 0) target = 0;
@@ -872,7 +900,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.state.totalTicks = data.totalTicks;
             }
             if (data.worldMeta && Array.isArray(data.worldMeta.shape)) {
-                this.renderer.config.WORLD_SHAPE = data.worldMeta.shape;
+                this.renderer.updateWorldShape(data.worldMeta.shape);
             }
             // ISA-Mapping is intentionally not used; rely solely on cell.opcodeName provided by backend
             const typeToId = t => ({ CODE:0, DATA:1, ENERGY:2, STRUCTURE:3 })[t] ?? 1;
@@ -906,33 +934,39 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         onCanvasClick(event) {
+            if (!this.renderer) return; // Renderer noch nicht verfügbar
+            
             const rect = this.canvas.getBoundingClientRect();
             const x = event.clientX - rect.left;
             const y = event.clientY - rect.top;
-            const gridX = Math.floor(x / this.renderer.config.CELL_SIZE);
-            const gridY = Math.floor(y / this.renderer.config.CELL_SIZE);
+            const gridX = Math.floor(x / this.renderer.config.cellSize);
+            const gridY = Math.floor(y / this.renderer.config.cellSize);
             const organisms = (this.state.lastTickData?.worldState?.organisms)||[];
             for (const o of organisms) {
                 const pos = o.position;
                 if (Array.isArray(pos) && pos[0] === gridX && pos[1] === gridY) {
                     this.state.selectedOrganismId = String(o.id);
                     const det = this.state.lastTickData.organismDetails?.[this.state.selectedOrganismId];
-                                    if (det) {
-                    this.sidebar.update(det, this.lastNavigationDirection);
-                }
-                this.sidebarManager.autoShow();
-                this.sidebarManager.setToggleButtonVisible(true);
-                    const typeToId = t => ({ CODE:0, DATA:1, ENERGY:2, STRUCTURE:3 })[t] ?? 1;
-                    this.renderer.draw({
-                        cells: (this.state.lastTickData.worldState?.cells||[]).map(c=>({position: JSON.stringify(c.position), type: typeToId(c.type), value: c.value, ownerId: c.ownerId, opcodeName: c.opcodeName })),
-                        organisms: (organisms||[]).map(o2=>({ organismId: o2.id, programId: o2.programId, energy: o2.energy, positionJson: JSON.stringify(o2.position), dps: o2.dps, dv: o2.dv })),
-                        selectedOrganismId: o.id
-                    });
-                    return;
+                    if (det) {
+                        this.sidebar.update(det, this.lastNavigationDirection);
+                        this.sidebarManager.autoShow();
+                        this.sidebarManager.setToggleButtonVisible(true);
+                        break;
+                    }
                 }
             }
         }
         
+        showError(message) {
+            // Verwende den StatusManager für Fehlermeldungen
+            if (window.EvoDebugger && window.EvoDebugger.statusManager) {
+                window.EvoDebugger.statusManager.showError(message);
+            } else {
+                // Fallback: Zeige Fehler in der Konsole
+                console.error('Error:', message);
+                alert('Fehler: ' + message);
+            }
+        }
 
     }
 
