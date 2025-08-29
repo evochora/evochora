@@ -35,7 +35,6 @@ class WorldRenderer {
         if (worldShape && Array.isArray(worldShape) && worldShape.length >= 2) {
             this.config.worldSize = worldShape;
             this.updateCanvasSize();
-            console.log('World shape updated to:', worldShape);
         }
     }
     
@@ -50,7 +49,6 @@ class WorldRenderer {
         const [width, height] = this.config.worldSize;
         this.canvas.width = width * this.config.cellSize;
         this.canvas.height = height * this.config.cellSize;
-        console.log(`Canvas resized to ${this.canvas.width}x${this.canvas.height} for world ${width}x${height}`);
     }
 
     draw(worldState) {

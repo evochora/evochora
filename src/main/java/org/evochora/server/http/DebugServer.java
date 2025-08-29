@@ -247,31 +247,24 @@ public final class DebugServer {
     // NEU: Source-Daten automatisch in Tick-Response einbetten
     private void injectSourceData(java.util.Map<String, Object> map) {
         try {
-            log.info("DEBUG: injectSourceData called with map keys: {}", map.keySet());
-            
             // Hole alle Organismen aus der Tick-Daten
             Object organismsObj = map.get("organismDetails");
-            log.info("DEBUG: organismsObj type: {}, value: {}", organismsObj != null ? organismsObj.getClass().getSimpleName() : "null", organismsObj);
             
             if (organismsObj instanceof java.util.Map<?, ?>) {
                 @SuppressWarnings("unchecked")
                 java.util.Map<String, Object> organisms = (java.util.Map<String, Object>) organismsObj;
-                log.info("DEBUG: Found {} organisms", organisms.size());
                 
                 for (java.util.Map.Entry<String, Object> entry : organisms.entrySet()) {
                     String organismId = entry.getKey();
                     Object organismObj = entry.getValue();
-                    log.info("DEBUG: Processing organism {}: {}", organismId, organismObj != null ? organismObj.getClass().getSimpleName() : "null");
                     
                     if (organismObj instanceof java.util.Map<?, ?>) {
                         @SuppressWarnings("unchecked")
                         java.util.Map<String, Object> organism = (java.util.Map<String, Object>) organismObj;
-                        log.info("DEBUG: Organism {} keys: {}", organismId, organism.keySet());
                         
                         // Hole basicInfo und sourceView
                         Object basicInfoObj = organism.get("basicInfo");
                         Object sourceViewObj = organism.get("sourceView");
-                        log.info("DEBUG: basicInfo: {}, sourceView: {}", basicInfoObj != null ? basicInfoObj.getClass().getSimpleName() : "null", sourceViewObj != null ? sourceViewObj.getClass().getSimpleName() : "null");
                         
                         if (basicInfoObj instanceof java.util.Map<?, ?> && sourceViewObj instanceof java.util.Map<?, ?>) {
                             @SuppressWarnings("unchecked")
@@ -280,23 +273,17 @@ public final class DebugServer {
                             java.util.Map<String, Object> sourceView = (java.util.Map<String, Object>) sourceViewObj;
                             
                             String programId = (String) basicInfo.get("programId");
-                            log.info("DEBUG: Found programId: {}", programId);
                             
                             // Lade Source-Daten für alle Organismen mit programId
                             if (programId != null) {
-                                log.info("DEBUG: Fetching source data for programId: {}", programId);
                                 String sourceData = fetchSourceDataFromDb(programId);
-                                log.info("DEBUG: Source data result: {}", sourceData != null ? "success" : "null");
                                 if (sourceData != null) {
                                     sourceView.put("allSources", sourceData);
-                                    log.info("DEBUG: Successfully injected allSources into sourceView");
                                 }
                             }
                         }
                     }
                 }
-            } else {
-                log.warn("DEBUG: organismsObj is not a Map, it's: {}", organismsObj != null ? organismsObj.getClass().getSimpleName() : "null");
             }
         } catch (Exception e) {
             log.warn("Failed to inject source data: {}", e.getMessage());
