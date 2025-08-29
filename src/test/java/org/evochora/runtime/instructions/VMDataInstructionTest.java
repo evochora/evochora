@@ -13,6 +13,11 @@ import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains low-level unit tests for the execution of data movement instructions by the virtual machine.
+ * Each test sets up a specific state, executes a single instruction, and verifies the precise outcome.
+ * These tests operate on an in-memory simulation and do not require external resources, unless specified otherwise.
+ */
 public class VMDataInstructionTest {
 
     private Environment environment;
@@ -55,6 +60,10 @@ public class VMDataInstructionTest {
         }
     }
 
+    /**
+     * Tests the SETI (Set Immediate) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testSeti() {
@@ -64,6 +73,10 @@ public class VMDataInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(immediateValue);
     }
 
+    /**
+     * Tests the SETR (Set Register) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testSetr() {
@@ -74,6 +87,10 @@ public class VMDataInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(srcValue);
     }
 
+    /**
+     * Tests the SETV (Set Vector) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testSetv() {
@@ -85,6 +102,10 @@ public class VMDataInstructionTest {
         assertThat((int[]) reg0).containsExactly(vec);
     }
 
+    /**
+     * Tests the PUSH instruction for pushing a register value to the stack.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testPush() {
@@ -95,6 +116,10 @@ public class VMDataInstructionTest {
         assertThat(org.getDataStack().pop()).isEqualTo(value);
     }
 
+    /**
+     * Tests the POP instruction for popping a value from the stack into a register.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testPop() {
@@ -105,6 +130,10 @@ public class VMDataInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(value);
     }
 
+    /**
+     * Tests the PUSI (Push Immediate) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testPusi() {
@@ -114,8 +143,14 @@ public class VMDataInstructionTest {
         assertThat(org.getDataStack().pop()).isEqualTo(literal);
     }
 
+    /**
+     * Verifies that a vector value set by SETV is correctly preserved during a full
+     * JSON serialization and deserialization cycle. This is critical for debugging tools.
+     * This is an integration test involving the compiler, runtime, and server contract classes.
+     * @throws Exception if compilation or JSON processing fails.
+     */
     @Test
-    @Tag("unit")
+    @Tag("integration")
     void testSetvJsonSerialization() throws Exception {
         System.out.println("=== JSON Serialization Test ===");
         

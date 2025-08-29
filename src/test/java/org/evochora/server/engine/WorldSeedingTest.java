@@ -13,9 +13,23 @@ import java.util.Map;
 import static java.util.Collections.emptyMap;
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains integration tests for the world seeding functionality of the {@link SimulationEngine}.
+ * These tests verify that initial world objects from program artifacts are correctly
+ * placed into the environment when the simulation starts.
+ */
 class WorldSeedingTest {
+    /**
+     * Verifies that the SimulationEngine correctly seeds the world with initial objects
+     * defined in a ProgramArtifact before starting the simulation loop.
+     * <p>
+     * This is an integration test as it involves starting the threaded SimulationEngine
+     * and observing its output.
+     *
+     * @throws Exception if thread operations fail.
+     */
     @Test
-    @Tag("unit")
+    @Tag("integration")
     void seedsInitialWorldObjectsOnStart() throws Exception {
         var queue = new InMemoryTickQueue();
         var engine = new SimulationEngine(queue, new int[]{10, 10}, true); // Small world

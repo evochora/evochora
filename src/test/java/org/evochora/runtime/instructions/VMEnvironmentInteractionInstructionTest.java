@@ -13,6 +13,12 @@ import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains low-level unit tests for the execution of environment interaction instructions (PEEK, POKE)
+ * by the virtual machine. Each test sets up a specific state, executes a single instruction,
+ * and verifies the precise outcome on the organism's state and the environment.
+ * These tests operate on an in-memory simulation and do not require external resources.
+ */
 public class VMEnvironmentInteractionInstructionTest {
 
     private Environment environment;
@@ -59,6 +65,10 @@ public class VMEnvironmentInteractionInstructionTest {
         }
     }
 
+    /**
+     * Tests the POKE instruction (write from register to location specified by register vector).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testPoke() {
@@ -78,6 +88,10 @@ public class VMEnvironmentInteractionInstructionTest {
         assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 1 - 5);
     }
 
+    /**
+     * Tests the POKI instruction (write from register to location specified by immediate vector).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testPoki() {
@@ -96,6 +110,10 @@ public class VMEnvironmentInteractionInstructionTest {
         assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 1 - 5);
     }
 
+    /**
+     * Tests the POKS instruction (write from stack to location specified by stack vector).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testPoks() {
@@ -115,6 +133,10 @@ public class VMEnvironmentInteractionInstructionTest {
         assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 1 - 5);
     }
 
+    /**
+     * Tests the PEEK instruction (read to register from location specified by register vector).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testPeek() {
@@ -132,6 +154,10 @@ public class VMEnvironmentInteractionInstructionTest {
         assertThat(environment.getMolecule(target).isEmpty()).isTrue();
     }
 
+    /**
+     * Tests the PEKI instruction (read to register from location specified by immediate vector).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testPeki() {
@@ -148,6 +174,10 @@ public class VMEnvironmentInteractionInstructionTest {
         assertThat(environment.getMolecule(target).isEmpty()).isTrue();
     }
 
+    /**
+     * Tests the PEKS instruction (read to stack from location specified by stack vector).
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testPeks() {

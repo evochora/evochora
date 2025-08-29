@@ -11,8 +11,18 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Contains unit tests for the {@link SimulationConfiguration} class.
+ * These tests act as smoke tests to verify that the default configuration object
+ * is loaded correctly and that its structure is valid and accessible.
+ * These are unit tests and do not require external resources.
+ */
 class ConfigurationTest {
 
+    /**
+     * Verifies that the default configuration can be loaded without errors.
+     * This is a unit test for the configuration loader.
+     */
     @Test
     @Tag("unit")
     @Timeout(value = 5, unit = TimeUnit.SECONDS)
@@ -23,6 +33,10 @@ class ConfigurationTest {
         assertNotNull(config, "Configuration should be loadable");
     }
 
+    /**
+     * Verifies that the 'simulation' section and its nested objects exist in the default configuration.
+     * This is a unit test for the configuration structure.
+     */
     @Test
     @Tag("unit")
     @Timeout(value = 5, unit = TimeUnit.SECONDS)
@@ -37,6 +51,10 @@ class ConfigurationTest {
         assertNotNull(config.simulation.energyStrategies, "Energy strategies should exist");
     }
 
+    /**
+     * Verifies that the 'pipeline' section and its nested service configurations exist.
+     * This is a unit test for the configuration structure.
+     */
     @Test
     @Tag("unit")
     @Timeout(value = 5, unit = TimeUnit.SECONDS)
@@ -51,6 +69,10 @@ class ConfigurationTest {
         assertNotNull(config.pipeline.server, "Server section should exist");
     }
 
+    /**
+     * Verifies that all required fields and sections in the default configuration are non-null.
+     * This is a unit test for the completeness of the default configuration.
+     */
     @Test
     @Tag("unit")
     @Timeout(value = 5, unit = TimeUnit.SECONDS)
@@ -71,6 +93,10 @@ class ConfigurationTest {
         assertNotNull(config.pipeline.server, "Server required");
     }
 
+    /**
+     * Verifies that the overall structure of the default configuration is valid and its nodes are accessible.
+     * This is a unit test for the configuration's structural integrity.
+     */
     @Test
     @Tag("unit")
     @Timeout(value = 5, unit = TimeUnit.SECONDS)
@@ -92,6 +118,10 @@ class ConfigurationTest {
         assertNotNull(config.pipeline.server);
     }
 
+    /**
+     * Verifies that all nested properties within the default configuration are accessible and non-null.
+     * This is a unit test to prevent regressions from configuration refactoring.
+     */
     @Test
     @Tag("unit")
     @Timeout(value = 5, unit = TimeUnit.SECONDS)

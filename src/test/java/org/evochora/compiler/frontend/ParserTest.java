@@ -15,8 +15,19 @@ import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains unit tests for the {@link Parser}.
+ * These tests verify that the parser correctly transforms a stream of tokens into an
+ * Abstract Syntax Tree (AST), representing the grammatical structure of the source code.
+ * These are unit tests and do not require external resources.
+ */
 public class ParserTest {
 
+    /**
+     * Verifies that the parser correctly builds an {@link InstructionNode} for a simple instruction
+     * with register and numeric literal arguments. It checks the opcode, argument types, and their values.
+     * This is a unit test for the parser.
+     */
     @Test
     @Tag("unit")
     void testParserSimpleInstruction() {
@@ -48,6 +59,11 @@ public class ParserTest {
         assertThat(numArg.getValue()).isEqualTo(42);
     }
 
+    /**
+     * Verifies that the parser correctly handles a labeled statement, creating a {@link LabelNode}
+     * that contains both the label's identifier and the associated instruction node.
+     * This is a unit test for the parser.
+     */
     @Test
     @Tag("unit")
     void testParserLabelStatement() {
@@ -75,6 +91,11 @@ public class ParserTest {
         assertThat(nopNode.arguments()).isEmpty();
     }
 
+    /**
+     * Verifies that the parser correctly parses a vector literal (e.g., `10|-20`) into a
+     * {@link VectorLiteralNode} with the correct integer components.
+     * This is a unit test for the parser.
+     */
     @Test
     @Tag("unit")
     void testParserVectorLiteral() {

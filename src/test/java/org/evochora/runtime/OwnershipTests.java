@@ -11,6 +11,12 @@ import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains unit tests for the concept of cell ownership and its effect on instructions.
+ * These tests verify how instructions like SEEK behave based on whether the target cell
+ * is owned by the organism or a foreign entity.
+ * These tests use an in-memory simulation and do not require external resources.
+ */
 public class OwnershipTests {
 
     private Environment environment;
@@ -47,6 +53,11 @@ public class OwnershipTests {
         }
     }
 
+    /**
+     * Verifies that all variants of the SEEK instruction (register, immediate, stack)
+     * succeed when the target cell is owned by the organism executing the instruction.
+     * This is a unit test for ownership rules.
+     */
     @Test
     @Tag("unit")
     void testSeekVariants_SucceedOnOwnedNonEmptyCell() {
@@ -110,6 +121,11 @@ public class OwnershipTests {
         }
     }
 
+    /**
+     * Verifies that all variants of the SEEK instruction (register, immediate, stack)
+     * fail when the target cell is owned by a different organism.
+     * This is a unit test for ownership rules.
+     */
     @Test
     @Tag("unit")
     void testSeekVariants_FailOnForeignOwnedCell() {

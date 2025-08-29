@@ -7,11 +7,10 @@ import org.junit.jupiter.api.Tag;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Fast unit tests for DebugIndexer state management and basic functionality.
- * These tests focus only on state transitions and configuration validation
+ * Contains fast unit tests for the {@link DebugIndexer}'s state management and basic functionality.
+ * These tests focus only on initial state, configuration validation, and object instantiation
  * without any real database operations or threading.
- * 
- * Performance requirement: All tests must complete in < 0.1 seconds.
+ * All tests are tagged as "unit" and should complete very quickly.
  */
 @Tag("unit")
 class DebugIndexerStateUnitTest {
@@ -24,6 +23,10 @@ class DebugIndexerStateUnitTest {
         indexer = new DebugIndexer("jdbc:sqlite:file:memdb_test?mode=memory&cache=shared", 1000);
     }
 
+    /**
+     * Verifies the initial state of a newly created DebugIndexer instance.
+     * This is a unit test for the default state of the service.
+     */
     @Test
     void testInitialState() {
         // Test initial state - should be instant
@@ -32,6 +35,10 @@ class DebugIndexerStateUnitTest {
         assertThat(indexer.isAutoPaused()).isFalse();
     }
 
+    /**
+     * Verifies that the status of a newly created indexer is "stopped".
+     * This is a unit test for the status reporting logic.
+     */
     @Test
     void testStatusWhenStopped() {
         // Test status when stopped
@@ -39,6 +46,10 @@ class DebugIndexerStateUnitTest {
         assertThat(status).isEqualTo("stopped");
     }
 
+    /**
+     * Verifies that the indexer can be configured with different batch sizes.
+     * This is a unit test for the constructor logic.
+     */
     @Test
     void testBatchSizeConfiguration() {
         // Test that batch size is properly configured
@@ -49,6 +60,10 @@ class DebugIndexerStateUnitTest {
         assertThat(largeBatchIndexer).isNotNull();
     }
 
+    /**
+     * Verifies that the indexer can be configured with different database URL formats.
+     * This is a unit test for the constructor logic.
+     */
     @Test
     void testDatabaseUrlHandling() {
         // Test different database URL formats
@@ -59,6 +74,10 @@ class DebugIndexerStateUnitTest {
         assertThat(fileIndexer).isNotNull();
     }
 
+    /**
+     * Verifies that multiple indexer instances can be created without interference.
+     * This is a unit test for state isolation between instances.
+     */
     @Test
     void testMultipleIndexerCreation() {
         // Test that multiple indexers can be created quickly
@@ -75,6 +94,10 @@ class DebugIndexerStateUnitTest {
         assertThat(indexer3.isRunning()).isFalse();
     }
 
+    /**
+     * Verifies that all state-related flags are correctly initialized to false.
+     * This is a unit test for the default state of the service.
+     */
     @Test
     void testStateFlagsInitialization() {
         // Test all state flags are properly initialized
@@ -83,6 +106,10 @@ class DebugIndexerStateUnitTest {
         assertThat(indexer.isAutoPaused()).isFalse();
     }
 
+    /**
+     * Verifies that the indexer can be instantiated and its status can be retrieved without errors.
+     * This is a unit test for basic configuration validation.
+     */
     @Test
     void testConfigurationValidation() {
         // Test configuration validation through available methods
@@ -90,6 +117,10 @@ class DebugIndexerStateUnitTest {
         assertThat(indexer.getStatus()).isNotNull();
     }
 
+    /**
+     * Verifies that creating multiple indexer instances is a fast operation and does not start any threads.
+     * This is a performance-based unit test for the constructor.
+     */
     @Test
     void testIndexerCreationPerformance() {
         // Test that indexer creation is fast and doesn't start threads
@@ -102,6 +133,11 @@ class DebugIndexerStateUnitTest {
         }
     }
 
+    /**
+     * Verifies that the initial state of the indexer is correct, confirming that no
+     * state transitions have occurred upon instantiation.
+     * This is a unit test for the default state of the service.
+     */
     @Test
     void testStateTransitionsWithoutStarting() {
         // Test state transitions without actually starting the indexer

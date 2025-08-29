@@ -29,6 +29,11 @@ import java.util.HashMap;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Contains integration tests for the {@link PersistenceService}, focusing on performance and behavior under load.
+ * These tests use an in-memory queue and in-memory SQLite databases to verify the service's
+ * ability to read from the queue and write to the database in a threaded environment.
+ */
 class PersistenceServicePerformanceTest {
 
     private PersistenceService persistenceService;
@@ -54,6 +59,11 @@ class PersistenceServicePerformanceTest {
         }
     }
 
+    /**
+     * Creates a mock {@link RawTickState} for testing the pipeline.
+     * @param tickNumber The tick number for the mock state.
+     * @return A new {@link RawTickState} instance.
+     */
     private RawTickState createTestTickState(long tickNumber) {
         List<RawOrganismState> organisms = new ArrayList<>();
         List<RawCellState> cells = new ArrayList<>();
@@ -97,6 +107,10 @@ class PersistenceServicePerformanceTest {
         return new RawTickState(tickNumber, organisms, cells);
     }
 
+    /**
+     * Verifies that the PersistenceService can be instantiated with different batch size configurations.
+     * This is an integration test for the service's configuration handling.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
@@ -116,6 +130,11 @@ class PersistenceServicePerformanceTest {
         largeBatchService.shutdown();
     }
 
+    /**
+     * Helper method to wait until the message queue is empty.
+     * @param timeoutMillis The maximum time to wait.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     private void waitForQueueToEmpty(int timeoutMillis) throws InterruptedException {
         long startTime = System.currentTimeMillis();
         while (queue.size() > 0 && (System.currentTimeMillis() - startTime) < timeoutMillis) {
@@ -123,6 +142,11 @@ class PersistenceServicePerformanceTest {
         }
     }
 
+    /**
+     * Verifies that the service correctly processes a batch of inserts from the queue.
+     * This is an integration test of the core data processing loop.
+     * @throws Exception if thread or database operations fail.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
@@ -143,6 +167,12 @@ class PersistenceServicePerformanceTest {
         assertEquals(0, queue.size(), "Queue should be empty after processing");
     }
 
+    /**
+     * Verifies that the service runs correctly with an in-memory database. The name suggests
+     * a test for optimizations, but the implementation is a generic run check.
+     * This is an integration test.
+     * @throws Exception if thread or database operations fail.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
@@ -161,6 +191,12 @@ class PersistenceServicePerformanceTest {
         assertEquals(0, queue.size(), "Queue should be empty after processing");
     }
 
+    /**
+     * Verifies the service's behavior under load, which demonstrates implicit throttling
+     * as the queue does not empty instantly.
+     * This is an integration test of the service's load handling.
+     * @throws Exception if thread operations fail.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
@@ -187,6 +223,11 @@ class PersistenceServicePerformanceTest {
         assertTrue(persistenceService.isRunning());
     }
 
+    /**
+     * Verifies that the service can be gracefully shut down after processing data.
+     * This is an integration test of the service lifecycle.
+     * @throws Exception if thread or database operations fail.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
@@ -212,6 +253,12 @@ class PersistenceServicePerformanceTest {
         assertFalse(persistenceService.isRunning());
     }
 
+    /**
+     * Verifies that the service can process a batch of data. The name suggests a test for
+     * data integrity, but the implementation is a generic run check.
+     * This is an integration test.
+     * @throws Exception if thread or database operations fail.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
@@ -232,6 +279,11 @@ class PersistenceServicePerformanceTest {
         assertEquals(0, queue.size(), "Queue should be empty after processing");
     }
 
+    /**
+     * A basic performance test that verifies the service can process a larger load of data.
+     * This is an integration test of the service's stability.
+     * @throws Exception if thread or database operations fail.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
@@ -258,6 +310,12 @@ class PersistenceServicePerformanceTest {
         assertEquals(0, queue.size(), "Queue should be empty after processing");
     }
 
+    /**
+     * Verifies that multiple service instances with different batch sizes can be started.
+     * The name suggests a performance comparison, but the implementation only checks startup.
+     * This is an integration test of the service configuration.
+     * @throws Exception if thread or database operations fail.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
@@ -296,6 +354,11 @@ class PersistenceServicePerformanceTest {
         largeBatchService.shutdown();
     }
 
+    /**
+     * Verifies the pause and resume functionality of the service.
+     * This is an integration test of the service lifecycle.
+     * @throws Exception if thread operations fail.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)

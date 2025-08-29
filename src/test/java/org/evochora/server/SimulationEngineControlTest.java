@@ -18,6 +18,11 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+/**
+ * Contains integration tests for the lifecycle control of the {@link SimulationEngine}.
+ * These tests verify that the engine thread can be correctly started, paused, resumed, and shut down.
+ * These are integration tests as they involve managing a live, threaded service.
+ */
 class SimulationEngineControlTest {
 
     private SimulationEngine sim;
@@ -35,6 +40,12 @@ class SimulationEngineControlTest {
         }
     }
 
+    /**
+     * Helper method to wait until the simulation has reached a specific tick.
+     * @param tick The target tick number.
+     * @param timeoutMillis The maximum time to wait.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     private void waitForTick(long tick, long timeoutMillis) throws InterruptedException {
         long startTime = System.currentTimeMillis();
         while (sim.getCurrentTick() < tick && (System.currentTimeMillis() - startTime) < timeoutMillis) {
@@ -42,6 +53,11 @@ class SimulationEngineControlTest {
         }
     }
 
+    /**
+     * Helper method to wait until the simulation engine thread has shut down.
+     * @param timeoutMillis The maximum time to wait.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     private void waitForShutdown(long timeoutMillis) throws InterruptedException {
         long startTime = System.currentTimeMillis();
         while (sim.isRunning() && (System.currentTimeMillis() - startTime) < timeoutMillis) {
@@ -49,6 +65,11 @@ class SimulationEngineControlTest {
         }
     }
 
+    /**
+     * A simple test to verify that the simulation engine can be started and then gracefully shut down.
+     * This is an integration test of the service lifecycle.
+     * @throws Exception if the test fails.
+     */
     @Test
     @Tag("integration")
     void simple_start_shutdown_test() throws Exception {
@@ -70,6 +91,13 @@ class SimulationEngineControlTest {
         assertThat(sim.isRunning()).isFalse();
     }
 
+    /**
+     * A comprehensive test that verifies the full lifecycle of the simulation engine:
+     * start, run, pause, resume, and shutdown. It checks that ticks are produced
+     * only when the service is in a running state.
+     * This is an integration test of the service lifecycle.
+     * @throws Exception if the test fails.
+     */
     @Test
     @Tag("integration")
     void start_pause_resume_shutdown_cycle_advances_ticks() throws Exception {
@@ -117,6 +145,11 @@ class SimulationEngineControlTest {
         assertThat(sim.isRunning()).isFalse();
     }
 
+    /**
+     * A minimal test to verify the shutdown functionality after a short run.
+     * This is an integration test of the service lifecycle.
+     * @throws Exception if the test fails.
+     */
     @Test
     @Tag("integration")
     void minimal_shutdown_test() throws Exception {
@@ -138,6 +171,11 @@ class SimulationEngineControlTest {
         assertThat(sim.isRunning()).isFalse();
     }
 
+    /**
+     * Verifies that the engine can be shut down immediately after starting.
+     * This is an integration test of the service lifecycle robustness.
+     * @throws Exception if the test fails.
+     */
     @Test
     @Tag("integration")
     void immediate_shutdown_test() throws Exception {

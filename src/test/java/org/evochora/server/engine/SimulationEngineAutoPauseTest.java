@@ -9,8 +9,9 @@ import org.junit.jupiter.api.Tag;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests for the auto-pause functionality of SimulationEngine.
- * Note: These tests verify the configuration loading and basic functionality.
+ * Contains integration tests for the auto-pause functionality of the {@link SimulationEngine}.
+ * These tests verify that the auto-pause feature can be configured correctly and that
+ * the engine's initial state reflects this configuration.
  */
 class SimulationEngineAutoPauseTest {
 
@@ -29,6 +30,11 @@ class SimulationEngineAutoPauseTest {
         }
     }
 
+    /**
+     * Verifies that setting an array of auto-pause ticks correctly configures the engine
+     * without immediately putting it into a paused state.
+     * This is an integration test of the engine's configuration.
+     */
     @Test
     @Tag("integration")
     void testAutoPauseConfiguration() {
@@ -43,6 +49,11 @@ class SimulationEngineAutoPauseTest {
         assertThat(engine.isPaused()).isFalse();
     }
 
+    /**
+     * Verifies that the engine is not in an auto-paused state when no auto-pause ticks are configured.
+     * This is an integration test of the engine's default configuration.
+     * @throws Exception if the test fails.
+     */
     @Test
     @Tag("integration")
     void testAutoPauseDisabled() throws Exception {
@@ -57,6 +68,12 @@ class SimulationEngineAutoPauseTest {
         assertThat(engine.isPaused()).isFalse();
     }
 
+    /**
+     * Verifies that configuring the engine with an empty array of auto-pause ticks
+     * does not put it into an auto-paused state.
+     * This is an integration test of the engine's configuration handling.
+     * @throws Exception if the test fails.
+     */
     @Test
     @Tag("integration")
     void testAutoPauseWithEmptyArray() throws Exception {
@@ -72,6 +89,12 @@ class SimulationEngineAutoPauseTest {
         assertThat(engine.isPaused()).isFalse();
     }
 
+    /**
+     * Verifies that configuring the engine with a null array of auto-pause ticks
+     * does not put it into an auto-paused state.
+     * This is an integration test of the engine's robustness to null configuration.
+     * @throws Exception if the test fails.
+     */
     @Test
     @Tag("integration")
     void testAutoPauseWithNullConfiguration() throws Exception {

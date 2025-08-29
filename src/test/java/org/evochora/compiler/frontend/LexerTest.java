@@ -11,8 +11,20 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains unit tests for the {@link Lexer}.
+ * These tests verify that the lexer correctly converts source code strings into a stream of tokens,
+ * identifying different token types and handling features like comments.
+ * These are unit tests and do not require external resources.
+ */
 public class LexerTest {
 
+    /**
+     * Verifies that the lexer correctly tokenizes a source string containing various language elements,
+     * including directives, identifiers, numbers, labels, opcodes, registers, and comments.
+     * The test asserts that the resulting token stream has the correct types and values.
+     * This is a unit test for the lexer.
+     */
     @Test
     @Tag("unit")
     void testLexerTokenization() {
@@ -42,6 +54,11 @@ public class LexerTest {
         assertThat(tokens.get(9)).extracting(Token::type).isEqualTo(TokenType.END_OF_FILE);
     }
 
+    /**
+     * Specifically verifies that the lexer correctly identifies an instruction mnemonic like "SETI"
+     * as a token of type {@link TokenType#OPCODE}.
+     * This is a unit test for the lexer.
+     */
     @Test
     @Tag("unit")
     void testSETIAsOpcode() {

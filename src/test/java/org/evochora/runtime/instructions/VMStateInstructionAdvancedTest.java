@@ -13,6 +13,12 @@ import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains low-level unit tests for advanced state and environment-scanning instructions
+ * executed by the virtual machine. Each test verifies a specific instruction's logic,
+ * particularly those that return bitmasks representing the state of neighboring cells.
+ * These tests operate on an in-memory simulation and do not require external resources.
+ */
 public class VMStateInstructionAdvancedTest {
 
     private Environment environment;
@@ -42,7 +48,10 @@ public class VMStateInstructionAdvancedTest {
         }
     }
 
-    // RBIT tests
+    /**
+     * Tests that RBIR (Random Bit Register) selects a single, valid bit from the source mask.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testRbirSelectsSingleBitSubsetOfSource() {
@@ -58,7 +67,10 @@ public class VMStateInstructionAdvancedTest {
         assertThat((((1 << 0) | (1 << 2) | (1 << 3)) & val)).isEqualTo(val);
     }
 
-    // SPNP (Scan Passable Neighbors) tests
+    /**
+     * Tests that SPNR (Scan Passable Neighbors Register) correctly returns a zero mask when all neighbors are blocked.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testSpnrAllBlockedReturnsZero() {
@@ -83,6 +95,10 @@ public class VMStateInstructionAdvancedTest {
         assertThat(Molecule.fromInt(resultPacked).toScalarValue()).isEqualTo(0);
     }
 
+    /**
+     * Tests that SPNS (Scan Passable Neighbors Stack) correctly identifies empty neighbor cells.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testSpnsDetectsEmptyNeighbors() {
@@ -104,7 +120,10 @@ public class VMStateInstructionAdvancedTest {
         assertThat(mask & expected).isEqualTo(expected);
     }
 
-    // SNT* (Scan Neighbors by Type) tests
+    /**
+     * Tests that SNTR (Scan Neighbors by Type Register) correctly identifies neighbors of a specific type.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testSntrDetectsStructureNeighborsIntoDest() {
@@ -126,6 +145,10 @@ public class VMStateInstructionAdvancedTest {
         assertThat(mask & expected).isEqualTo(expected);
     }
 
+    /**
+     * Tests that SNTI (Scan Neighbors by Type Immediate) correctly identifies neighbors of a specific type.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testSntiDetectsEnergyNeighborImmediate() {
@@ -146,6 +169,10 @@ public class VMStateInstructionAdvancedTest {
         assertThat(mask & expected).isEqualTo(expected);
     }
 
+    /**
+     * Tests that SNTS (Scan Neighbors by Type Stack) correctly identifies neighbors of a specific type.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testSntsStackVariantConsumesTypeAndPushesMask() {
@@ -164,6 +191,10 @@ public class VMStateInstructionAdvancedTest {
         assertThat(mask & expected).isEqualTo(expected);
     }
 
+    /**
+     * Tests that RBII (Random Bit Immediate) with a zero mask correctly produces a zero result.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testRbiiZeroMaskProducesZero() {
@@ -175,6 +206,10 @@ public class VMStateInstructionAdvancedTest {
         assertThat(result.toScalarValue()).isEqualTo(0);
     }
 
+    /**
+     * Tests the RBIS (Random Bit Stack) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testRbisStackVariant() {
@@ -194,5 +229,3 @@ public class VMStateInstructionAdvancedTest {
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
     }
 }
-
-

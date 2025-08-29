@@ -13,6 +13,12 @@ import java.util.Deque;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains unit tests for the core logic of the {@link Organism} class.
+ * These tests verify fundamental aspects of an organism's state, lifecycle,
+ * and interaction with its immediate environment within a simulation.
+ * These are unit tests and do not require external resources.
+ */
 public class OrganismTest {
 
     private Environment environment;
@@ -29,6 +35,11 @@ public class OrganismTest {
         sim = new Simulation(environment);
     }
 
+    /**
+     * Verifies that an organism attempting to execute a non-code cell (e.g., DATA)
+     * correctly enters a failed state when strict typing is active.
+     * This is a unit test for runtime type safety.
+     */
     @Test
     @Tag("unit")
     void testPlanTickStrictTypingOnNonCodeCell() {
@@ -45,6 +56,11 @@ public class OrganismTest {
         assertThat(org.getFailureReason()).contains("Illegal cell type");
     }
 
+    /**
+     * Verifies that an organism attempting to execute an unknown opcode
+     * correctly enters a failed state.
+     * This is a unit test for runtime opcode validation.
+     */
     @Test
     @Tag("unit")
     void testPlanTickUnknownOpcodeProducesNop() {
@@ -61,6 +77,11 @@ public class OrganismTest {
         assertThat(org.getFailureReason()).contains("Unknown opcode");
     }
 
+    /**
+     * Verifies the basic energy consumption logic, ensuring that an organism
+     * with minimal energy dies after executing instructions.
+     * This is a unit test for the organism's lifecycle.
+     */
     @Test
     @Tag("unit")
     void testEnergyDecreasesAndDeath() {
@@ -79,6 +100,11 @@ public class OrganismTest {
         assertThat(org.getFailureReason()).contains("Ran out of energy");
     }
 
+    /**
+     * Verifies that the organism's Instruction Pointer (IP) correctly advances
+     * along its Direction Vector (DV) after each simulation tick.
+     * This is a unit test for organism movement.
+     */
     @Test
     @Tag("unit")
     void testIpAdvancesAlongDv() {
@@ -98,6 +124,11 @@ public class OrganismTest {
         assertThat(org.getIp()).isEqualTo(new int[]{2, 0});
     }
 
+    /**
+     * Verifies that the helper method for calculating a target coordinate correctly
+     * uses the Data Pointer (DP) as its base.
+     * This is a unit test for organism coordinate calculations.
+     */
     @Test
     @Tag("unit")
     void testGetTargetCoordinateFromDp() {
@@ -109,6 +140,10 @@ public class OrganismTest {
         assertThat(target).isEqualTo(new int[]{5, 6});
     }
 
+    /**
+     * Verifies the LIFO (Last-In, First-Out) behavior of the organism's data stack.
+     * This is a unit test for the organism's internal data structures.
+     */
     @Test
     @Tag("unit")
     void testDataStackPushPopOrder() {
@@ -125,6 +160,11 @@ public class OrganismTest {
         assertThat(ds.isEmpty()).isTrue();
     }
 
+    /**
+     * Verifies the basic set and get functionality for all main register types:
+     * Data Registers (DR), Pointer Registers (PR), and Formal Parameter Registers (FPR).
+     * This is a unit test for the organism's register state management.
+     */
     @Test
     @Tag("unit")
     void testRegisterAccessDrPrFpr() {

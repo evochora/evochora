@@ -8,8 +8,19 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains unit tests for the {@link GeyserCreator} world generation strategy.
+ * These tests verify the logic of geyser placement and energy eruption.
+ * They operate on an in-memory environment and do not require external resources.
+ */
 public class GeyserStrategyTest {
 
+    /**
+     * Verifies that the GeyserCreator correctly initializes a geyser source and subsequently
+     * places energy in the environment when it erupts. The test checks a 3D environment
+     * to ensure the logic is dimension-agnostic.
+     * This is a unit test for the geyser world generation logic.
+     */
     @Test
     @Tag("unit")
     void initializesGeysersAndPlacesEnergyOnAxisAdjacentCells_inND() {
@@ -40,5 +51,3 @@ public class GeyserStrategyTest {
         assertThat(found).isTrue();
     }
 }
-
-

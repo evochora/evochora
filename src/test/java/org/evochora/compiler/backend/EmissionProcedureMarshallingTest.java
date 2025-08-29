@@ -14,10 +14,24 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests the emission rules for procedure marshalling, specifically the handling of
+ * `core:proc_enter` and `core:proc_exit` directives. These tests ensure that the
+ * compiler correctly generates procedure prologues and epilogues.
+ * This is a unit test and does not require any external resources.
+ */
 public class EmissionProcedureMarshallingTest {
 
     private static SourceInfo src(String file, int line) { return new SourceInfo(file, line, ""); }
 
+	/**
+	 * Verifies that the emission process generates the correct prologue and epilogue
+	 * for a procedure based on its arity. For a procedure with one argument,
+	 * it expects a POP instruction after the `proc_enter` directive to retrieve the
+	 * argument, and a PUSH instruction before the `proc_exit` directive to
+	 * place the return value on the stack.
+	 * This test is a unit test and operates solely on in-memory IR data structures.
+	 */
 	@Test
 	@Tag("unit")
 	void insertsPrologAndEpilogBasedOnArity() {
@@ -52,5 +66,3 @@ public class EmissionProcedureMarshallingTest {
 		assertThat(((IrDirective) rewritten.get(4)).name()).isEqualTo("proc_exit");
 	}
 }
-
-

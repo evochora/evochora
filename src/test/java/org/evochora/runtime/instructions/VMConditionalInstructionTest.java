@@ -13,6 +13,12 @@ import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains low-level unit tests for the execution of conditional instructions by the virtual machine.
+ * Each test verifies that an instruction correctly decides whether to execute or skip the following
+ * instruction based on the condition being tested.
+ * These tests operate on an in-memory simulation and do not require external resources.
+ */
 public class VMConditionalInstructionTest {
 
     private Environment environment;
@@ -56,6 +62,12 @@ public class VMConditionalInstructionTest {
         }
     }
 
+    /**
+     * Helper method to place a standard "marker" instruction (ADDI %DR0, 1)
+     * after the instruction being tested. This allows tests to easily check
+     * if the marker instruction was executed or skipped.
+     * @param instructionLength The length of the preceding instruction, to calculate placement.
+     */
     private void placeFollowingAddi(int instructionLength) {
         int[] nextIp = org.getIp();
         for (int i = 0; i < instructionLength; i++) {
@@ -74,7 +86,10 @@ public class VMConditionalInstructionTest {
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
     }
 
-    // IFR: True then False
+    /**
+     * Tests that IFR (If Equal Register) executes the next instruction when the condition is true.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testIfr_TrueCondition_ExecutesNext() {
@@ -90,6 +105,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
+    /**
+     * Tests that IFR (If Equal Register) skips the next instruction when the condition is false.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testIfr_FalseCondition_SkipsNext() {
@@ -105,7 +124,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
-    // IFI: True then False
+    /**
+     * Tests that IFI (If Equal Immediate) executes the next instruction when the condition is true.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testIfi_TrueCondition_ExecutesNext() {
@@ -120,6 +142,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
+    /**
+     * Tests that IFI (If Equal Immediate) skips the next instruction when the condition is false.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testIfi_FalseCondition_SkipsNext() {
@@ -134,7 +160,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
-    // IFS: True then False
+    /**
+     * Tests that IFS (If Equal Stack) executes the next instruction when the condition is true.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testIfs_TrueCondition_ExecutesNext() {
@@ -150,6 +179,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
+    /**
+     * Tests that IFS (If Equal Stack) skips the next instruction when the condition is false.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testIfs_FalseCondition_SkipsNext() {
@@ -165,7 +198,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
-    // LTR: True then False
+    /**
+     * Tests that LTR (Less Than Register) executes the next instruction when the condition is true.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testLtr_TrueCondition_ExecutesNext() {
@@ -181,6 +217,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
+    /**
+     * Tests that LTR (Less Than Register) skips the next instruction when the condition is false.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testLtr_FalseCondition_SkipsNext() {
@@ -196,7 +236,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
-    // LTI: True then False
+    /**
+     * Tests that LTI (Less Than Immediate) executes the next instruction when the condition is true.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testLti_TrueCondition_ExecutesNext() {
@@ -211,6 +254,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
+    /**
+     * Tests that LTI (Less Than Immediate) skips the next instruction when the condition is false.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testLti_FalseCondition_SkipsNext() {
@@ -225,7 +272,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
-    // LTS: True then False
+    /**
+     * Tests that LTS (Less Than Stack) executes the next instruction when the condition is true.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testLts_TrueCondition_ExecutesNext() {
@@ -242,6 +292,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
+    /**
+     * Tests that LTS (Less Than Stack) skips the next instruction when the condition is false.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testLts_FalseCondition_SkipsNext() {
@@ -258,7 +312,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
-    // GTR: True then False
+    /**
+     * Tests that GTR (Greater Than Register) executes the next instruction when the condition is true.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testGtr_TrueCondition_ExecutesNext() {
@@ -274,6 +331,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
+    /**
+     * Tests that GTR (Greater Than Register) skips the next instruction when the condition is false.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testGtr_FalseCondition_SkipsNext() {
@@ -289,7 +350,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
-    // GTI: True then False
+    /**
+     * Tests that GTI (Greater Than Immediate) executes the next instruction when the condition is true.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testGti_TrueCondition_ExecutesNext() {
@@ -304,6 +368,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
+    /**
+     * Tests that GTI (Greater Than Immediate) skips the next instruction when the condition is false.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testGti_FalseCondition_SkipsNext() {
@@ -318,7 +386,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
-    // GTS: True then False
+    /**
+     * Tests that GTS (Greater Than Stack) executes the next instruction when the condition is true.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testGts_TrueCondition_ExecutesNext() {
@@ -335,6 +406,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
+    /**
+     * Tests that GTS (Greater Than Stack) skips the next instruction when the condition is false.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testGts_FalseCondition_SkipsNext() {
@@ -351,7 +426,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
-    // IFTR: True then False
+    /**
+     * Tests that IFTR (If Type Equal Register) executes the next instruction when the condition is true.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testIftr_TrueCondition_ExecutesNext() {
@@ -367,6 +445,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
+    /**
+     * Tests that IFTR (If Type Equal Register) skips the next instruction when the condition is false.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testIftr_FalseCondition_SkipsNext() {
@@ -382,7 +464,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
-    // IFTI: True then False
+    /**
+     * Tests that IFTI (If Type Equal Immediate) executes the next instruction when the condition is true.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testIfti_TrueCondition_ExecutesNext() {
@@ -398,6 +483,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
+    /**
+     * Tests that IFTI (If Type Equal Immediate) skips the next instruction when the condition is false.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testIfti_FalseCondition_SkipsNext() {
@@ -413,7 +502,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
-    // IFTS: True then False
+    /**
+     * Tests that IFTS (If Type Equal Stack) executes the next instruction when the condition is true.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testIfts_TrueCondition_ExecutesNext() {
@@ -429,6 +521,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
+    /**
+     * Tests that IFMR (If Memory owned Register) skips the next instruction when the target is not owned.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testIfmr_NotOwned_SkipsNext() {
@@ -441,6 +537,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
+    /**
+     * Tests that IFMR (If Memory owned Register) executes the next instruction when the target is owned.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testIfmr_Owned_ExecutesNext() {
@@ -455,6 +555,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
+    /**
+     * Tests that IFMI (If Memory owned Immediate) skips the next instruction when the target is not owned.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testIfmi_NotOwned_SkipsNext() {
@@ -466,6 +570,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
+    /**
+     * Tests that IFMS (If Memory owned Stack) skips the next instruction when the target is not owned.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testIfms_NotOwned_SkipsNext() {
@@ -478,6 +586,10 @@ public class VMConditionalInstructionTest {
         assertNoInstructionFailure();
     }
 
+    /**
+     * Tests that IFMR fails if the provided register does not contain a valid unit vector.
+     * This is a unit test for the VM's error handling.
+     */
     @Test
     @Tag("unit")
     void testIfmr_InvalidVector_Fails() {
@@ -488,6 +600,10 @@ public class VMConditionalInstructionTest {
         assertThat(org.getFailureReason()).contains("not a unit vector");
     }
 
+    /**
+     * Tests that IFTS (If Type Equal Stack) skips the next instruction when the condition is false.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testIfts_FalseCondition_SkipsNext() {

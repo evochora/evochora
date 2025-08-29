@@ -18,10 +18,24 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+/**
+ * Contains integration tests for the {@link PersistenceService}.
+ * These tests verify the core functionality of the service, ensuring it can
+ * consume tick data from a queue and correctly persist it to a database.
+ */
 class PersistenceServiceTest {
 
+    /**
+     * Verifies that the PersistenceService correctly consumes a RawTickState from the queue,
+     * serializes it to JSON, and writes it as a new row in the target database.
+     * <p>
+     * This is an integration test as it involves a live, threaded service and a
+     * real (in-memory) database connection.
+     *
+     * @throws Exception if thread or database operations fail.
+     */
     @Test
-    @Tag("unit")
+    @Tag("integration")
     void writesRawTickStateRows() throws Exception {
         ITickMessageQueue q = new InMemoryTickQueue();
         // Use the available constructor with worldShape and batchSize

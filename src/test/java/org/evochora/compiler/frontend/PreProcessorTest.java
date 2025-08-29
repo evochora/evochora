@@ -16,13 +16,29 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests for the {@link PreProcessor}, focusing on file inclusion capabilities.
+ * These tests are tagged as "integration" because they require filesystem access
+ * to handle the `.INCLUDE` directive.
+ */
 public class PreProcessorTest {
 
     @TempDir
     Path tempDir;
 
+    /**
+     * Verifies that the preprocessor correctly expands an `.INCLUDE` directive.
+     * The test creates a temporary source file and a main file that includes it.
+     * It then asserts that the preprocessor replaces the include directive with the
+     * tokens from the included file, properly wrapped in `.PUSH_CTX` and `.POP_CTX`
+     * directives to manage context.
+     * <p>
+     * This is an integration test because it relies on the filesystem.
+     *
+     * @throws IOException if there is an error writing the temporary files.
+     */
     @Test
-    @Tag("unit")
+    @Tag("integration")
     void testIncludeDirectiveExpandsTokens() throws IOException {
         // Arrange
         Path libFile = tempDir.resolve("test.s");

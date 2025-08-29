@@ -13,6 +13,11 @@ import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains low-level unit tests for the execution of arithmetic instructions by the virtual machine.
+ * Each test sets up a specific state, executes a single instruction, and verifies the precise outcome.
+ * These tests operate on an in-memory simulation and do not require external resources.
+ */
 public class VMArithmeticInstructionTest {
 
     private Environment environment;
@@ -57,6 +62,10 @@ public class VMArithmeticInstructionTest {
     }
 
     // --- ADD ---
+    /**
+     * Tests the ADDI (Add Immediate) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testAddi() {
@@ -66,6 +75,10 @@ public class VMArithmeticInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 15).toInt());
     }
 
+    /**
+     * Tests the ADDR (Add Register) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testAddr() {
@@ -76,6 +89,10 @@ public class VMArithmeticInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
+    /**
+     * Tests the ADDS (Add Stack) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testAdds() {
@@ -87,6 +104,10 @@ public class VMArithmeticInstructionTest {
     }
 
     // --- SUB ---
+    /**
+     * Tests the SUBI (Subtract Immediate) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testSubi() {
@@ -96,6 +117,10 @@ public class VMArithmeticInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
+    /**
+     * Tests the SUBR (Subtract Register) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testSubr() {
@@ -106,6 +131,10 @@ public class VMArithmeticInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 4).toInt());
     }
 
+    /**
+     * Tests the SUBS (Subtract Stack) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testSubs() {
@@ -117,6 +146,10 @@ public class VMArithmeticInstructionTest {
     }
 
     // --- MUL ---
+    /**
+     * Tests the MULI (Multiply Immediate) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testMuli() {
@@ -126,6 +159,10 @@ public class VMArithmeticInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
     }
 
+    /**
+     * Tests the MULR (Multiply Register) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testMulr() {
@@ -136,6 +173,10 @@ public class VMArithmeticInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
     }
 
+    /**
+     * Tests the MULS (Multiply Stack) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testMuls() {
@@ -147,6 +188,10 @@ public class VMArithmeticInstructionTest {
     }
 
     // --- DIV ---
+    /**
+     * Tests the DIVI (Divide Immediate) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testDivi() {
@@ -156,6 +201,10 @@ public class VMArithmeticInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
+    /**
+     * Tests the DIVR (Divide Register) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testDivr() {
@@ -166,6 +215,10 @@ public class VMArithmeticInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
+    /**
+     * Tests the DIVS (Divide Stack) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testDivs() {
@@ -177,6 +230,10 @@ public class VMArithmeticInstructionTest {
     }
 
     // --- MOD ---
+    /**
+     * Tests the MODI (Modulo Immediate) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testModi() {
@@ -186,6 +243,10 @@ public class VMArithmeticInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
+    /**
+     * Tests the MODR (Modulo Register) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testModr() {
@@ -196,6 +257,10 @@ public class VMArithmeticInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
+    /**
+     * Tests the MODS (Modulo Stack) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testMods() {
@@ -207,6 +272,10 @@ public class VMArithmeticInstructionTest {
     }
 
     // --- Vector arithmetic (register variants only) ---
+    /**
+     * Tests the ADDR instruction with vector operands.
+     * This is a unit test for the VM's vector arithmetic logic.
+     */
     @Test
     @Tag("unit")
     void testAddrVector() {
@@ -221,6 +290,10 @@ public class VMArithmeticInstructionTest {
         assertThat((int[]) r0).containsExactly(4, 6);
     }
 
+    /**
+     * Tests the vector dot product (DOTR, DOTS) and cross product (CRSR, CRSS) instructions.
+     * This is a unit test for the VM's vector arithmetic logic.
+     */
     @Test
     @Tag("unit")
     void testDotAndCrossProducts() {
@@ -256,6 +329,10 @@ public class VMArithmeticInstructionTest {
         assertThat(crsS).isEqualTo(2*(-1) - 3*4);
     }
 
+    /**
+     * Tests the SUBR instruction with vector operands.
+     * This is a unit test for the VM's vector arithmetic logic.
+     */
     @Test
     @Tag("unit")
     void testSubrVector() {

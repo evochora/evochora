@@ -29,6 +29,13 @@ import java.util.LinkedList;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Contains end-to-end integration tests for the entire server pipeline.
+ * These tests verify the lifecycle and data flow between the SimulationEngine,
+ * PersistenceService, DebugIndexer, and DebugServer.
+ * These tests use an in-memory queue and in-memory SQLite databases for speed
+ * and isolation, but test the full interaction between the services.
+ */
 class EndToEndPipelineTest {
 
     private SimulationEngine simulationEngine;
@@ -69,6 +76,11 @@ class EndToEndPipelineTest {
         if (debugServer != null) debugServer.stop();
     }
 
+    /**
+     * Creates a mock {@link RawTickState} for testing the pipeline.
+     * @param tickNumber The tick number for the mock state.
+     * @return A new {@link RawTickState} instance.
+     */
     private RawTickState createTestTickState(long tickNumber) {
         List<RawOrganismState> organisms = new ArrayList<>();
         List<RawCellState> cells = new ArrayList<>();
@@ -112,6 +124,11 @@ class EndToEndPipelineTest {
         return new RawTickState(tickNumber, organisms, cells);
     }
 
+    /**
+     * Verifies that all services in the pipeline can be started successfully.
+     * This is an integration test of the service lifecycle.
+     * @throws Exception if service startup fails.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
@@ -132,6 +149,11 @@ class EndToEndPipelineTest {
         assertTrue(debugServer.isRunning(), "DebugServer should be running");
     }
 
+    /**
+     * Verifies that all services can be paused and resumed correctly.
+     * This is an integration test of the service lifecycle.
+     * @throws Exception if service control fails.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 25, unit = TimeUnit.SECONDS)
@@ -202,6 +224,11 @@ class EndToEndPipelineTest {
         assertTrue(debugServer.isRunning());
     }
 
+    /**
+     * Verifies that data flows correctly through the pipeline from the queue to the services.
+     * This is an integration test of the core data path.
+     * @throws Exception if service interaction fails.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 25, unit = TimeUnit.SECONDS)
@@ -239,6 +266,11 @@ class EndToEndPipelineTest {
         assertTrue(queue.size() < 50, "Queue should have been processed");
     }
 
+    /**
+     * A basic performance test to ensure the pipeline can handle a load of data without crashing.
+     * This is an integration test of the pipeline's stability.
+     * @throws Exception if service interaction fails.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 25, unit = TimeUnit.SECONDS)
@@ -273,6 +305,11 @@ class EndToEndPipelineTest {
         assertTrue(debugServer.isRunning(), "DebugServer should be running");
     }
 
+    /**
+     * Verifies the interaction between services, specifically pausing and resuming.
+     * This is an integration test of the service control logic.
+     * @throws Exception if service interaction fails.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 25, unit = TimeUnit.SECONDS)
@@ -321,6 +358,11 @@ class EndToEndPipelineTest {
         assertTrue(simulationEngine.isRunning());
     }
 
+    /**
+     * Verifies that all services can be shut down gracefully.
+     * This is an integration test of the service lifecycle.
+     * @throws Exception if service shutdown fails.
+     */
     @Test
     @Tag("integration")
     @Timeout(value = 25, unit = TimeUnit.SECONDS)

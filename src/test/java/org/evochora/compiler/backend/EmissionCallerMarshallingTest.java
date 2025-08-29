@@ -14,10 +14,22 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests the emission rules for caller marshalling, specifically the `core:call_with` directive.
+ * These tests ensure that the compiler correctly generates PUSH and POP instructions around a CALL instruction
+ * to manage the stack for function calls.
+ * This is a unit test and does not require any external resources.
+ */
 public class EmissionCallerMarshallingTest {
 
 	private static SourceInfo src(String f, int l) { return new SourceInfo(f, l, ""); }
 
+	/**
+	 * Verifies that for a `core:call_with` directive, the emission process correctly
+	 * inserts PUSH instructions for each actual parameter before the CALL instruction,
+	* and corresponding POP instructions in reverse order after the CALL.
+	 * This test is a unit test and relies only on in-memory data structures.
+	 */
 	@Test
 	@Tag("unit")
 	void insertsCallerPushPopAroundCall() {
@@ -47,6 +59,3 @@ public class EmissionCallerMarshallingTest {
         assertThat(((IrReg) ((IrInstruction) out.get(4)).operands().get(0)).name()).isEqualTo("%DR1");
     }
 }
-
-
-

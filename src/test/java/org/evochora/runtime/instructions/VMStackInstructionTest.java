@@ -13,6 +13,11 @@ import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains low-level unit tests for the execution of stack manipulation instructions by the virtual machine.
+ * Each test sets up a specific stack state, executes a single instruction, and verifies the resulting stack order.
+ * These tests operate on an in-memory simulation and do not require external resources.
+ */
 public class VMStackInstructionTest {
 
     private Environment environment;
@@ -38,6 +43,10 @@ public class VMStackInstructionTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
     }
 
+    /**
+     * Tests the DUP instruction, which duplicates the top element of the stack.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testDup() {
@@ -50,6 +59,10 @@ public class VMStackInstructionTest {
         assertThat(org.getDataStack().isEmpty()).isTrue();
     }
 
+    /**
+     * Tests the SWAP instruction, which swaps the top two elements of the stack.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testSwap() {
@@ -64,6 +77,10 @@ public class VMStackInstructionTest {
         assertThat(org.getDataStack().isEmpty()).isTrue();
     }
 
+    /**
+     * Tests the DROP instruction, which removes the top element from the stack.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testDrop() {
@@ -78,6 +95,10 @@ public class VMStackInstructionTest {
         assertThat(org.getDataStack().isEmpty()).isTrue();
     }
 
+    /**
+     * Tests the ROT instruction, which rotates the top three elements of the stack.
+     * This is a unit test for the VM's instruction logic.
+     */
     @Test
     @Tag("unit")
     void testRot() {

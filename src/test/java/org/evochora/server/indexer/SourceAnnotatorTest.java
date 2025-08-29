@@ -16,6 +16,13 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Contains unit tests for the {@link SourceAnnotator}.
+ * These tests verify that the annotator can correctly generate inline "spans"
+ * (additional debug information) for a given line of source code, based on the
+ * program artifact and the current organism state.
+ * This is a unit test and does not require external resources.
+ */
 class SourceAnnotatorTest {
 
     @BeforeAll
@@ -23,6 +30,14 @@ class SourceAnnotatorTest {
         Instruction.init();
     }
 
+    /**
+     * Verifies that the SourceAnnotator correctly creates annotation spans for both
+     * register aliases and jump labels.
+     * It checks that a register alias is annotated with its underlying register and current value,
+     * and that a jump label is annotated with its resolved memory address.
+     * This is a unit test for the source annotation logic.
+     * @throws Exception if compilation fails.
+     */
     @Test
     @Tag("unit")
     void annotator_createsCorrectSpans_forAliasesAndLabels() throws Exception {

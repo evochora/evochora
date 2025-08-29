@@ -17,7 +17,16 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests the parsing of layout-related directives like `.ORG`, `.DIR`, and `.PLACE`.
+ * These tests ensure that the parser correctly creates the corresponding AST nodes.
+ * These are unit tests and do not require any external resources.
+ */
 public class LayoutDirectiveTest {
+    /**
+     * Verifies that the parser correctly parses an `.ORG` directive into an {@link OrgNode}.
+     * This is a unit test for the parser.
+     */
     @Test
     @Tag("unit")
     void testOrgDirective() {
@@ -33,6 +42,10 @@ public class LayoutDirectiveTest {
         assertThat(ast).hasSize(1).first().isInstanceOf(OrgNode.class);
     }
 
+    /**
+     * Verifies that the parser correctly parses a `.DIR` directive into a {@link DirNode}.
+     * This is a unit test for the parser.
+     */
     @Test
     @Tag("unit")
     void testDirDirective() {
@@ -48,6 +61,11 @@ public class LayoutDirectiveTest {
         assertThat(ast).hasSize(1).first().isInstanceOf(DirNode.class);
     }
 
+    /**
+     * Verifies that the parser correctly parses a `.PLACE` directive into a {@link PlaceNode}.
+     * It also checks that the literal and position components of the node are of the correct type.
+     * This is a unit test for the parser.
+     */
     @Test
     @Tag("unit")
     void testPlaceDirective() {

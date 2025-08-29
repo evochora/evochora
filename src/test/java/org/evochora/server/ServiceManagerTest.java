@@ -16,6 +16,12 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Contains integration tests for the {@link ServiceManager}.
+ * These tests verify that the manager can correctly orchestrate the lifecycle
+ * (start, pause, resume, stop) of the entire suite of server services.
+ * These are integration tests as they manage the interaction of multiple threaded services.
+ */
 class ServiceManagerTest {
 
     private ServiceManager serviceManager;
@@ -59,13 +65,23 @@ class ServiceManagerTest {
         }
     }
 
+    /**
+     * Verifies that the ServiceManager can be created without errors.
+     * This is an integration test.
+     */
     @Test
-    @Tag("unit")
+    @Tag("integration")
     void testServiceManagerCreation() {
         assertNotNull(serviceManager);
     }
 
+    /**
+     * Verifies that the ServiceManager can start all registered services.
+     * This is an integration test of the service lifecycle.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     @Test
+    @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testStartAllServices() throws InterruptedException {
         // Start all services
@@ -83,7 +99,13 @@ class ServiceManagerTest {
         assertTrue(status.contains("DebugServer: running"));
     }
 
+    /**
+     * Verifies that the ServiceManager can pause all registered services.
+     * This is an integration test of the service lifecycle.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     @Test
+    @Tag("integration")
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void testPauseAllServices() throws InterruptedException {
         // Start all services
@@ -104,7 +126,13 @@ class ServiceManagerTest {
         assertTrue(status.contains("DebugServer: stopped"));
     }
 
+    /**
+     * Verifies that the ServiceManager can resume all paused services.
+     * This is an integration test of the service lifecycle.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     @Test
+    @Tag("integration")
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void testResumeAllServices() throws InterruptedException {
         // Start all services
@@ -128,7 +156,13 @@ class ServiceManagerTest {
         assertTrue(status.contains("DebugServer: running"));
     }
 
+    /**
+     * Verifies that the ServiceManager can start a single, specific service by name.
+     * This is an integration test of the service lifecycle.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     @Test
+    @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testStartSpecificService() throws InterruptedException {
         // Start only simulation service
@@ -142,7 +176,13 @@ class ServiceManagerTest {
         assertTrue(status.contains("DebugServer: NOT_STARTED"));
     }
 
+    /**
+     * Verifies that the ServiceManager can pause a single, specific service by name.
+     * This is an integration test of the service lifecycle.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     @Test
+    @Tag("integration")
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void testPauseSpecificService() throws InterruptedException {
         // Start all services
@@ -160,7 +200,13 @@ class ServiceManagerTest {
         assertTrue(status.contains("DebugServer: running"));
     }
 
+    /**
+     * Verifies that the ServiceManager can resume a single, specific service by name.
+     * This is an integration test of the service lifecycle.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     @Test
+    @Tag("integration")
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void testResumeSpecificService() throws InterruptedException {
         // Start all services
@@ -182,7 +228,13 @@ class ServiceManagerTest {
         assertTrue(status.contains("DebugServer: running"));
     }
 
+    /**
+     * Verifies that the ServiceManager can gracefully shut down all services.
+     * This is an integration test of the service lifecycle.
+     * @throws InterruptedException if the thread is interrupted while waiting.
+     */
     @Test
+    @Tag("integration")
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void testShutdownAllServices() throws InterruptedException {
         // Start all services
@@ -202,8 +254,12 @@ class ServiceManagerTest {
         assertTrue(stoppedStatus.contains("NOT_STARTED") || stoppedStatus.contains("stopped"));
     }
 
+    /**
+     * Verifies that the ServiceManager can be initialized with a custom configuration.
+     * This is an integration test.
+     */
     @Test
-    @Tag("unit")
+    @Tag("integration")
     void testServiceManagerWithCustomConfig() {
         // Test with custom batch sizes
         config.pipeline.persistence.batchSize = 500;
@@ -215,8 +271,12 @@ class ServiceManagerTest {
         customManager.stopAll();
     }
 
+    /**
+     * Verifies that the ServiceManager handles requests for unknown service names gracefully.
+     * This is an integration test for error handling.
+     */
     @Test
-    @Tag("unit")
+    @Tag("integration")
     void testUnknownServiceName() {
         // Test handling of unknown service names
         serviceManager.startService("unknown");

@@ -15,12 +15,27 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests for the {@link LayoutEngine}.
+ * These tests verify that the layout engine correctly determines the physical coordinates
+ * of instructions and other world objects based on the IR program.
+ * These are unit tests and do not require external resources.
+ */
 public class LayoutEngineTest {
 
 	private static SourceInfo src(String file, int line) {
 		return new SourceInfo(file, line, "");
 	}
 
+	/**
+	 * Tests that the layout engine correctly processes `org`, `dir`, and `place` directives
+	 * along with standard instructions. It verifies that the resulting coordinates for instructions
+	 * and placed objects are correct, and that labels point to the correct addresses.
+	 * The test also checks that the engine correctly handles context changes, such as those
+	 * introduced by include files.
+	 * This is a unit test and relies only on in-memory data structures.
+	 * @throws Exception if the layout process fails
+	 */
 	@Test
 	@Tag("unit")
 	void laysOutOrgDirPlaceAndInstructions() throws Exception {
@@ -69,5 +84,3 @@ public class LayoutEngineTest {
 		assertThat(foundPlace).isTrue();
 	}
 }
-
-
