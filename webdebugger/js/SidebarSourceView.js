@@ -363,9 +363,9 @@ class SidebarSourceView {
         // CRITICAL: Look for the current execution line (either current-line or highlight class)
         const highlighted = container ? container.querySelector('.source-line.current-line, .source-line.highlight') : null;
         if (container && highlighted) {
-            try { 
+            try {
                 // Scroll the current line to the center of the viewport
-                highlighted.scrollIntoView({ block: 'center', behavior: 'smooth' }); 
+                highlighted.scrollIntoView({ block: 'center', behavior: 'smooth' });
             } catch (e) {
                 // Fallback: manueller Scroll
                 const top = highlighted.offsetTop - (container.clientHeight / 2) + (highlighted.clientHeight / 2);

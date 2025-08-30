@@ -228,7 +228,13 @@ main.container {
     background: #4a5f8a;
 }
 
-.details { flex-grow: 1; overflow-y: auto; }
+.details { 
+    flex: 1; 
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto; 
+}
 
 #details-content {
     background-color: #0a0a14;
@@ -238,6 +244,18 @@ main.container {
     word-break: break-all;
     font-size: 0.9em;
     height: 95%;
+}
+
+/* Sidebar sections layout */
+.details [data-section] {
+    flex-shrink: 0;
+}
+
+.details [data-section="source"] {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 .code-view {
@@ -253,7 +271,8 @@ main.container {
 
 /* --- NEUE STILE FÜR SOURCE CODE VIEW --- */
 .source-code-view {
-    max-height: 400px;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: auto;
     white-space: normal;
@@ -460,6 +479,8 @@ main.container {
     flex-direction: column;
     gap: 8px;
     margin-top: 12px; /* Mehr Abstand zur Next Instruction Box */
+    flex: 1;
+    min-height: 0;
 }
 
 .file-selector {
@@ -488,7 +509,8 @@ main.container {
     border: 1px solid #333;
     border-radius: 4px;
     background: #000; /* Ursprüngliche schwarze Hintergrundfarbe */
-    max-height: 400px;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: auto; /* Horizontaler Scrollbalken immer sichtbar, wenn nötig */
 }
