@@ -14,7 +14,8 @@ class SidebarView {
         this.basic.update(details.basicInfo, navigationDirection);
         this.next.update(details.nextInstruction, navigationDirection);
         this.state.update(details.internalState, navigationDirection);
-        this.source.update(details.sourceView);
+        // Handle missing sourceView field gracefully - pass null if undefined
+        this.source.update(details.sourceView || null);
     }
 }
 

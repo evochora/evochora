@@ -263,8 +263,11 @@ main.container {
     white-space: pre-wrap;
     align-items: baseline;
 }
-.source-line.highlight {
+.source-line.highlight,
+.source-line.current-line {
     background-color: #3c5078;
+    box-shadow: inset 3px 0 0 #4a9eff;
+    /* Use box-shadow instead of border-left to prevent content shifting */
 }
 .source-line .line-number {
     flex-shrink: 0;
@@ -528,11 +531,15 @@ main.container {
     color: #e0e0e0; /* Ursprüngliche helle Textfarbe */
 }
 
-.current-line {
+.current-line,
+.source-line.current-line {
     background: #3c5078; /* Ursprüngliche blaue Hintergrundfarbe */
+    box-shadow: inset 3px 0 0 #4a9eff;
+    /* Use box-shadow instead of border-left to prevent content shifting */
 }
 
-.current-line .line-number {
+.current-line .line-number,
+.source-line.current-line .line-number {
     background: transparent; /* Auch bei aktueller Zeile kein Hintergrund */
     color: #888; /* Normale Zeilennummer-Farbe */
 }
@@ -542,6 +549,58 @@ main.container {
     text-align: center;
     color: #888; /* Ursprüngliche helle Textfarbe */
     font-style: italic;
+}
+
+/* Enhanced styling for the no source message */
+.no-source-message {
+    padding: 24px;
+    text-align: center;
+    background: #1a1a2a;
+    border: 1px solid #333;
+    border-radius: 6px;
+    margin: 16px 0;
+}
+
+.no-source-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.7;
+}
+
+.no-source-message h3 {
+    color: #e0e0e0;
+    margin: 0 0 16px 0;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.no-source-message p {
+    color: #b0b0b0;
+    margin: 0 0 12px 0;
+    line-height: 1.5;
+    font-size: 14px;
+}
+
+.no-source-message ul {
+    text-align: left;
+    display: inline-block;
+    margin: 12px 0;
+    padding-left: 20px;
+}
+
+.no-source-message li {
+    color: #b0b0b0;
+    margin: 8px 0;
+    line-height: 1.4;
+}
+
+.no-source-message code {
+    background: #2a2a3a;
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: #ffd700;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
 }
 
 

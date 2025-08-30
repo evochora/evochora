@@ -1,6 +1,7 @@
 package org.evochora.server.contracts.debug;
 
 import org.evochora.server.contracts.IQueueMessage;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 import java.util.Map;
 
@@ -26,7 +27,7 @@ public record PreparedTickState(
             BasicInfo basicInfo,
             NextInstruction nextInstruction,
             InternalState internalState,
-            SourceView sourceView
+            @JsonInclude(JsonInclude.Include.NON_NULL) SourceView sourceView
     ) {}
 
     public record BasicInfo(int id, String programId, Integer parentId, long birthTick, long energy, List<Integer> ip, List<Integer> dv) {}

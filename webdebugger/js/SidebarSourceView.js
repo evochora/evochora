@@ -9,9 +9,14 @@ class SidebarSourceView {
     update(src) {
         const el = this.root.querySelector('[data-section="source"]');
         if (!el) return;
-        if (!src) { el.innerHTML = ''; return; }
         
 
+        
+        // Handle missing sourceView gracefully
+        if (!src) {
+            this.renderNoSourceMessage(el);
+            return;
+        }
         
         // Prüfe, ob sich das Programm geändert hat
         const programId = this.getCurrentProgramId();
@@ -31,9 +36,25 @@ class SidebarSourceView {
             }
         }
         
-        // WICHTIG: Bestimme die aktuelle Datei AUTOMATISCH bei jedem Tick
+        // CRITICAL: Always use the current fileName from the source view to automatically select the file
         if (src.fileName && this.allSources) {
-            this.selectedFileName = src.fileName;
+            // Check if the fileName exists in our sources, if not, try to find a similar one
+            if (this.allSources[src.fileName]) {
+                this.selectedFileName = src.fileName;
+            } else {
+                // Try to find a file with similar name (e.g., if we have "main.s" but source shows "org/evochora/main.s")
+                const availableFiles = Object.keys(this.allSources);
+                for (const fileName of availableFiles) {
+                    if (fileName.endsWith(src.fileName) || fileName.includes(src.fileName.split('/').pop())) {
+                        this.selectedFileName = fileName;
+                        break;
+                    }
+                }
+                // If still no match, use the first available file
+                if (!this.selectedFileName && availableFiles.length > 0) {
+                    this.selectedFileName = availableFiles[0];
+                }
+            }
         } else if (!this.selectedFileName && this.allSources && Object.keys(this.allSources).length > 0) {
             // Fallback: Wähle main.s als Standard, falls verfügbar, sonst die erste Datei
             const availableFiles = Object.keys(this.allSources);
@@ -50,8 +71,29 @@ class SidebarSourceView {
             this.selectedFileName = defaultFile;
         }
         
+
+        
         // Erstelle die UI
         this.renderSourceView(el, src);
+    }
+    
+    /**
+     * Renders a helpful message when no source view information is available.
+     * This happens when skipProgramArtefact=true or when no ProgramArtifact exists.
+     */
+    renderNoSourceMessage(el) {
+        el.innerHTML = `
+            <div class="no-source-message">
+                <div class="no-source-icon">📄</div>
+                <h3>No Source Code Available</h3>
+                <p>This organism has no source code information because:</p>
+                <ul>
+                    <li>Program artifacts are disabled (<code>skipProgramArtefact: true</code>)</li>
+                    <li>Or no compiled program exists for this organism</li>
+                </ul>
+                <p>You can still see the disassembled machine code in the "Next Instruction" section above.</p>
+            </div>
+        `;
     }
     
     getCurrentProgramId() {
@@ -100,6 +142,9 @@ class SidebarSourceView {
                 this.renderSourceView(el, src);
             });
         }
+        
+        // CRITICAL: Scroll to current line after rendering
+        this.scrollToCurrentLine(el);
     }
     
     createFileDropdown() {
@@ -166,25 +211,17 @@ class SidebarSourceView {
             return '<div class="no-source">Keine Assembly-Datei verfügbar</div>';
         }
         
-        // WICHTIG: Entferne nur leere Zeilen, behalte alle Assembly-Zeilen
-        const nonEmptyLines = sourceLines.filter(line => {
-            if (!line) return false;
-            const trimmed = String(line).trim();
-            const hasContent = trimmed.length > 0;
-            if (!hasContent) {
-                console.log('Filtering out empty line:', line);
-            }
-            return hasContent;
-        });
-        
-        if (nonEmptyLines.length === 0) {
+        // CRITICAL: Don't filter out empty lines - preserve original line numbers for correct highlighting
+        // The src.currentLine refers to the original source file line numbers
+        if (!sourceLines || sourceLines.length === 0) {
             return '<div class="no-source">Keine Assembly-Zeilen verfügbar</div>';
         }
         
-        // Erstelle Zeilen mit Zeilennummern (nur für nicht-leere Zeilen)
+        // Erstelle Zeilen mit Zeilennummern (behalte alle Zeilen inkl. leere)
         // WICHTIG: Keine Leerzeichen oder Zeilenumbrüche zwischen den Zeilen
-        const linesHtml = nonEmptyLines.map((line, index) => {
-            const lineNumber = index + 1;
+        const linesHtml = sourceLines.map((line, index) => {
+            const lineNumber = index + 1; // Original line number from source file
+            // CRITICAL: Use src.currentLine to determine if this is the current execution line
             const isCurrentLine = src.currentLine === lineNumber;
             const lineClass = isCurrentLine ? 'source-line current-line' : 'source-line';
             
@@ -231,19 +268,22 @@ class SidebarSourceView {
     }
     
     renderFallbackSourceView(el, src) {
+        // Safety check: if src is missing key properties, show no source message
+        if (!src || !src.fileName) {
+            this.renderNoSourceMessage(el);
+            return;
+        }
+        
         // Fallback für den Fall, dass keine allSources verfügbar sind
         const header = `//${this.getRelativePath(src.fileName) || 'Unknown'}`;
         
-        // WICHTIG: Filtere leere Zeilen auch im Fallback
-        const nonEmptyLines = (src.lines || []).filter(l => {
-            if (!l || !l.content) return false;
-            const trimmed = String(l.content).trim();
-            return trimmed.length > 0;
-        });
-        
-        const linesHtml = nonEmptyLines.map((l, index) => {
-            const lineNumber = index + 1;
-            return `<div class="source-line ${l.isCurrent ? 'highlight' : ''}"><span class="line-number">${lineNumber}</span><pre data-line="${lineNumber}">${String(l.content || '').replace(/</g, '&lt;')}</pre></div>`;
+        // CRITICAL: Don't filter out empty lines - preserve original line numbers for correct highlighting
+        const linesHtml = (src.lines || []).map((l, index) => {
+            const lineNumber = index + 1; // Original line number from source file
+            // CRITICAL: Use src.currentLine to highlight the current execution line
+            const isCurrentLine = src.currentLine === lineNumber;
+            const lineClass = isCurrentLine ? 'source-line current-line' : 'source-line';
+            return `<div class="${lineClass}" data-line="${lineNumber}"><span class="line-number">${lineNumber}</span><pre data-line="${lineNumber}">${String(l.content || '').replace(/</g, '&lt;')}</pre></div>`;
         }).join('');
         
         el.innerHTML = `<div class="code-view source-code-view" id="source-code-view" style="font-size:0.9em;"><div class="source-line"><span class="line-number"></span><pre>${header}</pre></div>${linesHtml}</div>`;
@@ -320,10 +360,12 @@ class SidebarSourceView {
     
     scrollToCurrentLine(el) {
         const container = el.querySelector('#source-code-view, #assembly-code-view');
-        const highlighted = container ? container.querySelector('.source-line.highlight, .source-line.current-line') : null;
+        // CRITICAL: Look for the current execution line (either current-line or highlight class)
+        const highlighted = container ? container.querySelector('.source-line.current-line, .source-line.highlight') : null;
         if (container && highlighted) {
             try { 
-                highlighted.scrollIntoView({ block: 'center' }); 
+                // Scroll the current line to the center of the viewport
+                highlighted.scrollIntoView({ block: 'center', behavior: 'smooth' }); 
             } catch (e) {
                 // Fallback: manueller Scroll
                 const top = highlighted.offsetTop - (container.clientHeight / 2) + (highlighted.clientHeight / 2);
