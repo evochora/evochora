@@ -11,17 +11,11 @@ class SidebarSourceView {
         if (!el) return;
         if (!src) { el.innerHTML = ''; return; }
         
-        console.log('SidebarSourceView.update() called with:', { 
-            src, 
-            currentProgramId: this.currentProgramId,
-            selectedFileName: this.selectedFileName,
-            allSources: this.allSources 
-        });
+
         
         // Prüfe, ob sich das Programm geändert hat
         const programId = this.getCurrentProgramId();
         if (programId !== this.currentProgramId) {
-            console.log('Program changed from', this.currentProgramId, 'to', programId);
             this.currentProgramId = programId;
             this.allSources = null;
             this.selectedFileName = null;
@@ -31,7 +25,6 @@ class SidebarSourceView {
         if (!this.allSources && src.allSources) {
             try {
                 this.allSources = typeof src.allSources === 'string' ? JSON.parse(src.allSources) : src.allSources;
-                console.log('Loaded allSources:', this.allSources);
             } catch (e) {
                 console.warn('Failed to parse allSources:', e);
                 this.allSources = {};
@@ -40,7 +33,6 @@ class SidebarSourceView {
         
         // WICHTIG: Bestimme die aktuelle Datei AUTOMATISCH bei jedem Tick
         if (src.fileName && this.allSources) {
-            console.log('Setting selectedFileName to:', src.fileName);
             this.selectedFileName = src.fileName;
         } else if (!this.selectedFileName && this.allSources && Object.keys(this.allSources).length > 0) {
             // Fallback: Wähle main.s als Standard, falls verfügbar, sonst die erste Datei
@@ -55,7 +47,6 @@ class SidebarSourceView {
                 }
             }
             
-            console.log('No fileName in src, setting selectedFileName to default file:', defaultFile);
             this.selectedFileName = defaultFile;
         }
         
@@ -93,7 +84,6 @@ class SidebarSourceView {
         
         // Hole den Inhalt der ausgewählten Datei
         const selectedSource = this.allSources[this.selectedFileName] || [];
-        console.log('Selected source for', this.selectedFileName, ':', selectedSource);
         
         // Erstelle den Assembly-Code mit Zeilennummern
         const assemblyCodeHtml = this.createAssemblyCodeView(selectedSource, src);
@@ -131,35 +121,40 @@ class SidebarSourceView {
         // Behalte .s Endung für bessere Lesbarkeit
         let relativePath = fileName;
         
-        // Entferne den Hauptprogramm-Pfad, falls vorhanden
-        // Beispiel: //org/evochora/organism/prototypes/main.s -> main.s
-        // Beispiel: //behaviors.s -> behaviors.s
-        if (relativePath.startsWith('//')) {
-            relativePath = relativePath.substring(2); // Entferne //
+        // Das erste Element in allSources ist immer das Hauptprogramm
+        // Alle anderen sind Include-Dateien
+        const allSourceKeys = Object.keys(this.allSources);
+        const mainProgramKey = allSourceKeys[0]; // Erstes Element = Hauptprogramm
+        const isMainProgram = fileName === mainProgramKey;
+        
+        if (isMainProgram) {
+            // Für das Hauptprogramm: Zeige nur den Dateinamen
+            const parts = relativePath.split('/');
+            relativePath = parts[parts.length - 1];
+        } else {
+            // Für Include-Dateien: Entferne den gemeinsamen Pfad-Prefix mit der Hauptdatei
+            // Beispiel: 
+            // Hauptdatei: "org/evochora/organism/prototypes/main.s"
+            // Include-Datei: "org/evochora/organism/prototypes/lib/behaviors.s"
+            // Gemeinsamer Prefix: "org/evochora/organism/prototypes/"
+            // Ergebnis: "lib/behaviors.s"
             
-            // Suche nach dem Hauptprogramm (normalerweise main.s oder ähnlich)
-            const mainPrograms = ['main', 'program', 'organism'];
-            let isMainProgram = false;
+            const mainParts = mainProgramKey.split('/');
+            const includeParts = relativePath.split('/');
             
-            for (const main of mainPrograms) {
-                if (relativePath.includes(main)) {
-                    isMainProgram = true;
+            // Finde den gemeinsamen Prefix
+            let commonPrefixLength = 0;
+            for (let i = 0; i < Math.min(mainParts.length, includeParts.length); i++) {
+                if (mainParts[i] === includeParts[i]) {
+                    commonPrefixLength++;
+                } else {
                     break;
                 }
             }
             
-            if (isMainProgram) {
-                // Für Hauptprogramme: Zeige nur den Dateinamen
-                const parts = relativePath.split('/');
-                relativePath = parts[parts.length - 1];
-            } else {
-                // Für andere Dateien: Zeige relativen Pfad
-                // Beispiel: org/evochora/organism/prototypes/behaviors.s -> lib/behaviors.s
-                const parts = relativePath.split('/');
-                if (parts.length > 1) {
-                    // Entferne den ersten Teil (org) und zeige den Rest
-                    relativePath = parts.slice(1).join('/');
-                }
+            // Entferne den gemeinsamen Prefix
+            if (commonPrefixLength > 0) {
+                relativePath = includeParts.slice(commonPrefixLength).join('/');
             }
         }
         
@@ -171,11 +166,6 @@ class SidebarSourceView {
             return '<div class="no-source">Keine Assembly-Datei verfügbar</div>';
         }
         
-        console.log('Creating assembly code view with', sourceLines.length, 'lines');
-        
-        // Debug: Zeige die ersten 10 Zeilen, um zu sehen, was der Server sendet
-        console.log('First 10 lines from server:', sourceLines.slice(0, 10));
-        
         // WICHTIG: Entferne nur leere Zeilen, behalte alle Assembly-Zeilen
         const nonEmptyLines = sourceLines.filter(line => {
             if (!line) return false;
@@ -186,8 +176,6 @@ class SidebarSourceView {
             }
             return hasContent;
         });
-        
-        console.log('After filtering,', nonEmptyLines.length, 'non-empty lines remain');
         
         if (nonEmptyLines.length === 0) {
             return '<div class="no-source">Keine Assembly-Zeilen verfügbar</div>';

@@ -89,7 +89,7 @@ public class Compiler implements ICompiler {
         Map<String, List<String>> sources = new HashMap<>();
         sources.put(programName, sourceLines);
         preProcessor.getIncludedFileContents().forEach((path, content) ->
-                sources.put(Path.of(path).getFileName().toString(), Arrays.asList(content.split("\\r?\\n"))));
+                sources.put(path, Arrays.asList(content.split("\\r?\\n"))));
 
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
