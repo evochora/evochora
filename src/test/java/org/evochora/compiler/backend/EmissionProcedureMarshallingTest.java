@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 public class EmissionProcedureMarshallingTest {
 
-    private static SourceInfo src(String file, int line) { return new SourceInfo(file, line, 0, ""); }
+    	private static SourceInfo src(String file, int line) { return new SourceInfo(file, line, 0); }
 
 	/**
 	 * Verifies that the emission process generates the correct prologue and epilogue

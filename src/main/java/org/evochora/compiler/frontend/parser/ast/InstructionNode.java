@@ -20,4 +20,10 @@ public record InstructionNode(
         // The children of an instruction are its arguments.
         return arguments;
     }
+    
+    @Override
+    public AstNode reconstructWithChildren(List<AstNode> newChildren) {
+        // Create a new InstructionNode with the new children (arguments)
+        return new InstructionNode(opcode, newChildren);
+    }
 }

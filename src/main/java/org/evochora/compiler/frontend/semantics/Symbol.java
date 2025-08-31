@@ -21,6 +21,8 @@ public record Symbol(Token name, Type type) {
         /** A procedure defined with .PROC. */
         PROCEDURE,
         /** A variable, such as a procedure parameter. */
-        VARIABLE // For future extensions
+        VARIABLE, // For future extensions
+        /** A register alias defined with .REG or .PREG. */
+        ALIAS
     }
 }

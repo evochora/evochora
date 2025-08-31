@@ -21,4 +21,11 @@ public record LabelNode(
         // A label has exactly one child: the statement that follows it.
         return statement != null ? List.of(statement) : List.of();
     }
+    
+    @Override
+    public AstNode reconstructWithChildren(List<AstNode> newChildren) {
+        // Create a new LabelNode with the new statement (first child)
+        AstNode newStatement = newChildren.isEmpty() ? null : newChildren.get(0);
+        return new LabelNode(labelToken, newStatement);
+    }
 }

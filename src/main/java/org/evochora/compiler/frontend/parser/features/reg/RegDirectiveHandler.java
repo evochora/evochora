@@ -7,6 +7,7 @@ import org.evochora.compiler.frontend.CompilerPhase;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.frontend.parser.features.reg.RegNode;
 
 /**
  * Handler for the .REG directive.
@@ -64,9 +65,12 @@ public class RegDirectiveHandler implements IDirectiveHandler {
             // We have to cast to the Parser implementation to get access to the alias table.
             // A cleaner solution might be an interface, but this is pragmatic for now.
             ((Parser) context).addRegisterAlias(name.text(), register);
+            
+            // Create and return a RegNode for the AST
+            return new RegNode(name, register);
         }
 
-        // .REG does not produce its own node in the AST
+        // If we couldn't create a valid RegNode, return null
         return null;
     }
 }

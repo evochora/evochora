@@ -150,8 +150,27 @@ public class TokenMapGenerator {
                 // Continue compilation - don't add this token to the map
             }
         } else if (node instanceof RegisterNode registerNode) {
-            // Add the register token
-            addToken(registerNode.registerToken(), Symbol.Type.VARIABLE, this.currentScope);
+            // Handle register nodes - they can be either direct registers or aliases
+            if (registerNode.isAlias()) {
+                // This is an alias - add token for the original alias name (e.g., %COUNTER)
+                // We need to create a SourceInfo from the RegisterNode's sourceInfo
+                SourceInfo aliasSourceInfo = registerNode.getSourceInfo();
+                TokenInfo aliasTokenInfo = new TokenInfo(
+                    registerNode.getOriginalAlias(),  // Use the original alias name
+                    Symbol.Type.ALIAS,               // Mark it as an alias
+                    this.currentScope                // Use current scope (will be "global" or procedure name)
+                );
+                tokenMap.put(aliasSourceInfo, aliasTokenInfo);
+            } else {
+                // This is a direct register - add token for the register name (e.g., %DR0)
+                SourceInfo regSourceInfo = registerNode.getSourceInfo();
+                TokenInfo regTokenInfo = new TokenInfo(
+                    registerNode.getName(),          // Use the register name
+                    Symbol.Type.VARIABLE,           // Mark it as a variable
+                    this.currentScope               // Use current scope
+                );
+                tokenMap.put(regSourceInfo, regTokenInfo);
+            }
         } else if (node instanceof InstructionNode instructionNode) {
             // Only add CALL and RET instructions to token map
             String opcode = instructionNode.opcode().text();
@@ -208,8 +227,7 @@ public class TokenMapGenerator {
             SourceInfo sourceInfo = new SourceInfo(
                 token.fileName(),
                 token.line(),
-                token.column(),
-                token.text()
+                token.column()
             );
             
             // Create TokenInfo with the proper structure

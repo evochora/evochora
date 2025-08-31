@@ -44,14 +44,14 @@ class TokenAnnotatorTest {
         Map<Integer, Map<Integer, List<TokenInfo>>> testFileTokens = new HashMap<>();
         
         // Line 1: .PROC TEST_PROC WITH PARAM1 PARAM2
-        SourceInfo procSource = new SourceInfo("test.s", 1, 0, ".PROC TEST_PROC WITH PARAM1 PARAM2");
+        		SourceInfo procSource = new SourceInfo("test.s", 1, 0);
         TokenInfo procToken = new TokenInfo("TEST_PROC", Symbol.Type.PROCEDURE, "global");
         TokenInfo param1Token = new TokenInfo("PARAM1", Symbol.Type.VARIABLE, "TEST_PROC");
         TokenInfo param2Token = new TokenInfo("PARAM2", Symbol.Type.VARIABLE, "TEST_PROC");
         
         tokenMap.put(procSource, procToken);
-        tokenMap.put(new SourceInfo("test.s", 1, 5, "PARAM1"), param1Token);
-        tokenMap.put(new SourceInfo("test.s", 1, 12, "PARAM2"), param2Token);
+        		tokenMap.put(new SourceInfo("test.s", 1, 5), param1Token);
+        		tokenMap.put(new SourceInfo("test.s", 1, 12), param2Token);
         
         lineToTokens.put(1, List.of(procToken, param1Token, param2Token));
         
@@ -63,16 +63,16 @@ class TokenAnnotatorTest {
         testFileTokens.put(1, line1Columns);
         
         // Line 2: CALL TEST_PROC WITH %DR0 %DR1
-        SourceInfo callSource = new SourceInfo("test.s", 2, 0, "CALL TEST_PROC WITH %DR0 %DR1");
+        		SourceInfo callSource = new SourceInfo("test.s", 2, 0);
         TokenInfo callToken = new TokenInfo("CALL", Symbol.Type.LABEL, "global");
         TokenInfo labelRefToken = new TokenInfo("TEST_PROC", Symbol.Type.LABEL, "global");
         TokenInfo reg1Token = new TokenInfo("%DR0", Symbol.Type.VARIABLE, "global");
         TokenInfo reg2Token = new TokenInfo("%DR1", Symbol.Type.VARIABLE, "global");
         
         tokenMap.put(callSource, callToken);
-        tokenMap.put(new SourceInfo("test.s", 2, 5, "TEST_PROC"), labelRefToken);
-        tokenMap.put(new SourceInfo("test.s", 2, 18, "%DR0"), reg1Token);
-        tokenMap.put(new SourceInfo("test.s", 2, 23, "%DR1"), reg2Token);
+        		tokenMap.put(new SourceInfo("test.s", 2, 5), labelRefToken);
+        		tokenMap.put(new SourceInfo("test.s", 2, 18), reg1Token);
+        		tokenMap.put(new SourceInfo("test.s", 2, 23), reg2Token);
         
         lineToTokens.put(2, List.of(callToken, labelRefToken, reg1Token, reg2Token));
         
@@ -85,14 +85,14 @@ class TokenAnnotatorTest {
         testFileTokens.put(2, line2Columns);
         
         // Line 3: ADDR PARAM1 PARAM2
-        SourceInfo addSource = new SourceInfo("test.s", 3, 0, "ADDR PARAM1 PARAM2");
+        		SourceInfo addSource = new SourceInfo("test.s", 3, 0);
         TokenInfo addToken = new TokenInfo("ADDR", Symbol.Type.LABEL, "global");
         TokenInfo param1RefToken = new TokenInfo("PARAM1", Symbol.Type.VARIABLE, "TEST_PROC");
         TokenInfo param2RefToken = new TokenInfo("PARAM2", Symbol.Type.VARIABLE, "TEST_PROC");
         
         tokenMap.put(addSource, addToken);
-        tokenMap.put(new SourceInfo("test.s", 3, 6, "PARAM1"), param1RefToken);
-        tokenMap.put(new SourceInfo("test.s", 3, 13, "PARAM2"), param2RefToken);
+        		tokenMap.put(new SourceInfo("test.s", 3, 6), param1RefToken);
+        		tokenMap.put(new SourceInfo("test.s", 3, 13), param2RefToken);
         
         lineToTokens.put(3, List.of(addToken, param1RefToken, param2RefToken));
         
@@ -104,7 +104,7 @@ class TokenAnnotatorTest {
         testFileTokens.put(3, line3Columns);
         
         // Line 4: RET
-        SourceInfo retSource = new SourceInfo("test.s", 4, 0, "RET");
+        		SourceInfo retSource = new SourceInfo("test.s", 4, 0);
         TokenInfo retToken = new TokenInfo("RET", Symbol.Type.LABEL, "global");
         
         tokenMap.put(retSource, retToken);
@@ -128,7 +128,7 @@ class TokenAnnotatorTest {
             )),
             Map.of(new int[]{0,0}, 100), // machineCodeLayout
             Collections.emptyMap(), // initialWorldObjects
-            Map.of(1, new SourceInfo("test.s", 1, 0, ".PROC TEST_PROC WITH PARAM1 PARAM2")), // sourceMap
+            		Map.of(1, new SourceInfo("test.s", 1, 0)), // sourceMap
             Map.of(100, new int[]{0,1}), // callSiteBindings
             Map.of("0,0", 100), // relativeCoordToLinearAddress
             Map.of(100, new int[]{0,0}), // linearAddressToCoord

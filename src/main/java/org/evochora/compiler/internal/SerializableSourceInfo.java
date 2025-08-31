@@ -9,9 +9,9 @@ import com.fasterxml.jackson.annotation.JsonValue;
  * 
  * @param fileName The file where the code is located.
  * @param lineNumber The line number.
- * @param lineContent The content of the line.
+ * @param columnNumber The column number.
  */
-public record SerializableSourceInfo(String fileName, int lineNumber, int columnNumber, String lineContent) {
+public record SerializableSourceInfo(String fileName, int lineNumber, int columnNumber) {
     
     /**
      * Creates a SerializableSourceInfo from a regular SourceInfo.
@@ -20,8 +20,7 @@ public record SerializableSourceInfo(String fileName, int lineNumber, int column
         return new SerializableSourceInfo(
             sourceInfo.fileName(),
             sourceInfo.lineNumber(),
-            sourceInfo.columnNumber(),
-            sourceInfo.lineContent()
+            sourceInfo.columnNumber()
         );
     }
     
@@ -29,33 +28,32 @@ public record SerializableSourceInfo(String fileName, int lineNumber, int column
      * Converts this SerializableSourceInfo back to a regular SourceInfo.
      */
     public org.evochora.compiler.api.SourceInfo toSourceInfo() {
-        return new org.evochora.compiler.api.SourceInfo(fileName, lineNumber, columnNumber, lineContent);
+        return new org.evochora.compiler.api.SourceInfo(fileName, lineNumber, columnNumber);
     }
     
     /**
      * Serializes to a string format for use as a map key.
-     * Format: "fileName:lineNumber:lineContent"
+     * Format: "fileName:lineNumber:columnNumber"
      */
     @JsonValue
     @Override
     public String toString() {
-        return String.format("%s:%d:%d:%s", 
+        return String.format("%s:%d:%d", 
             fileName != null ? fileName : "<unknown>", 
             lineNumber, 
-            columnNumber,
-            lineContent != null ? lineContent : "");
+            columnNumber);
     }
     
     /**
      * Creates a SerializableSourceInfo from a serialized string.
-     * Format: "fileName:lineNumber:lineContent"
+     * Format: "fileName:lineNumber:columnNumber"
      */
     public static SerializableSourceInfo fromString(String serialized) {
         if (serialized == null || serialized.isEmpty()) {
             throw new IllegalArgumentException("Serialized string cannot be null or empty");
         }
         
-        String[] parts = serialized.split(":", 4);
+        String[] parts = serialized.split(":", 3);
         if (parts.length < 3) {
             throw new IllegalArgumentException("Invalid serialized format: " + serialized);
         }
@@ -63,8 +61,7 @@ public record SerializableSourceInfo(String fileName, int lineNumber, int column
         String fileName = parts[0].equals("<unknown>") ? null : parts[0];
         int lineNumber = Integer.parseInt(parts[1]);
         int columnNumber = Integer.parseInt(parts[2]);
-        String lineContent = parts.length > 3 ? parts[3] : "";
         
-        return new SerializableSourceInfo(fileName, lineNumber, columnNumber, lineContent);
+        return new SerializableSourceInfo(fileName, lineNumber, columnNumber);
     }
 }

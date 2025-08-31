@@ -138,6 +138,16 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                         instructionNode.opcode().line()
                                 );
                             }
+                        } else if (symbol.type() == Symbol.Type.ALIAS) {
+                            // Register aliases are valid for REGISTER arguments (will be resolved later)
+                            if (expectedType != InstructionArgumentType.REGISTER) {
+                                diagnostics.reportError(
+                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got ALIAS.",
+                                                i + 1, instructionName, expectedType),
+                                        instructionNode.opcode().fileName(),
+                                        instructionNode.opcode().line()
+                                );
+                            }
                         } else if (symbol.type() == Symbol.Type.VARIABLE) {
                             // Accept formal parameters as register placeholders
                             if (expectedType != InstructionArgumentType.REGISTER) {

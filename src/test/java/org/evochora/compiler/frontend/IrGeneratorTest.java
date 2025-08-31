@@ -112,11 +112,13 @@ public class IrGeneratorTest {
         org.evochora.compiler.api.SourceInfo infoForOpcode = artifact.sourceMap().get(0);
         assertThat(infoForOpcode).isNotNull();
         // Wir verwenden trim(), um führende/folgende Leerzeichen zu ignorieren, die vom Rekonstruktionsprozess stammen könnten.
-        assertThat(infoForOpcode.lineContent().trim()).isEqualTo("SETI %DR0 DATA:42");
+        String lineContent = artifact.sources().get(infoForOpcode.fileName()).get(infoForOpcode.lineNumber() - 1);
+        assertThat(lineContent.trim()).isEqualTo("SETI %DR0 DATA:42");
 
         // Das erste Argument an Adresse 1 sollte ebenfalls auf die komplette Zeile verweisen.
         org.evochora.compiler.api.SourceInfo infoForArg1 = artifact.sourceMap().get(1);
         assertThat(infoForArg1).isNotNull();
-        assertThat(infoForArg1.lineContent().trim()).isEqualTo("SETI %DR0 DATA:42");
+        String lineContent2 = artifact.sources().get(infoForArg1.fileName()).get(infoForArg1.lineNumber() - 1);
+        assertThat(lineContent2.trim()).isEqualTo("SETI %DR0 DATA:42");
     }
 }

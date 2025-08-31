@@ -6,6 +6,6 @@ package org.evochora.compiler.api;
  *
  * @param fileName The file where the code is located.
  * @param lineNumber The line number.
- * @param lineContent The content of the line.
+ * @param columnNumber The column number.
  */
-public record SourceInfo(String fileName, int lineNumber, int columnNumber, String lineContent) {}
+public record SourceInfo(String fileName, int lineNumber, int columnNumber) {}

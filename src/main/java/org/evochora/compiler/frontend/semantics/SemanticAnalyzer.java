@@ -6,6 +6,7 @@ import org.evochora.compiler.frontend.parser.ast.InstructionNode;
 import org.evochora.compiler.frontend.parser.features.def.DefineNode;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
+import org.evochora.compiler.frontend.parser.features.reg.RegNode;
 import org.evochora.compiler.frontend.parser.features.require.RequireNode;
 import org.evochora.compiler.frontend.parser.features.scope.ScopeNode;
 import org.evochora.compiler.frontend.semantics.analysis.*;
@@ -40,6 +41,7 @@ public class SemanticAnalyzer {
 
     private void registerDefaultHandlers() {
         handlers.put(DefineNode.class, new DefineAnalysisHandler());
+        handlers.put(RegNode.class, new RegAnalysisHandler());
         handlers.put(LabelNode.class, new LabelAnalysisHandler());
         handlers.put(ScopeNode.class, new ScopeAnalysisHandler(this.scopeMap));
         handlers.put(ProcedureNode.class, new ProcedureAnalysisHandler(this.scopeMap));

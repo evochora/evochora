@@ -16,6 +16,7 @@ import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.frontend.tokenmap.TokenMapGenerator;
+import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.evochora.compiler.ir.IrProgram;
 import org.evochora.compiler.backend.layout.LayoutEngine;
 import org.evochora.compiler.backend.layout.LayoutResult;
@@ -71,6 +72,7 @@ public class Compiler implements ICompiler {
         }
         // org.evochora.compiler.diagnostics.CompilerLogger.info("Compiler: " + programName);
 
+        // Phase 1: Lexical Analysis
         String fullSource = String.join("\n", sourceLines);
         Lexer initialLexer = new Lexer(fullSource, diagnostics, programName);
         List<Token> initialTokens = initialLexer.scanTokens();
@@ -87,6 +89,7 @@ public class Compiler implements ICompiler {
         } catch (Exception ignored) {
             basePath = Path.of("").toAbsolutePath();
         }
+        // Phase 2: Preprocessing (includes, macros)
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, basePath);
         List<Token> processedTokens = preProcessor.expand();
 
@@ -99,6 +102,7 @@ public class Compiler implements ICompiler {
             throw new CompilationException(diagnostics.summary());
         }
 
+        // Phase 3: Parsing (builds AST)
         Parser parser = new Parser(processedTokens, diagnostics, basePath);
         List<AstNode> ast = parser.parse();
 
@@ -122,6 +126,7 @@ public class Compiler implements ICompiler {
             throw new CompilationException(diagnostics.summary());
         }
 
+        // Phase 4: Semantic Analysis (symbol resolution, type checking)
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         analyzer.analyze(ast);
@@ -129,14 +134,29 @@ public class Compiler implements ICompiler {
             throw new CompilationException(diagnostics.summary());
         }
         
-        // Phase 3.5: Generate TokenMap for Debugger
+        // Phase 5: Token Map Generation (for debugger)
         TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, analyzer.getScopeMap(), diagnostics);
         Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generate(ast.get(0)); // Pass first AST node as root
 
+        // Phase 6: AST Post-Processing (resolve register aliases)
+        // Extract register aliases from parser (both .REG and .PREG)
+        Map<String, String> astRegisterAliases = new HashMap<>();
+        parser.getGlobalRegisterAliases().forEach((aliasName, registerToken) -> {
+            astRegisterAliases.put(aliasName, registerToken.text());
+        });
+        
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, astRegisterAliases);
+        AstNode processedAstRoot = astPostProcessor.process(ast.get(0));
+        
+        // Update the AST list with the processed root
+        ast.set(0, processedAstRoot);
+
+        // Phase 7: IR Generation (convert AST to intermediate representation)
         IrConverterRegistry irRegistry = IrConverterRegistry.initializeWithDefaults();
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
         IrProgram irProgram = irGenerator.generate(ast, programName);
 
+        // Phase 8: IR Rewriting (apply emission rules)
         EmissionRegistry emissionRegistry = EmissionRegistry.initializeWithDefaults();
         java.util.List<org.evochora.compiler.ir.IrItem> rewritten = irProgram.items();
         LinkingContext linkingContext = new LinkingContext();
@@ -145,13 +165,16 @@ public class Compiler implements ICompiler {
         }
         IrProgram rewrittenIr = new IrProgram(programName, rewritten);
 
+        // Phase 9: Layout (assign addresses to instructions)
         LayoutEngine layoutEngine = new LayoutEngine();
         LayoutResult layout = layoutEngine.layout(rewrittenIr, new RuntimeInstructionSetAdapter(), worldDimensions);
 
+        // Phase 10: Linking (resolve cross-references)
         LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults(symbolTable);
         Linker linker = new Linker(linkingRegistry);
         IrProgram linkedIr = linker.link(rewrittenIr, layout, linkingContext, worldDimensions);
 
+        // Phase 11: Emission (generate final binary)
         Emitter emitter = new Emitter();
         ProgramArtifact artifact;
         try {

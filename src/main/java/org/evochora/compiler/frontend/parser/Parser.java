@@ -7,6 +7,7 @@ import org.evochora.compiler.frontend.directive.DirectiveHandlerRegistry;
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
 import org.evochora.compiler.frontend.parser.ast.*;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 
@@ -200,37 +201,11 @@ public class Parser implements ParsingContext {
 
         if (match(TokenType.REGISTER)) {
             Token reg = previous();
-            Token resolved = resolveRegisterAlias(reg.text());
-            if (resolved != null) {
-                // Create new token with resolved text but original location
-                Token resolvedWithOriginalLocation = new Token(
-                    resolved.type(),
-                    resolved.text(),
-                    resolved.value(),
-                    reg.line(),        // Original line number
-                    reg.column(),      // Original column
-                    reg.fileName()     // Original file
-                );
-                return new RegisterNode(resolvedWithOriginalLocation);
-            }
-            return new RegisterNode(reg);
+            return new RegisterNode(reg.text(), new SourceInfo(reg.fileName(), reg.line(), reg.column()), reg);
         }
 
         if (match(TokenType.IDENTIFIER)) {
             Token identifier = previous();
-            Token resolved = resolveRegisterAlias(identifier.text());
-            if (resolved != null) {
-                // Create new token with resolved text but original location
-                Token resolvedWithOriginalLocation = new Token(
-                    resolved.type(),
-                    resolved.text(),
-                    resolved.value(),
-                    identifier.line(),   // Original line number
-                    identifier.column(), // Original column
-                    identifier.fileName() // Original file
-                );
-                return new RegisterNode(resolvedWithOriginalLocation);
-            }
             return new IdentifierNode(identifier);
         }
 
