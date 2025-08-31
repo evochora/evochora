@@ -44,6 +44,35 @@ public final class ServiceManager {
     public ServiceManager(ITickMessageQueue queue, SimulationConfiguration config) {
         this.queue = queue;
         this.config = config;
+        
+        // Check autoStart configuration and start services automatically
+        log.info("Checking autoStart configuration...");
+        
+        if (config.pipeline != null && config.pipeline.simulation != null && 
+            Boolean.TRUE.equals(config.pipeline.simulation.autoStart)) {
+            log.info("Auto-starting simulation service...");
+            startSimulation();
+        }
+        
+        if (config.pipeline != null && config.pipeline.persistence != null && 
+            Boolean.TRUE.equals(config.pipeline.persistence.autoStart)) {
+            log.info("Auto-starting persistence service...");
+            startPersistence();
+        }
+        
+        if (config.pipeline != null && config.pipeline.indexer != null && 
+            Boolean.TRUE.equals(config.pipeline.indexer.autoStart)) {
+            log.info("Auto-starting indexer service...");
+            startIndexer();
+        }
+        
+        if (config.pipeline != null && config.pipeline.server != null && 
+            Boolean.TRUE.equals(config.pipeline.server.autoStart)) {
+            log.info("Auto-starting debug server...");
+            startDebugServer();
+        }
+        
+        log.info("AutoStart configuration processed");
     }
     
     /**

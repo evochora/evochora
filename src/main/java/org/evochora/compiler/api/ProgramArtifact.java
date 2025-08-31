@@ -22,6 +22,8 @@ import java.util.Map;
  * @param labelAddressToName A map from linear address of a label to its name.
  * @param registerAliasMap A map from register alias names (e.g., "%MY_REG") to their physical register index.
  * @param procNameToParamNames A map from procedure names to a list of their parameter names.
+ * @param tokenMap A map from SourceInfo to TokenInfo for deterministic token classification.
+ * @param tokenLookup A map from fileName to line number to list of TokenInfo for efficient file-line-based lookup.
  */
 public record ProgramArtifact(
         String programId,
@@ -34,7 +36,9 @@ public record ProgramArtifact(
         Map<Integer, int[]> linearAddressToCoord,
         Map<Integer, String> labelAddressToName,
         Map<String, Integer> registerAliasMap,
-        Map<String, List<String>> procNameToParamNames
+        Map<String, List<String>> procNameToParamNames,
+        Map<SourceInfo, TokenInfo> tokenMap,
+        Map<String, Map<Integer, List<TokenInfo>>> tokenLookup
 ) {
     public ProgramArtifact {
         sources = sources != null ? Collections.unmodifiableMap(sources) : Collections.emptyMap();
@@ -47,6 +51,8 @@ public record ProgramArtifact(
         labelAddressToName = Collections.unmodifiableMap(labelAddressToName);
         registerAliasMap = Collections.unmodifiableMap(registerAliasMap);
         procNameToParamNames = procNameToParamNames != null ? Collections.unmodifiableMap(procNameToParamNames) : Collections.emptyMap();
+        tokenMap = tokenMap != null ? Collections.unmodifiableMap(tokenMap) : Collections.emptyMap();
+        tokenLookup = tokenLookup != null ? Collections.unmodifiableMap(tokenLookup) : Collections.emptyMap();
     }
     
     /**

@@ -113,4 +113,12 @@ public class SemanticAnalyzer {
             }
         }
     }
+    
+    /**
+     * Gets the scope map that maps AST nodes to their scopes.
+     * @return The scope map
+     */
+    public Map<AstNode, SymbolTable.Scope> getScopeMap() {
+        return scopeMap;
+    }
 }

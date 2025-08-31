@@ -3,6 +3,8 @@ package org.evochora.compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ICompiler;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.Parser;
@@ -13,6 +15,7 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
+import org.evochora.compiler.frontend.tokenmap.TokenMapGenerator;
 import org.evochora.compiler.ir.IrProgram;
 import org.evochora.compiler.backend.layout.LayoutEngine;
 import org.evochora.compiler.backend.layout.LayoutResult;
@@ -26,6 +29,7 @@ import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.util.DebugDump;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -124,6 +128,10 @@ public class Compiler implements ICompiler {
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
         }
+        
+        // Phase 3.5: Generate TokenMap for Debugger
+        TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable);
+        Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generate(ast.get(0)); // Pass first AST node as root
 
         IrConverterRegistry irRegistry = IrConverterRegistry.initializeWithDefaults();
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
@@ -147,7 +155,9 @@ public class Compiler implements ICompiler {
         Emitter emitter = new Emitter();
         ProgramArtifact artifact;
         try {
-            artifact = emitter.emit(linkedIr, layout, linkingContext, new RuntimeInstructionSetAdapter(), finalAliasMap, procNameToParamNames, sources);
+            // Generate tokenLookup from tokenMap for efficient line-based lookup
+            Map<String, Map<Integer, List<TokenInfo>>> tokenLookup = generateTokenLookup(tokenMap);
+            artifact = emitter.emit(linkedIr, layout, linkingContext, new RuntimeInstructionSetAdapter(), finalAliasMap, procNameToParamNames, sources, tokenMap, tokenLookup);
         } catch (org.evochora.compiler.api.CompilationException ce) {
             throw ce; // already formatted with file/line
         } catch (RuntimeException re) {
@@ -159,6 +169,29 @@ public class Compiler implements ICompiler {
         DebugDump.dumpProgramArtifact(programName, artifact);
         return artifact;
     }
+    
+    /**
+     * Generates tokenLookup structure from tokenMap for efficient line-based lookup.
+     */
+    private Map<String, Map<Integer, List<TokenInfo>>> generateTokenLookup(Map<SourceInfo, TokenInfo> tokenMap) {
+        Map<String, Map<Integer, List<TokenInfo>>> result = new HashMap<>();
+        
+        for (Map.Entry<SourceInfo, TokenInfo> entry : tokenMap.entrySet()) {
+            SourceInfo sourceInfo = entry.getKey();
+            TokenInfo tokenInfo = entry.getValue();
+            
+            String fileName = sourceInfo.fileName();
+            Integer lineNumber = sourceInfo.lineNumber();
+            
+            result.computeIfAbsent(fileName, k -> new HashMap<>())
+                  .computeIfAbsent(lineNumber, k -> new ArrayList<>())
+                  .add(tokenInfo);
+        }
+        
+        return result;
+    }
+    
+
 
     /**
      * {@inheritDoc}

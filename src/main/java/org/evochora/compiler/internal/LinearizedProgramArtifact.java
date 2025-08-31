@@ -2,10 +2,11 @@ package org.evochora.compiler.internal;
 
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.PlacedMolecule;
-import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.api.TokenInfo;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -51,6 +52,8 @@ import java.util.Map;
  *   <li><strong>labelAddressToName</strong>: Map<Integer, String> (unchanged)</li>
  *   <li><strong>registerAliasMap</strong>: Map<String, Integer> (unchanged)</li>
  *   <li><strong>procNameToParamNames</strong>: Map<String, List<String>> (unchanged)</li>
+ *   <strong>tokenMap</strong>: Map<SourceInfo, TokenInfo> (unchanged)</li>
+ *   <strong>lineToTokens</strong>: Map<Integer, List<TokenInfo>> (unchanged)</li>
  * </ul>
  * 
  * <h3>Performance</h3>
@@ -70,13 +73,15 @@ public record LinearizedProgramArtifact(
         Map<String, List<String>> sources,
         Map<Integer, Integer> machineCodeLayout,
         Map<Integer, PlacedMolecule> initialWorldObjects,
-        Map<Integer, SourceInfo> sourceMap,
+        Map<Integer, SerializableSourceInfo> sourceMap,
         Map<Integer, int[]> callSiteBindings,
         Map<String, Integer> relativeCoordToLinearAddress,
         Map<Integer, int[]> linearAddressToCoord,
         Map<Integer, String> labelAddressToName,
         Map<String, Integer> registerAliasMap,
         Map<String, List<String>> procNameToParamNames,
+        Map<SerializableSourceInfo, TokenInfo> tokenMap,
+        Map<String, Map<Integer, List<TokenInfo>>> tokenLookup,
         EnvironmentProperties envProps
 ) {
     
@@ -91,6 +96,8 @@ public record LinearizedProgramArtifact(
         labelAddressToName = labelAddressToName != null ? Collections.unmodifiableMap(labelAddressToName) : Collections.emptyMap();
         registerAliasMap = registerAliasMap != null ? Collections.unmodifiableMap(registerAliasMap) : Collections.emptyMap();
         procNameToParamNames = procNameToParamNames != null ? Collections.unmodifiableMap(procNameToParamNames) : Collections.emptyMap();
+        tokenMap = tokenMap != null ? Collections.unmodifiableMap(tokenMap) : Collections.emptyMap();
+        tokenLookup = tokenLookup != null ? Collections.unmodifiableMap(tokenLookup) : Collections.emptyMap();
         envProps = envProps != null ? envProps : new EnvironmentProperties(new int[0], false);
     }
     
@@ -108,13 +115,15 @@ public record LinearizedProgramArtifact(
                 artifact.sources(),
                 converter.linearizeMap(artifact.machineCodeLayout()),
                 converter.linearizeMap(artifact.initialWorldObjects()),
-                artifact.sourceMap(),
+                convertSourceMap(artifact.sourceMap()),
                 artifact.callSiteBindings(),
                 artifact.relativeCoordToLinearAddress(),
                 artifact.linearAddressToCoord(),
                 artifact.labelAddressToName(),
                 artifact.registerAliasMap(),
                 artifact.procNameToParamNames(),
+                convertTokenMap(artifact.tokenMap()),
+                artifact.tokenLookup(),
                 envProps
         );
     }
@@ -131,13 +140,59 @@ public record LinearizedProgramArtifact(
                 sources,
                 converter.delinearizeMap(machineCodeLayout()),
                 converter.delinearizeMap(initialWorldObjects()),
-                sourceMap,
+                convertSourceMapBack(sourceMap),
                 callSiteBindings(),
                 relativeCoordToLinearAddress(),
                 linearAddressToCoord(),
                 labelAddressToName(),
                 registerAliasMap(),
-                procNameToParamNames
+                procNameToParamNames,
+                convertTokenMapBack(tokenMap),
+                tokenLookup
         );
+    }
+    
+    /**
+     * Converts a Map<Integer, SourceInfo> to Map<Integer, SerializableSourceInfo>
+     */
+    private static Map<Integer, SerializableSourceInfo> convertSourceMap(Map<Integer, org.evochora.compiler.api.SourceInfo> sourceMap) {
+        Map<Integer, SerializableSourceInfo> result = new HashMap<>();
+        for (Map.Entry<Integer, org.evochora.compiler.api.SourceInfo> entry : sourceMap.entrySet()) {
+            result.put(entry.getKey(), SerializableSourceInfo.from(entry.getValue()));
+        }
+        return result;
+    }
+    
+    /**
+     * Converts a Map<Integer, SerializableSourceInfo> back to Map<Integer, SourceInfo>
+     */
+    private static Map<Integer, org.evochora.compiler.api.SourceInfo> convertSourceMapBack(Map<Integer, SerializableSourceInfo> sourceMap) {
+        Map<Integer, org.evochora.compiler.api.SourceInfo> result = new HashMap<>();
+        for (Map.Entry<Integer, SerializableSourceInfo> entry : sourceMap.entrySet()) {
+            result.put(entry.getKey(), entry.getValue().toSourceInfo());
+        }
+        return result;
+    }
+    
+    /**
+     * Converts a Map<SourceInfo, TokenInfo> to Map<SerializableSourceInfo, TokenInfo>
+     */
+    private static Map<SerializableSourceInfo, TokenInfo> convertTokenMap(Map<org.evochora.compiler.api.SourceInfo, TokenInfo> tokenMap) {
+        Map<SerializableSourceInfo, TokenInfo> result = new HashMap<>();
+        for (Map.Entry<org.evochora.compiler.api.SourceInfo, TokenInfo> entry : tokenMap.entrySet()) {
+            result.put(SerializableSourceInfo.from(entry.getKey()), entry.getValue());
+        }
+        return result;
+    }
+    
+    /**
+     * Converts a Map<SerializableSourceInfo, TokenInfo> back to Map<SourceInfo, TokenInfo>
+     */
+    private static Map<org.evochora.compiler.api.SourceInfo, TokenInfo> convertTokenMapBack(Map<SerializableSourceInfo, TokenInfo> tokenMap) {
+        Map<org.evochora.compiler.api.SourceInfo, TokenInfo> result = new HashMap<>();
+        for (Map.Entry<SerializableSourceInfo, TokenInfo> entry : tokenMap.entrySet()) {
+            result.put(entry.getKey().toSourceInfo(), entry.getValue());
+        }
+        return result;
     }
 }

@@ -73,7 +73,9 @@ class WorldSeedingTest {
                 emptyMap(), // linearAddressToCoord
                 emptyMap(), // labelAddressToName
                 emptyMap(), // registerAliasMap
-                emptyMap()  // procNameToParamNames
+                emptyMap(), // procNameToParamNames
+                emptyMap(), // tokenMap
+                emptyMap()  // lineToTokens
         );
         engine.setProgramArtifacts(List.of(artifact));
 

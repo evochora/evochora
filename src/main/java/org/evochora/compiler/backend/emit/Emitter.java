@@ -5,6 +5,7 @@ import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.isa.IInstructionSet;
@@ -43,7 +44,9 @@ public class Emitter {
                                 IInstructionSet isa,
                                 Map<String, Integer> registerAliasMap,
                                 Map<String, List<String>> procNameToParamNames,
-                                Map<String, List<String>> sources) throws CompilationException {
+                                Map<String, List<String>> sources,
+                                Map<SourceInfo, TokenInfo> tokenMap,
+                                Map<String, Map<Integer, List<TokenInfo>>> tokenLookup) throws CompilationException {
         Map<int[], Integer> machineCodeLayout = new HashMap<>();
         Map<Integer, int[]> linearToCoord = layout.linearAddressToCoord();
         Map<String, Integer> coordToLinear = layout.relativeCoordToLinearAddress();
@@ -120,7 +123,9 @@ public class Emitter {
                 linearToCoord,
                 labelAddressToName,
                 registerAliasMap,
-                procNameToParamNames
+                procNameToParamNames,
+                tokenMap,
+                tokenLookup
         );
     }
 

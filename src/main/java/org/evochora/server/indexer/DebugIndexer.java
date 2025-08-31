@@ -1279,12 +1279,39 @@ public class DebugIndexer implements IControllable, Runnable {
         if (fileName == null) fileName = "unknown.s";
         if (currentLine == null) currentLine = 1;
         
+        // NEW: Generate source lines and annotations when artifact is available
+        List<PreparedTickState.SourceLine> lines = new ArrayList<>();
+        List<PreparedTickState.InlineSpan> inlineSpans = new ArrayList<>();
+        
+        // Get source lines for the current file
+        List<String> sourceLines = artifact.sources().get(fileName);
+        if (sourceLines != null) {
+            SourceAnnotator annotator = new SourceAnnotator();
+            
+            for (int i = 0; i < sourceLines.size(); i++) {
+                String lineContent = sourceLines.get(i);
+                int lineNumber = i + 1;
+                boolean isCurrent = lineNumber == currentLine;
+                
+                // Create source line
+                lines.add(new PreparedTickState.SourceLine(
+                    lineNumber, lineContent, isCurrent, 
+                    new ArrayList<>(), new ArrayList<>()  // prolog/epilog empty for now
+                ));
+                
+                // Generate annotations for this line (only for the active line)
+                boolean isActiveLine = lineNumber == currentLine;
+                List<PreparedTickState.InlineSpan> lineSpans = annotator.annotate(o, artifact, lineContent, lineNumber, isActiveLine);
+                inlineSpans.addAll(lineSpans);
+            }
+        }
+        
         // When we have a valid artifact, return a proper SourceView with calculated values
         return new PreparedTickState.SourceView(
             fileName,           // Calculated fileName or fallback
             currentLine,        // Calculated currentLine or fallback
-            new ArrayList<>(),  // lines - empty for now
-            new ArrayList<>()   // inlineSpans - empty for now
+            lines,              // Populated source lines
+            inlineSpans         // Generated annotations
         );
     }
 

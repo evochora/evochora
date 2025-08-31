@@ -188,4 +188,34 @@ public class SymbolTable {
         String key = procName.fileName() + "|" + procName.text().toUpperCase();
         return procExportedByFileAndName.get(key);
     }
+    
+    /**
+     * Returns all symbols from all scopes in the symbol table.
+     * This method is used for generating debug information like TokenMap.
+     * 
+     * @return A list of all symbols in the symbol table
+     */
+    public List<Symbol> getAllSymbols() {
+        List<Symbol> allSymbols = new ArrayList<>();
+        collectSymbols(rootScope, allSymbols);
+        return allSymbols;
+    }
+    
+    /**
+     * Recursively collects all symbols from a scope and its children.
+     * 
+     * @param scope The scope to collect symbols from
+     * @param symbols The list to collect symbols into
+     */
+    private void collectSymbols(Scope scope, List<Symbol> symbols) {
+        // Collect symbols from current scope
+        for (Map<String, Symbol> perFile : scope.symbols.values()) {
+            symbols.addAll(perFile.values());
+        }
+        
+        // Recursively collect from child scopes
+        for (Scope child : scope.children) {
+            collectSymbols(child, symbols);
+        }
+    }
 }

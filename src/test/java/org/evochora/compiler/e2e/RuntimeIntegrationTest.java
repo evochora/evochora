@@ -186,7 +186,9 @@ public class RuntimeIntegrationTest {
                 correctArtifact.linearAddressToCoord(),
                 correctArtifact.labelAddressToName(),
                 correctArtifact.registerAliasMap(),
-                correctArtifact.procNameToParamNames()
+                correctArtifact.procNameToParamNames(),
+                correctArtifact.tokenMap(),
+                correctArtifact.tokenLookup()
         );
 
         // Setup der Simulation

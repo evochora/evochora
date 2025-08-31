@@ -4,6 +4,7 @@ class SidebarSourceView {
         this.currentProgramId = null;
         this.allSources = null;
         this.selectedFileName = null;
+        this.currentFileName = null;
     }
     
     update(src) {
@@ -24,6 +25,7 @@ class SidebarSourceView {
             this.currentProgramId = programId;
             this.allSources = null;
             this.selectedFileName = null;
+            this.currentFileName = null; // Reset so it can be set to the new main program
         }
         
         // Lade alle verfügbaren Sources, falls noch nicht geladen
@@ -55,6 +57,16 @@ class SidebarSourceView {
                     this.selectedFileName = availableFiles[0];
                 }
             }
+            
+            // CRITICAL: Only set currentFileName (main program) if it hasn't been set yet
+            // This ensures that currentFileName represents the entry point, not the current execution file
+            if (!this.currentFileName) {
+                this.currentFileName = this.selectedFileName;
+                console.log(`SidebarSourceView: Set currentFileName (main program) to "${this.currentFileName}"`);
+            }
+            
+            // Debug logging
+            console.log(`SidebarSourceView: src.fileName="${src.fileName}", selectedFileName="${this.selectedFileName}", currentFileName="${this.currentFileName}"`);
         } else if (!this.selectedFileName && this.allSources && Object.keys(this.allSources).length > 0) {
             // Fallback: Wähle main.s als Standard, falls verfügbar, sonst die erste Datei
             const availableFiles = Object.keys(this.allSources);
@@ -69,6 +81,10 @@ class SidebarSourceView {
             }
             
             this.selectedFileName = defaultFile;
+            // Also set currentFileName for relative path calculations (only if not set yet)
+            if (!this.currentFileName) {
+                this.currentFileName = this.selectedFileName;
+            }
         }
         
 
@@ -166,25 +182,29 @@ class SidebarSourceView {
         // Behalte .s Endung für bessere Lesbarkeit
         let relativePath = fileName;
         
-        // Das erste Element in allSources ist immer das Hauptprogramm
-        // Alle anderen sind Include-Dateien
-        const allSourceKeys = Object.keys(this.allSources);
-        const mainProgramKey = allSourceKeys[0]; // Erstes Element = Hauptprogramm
-        const isMainProgram = fileName === mainProgramKey;
+        // Finde das aktuelle Hauptprogramm basierend auf der aktuellen fileName
+        // Die fileName aus der sourceView ist das Hauptprogramm
+        const currentMainProgram = this.currentFileName || this.selectedFileName;
+        
+        if (!currentMainProgram) {
+            // Fallback: Zeige den vollen Pfad
+            return fileName;
+        }
+        
+        const isMainProgram = fileName === currentMainProgram;
         
         if (isMainProgram) {
             // Für das Hauptprogramm: Zeige nur den Dateinamen
             const parts = relativePath.split('/');
             relativePath = parts[parts.length - 1];
         } else {
-            // Für Include-Dateien: Entferne den gemeinsamen Pfad-Prefix mit der Hauptdatei
+            // Für Include-Dateien: Berechne den relativen Pfad zum Hauptprogramm
             // Beispiel: 
-            // Hauptdatei: "org/evochora/organism/prototypes/main.s"
-            // Include-Datei: "org/evochora/organism/prototypes/lib/behaviors.s"
-            // Gemeinsamer Prefix: "org/evochora/organism/prototypes/"
-            // Ergebnis: "lib/behaviors.s"
+            // Hauptdatei: "org/evochora/organism/prototypes/test.s"
+            // Include-Datei: "org/evochora/organism/prototypes/lib/test.s"
+            // Ergebnis: "lib/test.s"
             
-            const mainParts = mainProgramKey.split('/');
+            const mainParts = currentMainProgram.split('/');
             const includeParts = relativePath.split('/');
             
             // Finde den gemeinsamen Prefix
@@ -202,6 +222,9 @@ class SidebarSourceView {
                 relativePath = includeParts.slice(commonPrefixLength).join('/');
             }
         }
+        
+        // Debug logging
+        console.log(`getRelativePath: fileName="${fileName}", currentMainProgram="${currentMainProgram}", isMainProgram=${isMainProgram}, result="${relativePath}"`);
         
         return relativePath;
     }
@@ -239,27 +262,29 @@ class SidebarSourceView {
         
         let formattedLine = String(line).replace(/</g, '&lt;').replace(/>/g, '&gt;');
         
-        // Füge Inline-Values hinzu, falls verfügbar
+        // Check if this line has annotations from the backend
         if (src.inlineSpans && Array.isArray(src.inlineSpans)) {
             const lineSpans = src.inlineSpans.filter(span => span.lineNumber === lineNumber);
             
             if (lineSpans.length > 0) {
-                // Sortiere Spans nach Position
-                lineSpans.sort((a, b) => (a.occurrence || 0) - (b.occurrence || 0));
+                // Apply annotations in reverse order to maintain correct positions
+                const sortedSpans = [...lineSpans].sort((a, b) => 
+                    (b.tokenToAnnotate.length - a.tokenToAnnotate.length) || 
+                    (b.occurrence - a.occurrence)
+                );
                 
-                // Füge Annotations hinzu
-                for (const span of lineSpans) {
+                for (const span of sortedSpans) {
                     const token = span.tokenToAnnotate;
                     const annotation = span.annotationText;
                     const kind = span.kind || 'info';
                     
-                    if (token && annotation) {
-                        // Ersetze den Token mit einer annotierten Version
-                        const regex = new RegExp(`\\b${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
-                        formattedLine = formattedLine.replace(regex, 
-                            `<span class="inline-annotation ${kind}" title="${annotation}">${token}</span>`
-                        );
-                    }
+                                         if (token && annotation) {
+                         // Create annotation HTML with token in normal color and annotation in green
+                         const annotationHtml = `${token}<span class="injected-value ${kind}">[${annotation}]</span>`;
+                         
+                         // Replace token with annotated version
+                         formattedLine = formattedLine.replace(token, annotationHtml);
+                     }
                 }
             }
         }
@@ -345,11 +370,12 @@ class SidebarSourceView {
                 out += raw.slice(cur, idx).replace(/</g, '&lt;');
                 
                 const cls = s.kind ? ` injected-value ${s.kind}` : ' injected-value';
-                const needsBracket = (s.kind === 'reg' || s.kind === 'define' || s.kind === 'jump' || s.kind === 'callJump');
-                const alreadyBracketed = typeof s.annotationText === 'string' && s.annotationText.startsWith('[') && s.annotationText.endsWith(']');
-                const display = needsBracket && !alreadyBracketed ? `[${s.annotationText}]` : s.annotationText;
                 
-                out += `<span class="${cls}">${String(display || '').replace(/</g, '&lt;')}</span>`;
+                                 // Show token in normal color and annotation in green
+                 const token = String(s.tokenToAnnotate || '').replace(/</g, '&lt;');
+                 const annotation = String(s.annotationText || '').replace(/</g, '&lt;');
+                 
+                 out += `${token}<span class="${cls}">[${annotation}]</span>`;
                 cur = idx;
             }
             
