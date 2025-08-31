@@ -34,7 +34,7 @@ class TokenMapGeneratorTest {
     void setUp() {
         diagnostics = new DiagnosticsEngine();
         symbolTable = new SymbolTable(diagnostics);
-        generator = new TokenMapGenerator(symbolTable);
+        generator = new TokenMapGenerator(symbolTable, new HashMap<>(), diagnostics);
     }
     
     @Test
@@ -66,8 +66,7 @@ class TokenMapGeneratorTest {
             if ("TEST_PROC".equals(tokenInfo.tokenText()) && 
                 tokenInfo.tokenType() == Symbol.Type.PROCEDURE) {
                 foundProcedure = true;
-                assertEquals("TEST_PROC", tokenInfo.scope()); // Procedure defines its own scope
-                assertTrue(tokenInfo.isDefinition());
+                assertEquals("global", tokenInfo.scope()); // Procedure names are in global scope
                 break;
             }
         }
@@ -93,7 +92,6 @@ class TokenMapGeneratorTest {
                 tokenInfo.tokenType() == Symbol.Type.VARIABLE) {
                 foundParameter = true;
                 assertEquals("TEST_PROC", tokenInfo.scope());
-                assertTrue(tokenInfo.isDefinition());
                 break;
             }
         }

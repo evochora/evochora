@@ -82,7 +82,7 @@ class SourceAnnotatorTest {
         System.out.println("tokenLookup size: " + (artifact.tokenLookup() != null ? artifact.tokenLookup().size() : "null"));
         // Check if we have tokens for the current line in any file
         boolean foundTokens = false;
-        for (Map<Integer, List<org.evochora.compiler.api.TokenInfo>> fileTokens : artifact.tokenLookup().values()) {
+        for (Map<Integer, Map<Integer, List<org.evochora.compiler.api.TokenInfo>>> fileTokens : artifact.tokenLookup().values()) {
             if (fileTokens.containsKey(lineNumber)) {
                 System.out.println("Tokens for line " + lineNumber + ": " + fileTokens.get(lineNumber));
                 foundTokens = true;
@@ -92,10 +92,13 @@ class SourceAnnotatorTest {
         
         // Debug: Check all lines for %COUNTER
         System.out.println("--- All lines in tokenLookup ---");
-        for (Map.Entry<String, Map<Integer, List<org.evochora.compiler.api.TokenInfo>>> fileEntry : artifact.tokenLookup().entrySet()) {
+        for (Map.Entry<String, Map<Integer, Map<Integer, List<org.evochora.compiler.api.TokenInfo>>>> fileEntry : artifact.tokenLookup().entrySet()) {
             String fileName = fileEntry.getKey();
-            for (Map.Entry<Integer, List<org.evochora.compiler.api.TokenInfo>> lineEntry : fileEntry.getValue().entrySet()) {
-                System.out.println("  " + fileName + ":" + lineEntry.getKey() + ": " + lineEntry.getValue());
+            for (Map.Entry<Integer, Map<Integer, List<org.evochora.compiler.api.TokenInfo>>> lineEntry : fileEntry.getValue().entrySet()) {
+                Integer lineNum = lineEntry.getKey();
+                Map<Integer, List<org.evochora.compiler.api.TokenInfo>> columnTokens = lineEntry.getValue();
+                List<org.evochora.compiler.api.TokenInfo> allTokens = columnTokens.values().stream().flatMap(List::stream).toList();
+                System.out.println("  " + fileName + ":" + lineNum + ": " + allTokens);
             }
         }
         

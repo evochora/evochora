@@ -43,7 +43,7 @@ class SourceViewAnnotationTest {
         when(mockArtifact.relativeCoordToLinearAddress()).thenReturn(coordToLinear);
         
         Map<Integer, SourceInfo> sourceMap = new HashMap<>();
-        sourceMap.put(100, new SourceInfo("main.s", 15, "  MOV %POS, %TARGET"));
+        sourceMap.put(100, new SourceInfo("main.s", 15, 2, "  MOV %POS, %TARGET"));
         when(mockArtifact.sourceMap()).thenReturn(sourceMap);
         
         // Mock source code

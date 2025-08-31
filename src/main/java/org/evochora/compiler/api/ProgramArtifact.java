@@ -1,5 +1,6 @@
 package org.evochora.compiler.api;
 
+import org.evochora.compiler.internal.CoordinateConverter;
 import org.evochora.compiler.internal.LinearizedProgramArtifact;
 import org.evochora.runtime.model.EnvironmentProperties;
 import java.util.Collections;
@@ -38,7 +39,7 @@ public record ProgramArtifact(
         Map<String, Integer> registerAliasMap,
         Map<String, List<String>> procNameToParamNames,
         Map<SourceInfo, TokenInfo> tokenMap,
-        Map<String, Map<Integer, List<TokenInfo>>> tokenLookup
+        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup
 ) {
     public ProgramArtifact {
         sources = sources != null ? Collections.unmodifiableMap(sources) : Collections.emptyMap();

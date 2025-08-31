@@ -37,60 +37,83 @@ class TokenAnnotatorTest {
         
         // Create a comprehensive test artifact with various token types
         Map<SourceInfo, TokenInfo> tokenMap = new HashMap<>();
-        Map<String, Map<Integer, List<TokenInfo>>> tokenLookup = new HashMap<>();
+        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup = new HashMap<>();
         Map<Integer, List<TokenInfo>> lineToTokens = new HashMap<>();
         
-        // Build tokenLookup structure
-        Map<Integer, List<TokenInfo>> testFileTokens = new HashMap<>();
+        // Build tokenLookup structure with column information
+        Map<Integer, Map<Integer, List<TokenInfo>>> testFileTokens = new HashMap<>();
         
         // Line 1: .PROC TEST_PROC WITH PARAM1 PARAM2
-        SourceInfo procSource = new SourceInfo("test.s", 1, ".PROC TEST_PROC WITH PARAM1 PARAM2");
-        TokenInfo procToken = new TokenInfo("TEST_PROC", Symbol.Type.PROCEDURE, "global", true);
-        TokenInfo param1Token = new TokenInfo("PARAM1", Symbol.Type.VARIABLE, "TEST_PROC", true);
-        TokenInfo param2Token = new TokenInfo("PARAM2", Symbol.Type.VARIABLE, "TEST_PROC", true);
+        SourceInfo procSource = new SourceInfo("test.s", 1, 0, ".PROC TEST_PROC WITH PARAM1 PARAM2");
+        TokenInfo procToken = new TokenInfo("TEST_PROC", Symbol.Type.PROCEDURE, "global");
+        TokenInfo param1Token = new TokenInfo("PARAM1", Symbol.Type.VARIABLE, "TEST_PROC");
+        TokenInfo param2Token = new TokenInfo("PARAM2", Symbol.Type.VARIABLE, "TEST_PROC");
         
         tokenMap.put(procSource, procToken);
-        tokenMap.put(new SourceInfo("test.s", 1, "PARAM1"), param1Token);
-        tokenMap.put(new SourceInfo("test.s", 1, "PARAM2"), param2Token);
+        tokenMap.put(new SourceInfo("test.s", 1, 5, "PARAM1"), param1Token);
+        tokenMap.put(new SourceInfo("test.s", 1, 12, "PARAM2"), param2Token);
         
         lineToTokens.put(1, List.of(procToken, param1Token, param2Token));
-        testFileTokens.put(1, List.of(procToken, param1Token, param2Token));
+        
+        // Create column-based structure for line 1
+        Map<Integer, List<TokenInfo>> line1Columns = new HashMap<>();
+        line1Columns.put(0, List.of(procToken));      // Column 0: .PROC
+        line1Columns.put(5, List.of(param1Token));    // Column 5: PARAM1
+        line1Columns.put(12, List.of(param2Token));   // Column 12: PARAM2
+        testFileTokens.put(1, line1Columns);
         
         // Line 2: CALL TEST_PROC WITH %DR0 %DR1
-        SourceInfo callSource = new SourceInfo("test.s", 2, "CALL TEST_PROC WITH %DR0 %DR1");
-        TokenInfo callToken = new TokenInfo("CALL", Symbol.Type.LABEL, "global", false);
-        TokenInfo labelRefToken = new TokenInfo("TEST_PROC", Symbol.Type.LABEL, "global", false);
-        TokenInfo reg1Token = new TokenInfo("%DR0", Symbol.Type.VARIABLE, "global", false);
-        TokenInfo reg2Token = new TokenInfo("%DR1", Symbol.Type.VARIABLE, "global", false);
+        SourceInfo callSource = new SourceInfo("test.s", 2, 0, "CALL TEST_PROC WITH %DR0 %DR1");
+        TokenInfo callToken = new TokenInfo("CALL", Symbol.Type.LABEL, "global");
+        TokenInfo labelRefToken = new TokenInfo("TEST_PROC", Symbol.Type.LABEL, "global");
+        TokenInfo reg1Token = new TokenInfo("%DR0", Symbol.Type.VARIABLE, "global");
+        TokenInfo reg2Token = new TokenInfo("%DR1", Symbol.Type.VARIABLE, "global");
         
         tokenMap.put(callSource, callToken);
-        tokenMap.put(new SourceInfo("test.s", 2, "TEST_PROC"), labelRefToken);
-        tokenMap.put(new SourceInfo("test.s", 2, "%DR0"), reg1Token);
-        tokenMap.put(new SourceInfo("test.s", 2, "%DR1"), reg2Token);
+        tokenMap.put(new SourceInfo("test.s", 2, 5, "TEST_PROC"), labelRefToken);
+        tokenMap.put(new SourceInfo("test.s", 2, 18, "%DR0"), reg1Token);
+        tokenMap.put(new SourceInfo("test.s", 2, 23, "%DR1"), reg2Token);
         
         lineToTokens.put(2, List.of(callToken, labelRefToken, reg1Token, reg2Token));
-        testFileTokens.put(2, List.of(callToken, labelRefToken, reg1Token, reg2Token));
+        
+        // Create column-based structure for line 2
+        Map<Integer, List<TokenInfo>> line2Columns = new HashMap<>();
+        line2Columns.put(0, List.of(callToken));      // Column 0: CALL
+        line2Columns.put(5, List.of(labelRefToken));  // Column 5: TEST_PROC
+        line2Columns.put(18, List.of(reg1Token));     // Column 18: %DR0
+        line2Columns.put(23, List.of(reg2Token));     // Column 23: %DR1
+        testFileTokens.put(2, line2Columns);
         
         // Line 3: ADDR PARAM1 PARAM2
-        SourceInfo addSource = new SourceInfo("test.s", 3, "ADDR PARAM1 PARAM2");
-        TokenInfo addToken = new TokenInfo("ADDR", Symbol.Type.LABEL, "global", false);
-        TokenInfo param1RefToken = new TokenInfo("PARAM1", Symbol.Type.VARIABLE, "TEST_PROC", false);
-        TokenInfo param2RefToken = new TokenInfo("PARAM2", Symbol.Type.VARIABLE, "TEST_PROC", false);
+        SourceInfo addSource = new SourceInfo("test.s", 3, 0, "ADDR PARAM1 PARAM2");
+        TokenInfo addToken = new TokenInfo("ADDR", Symbol.Type.LABEL, "global");
+        TokenInfo param1RefToken = new TokenInfo("PARAM1", Symbol.Type.VARIABLE, "TEST_PROC");
+        TokenInfo param2RefToken = new TokenInfo("PARAM2", Symbol.Type.VARIABLE, "TEST_PROC");
         
         tokenMap.put(addSource, addToken);
-        tokenMap.put(new SourceInfo("test.s", 3, "PARAM1"), param1RefToken);
-        tokenMap.put(new SourceInfo("test.s", 3, "PARAM2"), param2RefToken);
+        tokenMap.put(new SourceInfo("test.s", 3, 6, "PARAM1"), param1RefToken);
+        tokenMap.put(new SourceInfo("test.s", 3, 13, "PARAM2"), param2RefToken);
         
         lineToTokens.put(3, List.of(addToken, param1RefToken, param2RefToken));
-        testFileTokens.put(3, List.of(addToken, param1RefToken, param2RefToken));
+        
+        // Create column-based structure for line 3
+        Map<Integer, List<TokenInfo>> line3Columns = new HashMap<>();
+        line3Columns.put(0, List.of(addToken));       // Column 0: ADDR
+        line3Columns.put(6, List.of(param1RefToken)); // Column 6: PARAM1
+        line3Columns.put(13, List.of(param2RefToken)); // Column 13: PARAM2
+        testFileTokens.put(3, line3Columns);
         
         // Line 4: RET
-        SourceInfo retSource = new SourceInfo("test.s", 4, "RET");
-        TokenInfo retToken = new TokenInfo("RET", Symbol.Type.LABEL, "global", false);
+        SourceInfo retSource = new SourceInfo("test.s", 4, 0, "RET");
+        TokenInfo retToken = new TokenInfo("RET", Symbol.Type.LABEL, "global");
         
         tokenMap.put(retSource, retToken);
         lineToTokens.put(4, List.of(retToken));
-        testFileTokens.put(4, List.of(retToken));
+        
+        // Create column-based structure for line 4
+        Map<Integer, List<TokenInfo>> line4Columns = new HashMap<>();
+        line4Columns.put(0, List.of(retToken));       // Column 0: RET
+        testFileTokens.put(4, line4Columns);
         
         // Add the complete file structure to tokenLookup
         tokenLookup.put("test.s", testFileTokens);
@@ -105,7 +128,7 @@ class TokenAnnotatorTest {
             )),
             Map.of(new int[]{0,0}, 100), // machineCodeLayout
             Collections.emptyMap(), // initialWorldObjects
-            Map.of(1, new SourceInfo("test.s", 1, ".PROC TEST_PROC WITH PARAM1 PARAM2")), // sourceMap
+            Map.of(1, new SourceInfo("test.s", 1, 0, ".PROC TEST_PROC WITH PARAM1 PARAM2")), // sourceMap
             Map.of(100, new int[]{0,1}), // callSiteBindings
             Map.of("0,0", 100), // relativeCoordToLinearAddress
             Map.of(100, new int[]{0,0}), // linearAddressToCoord

@@ -2,6 +2,8 @@ package org.evochora.compiler.e2e;
 
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.runtime.isa.Instruction;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -17,6 +19,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * rely on external resources like the filesystem or network.
  */
 public class CompilerEndToEndTest {
+
+	@BeforeAll
+	static void setUp() {
+		Instruction.init();
+	}
 
 	/**
 	 * Tests the end-to-end compilation of a procedure definition with parameters and a call to it.

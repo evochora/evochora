@@ -81,7 +81,7 @@ public record LinearizedProgramArtifact(
         Map<String, Integer> registerAliasMap,
         Map<String, List<String>> procNameToParamNames,
         Map<SerializableSourceInfo, TokenInfo> tokenMap,
-        Map<String, Map<Integer, List<TokenInfo>>> tokenLookup,
+        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup,
         EnvironmentProperties envProps
 ) {
     

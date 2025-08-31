@@ -106,6 +106,7 @@ public final class IrGenContext {
 			return new SourceInfo(
 					n.opcode().fileName(),
 					n.opcode().line(),
+					n.opcode().column(),
 					reconstructLineFromInstruction(n)
 			);
 		}
@@ -113,10 +114,10 @@ public final class IrGenContext {
 		// For all other nodes, we continue to use a representative token.
 		Token representative = getRepresentativeToken(node);
 		if (representative != null) {
-			return new SourceInfo(representative.fileName(), representative.line(), representative.text());
+			return new SourceInfo(representative.fileName(), representative.line(), representative.column(), representative.text());
 		}
 
-		return new SourceInfo("unknown", -1, "");
+		return new SourceInfo("unknown", -1, -1, "");
 	}
 
 	private Token getRepresentativeToken(AstNode node) {

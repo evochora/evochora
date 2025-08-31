@@ -8,4 +8,4 @@ package org.evochora.compiler.api;
  * @param lineNumber The line number.
  * @param lineContent The content of the line.
  */
-public record SourceInfo(String fileName, int lineNumber, String lineContent) {}
+public record SourceInfo(String fileName, int lineNumber, int columnNumber, String lineContent) {}

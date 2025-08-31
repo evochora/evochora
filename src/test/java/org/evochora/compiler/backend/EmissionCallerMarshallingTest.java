@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 public class EmissionCallerMarshallingTest {
 
-	private static SourceInfo src(String f, int l) { return new SourceInfo(f, l, ""); }
+	        private static SourceInfo src(String f, int l) { return new SourceInfo(f, l, 0, ""); }
 
 	/**
 	 * Verifies that for a `core:call_with` directive, the emission process correctly

@@ -27,8 +27,7 @@ public class LabelTokenHandler implements ITokenHandler {
         }
         
         // Only handle LABEL type tokens that are references (not definitions)
-        return tokenInfo.tokenType() == org.evochora.compiler.frontend.semantics.Symbol.Type.LABEL && 
-               !tokenInfo.isDefinition();
+        return tokenInfo.tokenType() == org.evochora.compiler.frontend.semantics.Symbol.Type.LABEL;
     }
     
     @Override

@@ -46,7 +46,7 @@ public class Emitter {
                                 Map<String, List<String>> procNameToParamNames,
                                 Map<String, List<String>> sources,
                                 Map<SourceInfo, TokenInfo> tokenMap,
-                                Map<String, Map<Integer, List<TokenInfo>>> tokenLookup) throws CompilationException {
+                                Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup) throws CompilationException {
         Map<int[], Integer> machineCodeLayout = new HashMap<>();
         Map<Integer, int[]> linearToCoord = layout.linearAddressToCoord();
         Map<String, Integer> coordToLinear = layout.relativeCoordToLinearAddress();

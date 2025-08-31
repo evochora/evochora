@@ -130,7 +130,7 @@ public class Compiler implements ICompiler {
         }
         
         // Phase 3.5: Generate TokenMap for Debugger
-        TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable);
+        TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, analyzer.getScopeMap(), diagnostics);
         Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generate(ast.get(0)); // Pass first AST node as root
 
         IrConverterRegistry irRegistry = IrConverterRegistry.initializeWithDefaults();
@@ -156,7 +156,7 @@ public class Compiler implements ICompiler {
         ProgramArtifact artifact;
         try {
             // Generate tokenLookup from tokenMap for efficient line-based lookup
-            Map<String, Map<Integer, List<TokenInfo>>> tokenLookup = generateTokenLookup(tokenMap);
+            Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup = generateTokenLookup(tokenMap);
             artifact = emitter.emit(linkedIr, layout, linkingContext, new RuntimeInstructionSetAdapter(), finalAliasMap, procNameToParamNames, sources, tokenMap, tokenLookup);
         } catch (org.evochora.compiler.api.CompilationException ce) {
             throw ce; // already formatted with file/line
@@ -173,8 +173,8 @@ public class Compiler implements ICompiler {
     /**
      * Generates tokenLookup structure from tokenMap for efficient line-based lookup.
      */
-    private Map<String, Map<Integer, List<TokenInfo>>> generateTokenLookup(Map<SourceInfo, TokenInfo> tokenMap) {
-        Map<String, Map<Integer, List<TokenInfo>>> result = new HashMap<>();
+    private Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> generateTokenLookup(Map<SourceInfo, TokenInfo> tokenMap) {
+        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> result = new HashMap<>();
         
         for (Map.Entry<SourceInfo, TokenInfo> entry : tokenMap.entrySet()) {
             SourceInfo sourceInfo = entry.getKey();
@@ -182,9 +182,11 @@ public class Compiler implements ICompiler {
             
             String fileName = sourceInfo.fileName();
             Integer lineNumber = sourceInfo.lineNumber();
+            Integer columnNumber = sourceInfo.columnNumber();
             
             result.computeIfAbsent(fileName, k -> new HashMap<>())
-                  .computeIfAbsent(lineNumber, k -> new ArrayList<>())
+                  .computeIfAbsent(lineNumber, k -> new HashMap<>())
+                  .computeIfAbsent(columnNumber, k -> new ArrayList<>())
                   .add(tokenInfo);
         }
         

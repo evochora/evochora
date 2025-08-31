@@ -61,11 +61,15 @@ public class TokenAnnotator {
         List<TokenAnnotation> annotations = new ArrayList<>();
         
         // Get tokens for this line from the TokenMap
-        // Get tokens for the current line from tokenLookup
         List<TokenInfo> lineTokens = new ArrayList<>();
-        for (Map<Integer, List<TokenInfo>> fileTokens : artifact.tokenLookup().values()) {
-            if (fileTokens.containsKey(lineNumber)) {
-                lineTokens.addAll(fileTokens.get(lineNumber));
+        // Use the new column-based tokenLookup structure
+        // For now, we'll collect from all files that match the line number
+        // TODO: Pass fileName to analyzeLine for more precise lookup
+        for (Map<Integer, Map<Integer, List<TokenInfo>>> fileTokens : artifact.tokenLookup().values()) {
+            Map<Integer, List<TokenInfo>> lineTokensMap = fileTokens.get(lineNumber);
+            if (lineTokensMap != null) {
+                // Collect all tokens from all columns on this line
+                lineTokensMap.values().forEach(lineTokens::addAll);
             }
         }
         if (lineTokens == null || lineTokens.isEmpty()) {

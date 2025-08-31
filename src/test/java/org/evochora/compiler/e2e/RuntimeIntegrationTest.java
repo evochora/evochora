@@ -8,6 +8,8 @@ import org.evochora.runtime.internal.services.CallBindingRegistry;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.isa.Instruction;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -25,6 +27,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * These are tagged as "integration" tests because they span the compiler and runtime subsystems.
  */
 public class RuntimeIntegrationTest {
+
+	@BeforeAll
+	static void setUp() {
+		Instruction.init();
+	}
 
 	/**
 	 * Compiles a procedure with parameters, loads it into a simulation, and runs it.

@@ -84,6 +84,22 @@ public class SymbolTable {
     }
 
     /**
+     * Gets the current scope.
+     * @return The current scope.
+     */
+    public Scope getCurrentScope() {
+        return this.currentScope;
+    }
+
+    /**
+     * Gets the root scope.
+     * @return The root scope.
+     */
+    public Scope getRootScope() {
+        return this.rootScope;
+    }
+
+    /**
      * Defines a new symbol in the current scope.
      * Reports an error if the symbol is already defined in the same file within the current scope.
      * @param symbol The symbol to define.

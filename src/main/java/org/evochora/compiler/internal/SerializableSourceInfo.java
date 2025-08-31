@@ -11,7 +11,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
  * @param lineNumber The line number.
  * @param lineContent The content of the line.
  */
-public record SerializableSourceInfo(String fileName, int lineNumber, String lineContent) {
+public record SerializableSourceInfo(String fileName, int lineNumber, int columnNumber, String lineContent) {
     
     /**
      * Creates a SerializableSourceInfo from a regular SourceInfo.
@@ -20,6 +20,7 @@ public record SerializableSourceInfo(String fileName, int lineNumber, String lin
         return new SerializableSourceInfo(
             sourceInfo.fileName(),
             sourceInfo.lineNumber(),
+            sourceInfo.columnNumber(),
             sourceInfo.lineContent()
         );
     }
@@ -28,7 +29,7 @@ public record SerializableSourceInfo(String fileName, int lineNumber, String lin
      * Converts this SerializableSourceInfo back to a regular SourceInfo.
      */
     public org.evochora.compiler.api.SourceInfo toSourceInfo() {
-        return new org.evochora.compiler.api.SourceInfo(fileName, lineNumber, lineContent);
+        return new org.evochora.compiler.api.SourceInfo(fileName, lineNumber, columnNumber, lineContent);
     }
     
     /**
@@ -38,9 +39,10 @@ public record SerializableSourceInfo(String fileName, int lineNumber, String lin
     @JsonValue
     @Override
     public String toString() {
-        return String.format("%s:%d:%s", 
+        return String.format("%s:%d:%d:%s", 
             fileName != null ? fileName : "<unknown>", 
             lineNumber, 
+            columnNumber,
             lineContent != null ? lineContent : "");
     }
     
@@ -53,15 +55,16 @@ public record SerializableSourceInfo(String fileName, int lineNumber, String lin
             throw new IllegalArgumentException("Serialized string cannot be null or empty");
         }
         
-        String[] parts = serialized.split(":", 3);
-        if (parts.length < 2) {
+        String[] parts = serialized.split(":", 4);
+        if (parts.length < 3) {
             throw new IllegalArgumentException("Invalid serialized format: " + serialized);
         }
         
         String fileName = parts[0].equals("<unknown>") ? null : parts[0];
         int lineNumber = Integer.parseInt(parts[1]);
-        String lineContent = parts.length > 2 ? parts[2] : "";
+        int columnNumber = Integer.parseInt(parts[2]);
+        String lineContent = parts.length > 3 ? parts[3] : "";
         
-        return new SerializableSourceInfo(fileName, lineNumber, lineContent);
+        return new SerializableSourceInfo(fileName, lineNumber, columnNumber, lineContent);
     }
 }

@@ -9,12 +9,14 @@ import org.evochora.compiler.frontend.parser.features.scope.ScopeNode;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.frontend.semantics.Symbol.Type;
+import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Traverses a syntactically and semantically valid Abstract Syntax Tree (AST)
@@ -29,16 +31,22 @@ import java.util.Objects;
 public class TokenMapGenerator {
 
     private final SymbolTable symbolTable;
+    private final Map<AstNode, SymbolTable.Scope> scopeMap;
     private final Map<SourceInfo, TokenInfo> tokenMap = new HashMap<>();
+    private final DiagnosticsEngine diagnostics;
     private String currentScope = "global";
 
     /**
      * Constructs a TokenMapGenerator.
      *
      * @param symbolTable The fully resolved symbol table from the semantic analysis phase.
+     * @param scopeMap The map of AST nodes to their corresponding scopes from SemanticAnalyzer.
+     * @param diagnostics The diagnostics engine for reporting compilation errors.
      */
-    public TokenMapGenerator(SymbolTable symbolTable) {
+    public TokenMapGenerator(SymbolTable symbolTable, Map<AstNode, SymbolTable.Scope> scopeMap, DiagnosticsEngine diagnostics) {
         this.symbolTable = Objects.requireNonNull(symbolTable, "SymbolTable cannot be null.");
+        this.scopeMap = scopeMap;
+        this.diagnostics = diagnostics;
     }
 
     /**
@@ -95,22 +103,15 @@ public class TokenMapGenerator {
             this.currentScope = scopeNode.name().text().toUpperCase();
         }
 
-        // --- Debug: Track every node visit ---
-        System.out.println("VISITING: " + node.getClass().getSimpleName() + 
-                          " at line " + getNodeLine(node) + 
-                          " with " + node.getChildren().size() + " children");
-        
-
-
-        // --- Visit the current node to add its token to the map ---
+        // Visit the current node to add its token to the map
         visit(node);
 
-        // --- Recursively visit all children ---
+        // Recursively visit all children
         for (AstNode child : node.getChildren()) {
             walkAndVisit(child);
         }
 
-        // --- Restore the previous scope after leaving the node's subtree ---
+        // Restore the previous scope after leaving the node's subtree
         if (isNewScopeNode) {
             this.currentScope = previousScope;
         }
@@ -123,137 +124,103 @@ public class TokenMapGenerator {
      * @param node The AST node to process.
      */
     private void visit(AstNode node) {
-        if (node instanceof InstructionNode instNode) {
-            // Handle CALL and RET specifically for jump target annotation
-            String opcode = instNode.opcode().text().toUpperCase();
-            if ("CALL".equals(opcode)) {
-                addToken(instNode.opcode(), "CALL", this.currentScope);
-                // Process CALL arguments (procedure name, WITH, parameters)
-                for (AstNode arg : instNode.arguments()) {
-                    if (arg instanceof IdentifierNode idNode) {
-                        String text = idNode.identifierToken().text().toUpperCase();
-                        if (!"WITH".equals(text)) {
-                            // This is a procedure name in CALL
-                            addToken(idNode.identifierToken(), "PROCEDURE", this.currentScope);
-                        } else {
-                            // This is the WITH keyword
-                            addToken(idNode.identifierToken(), "KEYWORD", this.currentScope);
-                        }
-                    } else if (arg instanceof RegisterNode regNode) {
-                        addToken(regNode.registerToken(), "REGISTER", this.currentScope);
-                    }
-                }
-            } else if ("RET".equals(opcode)) {
-                addToken(instNode.opcode(), "RET", this.currentScope);
-            } else {
-                // Other instructions don't need special annotation
-                addToken(instNode.opcode(), "INSTRUCTION", this.currentScope);
-            }
-        } else if (node instanceof LabelNode labelNode) {
-            // Labels get the scope they're defined in (procedure scope, scope block, or global)
-            addToken(labelNode.labelToken(), "LABEL", this.currentScope);
-        } else if (node instanceof IdentifierNode idNode) {
-            // For any identifier, the symbol table holds the ground truth.
-            // We'll use the current scope context for now
-            addToken(idNode.identifierToken(), "IDENTIFIER", this.currentScope);
-        } else if (node instanceof RegisterNode regNode) {
-            addToken(regNode.registerToken(), "REGISTER", this.currentScope);
-        } else if (node instanceof NumberLiteralNode numNode) {
-            addToken(numNode.numberToken(), "LITERAL", this.currentScope);
-        } else if (node instanceof ProcedureNode procNode) {
-            addToken(procNode.name(), "PROCEDURE", this.currentScope);
-            // Add parameter tokens
+        if (node instanceof ProcedureNode procNode) {
+            // Add the procedure name token to global scope
+            addToken(procNode.name(), Symbol.Type.PROCEDURE, "global");
+            
+            // Add parameter tokens as VARIABLE type in the procedure's scope
+            // Parameters are metadata stored in the procedure node, not separate AST nodes
             for (org.evochora.compiler.frontend.lexer.Token param : procNode.parameters()) {
-                addToken(param, "PARAMETER", this.currentScope);
+                addToken(param, Symbol.Type.VARIABLE, procNode.name().text().toUpperCase());
+            }
+        } else if (node instanceof IdentifierNode identifierNode) {
+            // Add the identifier token - resolve its type from symbol table
+            // Use the current scope context for proper resolution
+            Optional<Symbol> symbolOpt = resolveInCurrentScope(identifierNode.identifierToken());
+            if (symbolOpt.isPresent()) {
+                addToken(identifierNode.identifierToken(), symbolOpt.get().type(), this.currentScope);
+            } else {
+                // If symbol not found, report it as a compilation error using DiagnosticsEngine
+                diagnostics.reportError(
+                    "Symbol '" + identifierNode.identifierToken().text() + 
+                    "' could not be resolved. This indicates a semantic analysis failure.",
+                    identifierNode.identifierToken().fileName(),
+                    identifierNode.identifierToken().line()
+                );
+                // Continue compilation - don't add this token to the map
+            }
+        } else if (node instanceof RegisterNode registerNode) {
+            // Add the register token
+            addToken(registerNode.registerToken(), Symbol.Type.VARIABLE, this.currentScope);
+        } else if (node instanceof InstructionNode instructionNode) {
+            // Only add CALL and RET instructions to token map
+            String opcode = instructionNode.opcode().text();
+            if ("CALL".equalsIgnoreCase(opcode) || "RET".equalsIgnoreCase(opcode)) {
+                addToken(instructionNode.opcode(), Symbol.Type.CONSTANT, this.currentScope);
             }
         }
     }
 
     /**
-     * Helper method to get the line number for any AST node.
+     * Resolves a symbol in the current scope context.
      */
-    private int getNodeLine(AstNode node) {
-        if (node instanceof InstructionNode instNode) {
-            return instNode.opcode().line();
-        } else if (node instanceof LabelNode labelNode) {
-            return labelNode.labelToken().line();
-        } else if (node instanceof IdentifierNode idNode) {
-            return idNode.identifierToken().line();
-        } else if (node instanceof RegisterNode regNode) {
-            return regNode.registerToken().line();
-        } else if (node instanceof NumberLiteralNode numNode) {
-            return numNode.numberToken().line();
-        } else if (node instanceof TypedLiteralNode litNode) {
-            return litNode.type().line();
-        } else if (node instanceof ProcedureNode procNode) {
-            return procNode.name().line();
-        } else if (node instanceof ScopeNode scopeNode) {
-            return scopeNode.name().line();
-        } else if (node instanceof PushCtxNode || node instanceof PopCtxNode) {
-            // Context nodes don't have line numbers
-            return -1;
-        } else {
-            // Fallback for unknown node types
-            return -1;
+    private Optional<Symbol> resolveInCurrentScope(org.evochora.compiler.frontend.lexer.Token token) {
+        // Temporarily set the symbol table's current scope to our tracked scope
+        SymbolTable.Scope originalScope = symbolTable.getCurrentScope();
+        
+        // Find the scope object that corresponds to our current scope name
+        SymbolTable.Scope targetScope = findScopeByName(this.currentScope);
+        if (targetScope != null) {
+            symbolTable.setCurrentScope(targetScope);
         }
+        
+        try {
+            return symbolTable.resolve(token);
+        } finally {
+            // Restore the original scope
+            symbolTable.setCurrentScope(originalScope);
+        }
+    }
+
+    /**
+     * Finds a scope by name by searching through the scope map.
+     */
+    private SymbolTable.Scope findScopeByName(String scopeName) {
+        for (Map.Entry<AstNode, SymbolTable.Scope> entry : scopeMap.entrySet()) {
+            if (entry.getKey() instanceof ProcedureNode procNode) {
+                if (procNode.name().text().toUpperCase().equals(scopeName)) {
+                    return entry.getValue();
+                }
+            } else if (entry.getKey() instanceof ScopeNode scopeNode) {
+                if (scopeNode.name().text().toUpperCase().equals(scopeName)) {
+                    return entry.getValue();
+                }
+            }
+        }
+        return null;
     }
 
     /**
      * A helper method to create a TokenInfo object and add it to the map.
      */
-    private void addToken(org.evochora.compiler.frontend.lexer.Token token, String type, String scope) {
+    private void addToken(org.evochora.compiler.frontend.lexer.Token token, Symbol.Type type, String scope) {
         if (token != null) {
             SourceInfo sourceInfo = new SourceInfo(
                 token.fileName(),
                 token.line(),
+                token.column(),
                 token.text()
             );
-            
-            // Convert string type to Symbol.Type and determine isDefinition
-            Type symbolType = convertToSymbolType(type);
-            boolean isDefinition = determineIsDefinition(type, token);
             
             // Create TokenInfo with the proper structure
             TokenInfo tokenInfo = new TokenInfo(
                 token.text(),
-                symbolType,
-                scope,
-                isDefinition
+                type,
+                scope
             );
             
             // Overwrite existing tokens to ensure correct line numbers
             tokenMap.put(sourceInfo, tokenInfo);
         }
     }
-    
-    /**
-     * Converts string type to Symbol.Type for TokenInfo.
-     */
-    private Type convertToSymbolType(String type) {
-        return switch (type) {
-            case "PROCEDURE" -> Type.PROCEDURE;
-            case "LABEL" -> Type.LABEL;
-            case "REGISTER" -> Type.VARIABLE; // Registers are stored as VARIABLE in SymbolTable
-            case "PARAMETER" -> Type.VARIABLE; // Parameters are stored as VARIABLE in SymbolTable
-            case "LITERAL" -> Type.CONSTANT;
-            case "CALL", "RET", "INSTRUCTION" -> Type.LABEL; // Instructions are treated as LABEL for annotation
-            case "KEYWORD" -> Type.VARIABLE; // Keywords are treated as VARIABLE
-            case "IDENTIFIER" -> Type.VARIABLE; // Default for identifiers
-            default -> Type.VARIABLE;
-        };
-    }
-    
-    /**
-     * Determines if a token represents a definition.
-     */
-    private boolean determineIsDefinition(String type, org.evochora.compiler.frontend.lexer.Token token) {
-        return switch (type) {
-            case "PROCEDURE", "LABEL" -> true; // These are always definitions
-            case "PARAMETER" -> true; // Parameters are defined in procedure signature
-            case "CALL", "RET", "INSTRUCTION", "REGISTER", "LITERAL", "KEYWORD", "IDENTIFIER" -> false; // These are references
-            default -> false;
-        };
-    }
-    
-
 }
