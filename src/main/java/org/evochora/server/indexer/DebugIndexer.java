@@ -16,7 +16,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -28,7 +27,6 @@ import java.sql.Statement;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
-import com.fasterxml.jackson.databind.JsonNode;
 import org.evochora.compiler.internal.LinearizedProgramArtifact;
 import org.evochora.runtime.services.Disassembler;
 import org.evochora.runtime.services.DisassemblyData;
@@ -63,7 +61,7 @@ public class DebugIndexer implements IControllable, Runnable {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private String rawDbPath;
     private String debugDbPath;
-    private final SourceAnnotator sourceAnnotator = new SourceAnnotator();
+
     private final int batchSize; // Configurable batch size
     private EnvironmentProperties envProps; // Environment properties loaded from database
 
@@ -89,47 +87,9 @@ public class DebugIndexer implements IControllable, Runnable {
         this.thread.setDaemon(true);
     }
 
-    public static Optional<DebugIndexer> createForLatest() throws IOException {
-        Path runsDir = Paths.get(Config.RUNS_DIRECTORY);
-        if (!Files.exists(runsDir)) {
-            return Optional.empty();
-        }
-        Optional<Path> latestRawDb = Files.list(runsDir)
-                .filter(p -> p.getFileName().toString().endsWith("_raw.sqlite"))
-                .max(Comparator.comparingLong(p -> p.toFile().lastModified()));
 
-        return latestRawDb.map(path -> new DebugIndexer(path.toAbsolutePath().toString(), 1000)); // Default batch size
-    }
     
-    /**
-     * Updates the raw database path to match the current persistence service.
-     * This is needed when the simulation is restarted and a new database is created.
-     */
-    public void updateRawDbPath(String newRawDbPath) {
-        // Close current database connection
-        try {
-            if (tickInsertStatement != null) {
-                tickInsertStatement.close();
-                tickInsertStatement = null;
-            }
-            if (connection != null) {
-                connection.close();
-                connection = null;
-            }
-                 } catch (Exception e) {
-             // Ignore errors when closing resources
-         }
-        
-        // Update paths
-        this.rawDbPath = newRawDbPath;
-        this.debugDbPath = newRawDbPath.replace("_raw.sqlite", "_debug.sqlite");
-        
-        // Reset counters
-        this.nextTickToProcess = 0L;
-        this.batchCount = 0;
-        
-        
-    }
+
     
     @Override
     public void start() {
@@ -194,12 +154,7 @@ public class DebugIndexer implements IControllable, Runnable {
         }
     }
     
-    public void forceShutdown() {
-        if (running.get()) {
-        running.set(false);
-        thread.interrupt();
-        }
-    }
+
 
     @Override
     public boolean isRunning() {
@@ -266,11 +221,7 @@ public class DebugIndexer implements IControllable, Runnable {
         }
     }
     
-    private void resetTPS() {
-        // lastStatusTime = 0; // Removed
-        // lastStatusTick = 0; // Removed
-        // lastTPS = 0.0; // Removed
-    }
+
 
     private Connection createConnection(String pathOrUrl) throws Exception {
         if (pathOrUrl.startsWith("jdbc:")) {
@@ -611,72 +562,7 @@ public class DebugIndexer implements IControllable, Runnable {
         }
     }
 
-    private void waitForFirstTick() {
-        log.info("Waiting for first tick to be available in raw database...");
-        
-        // Wait for the PersistenceService to finish writing the first batch
-        // This reduces contention between reading and writing
-        int retryCount = 0;
-        final int maxRetries = 30; // Wait up to 30 seconds
-        
-        while (running.get() && retryCount < maxRetries) {
-            try {
-                // Check if we can read from the database without contention
-                try (Connection rawConn = createConnection(rawDbPath)) {
-                    // Apply SQLite performance optimizations
-                    try (Statement stmt = rawConn.createStatement()) {
-                        stmt.execute("PRAGMA journal_mode=WAL");
-                        stmt.execute("PRAGMA synchronous=NORMAL");
-                        stmt.execute("PRAGMA cache_size=10000");
-                        stmt.execute("PRAGMA temp_store=MEMORY");
-                        stmt.execute("PRAGMA busy_timeout=5000"); // Wait up to 5 seconds for locks
-                    }
-                    
-                    // Try to read the first tick
-                    try (PreparedStatement ps = rawConn.prepareStatement(
-                            "SELECT tick_number FROM raw_ticks ORDER BY tick_number ASC LIMIT 1")) {
-                        try (ResultSet rs = ps.executeQuery()) {
-                            if (rs.next()) {
-                                long firstTick = rs.getLong(1);
-                                log.info("First tick {} found in raw database, proceeding with indexing", firstTick);
-                                return; // Successfully found first tick
-                            }
-                        }
-                    }
-                }
-                
-                // If no tick found, wait a bit before retrying
-                retryCount++;
-                if (running.get()) {
-                    log.debug("No ticks found yet, retrying in 100ms (attempt {}/{})", retryCount, maxRetries);
-                    try {
-                        Thread.sleep(100); // Reduced from 1000ms to 100ms for faster response
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                }
-                
-            } catch (Exception e) {
-                if (running.get()) {
-                    retryCount++;
-                    log.debug("Database not ready yet (attempt {}/{}): {}", retryCount, maxRetries, e.getMessage());
-                    try {
-                        Thread.sleep(100); // Reduced from 1000ms to 100ms for faster response
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                } else {
-                    break; // Service is shutting down
-                }
-            }
-        }
-        
-        if (retryCount >= maxRetries) {
-            log.warn("Timed out waiting for first tick after {} attempts", maxRetries);
-        }
-    }
+
     
     /**
      * Writes simulation metadata to the debug database.
@@ -925,14 +811,16 @@ public class DebugIndexer implements IControllable, Runnable {
             return ArtifactValidity.INVALID;
         }
         
-        // Detaillierter Check: Maschinencode-Konsistenz
-        CodeConsistency consistency = checkCodeConsistency(o, artifact);
+        // Since machineCodeLayout is corrupted during JSON serialization, we can't reliably check it
+        // Instead, we'll use the sourceMap as a proxy for consistency - if the IP is in the sourceMap,
+        // we assume the code is consistent enough for debugging purposes
+        boolean ipInSourceMap = isIpInSourceMap(o, artifact);
         
-        if (consistency.isFullyConsistent()) {
+        if (ipInSourceMap) {
+            // IP is in sourceMap, assume code is consistent
             return ArtifactValidity.VALID;
-        } else if (consistency.isPartiallyConsistent()) {
-            return ArtifactValidity.PARTIAL_SOURCE;
         } else {
+            // IP is not in sourceMap, code is inconsistent
             return ArtifactValidity.INVALID;
         }
     }
@@ -958,61 +846,7 @@ public class DebugIndexer implements IControllable, Runnable {
         return addr != null && artifact.sourceMap().containsKey(addr);
     }
 
-    /**
-     * Detaillierter Check: Maschinencode-Konsistenz um die aktuelle IP.
-     */
-    private CodeConsistency checkCodeConsistency(RawOrganismState o, ProgramArtifact artifact) {
-        if (artifact.machineCodeLayout() == null) {
-            return new CodeConsistency(0, 0, false);
-        }
-        
-        // Since machineCodeLayout is corrupted during JSON serialization, we can't reliably check it
-        // Instead, we'll use the sourceMap as a proxy for consistency - if the IP is in the sourceMap,
-        // we assume the code is consistent enough for debugging purposes
-        boolean ipInSourceMap = isIpInSourceMap(o, artifact);
-        
-        if (ipInSourceMap) {
-            // IP is in sourceMap, assume code is consistent
-            return new CodeConsistency(5, 5, true);
-        } else {
-            // IP is not in sourceMap, code is inconsistent
-            return new CodeConsistency(0, 5, false);
-        }
-    }
 
-    /**
-     * Berechnet die nächste Position basierend auf dem Direction Vector.
-     */
-    private int[] getNextPosition(int[] currentPos, int[] dv) {
-        int[] next = new int[currentPos.length];
-        for (int i = 0; i < currentPos.length; i++) {
-            next[i] = currentPos[i] + dv[i];
-        }
-        return next;
-    }
-
-    /**
-     * Repräsentiert die Konsistenz des Maschinencodes.
-     */
-    private static class CodeConsistency {
-        private final int matchingPositions;
-        private final int totalPositions;
-        private final boolean isFullyConsistent;
-        
-        public CodeConsistency(int matchingPositions, int totalPositions, boolean isFullyConsistent) {
-            this.matchingPositions = matchingPositions;
-            this.totalPositions = totalPositions;
-            this.isFullyConsistent = isFullyConsistent;
-        }
-        
-        public boolean isFullyConsistent() {
-            return isFullyConsistent;
-        }
-        
-        public boolean isPartiallyConsistent() {
-            return !isFullyConsistent && (double) matchingPositions / totalPositions >= 0.3;
-        }
-    }
 
     private PreparedTickState.NextInstruction buildNextInstruction(RawOrganismState o, ProgramArtifact artifact, ArtifactValidity validity, RawTickState rawTickState) {
         try {
@@ -1104,29 +938,9 @@ public class DebugIndexer implements IControllable, Runnable {
         return formattedArgs;
     }
     
-    /**
-     * Formatiert einen Register-Wert als lesbaren Namen.
-     */
-    private String formatRegisterName(int registerValue) {
-        if (registerValue >= Instruction.FPR_BASE) {
-            // Floating Point Register
-            return "%FPR" + (registerValue - Instruction.FPR_BASE);
-        } else if (registerValue >= Instruction.PR_BASE) {
-            // Procedure Register
-            return "%PR" + (registerValue - Instruction.PR_BASE);
-        } else {
-            // Data Register
-            return "%DR" + registerValue;
-        }
-    }
+
     
-    /**
-     * Formatiert einen Vektor-Wert.
-     */
-    private String formatVector(int vectorValue) {
-        // Für jetzt: einfache Formatierung
-        return "[" + vectorValue + "]";
-    }
+
 
     /**
      * Baut die Argument-Typen basierend auf der ISA-Signatur.
@@ -1176,31 +990,9 @@ public class DebugIndexer implements IControllable, Runnable {
         return types;
     }
     
-    /**
-     * Formatiert die Disassembly-Informationen in einen lesbaren String.
-     */
-    private String formatDisassembly(DisassemblyData data) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(data.opcodeName());
-        
-        if (data.argValues().length > 0) {
-            sb.append(" ");
-            for (int i = 0; i < data.argValues().length; i++) {
-                if (i > 0) sb.append(", ");
-                sb.append(formatArgument(data.argValues()[i]));
-            }
-        }
-        
-        return sb.toString();
-    }
+
     
-    /**
-     * Formatiert ein einzelnes Argument für die Anzeige.
-     */
-    private String formatArgument(int argValue) {
-        // Vereinfachte Formatierung - wir haben nur den Wert
-        return String.valueOf(argValue);
-    }
+
 
     private PreparedTickState.InternalState buildInternalState(RawOrganismState o, ProgramArtifact artifact, ArtifactValidity validity) {
         // Data Registers (DR) - dynamische Anzahl
@@ -1301,7 +1093,7 @@ public class DebugIndexer implements IControllable, Runnable {
                 
                 // Generate annotations for this line (only for the active line)
                 boolean isActiveLine = lineNumber == currentLine;
-                List<PreparedTickState.InlineSpan> lineSpans = annotator.annotate(o, artifact, lineContent, lineNumber, isActiveLine);
+                List<PreparedTickState.InlineSpan> lineSpans = annotator.annotate(o, artifact, fileName, lineContent, lineNumber, isActiveLine);
                 inlineSpans.addAll(lineSpans);
             }
         }
@@ -1515,13 +1307,5 @@ public class DebugIndexer implements IControllable, Runnable {
         }
     }
     
-    /**
-     * Close any open raw database connections to ensure WAL files are properly closed.
-     * Note: We only close our own debug database, not the raw database which is managed by PersistenceService.
-     */
-    private void closeRawDatabaseConnections() {
-        // The raw database is managed by PersistenceService, not by us
-        // We should not try to close it as it may be in use by other services
-        log.debug("Skipping raw database connection close - managed by PersistenceService");
-    }
+
 }

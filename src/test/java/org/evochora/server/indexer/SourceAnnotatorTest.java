@@ -69,7 +69,7 @@ class SourceAnnotatorTest {
         int lineNumber = 3;
 
         // 2. Act: Führe die Annotation aus (this is the active line)
-        List<InlineSpan> spans = annotator.annotate(organismState, artifact, lineToAnnotate, lineNumber, true);
+        List<InlineSpan> spans = annotator.annotate(organismState, artifact, "annotator_test.s", lineToAnnotate, lineNumber, true);
 
         // Debug: Print what we got
         System.out.println("=== DEBUG: Alias Test ===");
@@ -130,7 +130,7 @@ class SourceAnnotatorTest {
 
         // Teste die Annotation für das Sprungziel (this is the active line)
         String jumpLine = "  JMPI START";
-        List<InlineSpan> jumpSpans = annotator.annotate(organismState, artifact, jumpLine, 4, true);
+        List<InlineSpan> jumpSpans = annotator.annotate(organismState, artifact, "annotator_test.s", jumpLine, 4, true);
 
         assertThat(jumpSpans).hasSize(1);
         InlineSpan jumpSpan = jumpSpans.get(0);
@@ -139,7 +139,7 @@ class SourceAnnotatorTest {
         assertThat(jumpSpan.kind()).isEqualTo("jump");
         
         // Test that non-active lines don't get annotations
-        List<InlineSpan> nonActiveSpans = annotator.annotate(organismState, artifact, lineToAnnotate, lineNumber, false);
+        List<InlineSpan> nonActiveSpans = annotator.annotate(organismState, artifact, "annotator_test.s", lineToAnnotate, lineNumber, false);
         assertThat(nonActiveSpans).isEmpty();
     }
 
@@ -201,7 +201,7 @@ class SourceAnnotatorTest {
         int lineNumber = 8; // CALL instruction is actually on line 8 based on TokenMap output
 
         // 2. Act: Execute the annotation (this is the active line)
-        List<InlineSpan> spans = annotator.annotate(organismState, artifact, lineToAnnotate, lineNumber, true);
+        List<InlineSpan> spans = annotator.annotate(organismState, artifact, "proc_call_test.s", lineToAnnotate, lineNumber, true);
 
         // 3. Assert: Should have annotation for MY_PROC showing jump target coordinates
         assertThat(spans).hasSize(3); // We expect 3: MY_PROC, %DR0, %DR1

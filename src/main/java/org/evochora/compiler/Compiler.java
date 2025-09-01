@@ -8,6 +8,7 @@ import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -30,7 +31,6 @@ import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.util.DebugDump;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -106,7 +106,7 @@ public class Compiler implements ICompiler {
         Parser parser = new Parser(processedTokens, diagnostics, basePath);
         List<AstNode> ast = parser.parse();
 
-        Map<String, Token> registerAliases = parser.getGlobalRegisterAliases();
+        // parser.getGlobalRegisterAliases() is used later when extracting aliases; no local copy needed here
 
         Map<String, List<String>> procNameToParamNames = new HashMap<>();
         parser.getProcedureTable().forEach((name, procNode) -> {
@@ -194,7 +194,7 @@ public class Compiler implements ICompiler {
         ProgramArtifact artifact;
         try {
             // Generate tokenLookup from tokenMap for efficient line-based lookup
-            Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup = generateTokenLookup(tokenMap);
+            Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup = TokenMapGenerator.buildTokenLookup(tokenMap);
             artifact = emitter.emit(linkedIr, layout, linkingContext, new RuntimeInstructionSetAdapter(), finalAliasMap, procNameToParamNames, sources, tokenMap, tokenLookup);
         } catch (org.evochora.compiler.api.CompilationException ce) {
             throw ce; // already formatted with file/line
@@ -220,7 +220,7 @@ public class Compiler implements ICompiler {
             if (node == null) continue;
             
             // Check if this is a PregNode
-            if (node instanceof org.evochora.compiler.frontend.parser.ast.features.proc.PregNode pregNode) {
+            if (node instanceof PregNode pregNode) {
                 String aliasName = pregNode.alias().text();
                 int registerIndex = pregNode.registerIndexValue();
                 String targetRegister = "%PR" + registerIndex;
@@ -232,28 +232,7 @@ public class Compiler implements ICompiler {
         }
     }
     
-    /**
-     * Generates tokenLookup structure from tokenMap for efficient line-based lookup.
-     */
-    private Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> generateTokenLookup(Map<SourceInfo, TokenInfo> tokenMap) {
-        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> result = new HashMap<>();
-        
-        for (Map.Entry<SourceInfo, TokenInfo> entry : tokenMap.entrySet()) {
-            SourceInfo sourceInfo = entry.getKey();
-            TokenInfo tokenInfo = entry.getValue();
-            
-            String fileName = sourceInfo.fileName();
-            Integer lineNumber = sourceInfo.lineNumber();
-            Integer columnNumber = sourceInfo.columnNumber();
-            
-            result.computeIfAbsent(fileName, k -> new HashMap<>())
-                  .computeIfAbsent(lineNumber, k -> new HashMap<>())
-                  .computeIfAbsent(columnNumber, k -> new ArrayList<>())
-                  .add(tokenInfo);
-        }
-        
-        return result;
-    }
+    
     
 
 

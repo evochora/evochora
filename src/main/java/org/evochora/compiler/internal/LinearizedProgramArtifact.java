@@ -52,8 +52,8 @@ import java.util.Map;
  *   <li><strong>labelAddressToName</strong>: Map<Integer, String> (unchanged)</li>
  *   <li><strong>registerAliasMap</strong>: Map<String, Integer> (unchanged)</li>
  *   <li><strong>procNameToParamNames</strong>: Map<String, List<String>> (unchanged)</li>
- *   <strong>tokenMap</strong>: Map<SourceInfo, TokenInfo> (unchanged)</li>
- *   <strong>lineToTokens</strong>: Map<Integer, List<TokenInfo>> (unchanged)</li>
+ *   <li><strong>tokenMap</strong>: Map<SerializableSourceInfo, TokenInfo> (unchanged)</li>
+ *   <li><strong>tokenLookup</strong>: Map<String, Map<Integer, Map<Integer, List<TokenInfo>>> (unchanged)</li>
  * </ul>
  * 
  * <h3>Performance</h3>
@@ -104,7 +104,7 @@ public record LinearizedProgramArtifact(
     /**
      * Converts a ProgramArtifact to a LinearizedProgramArtifact.
      * @param artifact The ProgramArtifact to convert.
-     * @param worldShape The shape of the world.
+     * @param envProps The environment properties containing world shape and toroidal information.
      * @return A new LinearizedProgramArtifact.
      */
     public static LinearizedProgramArtifact from(ProgramArtifact artifact, EnvironmentProperties envProps) {

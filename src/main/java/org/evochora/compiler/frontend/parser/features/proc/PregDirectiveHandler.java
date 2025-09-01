@@ -6,7 +6,7 @@ import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.features.proc.PregNode;
+import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.runtime.Config;
 

@@ -26,8 +26,15 @@ public class RegisterTokenHandler implements ITokenHandler {
     
     @Override
     public boolean canHandle(String token, int lineNumber, ProgramArtifact artifact, TokenInfo tokenInfo) {
-        // Only handle tokens that start with %
-        return token.startsWith("%");
+        // Use deterministic TokenInfo to check if this is a register-related token
+        if (tokenInfo == null) {
+            return false;
+        }
+        
+        // Handle ALIAS type tokens (register aliases like %COUNTER)
+        // Handle VARIABLE type tokens that start with % (direct registers like %DR0, %PR1, etc.)
+        return tokenInfo.tokenType() == org.evochora.compiler.frontend.semantics.Symbol.Type.ALIAS ||
+               (tokenInfo.tokenType() == org.evochora.compiler.frontend.semantics.Symbol.Type.VARIABLE && token.startsWith("%"));
     }
     
     @Override

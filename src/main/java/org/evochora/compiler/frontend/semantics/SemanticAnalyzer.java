@@ -3,6 +3,7 @@ package org.evochora.compiler.frontend.semantics;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.InstructionNode;
+import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.parser.features.def.DefineNode;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
@@ -46,7 +47,7 @@ public class SemanticAnalyzer {
         handlers.put(ScopeNode.class, new ScopeAnalysisHandler(this.scopeMap));
         handlers.put(ProcedureNode.class, new ProcedureAnalysisHandler(this.scopeMap));
         handlers.put(InstructionNode.class, new InstructionAnalysisHandler(symbolTable, diagnostics));
-        handlers.put(org.evochora.compiler.frontend.parser.ast.features.proc.PregNode.class, new PregAnalysisHandler());
+        handlers.put(PregNode.class, new PregAnalysisHandler());
     }
 
     /**

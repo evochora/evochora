@@ -24,7 +24,7 @@ import java.util.Map;
  * @param registerAliasMap A map from register alias names (e.g., "%MY_REG") to their physical register index.
  * @param procNameToParamNames A map from procedure names to a list of their parameter names.
  * @param tokenMap A map from SourceInfo to TokenInfo for deterministic token classification.
- * @param tokenLookup A map from fileName to line number to list of TokenInfo for efficient file-line-based lookup.
+ * @param tokenLookup A map from fileName to lineNumber to columnNumber to List<TokenInfo> for efficient file-line-column-based lookup.
  */
 public record ProgramArtifact(
         String programId,

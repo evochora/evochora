@@ -29,8 +29,8 @@ public class SourceAnnotator {
      * @param lineNumber The line number.
      * @return A list of InlineSpan objects.
      */
-    public List<InlineSpan> annotate(RawOrganismState o, ProgramArtifact artifact, String sourceLine, int lineNumber, boolean isActiveLine) {
-        if (artifact == null || sourceLine == null) {
+    public List<InlineSpan> annotate(RawOrganismState o, ProgramArtifact artifact, String fileName, String sourceLine, int lineNumber, boolean isActiveLine) {
+        if (artifact == null || sourceLine == null || fileName == null) {
             return Collections.emptyList();
         }
 
@@ -39,8 +39,8 @@ public class SourceAnnotator {
             return Collections.emptyList();
         }
 
-        // Use TokenAnnotator for deterministic token analysis
-        List<TokenAnnotation> tokenAnnotations = tokenAnnotator.analyzeLine(lineNumber, artifact, o);
+        // Use TokenAnnotator for deterministic token analysis with precise file-based lookup
+        List<TokenAnnotation> tokenAnnotations = tokenAnnotator.analyzeLine(fileName, lineNumber, artifact, o);
         
         // Convert TokenAnnotation to InlineSpan for web debugger compatibility
         return convertToInlineSpans(tokenAnnotations, lineNumber, sourceLine);
@@ -49,6 +49,9 @@ public class SourceAnnotator {
     /**
      * Converts TokenAnnotation objects to InlineSpan objects for web debugger compatibility.
      * This method handles the conversion from our internal token analysis to the web debugger's expected format.
+     * 
+     * TODO: Future improvement - use precise column information from TokenInfo for accurate positioning
+     * instead of string-splitting approach. This would require modifying TokenAnnotation to include column data.
      * 
      * @param tokenAnnotations The token annotations from TokenAnnotator
      * @param lineNumber The line number for the annotations
@@ -59,10 +62,12 @@ public class SourceAnnotator {
         List<InlineSpan> spans = new ArrayList<>();
         
         if (tokenAnnotations == null || tokenAnnotations.isEmpty()) {
-        return spans;
-    }
+            return spans;
+        }
 
         // Calculate token occurrences in the source line for proper positioning
+        // This is a best-effort approach using string matching
+        // TODO: Replace with precise column-based positioning using TokenInfo data
         Map<String, Integer> tokenOccurrences = new HashMap<>();
         String[] tokens = sourceLine.trim().split("\\s+");
         

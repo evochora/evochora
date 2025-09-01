@@ -178,7 +178,7 @@ class TokenAnnotatorTest {
     
     @Test
     void testAnalyzeLine_ProcedureDefinition() {
-        List<TokenAnnotation> annotations = annotator.analyzeLine(1, artifact, organismState);
+        List<TokenAnnotation> annotations = annotator.analyzeLine("test.s", 1, artifact, organismState);
         
         assertNotNull(annotations);
         // Procedure definition line should have no annotations (all tokens are definitions)
@@ -187,7 +187,7 @@ class TokenAnnotatorTest {
     
     @Test
     void testAnalyzeLine_CallInstruction() {
-        List<TokenAnnotation> annotations = annotator.analyzeLine(2, artifact, organismState);
+        List<TokenAnnotation> annotations = annotator.analyzeLine("test.s", 2, artifact, organismState);
         
         assertNotNull(annotations);
         
@@ -206,7 +206,7 @@ class TokenAnnotatorTest {
     
     @Test
     void testAnalyzeLine_ParameterReferences() {
-        List<TokenAnnotation> annotations = annotator.analyzeLine(3, artifact, organismState);
+        List<TokenAnnotation> annotations = annotator.analyzeLine("test.s", 3, artifact, organismState);
         
         assertNotNull(annotations);
         // Should have annotations for parameter references
@@ -216,7 +216,7 @@ class TokenAnnotatorTest {
     
     @Test
     void testAnalyzeLine_RetInstruction() {
-        List<TokenAnnotation> annotations = annotator.analyzeLine(4, artifact, organismState);
+        List<TokenAnnotation> annotations = annotator.analyzeLine("test.s", 4, artifact, organismState);
         
         assertNotNull(annotations);
         // RET instruction should have basic identification
@@ -225,7 +225,7 @@ class TokenAnnotatorTest {
     
     @Test
     void testAnalyzeLine_NoTokens() {
-        List<TokenAnnotation> annotations = annotator.analyzeLine(999, artifact, organismState);
+        List<TokenAnnotation> annotations = annotator.analyzeLine("test.s", 999, artifact, organismState);
         
         assertNotNull(annotations);
         assertTrue(annotations.isEmpty());
@@ -233,7 +233,7 @@ class TokenAnnotatorTest {
     
     @Test
     void testAnalyzeLine_EmptyLine() {
-        List<TokenAnnotation> annotations = annotator.analyzeLine(5, artifact, organismState);
+        List<TokenAnnotation> annotations = annotator.analyzeLine("test.s", 5, artifact, organismState);
         
         assertNotNull(annotations);
         assertTrue(annotations.isEmpty());

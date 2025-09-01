@@ -3,12 +3,10 @@ package org.evochora.compiler.frontend.tokenmap;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.frontend.parser.ast.*;
-import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.parser.features.scope.ScopeNode;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
-import org.evochora.compiler.frontend.semantics.Symbol.Type;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
 import java.util.ArrayList;
@@ -77,12 +75,15 @@ public class TokenMapGenerator {
     }
 
     /**
-     * Transposes the token map to a file->line->tokens structure for easier line-based lookup.
+     * Builds a 3-level token lookup structure for efficient file/line/column-based queries.
      *
-     * @return A nested map structure: fileName -> lineNumber -> list of tokens
+     * <p>Structure: fileName -> lineNumber -> columnNumber -> list of TokenInfo</p>
+     *
+     * @param tokenMap The flat token map keyed by {@link SourceInfo}
+     * @return A nested lookup map suitable for debuggers and indexers
      */
-    public Map<String, Map<Integer, List<TokenInfo>>> transposeToFileLineStructure() {
-        Map<String, Map<Integer, List<TokenInfo>>> result = new HashMap<>();
+    public static Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> buildTokenLookup(Map<SourceInfo, TokenInfo> tokenMap) {
+        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> result = new HashMap<>();
         
         for (Map.Entry<SourceInfo, TokenInfo> entry : tokenMap.entrySet()) {
             SourceInfo sourceInfo = entry.getKey();
@@ -90,9 +91,11 @@ public class TokenMapGenerator {
             
             String fileName = sourceInfo.fileName();
             Integer lineNumber = sourceInfo.lineNumber();
+            Integer columnNumber = sourceInfo.columnNumber();
             
             result.computeIfAbsent(fileName, k -> new HashMap<>())
-                  .computeIfAbsent(lineNumber, k -> new ArrayList<>())
+                  .computeIfAbsent(lineNumber, k -> new HashMap<>())
+                  .computeIfAbsent(columnNumber, k -> new ArrayList<>())
                   .add(tokenInfo);
         }
         

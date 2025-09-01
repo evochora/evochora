@@ -2,7 +2,7 @@ package org.evochora.compiler.frontend.semantics.analysis;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.features.proc.PregNode;
+import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.lexer.TokenType;

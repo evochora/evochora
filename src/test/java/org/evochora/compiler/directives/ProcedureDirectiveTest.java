@@ -6,6 +6,7 @@ import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.InstructionNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.parser.features.require.RequireNode;
 import org.junit.jupiter.api.Test;
@@ -152,7 +153,7 @@ public class ProcedureDirectiveTest {
         assertThat(bodyDirectives).hasSize(2); // .PREG and .REQUIRE directives
 
         // Check that we have both PregNode and RequireNode
-        assertThat(bodyDirectives.get(0)).isInstanceOf(org.evochora.compiler.frontend.parser.ast.features.proc.PregNode.class);
+        assertThat(bodyDirectives.get(0)).isInstanceOf(PregNode.class);
         assertThat(bodyDirectives.get(1)).isInstanceOf(RequireNode.class);
         
         RequireNode requireNode = (RequireNode) bodyDirectives.get(1);

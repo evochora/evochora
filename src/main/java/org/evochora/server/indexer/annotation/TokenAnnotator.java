@@ -52,27 +52,29 @@ public class TokenAnnotator {
     /**
      * Analyzes all tokens on a specific line using the deterministic TokenMap data.
      * 
+     * @param fileName The source file name to analyze
      * @param lineNumber The line number to analyze
      * @param artifact The program artifact containing TokenMap data
      * @param organismState The raw organism state for runtime values
      * @return List of token annotations for the line
      */
-    public List<TokenAnnotation> analyzeLine(int lineNumber, ProgramArtifact artifact, RawOrganismState organismState) {
+    public List<TokenAnnotation> analyzeLine(String fileName, int lineNumber, ProgramArtifact artifact, RawOrganismState organismState) {
         List<TokenAnnotation> annotations = new ArrayList<>();
         
-        // Get tokens for this line from the TokenMap
+        // Get tokens for this specific line from the specific file using precise lookup
         List<TokenInfo> lineTokens = new ArrayList<>();
-        // Use the new column-based tokenLookup structure
-        // For now, we'll collect from all files that match the line number
-        // TODO: Pass fileName to analyzeLine for more precise lookup
-        for (Map<Integer, Map<Integer, List<TokenInfo>>> fileTokens : artifact.tokenLookup().values()) {
+        
+        // Use the precise file-line-column lookup structure
+        Map<Integer, Map<Integer, List<TokenInfo>>> fileTokens = artifact.tokenLookup().get(fileName);
+        if (fileTokens != null) {
             Map<Integer, List<TokenInfo>> lineTokensMap = fileTokens.get(lineNumber);
             if (lineTokensMap != null) {
                 // Collect all tokens from all columns on this line
                 lineTokensMap.values().forEach(lineTokens::addAll);
             }
         }
-        if (lineTokens == null || lineTokens.isEmpty()) {
+        
+        if (lineTokens.isEmpty()) {
             return annotations; // No tokens on this line
         }
         

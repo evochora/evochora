@@ -1,6 +1,5 @@
-package org.evochora.compiler.frontend.parser.ast.features.proc;
+package org.evochora.compiler.frontend.parser.ast;
 
-import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.frontend.lexer.Token;
 
