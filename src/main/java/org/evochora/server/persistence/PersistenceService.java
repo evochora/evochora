@@ -114,6 +114,22 @@ public final class PersistenceService implements IControllable, Runnable {
             if (Thread.currentThread().getName().equals("PersistenceService")) {
                 log.info("PersistenceService: graceful termination tick:{} TPS:{}", currentTick, String.format("%.2f", tps));
             }
+            
+            // Immediately perform database cleanup and WAL checkpointing to prevent WAL/SHM file leaks
+            // This ensures cleanup happens even if called from external threads (like CLI exit)
+            try {
+                log.debug("Performing immediate database cleanup during shutdown");
+                // Execute any remaining batch operations before closing
+                if (tickInsertStatement != null && batchCount % batchSize != 0) {
+                    tickInsertStatement.executeBatch();
+                    log.debug("Executed final batch of {} ticks during shutdown", batchCount % batchSize);
+                }
+                closeQuietly();
+                log.debug("Database cleanup completed during shutdown");
+            } catch (Exception e) {
+                log.warn("Error during shutdown database cleanup: {}", e.getMessage());
+            }
+            
             thread.interrupt();
             // Wait a bit for the thread to finish processing current messages
             try {
@@ -121,13 +137,27 @@ public final class PersistenceService implements IControllable, Runnable {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            closeQuietly();
         }
     }
     
     public void forceShutdown() {
         if (running.get()) {
             running.set(false);
+            
+            // Even for force shutdown, try to perform database cleanup to prevent WAL/SHM file leaks
+            try {
+                log.debug("Performing database cleanup during force shutdown");
+                // Execute any remaining batch operations before closing
+                if (tickInsertStatement != null && batchCount % batchSize != 0) {
+                    tickInsertStatement.executeBatch();
+                    log.debug("Executed final batch of {} ticks during force shutdown", batchCount % batchSize);
+                }
+                closeQuietly();
+                log.debug("Database cleanup completed during force shutdown");
+            } catch (Exception e) {
+                log.warn("Error during force shutdown database cleanup: {}", e.getMessage());
+            }
+            
             thread.interrupt();
         }
     }
@@ -261,16 +291,31 @@ public final class PersistenceService implements IControllable, Runnable {
                 tickInsertStatement = null;
             }
             
-            // Ensure all WAL changes are checkpointed to the main database
+            // Enhanced WAL and SHM handling to ensure no files are left behind
             if (connection != null && !connection.isClosed()) {
                 try (Statement st = connection.createStatement()) {
-                    // Checkpoint WAL to main database
+                    // Force all pending changes to be written to main database
                     st.execute("PRAGMA wal_checkpoint(FULL)");
                     log.debug("WAL checkpoint completed before closing database");
+                    
+                    // Force a final checkpoint to ensure all data is flushed
+                    st.execute("PRAGMA wal_checkpoint(TRUNCATE)");
+                    log.debug("Final WAL truncate checkpoint completed");
+                    
+                    // Ensure WAL mode is properly closed and files are released
+                    st.execute("PRAGMA journal_mode=DELETE");
+                    log.debug("WAL mode disabled, journal mode set to DELETE");
+                    
+                    // Final checkpoint after disabling WAL to ensure all data is in main file
+                    st.execute("PRAGMA wal_checkpoint(FULL)");
+                    log.debug("Final checkpoint after WAL disable completed");
+                } catch (Exception e) {
+                    log.warn("Error during WAL checkpoint before closing: {}", e.getMessage());
                 }
-                connection.close();
-                connection = null;
             }
+            
+            connection.close();
+            connection = null;
         } catch (Exception e) {
             log.warn("Error during database cleanup: {}", e.getMessage());
         }
@@ -291,15 +336,26 @@ public final class PersistenceService implements IControllable, Runnable {
                         paused.set(false);
                         autoPaused.set(false);
                         
-                        // Reopen database connection since it was closed during manual pause
+                        // Reopen database connection since it was closed during auto-pause
                         if (connection == null || connection.isClosed()) {
                             log.debug("Reopening database connection after auto-pause");
                             setupDatabase();
                             batchCount = 0;
+                            // Reset the prepared statement since we have a new connection
+                            tickInsertStatement = null;
                         }
                         continue;
                     }
                     continue;
+                }
+                
+                // Check if we need to reconnect after manual pause resume
+                if (connection == null || connection.isClosed()) {
+                    log.debug("Reconnecting to database after manual pause resume");
+                    setupDatabase();
+                    batchCount = 0;
+                    // Reset the prepared statement since we have a new connection
+                    tickInsertStatement = null;
                 }
 
                 try {
@@ -394,12 +450,41 @@ public final class PersistenceService implements IControllable, Runnable {
                             }
                         }
                         
+                        // Enhanced auto-pause: ensure WAL is checkpointed and database is closed
+                        // to prevent leaving WAL/SHM files behind
+                        if (connection != null && !connection.isClosed()) {
+                            try (Statement st = connection.createStatement()) {
+                                // Force all pending changes to be written to main database
+                                st.execute("PRAGMA wal_checkpoint(FULL)");
+                                log.debug("WAL checkpoint completed before auto-pause");
+                                
+                                // Force a final checkpoint to ensure all data is flushed
+                                st.execute("PRAGMA wal_checkpoint(TRUNCATE)");
+                                log.debug("Final WAL truncate checkpoint completed before auto-pause");
+                                
+                                // Ensure WAL mode is properly closed and files are released
+                                st.execute("PRAGMA journal_mode=DELETE");
+                                log.debug("WAL mode disabled before auto-pause");
+                                
+                                // Final checkpoint after disabling WAL to ensure all data is in main file
+                                st.execute("PRAGMA wal_checkpoint(FULL)");
+                                log.debug("Final checkpoint after WAL disable before auto-pause");
+                            } catch (Exception e) {
+                                log.warn("Error during WAL checkpoint before auto-pause: {}", e.getMessage());
+                            }
+                            
+                            // Close database connection to release WAL/SHM files
+                            connection.close();
+                            connection = null;
+                            log.debug("Database connection closed during auto-pause to prevent WAL/SHM file leaks");
+                        }
+                        
                         // Auto-pause - mark as auto-paused and set pause flag
                         autoPaused.set(true);
                         paused.set(true);
                         
-                        // For auto-pause: keep database open for quick resume
-                        log.debug("Auto-pause: keeping database open for quick resume");
+                        // For auto-pause: database is now closed, will be reopened on resume
+                        log.debug("Auto-pause: database closed, will reopen on resume");
                         
                         // Wait a bit before checking for new ticks
                         try {
@@ -414,6 +499,15 @@ public final class PersistenceService implements IControllable, Runnable {
                             log.debug("New ticks available, resuming persistence service");
                             autoPaused.set(false);
                             paused.set(false);
+                            
+                            // Reopen database connection since it was closed during auto-pause
+                            if (connection == null || connection.isClosed()) {
+                                log.debug("Reopening database connection after auto-pause");
+                                setupDatabase();
+                                batchCount = 0;
+                                // Reset the prepared statement since we have a new connection
+                                tickInsertStatement = null;
+                            }
                             continue;
                         }
                         
@@ -469,6 +563,8 @@ public final class PersistenceService implements IControllable, Runnable {
             if (connection == null || connection.isClosed()) {
                 log.debug("Database connection not available, reopening...");
                 setupDatabase();
+                // Reset the prepared statement since we have a new connection
+                tickInsertStatement = null;
             }
             
             // Use batch insert for better performance

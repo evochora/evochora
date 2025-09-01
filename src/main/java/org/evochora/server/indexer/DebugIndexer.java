@@ -157,6 +157,47 @@ public class DebugIndexer implements IControllable, Runnable {
             if (Thread.currentThread().getName().equals("DebugIndexer")) {
                 log.info("DebugIndexer: graceful termination tick:{} TPS:{}", currentTick, String.format("%.2f", tps));
             }
+            
+            // Immediately perform database cleanup and WAL checkpointing to prevent WAL/SHM file leaks
+            // This ensures cleanup happens even if called from external threads (like CLI exit)
+            try {
+                log.debug("Performing immediate database cleanup during shutdown");
+                if (databaseManager.getBatchCount() > 0) {
+                    databaseManager.executeRemainingBatch();
+                    log.debug("Executed final batch during shutdown");
+                }
+                databaseManager.closeQuietly();
+                log.debug("Database cleanup completed during shutdown");
+            } catch (Exception e) {
+                log.warn("Error during shutdown database cleanup: {}", e.getMessage());
+            }
+            
+            thread.interrupt();
+            queueProcessorThread.interrupt();
+        }
+    }
+    
+    /**
+     * Force shutdown without waiting for graceful completion.
+     * Still performs database cleanup to prevent WAL/SHM file leaks.
+     */
+    public void forceShutdown() {
+        if (running.get()) {
+            running.set(false);
+            
+            // Even for force shutdown, try to perform database cleanup to prevent WAL/SHM file leaks
+            try {
+                log.debug("Performing database cleanup during force shutdown");
+                if (databaseManager.getBatchCount() > 0) {
+                    databaseManager.executeRemainingBatch();
+                    log.debug("Executed final batch during force shutdown");
+                }
+                databaseManager.closeQuietly();
+                log.debug("Database cleanup completed during force shutdown");
+            } catch (Exception e) {
+                log.warn("Error during force shutdown database cleanup: {}", e.getMessage());
+            }
+            
             thread.interrupt();
             queueProcessorThread.interrupt();
         }
@@ -339,43 +380,58 @@ public class DebugIndexer implements IControllable, Runnable {
                             // New ticks arrived while we were processing - continue immediately
                             log.debug("New ticks available after processing batch, continuing immediately");
                             continue;
-                        } else {
-                            // No more ticks available - auto-pause to save resources
-                            log.debug("No more ticks to process, auto-pausing indexer");
-                            
-                            // For auto-pause: execute any remaining incomplete batches before pausing
-                            // This ensures all data is committed and available to other threads
-                                try {
-                                databaseManager.executeRemainingBatch();
-                                } catch (Exception e) {
-                                    log.warn("Error executing final batch before auto-pause: {}", e.getMessage());
-                            }
-                            
-                            // Auto-pause - mark as auto-paused and set pause flag
-                            autoPaused.set(true);
-                            paused.set(true);
-                            
-                            // For auto-pause: keep database open for quick resume
-                            log.debug("Auto-pause: keeping database open for quick resume");
-                            
-                            // Wait a bit before checking for new ticks
-                            try {
-                                Thread.sleep(1000); // Check every second
-                            } catch (InterruptedException e) {
-                                Thread.currentThread().interrupt();
-                                break;
-                            }
-                            
-                            // Check if new ticks are available (only if not manually paused)
-                            if (hasNewTicksToProcess() && !paused.get()) {
-                                log.debug("New ticks available, resuming debug indexer");
-                                autoPaused.set(false);
-                                paused.set(false);
-                                continue;
-                            }
-                            
-                            continue;
-                        }
+                                                 } else {
+                             // No more ticks available - auto-pause to save resources
+                             log.debug("No more ticks to process, auto-pausing indexer");
+                             
+                             // For auto-pause: execute any remaining incomplete batches before pausing
+                             // This ensures all data is committed and available to other threads
+                             try {
+                                 databaseManager.executeRemainingBatch();
+                             } catch (Exception e) {
+                                 log.warn("Error executing final batch before auto-pause: {}", e.getMessage());
+                             }
+                             
+                             // Enhanced auto-pause: ensure WAL is checkpointed and database is closed
+                             // to prevent leaving WAL/SHM files behind
+                             log.debug("Performing WAL checkpoint and closing database during auto-pause");
+                             databaseManager.closeQuietly();
+                             
+                             // Auto-pause - mark as auto-paused and set pause flag
+                             autoPaused.set(true);
+                             paused.set(true);
+                             
+                             // For auto-pause: database is now closed, will be reopened on resume
+                             log.debug("Auto-pause: database closed, will reopen on resume");
+                             
+                             // Wait a bit before checking for new ticks
+                             try {
+                                 Thread.sleep(1000); // Check every second
+                             } catch (InterruptedException e) {
+                                 Thread.currentThread().interrupt();
+                                 break;
+                             }
+                             
+                             // Check if new ticks are available (only if not manually paused)
+                             if (hasNewTicksToProcess() && !paused.get()) {
+                                 log.debug("New ticks available, resuming debug indexer");
+                                 autoPaused.set(false);
+                                 paused.set(false);
+                                 
+                                 // Reopen database connection since it was closed during auto-pause
+                                 try {
+                                     databaseManager.setupDebugDatabase();
+                                     databaseHealthy.set(true);
+                                     log.debug("Database connection successfully reopened after auto-pause");
+                                 } catch (Exception e) {
+                                     databaseHealthy.set(false);
+                                     log.error("Failed to reopen database connection after auto-pause: {} - continuing in degraded mode", e.getMessage(), e);
+                                 }
+                                 continue;
+                             }
+                             
+                             continue;
+                         }
                     } else {
                         // remainingTicks < 0 means there was an error, but ticks might still be available
                         // Check if there are truly no more ticks to process
@@ -389,18 +445,23 @@ public class DebugIndexer implements IControllable, Runnable {
                             
                             // For auto-pause: execute any remaining incomplete batches before pausing
                             // This ensures all data is committed and available to other threads
-                                try {
+                            try {
                                 databaseManager.executeRemainingBatch();
-                                } catch (Exception e) {
-                                    log.warn("Error executing final batch before auto-pause: {}", e.getMessage());
+                            } catch (Exception e) {
+                                log.warn("Error executing final batch before auto-pause: {}", e.getMessage());
                             }
+                            
+                            // Enhanced auto-pause: ensure WAL is checkpointed and database is closed
+                            // to prevent leaving WAL/SHM files behind
+                            log.debug("Performing WAL checkpoint and closing database during auto-pause");
+                            databaseManager.closeQuietly();
                             
                             // Auto-pause - mark as auto-paused and set pause flag
                             autoPaused.set(true);
                             paused.set(true);
                             
-                            // For auto-pause: keep database open for quick resume
-                            log.debug("Auto-pause: keeping database open for quick resume");
+                            // For auto-pause: database is now closed, will be reopened on resume
+                            log.debug("Auto-pause: database closed, will reopen on resume");
                             
                             // Wait a bit before checking for new ticks
                             try {
@@ -415,6 +476,16 @@ public class DebugIndexer implements IControllable, Runnable {
                                 log.debug("New ticks available, resuming debug indexer");
                                 autoPaused.set(false);
                                 paused.set(false);
+                                
+                                // Reopen database connection since it was closed during auto-pause
+                                try {
+                                    databaseManager.setupDebugDatabase();
+                                    databaseHealthy.set(true);
+                                    log.debug("Database connection successfully reopened after auto-pause");
+                                } catch (Exception e) {
+                                    databaseHealthy.set(false);
+                                    log.error("Failed to reopen database connection after auto-pause: {} - continuing in degraded mode", e.getMessage(), e);
+                                }
                                 continue;
                             }
                             
