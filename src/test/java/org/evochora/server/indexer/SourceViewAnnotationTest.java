@@ -4,6 +4,7 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.server.contracts.debug.PreparedTickState;
 import org.evochora.server.contracts.raw.RawOrganismState;
+import org.evochora.server.indexer.ArtifactValidator.ArtifactValidity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
@@ -93,7 +94,7 @@ class SourceViewAnnotationTest {
                 "buildSourceView", 
                 RawOrganismState.class, 
                 ProgramArtifact.class, 
-                DebugIndexer.ArtifactValidity.class
+                ArtifactValidity.class
             );
             method.setAccessible(true);
             
@@ -101,7 +102,7 @@ class SourceViewAnnotationTest {
                 debugIndexer, 
                 mockOrganism, 
                 mockArtifact, 
-                DebugIndexer.ArtifactValidity.VALID
+                ArtifactValidity.VALID
             );
             
             // Verify source view is created
@@ -138,7 +139,7 @@ class SourceViewAnnotationTest {
                 "buildSourceView", 
                 RawOrganismState.class, 
                 ProgramArtifact.class, 
-                DebugIndexer.ArtifactValidity.class
+                ArtifactValidity.class
             );
             method.setAccessible(true);
             
@@ -147,7 +148,7 @@ class SourceViewAnnotationTest {
                 debugIndexer, 
                 mockOrganism, 
                 null, 
-                DebugIndexer.ArtifactValidity.NONE
+                ArtifactValidity.NONE
             );
             
             // Should return null when no artifact
@@ -165,7 +166,7 @@ class SourceViewAnnotationTest {
                 "buildSourceView", 
                 RawOrganismState.class, 
                 ProgramArtifact.class, 
-                DebugIndexer.ArtifactValidity.class
+                ArtifactValidity.class
             );
             method.setAccessible(true);
             
@@ -174,7 +175,7 @@ class SourceViewAnnotationTest {
                 debugIndexer, 
                 mockOrganism, 
                 mockArtifact, 
-                DebugIndexer.ArtifactValidity.INVALID
+                ArtifactValidity.INVALID
             );
             
             // Should return null when artifact is invalid

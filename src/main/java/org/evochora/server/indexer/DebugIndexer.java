@@ -3,59 +3,45 @@ package org.evochora.server.indexer;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.compiler.api.SourceInfo;
-import org.evochora.runtime.Config;
-import org.evochora.runtime.model.Molecule;
-import org.evochora.runtime.isa.Instruction;
+import org.evochora.compiler.internal.LinearizedProgramArtifact;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.server.IControllable;
 import org.evochora.server.contracts.debug.PreparedTickState;
-import org.evochora.server.contracts.raw.RawOrganismState;
 import org.evochora.server.contracts.raw.RawTickState;
-import org.evochora.server.contracts.raw.SerializableProcFrame;
+import org.evochora.server.contracts.raw.RawOrganismState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
-import org.evochora.compiler.internal.LinearizedProgramArtifact;
-import org.evochora.runtime.services.Disassembler;
-import org.evochora.runtime.services.DisassemblyData;
-import org.evochora.runtime.model.EnvironmentProperties;
-import org.evochora.runtime.isa.InstructionArgumentType;
-import org.evochora.runtime.isa.InstructionSignature;
+import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * DebugIndexer processes raw organism state data and generates debug information.
+ * Uses helper classes for different responsibilities and includes a queuing system
+ * for handling database unavailability without data loss.
+ */
 public class DebugIndexer implements IControllable, Runnable {
 
     private static final Logger log = LoggerFactory.getLogger(DebugIndexer.class);
 
-    /**
-     * Repräsentiert die Gültigkeit eines ProgramArtifacts für einen Organismus.
-     */
-    public enum ArtifactValidity {
-        /** Kein ProgramArtifact verfügbar */
-        NONE,
-        /** ProgramArtifact ist vollständig gültig */
-        VALID,
-        /** Nur Source-Code und Aliase sind sicher, Source-Mapping ist ungültig */
-        PARTIAL_SOURCE,
-        /** ProgramArtifact ist komplett ungültig */
-        INVALID
-    }
+    // Queue configuration
+    private static final int MAX_QUEUE_SIZE = 1000; // Maximum ticks to queue in memory
+    private final ConcurrentLinkedQueue<PreparedTickState> dataQueue = new ConcurrentLinkedQueue<>();
+    private final AtomicInteger queueSize = new AtomicInteger(0);
+    private final Thread queueProcessorThread;
+    private final AtomicBoolean queueProcessorRunning = new AtomicBoolean(false);
 
     private final Thread thread;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final AtomicBoolean autoPaused = new AtomicBoolean(false);
+    private final AtomicBoolean databaseHealthy = new AtomicBoolean(true);
     private long startTime = System.currentTimeMillis();
     private long nextTickToProcess = 0L; // Start at 0 to include tick 0
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -67,13 +53,13 @@ public class DebugIndexer implements IControllable, Runnable {
 
     private Map<String, ProgramArtifact> artifacts = new HashMap<>();
     
-    // Cache für Artifact-Validität pro Organismus (programId_organismId -> ArtifactValidity)
-    private final Map<String, ArtifactValidity> validityCache = new HashMap<>();
-    
-    // Database connection for batch operations
-    private Connection connection;
-    private PreparedStatement tickInsertStatement;
-    private int batchCount = 0;
+    // Helper classes
+    private final ArtifactValidator artifactValidator = new ArtifactValidator();
+    private final DatabaseManager databaseManager;
+    private final SourceViewBuilder sourceViewBuilder;
+    private final InstructionBuilder instructionBuilder;
+    private final InternalStateBuilder internalStateBuilder;
+    private final TickProcessor tickProcessor;
 
     public DebugIndexer(String rawDbPath, int batchSize) {
         this(rawDbPath, rawDbPath.replace("_raw.sqlite", "_debug.sqlite"), batchSize);
@@ -83,22 +69,41 @@ public class DebugIndexer implements IControllable, Runnable {
         this.rawDbPath = rawDbUrl;
         this.debugDbPath = debugDbUrl;
         this.batchSize = batchSize;
+        this.databaseManager = new DatabaseManager(debugDbUrl);
+        this.sourceViewBuilder = new SourceViewBuilder();
+        this.instructionBuilder = new InstructionBuilder();
+        this.internalStateBuilder = new InternalStateBuilder();
+        this.tickProcessor = new TickProcessor(objectMapper, artifactValidator, sourceViewBuilder, instructionBuilder, internalStateBuilder);
         this.thread = new Thread(this, "DebugIndexer");
         this.thread.setDaemon(true);
+        
+        // Initialize queue processor thread
+        this.queueProcessorThread = new Thread(this::processQueuedData, "DebugIndexer-QueueProcessor");
+        this.queueProcessorThread.setDaemon(true);
     }
 
-
-    
-
-    
     @Override
     public void start() {
         if (running.compareAndSet(false, true)) {
             String rawDbName = rawDbPath.substring(rawDbPath.lastIndexOf('/') + 1);
             String debugDbName = debugDbPath.substring(debugDbPath.lastIndexOf('/') + 1);
             log.info("DebugIndexer: reading {} writing {}", rawDbName, debugDbName);
-            setupDebugDatabase();
+            
+            try {
+                databaseManager.setupDebugDatabase();
+                databaseHealthy.set(true);
+                log.info("DebugIndexer: database setup successful, starting processing thread");
+            } catch (Exception e) {
+                databaseHealthy.set(false);
+                log.warn("Failed to setup debug database: {} - starting with queuing enabled", e.getMessage(), e);
+                // Start with queuing enabled - no data loss
+            }
+            
+            // Start both threads
             thread.start();
+            queueProcessorThread.start();
+            queueProcessorRunning.set(true);
+            log.info("DebugIndexer started with health status: {}", getHealthStatus());
         }
     }
 
@@ -117,7 +122,7 @@ public class DebugIndexer implements IControllable, Runnable {
         if (Thread.currentThread().getName().equals("DebugIndexer")) {
             // Called from service thread - close immediately
             log.debug("Manual pause from service thread - closing database immediately");
-            closeQuietly();
+            databaseManager.closeQuietly();
         } else {
             // Called from external thread - signal immediate close
             log.debug("Manual pause from external thread - signaling immediate database close");
@@ -131,13 +136,15 @@ public class DebugIndexer implements IControllable, Runnable {
         
         // Reopen database connection if it was closed during manual pause
         try {
-            if (connection == null || connection.isClosed()) {
+            if (!databaseManager.isConnectionAvailable()) {
                 log.debug("Resuming from manual pause - reopening database connection");
-                setupDebugDatabase();
-                batchCount = 0;
+                databaseManager.setupDebugDatabase();
+                databaseHealthy.set(true);
+                log.info("Database connection successfully reopened on resume");
             }
         } catch (Exception e) {
-            log.warn("Failed to reopen database connection on resume: {}", e.getMessage());
+            databaseHealthy.set(false);
+            log.error("Failed to reopen database connection on resume: {} - continuing in degraded mode (no database writes)", e.getMessage(), e);
         }
     }
 
@@ -151,10 +158,9 @@ public class DebugIndexer implements IControllable, Runnable {
                 log.info("DebugIndexer: graceful termination tick:{} TPS:{}", currentTick, String.format("%.2f", tps));
             }
             thread.interrupt();
+            queueProcessorThread.interrupt();
         }
     }
-    
-
 
     @Override
     public boolean isRunning() {
@@ -171,7 +177,54 @@ public class DebugIndexer implements IControllable, Runnable {
         return autoPaused.get();
     }
     
-
+    /**
+     * Check if the database is healthy and available for operations.
+     * @return true if database operations can be performed
+     */
+    public boolean isDatabaseHealthy() {
+        return databaseHealthy.get();
+    }
+    
+    /**
+     * Get the current health status of the debug indexer.
+     * @return A string describing the current health status
+     */
+    public String getHealthStatus() {
+        if (!running.get()) {
+            return "STOPPED";
+        }
+        if (paused.get()) {
+            return "PAUSED";
+        }
+        if (!databaseHealthy.get()) {
+            return "RUNNING_DEGRADED";
+        }
+        return "RUNNING_HEALTHY";
+    }
+    
+    /**
+     * Attempt to recover database health by reconnecting.
+     * This method can be called externally to attempt recovery from degraded mode.
+     * @return true if recovery was successful, false otherwise
+     */
+    public boolean attemptDatabaseRecovery() {
+        if (databaseHealthy.get()) {
+            log.info("Database is already healthy, no recovery needed");
+            return true;
+        }
+        
+        try {
+            log.info("Attempting database recovery...");
+            databaseManager.setupDebugDatabase();
+            databaseHealthy.set(true);
+            log.info("Database recovery successful - returning to full functionality");
+            return true;
+        } catch (Exception e) {
+            log.error("Database recovery failed: {}", e.getMessage(), e);
+            databaseHealthy.set(false);
+            return false;
+        }
+    }
 
     private double calculateTPS() {
         long currentTime = System.currentTimeMillis();
@@ -220,42 +273,6 @@ public class DebugIndexer implements IControllable, Runnable {
             return String.format("started ERROR:%s", e.getMessage());
         }
     }
-    
-
-
-    private Connection createConnection(String pathOrUrl) throws Exception {
-        if (pathOrUrl.startsWith("jdbc:")) {
-            return DriverManager.getConnection(pathOrUrl);
-        }
-        // For file paths, check if this is a test environment and convert to in-memory
-        if (pathOrUrl.contains("memdb_") || pathOrUrl.contains("test_")) {
-            // This is a test database, use in-memory mode
-            return DriverManager.getConnection("jdbc:sqlite:file:" + pathOrUrl + "?mode=memory&cache=shared");
-        }
-        // For production file paths, use regular SQLite
-        return DriverManager.getConnection("jdbc:sqlite:" + pathOrUrl);
-    }
-
-    private void setupDebugDatabase() {
-        try {
-            connection = createConnection(debugDbPath);
-            
-            // Add performance hints for SQLite
-            try (Statement st = connection.createStatement()) {
-                st.execute("PRAGMA journal_mode=WAL"); // Write-Ahead Logging for better concurrency
-                st.execute("PRAGMA synchronous=NORMAL"); // Faster writes
-                st.execute("PRAGMA cache_size=10000"); // Larger cache
-                st.execute("PRAGMA temp_store=MEMORY"); // Use memory for temp tables
-                
-                // Create tables
-                st.execute("CREATE TABLE IF NOT EXISTS prepared_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json TEXT)");
-                st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
-                st.execute("CREATE TABLE IF NOT EXISTS program_artifacts (program_id TEXT PRIMARY KEY, artifact_json TEXT)");
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to setup debug database", e);
-        }
-    }
 
     @Override
     public void run() {
@@ -283,9 +300,9 @@ public class DebugIndexer implements IControllable, Runnable {
                         }
                     } else {
                         // Manually paused - ensure database is closed and just wait
-                        if (connection != null && !connection.isClosed()) {
+                        if (databaseManager.isConnectionAvailable()) {
                             log.debug("Manual pause detected - ensuring database is closed");
-                            closeQuietly();
+                            databaseManager.closeQuietly();
                         }
                         try {
                             Thread.sleep(1000); // Check every second
@@ -298,10 +315,13 @@ public class DebugIndexer implements IControllable, Runnable {
                 }
                 
                 // Check if we need to reopen database after manual pause
-                if (connection == null || connection.isClosed()) {
+                if (!databaseManager.isConnectionAvailable()) {
                     log.debug("Reopening database connection after manual pause");
-                    setupDebugDatabase();
-                    batchCount = 0;
+                    try {
+                        databaseManager.setupDebugDatabase();
+                    } catch (Exception e) {
+                        log.warn("Failed to reopen database connection: {}", e.getMessage());
+                    }
                 }
 
                 try {
@@ -325,15 +345,10 @@ public class DebugIndexer implements IControllable, Runnable {
                             
                             // For auto-pause: execute any remaining incomplete batches before pausing
                             // This ensures all data is committed and available to other threads
-                            if (tickInsertStatement != null && batchCount > 0) {
-                                try {
-                                    int[] result = tickInsertStatement.executeBatch();
-                                    log.debug("Executed final batch of {} ticks before auto-pause, result: {}", batchCount, java.util.Arrays.toString(result));
-                                    tickInsertStatement.clearBatch();
-                                    batchCount = 0; // Reset batch counter after execution
-                                } catch (Exception e) {
-                                    log.warn("Error executing final batch before auto-pause: {}", e.getMessage());
-                                }
+                            try {
+                                databaseManager.executeRemainingBatch();
+                            } catch (Exception e) {
+                                log.warn("Error executing final batch before auto-pause: {}", e.getMessage());
                             }
                             
                             // Auto-pause - mark as auto-paused and set pause flag
@@ -374,15 +389,10 @@ public class DebugIndexer implements IControllable, Runnable {
                             
                             // For auto-pause: execute any remaining incomplete batches before pausing
                             // This ensures all data is committed and available to other threads
-                            if (tickInsertStatement != null && batchCount > 0) {
-                                try {
-                                    int[] result = tickInsertStatement.executeBatch();
-                                    log.debug("Executed final batch of {} ticks before auto-pause, result: {}", batchCount, java.util.Arrays.toString(result));
-                                    tickInsertStatement.clearBatch();
-                                    batchCount = 0; // Reset batch counter after execution
-                                } catch (Exception e) {
-                                    log.warn("Error executing final batch before auto-pause: {}", e.getMessage());
-                                }
+                            try {
+                                databaseManager.executeRemainingBatch();
+                            } catch (Exception e) {
+                                log.warn("Error executing final batch before auto-pause: {}", e.getMessage());
                             }
                             
                             // Auto-pause - mark as auto-paused and set pause flag
@@ -420,6 +430,14 @@ public class DebugIndexer implements IControllable, Runnable {
                 // Manual pause is now handled immediately in the pause() method
                 // and in the main pause loop above
             }
+            
+            // Log health status periodically
+            if (running.get() && !paused.get()) {
+                String healthStatus = getHealthStatus();
+                if (healthStatus.equals("RUNNING_DEGRADED")) {
+                    log.warn("DebugIndexer health status: {} - continuing in degraded mode", healthStatus);
+                }
+            }
         } catch (Exception e) {
             log.error("DebugIndexer fatal error, terminating service: {}", e.getMessage());
         } finally {
@@ -432,17 +450,62 @@ public class DebugIndexer implements IControllable, Runnable {
             
             // Cleanup database resources
             try {
-                if (tickInsertStatement != null) {
-                    if (batchCount > 0) {
-                        tickInsertStatement.executeBatch();
-                        log.debug("Executed final batch of {} ticks during shutdown", batchCount);
-                    }
-                    tickInsertStatement.close();
+                if (databaseManager.getBatchCount() > 0) {
+                    databaseManager.executeRemainingBatch();
+                    log.debug("Executed final batch during shutdown");
                 }
-                if (connection != null) {
-                    connection.close();
-                }
+                databaseManager.closeQuietly();
             } catch (Exception ignored) {}
+        }
+    }
+
+    /**
+     * Background thread method for processing queued data when database becomes available.
+     */
+    private void processQueuedData() {
+        while (queueProcessorRunning.get() && !Thread.currentThread().isInterrupted()) {
+            try {
+                if (databaseHealthy.get() && !dataQueue.isEmpty()) {
+                    // Process queued data
+                    int processedCount = 0;
+                    while (!dataQueue.isEmpty() && processedCount < 100) { // Process up to 100 per cycle
+                        PreparedTickState tick = dataQueue.poll();
+                        if (tick != null) {
+                            try {
+                                String json = objectMapper.writeValueAsString(tick);
+                                databaseManager.writePreparedTick(tick.tickNumber(), json);
+                                queueSize.decrementAndGet();
+                                processedCount++;
+                                log.debug("Processed queued tick {} from queue", tick.tickNumber());
+                            } catch (Exception e) {
+                                log.error("Failed to process queued tick {}: {}", tick.tickNumber(), e.getMessage());
+                                // Put it back at the front of the queue to retry later
+                                dataQueue.offer(tick);
+                                queueSize.incrementAndGet();
+                                break; // Stop processing this cycle if we hit an error
+                            }
+                        }
+                    }
+                    
+                    if (processedCount > 0) {
+                        log.info("Processed {} queued ticks, {} remaining in queue", processedCount, queueSize.get());
+                    }
+                }
+                
+                // Sleep before next cycle
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Exception e) {
+                log.error("Error in queue processor: {}", e.getMessage(), e);
+                try {
+                    Thread.sleep(5000); // Wait longer on error
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
         }
     }
 
@@ -451,7 +514,7 @@ public class DebugIndexer implements IControllable, Runnable {
      * Used to wake up from pause mode when new ticks arrive.
      */
     private boolean hasNewTicksToProcess() {
-        try (Connection rawConn = createConnection(rawDbPath);
+        try (Connection rawConn = databaseManager.createConnection(rawDbPath);
              PreparedStatement countPs = rawConn.prepareStatement(
                      "SELECT COUNT(*) FROM raw_ticks WHERE tick_number >= ?")) {
             countPs.setLong(1, nextTickToProcess);
@@ -460,9 +523,9 @@ public class DebugIndexer implements IControllable, Runnable {
                     return countRs.getLong(1) > 0;
                 }
             }
-                 } catch (Exception e) {
-             // Ignore errors when checking for new ticks
-         }
+        } catch (Exception e) {
+            // Ignore errors when checking for new ticks
+        }
         return false;
     }
 
@@ -474,7 +537,7 @@ public class DebugIndexer implements IControllable, Runnable {
     private void loadInitialData() {
         // Wait for raw database to be available
         while (running.get()) {
-            try (Connection rawConn = createConnection(rawDbPath);
+            try (Connection rawConn = databaseManager.createConnection(rawDbPath);
                  Statement st = rawConn.createStatement()) {
                 
                 // First: Wait for raw_ticks table to exist and contain at least one tick
@@ -524,23 +587,15 @@ public class DebugIndexer implements IControllable, Runnable {
                 }
                 
                 // Fourth: Write all program artifacts to debug database
-                try {
-                    writeProgramArtifacts();
+                writeProgramArtifacts();
+                if (databaseHealthy.get()) {
                     log.info("Successfully wrote {} program artifacts to debug database", this.artifacts.size());
-                } catch (Exception e) {
-                    // WARN: Database error, but we can continue
-                    log.warn("Failed to write program artifacts to debug database: {}", e.getMessage());
-                    // Don't throw e - we continue anyway
                 }
                 
                 // Fifth: Copy simulation metadata to debug database
-                try {
-                    writeSimulationMetadata();
+                writeSimulationMetadata();
+                if (databaseHealthy.get()) {
                     log.info("Successfully wrote simulation metadata to debug database");
-                } catch (Exception e) {
-                    // WARN: Database error, but we can continue
-                    log.warn("Failed to write simulation metadata to debug database: {}", e.getMessage());
-                    // Don't throw e - we continue anyway
                 }
                 
                 log.info("Successfully loaded initial data from raw database");
@@ -562,17 +617,16 @@ public class DebugIndexer implements IControllable, Runnable {
         }
     }
 
-
-    
     /**
      * Writes simulation metadata to the debug database.
      * This method ensures that all simulation-specific metadata (like world shape, toroidal status, etc.)
      * are available in the debug database for the web debugger to access.
      * 
-     * @throws Exception if there is a critical database error that prevents writing any metadata
+     * <p>Database failures are logged as errors but do not stop the process.
      */
-    private void writeSimulationMetadata() throws Exception {
-        try (PreparedStatement ps = connection.prepareStatement(
+    private void writeSimulationMetadata() {
+        try (Connection conn = databaseManager.createConnection(debugDbPath);
+             PreparedStatement ps = conn.prepareStatement(
                 "INSERT OR REPLACE INTO simulation_metadata(key, value) VALUES (?, ?)")) {
             
             // World shape
@@ -591,6 +645,10 @@ public class DebugIndexer implements IControllable, Runnable {
             int[] results = ps.executeBatch();
             log.debug("Executed {} batch operations for simulation metadata", results.length);
             ps.clearBatch();
+        } catch (Exception e) {
+            log.error("Failed to write simulation metadata to database: {} - marking database as unhealthy, future writes will be skipped", e.getMessage(), e);
+            // Mark database as unhealthy and continue processing
+            databaseHealthy.set(false);
         }
     }
 
@@ -606,15 +664,16 @@ public class DebugIndexer implements IControllable, Runnable {
      * If no artifacts are available, this method returns silently as this is normal for
      * simulations without compiled programs.
      * 
-     * @throws Exception if there is a critical database error that prevents writing any artifacts
+     * <p>Database failures are logged as errors but do not stop the process.
      */
-    private void writeProgramArtifacts() throws Exception {
+    private void writeProgramArtifacts() {
         if (this.artifacts.isEmpty()) {
             log.debug("No program artifacts to write - this is normal for simulations without compiled programs");
             return;
         }
         
-        try (PreparedStatement ps = connection.prepareStatement(
+        try (Connection conn = databaseManager.createConnection(debugDbPath);
+             PreparedStatement ps = conn.prepareStatement(
                 "INSERT OR REPLACE INTO program_artifacts(program_id, artifact_json) VALUES (?, ?)")) {
             
             for (Map.Entry<String, ProgramArtifact> entry : this.artifacts.entrySet()) {
@@ -629,6 +688,10 @@ public class DebugIndexer implements IControllable, Runnable {
                     log.warn("Failed to write program artifact {}: {}", entry.getKey(), e.getMessage());
                 }
             }
+        } catch (Exception e) {
+            log.error("Failed to write program artifacts to database: {} - marking database as unhealthy, future writes will be skipped", e.getMessage(), e);
+            // Mark database as unhealthy and continue processing
+            databaseHealthy.set(false);
         }
     }
 
@@ -638,7 +701,7 @@ public class DebugIndexer implements IControllable, Runnable {
      * @return Number of ticks still remaining to be processed, or -1 for error
      */
     private int processNextBatch() {
-        try (Connection rawConn = createConnection(rawDbPath)) {
+        try (Connection rawConn = databaseManager.createConnection(rawDbPath)) {
             // Apply SQLite performance optimizations
             try (Statement stmt = rawConn.createStatement()) {
                 stmt.execute("PRAGMA journal_mode=WAL");
@@ -674,6 +737,11 @@ public class DebugIndexer implements IControllable, Runnable {
             log.debug("Processing {} ticks (available: {}, batch limit: {})", 
                      actualBatchSize, totalAvailableTicks, batchSize);
             
+            // Log health status if database is in degraded mode
+            if (!databaseHealthy.get()) {
+                log.warn("Processing ticks in degraded mode - database operations are disabled");
+            }
+            
             try (PreparedStatement ps = rawConn.prepareStatement(
                     "SELECT tick_number, tick_data_json FROM raw_ticks WHERE tick_number >= ? ORDER BY tick_number LIMIT ?")) {
                 ps.setLong(1, nextTickToProcess);
@@ -689,7 +757,7 @@ public class DebugIndexer implements IControllable, Runnable {
                         
                         try {
                             RawTickState rawTickState = objectMapper.readValue(rawTickJson, new TypeReference<>() {});
-                            PreparedTickState preparedTick = transformRawToPrepared(rawTickState);
+                            PreparedTickState preparedTick = tickProcessor.transformRawToPrepared(rawTickState, artifacts, envProps);
                             writePreparedTick(preparedTick);
                             
                             // Update next tick to process
@@ -724,588 +792,79 @@ public class DebugIndexer implements IControllable, Runnable {
         }
     }
 
-    private PreparedTickState transformRawToPrepared(RawTickState raw) {
-        if (envProps == null) {
-            throw new IllegalStateException("EnvironmentProperties not available for transformRawToPrepared");
-        }
-        PreparedTickState.WorldMeta meta = new PreparedTickState.WorldMeta(envProps.getWorldShape());
+    /**
+     * Builds a complete source view for an organism, including source lines and annotations.
+     * This method delegates to the SourceViewBuilder helper class.
+     * 
+     * @param organism The organism to build the source view for
+     * @param artifact The program artifact containing source information
+     * @param validity The validity status of the artifact
+     * @return A complete source view, or null if the artifact is invalid
+     */
+    public PreparedTickState.SourceView buildSourceView(RawOrganismState organism, ProgramArtifact artifact, ArtifactValidator.ArtifactValidity validity) {
+        return sourceViewBuilder.buildSourceView(organism, artifact, validity);
+    }
 
-        List<PreparedTickState.Cell> cells = raw.cells().stream()
-                .map(c -> {
-                    Molecule m = Molecule.fromInt(c.molecule());
-                    String opcodeName = null;
-                    if (m.type() == Config.TYPE_CODE && m.value() != 0) {
-                        opcodeName = Instruction.getInstructionNameById(m.toInt());
-                    }
-                    return new PreparedTickState.Cell(toList(c.pos()), typeIdToName(m.type()), m.toScalarValue(), c.ownerId(), opcodeName);
-                }).toList();
-
-        List<PreparedTickState.OrganismBasic> orgBasics = raw.organisms().stream()
-                .filter(o -> !o.isDead())
-                .map(o -> new PreparedTickState.OrganismBasic(o.id(), o.programId(), toList(o.ip()), o.er(), o.dps().stream().map(this::toList).toList(), toList(o.dv())))
-                .toList();
-
-        PreparedTickState.WorldState worldState = new PreparedTickState.WorldState(cells, orgBasics);
-
-        Map<String, PreparedTickState.OrganismDetails> details = new HashMap<>();
-        for (RawOrganismState o : raw.organisms()) {
-            if (o.isDead()) continue;
+    /**
+     * Writes a prepared tick to the database or queues it if the database is unavailable.
+     * Uses the queuing system to prevent data loss when database is down.
+     */
+    private void writePreparedTick(PreparedTickState preparedTick) {
+        if (!databaseHealthy.get()) {
+            // Database is down - queue the data
+            if (queueSize.get() >= MAX_QUEUE_SIZE) {
+                log.error("Queue is full ({} ticks) - stopping processing to prevent data loss", MAX_QUEUE_SIZE);
+                // Stop processing to prevent data loss
+                running.set(false);
+                return;
+            }
             
-            // Zentrale Methode für alle Organismus-Details
-            PreparedTickState.OrganismDetails organismDetails = buildOrganismDetails(o, raw);
-            details.put(String.valueOf(o.id()), organismDetails);
-        }
-
-        return new PreparedTickState("debug", raw.tickNumber(), meta, worldState, details);
-    }
-
-    /**
-     * Zentrale Methode zum Erstellen aller Organismus-Details.
-     * Koordiniert die Validierung und ruft alle Builder auf.
-     */
-    private PreparedTickState.OrganismDetails buildOrganismDetails(RawOrganismState o, RawTickState rawTickState) {
-        ProgramArtifact artifact = this.artifacts.get(o.programId());
-        ArtifactValidity validity = checkArtifactValidity(o, artifact);
-        
-        var basicInfo = new PreparedTickState.BasicInfo(o.id(), o.programId(), o.parentId(), o.birthTick(), o.er(), toList(o.ip()), toList(o.dv()));
-        var nextInstruction = buildNextInstruction(o, artifact, validity, rawTickState);
-        var internalState = buildInternalState(o, artifact, validity);
-        var sourceView = buildSourceView(o, artifact, validity);
-
-        return new PreparedTickState.OrganismDetails(basicInfo, nextInstruction, internalState, sourceView);
-    }
-
-    /**
-     * Prüft die Gültigkeit eines ProgramArtifacts für einen Organismus.
-     * Verwendet Caching für Performance-Optimierung.
-     */
-    private ArtifactValidity checkArtifactValidity(RawOrganismState o, ProgramArtifact artifact) {
-        if (artifact == null) {
-            return ArtifactValidity.NONE;
+            dataQueue.offer(preparedTick);
+            queueSize.incrementAndGet();
+            log.warn("Database unavailable - queued tick {} (queue size: {})", preparedTick.tickNumber(), queueSize.get());
+            return;
         }
         
-        // Cache-Key: programId_organismId
-        String cacheKey = o.programId() + "_" + o.id();
-        
-        // Cache-Check
-        ArtifactValidity cached = validityCache.get(cacheKey);
-        if (cached != null) {
-            return cached;
-        }
-        
-        // Neue Validierung
-        ArtifactValidity validity = performValidation(o, artifact);
-        validityCache.put(cacheKey, validity);
-        
-        return validity;
-    }
-
-    /**
-     * Führt die eigentliche Validierung durch.
-     * Hybrid-Ansatz: Schnell-Check (IP im SourceMap) + detaillierter Check (Code-Konsistenz).
-     */
-    private ArtifactValidity performValidation(RawOrganismState o, ProgramArtifact artifact) {
-        // Schnell-Check: IP im SourceMap?
-        boolean ipValid = isIpInSourceMap(o, artifact);
-        if (!ipValid) {
-            return ArtifactValidity.INVALID;
-        }
-        
-        // Since machineCodeLayout is corrupted during JSON serialization, we can't reliably check it
-        // Instead, we'll use the sourceMap as a proxy for consistency - if the IP is in the sourceMap,
-        // we assume the code is consistent enough for debugging purposes
-        boolean ipInSourceMap = isIpInSourceMap(o, artifact);
-        
-        if (ipInSourceMap) {
-            // IP is in sourceMap, assume code is consistent
-            return ArtifactValidity.VALID;
-        } else {
-            // IP is not in sourceMap, code is inconsistent
-            return ArtifactValidity.INVALID;
-        }
-    }
-
-    /**
-     * Schnell-Check: Ist die aktuelle IP-Position im SourceMap des Artifacts?
-     */
-    private boolean isIpInSourceMap(RawOrganismState o, ProgramArtifact artifact) {
-        if (artifact.sourceMap() == null || artifact.relativeCoordToLinearAddress() == null) {
-            return false;
-        }
-        
-        // Berechne relative IP-Position
-        int[] origin = o.initialPosition();
-        StringBuilder key = new StringBuilder();
-        for (int i = 0; i < o.ip().length; i++) {
-            if (i > 0) key.append('|');
-            key.append(o.ip()[i] - origin[i]);
-        }
-        
-        // Prüfe, ob die aktuelle IP im sourceMap existiert
-        Integer addr = artifact.relativeCoordToLinearAddress().get(key.toString());
-        return addr != null && artifact.sourceMap().containsKey(addr);
-    }
-
-
-
-    private PreparedTickState.NextInstruction buildNextInstruction(RawOrganismState o, ProgramArtifact artifact, ArtifactValidity validity, RawTickState rawTickState) {
         try {
-            // Erstelle RawTickStateReader für diesen Organismus
-            if (envProps == null) {
-                throw new IllegalStateException("EnvironmentProperties not available for buildNextInstruction");
-            }
-            RawTickStateReader reader = new RawTickStateReader(rawTickState, envProps);
-            
-            // Verwende den neuen Disassembler
-            Disassembler disassembler = new Disassembler();
-            DisassemblyData data = disassembler.disassemble(reader, o.ip());
-            
-            if (data == null) {
-                return new PreparedTickState.NextInstruction(
-                    0, "UNKNOWN", new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), 
-                    new PreparedTickState.LastExecutionStatus("ERROR", "Disassembly failed")
-                );
-            }
-            
-            // Bestimme den lastExecutionStatus basierend auf der Validität und dem Organismus-Status
-            PreparedTickState.LastExecutionStatus lastExecutionStatus = buildExecutionStatus(o, validity);
-            
-            // Konvertiere argPositions von int[][] zu List<int[]>
-            List<int[]> argPositions = Arrays.stream(data.argPositions())
-                .map(pos -> pos.clone())
-                .collect(Collectors.toList());
-            
-            // Formatiere die Argumente basierend auf ihren Typen
-            List<Object> formattedArguments = formatArguments(data);
-            
-            // Erstelle die NextInstruction mit der neuen Struktur
-            return new PreparedTickState.NextInstruction(
-                data.opcodeId(),
-                data.opcodeName(),
-                formattedArguments,
-                buildArgumentTypes(data),
-                argPositions,
-                lastExecutionStatus
-            );
-            
+            String json = objectMapper.writeValueAsString(preparedTick);
+            databaseManager.writePreparedTick(preparedTick.tickNumber(), json);
         } catch (Exception e) {
-            log.warn("Failed to disassemble instruction for organism {}: {}", o.id(), e.getMessage());
-            return new PreparedTickState.NextInstruction(
-                0, "UNKNOWN", new ArrayList<>(), new ArrayList<>(), new ArrayList<>(),
-                new PreparedTickState.LastExecutionStatus("ERROR", "Disassembly failed: " + e.getMessage())
-            );
-        }
-    }
-    
-    /**
-     * Bestimmt den executionStatus basierend auf der Artifact-Validität und dem Organismus-Status.
-     */
-    private PreparedTickState.LastExecutionStatus buildExecutionStatus(RawOrganismState o, ArtifactValidity validity) {
-        // Prüfe zuerst, ob die letzte Instruktion fehlgeschlagen ist
-        if (o.instructionFailed()) {
-            return new PreparedTickState.LastExecutionStatus("FAILED", o.failureReason());
-        }
-        
-        // Ansonsten basierend auf der Artifact-Validität
-        switch (validity) {
-            case NONE:
-                return new PreparedTickState.LastExecutionStatus("SUCCESS", null);
-            case VALID:
-                return new PreparedTickState.LastExecutionStatus("SUCCESS", null);
-            case PARTIAL_SOURCE:
-                return new PreparedTickState.LastExecutionStatus("SUCCESS", null);
-            case INVALID:
-                return new PreparedTickState.LastExecutionStatus("SUCCESS", null);
-            default:
-                return new PreparedTickState.LastExecutionStatus("SUCCESS", null);
-        }
-    }
-    
-    /**
-     * Formatiert die Argumente basierend auf ihren tatsächlichen Molekül-Typen.
-     * Das Backend extrahiert nur die Molekül-Typen, die ISA-Interpretation macht das Frontend.
-     */
-    private List<Object> formatArguments(DisassemblyData data) {
-        List<Object> formattedArgs = new ArrayList<>();
-        
-        for (int argValue : data.argValues()) {
-            // Extrahiere den tatsächlichen Molekül-Typ aus der Raw DB (wie bei Internal State)
-            Molecule m = Molecule.fromInt(argValue);
-            String formattedValue = String.format("%s:%d", typeIdToName(m.type()), m.toScalarValue());
-            formattedArgs.add(formattedValue);
-        }
-        
-        return formattedArgs;
-    }
-    
-
-    
-
-
-    /**
-     * Baut die Argument-Typen basierend auf der ISA-Signatur.
-     */
-    private List<String> buildArgumentTypes(DisassemblyData data) {
-        List<String> types = new ArrayList<>();
-        
-        // Hole die ISA-Signatur für den Opcode
-        try {
-            Optional<InstructionSignature> signatureOpt = Instruction.getSignatureById(data.opcodeId());
-            if (signatureOpt.isPresent()) {
-                InstructionSignature signature = signatureOpt.get();
-                // Verwende die echte ISA-Signatur
-                for (InstructionArgumentType argType : signature.argumentTypes()) {
-                    switch (argType) {
-                        case REGISTER:
-                            types.add("REGISTER");
-                            break;
-                        case LITERAL:
-                            types.add("LITERAL");
-                            break;
-                        case VECTOR:
-                            types.add("VECTOR");
-                            break;
-                        case LABEL:
-                            types.add("LABEL");
-                            break;
-                        default:
-                            types.add("UNKNOWN");
-                            break;
-                    }
-                }
+            log.error("Failed to write prepared tick {} to database: {} - marking database as unhealthy, future writes will be skipped", preparedTick.tickNumber(), e.getMessage(), e);
+            // Mark database as unhealthy and continue processing
+            databaseHealthy.set(false);
+            
+            // Try to queue this tick as well
+            if (queueSize.get() < MAX_QUEUE_SIZE) {
+                dataQueue.offer(preparedTick);
+                queueSize.incrementAndGet();
+                log.warn("Queued tick {} after database failure (queue size: {})", preparedTick.tickNumber(), queueSize.get());
             } else {
-                // Fallback: Alle Argumente als UNKNOWN
-                for (int i = 0; i < data.argValues().length; i++) {
-                    types.add("UNKNOWN");
-                }
+                log.error("Queue is full - cannot queue tick {}, stopping processing to prevent data loss", preparedTick.tickNumber());
+                running.set(false);
             }
-        } catch (Exception e) {
-            // Bei Fehlern: Alle Argumente als UNKNOWN
-            log.debug("Could not determine argument types for opcode {}: {}", data.opcodeId(), e.getMessage());
-            for (int i = 0; i < data.argValues().length; i++) {
-                types.add("UNKNOWN");
-            }
-        }
-        
-        return types;
-    }
-    
-
-    
-
-
-    private PreparedTickState.InternalState buildInternalState(RawOrganismState o, ProgramArtifact artifact, ArtifactValidity validity) {
-        // Data Registers (DR) - dynamische Anzahl
-        List<PreparedTickState.RegisterValue> dataRegisters = buildRegisterValues(o.drs(), "DR");
-        
-        // Procedure Registers (PR) - dynamische Anzahl
-        List<PreparedTickState.RegisterValue> procRegisters = buildRegisterValues(o.prs(), "PR");
-        
-        // Floating Point Registers (FPR) - dynamische Anzahl
-        List<PreparedTickState.RegisterValue> fpRegisters = buildRegisterValues(o.fprs(), "FPR");
-        
-        // Location Registers (LR) - dynamische Anzahl
-        List<PreparedTickState.RegisterValue> locationRegisters = buildRegisterValues(o.lrs(), "LR");
-        
-        // Data Stack (DS) - als String-Liste
-        List<String> dataStack = o.dataStack() != null ? 
-            o.dataStack().stream().map(this::formatValue).toList() : new ArrayList<>();
-        
-        // Location Stack (LS) - als String-Liste
-        List<String> locationStack = o.locationStack() != null ? 
-            o.locationStack().stream().map(this::formatVector).toList() : new ArrayList<>();
-        
-        // Call Stack (CS) - als strukturierte Daten
-        List<PreparedTickState.CallStackEntry> callStack = buildCallStack(o, artifact);
-        
-        // DPS aus dem Organismus extrahieren
-        List<List<Integer>> dps = o.dps() != null ? o.dps().stream().map(this::toList).toList() : new ArrayList<>();
-        
-        return new PreparedTickState.InternalState(
-            dataRegisters,      // dataRegisters
-            procRegisters,      // procRegisters  
-            fpRegisters,        // fpRegisters
-            locationRegisters,  // locationRegisters
-            dataStack,          // dataStack
-            locationStack,      // locationStack
-            callStack,          // callStack
-            dps                 // dps
-        );
-    }
-
-    private PreparedTickState.SourceView buildSourceView(RawOrganismState o, ProgramArtifact artifact, ArtifactValidity validity) {
-        // Return null when no valid artifact - Jackson will omit the field entirely
-        if (artifact == null || validity == ArtifactValidity.INVALID) {
-            return null;
-        }
-        
-        // Calculate fileName and currentLine from organism's IP position and artifact's source mapping
-        String fileName = null;
-        Integer currentLine = null;
-        
-        try {
-            // Get organism's current IP coordinates
-            int[] ipCoords = o.ip();
-            if (ipCoords != null && ipCoords.length >= 2) {
-                int[] ipArray = new int[]{ipCoords[0], ipCoords[1]};
-                
-                // Convert coordinates to linear address using the artifact's mapping
-                String coordKey = ipArray[0] + "|" + ipArray[1];
-                Integer linearAddress = artifact.relativeCoordToLinearAddress().get(coordKey);
-                
-                if (linearAddress != null) {
-                    // Look up source information for this address
-                    SourceInfo sourceInfo = artifact.sourceMap().get(linearAddress);
-                    if (sourceInfo != null) {
-                        fileName = sourceInfo.fileName();
-                        currentLine = sourceInfo.lineNumber();
-                    }
-                }
-            }
-        } catch (Exception e) {
-            // Log error but continue - this is debug info, shouldn't break the system
-            System.err.println("Error calculating source view for organism " + o.id() + ": " + e.getMessage());
-        }
-        
-        // Fallback to default values if calculation failed
-        if (fileName == null) fileName = "unknown.s";
-        if (currentLine == null) currentLine = 1;
-        
-        // NEW: Generate source lines and annotations when artifact is available
-        List<PreparedTickState.SourceLine> lines = new ArrayList<>();
-        List<PreparedTickState.InlineSpan> inlineSpans = new ArrayList<>();
-        
-        // Get source lines for the current file
-        List<String> sourceLines = artifact.sources().get(fileName);
-        if (sourceLines != null) {
-            SourceAnnotator annotator = new SourceAnnotator();
-            
-            for (int i = 0; i < sourceLines.size(); i++) {
-                String lineContent = sourceLines.get(i);
-                int lineNumber = i + 1;
-                boolean isCurrent = lineNumber == currentLine;
-                
-                // Create source line
-                lines.add(new PreparedTickState.SourceLine(
-                    lineNumber, lineContent, isCurrent, 
-                    new ArrayList<>(), new ArrayList<>()  // prolog/epilog empty for now
-                ));
-                
-                // Generate annotations for this line (only for the active line)
-                boolean isActiveLine = lineNumber == currentLine;
-                List<PreparedTickState.InlineSpan> lineSpans = annotator.annotate(o, artifact, fileName, lineContent, lineNumber, isActiveLine);
-                inlineSpans.addAll(lineSpans);
-            }
-        }
-        
-        // When we have a valid artifact, return a proper SourceView with calculated values
-        return new PreparedTickState.SourceView(
-            fileName,           // Calculated fileName or fallback
-            currentLine,        // Calculated currentLine or fallback
-            lines,              // Populated source lines
-            inlineSpans         // Generated annotations
-        );
-    }
-
-    private List<PreparedTickState.CallStackEntry> buildCallStack(RawOrganismState o, ProgramArtifact artifact) {
-        if (o.callStack() == null || o.callStack().isEmpty()) return Collections.emptyList();
-
-        return o.callStack().stream()
-                .map(frame -> buildCallStackEntry(frame, o, artifact))
-                .collect(Collectors.toList());
-    }
-
-    private PreparedTickState.CallStackEntry buildCallStackEntry(SerializableProcFrame frame, RawOrganismState o, ProgramArtifact artifact) {
-        // 1. Prozedurname
-        String procName = frame.procName();
-        
-        // 2. Absolute Return-IP als Koordinaten
-        int[] returnCoordinates = frame.absoluteReturnIp() != null && frame.absoluteReturnIp().length >= 2 ? 
-            frame.absoluteReturnIp() : new int[]{0, 0};
-        
-        // 3. Parameter-Bindungen
-        List<PreparedTickState.ParameterBinding> parameters = new ArrayList<>();
-        
-        if (frame.fprBindings() != null && !frame.fprBindings().isEmpty()) {
-            // Sortiere FPR-Bindings nach Index für konsistente Anzeige
-            List<Map.Entry<Integer, Integer>> sortedBindings = frame.fprBindings().entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey())
-                    .collect(Collectors.toList());
-            
-            for (Map.Entry<Integer, Integer> binding : sortedBindings) {
-                int fprIndex = binding.getKey() - Instruction.FPR_BASE; // FPR-Base abziehen
-                int drId = binding.getValue();
-                
-                // Hole aktuellen Register-Wert
-                String registerValue = "";
-                if (drId >= 0 && drId < o.drs().size()) {
-                    Object drValue = o.drs().get(drId);
-                    if (drValue != null) {
-                        registerValue = formatValue(drValue);
-                    }
-                }
-                
-                // Parameter-Name auflösen (falls verfügbar)
-                String paramName = null;
-                if (artifact != null && artifact.procNameToParamNames().containsKey(frame.procName().toUpperCase())) {
-                    List<String> paramNames = artifact.procNameToParamNames().get(frame.procName().toUpperCase());
-                    if (fprIndex < paramNames.size()) {
-                        paramName = paramNames.get(fprIndex);
-                    }
-                }
-                
-                // ParameterBinding erstellen
-                parameters.add(new PreparedTickState.ParameterBinding(drId, registerValue, paramName));
-            }
-        }
-        
-        return new PreparedTickState.CallStackEntry(procName, returnCoordinates, parameters, frame.fprBindings());
-    }
-
-    private String formatValue(Object obj) {
-        if (obj instanceof Integer i) {
-            Molecule m = Molecule.fromInt(i);
-            return String.format("%s:%d", typeIdToName(m.type()), m.toScalarValue());
-        } else if (obj instanceof int[] v) {
-            return formatVector(v);
-        } else if (obj instanceof java.util.List<?> list) {
-            // Nach JSON-Deserialisierung werden Arrays als List<Integer> gelesen
-            return formatListAsVector(list);
-        }
-        return "null";
-    }
-
-    private String formatVector(int[] vector) {
-        if (vector == null) return "[]";
-        return "[" + Arrays.stream(vector).mapToObj(String::valueOf).collect(Collectors.joining("|")) + "]";
-    }
-    
-    private String formatListAsVector(java.util.List<?> list) {
-        if (list == null) return "[]";
-        return "[" + list.stream().map(String::valueOf).collect(Collectors.joining("|")) + "]";
-    }
-
-    private String typeIdToName(int typeId) {
-        if (typeId == Config.TYPE_CODE) return "CODE";
-        if (typeId == Config.TYPE_DATA) return "DATA";
-        if (typeId == Config.TYPE_ENERGY) return "ENERGY";
-        if (typeId == Config.TYPE_STRUCTURE) return "STRUCTURE";
-        return "UNKNOWN";
-    }
-
-    private List<Integer> toList(int[] arr) {
-        if (arr == null) return Collections.emptyList();
-        return Arrays.stream(arr).boxed().collect(Collectors.toList());
-    }
-    
-    /**
-     * Erstellt eine Liste von RegisterValue-Objekten für die tatsächlich vorhandenen Register.
-     * Arbeitet dynamisch mit der Anzahl der verfügbaren Register.
-     */
-    private List<PreparedTickState.RegisterValue> buildRegisterValues(List<Object> rawRegisters, String prefix) {
-        List<PreparedTickState.RegisterValue> result = new ArrayList<>();
-        
-        if (rawRegisters == null || rawRegisters.isEmpty()) {
-            return result; // Leere Liste zurückgeben
-        }
-        
-        for (int i = 0; i < rawRegisters.size(); i++) {
-            String registerId = prefix + i;
-            String alias = ""; // Keine Aliase für jetzt
-            String value = "";
-            
-            Object rawValue = rawRegisters.get(i);
-            if (rawValue != null) {
-                value = formatValue(rawValue);
-            }
-            
-            result.add(new PreparedTickState.RegisterValue(registerId, alias, value));
-        }
-        
-        return result;
-    }
-
-    private void writePreparedTick(PreparedTickState preparedTick) throws Exception {
-                 // Ensure database connection is available
-         if (connection == null || connection.isClosed()) {
-             setupDebugDatabase();
-         }
-        
-        // Use batch insert for better performance
-        if (tickInsertStatement == null) {
-            tickInsertStatement = connection.prepareStatement(
-                "INSERT OR REPLACE INTO prepared_ticks(tick_number, tick_data_json) VALUES (?, ?)");
-        }
-        
-        String json = objectMapper.writeValueAsString(preparedTick);
-        tickInsertStatement.setLong(1, preparedTick.tickNumber());
-        tickInsertStatement.setString(2, json);
-        tickInsertStatement.addBatch();
-        
-        // Execute batch every 1000 ticks for optimal performance
-        if (++batchCount % 1000 == 0) {
-            tickInsertStatement.executeBatch();
-            tickInsertStatement.clearBatch();
         }
     }
 
     public long getLastProcessedTick() { 
         return nextTickToProcess > 0 ? nextTickToProcess - 1 : 0; 
     }
+    
     public String getRawDbPath() { return rawDbPath; }
     public String getDebugDbPath() { return debugDbPath; }
-
-    private void closeQuietly() {
-        try {
-            // First, execute any remaining batch operations
-            if (tickInsertStatement != null && batchCount > 0) {
-                // Always execute remaining batch, regardless of batchCount value
-                tickInsertStatement.executeBatch();
-                log.debug("Executed final batch of {} ticks before pause", batchCount);
-                batchCount = 0; // Reset batch counter after execution
-            }
-            if (tickInsertStatement != null) {
-                tickInsertStatement.close();
-                tickInsertStatement = null;
-            }
-            
-            // Perform WAL checkpoint to ensure all changes are in the main database
-            if (connection != null && !connection.isClosed()) {
-                try (Statement st = connection.createStatement()) {
-                    // Force all pending changes to be written
-                    st.execute("PRAGMA wal_checkpoint(FULL)");
-                    log.debug("WAL checkpoint completed before closing");
-                    
-                    // Force a final checkpoint to ensure all data is flushed
-                    st.execute("PRAGMA wal_checkpoint(TRUNCATE)");
-                    log.debug("Final WAL truncate checkpoint completed");
-                    
-                    // Ensure WAL mode is properly closed and files are released
-                    st.execute("PRAGMA journal_mode=DELETE");
-                    log.debug("WAL mode disabled, journal mode set to DELETE");
-                    
-                    // Final checkpoint after disabling WAL to ensure all data is in main file
-                    st.execute("PRAGMA wal_checkpoint(FULL)");
-                    log.debug("Final checkpoint after WAL disable completed");
-                } catch (Exception e) {
-                    log.warn("Error during WAL checkpoint before closing: {}", e.getMessage());
-                }
-            }
-            
-            // Close the connection
-            if (connection != null) {
-                connection.close();
-                connection = null;
-                log.debug("Database connection closed");
-            }
-            
-            // Note: Raw database is managed by PersistenceService, not by us
-            // No need to close raw database connections
-            
-        } catch (Exception e) {
-            log.warn("Error closing database cleanly: {}", e.getMessage());
-        }
+    
+    /**
+     * Get current queue status for monitoring.
+     * @return Current queue size
+     */
+    public int getQueueSize() {
+        return queueSize.get();
     }
     
-
+    /**
+     * Get maximum queue capacity.
+     * @return Maximum number of ticks that can be queued
+     */
+    public int getMaxQueueSize() {
+        return MAX_QUEUE_SIZE;
+    }
 }
