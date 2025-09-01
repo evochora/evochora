@@ -48,14 +48,16 @@ public class RegisterTokenHandler implements ITokenHandler {
         
         if (canonicalReg != null) {
             // This is an alias or FPR - show resolution + value
+            // Note: Frontend will add brackets, so don't include them here
             Object value = getRegisterValue(canonicalReg, o);
-            String annotationText = String.format("[%s=%s]", canonicalReg, formatValue(value));
+            String annotationText = String.format("%s=%s", canonicalReg, formatValue(value));
             return new TokenAnalysisResult(token, TokenType.REGISTER_REFERENCE, annotationText, "reg");
         } else {
             // Direct register reference - show just the value
+            // Note: Frontend will add brackets, so don't include them here
             Object value = getRegisterValue(token, o);
             if (value != null) {
-                String annotationText = String.format("[=%s]", formatValue(value));
+                String annotationText = String.format("=%s", formatValue(value));
                 return new TokenAnalysisResult(token, TokenType.REGISTER_REFERENCE, annotationText, "reg");
             }
         }
@@ -141,13 +143,10 @@ public class RegisterTokenHandler implements ITokenHandler {
     
     /**
      * Converts a type ID to its name.
+     * Uses the central MoleculeTypeUtils utility to avoid duplication.
      */
     private String typeIdToName(int typeId) {
-        if (typeId == Config.TYPE_CODE) return "CODE";
-        if (typeId == Config.TYPE_DATA) return "DATA";
-        if (typeId == Config.TYPE_ENERGY) return "ENERGY";
-        if (typeId == Config.TYPE_STRUCTURE) return "STRUCTURE";
-        return "UNKNOWN";
+        return org.evochora.server.indexer.MoleculeTypeUtils.typeIdToName(typeId);
     }
     
     /**

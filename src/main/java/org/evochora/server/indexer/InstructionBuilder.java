@@ -189,15 +189,12 @@ public class InstructionBuilder {
     
     /**
      * Converts a type ID to a human-readable name.
+     * Uses the central MoleculeTypeUtils utility to avoid duplication.
      * 
      * @param typeId The type ID
      * @return The type name
      */
     private String typeIdToName(int typeId) {
-        if (typeId == Config.TYPE_CODE) return "CODE";
-        if (typeId == Config.TYPE_DATA) return "DATA";
-        if (typeId == Config.TYPE_ENERGY) return "ENERGY";
-        if (typeId == Config.TYPE_STRUCTURE) return "STRUCTURE";
-        return InstructionArgumentTypeUtils.getDefaultDisplayString();
+        return org.evochora.server.indexer.MoleculeTypeUtils.typeIdToName(typeId);
     }
 }

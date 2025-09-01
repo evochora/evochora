@@ -28,20 +28,25 @@ public class ParameterTokenHandler implements ITokenHandler {
             return false;
         }
         
-        // Only handle VARIABLE type tokens that are parameters
-        return tokenInfo.tokenType() == org.evochora.compiler.frontend.semantics.Symbol.Type.VARIABLE;
+        // Handle VARIABLE type tokens that are parameters
+        // Parameters are marked as VARIABLE type in the procedure's scope
+        // Also check if the scope is not "global" (parameters are in procedure scope)
+        boolean isVariableType = tokenInfo.tokenType() == org.evochora.compiler.frontend.semantics.Symbol.Type.VARIABLE;
+        boolean isInProcedureScope = !"global".equalsIgnoreCase(tokenInfo.scope());
+        
+        return isVariableType && isInProcedureScope;
     }
     
     @Override
     public TokenAnalysisResult analyze(String token, int lineNumber, ProgramArtifact artifact, TokenInfo tokenInfo, RawOrganismState o) {
-        // Check if this token is a parameter name for ANY procedure
-        // We need to find which procedure this line belongs to
-        String currentProcName = findCurrentProcedureName(lineNumber, artifact);
-        if (currentProcName == null) {
-            return null; // Not in any procedure
+        // Use the scope from TokenInfo directly - no need to scan backwards!
+        String procName = tokenInfo.scope();
+        if ("global".equalsIgnoreCase(procName)) {
+            return null; // Not a procedure parameter
         }
         
-        List<String> paramNames = artifact.procNameToParamNames().get(currentProcName.toUpperCase());
+        // Get the procedure's parameter names
+        List<String> paramNames = artifact.procNameToParamNames().get(procName.toUpperCase());
         if (paramNames == null) {
             return null; // Procedure has no parameters
         }
@@ -60,7 +65,7 @@ public class ParameterTokenHandler implements ITokenHandler {
         }
         
         // Get the current value of this parameter by resolving the binding chain
-        if (o.callStack() != null && !o.callStack().isEmpty()) {
+        if (o != null && o.callStack() != null && !o.callStack().isEmpty()) {
             // Resolve the binding chain to find the actual register this parameter is bound to
             int finalRegId = resolveBindingChain(o.callStack(), paramIndex);
             if (finalRegId >= 0) {
@@ -68,7 +73,9 @@ public class ParameterTokenHandler implements ITokenHandler {
                 Object value = getRegisterValue(finalRegId, o);
                 if (value != null) {
                     String canonicalRegName = idToCanonicalName(finalRegId);
-                    String annotationText = String.format("[%s=%s]", canonicalRegName, formatValue(value));
+                    // Show only the physical register binding, not the parameter name
+                    // Note: Frontend will add brackets, so don't include them here
+                    String annotationText = String.format("%s=%s", canonicalRegName, formatValue(value));
                     return new TokenAnalysisResult(token, TokenType.PARAMETER_NAME, annotationText, "param");
                 }
             }
@@ -78,50 +85,8 @@ public class ParameterTokenHandler implements ITokenHandler {
         return null;
     }
     
-    /**
-     * Finds which procedure the given line belongs to by scanning backwards from the line.
-     * This handles parameters anywhere in the procedure body, not just on .PROC lines.
-     */
-    private String findCurrentProcedureName(int lineNumber, ProgramArtifact artifact) {
-        if (artifact.sources() == null || artifact.sourceMap() == null) {
-            return null;
-        }
-        
-        // Find the source file for this line
-        String fileName = null;
-        SourceInfo sourceInfo = artifact.sourceMap().get(lineNumber);
-        if (sourceInfo != null) {
-            fileName = sourceInfo.fileName();
-        }
-        
-        if (fileName == null) {
-            return null;
-        }
-        
-        // Get the source lines for this file
-        List<String> sourceLines = artifact.sources().get(fileName);
-        if (sourceLines == null || lineNumber < 0 || lineNumber >= sourceLines.size()) {
-            return null;
-        }
-        
-        // Scan backwards from the current line to find the most recent .PROC directive
-        for (int i = lineNumber; i >= 0; i--) {
-            String line = sourceLines.get(i).trim();
-            if (line.startsWith(".PROC")) {
-                // Parse .PROC MY_PROC WITH PARAM1 PARAM2
-                String[] parts = line.split("\\s+");
-                if (parts.length >= 2) {
-                    return parts[1]; // The procedure name
-                }
-            }
-            // Stop if we hit an .ENDP directive (end of procedure)
-            if (line.startsWith(".ENDP")) {
-                break;
-            }
-        }
-        
-        return null; // Not in any procedure
-    }
+    // Removed findCurrentProcedureName method - no longer needed!
+    // We now use the scope directly from TokenInfo which is much simpler and more reliable.
     
     /**
      * Resolves the binding chain through the call stack to find the actual register.
@@ -199,13 +164,10 @@ public class ParameterTokenHandler implements ITokenHandler {
     
     /**
      * Converts a type ID to its name.
+     * Uses the central MoleculeTypeUtils utility to avoid duplication.
      */
     private String typeIdToName(int typeId) {
-        if (typeId == org.evochora.runtime.Config.TYPE_CODE) return "CODE";
-        if (typeId == org.evochora.runtime.Config.TYPE_DATA) return "DATA";
-        if (typeId == org.evochora.runtime.Config.TYPE_ENERGY) return "ENERGY";
-        if (typeId == org.evochora.runtime.Config.TYPE_STRUCTURE) return "STRUCTURE";
-        return "UNKNOWN";
+        return org.evochora.server.indexer.MoleculeTypeUtils.typeIdToName(typeId);
     }
     
     /**

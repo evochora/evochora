@@ -56,14 +56,13 @@ public class RetInstructionHandler implements ITokenHandler {
         }
         
         StringBuilder sb = new StringBuilder();
-        sb.append("[");
+        // Note: Frontend will add brackets, so don't include them here
         for (int i = 0; i < coords.length; i++) {
             if (i > 0) {
                 sb.append("|");
             }
             sb.append(coords[i]);
         }
-        sb.append("]");
         return sb.toString();
     }
 }

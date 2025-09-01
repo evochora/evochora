@@ -34,6 +34,7 @@ public class CallInstructionHandler implements ITokenHandler {
         // For now, just identify this as a CALL instruction
         // Later this could show: [copy-in: %DR0→%FPR0, %DR1→%FPR1]
         
-        return new TokenAnalysisResult(token, TokenType.CALL_INSTRUCTION, "[call]", "call");
+        // Note: Frontend will add brackets, so don't include them here
+        return new TokenAnalysisResult(token, TokenType.CALL_INSTRUCTION, "call", "call");
     }
 }

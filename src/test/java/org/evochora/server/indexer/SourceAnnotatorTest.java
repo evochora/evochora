@@ -126,7 +126,7 @@ class SourceAnnotatorTest {
         assertThat(counterSpan.tokenToAnnotate()).isEqualTo("%COUNTER");
         assertThat(counterSpan.occurrence()).isEqualTo(1);
         assertThat(counterSpan.kind()).isEqualTo("reg");
-        assertThat(counterSpan.annotationText()).isEqualTo("[%DR0=DATA:42]");
+        assertThat(counterSpan.annotationText()).isEqualTo("%DR0=DATA:42");
 
         // Teste die Annotation für das Sprungziel (this is the active line)
         String jumpLine = "  JMPI START";
@@ -227,7 +227,7 @@ class SourceAnnotatorTest {
                 .findFirst()
                 .orElse(null);
         assertThat(dr0Span).isNotNull();
-        assertThat(dr0Span.annotationText()).isEqualTo("[=DATA:42]");
+        assertThat(dr0Span.annotationText()).isEqualTo("=DATA:42");
     }
     
 

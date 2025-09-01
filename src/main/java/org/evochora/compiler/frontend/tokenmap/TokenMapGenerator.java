@@ -93,6 +93,7 @@ public class TokenMapGenerator {
             Integer lineNumber = sourceInfo.lineNumber();
             Integer columnNumber = sourceInfo.columnNumber();
             
+            // Add token to the lookup structure for annotation system
             result.computeIfAbsent(fileName, k -> new HashMap<>())
                   .computeIfAbsent(lineNumber, k -> new HashMap<>())
                   .computeIfAbsent(columnNumber, k -> new ArrayList<>())
@@ -264,21 +265,20 @@ public class TokenMapGenerator {
 
     /**
      * A helper method to create a TokenInfo object for parameters and add it to the map.
-     * Parameters need unique SourceInfo to avoid overwriting each other.
+     * Parameters are naturally unique due to their SourceInfo (file + line + column).
      */
     private void addParameterToken(org.evochora.compiler.frontend.lexer.Token token, Symbol.Type type, String scope, int parameterIndex) {
         if (token != null) {
-            // Create a unique SourceInfo for parameters by using a negative column offset
-            // This ensures parameters with the same line/column don't overwrite each other
+            // Each parameter has a unique position in the source, so no artificial suffixes needed
             SourceInfo sourceInfo = new SourceInfo(
                 token.fileName(),
                 token.line(),
-                token.column() - parameterIndex - 1  // Make each parameter unique
+                token.column()
             );
             
-            // Create TokenInfo with the proper structure
+            // Create TokenInfo with the original token text (no artificial suffixes)
             TokenInfo tokenInfo = new TokenInfo(
-                token.text(),
+                token.text(),  // Keep original text for proper annotation matching
                 type,
                 scope
             );

@@ -81,7 +81,7 @@ public class DebugIndexer implements IControllable, Runnable {
         this.queueProcessorThread = new Thread(this::processQueuedData, "DebugIndexer-QueueProcessor");
         this.queueProcessorThread.setDaemon(true);
     }
-
+    
     @Override
     public void start() {
         if (running.compareAndSet(false, true)) {
@@ -345,10 +345,10 @@ public class DebugIndexer implements IControllable, Runnable {
                             
                             // For auto-pause: execute any remaining incomplete batches before pausing
                             // This ensures all data is committed and available to other threads
-                            try {
+                                try {
                                 databaseManager.executeRemainingBatch();
-                            } catch (Exception e) {
-                                log.warn("Error executing final batch before auto-pause: {}", e.getMessage());
+                                } catch (Exception e) {
+                                    log.warn("Error executing final batch before auto-pause: {}", e.getMessage());
                             }
                             
                             // Auto-pause - mark as auto-paused and set pause flag
@@ -389,10 +389,10 @@ public class DebugIndexer implements IControllable, Runnable {
                             
                             // For auto-pause: execute any remaining incomplete batches before pausing
                             // This ensures all data is committed and available to other threads
-                            try {
+                                try {
                                 databaseManager.executeRemainingBatch();
-                            } catch (Exception e) {
-                                log.warn("Error executing final batch before auto-pause: {}", e.getMessage());
+                                } catch (Exception e) {
+                                    log.warn("Error executing final batch before auto-pause: {}", e.getMessage());
                             }
                             
                             // Auto-pause - mark as auto-paused and set pause flag
@@ -523,9 +523,9 @@ public class DebugIndexer implements IControllable, Runnable {
                     return countRs.getLong(1) > 0;
                 }
             }
-        } catch (Exception e) {
-            // Ignore errors when checking for new ticks
-        }
+                 } catch (Exception e) {
+             // Ignore errors when checking for new ticks
+         }
         return false;
     }
 
@@ -587,13 +587,13 @@ public class DebugIndexer implements IControllable, Runnable {
                 }
                 
                 // Fourth: Write all program artifacts to debug database
-                writeProgramArtifacts();
+                    writeProgramArtifacts();
                 if (databaseHealthy.get()) {
                     log.info("Successfully wrote {} program artifacts to debug database", this.artifacts.size());
                 }
                 
                 // Fifth: Copy simulation metadata to debug database
-                writeSimulationMetadata();
+                    writeSimulationMetadata();
                 if (databaseHealthy.get()) {
                     log.info("Successfully wrote simulation metadata to debug database");
                 }
@@ -616,7 +616,7 @@ public class DebugIndexer implements IControllable, Runnable {
             }
         }
     }
-
+    
     /**
      * Writes simulation metadata to the debug database.
      * This method ensures that all simulation-specific metadata (like world shape, toroidal status, etc.)
@@ -838,7 +838,7 @@ public class DebugIndexer implements IControllable, Runnable {
                 dataQueue.offer(preparedTick);
                 queueSize.incrementAndGet();
                 log.warn("Queued tick {} after database failure (queue size: {})", preparedTick.tickNumber(), queueSize.get());
-            } else {
+        } else {
                 log.error("Queue is full - cannot queue tick {}, stopping processing to prevent data loss", preparedTick.tickNumber());
                 running.set(false);
             }
@@ -851,7 +851,7 @@ public class DebugIndexer implements IControllable, Runnable {
     
     public String getRawDbPath() { return rawDbPath; }
     public String getDebugDbPath() { return debugDbPath; }
-    
+
     /**
      * Get current queue status for monitoring.
      * @return Current queue size
