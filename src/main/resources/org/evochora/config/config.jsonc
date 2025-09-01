@@ -81,7 +81,7 @@
       // [OPTIONAL] Directory path where simulation output files are stored (default: "runs/")
       "outputPath": "runs/",
       // [OPTIONAL] Tick numbers at which simulation should automatically pause (default: null)
-      //"autoPauseTicks": [500, 1000],
+      "autoPauseTicks": [500, 1000],
       // [OPTIONAL] Whether to skip ProgramArtifact features (default: false)
       "skipProgramArtefact": false
     },
