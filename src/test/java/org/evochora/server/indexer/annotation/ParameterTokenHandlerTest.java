@@ -29,15 +29,15 @@ class ParameterTokenHandlerTest {
         TokenInfo paramTokenInfo = new TokenInfo("PARAM1", Symbol.Type.VARIABLE, "PROC1");
         
         // Should handle VARIABLE type tokens in procedure scope (not global)
-        assertTrue(handler.canHandle("PARAM1", 1, null, paramTokenInfo));
+        assertTrue(handler.canHandle("PARAM1", 1, "test.s", null, paramTokenInfo));
         
         // Should NOT handle VARIABLE type tokens in global scope
         TokenInfo globalTokenInfo = new TokenInfo("GLOBAL_VAR", Symbol.Type.VARIABLE, "global");
-        assertFalse(handler.canHandle("GLOBAL_VAR", 1, null, globalTokenInfo));
+        assertFalse(handler.canHandle("GLOBAL_VAR", 1, "test.s", null, globalTokenInfo));
         
         // Should NOT handle other token types
         TokenInfo labelTokenInfo = new TokenInfo("LABEL", Symbol.Type.LABEL, "PROC1");
-        assertFalse(handler.canHandle("LABEL", 1, null, labelTokenInfo));
+        assertFalse(handler.canHandle("LABEL", 1, "test.s", null, labelTokenInfo));
     }
     
     @Test
@@ -45,6 +45,6 @@ class ParameterTokenHandlerTest {
         ParameterTokenHandler handler = new ParameterTokenHandler();
         
         // Should not handle null TokenInfo
-        assertFalse(handler.canHandle("PARAM1", 1, null, null));
+        assertFalse(handler.canHandle("PARAM1", 1, "test.s", null, null));
     }
 }

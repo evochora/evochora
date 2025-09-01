@@ -19,7 +19,7 @@ import org.evochora.server.indexer.annotation.enums.TokenType;
 public class CallInstructionHandler implements ITokenHandler {
     
     @Override
-    public boolean canHandle(String token, int lineNumber, ProgramArtifact artifact, TokenInfo tokenInfo) {
+    public boolean canHandle(String token, int lineNumber, String fileName, ProgramArtifact artifact, TokenInfo tokenInfo) {
         // Only handle CALL tokens
         return "CALL".equalsIgnoreCase(token);
     }
@@ -31,10 +31,9 @@ public class CallInstructionHandler implements ITokenHandler {
         }
         
         // TODO: Future enhancement - show compiler-generated copy-in/out instructions
-        // For now, just identify this as a CALL instruction
+        // For now, return null to avoid [call] annotation
         // Later this could show: [copy-in: %DR0→%FPR0, %DR1→%FPR1]
         
-        // Note: Frontend will add brackets, so don't include them here
-        return new TokenAnalysisResult(token, TokenType.CALL_INSTRUCTION, "call", "call");
+        return null; // No annotation for CALL instruction itself
     }
 }

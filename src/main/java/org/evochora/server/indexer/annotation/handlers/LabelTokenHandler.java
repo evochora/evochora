@@ -8,6 +8,7 @@ import org.evochora.server.indexer.annotation.TokenAnalysisResult;
 import org.evochora.server.indexer.annotation.enums.TokenType;
 
 import java.util.Map;
+import java.util.List;
 
 /**
  * Handles tokens that are label references.
@@ -20,21 +21,61 @@ import java.util.Map;
 public class LabelTokenHandler implements ITokenHandler {
     
     @Override
-    public boolean canHandle(String token, int lineNumber, ProgramArtifact artifact, TokenInfo tokenInfo) {
-        // Use deterministic TokenInfo to check if this is a label token
+    public boolean canHandle(String token, int lineNumber, String fileName, ProgramArtifact artifact, TokenInfo tokenInfo) {
+        // Use deterministic TokenInfo to check if this is a label or procedure token
         if (tokenInfo == null) {
             return false;
         }
         
-        // Only handle LABEL type tokens that are references (not definitions)
-        return tokenInfo.tokenType() == org.evochora.compiler.frontend.semantics.Symbol.Type.LABEL;
+        // Handle LABEL type tokens for jump target annotations
+        if (tokenInfo.tokenType() == org.evochora.compiler.frontend.semantics.Symbol.Type.LABEL) {
+            return true;
+        }
+        
+        // Handle PROCEDURE type tokens, but only if they're being referenced (not defined)
+        if (tokenInfo.tokenType() == org.evochora.compiler.frontend.semantics.Symbol.Type.PROCEDURE) {
+            // Check if this procedure name is actually being referenced by looking for CALL instructions
+            // on the same line or checking if it's in a CALL context
+            return isProcedureReference(token, lineNumber, fileName, artifact, tokenInfo);
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Determines if a PROCEDURE type token is being referenced (called) rather than defined.
+     * This prevents procedure definitions from getting jump target annotations.
+     */
+    private boolean isProcedureReference(String token, int lineNumber, String fileName, ProgramArtifact artifact, TokenInfo tokenInfo) {
+        // Get all tokens on this line using the provided fileName
+        Map<Integer, Map<Integer, List<TokenInfo>>> fileTokens = artifact.tokenLookup().get(fileName);
+        if (fileTokens == null) return false;
+        
+        Map<Integer, List<TokenInfo>> lineTokens = fileTokens.get(lineNumber);
+        if (lineTokens == null) return false;
+        
+        // Check if there's a CALL instruction on this line
+        for (List<TokenInfo> columnTokens : lineTokens.values()) {
+            for (TokenInfo columnToken : columnTokens) {
+                if ("CALL".equalsIgnoreCase(columnToken.tokenText())) {
+                    // This line contains a CALL instruction, so the procedure token is being referenced
+                    return true;
+                }
+            }
+        }
+        
+        // No CALL instruction found, so this is likely a procedure definition
+        return false;
     }
     
     @Override
     public TokenAnalysisResult analyze(String token, int lineNumber, ProgramArtifact artifact, TokenInfo tokenInfo, RawOrganismState o) {
+        // Handle qualified names like LIB.PROC1 by extracting the actual procedure name
+        String actualName = extractActualName(token);
+        
         // Find the label's address
         Integer labelAddress = artifact.labelAddressToName().entrySet().stream()
-            .filter(entry -> token.equalsIgnoreCase(entry.getValue()))
+            .filter(entry -> actualName.equalsIgnoreCase(entry.getValue()))
             .map(Map.Entry::getKey)
             .findFirst()
             .orElse(null);
@@ -51,6 +92,25 @@ public class LabelTokenHandler implements ITokenHandler {
         
         // No coordinates found - no annotation
         return null;
+    }
+    
+    /**
+     * Extracts the actual procedure/label name from a qualified name.
+     * For example, "LIB.PROC1" becomes "PROC1".
+     */
+    private String extractActualName(String qualifiedName) {
+        if (qualifiedName == null) {
+            return null;
+        }
+        
+        // If the name contains a dot, extract the part after the last dot
+        int lastDotIndex = qualifiedName.lastIndexOf('.');
+        if (lastDotIndex >= 0 && lastDotIndex < qualifiedName.length() - 1) {
+            return qualifiedName.substring(lastDotIndex + 1);
+        }
+        
+        // No dot found, return the original name
+        return qualifiedName;
     }
     
     /**

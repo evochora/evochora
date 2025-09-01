@@ -42,7 +42,7 @@ class ParameterHandlerDirectTest {
             
             if (tokenText.startsWith("PROC1REG")) {
                 // Test canHandle directly
-                boolean canHandle = handler.canHandle(tokenText, 1, artifact, tokenInfo);
+                boolean canHandle = handler.canHandle(tokenText, 1, "test_proc.s", artifact, tokenInfo);
                 assertTrue(canHandle, "ParameterTokenHandler should handle parameter: " + tokenText);
                 
                 if (canHandle) {

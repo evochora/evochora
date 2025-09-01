@@ -22,7 +22,7 @@ import java.util.Deque;
 public class RetInstructionHandler implements ITokenHandler {
     
     @Override
-    public boolean canHandle(String token, int lineNumber, ProgramArtifact artifact, TokenInfo tokenInfo) {
+    public boolean canHandle(String token, int lineNumber, String fileName, ProgramArtifact artifact, TokenInfo tokenInfo) {
         // Only handle RET tokens
         return "RET".equalsIgnoreCase(token);
     }

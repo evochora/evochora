@@ -18,11 +18,12 @@ public interface ITokenHandler {
      * 
      * @param token The token to analyze
      * @param lineNumber The line number where the token appears
+     * @param fileName The source file name where the token appears
      * @param artifact The program artifact containing IR data
      * @param tokenInfo The deterministic token information from the compiler's TokenMap
      * @return true if this handler can process the token, false otherwise
      */
-    boolean canHandle(String token, int lineNumber, ProgramArtifact artifact, TokenInfo tokenInfo);
+    boolean canHandle(String token, int lineNumber, String fileName, ProgramArtifact artifact, TokenInfo tokenInfo);
     
     /**
      * Analyzes the token and returns annotation information.

@@ -22,7 +22,7 @@ import java.util.List;
 public class ParameterTokenHandler implements ITokenHandler {
     
     @Override
-    public boolean canHandle(String token, int lineNumber, ProgramArtifact artifact, TokenInfo tokenInfo) {
+    public boolean canHandle(String token, int lineNumber, String fileName, ProgramArtifact artifact, TokenInfo tokenInfo) {
         // Use deterministic TokenInfo to check if this is a parameter token
         if (tokenInfo == null) {
             return false;

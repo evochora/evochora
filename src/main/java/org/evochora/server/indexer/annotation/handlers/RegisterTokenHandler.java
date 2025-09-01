@@ -25,7 +25,7 @@ import java.util.List;
 public class RegisterTokenHandler implements ITokenHandler {
     
     @Override
-    public boolean canHandle(String token, int lineNumber, ProgramArtifact artifact, TokenInfo tokenInfo) {
+    public boolean canHandle(String token, int lineNumber, String fileName, ProgramArtifact artifact, TokenInfo tokenInfo) {
         // Use deterministic TokenInfo to check if this is a register-related token
         if (tokenInfo == null) {
             return false;
@@ -92,7 +92,7 @@ public class RegisterTokenHandler implements ITokenHandler {
      * Gets the runtime value of a register.
      */
     private Object getRegisterValue(String canonicalName, RawOrganismState o) {
-        if (canonicalName == null) return null;
+        if (canonicalName == null || o == null) return null;
         
         if (canonicalName.startsWith("%DR")) {
             int regId = Integer.parseInt(canonicalName.substring(3));

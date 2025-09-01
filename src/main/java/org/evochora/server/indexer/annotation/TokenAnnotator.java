@@ -83,7 +83,7 @@ public class TokenAnnotator {
             String tokenText = tokenInfo.tokenText();
             
             // Find the appropriate handler for this token
-            ITokenHandler handler = findHandler(tokenText, lineNumber, artifact, tokenInfo);
+            ITokenHandler handler = findHandler(tokenText, lineNumber, fileName, artifact, tokenInfo);
             if (handler != null) {
                 TokenAnalysisResult result = handler.analyze(tokenText, lineNumber, artifact, tokenInfo, organismState);
                 if (result != null) {
@@ -100,13 +100,14 @@ public class TokenAnnotator {
      * 
      * @param token The token text
      * @param lineNumber The line number
+     * @param fileName The source file name
      * @param artifact The program artifact
      * @param tokenInfo The deterministic token information
      * @return The appropriate handler, or null if none found
      */
-    private ITokenHandler findHandler(String token, int lineNumber, ProgramArtifact artifact, TokenInfo tokenInfo) {
+    private ITokenHandler findHandler(String token, int lineNumber, String fileName, ProgramArtifact artifact, TokenInfo tokenInfo) {
         for (ITokenHandler handler : handlers) {
-            if (handler.canHandle(token, lineNumber, artifact, tokenInfo)) {
+            if (handler.canHandle(token, lineNumber, fileName, artifact, tokenInfo)) {
                 return handler;
             }
         }
