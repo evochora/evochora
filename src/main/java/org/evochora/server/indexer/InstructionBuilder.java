@@ -5,6 +5,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.InstructionArgumentType;
+import org.evochora.runtime.isa.InstructionArgumentTypeUtils;
 import org.evochora.runtime.isa.InstructionSignature;
 import org.evochora.runtime.services.Disassembler;
 import org.evochora.runtime.services.DisassemblyData;
@@ -167,28 +168,12 @@ public class InstructionBuilder {
                 InstructionSignature signature = signatureOpt.get();
                 // Use the real ISA signature
                 for (InstructionArgumentType argType : signature.argumentTypes()) {
-                    switch (argType) {
-                        case REGISTER:
-                            types.add("REGISTER");
-                            break;
-                        case LITERAL:
-                            types.add("LITERAL");
-                            break;
-                        case VECTOR:
-                            types.add("VECTOR");
-                            break;
-                        case LABEL:
-                            types.add("LABEL");
-                            break;
-                        default:
-                            types.add("UNKNOWN");
-                            break;
-                    }
+                    types.add(InstructionArgumentTypeUtils.toDisplayString(argType));
                 }
             } else {
                 // Fallback: All arguments as UNKNOWN
                 for (int i = 0; i < data.argValues().length; i++) {
-                    types.add("UNKNOWN");
+                    types.add(InstructionArgumentTypeUtils.getDefaultDisplayString());
                 }
             }
         } catch (Exception e) {
@@ -213,6 +198,6 @@ public class InstructionBuilder {
         if (typeId == Config.TYPE_DATA) return "DATA";
         if (typeId == Config.TYPE_ENERGY) return "ENERGY";
         if (typeId == Config.TYPE_STRUCTURE) return "STRUCTURE";
-        return "UNKNOWN";
+        return InstructionArgumentTypeUtils.getDefaultDisplayString();
     }
 }
