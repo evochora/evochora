@@ -46,6 +46,7 @@ public class SemanticAnalyzer {
         handlers.put(ScopeNode.class, new ScopeAnalysisHandler(this.scopeMap));
         handlers.put(ProcedureNode.class, new ProcedureAnalysisHandler(this.scopeMap));
         handlers.put(InstructionNode.class, new InstructionAnalysisHandler(symbolTable, diagnostics));
+        handlers.put(org.evochora.compiler.frontend.parser.ast.features.proc.PregNode.class, new PregAnalysisHandler());
     }
 
     /**

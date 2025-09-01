@@ -361,13 +361,16 @@ public abstract class Instruction {
         String u = token.toUpperCase();
         try {
             if (u.startsWith("%DR")) {
-                return Optional.of(Integer.parseInt(u.substring(3)));
+                int regNum = Integer.parseInt(u.substring(3));
+                return Optional.of(regNum);
             }
             if (u.startsWith("%PR")) {
-                return Optional.of(PR_BASE + Integer.parseInt(u.substring(3)));
+                int regNum = Integer.parseInt(u.substring(3));
+                return Optional.of(PR_BASE + regNum);
             }
             if (u.startsWith("%FPR")) {
-                return Optional.of(FPR_BASE + Integer.parseInt(u.substring(4)));
+                int regNum = Integer.parseInt(u.substring(4));
+                return Optional.of(FPR_BASE + regNum);
             }
         } catch (NumberFormatException ignore) {
             // Falls through to empty Optional if, e.g., "%DR" has no number.

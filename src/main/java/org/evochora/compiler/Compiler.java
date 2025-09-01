@@ -108,12 +108,6 @@ public class Compiler implements ICompiler {
 
         Map<String, Token> registerAliases = parser.getGlobalRegisterAliases();
 
-        Map<String, Integer> finalAliasMap = registerAliases.entrySet().stream()
-                .collect(Collectors.toMap(
-                        Map.Entry::getKey,
-                        entry -> Integer.parseInt(entry.getValue().text().substring(3))
-                ));
-
         Map<String, List<String>> procNameToParamNames = new HashMap<>();
         parser.getProcedureTable().forEach((name, procNode) -> {
             List<String> paramNames = procNode.parameters().stream()
@@ -136,20 +130,41 @@ public class Compiler implements ICompiler {
         
         // Phase 5: Token Map Generation (for debugger)
         TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, analyzer.getScopeMap(), diagnostics);
-        Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generate(ast.get(0)); // Pass first AST node as root
+        Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generateAll(ast);
 
         // Phase 6: AST Post-Processing (resolve register aliases)
         // Extract register aliases from parser (both .REG and .PREG)
         Map<String, String> astRegisterAliases = new HashMap<>();
+        
+        // Extract global register aliases from parser
         parser.getGlobalRegisterAliases().forEach((aliasName, registerToken) -> {
             astRegisterAliases.put(aliasName, registerToken.text());
         });
         
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, astRegisterAliases);
-        AstNode processedAstRoot = astPostProcessor.process(ast.get(0));
+        // Extract procedure register aliases from AST
+        extractProcedureRegisterAliases(ast, astRegisterAliases);
         
-        // Update the AST list with the processed root
-        ast.set(0, processedAstRoot);
+        // Create final alias map for emitter (convert register names to IDs)
+        Map<String, Integer> finalAliasMap = new HashMap<>();
+        for (Map.Entry<String, String> entry : astRegisterAliases.entrySet()) {
+            String aliasName = entry.getKey();
+            String registerName = entry.getValue();
+            // Convert register name (e.g., "%PR0") to register ID
+            if (registerName.startsWith("%PR")) {
+                int registerId = Integer.parseInt(registerName.substring(3));
+                finalAliasMap.put(aliasName, registerId);
+            } else if (registerName.startsWith("%DR")) {
+                int registerId = Integer.parseInt(registerName.substring(3));
+                finalAliasMap.put(aliasName, registerId);
+            }
+        }
+        
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, astRegisterAliases);
+        
+        // Process all AST nodes, not just the first one
+        for (int i = 0; i < ast.size(); i++) {
+            ast.set(i, astPostProcessor.process(ast.get(i)));
+        }
 
         // Phase 7: IR Generation (convert AST to intermediate representation)
         IrConverterRegistry irRegistry = IrConverterRegistry.initializeWithDefaults();
@@ -191,6 +206,30 @@ public class Compiler implements ICompiler {
         org.evochora.compiler.diagnostics.CompilerLogger.info("Compiler: " + programName + " programId:" + artifact.programId());
         DebugDump.dumpProgramArtifact(programName, artifact);
         return artifact;
+    }
+    
+    /**
+     * Extracts procedure register aliases from the AST and adds them to the register aliases map.
+     * This allows the AstPostProcessor to resolve procedure register aliases.
+     *
+     * @param ast the AST to extract aliases from
+     * @param registerAliases the map to populate with procedure register aliases
+     */
+    private void extractProcedureRegisterAliases(List<AstNode> ast, Map<String, String> registerAliases) {
+        for (AstNode node : ast) {
+            if (node == null) continue;
+            
+            // Check if this is a PregNode
+            if (node instanceof org.evochora.compiler.frontend.parser.ast.features.proc.PregNode pregNode) {
+                String aliasName = pregNode.alias().text();
+                int registerIndex = pregNode.registerIndexValue();
+                String targetRegister = "%PR" + registerIndex;
+                registerAliases.put(aliasName, targetRegister);
+            }
+            
+            // Recursively check children
+            extractProcedureRegisterAliases(node.getChildren(), registerAliases);
+        }
     }
     
     /**

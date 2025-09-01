@@ -157,7 +157,7 @@ public class RegDirectiveTest {
     void testRegDirectiveWithInvalidRegisterType() {
         // Arrange - Test with invalid register type
         String source = String.join("\n",
-                ".REG COUNTER %XX0",  // Invalid: XX is not a valid register type
+                ".REG COUNTER %PR0",  // Invalid: .REG only supports DR registers, not PR registers
                 "SETI COUNTER DATA:42"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -173,7 +173,7 @@ public class RegDirectiveTest {
 
         // Assert - Should have compilation error
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Invalid register '%XX0'");
+        assertThat(diagnostics.summary()).contains("Invalid register '%PR0'");
         assertThat(diagnostics.summary()).contains(".REG directive only supports data registers %DR0-%DR7");
     }
 }

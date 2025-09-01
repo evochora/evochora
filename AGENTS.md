@@ -25,6 +25,15 @@ Simulate evolution of organisms in n-D worlds, written in Assemnbly.
 - Write tests for org.evochora.assembler, org.evochora.organism, org.evochora.runtime.instructions
 - Skip/mark slow/integration tests: .
 - (Optional) Coverage goal: 60%+ lines (JaCoCo).
+- Tag all tests as integration, except they run in under 0.2s and so not use any i/o ressources.
+- If no i/o ressources are used and test runs in under 0.2s then tag as unit
+- Test must not leave any artifacts like file
+- If tests use sqlite they should use in momenry sqlite
+
+# Architectureal pincipals
+- Compiler phases are immutable
+- Every compiler phase runs exactly only once
+- Compiler phases never call other compiler phases
 
 ## CI & PR expectations
 - CI: GitHub Actions that run `./gradlew build` on Ubuntu & Windows.
@@ -34,6 +43,7 @@ Simulate evolution of organisms in n-D worlds, written in Assemnbly.
 ## Conventions
 - Code style: **GOOGLE_JAVA_FORMAT_OR_OTHER** (if any).
 - Commit message style: **CONVENTION**.
+- Everything documented with extensive JavaDoc in English
 
 ## Known constraints
 - Don’t commit secrets; environment via **HOW_TO_SET_ENV**.

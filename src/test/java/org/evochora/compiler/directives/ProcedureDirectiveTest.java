@@ -10,6 +10,7 @@ import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.parser.features.require.RequireNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.BeforeAll;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -24,6 +25,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * These are unit tests for the parser and do not require external resources.
  */
 public class ProcedureDirectiveTest {
+    
+    /**
+     * Initialize the instruction set once for all tests in this class.
+     */
+    @BeforeAll
+    static void setUp() {
+        org.evochora.runtime.isa.Instruction.init();
+    }
+    
     /**
      * Verifies that the parser can handle a basic procedure block with a simple instruction inside.
      * It checks the procedure's name, body content, and its registration in the parser's symbol table.
@@ -32,6 +42,7 @@ public class ProcedureDirectiveTest {
     @Test
     @Tag("unit")
     void testParserProcedureBlock() {
+        
         // Arrange
         String source = String.join("\n",
                 ".PROC MY_PROC",
@@ -76,6 +87,7 @@ public class ProcedureDirectiveTest {
     @Test
     @Tag("unit")
     void testParserProcedureWithParameters() {
+        
         // Arrange
         String source = String.join("\n",
                 ".PROC ADD WITH A B",
@@ -109,10 +121,11 @@ public class ProcedureDirectiveTest {
     @Test
     @Tag("unit")
     void testFullProcedureDefinition() {
+        
         // Arrange
         String source = String.join("\n",
                 ".PROC FULL_PROC EXPORT WITH A",
-                "  .PREG %TMP 0",
+                "  .PREG %TMP %PR0",
                 "  .REQUIRE \"lib/utils.s\" AS utils",
                 "  NOP",
                 ".ENDP"
@@ -136,10 +149,13 @@ public class ProcedureDirectiveTest {
         List<AstNode> bodyDirectives = procNode.body().stream()
                 .filter(n -> !(n instanceof InstructionNode))
                 .toList();
-        assertThat(bodyDirectives).hasSize(1); // Größe von 2 auf 1 geändert
+        assertThat(bodyDirectives).hasSize(2); // .PREG and .REQUIRE directives
 
-        assertThat(bodyDirectives.get(0)).isInstanceOf(RequireNode.class);
-        RequireNode requireNode = (RequireNode) bodyDirectives.get(0);
+        // Check that we have both PregNode and RequireNode
+        assertThat(bodyDirectives.get(0)).isInstanceOf(org.evochora.compiler.frontend.parser.ast.features.proc.PregNode.class);
+        assertThat(bodyDirectives.get(1)).isInstanceOf(RequireNode.class);
+        
+        RequireNode requireNode = (RequireNode) bodyDirectives.get(1);
         assertThat(requireNode.path().value()).isEqualTo("lib/utils.s");
         assertThat(requireNode.alias().text()).isEqualTo("utils");
     }

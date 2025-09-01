@@ -41,62 +41,73 @@ public class AstPostProcessor {
         Map<Class<? extends AstNode>, Consumer<AstNode>> handlers = new HashMap<>();
         handlers.put(IdentifierNode.class, this::collectReplacements);
         handlers.put(DefineNode.class, this::collectConstants);
-        new TreeWalker(handlers).walk(root);
+        TreeWalker walker = new TreeWalker(handlers);
+        walker.walk(root);
         
-        // Second pass: apply the replacements
-        return new TreeWalker(new HashMap<>()).transform(root, replacements);
+        // Second pass: apply the replacements using the same walker
+        return walker.transform(root, replacements);
     }
+    
+
 
     private void collectReplacements(AstNode node) {
         if (!(node instanceof IdentifierNode idNode)) {
             return;
         }
+        
 
+
+        String identifierName = idNode.identifierToken().text();
+        
+        // Check if this identifier is a register alias (both .REG and .PREG aliases are in registerAliases map)
+        if (registerAliases.containsKey(identifierName)) {
+            String resolvedName = registerAliases.get(identifierName);
+            createRegisterReplacement(idNode, identifierName, resolvedName);
+            return;
+        }
+        
+        // Check if this identifier is a constant
         Optional<Symbol> symbolOpt = symbolTable.resolve(idNode.identifierToken());
-        if (symbolOpt.isEmpty()) return;
-        Symbol symbol = symbolOpt.get();
-
-        if (symbol.type() == Symbol.Type.ALIAS) {
-            // Check if this identifier is a register alias
-            String identifierName = idNode.identifierToken().text();
-            
-            if (registerAliases.containsKey(identifierName)) {
-                String resolvedName = registerAliases.get(identifierName);
-                
-                // Create a new token representing the resolved register
-                // This token contains the resolved register text but keeps the original location
-                Token resolvedRegisterToken = new Token(
-                    TokenType.REGISTER,           // Now it's a register, not an identifier
-                    resolvedName,                 // e.g., "%DR0" - the text
-                    null,                        // No processed value for registers
-                    idNode.identifierToken().line(),
-                    idNode.identifierToken().column(),
-                    idNode.identifierToken().fileName()
-                );
-                
-                RegisterNode replacement = new RegisterNode(
-                    resolvedName,                 // e.g., "%DR0"
-                    identifierName,               // e.g., "COUNTER"
-                    new SourceInfo(               // Create SourceInfo from the token
-                        idNode.identifierToken().fileName(),
-                        idNode.identifierToken().line(),
-                        idNode.identifierToken().column()
-                    ),
-                    resolvedRegisterToken         // Token with resolved register text
-                );
-                replacements.put(idNode, replacement);
-            }
-        } else if (symbol.type() == Symbol.Type.CONSTANT) {
-            // Check if this identifier is a constant
-            String identifierName = idNode.identifierToken().text();
-            
-            if (constants.containsKey(identifierName)) {
+        if (symbolOpt.isPresent()) {
+            Symbol symbol = symbolOpt.get();
+            if (symbol.type() == Symbol.Type.CONSTANT && constants.containsKey(identifierName)) {
                 TypedLiteralNode constantValue = constants.get(identifierName);
-                
                 // Replace the identifier with the constant value
                 replacements.put(idNode, constantValue);
             }
         }
+    }
+    
+    /**
+     * Creates a RegisterNode replacement for an identifier that resolves to a register alias.
+     *
+     * @param idNode the original identifier node
+     * @param aliasName the alias name (e.g., "TMP")
+     * @param resolvedRegister the resolved register (e.g., "%PR0")
+     */
+    private void createRegisterReplacement(IdentifierNode idNode, String aliasName, String resolvedRegister) {
+        // Create a new token representing the resolved register
+        // This token contains the resolved register text but keeps the original location
+        Token resolvedRegisterToken = new Token(
+            TokenType.REGISTER,           // Now it's a register, not an identifier
+            resolvedRegister,             // e.g., "%PR0" - the text
+            null,                        // No processed value for registers
+            idNode.identifierToken().line(),
+            idNode.identifierToken().column(),
+            idNode.identifierToken().fileName()
+        );
+        
+        RegisterNode replacement = new RegisterNode(
+            resolvedRegister,             // e.g., "%PR0"
+            aliasName,                   // e.g., "TMP"
+            new SourceInfo(              // Create SourceInfo from the token
+                idNode.identifierToken().fileName(),
+                idNode.identifierToken().line(),
+                idNode.identifierToken().column()
+            ),
+            resolvedRegisterToken         // Token with resolved register text
+        );
+        replacements.put(idNode, replacement);
     }
     
     private void collectConstants(AstNode node) {

@@ -386,7 +386,7 @@ Directives are special commands that instruct the compiler on how to assemble th
 ### Definitions and Aliases
 
 * `.DEFINE <NAME> <VALUE>`: Creates a simple text substitution. The compiler will replace every occurrence of `<NAME>` with `<VALUE>` before parsing.
-* `.REG <ALIAS> <REGISTER>`: Assigns a custom name (`<ALIAS>`) to a register (e.g., `.REG %COUNTER %DR0`).
+* `.REG <%ALIAS> <%REGISTER>`: Assigns a custom name (`<%ALIAS>`) to a register (e.g., `.REG %COUNTER %DR0`).
 
 ### Layout Control
 
@@ -412,7 +412,7 @@ A **module** is a source file (e.g., `lib.s`) containing one or more `.PROC` def
 * `.PROC <Name> [EXPORT] [WITH <PARAM1> ...] / .ENDP`: Defines a procedure, a reusable block of code that can be called via `CALL`. By default, procedures are private to their file. The optional `EXPORT` keyword makes the procedure public, allowing it to be used by other modules.
 * `.REQUIRE "<path>" AS <Alias>`: Declares a logical dependency on a module. A library file should use this to declare its own dependencies on other libraries.
 * `.INCLUDE "<path>"`: Inlines the content of another source file. The main program file must use this directive to include the source code for all required modules, which gives the main program full control over the physical layout of the code in the environment.
-* `.PREG <%ALIAS> <INDEX>`: Within a `.PROC` block, assigns an alias to a procedure-local register (`%PR0` or `%PR1`).
+* `.PREG <%ALIAS> <%PROCREGISTER>`: Within a `.PROC` block, assigns an alias to a procedure-local register (`%PR0` or `%PR1`).
 
 #### Example of a Modular Program:
 

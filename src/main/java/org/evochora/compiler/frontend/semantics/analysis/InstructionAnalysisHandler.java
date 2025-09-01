@@ -87,7 +87,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                     if (arg instanceof RegisterNode) continue;
                     if (arg instanceof IdentifierNode id) {
                         var res = symbolTable.resolve(id.identifierToken());
-                        if (res.isPresent() && res.get().type() == Symbol.Type.VARIABLE) continue;
+                        if (res.isPresent() && (res.get().type() == Symbol.Type.VARIABLE || res.get().type() == Symbol.Type.ALIAS)) continue;
                     }
                     diagnostics.reportError(
                             "CALL actuals must be registers or parameter names.",
@@ -116,7 +116,9 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
 
                 // Handle constant substitution
                 if (argumentNode instanceof IdentifierNode idNode) {
+                    String identifierText = idNode.identifierToken().text();
                     Optional<Symbol> symbolOpt = symbolTable.resolve(idNode.identifierToken());
+                    
                     if (symbolOpt.isPresent()) {
                         Symbol symbol = symbolOpt.get();
                         if (symbol.type() == Symbol.Type.CONSTANT) {
@@ -185,6 +187,80 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                     // 1) Register validity (%DRx, %PRx, %FPRx) - aliases are already replaced in the parser
                     if (expectedType == InstructionArgumentType.REGISTER && argumentNode instanceof RegisterNode regNode) {
                         String tokenText = regNode.registerToken().text();
+                        String u = tokenText.toUpperCase();
+                        
+                        // Validate register bounds based on configuration
+                        if (u.startsWith("%DR")) {
+                            try {
+                                int regNum = Integer.parseInt(u.substring(3));
+                                if (regNum < 0 || regNum >= Config.NUM_DATA_REGISTERS) {
+                                    diagnostics.reportError(
+                                            String.format("Data register '%s' is out of bounds. Valid range: %%DR0-%%DR%d.", 
+                                                tokenText, Config.NUM_DATA_REGISTERS - 1),
+                                            regNode.registerToken().fileName(),
+                                            regNode.registerToken().line()
+                                    );
+                                    return;
+                                }
+                            } catch (NumberFormatException e) {
+                                diagnostics.reportError(
+                                        String.format("Invalid data register format '%s'.", tokenText),
+                                        regNode.registerToken().fileName(),
+                                        regNode.registerToken().line()
+                                );
+                                return;
+                            }
+                        } else if (u.startsWith("%PR")) {
+                            try {
+                                int regNum = Integer.parseInt(u.substring(3));
+                                if (regNum < 0 || regNum >= Config.NUM_PROC_REGISTERS) {
+                                    diagnostics.reportError(
+                                            String.format("Procedure register '%s' is out of bounds. Valid range: %%PR0-%%PR%d.", 
+                                                tokenText, Config.NUM_PROC_REGISTERS - 1),
+                                            regNode.registerToken().fileName(),
+                                            regNode.registerToken().line()
+                                    );
+                                    return;
+                                }
+                            } catch (NumberFormatException e) {
+                                diagnostics.reportError(
+                                        String.format("Invalid procedure register format '%s'.", tokenText),
+                                        regNode.registerToken().fileName(),
+                                        regNode.registerToken().line()
+                                );
+                                return;
+                            }
+                        } else if (u.startsWith("%FPR")) {
+                            try {
+                                int regNum = Integer.parseInt(u.substring(4));
+                                if (regNum < 0 || regNum >= Config.NUM_FORMAL_PARAM_REGISTERS) {
+                                    diagnostics.reportError(
+                                            String.format("Formal parameter register '%s' is out of bounds. Valid range: %%FPR0-%%FPR%d.", 
+                                                tokenText, Config.NUM_FORMAL_PARAM_REGISTERS - 1),
+                                            regNode.registerToken().fileName(),
+                                            regNode.registerToken().line()
+                                    );
+                                    return;
+                                }
+                            } catch (NumberFormatException e) {
+                                diagnostics.reportError(
+                                        String.format("Invalid formal parameter register format '%s'.", tokenText),
+                                        regNode.registerToken().fileName(),
+                                        regNode.registerToken().line()
+                                );
+                                return;
+                            }
+                            
+                            // Prohibition: Direct access to %FPRx should not be allowed
+                            diagnostics.reportError(
+                                    "Access to formal parameter registers (%FPRx) is not allowed in user code.",
+                                    regNode.registerToken().fileName(),
+                                    regNode.registerToken().line()
+                            );
+                            return;
+                        }
+                        
+                        // If we get here, the register format is valid, so resolve it
                         Optional<Integer> regId = Instruction.resolveRegToken(tokenText);
                         if (regId.isEmpty()) {
                             diagnostics.reportError(
@@ -192,16 +268,6 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                     regNode.registerToken().fileName(),
                                     regNode.registerToken().line()
                             );
-                        } else {
-                            // Prohibition: Direct access to %FPRx should not be allowed
-                            String u = tokenText.toUpperCase();
-                            if (u.startsWith("%FPR")) {
-                                diagnostics.reportError(
-                                        "Access to formal parameter registers (%FPRx) is not allowed in user code.",
-                                        regNode.registerToken().fileName(),
-                                        regNode.registerToken().line()
-                                );
-                            }
                         }
                     }
 

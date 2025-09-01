@@ -61,6 +61,22 @@ public class TokenMapGenerator {
     }
 
     /**
+     * Generates the token map by walking all provided AST nodes.
+     * This is useful when there are multiple top-level nodes (e.g., multiple procedures).
+     *
+     * @param nodes The list of AST nodes to traverse.
+     * @return A map where the key is the SourceInfo (location) of a token and the value is the detailed TokenInfo.
+     */
+    public Map<SourceInfo, TokenInfo> generateAll(List<AstNode> nodes) {
+        for (AstNode node : nodes) {
+            if (node != null) {
+                walkAndVisit(node);
+            }
+        }
+        return tokenMap;
+    }
+
+    /**
      * Transposes the token map to a file->line->tokens structure for easier line-based lookup.
      *
      * @return A nested map structure: fileName -> lineNumber -> list of tokens
@@ -130,8 +146,9 @@ public class TokenMapGenerator {
             
             // Add parameter tokens as VARIABLE type in the procedure's scope
             // Parameters are metadata stored in the procedure node, not separate AST nodes
-            for (org.evochora.compiler.frontend.lexer.Token param : procNode.parameters()) {
-                addToken(param, Symbol.Type.VARIABLE, procNode.name().text().toUpperCase());
+            for (int i = 0; i < procNode.parameters().size(); i++) {
+                org.evochora.compiler.frontend.lexer.Token param = procNode.parameters().get(i);
+                addParameterToken(param, Symbol.Type.VARIABLE, procNode.name().text().toUpperCase(), i);
             }
         } else if (node instanceof IdentifierNode identifierNode) {
             // Add the identifier token - resolve its type from symbol table
@@ -238,6 +255,32 @@ public class TokenMapGenerator {
             );
             
             // Overwrite existing tokens to ensure correct line numbers
+            tokenMap.put(sourceInfo, tokenInfo);
+        }
+    }
+
+    /**
+     * A helper method to create a TokenInfo object for parameters and add it to the map.
+     * Parameters need unique SourceInfo to avoid overwriting each other.
+     */
+    private void addParameterToken(org.evochora.compiler.frontend.lexer.Token token, Symbol.Type type, String scope, int parameterIndex) {
+        if (token != null) {
+            // Create a unique SourceInfo for parameters by using a negative column offset
+            // This ensures parameters with the same line/column don't overwrite each other
+            SourceInfo sourceInfo = new SourceInfo(
+                token.fileName(),
+                token.line(),
+                token.column() - parameterIndex - 1  // Make each parameter unique
+            );
+            
+            // Create TokenInfo with the proper structure
+            TokenInfo tokenInfo = new TokenInfo(
+                token.text(),
+                type,
+                scope
+            );
+            
+            // Add to token map
             tokenMap.put(sourceInfo, tokenInfo);
         }
     }

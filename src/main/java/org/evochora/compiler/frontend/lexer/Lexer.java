@@ -98,8 +98,8 @@ public class Lexer {
         String text = source.substring(start, current);
         TokenType type = TokenType.IDENTIFIER;
 
-        // Is it a register?
-        if (text.startsWith("%")) {
+        // Is it a register? Only treat valid register patterns as REGISTER tokens
+        if (text.startsWith("%") && isValidRegisterPattern(text)) {
             type = TokenType.REGISTER;
         }
         // Is it a directive?
@@ -113,6 +113,28 @@ public class Lexer {
         }
 
         addToken(type);
+    }
+    
+    /**
+     * Checks if a token represents a valid register pattern.
+     * Valid patterns are: %DRx, %PRx, %FPRx, %LRx where x is a number.
+     * 
+     * @param text the token text to check
+     * @return true if the text represents a valid register pattern
+     */
+    private boolean isValidRegisterPattern(String text) {
+        if (!text.startsWith("%")) {
+            return false;
+        }
+        
+        // Check for valid register patterns
+        if (text.matches("%DR\\d+")) return true;  // %DR0, %DR1, etc.
+        if (text.matches("%PR\\d+")) return true;  // %PR0, %PR1, etc.
+        if (text.matches("%FPR\\d+")) return true; // %FPR0, %FPR1, etc.
+        if (text.matches("%LR\\d+")) return true;  // %LR0, %LR1, etc.
+        
+        // Not a valid register pattern
+        return false;
     }
 
     private void number() {

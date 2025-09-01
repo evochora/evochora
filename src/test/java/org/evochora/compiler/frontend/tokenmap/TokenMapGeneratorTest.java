@@ -81,7 +81,15 @@ class TokenMapGeneratorTest {
         // Add parameter symbols
         addParameterSymbols();
         
-        Map<SourceInfo, TokenInfo> result = generator.generate(ast.get(0));
+        // Set up scope map - this is what the TokenMapGenerator needs
+        Map<AstNode, SymbolTable.Scope> scopeMap = new HashMap<>();
+        ProcedureNode procNode = (ProcedureNode) ast.get(0);
+        scopeMap.put(procNode, symbolTable.getCurrentScope());
+        
+        // Create a new generator with the proper scope map
+        TokenMapGenerator generatorWithScope = new TokenMapGenerator(symbolTable, scopeMap, diagnostics);
+        
+        Map<SourceInfo, TokenInfo> result = generatorWithScope.generate(ast.get(0));
         
         assertNotNull(result);
         

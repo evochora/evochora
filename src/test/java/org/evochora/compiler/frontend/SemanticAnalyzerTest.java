@@ -25,6 +25,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class SemanticAnalyzerTest {
 
     private List<AstNode> getAst(String source, DiagnosticsEngine diagnostics) {
+        // Initialize instruction set for the parser
+        org.evochora.runtime.isa.Instruction.init();
+        
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, Path.of(""));
@@ -391,14 +394,14 @@ public class SemanticAnalyzerTest {
     }
 
     /**
-     * Verifies that using an unknown or invalid register name is reported as an error.
+     * Verifies that using an out-of-bounds register name is reported as an error.
      * This is a unit test for ISA validation.
      */
     @Test
     @Tag("unit")
     void testUnknownRegisterIsReported() {
-        // %0 ist kein valider Registername in unserem ISA-Schema
-        String source = "SETI %0 DATA:1";
+        // %DR99 ist kein valider Registername in unserem ISA-Schema (nur %DR0-%DR7)
+        String source = "SETI %DR99 DATA:1";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
@@ -407,7 +410,7 @@ public class SemanticAnalyzerTest {
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message()).contains("Unknown register '%0'");
+        assertThat(diagnostics.getDiagnostics().get(0).message()).contains("Data register '%DR99' is out of bounds");
     }
 
     /**

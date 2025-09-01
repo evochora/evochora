@@ -93,7 +93,7 @@ public class ConditionalInstructionCompilerTest {
 				"PUSI DATA:1",
 				"PUSI DATA:0",
 				"DROP", // leave 1 on top -> not a vector, IFMS will fail check and not skip
-				"SETI %DR8 DATA:8",
+				"SETI %DR1 DATA:8", // Changed from %DR8 to %DR1 since only %DR0-%DR7 are valid
 				"NOP"
 		);
 		RunResult r = compileAndRun(program, 80);
@@ -101,12 +101,12 @@ public class ConditionalInstructionCompilerTest {
 		Object d4 = r.org.readOperand(4);
 		Object d5 = r.org.readOperand(5);
 		Object d7 = r.org.readOperand(7);
-		Object d8 = r.org.readOperand(8);
+		Object d1 = r.org.readOperand(1); // Changed from d8 to d1 since we now use %DR1
 		assertThat(d2).isInstanceOf(Integer.class);
 		assertThat(d4).isInstanceOf(Integer.class);
 		// d5 and d7 might be null if skipped
 		assertThat(d5 == null || d5 instanceof Integer).isTrue();
 		assertThat(d7 == null || d7 instanceof Integer).isTrue();
-		assertThat(d8 == null || d8 instanceof Integer).isTrue();
+		assertThat(d1 == null || d1 instanceof Integer).isTrue(); // Changed from d8 to d1
 	}
 }

@@ -25,4 +25,10 @@ public record ProcedureNode(
         // The children of a procedure are all the statements in its body.
         return body;
     }
+    
+    @Override
+    public AstNode reconstructWithChildren(List<AstNode> newChildren) {
+        // Create a new ProcedureNode with the new children (body)
+        return new ProcedureNode(name, exported, parameters, newChildren);
+    }
 }
