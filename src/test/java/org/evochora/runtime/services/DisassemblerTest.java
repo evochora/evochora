@@ -144,7 +144,7 @@ class DisassemblerTest {
         Disassembler disassembler = new Disassembler();
         MockEnvironmentReader mockReader = new MockEnvironmentReader();
         
-        // Mock: No molecule at position
+        // Mock: No molecule at position (null)
         // mockReader returns null for getMolecule
         
         // Act

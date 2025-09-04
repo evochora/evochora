@@ -56,7 +56,7 @@ class RawTickStateReaderTest {
     }
 
     /**
-     * Verifies that the reader returns null when trying to access a coordinate where no cell exists.
+     * Verifies that the reader returns CODE:0 when trying to access a coordinate where no cell exists.
      * This is a unit test for handling sparse environment data.
      */
     @Test
@@ -73,8 +73,10 @@ class RawTickStateReaderTest {
         // Act
         Molecule molecule = reader.getMolecule(new int[]{1, 1});
         
-        // Assert
-        assertThat(molecule).isNull();
+        // Assert - Sparse mode: return CODE:0 for empty cells
+        assertThat(molecule).isNotNull();
+        assertThat(molecule.type()).isEqualTo(Config.TYPE_CODE);
+        assertThat(molecule.toScalarValue()).isEqualTo(0);
     }
 
     /**
@@ -95,8 +97,10 @@ class RawTickStateReaderTest {
         // Act
         Molecule molecule = reader.getMolecule(new int[]{0, 0});
         
-        // Assert
-        assertThat(molecule).isNull();
+        // Assert - Sparse mode: return CODE:0 for empty cells
+        assertThat(molecule).isNotNull();
+        assertThat(molecule.type()).isEqualTo(Config.TYPE_CODE);
+        assertThat(molecule.toScalarValue()).isEqualTo(0);
     }
 
     /**
@@ -261,11 +265,15 @@ class RawTickStateReaderTest {
         assertThat(reader.getMolecule(new int[]{0, 4})).isNotNull();
         assertThat(reader.getMolecule(new int[]{4, 0})).isNotNull();
         
-        // Test just outside boundaries
-        assertThat(reader.getMolecule(new int[]{-1, 0})).isNull();
-        assertThat(reader.getMolecule(new int[]{5, 0})).isNull();
-        assertThat(reader.getMolecule(new int[]{0, -1})).isNull();
-        assertThat(reader.getMolecule(new int[]{0, 5})).isNull();
+        // Test just outside boundaries - should return CODE:0 (like Environment does)
+        assertThat(reader.getMolecule(new int[]{-1, 0})).isNotNull();
+        assertThat(reader.getMolecule(new int[]{-1, 0}).toScalarValue()).isEqualTo(0);
+        assertThat(reader.getMolecule(new int[]{5, 0})).isNotNull();
+        assertThat(reader.getMolecule(new int[]{5, 0}).toScalarValue()).isEqualTo(0);
+        assertThat(reader.getMolecule(new int[]{0, -1})).isNotNull();
+        assertThat(reader.getMolecule(new int[]{0, -1}).toScalarValue()).isEqualTo(0);
+        assertThat(reader.getMolecule(new int[]{0, 5})).isNotNull();
+        assertThat(reader.getMolecule(new int[]{0, 5}).toScalarValue()).isEqualTo(0);
     }
 
     /**

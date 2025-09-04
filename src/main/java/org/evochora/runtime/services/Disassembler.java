@@ -28,9 +28,9 @@ public class Disassembler {
             // Read the opcode
             Molecule opcodeMolecule = reader.getMolecule(instructionPointer);
             if (opcodeMolecule == null) {
-                return null;
+                return null; // Outside boundaries or invalid coordinates
             }
-
+            
             int opcodeId = opcodeMolecule.toInt();
             String opcodeName = Instruction.getInstructionNameById(opcodeId);
 

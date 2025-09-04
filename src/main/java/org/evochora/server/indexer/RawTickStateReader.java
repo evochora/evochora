@@ -42,9 +42,20 @@ public class RawTickStateReader implements IEnvironmentReader {
     
     @Override
     public Molecule getMolecule(int[] coordinates) {
+        // Check if coordinates are outside the world boundaries (like Environment does)
+        if (coordinates.length != shape.length) {
+            return Molecule.fromInt(0); // Invalid dimensions
+        }
+        for (int i = 0; i < coordinates.length; i++) {
+            if (coordinates[i] < 0 || coordinates[i] >= shape[i]) {
+                return Molecule.fromInt(0); // Outside boundaries
+            }
+        }
+        
+        // Check if cell exists in sparse data
         String key = Arrays.toString(coordinates);
         RawCellState cell = cellMap.get(key);
-        return cell != null ? Molecule.fromInt(cell.molecule()) : null; // Korrekt: molecule enthält Typ+Wert
+        return cell != null ? Molecule.fromInt(cell.molecule()) : Molecule.fromInt(0);
     }
     
     @Override

@@ -499,19 +499,39 @@ public class SimulationEngine implements IControllable, Runnable {
         final int[] shape = env.getShape();
         final int dims = shape.length;
 
-        // Optimize cell iteration - only process non-empty cells
-        List<RawCellState> cells = new ArrayList<>();
-        int[] coord = new int[dims];
-        Arrays.fill(coord, 0);
-        
-        // Only iterate through cells that might have content
-        iterateOptimized(shape, 0, coord, () -> {
-            var m = env.getMolecule(coord);
-            int ownerId = env.getOwnerId(coord);
-            if (m.toInt() != 0 || ownerId != 0) {
-                cells.add(new RawCellState(coord.clone(), m.toInt(), ownerId));
+        // Use sparse cell tracking if enabled, otherwise fall back to full iteration
+        List<RawCellState> cells;
+        if (org.evochora.runtime.Config.ENABLE_SPARSE_CELL_TRACKING) {
+            // Sparse: Only get occupied cells (much faster for large worlds)
+            cells = env.getOccupiedCells();
+            if (cells == null) {
+                // Fallback to full iteration if tracking is disabled
+                cells = new ArrayList<>();
+                int[] coord = new int[dims];
+                Arrays.fill(coord, 0);
+                final List<RawCellState> finalCells = cells;
+                iterateOptimized(shape, 0, coord, () -> {
+                    var m = env.getMolecule(coord);
+                    int ownerId = env.getOwnerId(coord);
+                    if (m.toInt() != 0 || ownerId != 0) {
+                        finalCells.add(new RawCellState(coord.clone(), m.toInt(), ownerId));
+                    }
+                });
             }
-        });
+        } else {
+            // Full iteration (current behavior)
+            cells = new ArrayList<>();
+            int[] coord = new int[dims];
+            Arrays.fill(coord, 0);
+            final List<RawCellState> finalCells = cells;
+            iterateOptimized(shape, 0, coord, () -> {
+                var m = env.getMolecule(coord);
+                int ownerId = env.getOwnerId(coord);
+                if (m.toInt() != 0 || ownerId != 0) {
+                    finalCells.add(new RawCellState(coord.clone(), m.toInt(), ownerId));
+                }
+            });
+        }
 
         // Optimize organism processing - only process living organisms
         List<RawOrganismState> organisms = new ArrayList<>();

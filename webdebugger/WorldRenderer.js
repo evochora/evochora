@@ -69,8 +69,12 @@ class WorldRenderer {
         this.ctx.fillStyle = this.config.backgroundColor;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-        if (cells) {
-            for (const cell of cells) this.drawCell(cell);
+        // Iterate over the entire grid and draw each cell
+        for (let x = 0; x < worldShape[0]; x++) {
+            for (let y = 0; y < worldShape[1]; y++) {
+                const cell = this.findCellAt(x, y);
+                this.drawCell(cell);
+            }
         }
         if (organisms) {
             for (const organism of organisms) this.drawOrganism(organism, selectedOrganismId === organism.organismId);

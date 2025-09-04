@@ -130,4 +130,16 @@ public final class Config {
      * The type code for a cell representing a structural component.
      */
     public static final int TYPE_STRUCTURE = (0x03 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;
+
+    /**
+     * Enables sparse cell tracking for performance optimization in large worlds.
+     * When enabled, the Environment maintains a set of occupied cells to avoid
+     * iterating through all cells during serialization.
+     * Needs more memory, depending on world size and cell occupancy, critical for large world:
+     * - 10.000x10.000 with 50% non-empty: +3.6 GB.
+     * - 1000x1000x1000 with 50% non-empty: +38GB
+     *  Also needs more CPU cycles per setMolecule call.
+     * But it is much faster in large worlds, esp, if they are rather not dense populated, because they need less memory and CPU cycles to serialize.
+     */
+    public static final boolean ENABLE_SPARSE_CELL_TRACKING = true;
 }

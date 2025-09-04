@@ -2,16 +2,42 @@
 package org.evochora.runtime.model;
 
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.List;
+import java.util.ArrayList;
+import org.evochora.runtime.Config;
+import org.evochora.server.contracts.raw.RawCellState;
 
 /**
  * Represents the simulation environment, managing the grid of molecules and their owners.
  */
 public class Environment implements IEnvironmentReader {
+    /**
+     * Represents a coordinate in the environment as a record for efficient HashSet usage.
+     */
+    private record Coordinate(int... coords) {
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) return true;
+            if (obj == null || getClass() != obj.getClass()) return false;
+            Coordinate that = (Coordinate) obj;
+            return Arrays.equals(this.coords, that.coords);
+        }
+        
+        @Override
+        public int hashCode() {
+            return Arrays.hashCode(this.coords);
+        }
+    }
     private final int[] shape;
     private final boolean isToroidal;
     private final int[] grid;
     private final int[] ownerGrid;
     private final int[] strides;
+    
+    // Sparse cell tracking for performance optimization
+    private final Set<Coordinate> occupiedCells;
     
     /**
      * Environment properties that can be shared with other components.
@@ -50,6 +76,9 @@ public class Environment implements IEnvironmentReader {
             this.strides[i] = stride;
             stride *= shape[i];
         }
+        
+        // Initialize sparse cell tracking if enabled
+        this.occupiedCells = Config.ENABLE_SPARSE_CELL_TRACKING ? new HashSet<>() : null;
     }
 
     /**
@@ -110,6 +139,11 @@ public class Environment implements IEnvironmentReader {
         int index = getFlatIndex(coord);
         if (index != -1) {
             this.grid[index] = molecule.toInt();
+            
+            // Update sparse cell tracking if enabled
+            if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedCells != null) {
+                updateOccupiedCells(coord);
+            }
         }
     }
 
@@ -125,6 +159,11 @@ public class Environment implements IEnvironmentReader {
             int packed = molecule.toInt();
             this.grid[index] = packed;
             this.ownerGrid[index] = ownerId;
+            
+            // Update sparse cell tracking if enabled
+            if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedCells != null) {
+                updateOccupiedCells(coord);
+            }
         }
     }
 
@@ -150,6 +189,11 @@ public class Environment implements IEnvironmentReader {
         int index = getFlatIndex(coord);
         if (index != -1) {
             this.ownerGrid[index] = ownerId;
+            
+            // Update sparse cell tracking if enabled
+            if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedCells != null) {
+                updateOccupiedCells(coord);
+            }
         }
     }
 
@@ -218,5 +262,50 @@ public class Environment implements IEnvironmentReader {
             offsets[dim]++;
         }
         return true;
+    }
+    
+    /**
+     * Updates the occupied cells tracking based on the current state of the cell.
+     * @param coord The coordinate to check and update.
+     */
+    private void updateOccupiedCells(int... coord) {
+        int index = getFlatIndex(coord);
+        if (index == -1) return;
+        
+        int value = this.grid[index];
+        int owner = this.ownerGrid[index];
+        
+        Coordinate coordinate = new Coordinate(coord);
+        
+        if (value != 0 || owner != 0) {
+            // Cell is occupied - add to tracking
+            occupiedCells.add(coordinate);
+        } else {
+            // Cell is empty - remove from tracking
+            occupiedCells.remove(coordinate);
+        }
+    }
+    
+    /**
+     * Gets all occupied cells for sparse serialization.
+     * Only available when sparse cell tracking is enabled.
+     * @return List of occupied cell states, or null if tracking is disabled.
+     */
+    public List<RawCellState> getOccupiedCells() {
+        if (!Config.ENABLE_SPARSE_CELL_TRACKING || occupiedCells == null) {
+            return null; // Fallback to full iteration
+        }
+        
+        List<RawCellState> cells = new ArrayList<>();
+        for (Coordinate coordinate : occupiedCells) {
+            int[] coord = coordinate.coords();
+            int index = getFlatIndex(coord);
+            if (index != -1) {
+                int value = this.grid[index];
+                int owner = this.ownerGrid[index];
+                cells.add(new RawCellState(coord, value, owner));
+            }
+        }
+        return cells;
     }
 }

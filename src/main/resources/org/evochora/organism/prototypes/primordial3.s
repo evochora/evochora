@@ -2,7 +2,7 @@
 # Finds energy quickly in a toroidal world without repeating same row/column.
 # Structure: main loop -> choose reproduction or energy search (procedure).
 # Reproduction is mocked with NOP. Energy search returns ONLY when energy found.
-
+.PLACE STRUCTRE:100 nix
 # ----------------------------
 # Constants
 # ----------------------------
