@@ -43,7 +43,7 @@ This represents a compiler directive, which provides instructions to the compile
 
 -   `core:org`: Sets the layout origin.
 -   `core:dir`: Sets the layout direction.
--   `core:place`: Places a molecule at a specific location.
+-   `core:place`: Places a molecule at one or more locations. Its `args` map contains the literal's `type` and `value`, and a special `placements` argument holding a `PlacementListVal`.
 -   `core:push_ctx` / `core:pop_ctx`: Internal directives injected by the preprocessor around an included file's content. These instruct the layout engine to push and pop the current layout context (base position and direction vector), enabling relative addressing and context restoration.
 -   `core:scope_enter` / `core:scope_exit`: Mark the boundaries of a named scope.
 -   `core:proc_enter` / `core:proc_exit`: Mark the boundaries of a procedure, carrying metadata like arity and export status.
@@ -94,6 +94,22 @@ This is a sealed interface for typed values used in directive arguments. It allo
     -   `Vector(int[])`
     -   `ListVal(List<IrValue>)`
     -   `MapVal(Map<String, IrValue>)`
+    -   `PlacementListVal(List<IPlacementArgument>)`
+
+### 5.4. Placement Arguments
+
+To support the extended syntax of the `.PLACE` directive, a dedicated set of IR objects exists in the `org.evochora.compiler.ir.placement` package.
+
+-   **`IPlacementArgument`**: A marker interface for a complete placement argument.
+-   **`IrVectorPlacement`**: Represents a simple vector placement, holding a list of integer components.
+-   **`IrRangeExpression`**: Represents a complex range-based placement. It contains a list of dimensions, where each dimension is represented by a list of `IIrPlacementComponent` objects.
+
+The `IIrPlacementComponent` interface is the base for IR-level representations of the different parts of a range expression:
+
+-   **`IrSingleValueComponent(int)`**: A single integer value.
+-   **`IrRangeValueComponent(int start, int end)`**: A continuous range.
+-   **`IrSteppedRangeValueComponent(int start, int step, int end)`**: A stepped range.
+-   **`IrWildcardValueComponent()`**: A wildcard `*`.
 
 ---
 

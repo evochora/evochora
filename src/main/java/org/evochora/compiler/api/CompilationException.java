@@ -23,4 +23,13 @@ public class CompilationException extends Exception {
     public CompilationException(String message, Throwable cause) {
         super(message, cause);
     }
+
+    /**
+     * Constructs a new compilation exception with the specified detail message and source information.
+     * @param message The detail message.
+     * @param sourceInfo The source information.
+     */
+    public CompilationException(String message, SourceInfo sourceInfo) {
+        super(String.format("%s at %s", message, sourceInfo), null);
+    }
 }

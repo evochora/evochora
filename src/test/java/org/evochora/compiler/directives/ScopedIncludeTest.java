@@ -3,6 +3,7 @@ package org.evochora.compiler.directives;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -85,7 +86,8 @@ public class ScopedIncludeTest {
         // === Compile ===
         ProgramArtifact artifact = null;
         try {
-            artifact = compiler.compile(mainFile.toAbsolutePath().toString());
+            EnvironmentProperties envProps = new EnvironmentProperties(new int[]{100, 100}, true);
+            artifact = compiler.compile(Files.readAllLines(mainFile), mainFile.toAbsolutePath().toString(), envProps);
         } catch (Exception e) {
             System.err.println("Compilation failed: " + e.getMessage());
             throw e;
@@ -99,25 +101,6 @@ public class ScopedIncludeTest {
             ));
 
         // === Assertions ===
-        // Tracing the execution:
-        // main:
-        // NOP at [0,0]. next=[1,0]
-        // ORG to [0,1].
-        // NOP at [0,1]. next=[1,1]
-        // INCLUDE at [1,1]. base becomes [1,1]. DV is [1,0].
-        //   inc1:
-        //   ORG [1,1] relative to [1,1] -> [2,2].
-        //   NOP at [2,2]. next=[3,2].
-        //   DIR [0,1]. DV becomes [0,1].
-        //   INCLUDE at [3,2]. base becomes [3,2]. DV is [0,1].
-        //     inc2:
-        //     ORG [0,1] relative to [3,2] -> [3,3].
-        //     NOP at [3,3]. next=[3,4].
-        //   END inc2. pos=[3,4]. DV restored to [0,1]. base restored to [1,1].
-        //   NOP at [3,4]. next=[3,5].
-        // END inc1. pos=[3,5]. DV restored to [1,0]. base restored to [0,0].
-        // NOP at [3,5]. next=[4,5].
-
         assertThat(layout.keySet()).containsExactlyInAnyOrder(
             "[0, 0]",
             "[0, 1]",

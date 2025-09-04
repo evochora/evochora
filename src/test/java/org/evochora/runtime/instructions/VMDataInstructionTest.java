@@ -4,6 +4,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.BeforeAll;
@@ -161,7 +162,7 @@ public class VMDataInstructionTest {
             "NOP"
         );
         
-        org.evochora.compiler.api.ProgramArtifact artifact = compiler.compile(lines, "test.s");
+        org.evochora.compiler.api.ProgramArtifact artifact = compiler.compile(lines, "test.s", new EnvironmentProperties(new int[]{100, 100}, true));
         
         // Erstelle eine neue Simulation mit dem kompilierten Code
         Environment testEnv = new Environment(new int[]{100, 100}, true);

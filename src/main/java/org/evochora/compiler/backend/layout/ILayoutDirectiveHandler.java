@@ -14,8 +14,9 @@ public interface ILayoutDirectiveHandler {
 
 	 * @param directive The IR directive.
 	 * @param context   The mutable layout context.
+	 * @throws org.evochora.compiler.api.CompilationException if an error occurs during handling.
 	 */
-	void handle(IrDirective directive, LayoutContext context);
+	void handle(IrDirective directive, LayoutContext context) throws org.evochora.compiler.api.CompilationException;
 }
 
 

@@ -82,7 +82,7 @@ class DebugIndexerTestHelper implements AutoCloseable {
         
         // Kompiliere ein einfaches Test-Artefakt
         Compiler compiler = new Compiler();
-        testArtifact = compiler.compile(List.of("L:", "NOP"), "test.s");
+        testArtifact = compiler.compile(List.of("L:", "NOP"), "test.s", new EnvironmentProperties(new int[]{10, 10}, true));
 
         // Erstelle einen rohen Tick-Zustand
         RawOrganismState rawOrganism = new RawOrganismState(

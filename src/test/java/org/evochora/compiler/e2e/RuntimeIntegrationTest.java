@@ -9,6 +9,7 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -55,12 +56,12 @@ public class RuntimeIntegrationTest {
 		);
 
 		Compiler compiler = new Compiler();
-		ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "rt_proc_params.s");
+		EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+		ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "rt_proc_params.s", envProps);
 		assertThat(artifact).isNotNull();
 
 		// Create a small environment and simulation
-		int width = 64, height = 64;
-		Environment env = new Environment(new int[]{width, height}, true);
+		Environment env = new Environment(envProps);
 		Simulation sim = new Simulation(env);
 
 		// Place program at origin (0,0)
@@ -97,46 +98,37 @@ public class RuntimeIntegrationTest {
     @Test
     @Tag("integration")
     void procedureCopyOut_worksWithoutProgramArtifact() throws Exception {
-        // Arrange: Eine Prozedur, die ihren Parameter inkrementiert
         String source = String.join("\n",
                 ".PROC INCREMENT EXPORT WITH VALUE",
                 "  ADDI VALUE DATA:1",
                 "  RET",
                 ".ENDP",
                 "SETI %DR0 DATA:41",
-                "CALL INCREMENT WITH %DR0", // Nach diesem Aufruf muss %DR0 den Wert 42 haben
+                "CALL INCREMENT WITH %DR0",
                 "NOP"
         );
 
         Compiler compiler = new Compiler();
-        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "artifact_free_test.s");
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "artifact_free_test.s", envProps);
         assertThat(artifact).isNotNull();
 
-        // Setup der Simulation
-        Environment env = new Environment(new int[]{64, 64}, true);
+        Environment env = new Environment(envProps);
         Simulation sim = new Simulation(env);
-
-        // Der entscheidende Schritt: Wir "löschen" das Artefakt zur Laufzeit,
-        // indem wir der Simulation eine leere Map übergeben.
         sim.setProgramArtifacts(Collections.emptyMap());
 
-        // Platziere den Code in der Welt
         for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
             env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
         }
 
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        // Wichtig: Die programId wird gesetzt, aber die Simulation kennt das zugehörige Artefakt nicht.
         org.setProgramId(artifact.programId());
         sim.addOrganism(org);
 
-        // Act: Führe genug Ticks aus, damit die Prozedur abgeschlossen wird.
         for (int i = 0; i < 15; i++) {
             sim.tick();
         }
 
-        // Assert: Überprüfe, ob der Wert in %DR0 korrekt zurückgeschrieben wurde.
-        // Dies sollte nur funktionieren, wenn die POP-Befehle des Compilers die Arbeit machen.
         Molecule result = Molecule.fromInt((Integer) org.getDr(0));
         assertThat(result.toScalarValue())
                 .as("Der Wert sollte nach dem Prozeduraufruf auf 42 inkrementiert sein, auch ohne Artefakt.")
@@ -144,20 +136,9 @@ public class RuntimeIntegrationTest {
         assertThat(org.isInstructionFailed()).isFalse();
     }
 
-    /**
-     * Verifies that the runtime executes the machine code as the source of truth, even if
-     * a corrupted {@link ProgramArtifact} is present.
-     * The test loads correct machine code into the simulation but provides an artifact with
-     * incorrect metadata about procedure calls. It then asserts that the final result of the
-     * computation matches the logic in the machine code, not the flawed metadata.
-	 * This is an integration test.
-     *
-     * @throws Exception if compilation or simulation fails.
-     */
     @Test
     @Tag("integration")
     void procedureCall_worksCorrectlyWithCorruptedProgramArtifact() throws Exception {
-        // Arrange: Ein einfaches Programm, das 10 + 20 addieren soll.
         String sourceCode = String.join("\n",
                 ".PROC ADD EXPORT WITH A B",
                 "  ADDR A B",
@@ -165,21 +146,18 @@ public class RuntimeIntegrationTest {
                 ".ENDP",
                 "SETI %DR0 DATA:10",
                 "SETI %DR1 DATA:20",
-                "CALL ADD WITH %DR0 %DR1", // Ergebnis in %DR0 sollte 30 sein
+                "CALL ADD WITH %DR0 %DR1",
                 "NOP"
         );
 
         Compiler compiler = new Compiler();
-        ProgramArtifact correctArtifact = compiler.compile(Arrays.asList(sourceCode.split("\\r?\\n")), "correct.s");
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact correctArtifact = compiler.compile(Arrays.asList(sourceCode.split("\\r?\\n")), "correct.s", envProps);
         assertThat(correctArtifact).isNotNull();
 
-        // Erstelle ein absichtlich falsches/korruptes Artefakt.
-        // Wir nehmen die Metadaten vom korrekten Artefakt, aber überschreiben die kritischen Bindungen.
         Map<Integer, int[]> corruptedBindings = new HashMap<>();
-        // FALSCH: Wir tun so, als würde der CALL nur EINEN Parameter (%DR1) übergeben.
-        // Wenn die Runtime dies liest, wird sie die Parameter falsch verarbeiten.
         correctArtifact.callSiteBindings().forEach((addr, bindings) -> {
-            corruptedBindings.put(addr, new int[]{1}); // Nur %DR1 binden
+            corruptedBindings.put(addr, new int[]{1});
         });
 
         ProgramArtifact corruptedArtifact = new ProgramArtifact(
@@ -188,7 +166,7 @@ public class RuntimeIntegrationTest {
                 correctArtifact.machineCodeLayout(),
                 correctArtifact.initialWorldObjects(),
                 correctArtifact.sourceMap(),
-                corruptedBindings, // Hier kommen die falschen Daten rein
+                corruptedBindings,
                 correctArtifact.relativeCoordToLinearAddress(),
                 correctArtifact.linearAddressToCoord(),
                 correctArtifact.labelAddressToName(),
@@ -198,24 +176,20 @@ public class RuntimeIntegrationTest {
                 correctArtifact.tokenLookup()
         );
 
-        // Setup der Simulation
-        Environment env = new Environment(new int[]{64, 64}, true);
+        Environment env = new Environment(envProps);
         Simulation sim = new Simulation(env);
 
-        // WICHTIG: Wir laden den korrekten Maschinencode in die Welt...
         for (Map.Entry<int[], Integer> e : correctArtifact.machineCodeLayout().entrySet()) {
             env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
         }
 
-        // ...ABER wir füttern die Simulation mit dem korrupten Artefakt.
         sim.setProgramArtifacts(Map.of(corruptedArtifact.programId(), corruptedArtifact));
 
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
         org.setProgramId(correctArtifact.programId());
         sim.addOrganism(org);
 
-        // Fülle die Registry mit den korrupten Daten, so wie es die SimulationEngine tun würde.
-        CallBindingRegistry.getInstance().clearAll(); // Wichtig: Registry vor dem Test säubern!
+        CallBindingRegistry.getInstance().clearAll();
         for (var binding : corruptedArtifact.callSiteBindings().entrySet()) {
             int[] coord = corruptedArtifact.linearAddressToCoord().get(binding.getKey());
             if (coord != null) {
@@ -223,14 +197,10 @@ public class RuntimeIntegrationTest {
             }
         }
 
-        // Act: Führe die Simulation aus.
         for (int i = 0; i < 20; i++) {
             sim.tick();
         }
 
-        // Assert: Das Ergebnis muss dem Maschinencode entsprechen (10 + 20 = 30).
-        // Wenn die Runtime das korrupte Artefakt gelesen hätte, wäre das Ergebnis falsch
-        // (wahrscheinlich 20 + 20 = 40, da %DR0 nie korrekt übergeben worden wäre).
         Molecule result = Molecule.fromInt((Integer) org.getDr(0));
         assertThat(result.toScalarValue())
                 .as("Das Ergebnis der Addition muss 30 sein, basierend auf dem Maschinencode, nicht dem falschen Artefakt.")

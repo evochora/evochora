@@ -206,7 +206,7 @@ public class BenchmarkTest {
                     // Compile the assembly program
                     Compiler compiler = new Compiler();
                     List<String> lines = List.of(config.assemblyProgram.split("\n"));
-                    ProgramArtifact artifact = compiler.compile(lines, "benchmark_organism", environmentProperties.getWorldShape().length);
+                    ProgramArtifact artifact = compiler.compile(lines, "benchmark_organism", environmentProperties);
                     
                     // Create placement
                     return OrganismPlacement.of(artifact, config.startEnergy, config.startPosition, config.id);

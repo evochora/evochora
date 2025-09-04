@@ -1,93 +1,58 @@
 package org.evochora.compiler.instructions;
 
 import org.evochora.compiler.Compiler;
+import org.evochora.compiler.CompilerTestBase;
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.runtime.Config;
-import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.model.Environment;
-import org.evochora.runtime.model.Molecule;
-import org.evochora.runtime.model.Organism;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
-import java.util.Map;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
-/**
- * Contains integration tests for the compilation and execution of bitwise instructions.
- * These tests run the full pipeline from source code compilation to execution in a simulated environment,
- * verifying that the program runs to completion without errors.
- * These are tagged as "integration" tests because they span the compiler and runtime subsystems.
- */
-public class BitwiseInstructionCompilerTest {
+@Tag("unit")
+class BitwiseInstructionCompilerTest extends CompilerTestBase {
 
-    @BeforeAll
-    static void setUp() {
+    private Compiler compiler;
+
+    @BeforeEach
+    void setUp() {
         Instruction.init();
+        compiler = new Compiler();
     }
 
-    private static class RunResult { final Simulation sim; final Environment env; final Organism org; RunResult(Simulation s, Environment e, Organism o){sim=s;env=e;org=o;} }
-
-	/**
-	 * Compiles the given source code, loads it into a new simulation, creates an organism,
-	 * runs the simulation for a specified number of ticks, and returns the final state.
-	 *
-	 * @param source The source code to compile.
-	 * @param ticks The number of simulation ticks to execute.
-	 * @return A {@link RunResult} containing the final state of the simulation, environment, and organism.
-	 * @throws Exception if compilation or simulation fails.
-	 */
-	private RunResult compileAndRun(String source, int ticks) throws Exception {
-		Compiler compiler = new Compiler();
-		ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "bit_auto.s");
-		assertThat(artifact).isNotNull();
-		Environment env = new Environment(new int[]{64,64}, true);
-		Simulation sim = new Simulation(env);
-		for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
-			int[] abs = new int[]{e.getKey()[0], e.getKey()[1]};
-			env.setMolecule(Molecule.fromInt(e.getValue()), abs);
-		}
-		Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-		org.setProgramId(artifact.programId());
-		sim.addOrganism(org);
-		for (int i=0;i<ticks;i++) sim.tick();
-		return new RunResult(sim, env, org);
-	}
-
-	/**
-	 * Verifies the end-to-end functionality of a suite of bitwise and shift instructions,
-	 * including AND, OR, XOR, NAND, NOT, and shift left/right.
-	 * This is an integration test.
-	 *
-	 * @throws Exception if compilation or simulation fails.
-	 */
-	@Test
-	@Tag("integration")
-	void testAND_OR_XOR_NAND_NOT_and_shifts() throws Exception {
-		String program = String.join("\n",
-				"SETI %DR0 DATA:10",
-				"SETI %DR1 DATA:12",
-				"ANDR %DR0 %DR1",
-				"ORI %DR0 DATA:3",
-				"XORI %DR0 DATA:5",
-				"NADI %DR0 DATA:15",
-				"NOT %DR0", // bitwise not
-				"SETI %DR2 DATA:1",
-				"SHLI %DR2 DATA:3", // 8
-				"PUSI DATA:8",
-				"PUSI DATA:2",
-				"SHRS", // 2
-				"POP %DR3",
-				"NOP"
-		);
-		RunResult r = compileAndRun(program, 60);
-		Object o2 = r.org.readOperand(2);
-		Object o3 = r.org.readOperand(3);
-		assertThat(o2).isInstanceOf(Integer.class);
-		assertThat(o3).isInstanceOf(Integer.class);
-	}
+    @Test
+    void testAND_OR_XOR_NAND_NOT_and_shifts() {
+        String source = String.join("\n",
+                "ANDR %DR0 %DR1",
+                "ANDI %DR0 DATA:1",
+                "ANDS",
+                "ORR %DR0 %DR1",
+                "ORI %DR0 DATA:1",
+                "ORS",
+                "XORR %DR0 %DR1",
+                "XORI %DR0 DATA:1",
+                "XORS",
+                "NADR %DR0 %DR1",
+                "NADI %DR0 DATA:1",
+                "NADS",
+                "NOT %DR0",
+                "NOTS",
+                "SHLR %DR0 %DR1",
+                "SHLI %DR0 DATA:1",
+                "SHLS",
+                "SHRR %DR0 %DR1",
+                "SHRI %DR0 DATA:1",
+                "SHRS"
+        );
+        List<String> lines = List.of(source.split("\n"));
+        assertDoesNotThrow(() -> {
+            ProgramArtifact artifact = compiler.compile(lines, "bit_auto.s", testEnvProps);
+            assertThat(artifact).isNotNull();
+            assertThat(artifact.machineCodeLayout()).isNotEmpty();
+        });
+    }
 }

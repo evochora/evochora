@@ -8,8 +8,9 @@ import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
-import org.evochora.compiler.frontend.semantics.SymbolTable; // NEUER IMPORT
+import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.ir.*;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -19,21 +20,8 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Tests for the {@link IrGenerator}, covering the pipeline from Lexer to IR generation.
- * These tests verify that the frontend of the compiler correctly processes source code
- * into an Intermediate Representation. While they integrate several components, they are
- * tagged as "unit" tests because they operate on in-memory data and do not use external
- * resources like the filesystem.
- */
 public class IrGeneratorTest {
 
-    /**
-     * Verifies that the IR generator produces a correct {@link IrProgram} for a simple source snippet.
-     * This test runs the source through the lexer, parser, semantic analyzer, and finally the IR generator,
-     * asserting that the resulting IR items (directive, label, instruction) are structured as expected.
-     * This is a multi-component unit test of the compiler frontend.
-     */
     @Test
     @Tag("unit")
     void generatesIrForSimpleProgram() {
@@ -43,23 +31,18 @@ public class IrGeneratorTest {
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
-        // 1) Lexing
         Lexer lexer = new Lexer(src, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         assertFalse(diagnostics.hasErrors(), diagnostics.summary());
 
-        // 2) Parsing
-        Parser parser = new Parser(tokens, diagnostics, Path.of("")); // KORREKTUR
+        Parser parser = new Parser(tokens, diagnostics, Path.of(""));
         List<AstNode> ast = parser.parse();
         assertFalse(diagnostics.hasErrors(), diagnostics.summary());
 
-        // 3) Semantics
-        // KORREKTUR: SymbolTable erstellen und übergeben
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         new SemanticAnalyzer(diagnostics, symbolTable).analyze(ast);
         assertFalse(diagnostics.hasErrors(), diagnostics.summary());
 
-        // 4) IR-Gen
         IrConverterRegistry registry = IrConverterRegistry.initializeWithDefaults();
         IrGenerator irGen = new IrGenerator(diagnostics, registry);
         IrProgram ir = irGen.generate(ast, "TestProg");
@@ -68,17 +51,14 @@ public class IrGeneratorTest {
         List<IrItem> items = ir.items();
         assertTrue(items.size() >= 3, "Expected at least 3 IR items");
 
-        // .ORG directive
         assertTrue(items.get(0) instanceof IrDirective);
         IrDirective org = (IrDirective) items.get(0);
         assertEquals("org", org.name());
 
-        // Label L1
         assertTrue(items.get(1) instanceof IrLabelDef);
         IrLabelDef lbl = (IrLabelDef) items.get(1);
         assertEquals("L1", lbl.name());
 
-        // SETI %DR0 DATA:42
         assertTrue(items.get(2) instanceof IrInstruction);
         IrInstruction seti = (IrInstruction) items.get(2);
         assertEquals("SETI", seti.opcode());
@@ -87,35 +67,22 @@ public class IrGeneratorTest {
         assertTrue(seti.operands().get(1) instanceof IrTypedImm);
     }
 
-    /**
-     * An end-to-end test that verifies the correctness of the source map in the final compiled artifact.
-     * It compiles a simple instruction and then checks that the source information stored for the
-     * resulting machine code correctly points back to the original line of code.
-     * This is a unit test for the compiler's source mapping functionality.
-     *
-     * @throws org.evochora.compiler.api.CompilationException if the compilation fails.
-     */
     @Test
     @Tag("unit")
     void endToEnd_sourceMapContentIsCorrect() throws org.evochora.compiler.api.CompilationException {
-        // Arrange: Ein einfacher Befehl, der mehrere Speicherplätze belegt.
         String source = "SETI %DR0 DATA:42";
         org.evochora.compiler.Compiler compiler = new org.evochora.compiler.Compiler();
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, true);
 
-        // Act: Führe den gesamten Kompilierungsprozess aus.
-        org.evochora.compiler.api.ProgramArtifact artifact = compiler.compile(List.of(source), "EndToEndTest");
+        org.evochora.compiler.api.ProgramArtifact artifact = compiler.compile(List.of(source), "EndToEndTest", envProps);
 
-        // Assert: Überprüfe den Inhalt der Source Map im finalen Artefakt.
         assertThat(artifact.sourceMap()).isNotEmpty();
 
-        // Der Opcode an Adresse 0 sollte auf die komplette Zeile verweisen.
         org.evochora.compiler.api.SourceInfo infoForOpcode = artifact.sourceMap().get(0);
         assertThat(infoForOpcode).isNotNull();
-        // Wir verwenden trim(), um führende/folgende Leerzeichen zu ignorieren, die vom Rekonstruktionsprozess stammen könnten.
         String lineContent = artifact.sources().get(infoForOpcode.fileName()).get(infoForOpcode.lineNumber() - 1);
         assertThat(lineContent.trim()).isEqualTo("SETI %DR0 DATA:42");
 
-        // Das erste Argument an Adresse 1 sollte ebenfalls auf die komplette Zeile verweisen.
         org.evochora.compiler.api.SourceInfo infoForArg1 = artifact.sourceMap().get(1);
         assertThat(infoForArg1).isNotNull();
         String lineContent2 = artifact.sources().get(infoForArg1.fileName()).get(infoForArg1.lineNumber() - 1);

@@ -4,83 +4,62 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.layout.LayoutEngine;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.ir.*;
+import org.evochora.compiler.ir.placement.IrVectorPlacement;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.Test;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.junit.jupiter.api.Tag;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Tests for the {@link LayoutEngine}.
- * These tests verify that the layout engine correctly determines the physical coordinates
- * of instructions and other world objects based on the IR program.
- * These are unit tests and do not require external resources.
- */
+@Tag("unit")
 public class LayoutEngineTest {
 
-	private static SourceInfo src(String file, int line) {
-		                		return new SourceInfo(file, line, 0);
-	}
+    private static SourceInfo src(String file, int line) {
+        return new SourceInfo(file, line, 0);
+    }
 
-	/**
-	 * Tests that the layout engine correctly processes `org`, `dir`, and `place` directives
-	 * along with standard instructions. It verifies that the resulting coordinates for instructions
-	 * and placed objects are correct, and that labels point to the correct addresses.
-	 * The test also checks that the engine correctly handles context changes, such as those
-	 * introduced by include files.
-	 * This is a unit test and relies only on in-memory data structures.
-	 * @throws Exception if the layout process fails
-	 */
-	@Test
-	@Tag("unit")
-	void laysOutOrgDirPlaceAndInstructions() throws Exception {
-		Instruction.init();
-		// Build a small IR program manually
-		Map<String, IrValue> orgArgs = new HashMap<>();
-		orgArgs.put("position", new IrValue.Vector(new int[]{2, 3}));
-		IrDirective org = new IrDirective("core", "org", orgArgs, src("main.s", 1));
+    @Test
+    void laysOutOrgDirPlaceAndInstructions() throws Exception {
+        Instruction.init();
+        Map<String, IrValue> orgArgs = new HashMap<>();
+        orgArgs.put("position", new IrValue.Vector(new int[]{2, 3}));
+        IrDirective org = new IrDirective("core", "org", orgArgs, src("main.s", 1));
 
-		Map<String, IrValue> dirArgs = new HashMap<>();
-		dirArgs.put("direction", new IrValue.Vector(new int[]{1, 0}));
-		IrDirective dir = new IrDirective("core", "dir", dirArgs, src("main.s", 2));
+        Map<String, IrValue> dirArgs = new HashMap<>();
+        dirArgs.put("direction", new IrValue.Vector(new int[]{1, 0}));
+        IrDirective dir = new IrDirective("core", "dir", dirArgs, src("main.s", 2));
 
-		IrLabelDef label = new IrLabelDef("L", src("main.s", 3));
+        IrLabelDef label = new IrLabelDef("L", src("main.s", 3));
+        IrInstruction seti = new IrInstruction("SETI", List.of(new IrReg("%DR0"), new IrTypedImm("DATA", 1)), src("main.s", 4));
+        IrDirective push = new IrDirective("core", "push_ctx", new HashMap<>(), src("lib.inc", 9));
 
-		IrInstruction seti = new IrInstruction("SETI", List.of(new IrReg("%DR0"), new IrTypedImm("DATA", 1)), src("main.s", 4));
+        Map<String, IrValue> placeArgs = new HashMap<>();
+        placeArgs.put("type", new IrValue.Str("ENERGY"));
+        placeArgs.put("value", new IrValue.Int64(50));
+        IrVectorPlacement placement = new IrVectorPlacement(List.of(5, 0));
+        placeArgs.put("placements", new IrValue.PlacementListVal(List.of(placement)));
+        IrDirective place = new IrDirective("core", "place", placeArgs, src("lib.inc", 10));
 
-		// Simulate entering an include file
-		IrDirective push = new IrDirective("core", "push_ctx", new HashMap<>(), src("lib.inc", 9));
-
-		Map<String, IrValue> placeArgs = new HashMap<>();
-		placeArgs.put("type", new IrValue.Str("ENERGY"));
-		placeArgs.put("value", new IrValue.Int64(50));
-		placeArgs.put("position", new IrValue.Vector(new int[]{5, 0}));
-		IrDirective place = new IrDirective("core", "place", placeArgs, src("lib.inc", 10));
-
-		IrProgram ir = new IrProgram("Test", List.of(org, dir, label, seti, push, place));
+        IrProgram ir = new IrProgram("Test", List.of(org, dir, label, seti, push, place));
 
         LayoutEngine engine = new LayoutEngine();
-        LayoutResult res = engine.layout(ir, new RuntimeInstructionSetAdapter(), 2);
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, true);
+        LayoutResult res = engine.layout(ir, new RuntimeInstructionSetAdapter(), envProps);
 
-		// Start at 2|3, direction 1|0:
-		// seti opcode at 2|3, two operands at 3|3 and 4|3
-		assertThat(res.linearAddressToCoord().get(0)).containsExactly(2, 3);
-		assertThat(res.linearAddressToCoord().get(1)).containsExactly(3, 3);
-		assertThat(res.linearAddressToCoord().get(2)).containsExactly(4, 3);
+        assertThat(res.linearAddressToCoord().get(0)).containsExactly(2, 3);
+        assertThat(res.linearAddressToCoord().get(1)).containsExactly(3, 3);
+        assertThat(res.linearAddressToCoord().get(2)).containsExactly(4, 3);
+        assertThat(res.labelToAddress().get("L")).isEqualTo(0);
 
-		// label L before SETI should point to address 0
-		assertThat(res.labelToAddress().get("L")).isEqualTo(0);
-
-		// After 'seti', currentPos is [4,3]. PUSH_CTX sets basePos to [4,3].
-		// The 'place' directive is relative to this new base.
-		// So, final position is basePos [4,3] + place [5,0] = [9,3].
-		boolean foundPlace = res.initialWorldObjects().keySet().stream()
-				.anyMatch(c -> java.util.Arrays.equals(c, new int[]{10, 3}));
-		assertThat(foundPlace).isTrue();
-	}
+        boolean foundPlace = res.initialWorldObjects().keySet().stream()
+                .anyMatch(c -> java.util.Arrays.equals(c, new int[]{10, 3}));
+        assertThat(foundPlace).isTrue();
+    }
 }

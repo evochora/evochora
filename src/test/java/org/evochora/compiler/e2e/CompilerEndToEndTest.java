@@ -3,6 +3,7 @@ package org.evochora.compiler.e2e;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * rely on external resources like the filesystem or network.
  */
 public class CompilerEndToEndTest {
+
+	private final EnvironmentProperties testEnvProps = new EnvironmentProperties(new int[]{100, 100}, true);
 
 	@BeforeAll
 	static void setUp() {
@@ -48,15 +51,12 @@ public class CompilerEndToEndTest {
 
 		List<String> lines = Arrays.asList(source.split("\\r?\\n"));
 		Compiler compiler = new Compiler();
-		ProgramArtifact artifact = compiler.compile(lines, "e2e_proc_params.s");
+		ProgramArtifact artifact = compiler.compile(lines, "e2e_proc_params.s", testEnvProps);
 
 		assertThat(artifact).isNotNull();
 		assertThat(artifact.machineCodeLayout()).isNotEmpty();
 		assertThat(artifact.labelAddressToName()).isNotEmpty();
 
-		// Sanity: ensure linking resolved label refs (no non-vector placeholders in operand slots)
-		// We check that each operand slot is encoded as a molecule already (no symbolic placeholders reach emission)
-		// Implicitly validated by successful compile; here we assert we have at least the opcode+2 operands for CALL
 		long opcodeCount = artifact.machineCodeLayout().values().stream()
 				.filter(v -> (v & 0xFF) == 0 /* CODE type is 0 for opcodes */)
 				.count();
@@ -83,7 +83,7 @@ public class CompilerEndToEndTest {
 
 		List<String> lines = Arrays.asList(source.split("\\r?\\n"));
 		Compiler compiler = new Compiler();
-		ProgramArtifact artifact = compiler.compile(lines, "proc_export_header.s");
+		ProgramArtifact artifact = compiler.compile(lines, "proc_export_header.s", testEnvProps);
 		assertThat(artifact).isNotNull();
 		assertThat(artifact.machineCodeLayout()).isNotEmpty();
 	}

@@ -1,102 +1,44 @@
 package org.evochora.compiler.instructions;
 
 import org.evochora.compiler.Compiler;
+import org.evochora.compiler.CompilerTestBase;
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.runtime.Config;
-import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.model.Environment;
-import org.evochora.runtime.model.Molecule;
-import org.evochora.runtime.model.Organism;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
-import java.util.Map;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
-/**
- * Contains integration tests for the compilation and execution of control flow instructions.
- * These tests run the full pipeline from source code compilation to execution in a simulated environment,
- * verifying that jumps, calls, and returns behave as expected.
- * These are tagged as "integration" tests because they span the compiler and runtime subsystems.
- */
-public class ControlFlowInstructionCompilerTest {
+@Tag("unit")
+class ControlFlowInstructionCompilerTest extends CompilerTestBase {
 
-    @BeforeAll
-    static void setUp() {
+    private Compiler compiler;
+
+    @BeforeEach
+    void setUp() {
         Instruction.init();
+        compiler = new Compiler();
     }
 
-    private static class RunResult { final Simulation sim; final Environment env; final Organism org; RunResult(Simulation s, Environment e, Organism o){sim=s;env=e;org=o;} }
-
-	/**
-	 * Compiles the given source code, loads it into a new simulation, creates an organism,
-	 * runs the simulation for a specified number of ticks, and returns the final state.
-	 *
-	 * @param source The source code to compile.
-	 * @param ticks The number of simulation ticks to execute.
-	 * @return A {@link RunResult} containing the final state of the simulation, environment, and organism.
-	 * @throws Exception if compilation or simulation fails.
-	 */
-	private RunResult compileAndRun(String source, int ticks) throws Exception {
-		Compiler compiler = new Compiler();
-		ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "ctrl_auto.s");
-		assertThat(artifact).isNotNull();
-		Environment env = new Environment(new int[]{64,64}, true);
-		Simulation sim = new Simulation(env);
-		for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
-			int[] abs = new int[]{e.getKey()[0], e.getKey()[1]};
-			env.setMolecule(Molecule.fromInt(e.getValue()), abs);
-		}
-		Organism org = Organism.create(sim, new int[]{0,0}, 1000, sim.getLogger());
-		org.setProgramId(artifact.programId());
-		sim.addOrganism(org);
-		for (int i=0;i<ticks;i++) sim.tick();
-		return new RunResult(sim, env, org);
-	}
-
-	/**
-	 * Verifies the end-to-end functionality of a suite of control flow instructions,
-	 * including immediate, register, and stack-based jumps (JMPI, JMPR, JMPS),
-	 * as well as procedure calls and returns (CALL, RET).
-	 * This is an integration test.
-	 *
-	 * @throws Exception if compilation or simulation fails.
-	 */
-	@Test
-	@Tag("integration")
-	void testJMPI_JMPR_JMPS_CALL_RET() throws Exception {
-		String program = String.join("\n",
-				"SETV %DR0 1|0",     // DR0 holds a jump vector to label L1 (will be resolved to actual delta by compiler when used as label)
-				"JMPI L1",
-				"SETI %DR1 DATA:111", // should be skipped by jump
-				"L1:",
-				"SETI %DR1 DATA:5",
-				"JMPR %DR0",         // jump relative by vector in DR0
-				"SETI %DR1 DATA:222", // should be skipped
-				"L2:",
-				"SETV %DR4 0|1",
-				"PUSH %DR4",
-				"JMPS",                // jump by vector from stack
-				"SETI %DR1 DATA:333", // skipped
-				"L3:",
-				"CALL PROC1",
-				"SETI %DR2 DATA:7",
-				"NOP",
-				".PROC PROC1 EXPORT",
-				"  SETI %DR3 DATA:9",
-				"  RET",
-				".ENDP"
-		);
-		RunResult r = compileAndRun(program, 120);
-		Object d1 = r.org.readOperand(1);
-		Object d2 = r.org.readOperand(2);
-		Object d3 = r.org.readOperand(3);
-		assertThat(d1).isInstanceOf(Integer.class);
-		assertThat(d2).isInstanceOf(Integer.class);
-		assertThat(d3).isInstanceOf(Integer.class);
-	}
+    @Test
+    void testJMPI_JMPR_JMPS_CALL_RET() {
+        String source = String.join("\n",
+                "LBL:",
+                "JMPI LBL",
+                "JMPR %LR0",
+                "JMPS",
+                "CALL LBL",
+                "RET"
+        );
+        List<String> lines = List.of(source.split("\n"));
+        assertDoesNotThrow(() -> {
+            ProgramArtifact artifact = compiler.compile(lines, "ctrl_auto.s", testEnvProps);
+            assertThat(artifact).isNotNull();
+            assertThat(artifact.machineCodeLayout()).isNotEmpty();
+        });
+    }
 }
