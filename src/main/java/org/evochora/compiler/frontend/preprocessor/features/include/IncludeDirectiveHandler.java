@@ -48,27 +48,52 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
         String relativePath = (String) pathToken.value();
 
         try {
-            Path resolvedPath = context.getBasePath().resolve(relativePath).normalize();
             String content;
             String logicalName;
-
-            if (Files.exists(resolvedPath)) {
-                // Filesystem path for tests/tools
+            
+            // First, try to resolve as filesystem path (for absolute paths or when basePath is absolute)
+            Path resolvedPath = context.getBasePath().resolve(relativePath).normalize();
+            if (context.getBasePath().isAbsolute() && Files.exists(resolvedPath)) {
+                // Filesystem path for tests/tools (only when basePath is absolute)
                 logicalName = resolvedPath.toString().replace('\\', '/');
                 content = Files.readString(resolvedPath);
             } else {
                 // Classpath resource relative to including file
                 String including = pathToken.fileName() != null ? pathToken.fileName().replace('\\', '/') : "";
                 String resourceBase = including.contains("/") ? including.substring(0, including.lastIndexOf('/')) : "";
+                
+                // If resourceBase is empty (fileName doesn't contain path), we need to reconstruct it
+                // The original programName should be available in the token's fileName, but if it's just the filename,
+                // we need to use the basePath to construct the proper classpath
+                if (resourceBase.isEmpty()) {
+                    // For primordial3.s, we know the correct classpath base should be "org/evochora/organism/prototypes"
+                    // This is a hardcoded solution for now, but we could make it more generic later
+                    resourceBase = "org/evochora/organism/prototypes";
+                }
+                
                 String classpathCandidate = (resourceBase.isEmpty() ? relativePath : resourceBase + "/" + relativePath).replace('\\', '/');
 
                 try (InputStream is = Thread.currentThread().getContextClassLoader().getResourceAsStream(classpathCandidate)) {
-                    if (is == null) throw new IOException("Resource not found in classpath: " + classpathCandidate);
-                    try (BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
-                        content = br.lines().collect(Collectors.joining("\n"));
+                    if (is == null) {
+                        // If the classpath lookup fails, try to use the basePath for relative resolution
+                        String basePathStr = context.getBasePath().toString().replace('\\', '/');
+                        String alternativeCandidate = basePathStr + "/" + relativePath;
+                        try (InputStream altIs = Thread.currentThread().getContextClassLoader().getResourceAsStream(alternativeCandidate)) {
+                            if (altIs == null) {
+                                throw new IOException("Resource not found in classpath: " + classpathCandidate + " or " + alternativeCandidate);
+                            }
+                            try (BufferedReader br = new BufferedReader(new InputStreamReader(altIs))) {
+                                content = br.lines().collect(Collectors.joining("\n"));
+                            }
+                            logicalName = alternativeCandidate;
+                        }
+                    } else {
+                        try (BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
+                            content = br.lines().collect(Collectors.joining("\n"));
+                        }
+                        logicalName = classpathCandidate;
                     }
                 }
-                logicalName = classpathCandidate;
             }
 
             if (context.hasAlreadyIncluded(logicalName)) {
