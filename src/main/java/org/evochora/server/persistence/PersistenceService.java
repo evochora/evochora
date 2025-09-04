@@ -39,6 +39,8 @@ public final class PersistenceService implements IControllable, Runnable {
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final AtomicBoolean autoPaused = new AtomicBoolean(false);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private volatile boolean needsRetryClose = false; // Flag to retry database closure
+    private final Object connectionLock = new Object(); // Synchronization for database operations
     private final EnvironmentProperties envProps;
     private final int batchSize; // Configurable batch size
 
@@ -300,7 +302,8 @@ public final class PersistenceService implements IControllable, Runnable {
     }
 
     private void closeQuietly() {
-        try {
+        synchronized (connectionLock) {
+            try {
             // Finalize any remaining batch operations
             if (tickInsertStatement != null) {
                 if (batchCount % batchSize != 0) { // Use batchSize here
@@ -329,15 +332,27 @@ public final class PersistenceService implements IControllable, Runnable {
                     // Final checkpoint after disabling WAL to ensure all data is in main file
                     st.execute("PRAGMA wal_checkpoint(FULL)");
                     log.debug("Final checkpoint after WAL disable completed");
-                } catch (Exception e) {
-                    log.warn("Error during WAL checkpoint before closing: {}", e.getMessage());
-                }
+                                    } catch (Exception e) {
+                        // Skip WAL checkpoint if database is busy - this is normal with concurrent access
+                        if (e.getMessage().contains("SQLITE_BUSY") || e.getMessage().contains("database is locked")) {
+                            log.info("Skipping WAL checkpoint before closing due to concurrent access: {}", e.getMessage());
+                        } else if (e.getMessage().contains("stmt pointer is closed") || e.getMessage().contains("database has been closed")) {
+                            // Statement or database already closed is a real problem - data might be incomplete
+                            log.error("Database or statement was already closed before WAL checkpoint - data may be incomplete! {}", e.getMessage());
+                        } else {
+                            log.warn("Error during WAL checkpoint before closing: {}", e.getMessage());
+                        }
+                    }
             }
             
-            connection.close();
-            connection = null;
-        } catch (Exception e) {
-            log.warn("Error during database cleanup: {}", e.getMessage());
+            // Only close connection if it's not already null
+            if (connection != null) {
+                connection.close();
+                connection = null;
+            }
+            } catch (Exception e) {
+                log.warn("Error during database cleanup: {}", e.getMessage());
+            }
         }
     }
 
@@ -447,7 +462,15 @@ public final class PersistenceService implements IControllable, Runnable {
                                         st.execute("PRAGMA wal_checkpoint(FULL)");
                                         log.debug("WAL checkpoint completed before manual pause");
                                     } catch (Exception e) {
-                                        log.warn("Error during WAL checkpoint before pause: {}", e.getMessage());
+                                        // Skip WAL checkpoint if database is busy - this is normal with concurrent access
+                                        if (e.getMessage().contains("SQLITE_BUSY") || e.getMessage().contains("database is locked")) {
+                                            log.info("Skipping WAL checkpoint before pause due to concurrent access: {}", e.getMessage());
+                                        } else if (e.getMessage().contains("stmt pointer is closed") || e.getMessage().contains("database has been closed")) {
+                                            // Statement or database already closed is a real problem - data might be incomplete
+                                            log.error("Database or statement was already closed before WAL checkpoint - data may be incomplete! {}", e.getMessage());
+                                        } else {
+                                            log.warn("Error during WAL checkpoint before pause: {}", e.getMessage());
+                                        }
                                     }
                                 }
                                 
@@ -476,8 +499,10 @@ public final class PersistenceService implements IControllable, Runnable {
                         
                         // Enhanced auto-pause: ensure WAL is checkpointed and database is closed
                         // to prevent leaving WAL/SHM files behind
-                        if (connection != null && !connection.isClosed()) {
-                            try (Statement st = connection.createStatement()) {
+                        synchronized (connectionLock) {
+                            if (connection != null && !connection.isClosed()) {
+                                boolean checkpointSuccessful = false;
+                                try (Statement st = connection.createStatement()) {
                                 // Force all pending changes to be written to main database
                                 st.execute("PRAGMA wal_checkpoint(FULL)");
                                 log.debug("WAL checkpoint completed before auto-pause");
@@ -493,15 +518,32 @@ public final class PersistenceService implements IControllable, Runnable {
                                 // Final checkpoint after disabling WAL to ensure all data is in main file
                                 st.execute("PRAGMA wal_checkpoint(FULL)");
                                 log.debug("Final checkpoint after WAL disable before auto-pause");
+                                
+                                checkpointSuccessful = true;
                             } catch (Exception e) {
-                                log.warn("Error during WAL checkpoint before auto-pause: {}", e.getMessage());
+                                // Skip WAL checkpoint if database is busy - this is normal with concurrent access
+                                if (e.getMessage().contains("SQLITE_BUSY") || e.getMessage().contains("database is locked")) {
+                                    log.info("Skipping WAL checkpoint before auto-pause due to concurrent access: {}", e.getMessage());
+                                    checkpointSuccessful = true; // Consider this successful for busy cases
+                                } else if (e.getMessage().contains("stmt pointer is closed") || e.getMessage().contains("database has been closed")) {
+                                    // Statement or database already closed is a real problem - data might be incomplete
+                                    log.error("Database or statement was already closed before WAL checkpoint - data may be incomplete! {}", e.getMessage());
+                                } else {
+                                    log.warn("Error during WAL checkpoint before auto-pause: {}", e.getMessage());
+                                }
                             }
                             
-                            // Close database connection to release WAL/SHM files
-                            connection.close();
-                            connection = null;
-                            log.debug("Database connection closed during auto-pause to prevent WAL/SHM file leaks");
+                            // Only close database connection if checkpoint was successful or we're skipping due to busy
+                            if (checkpointSuccessful) {
+                                connection.close();
+                                connection = null;
+                                log.debug("Database connection closed during auto-pause to prevent WAL/SHM file leaks");
+                            } else {
+                                log.warn("WAL checkpoint failed, will retry database closure later");
+                                needsRetryClose = true; // Schedule retry for next cycle
+                            }
                         }
+                        } // End synchronized block
                         
                         // Auto-pause - mark as auto-paused and set pause flag
                         autoPaused.set(true);
@@ -516,6 +558,22 @@ public final class PersistenceService implements IControllable, Runnable {
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                             break;
+                        }
+                        
+                        // Retry database closure if needed
+                        if (needsRetryClose) {
+                            synchronized (connectionLock) {
+                                if (connection != null && !connection.isClosed()) {
+                                    log.debug("Retrying database closure after previous failure");
+                                    try {
+                                        closeQuietly();
+                                        needsRetryClose = false;
+                                        log.debug("Database closure retry successful");
+                                    } catch (Exception e) {
+                                        log.warn("Database closure retry failed: {}", e.getMessage());
+                                    }
+                                }
+                            }
                         }
                         
                         // Check if new ticks are available (only if not manually paused)

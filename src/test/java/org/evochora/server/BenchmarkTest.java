@@ -40,8 +40,8 @@ public class BenchmarkTest {
 
     // ===== CONFIGURABLE BENCHMARK PARAMETERS =====
     private int simulationTicks = 20000;
-    private int persistenceBatchSize = 1000;
-    private int indexerBatchSize = 1000;
+    private int persistenceBatchSize = 100;
+    private int indexerBatchSize = 100;
     private EnvironmentProperties environmentProperties = new EnvironmentProperties(new int[]{100, 100}, true);
     
     // ===== TIMEOUT CONFIGURATION =====
@@ -49,28 +49,40 @@ public class BenchmarkTest {
     private int simulationCompleteTimeoutMs = 60000; // Max wait for simulation to complete all ticks
     private int persistenceCompleteTimeoutMs = 10000; // Max wait for persistence to write all ticks to raw DB
     private int indexerStartTimeoutMs = 5000; // Max wait for indexer to start processing (after persistence is complete)
-    private int indexerCompleteTimeoutMs = 30000; // Max wait for indexer to process all ticks from raw DB
+    private int indexerCompleteTimeoutMs = 60000; // Max wait for indexer to process all ticks from raw DB
     
     // ===== CLEANUP CONFIGURATION =====
-    private boolean cleanUpDb = false; // Whether to delete database files after benchmark
+    private boolean cleanUpDb = true; // Whether to delete database files after benchmark
     
     // ===== ORGANISM CONFIGURATION =====
-    // Sie können hier mehrere Organismen konfigurieren
-    private List<OrganismConfig> organismConfigs = List.of(
-        new OrganismConfig(
-            "benchmark_organism_1",
-            String.join("\n",
-                "START:",
-                //"  SETI %DR0 DATA:1",
-                //"  SETI %DR0 DATA:1",
-                //"  ADDR %DR0 %DR1",
-                "  NOP",
-                "  JMPI START"
-            ),
-            new int[]{0, 0}, // Startposition
-            100000 // Startenergie
-        )
-    );
+    // Sie können hier die Anzahl der Organismen einfach ändern
+    private int organismCount = 1; // Anzahl der Organismen
+    private List<OrganismConfig> organismConfigs;
+    
+    // Organismen werden in der setUp() Methode erstellt
+    private void createOrganismConfigs() {
+        organismConfigs = new java.util.ArrayList<>();
+        
+        // Assembly-Programm für alle Organismen (gleiche Art)
+        String assemblyProgram = String.join("\n",
+            "START:",
+//            "  SETI %DR0 DATA:1",
+//            "  SETI %DR0 DATA:1",
+//            "  ADDR %DR0 %DR1",
+            "  NOP",
+            "  JMPI START"
+        );
+        
+        // Erstelle Organismen in einer For-Schleife
+        for (int i = 0; i < organismCount; i++) {
+            organismConfigs.add(new OrganismConfig(
+                "benchmark_organism_" + (i + 1), // Eindeutige ID
+                assemblyProgram,
+                new int[]{0, i}, // Startposition: x=0, y=i (jeder in eigener Zeile)
+                100000 // Startenergie
+            ));
+        }
+    }
     
     // Helper class for organism configuration
     private static class OrganismConfig {
@@ -88,8 +100,8 @@ public class BenchmarkTest {
     }
     
     private List<Map<String, Object>> energyStrategies = List.of(
-        //Map.of("type", "solar", "params", Map.of("probability", 0.001, "amount", 50, "safetyRadius", 2, "executionsPerTick", 1)),
-        //Map.of("type", "geyser", "params", Map.of("count", 5, "interval", 100, "amount", 200, "safetyRadius", 2))
+        Map.of("type", "solar", "params", Map.of("probability", 0.001, "amount", 50, "safetyRadius", 2, "executionsPerTick", 1)),
+        Map.of("type", "geyser", "params", Map.of("count", 5, "interval", 100, "amount", 200, "safetyRadius", 2))
     );
     private String outputDirectory = "runs/";
     
@@ -125,6 +137,7 @@ public class BenchmarkTest {
     @BeforeEach
     void setUp() {
         Instruction.init();
+        createOrganismConfigs(); // Erstelle Organismen-Konfigurationen
         testConfig = createTestConfiguration();
         totalStartTime = System.currentTimeMillis();
     }
@@ -510,41 +523,40 @@ public class BenchmarkTest {
         System.out.printf("  Indexer batch size: %d%n", indexerBatchSize);
         System.out.printf("  Energy strategies: %d%n", energyStrategies.size());
         System.out.println("Timeouts:");
-        System.out.printf("  Simulation ready: %d ms (wait for simulation to initialize)%n", simulationReadyTimeoutMs);
-        System.out.printf("  Simulation complete: %d ms (wait for all ticks to be simulated)%n", simulationCompleteTimeoutMs);
-        System.out.printf("  Persistence complete: %d ms (wait for all ticks to be written to raw DB)%n", persistenceCompleteTimeoutMs);
-        System.out.printf("  Indexer start: %d ms (wait for indexer to begin processing raw DB)%n", indexerStartTimeoutMs);
-        System.out.printf("  Indexer complete: %d ms (wait for indexer to process all ticks)%n", indexerCompleteTimeoutMs);
+        System.out.printf("  Simulation ready: %d ms%n", simulationReadyTimeoutMs);
+        System.out.printf("  Simulation complete: %d ms%n", simulationCompleteTimeoutMs);
+        System.out.printf("  Persistence complete: %d ms%n", persistenceCompleteTimeoutMs);
+        System.out.printf("  Indexer start: %d ms%n", indexerStartTimeoutMs);
+        System.out.printf("  Indexer complete: %d ms%n", indexerCompleteTimeoutMs);
         System.out.println("Cleanup:");
         System.out.printf("  Database cleanup: %s%n", cleanUpDb ? "enabled" : "disabled");
         
         System.out.println("\nSimulation Results:");
         System.out.printf("  Duration: %.2f seconds%n", simulationDuration);
         System.out.printf("  Processed ticks: %d%n", simulationTicks);
-        System.out.printf("  Ticks per second: %.2f%n", simulationTicksPerSecond);
         System.out.printf("  Organisms alive: %d%n", organismsAlive.get());
         System.out.printf("  Organisms dead: %d%n", organismsDead.get());
-        System.out.printf("  Memory queue ticks per second: %.2f%n", simulationTicksPerSecond);
+        System.out.printf("  Ticks per second: %.2f%n", simulationTicksPerSecond);
         
         System.out.println("\nPersistence Service Results:");
         System.out.printf("  Duration: %.2f seconds%n", persistenceDuration);
         System.out.printf("  Processed ticks: %d%n", ticksPersisted.get());
-        System.out.printf("  Ticks per second: %.2f%n", persistenceTicksPerSecond);
         System.out.printf("  Configured batch size: %d%n", persistenceBatchSize);
         System.out.printf("  Actual batches processed: %d%n", persistenceBatchCount);
         System.out.printf("  Effective batch size: %.1f%n", persistenceEffectiveBatchSize);
         System.out.printf("  Raw database size: %.2f MB%n", rawDbSize / (1024.0 * 1024.0));
         System.out.printf("  Database throughput: %.2f MB/s%n", rawThroughput);
+        System.out.printf("  Ticks per second: %.2f%n", persistenceTicksPerSecond);
         
         System.out.println("\nDebug Indexer Results:");
         System.out.printf("  Duration: %.2f seconds%n", indexerDuration);
         System.out.printf("  Processed ticks: %d%n", ticksIndexed.get());
-        System.out.printf("  Ticks per second: %.2f%n", indexerTicksPerSecond);
         System.out.printf("  Configured batch size: %d%n", indexerBatchSize);
         System.out.printf("  Actual batches processed: %d%n", indexerBatchCount);
         System.out.printf("  Effective batch size: %.1f%n", indexerEffectiveBatchSize);
         System.out.printf("  Debug database size: %.2f MB%n", debugDbSize / (1024.0 * 1024.0));
         System.out.printf("  Database throughput: %.2f MB/s%n", debugThroughput);
+        System.out.printf("  Ticks per second: %.2f%n", indexerTicksPerSecond);
         
         System.out.printf("\nTotal Pipeline Duration: %.2f seconds%n", totalDuration);
         System.out.println("=== END BENCHMARK RESULTS ===\n");

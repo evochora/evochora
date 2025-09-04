@@ -23,6 +23,8 @@ public class DatabaseManager {
     private PreparedStatement tickInsertStatement;
     private int batchCount = 0; // Count of ticks in current batch
     private int actualBatchCount = 0; // Count of actual batches executed
+    private volatile boolean isClosing = false; // Flag to prevent race conditions
+    private final Object connectionLock = new Object(); // Synchronization for database operations
     
     public DatabaseManager(String debugDbPath) {
         this(debugDbPath, 1000); // Default batch size for backward compatibility
@@ -106,10 +108,11 @@ public class DatabaseManager {
      * @throws Exception if writing fails
      */
     public void writePreparedTick(long tickNumber, String tickDataJson) throws Exception {
-        // Ensure database connection is available
-        if (connection == null || connection.isClosed()) {
-            setupDebugDatabase();
-        }
+        synchronized (connectionLock) {
+            // Ensure database connection is available
+            if (connection == null || connection.isClosed()) {
+                setupDebugDatabase();
+            }
         
         // Use batch insert for better performance
         if (tickInsertStatement == null) {
@@ -166,6 +169,7 @@ public class DatabaseManager {
                 }
             }
         }
+        } // End synchronized block
     }
     
     /**
@@ -200,6 +204,14 @@ public class DatabaseManager {
      * Ensures all data is properly flushed and WAL files are released.
      */
     public void closeQuietly() {
+        synchronized (connectionLock) {
+            // Prevent multiple simultaneous close operations
+            if (isClosing) {
+                log.debug("DEBUG: closeQuietly() already in progress, skipping");
+                return;
+            }
+            isClosing = true;
+        
         log.debug("DEBUG: closeQuietly() called - batchCount: {}, statement null: {}", 
                  batchCount, tickInsertStatement == null);
         try {
@@ -235,7 +247,15 @@ public class DatabaseManager {
                     st.execute("PRAGMA wal_checkpoint(FULL)");
                     log.debug("Final checkpoint after WAL disable completed");
                 } catch (Exception e) {
-                    log.warn("Error during WAL checkpoint before closing: {}", e.getMessage());
+                    // Skip WAL checkpoint if database is busy - this is normal with concurrent access
+                    if (e.getMessage().contains("SQLITE_BUSY") || e.getMessage().contains("database is locked")) {
+                        log.info("Skipping WAL checkpoint before closing due to concurrent access: {}", e.getMessage());
+                    } else if (e.getMessage().contains("database has been closed")) {
+                        // Database already closed is a real problem - data might be incomplete
+                        log.error("Database was already closed before WAL checkpoint - data may be incomplete! {}", e.getMessage());
+                    } else {
+                        log.warn("Error during WAL checkpoint before closing: {}", e.getMessage());
+                    }
                 }
             }
             
@@ -248,7 +268,11 @@ public class DatabaseManager {
             
         } catch (Exception e) {
             log.warn("Error closing database cleanly: {}", e.getMessage());
+        } finally {
+            // Reset the closing flag
+            isClosing = false;
         }
+        } // End synchronized block
     }
     
     /**
