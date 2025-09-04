@@ -5,7 +5,7 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.parser.ast.TypedLiteralNode;
-import org.evochora.compiler.frontend.parser.ast.VectorLiteralNode;
+import org.evochora.compiler.frontend.parser.ast.placement.VectorPlacementNode;
 import org.evochora.compiler.frontend.parser.features.dir.DirNode;
 import org.evochora.compiler.frontend.parser.features.org.OrgNode;
 import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
@@ -32,7 +32,7 @@ public class LayoutDirectiveTest {
     void testOrgDirective() {
         // Arrange
         String source = ".ORG 10|20";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), Path.of("")); // KORREKTUR
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), Path.of(""));
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -51,7 +51,7 @@ public class LayoutDirectiveTest {
     void testDirDirective() {
         // Arrange
         String source = ".DIR 1|0";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), Path.of("")); // KORREKTUR
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), Path.of(""));
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -71,7 +71,7 @@ public class LayoutDirectiveTest {
     void testPlaceDirective() {
         // Arrange
         String source = ".PLACE DATA:100 5|-5";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), Path.of("")); // KORREKTUR
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), Path.of(""));
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -82,6 +82,7 @@ public class LayoutDirectiveTest {
 
         PlaceNode placeNode = (PlaceNode) ast.get(0);
         assertThat(placeNode.literal()).isInstanceOf(TypedLiteralNode.class);
-        assertThat(placeNode.position()).isInstanceOf(VectorLiteralNode.class);
+        assertThat(placeNode.placements()).hasSize(1);
+        assertThat(placeNode.placements().get(0)).isInstanceOf(VectorPlacementNode.class);
     }
 }

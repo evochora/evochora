@@ -394,7 +394,12 @@ Directives are special commands that instruct the compiler on how to assemble th
 
 * `.ORG <Vector>`: Sets the starting coordinate for the following code. In the main source file, this coordinate is absolute. Inside a file included via `.INCLUDE`, the coordinate is **relative** to the position where the `.INCLUDE` directive was invoked.
 * `.DIR <Vector>`: Sets the direction in which the compiler places subsequent instructions. This is always an absolute direction vector. When an included file finishes, the direction is restored to what it was before the include.
-* `.PLACE <Literal> <Vector>`: Places a molecule with the specified `<Literal>` value at a coordinate relative to the current origin.
+* `.PLACE <Literal> <Placement> [, <Placement> ...]`: Places one or more molecules with the specified `<Literal>` value at various coordinates. The coordinates are relative to the current origin (`.ORG`). Multiple placements can be specified on a single line, separated by commas. A `<Placement>` can be one of the following:
+  * **Vector Literal**: A standard vector like `10|20` places a single molecule.
+  * **Range**: A range like `1..10|20` places molecules along a line.
+  * **2D Range**: A range like `1..10|20..30` places molecules in a rectangular area.
+  * **Stepped Range**: A range like `10:2:20|5` places molecules at every second position.
+  * **Wildcard**: A wildcard `*` can be used to fill an entire dimension. For example, `*|5` places molecules in every cell of row 5. Using a wildcard requires a compilation context (i.e., compiling with `EnvironmentProperties`).
 
 ### Macros
 

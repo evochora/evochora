@@ -25,7 +25,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * program artifact and the current organism state.
  * This is a unit test and does not require external resources.
  */
+import org.evochora.runtime.model.EnvironmentProperties;
+
 class SourceAnnotatorTest {
+
+    private final EnvironmentProperties testEnvProps = new EnvironmentProperties(new int[]{100, 100}, true);
 
     @BeforeAll
     static void init() {
@@ -52,7 +56,7 @@ class SourceAnnotatorTest {
                 "  JMPI START"
         );
         Compiler compiler = new Compiler();
-        ProgramArtifact artifact = compiler.compile(List.of(source.split("\n")), "annotator_test.s");
+        ProgramArtifact artifact = compiler.compile(List.of(source.split("\n")), "annotator_test.s", testEnvProps);
 
         // Erstelle einen rohen Organismus-Zustand, bei dem %DR0 einen Wert hat
         RawOrganismState organismState = new RawOrganismState(
@@ -165,7 +169,7 @@ class SourceAnnotatorTest {
                 "  JMPI START"
         );
         Compiler compiler = new Compiler();
-        ProgramArtifact artifact = compiler.compile(List.of(source.split("\n")), "proc_call_test.s");
+        ProgramArtifact artifact = compiler.compile(List.of(source.split("\n")), "proc_call_test.s", testEnvProps);
 
         // Debug: Print what's in the artifact
         System.out.println("=== DEBUG INFO ===");

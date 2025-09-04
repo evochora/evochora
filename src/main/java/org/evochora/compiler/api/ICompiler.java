@@ -1,5 +1,6 @@
 package org.evochora.compiler.api;
 
+import org.evochora.runtime.model.EnvironmentProperties;
 import java.util.List;
 
 /**
@@ -18,14 +19,14 @@ public interface ICompiler {
     ProgramArtifact compile(List<String> sourceLines, String programName) throws CompilationException;
 
     /**
-     * Compiles with explicit world dimensions for vector/label argument sizing.
+     * Compiles with explicit environment context.
      * @param sourceLines A list of strings representing the lines of the main source code.
      * @param programName A name for the program, used for debugging purposes.
-     * @param worldDimensions The number of dimensions in the target world (e.g., 2 for 2D, 3 for 3D).
+     * @param envProps The environment properties, providing context like world dimensions. Can be null.
      * @return A {@link ProgramArtifact} containing the compiled program and all associated metadata.
      * @throws CompilationException if errors occur during the compilation process.
      */
-    ProgramArtifact compile(List<String> sourceLines, String programName, int worldDimensions) throws CompilationException;
+    ProgramArtifact compile(List<String> sourceLines, String programName, EnvironmentProperties envProps) throws CompilationException;
 
     /**
      * Sets the verbosity level for log output.

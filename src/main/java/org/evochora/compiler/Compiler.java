@@ -5,6 +5,7 @@ import org.evochora.compiler.api.ICompiler;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.Parser;
@@ -49,23 +50,25 @@ public class Compiler implements ICompiler {
     /**
      * {@inheritDoc}
      * <p>
-     * This implementation defaults to a 2-dimensional world.
+     * This implementation performs a context-free compilation, which is suitable
+     * for syntax validation but will fail if context-dependent directives like
+     * .ORG or .PLACE with wildcards are used.
      */
     @Override
     public ProgramArtifact compile(List<String> sourceLines, String programName) throws CompilationException {
-        return compile(sourceLines, programName, 2);
+        return compile(sourceLines, programName, null);
     }
 
     /**
-     * Compiles the given source code into a program artifact.
+     * Compiles the given source code into a program artifact with environment context.
      *
      * @param sourceLines The lines of source code to compile.
      * @param programName The name of the program, used for diagnostics and artifact metadata.
-     * @param worldDimensions The number of dimensions in the target world (e.g., 2 for 2D, 3 for 3D).
+     * @param envProps The environment properties, providing context like world dimensions. Can be null.
      * @return The compiled program artifact.
      * @throws CompilationException if any errors occur during compilation.
      */
-    public ProgramArtifact compile(List<String> sourceLines, String programName, int worldDimensions) throws CompilationException {
+    public ProgramArtifact compile(List<String> sourceLines, String programName, EnvironmentProperties envProps) throws CompilationException {
 
         if (verbosity >= 0) {
             org.evochora.compiler.diagnostics.CompilerLogger.setLevel(verbosity);
@@ -182,12 +185,12 @@ public class Compiler implements ICompiler {
 
         // Phase 9: Layout (assign addresses to instructions)
         LayoutEngine layoutEngine = new LayoutEngine();
-        LayoutResult layout = layoutEngine.layout(rewrittenIr, new RuntimeInstructionSetAdapter(), worldDimensions);
+        LayoutResult layout = layoutEngine.layout(rewrittenIr, new RuntimeInstructionSetAdapter(), envProps);
 
         // Phase 10: Linking (resolve cross-references)
         LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults(symbolTable);
         Linker linker = new Linker(linkingRegistry);
-        IrProgram linkedIr = linker.link(rewrittenIr, layout, linkingContext, worldDimensions);
+        IrProgram linkedIr = linker.link(rewrittenIr, layout, linkingContext, envProps);
 
         // Phase 11: Emission (generate final binary)
         Emitter emitter = new Emitter();

@@ -11,6 +11,14 @@ public enum TokenType {
     HASH,
     /** The ':' character, used for labels and typed literals. */
     COLON,
+    /** The '*' character, used as a wildcard. */
+    STAR,
+    /** The ',' character, used as a separator. */
+    COMMA,
+
+    // Two-character tokens
+    /** The '..' character, used for ranges. */
+    DOT_DOT,
 
     // Literals.
     /** An identifier, such as a variable or label name. */

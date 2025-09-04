@@ -58,8 +58,18 @@ public class Lexer {
         char c = advance();
         switch (c) {
             case '"': string(); break;
+            case ',': addToken(TokenType.COMMA); break;
             case '|': addToken(TokenType.PIPE); break;
             case ':': addToken(TokenType.COLON); break;
+            case '*': addToken(TokenType.STAR); break;
+            case '.':
+                if (peek() == '.') {
+                    advance(); // Consume the second dot
+                    addToken(TokenType.DOT_DOT);
+                } else {
+                    identifier();
+                }
+                break;
             case '#':
                 // A comment goes until the end of the line.
                 while (peek() != '\n' && !isAtEnd()) advance();
