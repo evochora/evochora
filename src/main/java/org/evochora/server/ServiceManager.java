@@ -341,10 +341,40 @@ public final class ServiceManager {
                 skipProgramArtefact = config.pipeline.simulation.skipProgramArtefact;
             }
             
-            SimulationEngine engine = new SimulationEngine(queue, config.simulation.environment.shape, config.simulation.environment.toroidal, null, null, null, skipProgramArtefact);
+            // Create EnvironmentProperties from config
+            org.evochora.runtime.model.EnvironmentProperties envProps = new org.evochora.runtime.model.EnvironmentProperties(
+                config.simulation.environment.shape, 
+                config.simulation.environment.toroidal
+            );
+            
+            // Create organism placements from configuration
+            java.util.List<org.evochora.server.engine.OrganismPlacement> organismPlacements = createOrganismPlacements(config);
+            
+            // Create energy strategies
+            java.util.List<org.evochora.runtime.worldgen.IEnergyDistributionCreator> energyStrategies = new java.util.ArrayList<>();
+            if (config.simulation.energyStrategies != null) {
+                for (SimulationConfiguration.EnergyStrategyConfig strategyConfig : config.simulation.energyStrategies) {
+                    try {
+                        org.evochora.runtime.internal.services.IRandomProvider prov = 
+                            new org.evochora.runtime.internal.services.SeededRandomProvider(0L);
+                        energyStrategies.add(org.evochora.runtime.worldgen.EnergyStrategyFactory.create(
+                            strategyConfig.type, strategyConfig.params, prov));
+                    } catch (Exception e) {
+                        log.warn("Failed to create energy strategy {}: {}", strategyConfig.type, e.getMessage());
+                    }
+                }
+            }
+            
+            // Create SimulationEngine with new API
+            SimulationEngine engine = new SimulationEngine(
+                queue, 
+                envProps,
+                organismPlacements,
+                energyStrategies,
+                skipProgramArtefact
+            );
+            
             engine.setSeed(config.simulation.seed);
-            engine.setOrganismDefinitions(config.simulation.organisms);
-            engine.setEnergyStrategies(config.simulation.energyStrategies);
             
             // Set auto-pause configuration if available
             if (config.pipeline.simulation != null && config.pipeline.simulation.autoPauseTicks != null) {
@@ -393,6 +423,77 @@ public final class ServiceManager {
         }
     }
     
+    /**
+     * Creates organism placements from the configuration.
+     * This method reads the organism configuration, compiles the assembly programs,
+     * and creates OrganismPlacement objects for the simulation.
+     */
+    private java.util.List<org.evochora.server.engine.OrganismPlacement> createOrganismPlacements(SimulationConfiguration config) {
+        java.util.List<org.evochora.server.engine.OrganismPlacement> placements = new java.util.ArrayList<>();
+        
+        if (config.simulation == null || config.simulation.organisms == null) {
+            log.info("No organisms configured in simulation");
+            return placements;
+        }
+        
+        log.info("Creating {} organism placements from configuration", config.simulation.organisms.size());
+        
+        for (SimulationConfiguration.OrganismConfig organismConfig : config.simulation.organisms) {
+            try {
+                // Read and compile the assembly program
+                // Handle relative paths by looking in the project root directory
+                java.nio.file.Path programPath;
+                if (java.nio.file.Paths.get(organismConfig.program).isAbsolute()) {
+                    programPath = java.nio.file.Paths.get(organismConfig.program);
+                } else {
+                    // Try relative to current working directory first
+                    programPath = java.nio.file.Paths.get(organismConfig.program);
+                    if (!java.nio.file.Files.exists(programPath)) {
+                        // If not found, try relative to project root (where config.jsonc is located)
+                        programPath = java.nio.file.Paths.get("src/main/resources", organismConfig.program);
+                    }
+                }
+                
+                if (!java.nio.file.Files.exists(programPath)) {
+                    throw new java.io.FileNotFoundException("Assembly program not found: " + organismConfig.program + 
+                        " (tried: " + java.nio.file.Paths.get(organismConfig.program) + 
+                        " and " + java.nio.file.Paths.get("src/main/resources", organismConfig.program) + ")");
+                }
+                
+                java.util.List<String> sourceLines = java.nio.file.Files.readAllLines(programPath);
+                
+                // Initialize the instruction set before compiling
+                org.evochora.runtime.isa.Instruction.init();
+                
+                org.evochora.compiler.Compiler compiler = new org.evochora.compiler.Compiler();
+                org.evochora.compiler.api.ProgramArtifact artifact = compiler.compile(sourceLines, organismConfig.id);
+                
+                // Create placements for each position
+                if (organismConfig.placement != null && organismConfig.placement.positions != null) {
+                    for (int[] position : organismConfig.placement.positions) {
+                        org.evochora.server.engine.OrganismPlacement placement = org.evochora.server.engine.OrganismPlacement.of(
+                            artifact,
+                            organismConfig.initialEnergy,
+                            position,
+                            organismConfig.id
+                        );
+                        placements.add(placement);
+                        log.info("Created organism placement: {} at position {} with energy {}", 
+                                organismConfig.id, java.util.Arrays.toString(position), organismConfig.initialEnergy);
+                    }
+                } else {
+                    log.warn("No placement positions configured for organism: {}", organismConfig.id);
+                }
+                
+            } catch (Exception e) {
+                log.error("Failed to create organism placement for {}: {}", organismConfig.id, e.getMessage(), e);
+            }
+        }
+        
+        log.info("Successfully created {} organism placements", placements.size());
+        return placements;
+    }
+
     private void startDebugServer() {
         if (debugServer.get() == null || !serverRunning.get()) {
             String debugDbPath;

@@ -50,7 +50,8 @@ public final class PersistenceService implements IControllable, Runnable {
     private long startTime = System.currentTimeMillis(); // Added for TPS calculation
 
     private PreparedStatement tickInsertStatement;
-    private int batchCount = 0;
+    private int batchCount = 0; // Count of ticks in current batch
+    private int actualBatchCount = 0; // Count of actual batches executed
 
     public PersistenceService(ITickMessageQueue queue) {
         this(queue, null, null, 1000);
@@ -122,6 +123,7 @@ public final class PersistenceService implements IControllable, Runnable {
                 // Execute any remaining batch operations before closing
                 if (tickInsertStatement != null && batchCount % batchSize != 0) {
                     tickInsertStatement.executeBatch();
+                    actualBatchCount++; // Increment actual batch count
                     log.debug("Executed final batch of {} ticks during shutdown", batchCount % batchSize);
                 }
                 closeQuietly();
@@ -150,6 +152,7 @@ public final class PersistenceService implements IControllable, Runnable {
                 // Execute any remaining batch operations before closing
                 if (tickInsertStatement != null && batchCount % batchSize != 0) {
                     tickInsertStatement.executeBatch();
+                    actualBatchCount++; // Increment actual batch count
                     log.debug("Executed final batch of {} ticks during force shutdown", batchCount % batchSize);
                 }
                 closeQuietly();
@@ -175,6 +178,8 @@ public final class PersistenceService implements IControllable, Runnable {
     public long getLastPersistedTick() { return lastPersistedTick; }
     public long getCurrentTick() { return lastPersistedTick; }
     public String getJdbcUrl() { return jdbcUrlInUse; }
+    public int getBatchCount() { return actualBatchCount; }
+    public int getBatchSize() { return batchSize; }
 
     private double calculateTPS() {
         long currentTime = System.currentTimeMillis();
@@ -229,36 +234,50 @@ public final class PersistenceService implements IControllable, Runnable {
         // lastTPS = 0.0; // Removed
     }
 
+    /**
+     * Creates an optimized database connection with PRAGMA settings.
+     * This method is used both for initial setup and for reconnecting after connection loss.
+     * 
+     * @return A configured database connection with performance optimizations
+     * @throws Exception if connection creation fails
+     */
+    private Connection createOptimizedConnection() throws Exception {
+        String jdbcUrl;
+        
+        if (jdbcUrlOverride != null && !jdbcUrlOverride.isBlank()) {
+            jdbcUrl = jdbcUrlOverride;
+        } else {
+            // Only create new database if we don't have one yet
+            if (dbFilePath == null) {
+                Path runsDir = Paths.get(Config.RUNS_DIRECTORY);
+                Files.createDirectories(runsDir);
+                String ts = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+                // NEUER DATEINAME
+                dbFilePath = runsDir.resolve("sim_run_" + ts + "_raw.sqlite");
+            }
+            jdbcUrl = "jdbc:sqlite:" + dbFilePath.toAbsolutePath();
+        }
+        
+        // Create connection
+        Connection conn = DriverManager.getConnection(jdbcUrl);
+        
+        // Apply performance optimizations
+        try (Statement st = conn.createStatement()) {
+            st.execute("PRAGMA journal_mode=WAL"); // Write-Ahead Logging for better concurrency
+            st.execute("PRAGMA synchronous=NORMAL"); // Faster writes
+            st.execute("PRAGMA cache_size=10000"); // Larger cache
+            st.execute("PRAGMA temp_store=MEMORY"); // Use memory for temp tables
+        }
+        
+        return conn;
+    }
+
     private void setupDatabase() {
         try {
-            if (jdbcUrlOverride != null && !jdbcUrlOverride.isBlank()) {
-                jdbcUrlInUse = jdbcUrlOverride;
-                dbFilePath = null;
-                connection = DriverManager.getConnection(jdbcUrlInUse);
-            } else {
-                // Only create new database if we don't have one yet
-                if (dbFilePath == null) {
-                    Path runsDir = Paths.get(Config.RUNS_DIRECTORY);
-                    Files.createDirectories(runsDir);
-                    String ts = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-                    // NEUER DATEINAME
-                    dbFilePath = runsDir.resolve("sim_run_" + ts + "_raw.sqlite");
-                    jdbcUrlInUse = "jdbc:sqlite:" + dbFilePath.toAbsolutePath();
-                    
-                    // Add performance hints for SQLite
-                    connection = DriverManager.getConnection(jdbcUrlInUse);
-                    try (Statement st = connection.createStatement()) {
-                        st.execute("PRAGMA journal_mode=WAL"); // Write-Ahead Logging for better concurrency
-                        st.execute("PRAGMA synchronous=NORMAL"); // Faster writes
-                        st.execute("PRAGMA cache_size=10000"); // Larger cache
-                        st.execute("PRAGMA temp_store=MEMORY"); // Use memory for temp tables
-                    }
-                } else {
-                    // Reuse existing database
-                    jdbcUrlInUse = "jdbc:sqlite:" + dbFilePath.toAbsolutePath();
-                    connection = DriverManager.getConnection(jdbcUrlInUse);
-                }
-            }
+            connection = createOptimizedConnection();
+            jdbcUrlInUse = jdbcUrlOverride != null ? jdbcUrlOverride : 
+                          "jdbc:sqlite:" + dbFilePath.toAbsolutePath();
+            
             try (Statement st = connection.createStatement()) {
                 // NEUES SCHEMA
                 st.execute("CREATE TABLE IF NOT EXISTS program_artifacts (program_id TEXT PRIMARY KEY, artifact_json TEXT)");
@@ -286,6 +305,7 @@ public final class PersistenceService implements IControllable, Runnable {
             if (tickInsertStatement != null) {
                 if (batchCount % batchSize != 0) { // Use batchSize here
                     tickInsertStatement.executeBatch();
+                    actualBatchCount++; // Increment actual batch count
                 }
                 tickInsertStatement.close();
                 tickInsertStatement = null;
@@ -339,8 +359,9 @@ public final class PersistenceService implements IControllable, Runnable {
                         // Reopen database connection since it was closed during auto-pause
                         if (connection == null || connection.isClosed()) {
                             log.debug("Reopening database connection after auto-pause");
-                            setupDatabase();
+                            connection = createOptimizedConnection();
                             batchCount = 0;
+                            actualBatchCount = 0; // Reset actual batch count
                             // Reset the prepared statement since we have a new connection
                             tickInsertStatement = null;
                         }
@@ -352,8 +373,9 @@ public final class PersistenceService implements IControllable, Runnable {
                 // Check if we need to reconnect after manual pause resume
                 if (connection == null || connection.isClosed()) {
                     log.debug("Reconnecting to database after manual pause resume");
-                    setupDatabase();
+                    connection = createOptimizedConnection();
                     batchCount = 0;
+                    actualBatchCount = 0; // Reset actual batch count
                     // Reset the prepared statement since we have a new connection
                     tickInsertStatement = null;
                 }
@@ -411,6 +433,7 @@ public final class PersistenceService implements IControllable, Runnable {
                                 if (tickInsertStatement != null && batchCount % batchSize != 0) {
                                     try {
                                         tickInsertStatement.executeBatch();
+                                        actualBatchCount++; // Increment actual batch count
                                         log.debug("Executed final batch of {} ticks before pause", batchCount % batchSize);
                                     } catch (Exception e) {
                                         log.warn("Error executing final batch before pause: {}", e.getMessage());
@@ -442,6 +465,7 @@ public final class PersistenceService implements IControllable, Runnable {
                             try {
                                 int remainingCount = batchCount % batchSize;
                                 int[] result = tickInsertStatement.executeBatch();
+                                actualBatchCount++; // Increment actual batch count
                                 log.debug("Executed final batch of {} ticks before auto-pause, result: {}", remainingCount, java.util.Arrays.toString(result));
                                 tickInsertStatement.clearBatch();
                                 batchCount = 0; // Reset batch counter after execution
@@ -503,8 +527,9 @@ public final class PersistenceService implements IControllable, Runnable {
                             // Reopen database connection since it was closed during auto-pause
                             if (connection == null || connection.isClosed()) {
                                 log.debug("Reopening database connection after auto-pause");
-                                setupDatabase();
+                                connection = createOptimizedConnection();
                                 batchCount = 0;
+                                actualBatchCount = 0; // Reset actual batch count
                                 // Reset the prepared statement since we have a new connection
                                 tickInsertStatement = null;
                             }
@@ -562,7 +587,7 @@ public final class PersistenceService implements IControllable, Runnable {
             // Ensure database connection is available
             if (connection == null || connection.isClosed()) {
                 log.debug("Database connection not available, reopening...");
-                setupDatabase();
+                connection = createOptimizedConnection();
                 // Reset the prepared statement since we have a new connection
                 tickInsertStatement = null;
             }
@@ -583,8 +608,12 @@ public final class PersistenceService implements IControllable, Runnable {
             // Execute batch every 1000 ticks for optimal performance
             if (++batchCount % batchSize == 0) {
                 int[] result = tickInsertStatement.executeBatch();
+                actualBatchCount++; // Increment actual batch count
                 log.debug("Executed batch of {} ticks, result: {}", batchSize, java.util.Arrays.toString(result));
-                tickInsertStatement.clearBatch();
+                // Only clear batch if statement still exists (avoid race condition during shutdown)
+                if (tickInsertStatement != null) {
+                    tickInsertStatement.clearBatch();
+                }
             }
             
             lastPersistedTick = rts.tickNumber();

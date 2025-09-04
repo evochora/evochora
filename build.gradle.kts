@@ -65,7 +65,9 @@ tasks.register<Jar>("cliJar") {
 }
 
 tasks.test {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags("benchmark") // Exclude benchmark tests from regular test runs
+    }
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     finalizedBy(tasks.jacocoTestReport)
     testLogging {
@@ -73,7 +75,7 @@ tasks.test {
         showStandardStreams = true
     }
     include("org/evochora/**")
-    // Läuft alle Tests (wie vorher) - für CI/CD und vollständige Test-Suite
+    // Läuft alle Tests außer Benchmarks - für CI/CD und vollständige Test-Suite
 }
 
 // Unit Tests - Fast, isolated tests without external dependencies
@@ -103,6 +105,22 @@ tasks.register<Test>("integration") {
         events("passed", "skipped", "failed")
         showStandardStreams = true
     }
+}
+
+// Benchmark Tests - Performance tests, run only when explicitly requested
+tasks.register<Test>("benchmark") {
+    group = "verification"
+    description = "Run benchmark tests for performance measurement"
+    useJUnitPlatform {
+        includeTags("benchmark")
+    }
+    maxParallelForks = 1 // Benchmarks should run sequentially for accurate measurements
+    jvmArgs("-Duser.language=en", "-Duser.country=US", "-Xmx2g") // Increased heap size for benchmarks
+    testLogging {
+        events("passed", "skipped", "failed")
+        showStandardStreams = true
+    }
+    // Benchmarks are excluded from regular test runs and CI/CD
 }
 
 tasks.jacocoTestReport {

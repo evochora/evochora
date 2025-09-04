@@ -61,8 +61,8 @@ public class LocationInstruction extends Instruction {
                 break;
             }
             case "DPLR": {
-                if (ops.size() != 1) { org.instructionFailed("DPLR expects <LR_Index>"); return; }
-                int lrIdx = Molecule.fromInt((Integer) ops.get(0).value()).toScalarValue();
+                if (ops.size() != 1) { org.instructionFailed("DPLR expects %LR<Index>"); return; }
+                int lrIdx = ops.get(0).rawSourceId();
                 org.setLr(lrIdx, org.getActiveDp());
                 break;
             }
@@ -71,8 +71,8 @@ public class LocationInstruction extends Instruction {
                 break;
             }
             case "SKLR": {
-                if (ops.size() != 1) { org.instructionFailed("SKLR expects <LR_Index>"); return; }
-                int lrIdx = Molecule.fromInt((Integer) ops.get(0).value()).toScalarValue();
+                if (ops.size() != 1) { org.instructionFailed("SKLR expects %LR<Index>"); return; }
+                int lrIdx = ops.get(0).rawSourceId();
                 int[] target = org.getLr(lrIdx);
                 if (target == null) { org.instructionFailed("Invalid LR index"); return; }
                 org.setActiveDp(target);
@@ -85,33 +85,33 @@ public class LocationInstruction extends Instruction {
                 break;
             }
             case "PUSL": {
-                if (ops.size() != 1) { org.instructionFailed("PUSL expects <LR_Index>"); return; }
-                int lrIdx = Molecule.fromInt((Integer) ops.get(0).value()).toScalarValue();
+                if (ops.size() != 1) { org.instructionFailed("PUSL expects %LR<Index>"); return; }
+                int lrIdx = ops.get(0).rawSourceId();
                 int[] vec = org.getLr(lrIdx);
                 if (vec == null) { org.instructionFailed("Invalid LR index"); return; }
                 org.getLocationStack().push(vec);
                 break;
             }
             case "POPL": {
-                if (ops.size() != 1) { org.instructionFailed("POPL expects <LR_Index>"); return; }
+                if (ops.size() != 1) { org.instructionFailed("POPL expects %LR<Index>"); return; }
                 if (ls.isEmpty()) { org.instructionFailed("POPL on empty LS"); return; }
-                int lrIdx = Molecule.fromInt((Integer) ops.get(0).value()).toScalarValue();
+                int lrIdx = ops.get(0).rawSourceId();
                 int[] vec = ls.pop();
                 org.setLr(lrIdx, vec);
                 break;
             }
             case "LRDR": {
-                if (ops.size() != 2) { org.instructionFailed("LRDR expects <Dest_Reg>, <LR_Index>"); return; }
+                if (ops.size() != 2) { org.instructionFailed("LRDR expects <Dest_Reg>, %LR<Index>"); return; }
                 int destReg = ops.get(0).rawSourceId();
-                int lrIdx = Molecule.fromInt((Integer) ops.get(1).value()).toScalarValue();
+                int lrIdx = ops.get(1).rawSourceId();
                 int[] vec = org.getLr(lrIdx);
                 if (vec == null) { org.instructionFailed("Invalid LR index"); return; }
                 writeOperand(destReg, vec);
                 break;
             }
             case "LRDS": {
-                if (ops.size() != 1) { org.instructionFailed("LRDS expects <LR_Index>"); return; }
-                int lrIdx = Molecule.fromInt((Integer) ops.get(0).value()).toScalarValue();
+                if (ops.size() != 1) { org.instructionFailed("LRDS expects %LR<Index>"); return; }
+                int lrIdx = ops.get(0).rawSourceId();
                 int[] vec = org.getLr(lrIdx);
                 if (vec == null) { org.instructionFailed("Invalid LR index"); return; }
                 org.getDataStack().push(vec);

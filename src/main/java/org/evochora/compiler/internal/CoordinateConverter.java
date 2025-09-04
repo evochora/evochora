@@ -1,5 +1,6 @@
 package org.evochora.compiler.internal;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -62,6 +63,49 @@ public class CoordinateConverter {
      */
     public <V> Map<Integer, V> linearizeMap(Map<int[], V> original) {
         if (original == null) return Map.of();
+        
+        // Prüfe auf Koordinatenkollisionen und sammle Informationen für Fehlermeldung
+        Map<Integer, int[]> linearizedCoords = new HashMap<>();
+        Map<Integer, int[]> collisionCoords = new HashMap<>();
+        
+        for (Map.Entry<int[], V> entry : original.entrySet()) {
+            int[] coord = entry.getKey();
+            int linearized = linearizeCoordinate(coord);
+            if (linearizedCoords.containsKey(linearized)) {
+                int[] existingCoord = linearizedCoords.get(linearized);
+                collisionCoords.put(linearized, existingCoord);
+                // Füge die kollidierende Koordinate hinzu
+                collisionCoords.put(linearized + 1000000, coord); // Offset um beide zu speichern
+            } else {
+                linearizedCoords.put(linearized, coord);
+            }
+        }
+        
+        // Wenn Kollisionen gefunden wurden, werfe eine aussagekräftige Exception
+        if (!collisionCoords.isEmpty()) {
+            StringBuilder errorMsg = new StringBuilder();
+            errorMsg.append("Coordinate collision detected during linearization. ");
+            errorMsg.append("Multiple coordinates map to the same linearized index in toroidal world. ");
+            errorMsg.append("This usually indicates invalid coordinates in the program artifact. ");
+            errorMsg.append("Collisions found: ");
+            
+            boolean first = true;
+            for (Map.Entry<Integer, int[]> entry : collisionCoords.entrySet()) {
+                if (entry.getKey() < 1000000) { // Nur die ursprünglichen Kollisionen
+                    if (!first) errorMsg.append(", ");
+                    int linearized = entry.getKey();
+                    int[] coord1 = entry.getValue();
+                    int[] coord2 = collisionCoords.get(linearized + 1000000);
+                    errorMsg.append(String.format("index %d: [%s] and [%s]", 
+                        linearized, 
+                        java.util.Arrays.toString(coord1), 
+                        java.util.Arrays.toString(coord2)));
+                    first = false;
+                }
+            }
+            
+            throw new IllegalArgumentException(errorMsg.toString());
+        }
         
         return original.entrySet().stream()
             .collect(Collectors.toMap(

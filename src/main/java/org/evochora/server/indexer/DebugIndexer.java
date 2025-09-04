@@ -69,7 +69,7 @@ public class DebugIndexer implements IControllable, Runnable {
         this.rawDbPath = rawDbUrl;
         this.debugDbPath = debugDbUrl;
         this.batchSize = batchSize;
-        this.databaseManager = new DatabaseManager(debugDbUrl);
+        this.databaseManager = new DatabaseManager(debugDbUrl, batchSize);
         this.sourceViewBuilder = new SourceViewBuilder();
         this.instructionBuilder = new InstructionBuilder();
         this.internalStateBuilder = new InternalStateBuilder();
@@ -585,7 +585,7 @@ public class DebugIndexer implements IControllable, Runnable {
      * Used to wake up from pause mode when new ticks arrive.
      */
     private boolean hasNewTicksToProcess() {
-        try (Connection rawConn = databaseManager.createConnection(rawDbPath);
+        try (Connection rawConn = databaseManager.createOptimizedConnection(rawDbPath);
              PreparedStatement countPs = rawConn.prepareStatement(
                      "SELECT COUNT(*) FROM raw_ticks WHERE tick_number >= ?")) {
             countPs.setLong(1, nextTickToProcess);
@@ -608,7 +608,7 @@ public class DebugIndexer implements IControllable, Runnable {
     private void loadInitialData() {
         // Wait for raw database to be available
         while (running.get()) {
-            try (Connection rawConn = databaseManager.createConnection(rawDbPath);
+            try (Connection rawConn = databaseManager.createOptimizedConnection(rawDbPath);
                  Statement st = rawConn.createStatement()) {
                 
                 // First: Wait for raw_ticks table to exist and contain at least one tick
@@ -696,7 +696,7 @@ public class DebugIndexer implements IControllable, Runnable {
      * <p>Database failures are logged as errors but do not stop the process.
      */
     private void writeSimulationMetadata() {
-        try (Connection conn = databaseManager.createConnection(debugDbPath);
+        try (Connection conn = databaseManager.createOptimizedConnection(debugDbPath);
              PreparedStatement ps = conn.prepareStatement(
                 "INSERT OR REPLACE INTO simulation_metadata(key, value) VALUES (?, ?)")) {
             
@@ -743,7 +743,7 @@ public class DebugIndexer implements IControllable, Runnable {
             return;
         }
         
-        try (Connection conn = databaseManager.createConnection(debugDbPath);
+        try (Connection conn = databaseManager.createOptimizedConnection(debugDbPath);
              PreparedStatement ps = conn.prepareStatement(
                 "INSERT OR REPLACE INTO program_artifacts(program_id, artifact_json) VALUES (?, ?)")) {
             
@@ -772,14 +772,7 @@ public class DebugIndexer implements IControllable, Runnable {
      * @return Number of ticks still remaining to be processed, or -1 for error
      */
     private int processNextBatch() {
-        try (Connection rawConn = databaseManager.createConnection(rawDbPath)) {
-            // Apply SQLite performance optimizations
-            try (Statement stmt = rawConn.createStatement()) {
-                stmt.execute("PRAGMA journal_mode=WAL");
-                stmt.execute("PRAGMA synchronous=NORMAL");
-                stmt.execute("PRAGMA cache_size=10000");
-                stmt.execute("PRAGMA temp_store=MEMORY");
-            }
+        try (Connection rawConn = databaseManager.createOptimizedConnection(rawDbPath)) {
             
             // Count available ticks starting from the next one to process
             long totalAvailableTicks = 0;
@@ -922,6 +915,8 @@ public class DebugIndexer implements IControllable, Runnable {
     
     public String getRawDbPath() { return rawDbPath; }
     public String getDebugDbPath() { return debugDbPath; }
+    public int getBatchCount() { return databaseManager.getBatchCount(); }
+    public int getBatchSize() { return batchSize; }
 
     /**
      * Get current queue status for monitoring.

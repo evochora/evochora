@@ -16,6 +16,8 @@ The world of Evochora is a discrete, n-dimensional grid where all interactions t
 
 The environment is structured as a grid with configurable dimensions. Each point on this grid, identified by its coordinates, can hold a single "Molecule".
 
+**Note on Dimensionality Limits**: Some instructions that use bitmasks for direction encoding (such as SPNP, SNT*, B2V, and V2B) are limited to worlds with **n ≤ Config.VALUE_BITS/2 dimensions** due to register size constraints. Each dimension requires 2 bits in the direction bitmask (one for +1, one for -1 direction), limiting the total to half the available value bits.
+
 ### Toroidal Space
 
 The world is toroidal, meaning it wraps around at the edges. An organism moving past the right edge will reappear on the left, and one moving past the top will reappear on the bottom. This creates a continuous space without boundaries.
@@ -249,7 +251,7 @@ Selects a single set bit from a source mask at random. If the source mask is 0, 
 
 #### Scan Passable Neighbors (SPNP)
 
-Scans axis-aligned neighbors around the active DP and returns a bitmask of passable directions. A neighbor is passable if the cell is empty or owned by self or direct parent. For dimension d (0-indexed), bit 2·d indicates the +1 direction, bit 2·d+1 indicates the −1 direction. Supports up to n ≤ 8.
+Scans axis-aligned neighbors around the active DP and returns a bitmask of passable directions. A neighbor is passable if the cell is empty or owned by self or direct parent. For dimension d (0-indexed), bit 2·d indicates the +1 direction, bit 2·d+1 indicates the −1 direction. **Supports up to n ≤ Config.VALUE_BITS/2 dimensions due to bitmask size limitations.**
 
 * `SPNR %MASK_REG`, `SPNS`
   - Register variant writes the mask to `%MASK_REG`.
@@ -258,7 +260,7 @@ Scans axis-aligned neighbors around the active DP and returns a bitmask of passa
 
 #### Scan Neighbors by Type (SNT*)
 
-Scans axis-aligned neighbors around the active DP and returns a bitmask indicating where neighbors match a specific molecule type. For dimension d (0-indexed), bit 2·d indicates the +1 direction, bit 2·d+1 indicates the −1 direction.
+Scans axis-aligned neighbors around the active DP and returns a bitmask indicating where neighbors match a specific molecule type. For dimension d (0-indexed), bit 2·d indicates the +1 direction, bit 2·d+1 indicates the −1 direction. **Supports up to n ≤ Config.VALUE_BITS/2 dimensions due to bitmask size limitations.**
 
 * `SNTR %DEST_REG %TYPE_REG`, `SNTI %DEST_REG <Type_Lit>`, `SNTS`
   - Compares only the molecule type of the neighbor cell; the VALUE is ignored.
@@ -320,13 +322,13 @@ These instructions manage the Location Stack (`LS`) and Location Registers (`%LR
 * `DPLS`: Pushes the active `DP` onto the `LS`. (Cost: 1)
 * `SKLS`: Pops a vector from `LS` and sets it as the active `DP`. (Cost: 1)
 * `LSDS`: Pops a vector from `LS` and pushes it onto the `DS`. (Cost: 1)
-* `DPLR <LR_Index>`: Copies the active `DP` into `%LR<Index>`. (Cost: 1)
-* `SKLR <LR_Index>`: Sets the active `DP` to the vector stored in `%LR<Index>`. (Cost: 1)
-* `PUSL <LR_Index>`: Pushes the vector from `%LR<Index>` onto the `LS`. (Cost: 1)
-* `POPL <LR_Index>`: Pops a vector from `LS` into `%LR<Index>`. (Cost: 1)
-* `LRDR %DEST_REG <LR_Index>`: Copies the vector from `%LR<Index>` into `<%DEST_REG>`. (Cost: 1)
-* `LRDS <LR_Index>`: Pushes the vector from `%LR<Index>` onto the `DS`. (Cost: 1)
-* `LSDR %DEST_REG>`: Copies the top vector from `LS` into `<%DEST_REG>` without popping. (Cost: 1)
+* `DPLR %LR<Index>`: Copies the active `DP` into `%LR<Index>`. (Cost: 1)
+* `SKLR %LR<Index>`: Sets the active `DP` to the vector stored in `%LR<Index>`. (Cost: 1)
+* `PUSL %LR<Index>`: Pushes the vector from `%LR<Index>` onto the `LS`. (Cost: 1)
+* `POPL %LR<Index>`: Pops a vector from `LS` into `%LR<Index>`. (Cost: 1)
+* `LRDR %DEST_REG %LR<Index>`: Copies the vector from `%LR<Index>` into `<%DEST_REG>`. (Cost: 1)
+* `LRDS %LR<Index>`: Pushes the vector from `%LR<Index>` onto the `DS`. (Cost: 1)
+* `LSDR %DEST_REG`: Copies the top vector from `LS` into `<%DEST_REG>` without popping. (Cost: 1)
 
 ### Vector Component Operations
 
@@ -340,7 +342,7 @@ These instructions provide atomic control over the components of a vector, allow
 
 #### Bit to Unit Vector (B2V)
 
-Converts a single-bit direction mask into an n-dimensional unit vector using the convention: for dimension d, bit 2·d = +1 direction, bit 2·d+1 = −1 direction.
+Converts a single-bit direction mask into an n-dimensional unit vector using the convention: for dimension d, bit 2·d = +1 direction, bit 2·d+1 = −1 direction. **Supports up to n ≤ Config.VALUE_BITS/2 dimensions due to bitmask size limitations.**
 
 * `B2VR %VEC_REG %MASK_REG`, `B2VI %VEC_REG <Mask_Lit>`, `B2VS`
   - Fails if the mask is 0 or contains more than one set bit.
@@ -348,7 +350,7 @@ Converts a single-bit direction mask into an n-dimensional unit vector using the
 
 #### Unit Vector to Bit (V2B)
 
-Converts an n-dimensional unit vector into a single-bit direction mask using the same convention as `B2V`: for dimension d, bit 2·d = +1 direction, bit 2·d+1 = −1 direction.
+Converts an n-dimensional unit vector into a single-bit direction mask using the same convention as `B2V`: for dimension d, bit 2·d = +1 direction, bit 2·d+1 = −1 direction. **Supports up to bitmask size limitations.**
 
 * `V2BR %MASK_REG %VEC_REG`, `V2BI %MASK_REG <Vector>`, `V2BS`
   - Fails if the vector is not a unit vector with exactly one non-zero component of magnitude 1.

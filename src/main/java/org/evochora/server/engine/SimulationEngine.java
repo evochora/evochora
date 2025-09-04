@@ -1,19 +1,19 @@
 package org.evochora.server.engine;
 
-import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.server.config.SimulationConfiguration;
 import org.evochora.runtime.Simulation;
-import org.evochora.runtime.internal.services.CallBindingRegistry;
+import org.evochora.runtime.internal.services.IRandomProvider;
+import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.worldgen.IEnergyDistributionCreator;
 import org.evochora.runtime.worldgen.EnergyStrategyFactory;
-import org.evochora.runtime.model.Organism;
 import org.evochora.server.IControllable;
 import org.evochora.server.contracts.ProgramArtifactMessage;
 import org.evochora.server.contracts.raw.RawCellState;
 import org.evochora.server.contracts.raw.RawOrganismState;
 import org.evochora.server.contracts.raw.RawTickState;
 import org.evochora.server.contracts.raw.SerializableProcFrame;
+import org.evochora.server.config.SimulationConfiguration;
 import org.evochora.server.queue.ITickMessageQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,8 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
-import org.evochora.runtime.internal.services.IRandomProvider;
-import org.evochora.runtime.model.Environment;
 
 public class SimulationEngine implements IControllable, Runnable {
 
@@ -36,41 +34,39 @@ public class SimulationEngine implements IControllable, Runnable {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final AtomicBoolean autoPaused = new AtomicBoolean(false);
-    private final int[] worldShape;
-    private final boolean isToroidal;
+    private final org.evochora.runtime.model.EnvironmentProperties environmentProperties;
     private final Logger logger;
     private Simulation simulation;
-    private List<ProgramArtifact> programArtifacts;
-    private List<SimulationConfiguration.OrganismDefinition> organismDefinitions;
+    private List<OrganismPlacement> organismPlacements;
     private List<IEnergyDistributionCreator> energyStrategies;
     private IRandomProvider randomProvider;
     private Long seed = null;
     private long startTime = 0;
     private int[] autoPauseTicks = null; // Configuration for auto-pause ticks
     private int nextAutoPauseIndex = 0; // Index of next auto-pause tick to check
+    private Long maxTicks = null; // Maximum number of ticks to run before stopping (null = no limit)
     
     // TEST FLAG: ProgramArtifact-Funktionalität ein-/ausschalten
     // true = normal (mit ProgramArtifact), false = nur Code platzieren (ohne ProgramArtifact)
     private boolean enableProgramArtifactFeatures = true; // Default-Wert
 
-    public SimulationEngine(ITickMessageQueue queue, int[] worldShape, boolean isToroidal) {
-        this(queue, worldShape, isToroidal, null, null, null);
-    }
-
-    public SimulationEngine(ITickMessageQueue queue, int[] worldShape, boolean isToroidal, List<ProgramArtifact> programArtifacts) {
-        this(queue, worldShape, isToroidal, programArtifacts, null, null);
-    }
-
-    public SimulationEngine(ITickMessageQueue queue, int[] worldShape, boolean isToroidal, List<ProgramArtifact> programArtifacts, List<SimulationConfiguration.OrganismDefinition> organismDefinitions, List<IEnergyDistributionCreator> energyStrategies) {
-        this(queue, worldShape, isToroidal, programArtifacts, organismDefinitions, energyStrategies, false); // Default: ProgramArtifact features enabled
-    }
-    
-    public SimulationEngine(ITickMessageQueue queue, int[] worldShape, boolean isToroidal, List<ProgramArtifact> programArtifacts, List<SimulationConfiguration.OrganismDefinition> organismDefinitions, List<IEnergyDistributionCreator> energyStrategies, boolean skipProgramArtefact) {
+    /**
+     * Creates a new SimulationEngine with the specified configuration.
+     * 
+     * @param queue The message queue for communication with other services
+     * @param environmentProperties The environment configuration (world shape, toroidal setting)
+     * @param organismPlacements The list of organisms to place in the simulation
+     * @param energyStrategies The energy distribution strategies
+     * @param skipProgramArtefact Whether to skip ProgramArtifact features (default: false)
+     */
+    public SimulationEngine(ITickMessageQueue queue, 
+                           org.evochora.runtime.model.EnvironmentProperties environmentProperties,
+                           List<OrganismPlacement> organismPlacements, 
+                           List<IEnergyDistributionCreator> energyStrategies, 
+                           boolean skipProgramArtefact) {
         this.queue = queue;
-        this.worldShape = worldShape != null ? java.util.Arrays.copyOf(worldShape, worldShape.length) : null;
-        this.isToroidal = isToroidal;
-        this.programArtifacts = programArtifacts != null ? new java.util.ArrayList<>(programArtifacts) : new java.util.ArrayList<>();
-        this.organismDefinitions = organismDefinitions != null ? new java.util.ArrayList<>(organismDefinitions) : new java.util.ArrayList<>();
+        this.environmentProperties = environmentProperties;
+        this.organismPlacements = organismPlacements != null ? new java.util.ArrayList<>(organismPlacements) : new java.util.ArrayList<>();
         this.energyStrategies = energyStrategies != null ? new java.util.ArrayList<>(energyStrategies) : new java.util.ArrayList<>();
         this.randomProvider = null;
         this.thread = new Thread(this, "SimulationEngine");
@@ -82,19 +78,30 @@ public class SimulationEngine implements IControllable, Runnable {
         log.info("ProgramArtifact features: {} (skipProgramArtefact={})", 
                 this.enableProgramArtifactFeatures ? "enabled" : "disabled", skipProgramArtefact);
     }
-
-    // Simple constructor for tests
+    
+    /**
+     * Creates a new SimulationEngine with ProgramArtifact features enabled by default.
+     */
+    public SimulationEngine(ITickMessageQueue queue, 
+                           org.evochora.runtime.model.EnvironmentProperties environmentProperties,
+                           List<OrganismPlacement> organismPlacements, 
+                           List<IEnergyDistributionCreator> energyStrategies) {
+        this(queue, environmentProperties, organismPlacements, energyStrategies, false);
+    }
+    
+    /**
+     * Simple constructor for tests with default environment.
+     */
     public SimulationEngine(ITickMessageQueue queue) {
-        this(queue, new int[]{120, 80}, true);
+        this(queue, new org.evochora.runtime.model.EnvironmentProperties(new int[]{120, 80}, true), 
+             new java.util.ArrayList<>(), new java.util.ArrayList<>());
     }
+    
 
-    public void setProgramArtifacts(java.util.List<ProgramArtifact> artifacts) {
-        this.programArtifacts = artifacts == null ? java.util.Collections.emptyList() : artifacts;
-    }
 
-    public void setOrganismDefinitions(SimulationConfiguration.OrganismDefinition[] defs) {
-        this.organismDefinitions = defs != null ? java.util.Arrays.asList(defs) : new java.util.ArrayList<>();
-    }
+
+
+
 
     public void setEnergyStrategies(java.util.List<org.evochora.server.config.SimulationConfiguration.EnergyStrategyConfig> configs) {
         if (configs == null || configs.isEmpty()) {
@@ -142,19 +149,33 @@ public class SimulationEngine implements IControllable, Runnable {
         }
     }
 
+    /**
+     * Sets the maximum number of ticks to run before stopping.
+     * @param maxTicks Maximum number of ticks, or null to disable limit (run indefinitely)
+     */
+    public void setMaxTicks(Long maxTicks) {
+        this.maxTicks = maxTicks;
+        if (maxTicks != null) {
+            log.info("Maximum ticks configured: {}", maxTicks);
+        } else {
+            log.info("Maximum ticks disabled - simulation will run indefinitely");
+        }
+    }
+
     @Override
     public void start() {
         if (running.compareAndSet(false, true)) {
             startTime = System.currentTimeMillis();
-            Environment env = new Environment(worldShape, isToroidal);
+            Environment env = new Environment(environmentProperties);
             simulation = new Simulation(env);
             simulation.setRandomProvider(randomProvider);
             
             String seedInfo = seed != null ? String.valueOf(seed) : "default";
-            String envInfo = worldShape != null ? String.format("[%d, %d]", worldShape[0], worldShape[1]) : "null";
+            String envInfo = environmentProperties != null ? 
+                String.format("[%d, %d]", environmentProperties.getWorldShape()[0], environmentProperties.getWorldShape()[1]) : "null";
             log.info("SimulationEngine: Environment {} toroidal:{} seed:{}", 
                     envInfo,
-                    isToroidal,
+                    environmentProperties.isToroidal(),
                     seedInfo);
             
             thread.start();
@@ -224,28 +245,6 @@ public class SimulationEngine implements IControllable, Runnable {
 
     public Simulation getSimulation() { return simulation; }
 
-    public void step() {
-        if (simulation == null) return;
-        simulation.tick();
-        if (energyStrategies != null && !energyStrategies.isEmpty()) {
-            for (IEnergyDistributionCreator strategy : energyStrategies) {
-                try {
-                    strategy.distributeEnergy(simulation.getEnvironment(), simulation.getCurrentTick());
-                } catch (Exception ex) {
-                    log.warn("Energy strategy execution failed: {}", ex.getMessage());
-                }
-            }
-        }
-        StatusMetricsRegistry.onTick(simulation.getCurrentTick());
-        try {
-            // NEU: Erzeuge rohen Tick-Zustand
-            RawTickState rts = toRawState(simulation);
-            queue.put(rts);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
     /**
      * Checks if the simulation should auto-pause at the current tick.
      * @return true if auto-pause should occur, false otherwise
@@ -299,98 +298,94 @@ public class SimulationEngine implements IControllable, Runnable {
     @Override
     public void run() {
         try {
-            var env = new org.evochora.runtime.model.Environment(this.worldShape, this.isToroidal);
+            var env = new org.evochora.runtime.model.Environment(this.environmentProperties);
             simulation = new Simulation(env); // Always run in debug mode
             if (this.randomProvider == null) {
                 this.randomProvider = new org.evochora.runtime.internal.services.SeededRandomProvider(0L);
             }
             simulation.setRandomProvider(this.randomProvider);
 
-            if (organismDefinitions != null && organismDefinitions.size() > 0) {
-                // Ensure all instructions are registered before first compilation
-                org.evochora.runtime.isa.Instruction.init();
-                
-                Compiler compiler = new Compiler();
+            // Place organisms from OrganismPlacement list
+            if (organismPlacements != null && !organismPlacements.isEmpty()) {
                 java.util.Map<String, ProgramArtifact> artifactsById = new java.util.HashMap<>();
-                int dims = this.worldShape.length;
-                for (SimulationConfiguration.OrganismDefinition def : organismDefinitions) {
-                    if (def == null || def.program == null) continue;
-                    String resBase = "org/evochora/organism/";
-                    String resPath = resBase + def.program;
-                    java.io.InputStream is = SimulationEngine.class.getClassLoader().getResourceAsStream(resPath);
-                    java.util.List<String> lines;
-                    String logicalName = resPath;
-                    if (is != null) {
-                        lines = new java.util.ArrayList<>();
-                        try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(is))) {
-                            String line;
-                            while ((line = reader.readLine()) != null) {
-                                lines.add(line);
-                            }
-                        }
-                    } else {
-                        throw new RuntimeException("Could not load program: " + resPath);
-                    }
-                    
+                
+                for (OrganismPlacement placement : organismPlacements) {
                     try {
-                        ProgramArtifact artifact = compiler.compile(lines, logicalName, dims);
+                        ProgramArtifact artifact = placement.programArtifact();
                         artifactsById.put(artifact.programId(), artifact);
                         
-                        // Create and place organisms based on placement strategy
-                        if (def.placement != null && "fixed".equals(def.placement.strategy) && def.placement.positions != null) {
-                            for (int[] pos : def.placement.positions) {
-                                try {
-                                    // Erstelle zuerst den Organismus, damit wir den ownerId haben
-                                    org.evochora.runtime.model.Organism organism = org.evochora.runtime.model.Organism.create(simulation, pos, def.initialEnergy, simulation.getLogger());
-                                    if (enableProgramArtifactFeatures) {
-                                        organism.setProgramId(artifact.programId());
+                        // Create organism
+                        org.evochora.runtime.model.Organism organism = org.evochora.runtime.model.Organism.create(
+                            simulation, 
+                            placement.startPosition(), 
+                            placement.initialEnergy(), 
+                            simulation.getLogger()
+                        );
+                        
+                        if (enableProgramArtifactFeatures) {
+                            organism.setProgramId(artifact.programId());
+                        }
+                        
+                        simulation.addOrganism(organism);
+                        
+                        // Place code in environment with organism ID as owner
+                        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+                            int[] rel = e.getKey();
+                            int[] abs = new int[placement.startPosition().length];
+                            for (int i = 0; i < placement.startPosition().length; i++) {
+                                abs[i] = placement.startPosition()[i] + rel[i];
+                            }
+                            simulation.getEnvironment().setMolecule(
+                                org.evochora.runtime.model.Molecule.fromInt(e.getValue()), 
+                                organism.getId(), 
+                                abs
+                            );
+                        }
+                        
+                        // Place initial world objects with organism ID as owner
+                        for (Map.Entry<int[], org.evochora.compiler.api.PlacedMolecule> e : artifact.initialWorldObjects().entrySet()) {
+                            int[] rel = e.getKey();
+                            int[] abs = new int[placement.startPosition().length];
+                            for (int i = 0; i < placement.startPosition().length; i++) {
+                                abs[i] = placement.startPosition()[i] + rel[i];
+                            }
+                            org.evochora.compiler.api.PlacedMolecule pm = e.getValue();
+                            simulation.getEnvironment().setMolecule(
+                                new org.evochora.runtime.model.Molecule(pm.type(), pm.value()), 
+                                organism.getId(), 
+                                abs
+                            );
+                        }
+                        
+                        // Register call-site bindings in CallBindingRegistry
+                        if (enableProgramArtifactFeatures) {
+                            org.evochora.runtime.internal.services.CallBindingRegistry registry = 
+                                org.evochora.runtime.internal.services.CallBindingRegistry.getInstance();
+                            for (Map.Entry<Integer, int[]> binding : artifact.callSiteBindings().entrySet()) {
+                                int linearAddress = binding.getKey();
+                                int[] relativeCoord = artifact.linearAddressToCoord().get(linearAddress);
+                                if (relativeCoord != null) {
+                                    int[] absoluteCoord = new int[placement.startPosition().length];
+                                    for (int i = 0; i < placement.startPosition().length; i++) {
+                                        absoluteCoord[i] = placement.startPosition()[i] + relativeCoord[i];
                                     }
-                                    simulation.addOrganism(organism);
-                                    
-                                    // Place code in environment mit ownerId
-                                    for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
-                                        int[] rel = e.getKey();
-                                        int[] abs = new int[pos.length];
-                                        for (int i = 0; i < pos.length; i++) abs[i] = pos[i] + rel[i];
-                                        simulation.getEnvironment().setMolecule(org.evochora.runtime.model.Molecule.fromInt(e.getValue()), organism.getId(), abs);
-                                    }
-                                    
-                                    // Place initial world objects mit ownerId
-                                    for (Map.Entry<int[], org.evochora.compiler.api.PlacedMolecule> e : artifact.initialWorldObjects().entrySet()) {
-                                        int[] rel = e.getKey();
-                                        int[] abs = new int[pos.length];
-                                        for (int i = 0; i < pos.length; i++) abs[i] = pos[i] + rel[i];
-                                        org.evochora.compiler.api.PlacedMolecule pm = e.getValue();
-                                        simulation.getEnvironment().setMolecule(new org.evochora.runtime.model.Molecule(pm.type(), pm.value()), organism.getId(), abs);
-                                    }
-                                    
-                                    // NEU: Registriere die Call-Site-Bindungen im CallBindingRegistry
-                                    if (enableProgramArtifactFeatures) {
-                                        org.evochora.runtime.internal.services.CallBindingRegistry registry = org.evochora.runtime.internal.services.CallBindingRegistry.getInstance();
-                                        for (Map.Entry<Integer, int[]> binding : artifact.callSiteBindings().entrySet()) {
-                                            int linearAddress = binding.getKey();
-                                            int[] relativeCoord = artifact.linearAddressToCoord().get(linearAddress);
-                                            if (relativeCoord != null) {
-                                                int[] absoluteCoord = new int[pos.length];
-                                                for (int i = 0; i < pos.length; i++) {
-                                                    absoluteCoord[i] = pos[i] + relativeCoord[i];
-                                                }
-                                                registry.registerBindingForAbsoluteCoord(absoluteCoord, binding.getValue());
-                                            }
-                                        }
-                                    }
-                                    
-                                    log.info("Created organism {} at position {} with program {}", organism.getId(), java.util.Arrays.toString(pos), def.program);
-                                } catch (Exception e) {
-                                    log.warn("Failed to create organism at position {}: {}", java.util.Arrays.toString(pos), e.getMessage());
+                                    registry.registerBindingForAbsoluteCoord(absoluteCoord, binding.getValue());
                                 }
                             }
                         }
+                        
+                        log.info("Created organism {} at position {} with program {}", 
+                            organism.getId(), 
+                            java.util.Arrays.toString(placement.startPosition()), 
+                            artifact.programId());
+                            
                     } catch (Exception e) {
-                        log.warn("Failed to compile program {}: {}", logicalName, e.getMessage());
+                        log.warn("Failed to create organism at position {}: {}", 
+                            java.util.Arrays.toString(placement.startPosition()), e.getMessage());
                     }
                 }
                 
+                // Set program artifacts in simulation
                 if (enableProgramArtifactFeatures) {
                     simulation.setProgramArtifacts(artifactsById);
                 }
@@ -409,29 +404,6 @@ public class SimulationEngine implements IControllable, Runnable {
                             log.warn("Failed to send ProgramArtifact {} to persistence queue: {}", entry.getKey(), e.getMessage());
                         }
                     }
-                }
-            } else if (programArtifacts != null && !programArtifacts.isEmpty()) {
-                try {
-                    if (enableProgramArtifactFeatures) {
-                        simulation.setProgramArtifacts(this.programArtifacts.stream()
-                                .collect(java.util.stream.Collectors.toMap(ProgramArtifact::programId, pa -> pa, (a, b) -> b)));
-                        
-                        // Send ProgramArtifacts to persistence service
-                        for (ProgramArtifact artifact : this.programArtifacts) {
-                            try {
-                                ProgramArtifactMessage artifactMsg = new ProgramArtifactMessage(artifact.programId(), artifact);
-                                queue.put(artifactMsg);
-                                log.debug("Sent ProgramArtifact {} to persistence queue", artifact.programId());
-                            } catch (InterruptedException e) {
-                                Thread.currentThread().interrupt();
-                                return;
-                            } catch (Exception e) {
-                                log.warn("Failed to send ProgramArtifact {} to persistence queue: {}", artifact.programId(), e.getMessage());
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    log.warn("Failed to setup program artifacts: {}", e.getMessage());
                 }
             }
 
@@ -466,8 +438,26 @@ public class SimulationEngine implements IControllable, Runnable {
                         paused.set(true);
                         continue;
                     }
-                    
+
                     simulation.tick();
+                    
+                    // Check if we've reached the maximum tick limit BEFORE writing the tick
+                    if (maxTicks != null && simulation.getCurrentTick() >= maxTicks) {
+                        log.info("Reached maximum tick limit ({}), stopping simulation", maxTicks);
+                        running.set(false);
+                        break;
+                    }
+                    
+                    // Apply energy distribution strategies AFTER the tick
+                    if (energyStrategies != null && !energyStrategies.isEmpty()) {
+                        for (IEnergyDistributionCreator strategy : energyStrategies) {
+                            try {
+                                strategy.distributeEnergy(simulation.getEnvironment(), simulation.getCurrentTick());
+                            } catch (Exception ex) {
+                                log.warn("Energy strategy execution failed: {}", ex.getMessage());
+                            }
+                        }
+                    }
                     
                     // Always create raw tick state, but throttle simulation if queue is too full
                     RawTickState tickMsg = toRawState(simulation);

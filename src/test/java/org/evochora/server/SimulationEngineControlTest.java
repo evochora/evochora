@@ -1,11 +1,11 @@
 package org.evochora.server;
 
-import org.evochora.server.config.SimulationConfiguration;
 import org.evochora.server.contracts.IQueueMessage;
 import org.evochora.server.contracts.raw.RawTickState;
 import org.evochora.server.engine.SimulationEngine;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import java.util.ArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
@@ -104,7 +105,8 @@ class SimulationEngineControlTest {
     @Tag("integration")
     void simple_start_shutdown_test() throws Exception {
         ITickMessageQueue q = new InMemoryTickQueue();
-        sim = new SimulationEngine(q, new int[]{10, 10}, true); // Small world
+        sim = new SimulationEngine(q, new EnvironmentProperties(new int[]{10, 10}, true), 
+             new ArrayList<>(), new ArrayList<>());
 
         sim.start();
 
@@ -132,7 +134,8 @@ class SimulationEngineControlTest {
     @Tag("integration")
     void start_pause_resume_shutdown_cycle_advances_ticks() throws Exception {
         ITickMessageQueue q = new InMemoryTickQueue();
-        sim = new SimulationEngine(q, new int[]{10, 10}, true); // Much smaller world
+        sim = new SimulationEngine(q, new EnvironmentProperties(new int[]{10, 10}, true), 
+             new ArrayList<>(), new ArrayList<>());
 
         sim.start();
 
@@ -192,7 +195,8 @@ class SimulationEngineControlTest {
     @Tag("integration")
     void minimal_shutdown_test() throws Exception {
         ITickMessageQueue q = new InMemoryTickQueue();
-        sim = new SimulationEngine(q, new int[]{10, 10}, true); // Small world
+        sim = new SimulationEngine(q, new EnvironmentProperties(new int[]{10, 10}, true), 
+             new ArrayList<>(), new ArrayList<>());
 
         sim.start();
 
@@ -218,7 +222,8 @@ class SimulationEngineControlTest {
     @Tag("integration")
     void immediate_shutdown_test() throws Exception {
         ITickMessageQueue q = new InMemoryTickQueue();
-        sim = new SimulationEngine(q, new int[]{5, 5}, true); // Very small world
+        sim = new SimulationEngine(q, new EnvironmentProperties(new int[]{5, 5}, true), 
+             new ArrayList<>(), new ArrayList<>());
 
         sim.start();
 

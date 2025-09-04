@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.sql.Statement;
 
 /**
@@ -17,14 +18,53 @@ public class DatabaseManager {
     private static final Logger log = LoggerFactory.getLogger(DatabaseManager.class);
     
     private final String debugDbPath;
+    private final int batchSize;
     private Connection connection;
     private PreparedStatement tickInsertStatement;
-    private int batchCount = 0;
+    private int batchCount = 0; // Count of ticks in current batch
+    private int actualBatchCount = 0; // Count of actual batches executed
     
     public DatabaseManager(String debugDbPath) {
-        this.debugDbPath = debugDbPath;
+        this(debugDbPath, 1000); // Default batch size for backward compatibility
     }
     
+    public DatabaseManager(String debugDbPath, int batchSize) {
+        this.debugDbPath = debugDbPath;
+        this.batchSize = batchSize;
+    }
+    
+    /**
+     * Creates an optimized database connection with PRAGMA settings.
+     * This method is used for all database connections to ensure consistent performance optimizations.
+     * 
+     * @param pathOrUrl The database path or JDBC URL
+     * @return A configured database connection with performance optimizations
+     * @throws Exception if connection creation fails
+     */
+    public Connection createOptimizedConnection(String pathOrUrl) throws Exception {
+        Connection conn;
+        
+        if (pathOrUrl.startsWith("jdbc:")) {
+            conn = DriverManager.getConnection(pathOrUrl);
+        } else if (pathOrUrl.contains("memdb_") || pathOrUrl.contains("test_")) {
+            // This is a test database, use in-memory mode
+            conn = DriverManager.getConnection("jdbc:sqlite:file:" + pathOrUrl + "?mode=memory&cache=shared");
+        } else {
+            // For production file paths, use regular SQLite
+            conn = DriverManager.getConnection("jdbc:sqlite:" + pathOrUrl);
+        }
+        
+        // Apply performance optimizations
+        try (Statement st = conn.createStatement()) {
+            st.execute("PRAGMA journal_mode=WAL"); // Write-Ahead Logging for better concurrency
+            st.execute("PRAGMA synchronous=NORMAL"); // Faster writes
+            st.execute("PRAGMA cache_size=10000"); // Larger cache
+            st.execute("PRAGMA temp_store=MEMORY"); // Use memory for temp tables
+        }
+        
+        return conn;
+    }
+
     /**
      * Creates a database connection for the given path or URL.
      * Handles both JDBC URLs and file paths with appropriate optimizations.
@@ -32,20 +72,11 @@ public class DatabaseManager {
      * @param pathOrUrl The database path or JDBC URL
      * @return A configured database connection
      * @throws Exception if connection creation fails
+     * @deprecated Use createOptimizedConnection() instead for better performance
      */
+    @Deprecated
     public Connection createConnection(String pathOrUrl) throws Exception {
-        if (pathOrUrl.startsWith("jdbc:")) {
-            return DriverManager.getConnection(pathOrUrl);
-        }
-        
-        // For file paths, check if this is a test environment and convert to in-memory
-        if (pathOrUrl.contains("memdb_") || pathOrUrl.contains("test_")) {
-            // This is a test database, use in-memory mode
-            return DriverManager.getConnection("jdbc:sqlite:file:" + pathOrUrl + "?mode=memory&cache=shared");
-        }
-        
-        // For production file paths, use regular SQLite
-        return DriverManager.getConnection("jdbc:sqlite:" + pathOrUrl);
+        return createOptimizedConnection(pathOrUrl);
     }
     
     /**
@@ -55,16 +86,10 @@ public class DatabaseManager {
      * @throws Exception if database setup fails
      */
     public void setupDebugDatabase() throws Exception {
-        connection = createConnection(debugDbPath);
+        connection = createOptimizedConnection(debugDbPath);
         
-        // Add performance hints for SQLite
+        // Create tables
         try (Statement st = connection.createStatement()) {
-            st.execute("PRAGMA journal_mode=WAL"); // Write-Ahead Logging for better concurrency
-            st.execute("PRAGMA synchronous=NORMAL"); // Faster writes
-            st.execute("PRAGMA cache_size=10000"); // Larger cache
-            st.execute("PRAGMA temp_store=MEMORY"); // Use memory for temp tables
-            
-            // Create tables
             st.execute("CREATE TABLE IF NOT EXISTS prepared_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json TEXT)");
             st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
             st.execute("CREATE TABLE IF NOT EXISTS program_artifacts (program_id TEXT PRIMARY KEY, artifact_json TEXT)");
@@ -92,15 +117,54 @@ public class DatabaseManager {
                 "INSERT OR REPLACE INTO prepared_ticks(tick_number, tick_data_json) VALUES (?, ?)");
         }
         
-        tickInsertStatement.setLong(1, tickNumber);
-        tickInsertStatement.setString(2, tickDataJson);
-        tickInsertStatement.addBatch();
+        // Only proceed if statement is still valid
+        if (tickInsertStatement == null) {
+            throw new IllegalStateException("Database statement is not available - database may be closed");
+        }
         
-        // Execute batch every 1000 ticks for optimal performance
-        if (++batchCount % 1000 == 0) {
-            tickInsertStatement.executeBatch();
-            tickInsertStatement.clearBatch();
-            log.debug("Executed batch of 1000 ticks, total processed: {}", batchCount);
+        try {
+            // Check if statement is still valid before using it
+            if (tickInsertStatement != null && tickInsertStatement.isClosed()) {
+                log.warn("Statement is closed, recreating for tick {}", tickNumber);
+                tickInsertStatement = connection.prepareStatement(
+                    "INSERT OR REPLACE INTO prepared_ticks(tick_number, tick_data_json) VALUES (?, ?)");
+            }
+            
+            tickInsertStatement.setLong(1, tickNumber);
+            tickInsertStatement.setString(2, tickDataJson);
+            tickInsertStatement.addBatch();
+        } catch (SQLException e) {
+            log.warn("Failed to add tick {} to batch: {} - statement may be closed", tickNumber, e.getMessage());
+            // Mark statement as invalid to prevent further attempts
+            tickInsertStatement = null;
+            // Mark database as unhealthy since statement is closed
+            throw new IllegalStateException("Database statement is not available - database may be closed", e);
+        }
+        
+        // Execute batch every batchSize ticks for optimal performance
+        if (++batchCount % batchSize == 0) {
+            // Only execute batch if statement still exists and is valid (avoid race condition during shutdown)
+            if (tickInsertStatement != null) {
+                try {
+                    // Check if statement is still valid before executing batch
+                    if (tickInsertStatement.isClosed()) {
+                        log.warn("Statement is closed during batch execution, skipping batch for safety");
+                        tickInsertStatement = null;
+                        return;
+                    }
+                    
+                    tickInsertStatement.executeBatch();
+                    actualBatchCount++; // Increment actual batch count
+                    if (tickInsertStatement != null) { // Added null check here too
+                        tickInsertStatement.clearBatch();
+                    }
+                    log.debug("Executed batch of {} ticks, total processed: {}", batchSize, batchCount);
+                } catch (Exception e) {
+                    log.warn("Failed to execute batch during processing: {} - statement may be closed", e.getMessage());
+                    // Mark statement as invalid to prevent further attempts
+                    tickInsertStatement = null;
+                }
+            }
         }
     }
     
@@ -111,10 +175,23 @@ public class DatabaseManager {
      */
     public void executeRemainingBatch() throws Exception {
         if (tickInsertStatement != null && batchCount > 0) {
-            int[] results = tickInsertStatement.executeBatch();
-            log.debug("Executed final batch of {} ticks, result: {}", batchCount, java.util.Arrays.toString(results));
-            tickInsertStatement.clearBatch();
-            batchCount = 0; // Reset batch counter after execution
+            try {
+                int[] results = tickInsertStatement.executeBatch();
+                actualBatchCount++; // Increment actual batch count
+                log.debug("Executed final batch of {} ticks, result: {}", batchCount, java.util.Arrays.toString(results));
+                // Only clear batch if statement still exists (avoid race condition during shutdown)
+                if (tickInsertStatement != null) {
+                    tickInsertStatement.clearBatch();
+                }
+                batchCount = 0; // Reset batch counter after execution
+                // Note: actualBatchCount is not reset here as it tracks total batches executed
+            } catch (Exception e) {
+                log.warn("Failed to execute remaining batch during shutdown: {} - statement may be closed", e.getMessage());
+                // Mark statement as invalid to prevent further attempts
+                tickInsertStatement = null;
+                batchCount = 0; // Reset batch counter even if execution failed
+                // Note: actualBatchCount is not reset here as it tracks total batches executed
+            }
         }
     }
     
@@ -123,14 +200,18 @@ public class DatabaseManager {
      * Ensures all data is properly flushed and WAL files are released.
      */
     public void closeQuietly() {
+        log.debug("DEBUG: closeQuietly() called - batchCount: {}, statement null: {}", 
+                 batchCount, tickInsertStatement == null);
         try {
             // First, execute any remaining batch operations
             if (tickInsertStatement != null && batchCount > 0) {
+                log.debug("DEBUG: Executing remaining batch before close");
                 // Always execute remaining batch, regardless of batchCount value
                 executeRemainingBatch();
             }
             
             if (tickInsertStatement != null) {
+                log.debug("DEBUG: Closing tickInsertStatement");
                 tickInsertStatement.close();
                 tickInsertStatement = null;
             }
@@ -187,10 +268,10 @@ public class DatabaseManager {
     /**
      * Gets the current batch count for monitoring purposes.
      * 
-     * @return The number of ticks in the current batch
+     * @return The number of actual batches executed
      */
     public int getBatchCount() {
-        return batchCount;
+        return actualBatchCount;
     }
     
     /**

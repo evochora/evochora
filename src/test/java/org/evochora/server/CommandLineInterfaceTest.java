@@ -47,7 +47,7 @@ class CommandLineInterfaceTest {
         config.simulation.environment.shape = new int[]{10, 10};
         config.simulation.environment.toroidal = true;
         config.simulation.seed = 12345L;
-        config.simulation.organisms = new SimulationConfiguration.OrganismDefinition[0];
+
         config.simulation.energyStrategies = new java.util.ArrayList<>();
         
         // Initialize pipeline config

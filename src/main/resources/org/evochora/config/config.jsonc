@@ -9,7 +9,7 @@
     // [OPTIONAL] Environment configuration (default: shape=[120,80], toroidal=true)
     "environment": {
       // [OPTIONAL] Dimensions of the simulation world (default: [120, 80])
-      "shape": [100, 30],
+      "shape": [80, 30],
       // [OPTIONAL] Whether the world wraps around at edges (default: true)
       "toroidal": true
     },
@@ -18,9 +18,9 @@
     "organisms": [
       {
         // [MANDATORY] Unique identifier for this organism type
-        "id": "main",
+        "id": "primordial3",
         // [MANDATORY] Path to the assembly program file for this organism
-        "program": "prototypes/test.s",
+        "program": "org/evochora/organism/prototypes/primordial3.s",
         // [MANDATORY] Initial energy level when organism is created
         "initialEnergy": 5000,
         // [MANDATORY] Placement strategy for organisms
@@ -43,7 +43,7 @@
         // [MANDATORY] Parameters specific to this energy source type
         "params": {
           // [MANDATORY] Number of energy geysers to create
-          "count": 5,
+          "count": 3,
           // [MANDATORY] Interval between energy bursts (in ticks)
           "interval": 10,
           // [MANDATORY] Amount of energy provided per burst
@@ -58,13 +58,13 @@
         // [MANDATORY] Parameters specific to solar energy
         "params": {
           // [MANDATORY] Probability of energy generation per tick (0.0 to 1.0)
-          "probability": 1,
+          "probability": 0.3,
           // [MANDATORY] Amount of energy provided per generation
-          "amount": 500,
+          "amount": 1500,
           // [MANDATORY] Safety radius around organisms
-          "safetyRadius": 2,
+          "safetyRadius": 1,
           // [MANDATORY] Maximum executions per tick
-          "executionsPerTick": 3
+          "executionsPerTick": 1
         }
       }
     ]
@@ -81,7 +81,7 @@
       // [OPTIONAL] Directory path where simulation output files are stored (default: "runs/")
       "outputPath": "runs/",
       // [OPTIONAL] Tick numbers at which simulation should automatically pause (default: null)
-      "autoPauseTicks": [500, 1000],
+      "autoPauseTicks": [5000, 10000, 15000],
       // [OPTIONAL] Whether to skip ProgramArtifact features (default: false)
       "skipProgramArtefact": false
     },

@@ -185,19 +185,29 @@ public class Environment implements IEnvironmentReader {
         if (centerCoord.length != this.shape.length) {
             throw new IllegalArgumentException("Coordinate dimensions do not match world dimensions.");
         }
-        // N-dimensional iteration over a hypercubic area with a given radius
+        
+        // Optimized implementation: reuse arrays and direct array access
         int dims = this.shape.length;
         int[] offsets = new int[dims];
-        for (int i = 0; i < dims; i++) offsets[i] = -radius;
+        int[] checkCoord = new int[dims]; // Reuse this array instead of creating new ones
+        
+        // Initialize offsets
+        for (int i = 0; i < dims; i++) {
+            offsets[i] = -radius;
+        }
 
         while (true) {
-            int[] checkCoord = new int[dims];
+            // Calculate check coordinate by reusing the array
             for (int i = 0; i < dims; i++) {
                 checkCoord[i] = centerCoord[i] + offsets[i];
             }
-            if (getOwnerId(checkCoord) != 0) {
+            
+            // Direct array access instead of getOwnerId() call
+            int flatIndex = getFlatIndex(checkCoord);
+            if (flatIndex != -1 && this.ownerGrid[flatIndex] != 0) {
                 return false;
             }
+            
             // Increment the offsets like a counter from -radius to +radius per dimension
             int dim = dims - 1;
             while (dim >= 0 && offsets[dim] == radius) {

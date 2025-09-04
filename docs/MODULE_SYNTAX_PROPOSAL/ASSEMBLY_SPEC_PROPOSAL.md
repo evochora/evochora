@@ -320,13 +320,13 @@ These instructions manage the Location Stack (`LS`) and Location Registers (`%LR
 * `DPLS`: Pushes the active `DP` onto the `LS`. (Cost: 1)
 * `SKLS`: Pops a vector from `LS` and sets it as the active `DP`. (Cost: 1)
 * `LSDS`: Pops a vector from `LS` and pushes it onto the `DS`. (Cost: 1)
-* `DPLR <LR_Index>`: Copies the active `DP` into `%LR<Index>`. (Cost: 1)
-* `SKLR <LR_Index>`: Sets the active `DP` to the vector stored in `%LR<Index>`. (Cost: 1)
-* `PUSL <LR_Index>`: Pushes the vector from `%LR<Index>` onto the `LS`. (Cost: 1)
-* `POPL <LR_Index>`: Pops a vector from `LS` into `%LR<Index>`. (Cost: 1)
-* `LRDR %DEST_REG <LR_Index>`: Copies the vector from `%LR<Index>` into `<%DEST_REG>`. (Cost: 1)
-* `LRDS <LR_Index>`: Pushes the vector from `%LR<Index>` onto the `DS`. (Cost: 1)
-* `LSDR %DEST_REG>`: Copies the top vector from `LS` into `<%DEST_REG>` without popping. (Cost: 1)
+* `DPLR %LR<Index>`: Copies the active `DP` into `%LR<Index>`. (Cost: 1)
+* `SKLR %LR<Index>`: Sets the active `DP` to the vector stored in `%LR<Index>`. (Cost: 1)
+* `PUSL %LR<Index>`: Pushes the vector from `%LR<Index>` onto the `LS`. (Cost: 1)
+* `POPL %LR<Index>`: Pops a vector from `LS` into `%LR<Index>`. (Cost: 1)
+* `LRDR %DEST_REG %LR<Index>`: Copies the vector from `%LR<Index>` into `<%DEST_REG>`. (Cost: 1)
+* `LRDS %LR<Index>`: Pushes the vector from `%LR<Index>` onto the `DS`. (Cost: 1)
+* `LSDR %DEST_REG`: Copies the top vector from `LS` into `<%DEST_REG>` without popping. (Cost: 1)
 
 ### Vector Component Operations
 

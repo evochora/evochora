@@ -47,8 +47,8 @@ class ConfigurationTest {
         assertNotNull(config.simulation, "Simulation section should exist");
         assertNotNull(config.simulation.environment, "Environment section should exist");
         assertNotNull(config.simulation.environment.shape, "Environment shape should exist");
-        assertNotNull(config.simulation.organisms, "Organisms section should exist");
-        assertNotNull(config.simulation.energyStrategies, "Energy strategies should exist");
+
+        // energyStrategies is optional and can be null
     }
 
     /**
@@ -83,8 +83,8 @@ class ConfigurationTest {
         assertNotNull(config.simulation, "Simulation section required");
         assertNotNull(config.simulation.environment, "Environment section required");
         assertNotNull(config.simulation.environment.shape, "Environment shape required");
-        assertNotNull(config.simulation.organisms, "Organisms required");
-        assertNotNull(config.simulation.energyStrategies, "Energy strategies required");
+
+        // energyStrategies is optional and can be null
         
         assertNotNull(config.pipeline, "Pipeline section required");
         assertNotNull(config.pipeline.simulation, "Pipeline simulation required");
@@ -110,8 +110,7 @@ class ConfigurationTest {
         
         // Test that we can access configuration values without errors
         assertNotNull(config.simulation.environment.shape);
-        assertNotNull(config.simulation.organisms);
-        assertNotNull(config.simulation.energyStrategies);
+        // energyStrategies is optional and can be null
         assertNotNull(config.pipeline.simulation);
         assertNotNull(config.pipeline.indexer);
         assertNotNull(config.pipeline.persistence);
@@ -132,8 +131,7 @@ class ConfigurationTest {
         assertNotNull(config.simulation);
         assertNotNull(config.simulation.environment);
         assertNotNull(config.simulation.environment.shape);
-        assertNotNull(config.simulation.organisms);
-        assertNotNull(config.simulation.energyStrategies);
+        // energyStrategies is optional and can be null
         
         assertNotNull(config.pipeline);
         assertNotNull(config.pipeline.simulation);

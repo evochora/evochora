@@ -10,8 +10,8 @@ public final class SimulationConfiguration {
 
     public static final class SimulationConfig {
         public EnvironmentConfig environment;
-        public OrganismDefinition[] organisms;
         public List<EnergyStrategyConfig> energyStrategies;
+        public List<OrganismConfig> organisms;
         public Long seed;
     }
 
@@ -20,21 +20,23 @@ public final class SimulationConfiguration {
         public boolean toroidal;
     }
 
-    public static final class PlacementConfig {
-        public String strategy; // e.g., "fixed" (only supported for now)
-        public int[][] positions; // array of coordinates
-    }
 
-    public static final class OrganismDefinition {
-        public String id;
-        public String program; // resource path relative to org/evochora/organism/
-        public int initialEnergy;
-        public PlacementConfig placement;
-    }
 
     public static final class EnergyStrategyConfig {
         public String type;
         public Map<String, Object> params;
+    }
+
+    public static final class OrganismConfig {
+        public String id;
+        public String program;
+        public int initialEnergy;
+        public PlacementConfig placement;
+    }
+
+    public static final class PlacementConfig {
+        public String strategy;
+        public List<int[]> positions;
     }
 
     public static final class PipelineConfig {

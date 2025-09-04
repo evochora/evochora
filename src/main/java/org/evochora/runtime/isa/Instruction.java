@@ -262,8 +262,8 @@ public abstract class Instruction {
 
         // Location instruction family registrations
         registerFamily(LocationInstruction.class, Map.of(112, "DUPL", 113, "SWPL", 114, "DRPL", 115, "ROTL", 116, "DPLS", 117, "SKLS", 122, "LSDS"), List.of());
-        registerFamily(LocationInstruction.class, Map.of(118, "DPLR", 120, "SKLR", 121, "PUSL", 123, "LRDS", 125, "POPL"), List.of(OperandSource.IMMEDIATE));
-        registerFamily(LocationInstruction.class, Map.of(124, "LRDR"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(LocationInstruction.class, Map.of(118, "DPLR", 120, "SKLR", 121, "PUSL", 123, "LRDS", 125, "POPL"), List.of(OperandSource.REGISTER));
+        registerFamily(LocationInstruction.class, Map.of(124, "LRDR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(LocationInstruction.class, Map.of(126, "LSDR"), List.of(OperandSource.REGISTER));
 
         // Vector Manipulation Instruction Family
@@ -371,6 +371,10 @@ public abstract class Instruction {
             if (u.startsWith("%FPR")) {
                 int regNum = Integer.parseInt(u.substring(4));
                 return Optional.of(FPR_BASE + regNum);
+            }
+            if (u.startsWith("%LR")) {
+                int regNum = Integer.parseInt(u.substring(3));
+                return Optional.of(regNum); // LR-Register haben direkte Indizes 0-3
             }
         } catch (NumberFormatException ignore) {
             // Falls through to empty Optional if, e.g., "%DR" has no number.
