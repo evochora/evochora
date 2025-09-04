@@ -42,7 +42,7 @@ public class BenchmarkTest {
     private int simulationTicks = 5000;
     private int persistenceBatchSize = 1000;
     private int indexerBatchSize = 1000;
-    private EnvironmentProperties environmentProperties = new EnvironmentProperties(new int[]{20, 20}, true);
+    private EnvironmentProperties environmentProperties = new EnvironmentProperties(new int[]{10, 10}, true);
     
     // ===== TIMEOUT CONFIGURATION =====
     private int simulationReadyTimeoutMs = 5000; // Max wait for simulation to be ready
