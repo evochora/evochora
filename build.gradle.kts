@@ -120,6 +120,8 @@ tasks.register<Test>("benchmark") {
         events("passed", "skipped", "failed")
         showStandardStreams = true
     }
+    // Disable test caching to ensure benchmarks always run
+    outputs.upToDateWhen { false }
     // Benchmarks are excluded from regular test runs and CI/CD
 }
 

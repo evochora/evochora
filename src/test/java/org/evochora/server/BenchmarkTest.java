@@ -237,6 +237,9 @@ public class BenchmarkTest {
      */
     @Test
     void complete_pipeline_benchmark() {
+        // Add a unique test identifier to prevent Gradle from caching this test
+        String testId = java.util.UUID.randomUUID().toString();
+        System.out.println("Starting benchmark test with ID: " + testId);
         // Ensure output directory exists
         try {
             Files.createDirectories(Paths.get(outputDirectory));
@@ -244,10 +247,11 @@ public class BenchmarkTest {
             System.err.println("Warning: Could not create output directory: " + e.getMessage());
         }
         
-        // Create temporary database files
+        // Create temporary database files with unique identifiers
         String timestamp = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-        Path rawDbFile = Paths.get(outputDirectory, "benchmark_" + timestamp + "_raw.db");
-        Path debugDbFile = Paths.get(outputDirectory, "benchmark_" + timestamp + "_debug.db");
+        String uniqueId = testId.substring(0, 8); // Use first 8 characters of UUID
+        Path rawDbFile = Paths.get(outputDirectory, "benchmark_" + timestamp + "_" + uniqueId + "_raw.db");
+        Path debugDbFile = Paths.get(outputDirectory, "benchmark_" + timestamp + "_" + uniqueId + "_debug.db");
         filesToCleanup.add(rawDbFile);
         filesToCleanup.add(debugDbFile);
         
@@ -474,6 +478,9 @@ public class BenchmarkTest {
             }
         } catch (Exception e) {
             System.err.println("Failed to count ticks in raw database: " + e.getMessage());
+        } finally {
+            // Force garbage collection to help with connection cleanup
+            System.gc();
         }
         return 0;
     }
@@ -581,6 +588,27 @@ public class BenchmarkTest {
      */
     @AfterEach
     void cleanup() {
+        // Ensure all services are properly stopped first
+        if (persistenceService != null) {
+            try {
+                persistenceService.shutdown();
+                // Give it time to close database connections
+                Thread.sleep(100);
+            } catch (Exception e) {
+                System.err.println("Error stopping persistence service: " + e.getMessage());
+            }
+        }
+        
+        if (debugIndexer != null) {
+            try {
+                debugIndexer.shutdown();
+                // Give it time to close database connections
+                Thread.sleep(100);
+            } catch (Exception e) {
+                System.err.println("Error stopping debug indexer: " + e.getMessage());
+            }
+        }
+        
         if (!cleanUpDb) {
             System.out.println("Database cleanup disabled - keeping files: " + filesToCleanup);
             return;

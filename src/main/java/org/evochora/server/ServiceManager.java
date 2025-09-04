@@ -348,7 +348,7 @@ public final class ServiceManager {
             );
             
             // Create organism placements from configuration
-            java.util.List<org.evochora.server.engine.OrganismPlacement> organismPlacements = createOrganismPlacements(config);
+            java.util.List<org.evochora.server.engine.OrganismPlacement> organismPlacements = createOrganismPlacements(config, envProps);
             
             // Create energy strategies
             java.util.List<org.evochora.runtime.worldgen.IEnergyDistributionCreator> energyStrategies = new java.util.ArrayList<>();
@@ -428,7 +428,7 @@ public final class ServiceManager {
      * This method reads the organism configuration, compiles the assembly programs,
      * and creates OrganismPlacement objects for the simulation.
      */
-    private java.util.List<org.evochora.server.engine.OrganismPlacement> createOrganismPlacements(SimulationConfiguration config) {
+    private java.util.List<org.evochora.server.engine.OrganismPlacement> createOrganismPlacements(SimulationConfiguration config, EnvironmentProperties envProps) {
         java.util.List<org.evochora.server.engine.OrganismPlacement> placements = new java.util.ArrayList<>();
         
         if (config.simulation == null || config.simulation.organisms == null) {
@@ -466,7 +466,7 @@ public final class ServiceManager {
                 org.evochora.runtime.isa.Instruction.init();
                 
                 org.evochora.compiler.Compiler compiler = new org.evochora.compiler.Compiler();
-                org.evochora.compiler.api.ProgramArtifact artifact = compiler.compile(sourceLines, organismConfig.id);
+                org.evochora.compiler.api.ProgramArtifact artifact = compiler.compile(sourceLines, organismConfig.id, envProps);
                 
                 // Create placements for each position
                 if (organismConfig.placement != null && organismConfig.placement.positions != null) {
