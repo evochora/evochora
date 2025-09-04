@@ -180,6 +180,25 @@ main.container {
     overflow: auto;
     padding: 20px;
     box-sizing: border-box;
+    transition: margin-right 0.3s ease-in-out, padding-right 0.3s ease-in-out;
+}
+
+/* Adjust world container when sidebar is visible */
+.container.sidebar-visible .world-container {
+    margin-right: 550px; /* Same width as sidebar */
+    padding-right: 0px; /* Remove right padding from container */
+    padding-left: 20px; /* Keep left padding */
+    padding-top: 20px; /* Keep top padding */
+    padding-bottom: 20px; /* Keep bottom padding */
+}
+
+/* Add scrollable padding area when sidebar is visible */
+.container.sidebar-visible .world-container::after {
+    content: '';
+    display: block;
+    width: 50px; /* More scrollable space to see the padding area */
+    height: 1px;
+    flex-shrink: 0;
 }
 
 #worldCanvas {

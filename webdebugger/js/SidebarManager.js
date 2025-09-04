@@ -1,7 +1,9 @@
 class SidebarManager {
-    constructor() {
+    constructor(appController) {
         this.sidebar = document.getElementById('sidebar');
         this.toggleBtn = document.getElementById('sidebar-toggle');
+        this.container = document.querySelector('.container');
+        this.appController = appController;
         this.isVisible = false;
         
         // Toggle button event listener
@@ -12,17 +14,24 @@ class SidebarManager {
     
     showSidebar() {
         this.sidebar.classList.add('visible');
+        this.container.classList.add('sidebar-visible');
         this.isVisible = true;
     }
     
-    hideSidebar() {
+    hideSidebar(manual = false) {
         this.sidebar.classList.remove('visible');
+        this.container.classList.remove('sidebar-visible');
         this.isVisible = false;
+        
+        // If manually hidden, deselect the organism to prevent auto-reopening
+        if (manual && this.appController) {
+            this.appController.state.selectedOrganismId = null;
+        }
     }
     
     toggleSidebar() {
         if (this.isVisible) {
-            this.hideSidebar();
+            this.hideSidebar(true); // Manual hide
         } else {
             this.showSidebar();
         }

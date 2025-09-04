@@ -27,7 +27,7 @@ class AppController {
         
         this.renderer = new WorldRenderer(this.canvas, defaultConfig, {});
         this.sidebar = new SidebarView(document.getElementById('sidebar'), this);
-        this.sidebarManager = new SidebarManager();
+        this.sidebarManager = new SidebarManager(this);
         this.toolbar = new ToolbarView(this);
         this.state = { currentTick: 0, selectedOrganismId: null, lastTickData: null, totalTicks: null };
         this.canvas.addEventListener('click', (e) => this.onCanvasClick(e));
@@ -66,6 +66,9 @@ class AppController {
             const data = await this.api.fetchTickData(target);
             this.state.currentTick = target;
             this.state.lastTickData = data;
+            
+            // Reset keyboard events to prevent stuck keys
+            this.resetKeyboardEvents();
             if (typeof data.totalTicks === 'number') {
                 this.state.totalTicks = data.totalTicks;
             }
@@ -137,6 +140,13 @@ class AppController {
             // Fallback: Zeige Fehler in der Konsole
             console.error('Error:', message);
             alert('Fehler: ' + message);
+        }
+    }
+    
+    // Reset keyboard event stack to prevent stuck keys
+    resetKeyboardEvents() {
+        if (this.toolbar && this.toolbar.handleKeyRelease) {
+            this.toolbar.handleKeyRelease();
         }
     }
 }

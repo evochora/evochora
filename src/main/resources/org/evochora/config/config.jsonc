@@ -18,9 +18,9 @@
     "organisms": [
       {
         // [MANDATORY] Unique identifier for this organism type
-        "id": "primordial3",
+        "id": "primordial4",
         // [MANDATORY] Path to the assembly program file for this organism
-        "program": "org/evochora/organism/prototypes/primordial3.s",
+        "program": "org/evochora/organism/prototypes/primordial4.s",
         // [MANDATORY] Initial energy level when organism is created
         "initialEnergy": 5000,
         // [MANDATORY] Placement strategy for organisms
