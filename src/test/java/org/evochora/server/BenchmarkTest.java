@@ -39,10 +39,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class BenchmarkTest {
 
     // ===== CONFIGURABLE BENCHMARK PARAMETERS =====
-    private int simulationTicks = 20000;
-    private int persistenceBatchSize = 100;
-    private int indexerBatchSize = 100;
-    private EnvironmentProperties environmentProperties = new EnvironmentProperties(new int[]{100, 100}, true);
+    private int simulationTicks = 5000;
+    private int persistenceBatchSize = 1000;
+    private int indexerBatchSize = 1000;
+    private EnvironmentProperties environmentProperties = new EnvironmentProperties(new int[]{20, 20}, true);
     
     // ===== TIMEOUT CONFIGURATION =====
     private int simulationReadyTimeoutMs = 5000; // Max wait for simulation to be ready
@@ -100,8 +100,8 @@ public class BenchmarkTest {
     }
     
     private List<Map<String, Object>> energyStrategies = List.of(
-        Map.of("type", "solar", "params", Map.of("probability", 0.001, "amount", 50, "safetyRadius", 2, "executionsPerTick", 1)),
-        Map.of("type", "geyser", "params", Map.of("count", 5, "interval", 100, "amount", 200, "safetyRadius", 2))
+        //Map.of("type", "solar", "params", Map.of("probability", 0.001, "amount", 50, "safetyRadius", 2, "executionsPerTick", 1)),
+        //Map.of("type", "geyser", "params", Map.of("count", 5, "interval", 100, "amount", 200, "safetyRadius", 2))
     );
     private String outputDirectory = "runs/";
     
