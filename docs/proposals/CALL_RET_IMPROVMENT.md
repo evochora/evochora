@@ -1,36 +1,7 @@
 # Implementation Tasks for evochora Compiler and Runtime
 This document outlines three distinct, sequential tasks to enhance the evochora compiler and runtime.
 
-## Task 1: Extend the Instruction Set with Negated Conditionals
-Objective: Implement a set of 14 negated conditional instructions to make the instruction set more orthogonal and to serve as a foundation for fixing bugs related to conditional procedure calls.
-**Requirements:**
-1) **Create New Instructions:** For each of the existing 14 `ConditionalInstruction` types, create a corresponding negated instruction. The new instruction's logic must be the exact opposite of the original. When the original instruction would set the `skipNextInstruction` flag to `true`, the negated version must set it to `false`, and vice-versa.
-
-2) **Naming Convention:** Use the following mapping for the new instruction mnemonics:
-
-    - `IFR`  -> `INR`  (If Not Equal Register)
-    - `IFS`  -> `INS`  (If Not Equal Stack)
-    - `LTR`  -> `GETR` (Less Than Register, Negated -> Greater or Equal)
-    - `LTI`  -> `GETI` (Less Than Immediate, Negated -> Greater or Equal)
-    - `LTS`  -> `GETS` (Less Than Stack, Negated -> Greater or Equal)
-    - `GTR`  -> `LETR` (Greater Than Register, Negated -> Less or Equal)
-    - `GTI`  -> `LETI` (Greater Than Immediate, Negated -> Less or Equal)
-    - `GTS`  -> `LETS` (Greater Than Stack, Negated -> Less or Equal)
-    - `IFTR` -> `INTR` (If Type Register, Negated -> If Not Type)
-    - `IFTI` -> `INTI` (If Type Immediate, Negated -> If Not Type)
-    - `IFTS` -> `INTS` (If Type Stack, Negated -> If Not Type)
-    - `IFMR` -> `INMR` (If Mine Register, Negated -> If Not Mine)
-    - `IFMI` -> `INMI` (If Mine Immediate, Negated -> If Not Mine)
-    - `IFMS` -> `INMS` (If Mine Stack, Negated -> If Not Mine)
-
-3) **Implementation Details:**
-    - Implement these instructions within the `org.evochora.runtime.isa.instructions.ConditionalInstruction` class and register them in the static `init()` method of its super class with a unique ID.
-    - Ensure each new instruction is fully integrated and functional within the VM.
-    - Add corresponding tests to `VMConditionalInstructionTest.java` to verify the logic of each new negated instruction.
-    - All test must pass after the update.
-    - Update ASSEMBLY_SPEC.me to include the new instructions.
-
-## Task 2: Implement REF/VAL Parameter System in Compiler
+## Task: Implement REF/VAL Parameter System in Compiler
 Objective: Overhaul the procedure parameter system to support call-by-reference (REF) and call-by-value (VAL) semantics, allowing literals to be passed as parameters and making the programmer's intent explicit. Support only the new syntax that is described here, the support of the old syntax (WITH) must be removed from the compiler.**Requirements:**1) **Syntax Update (Lexer & Parser):**
 
 - Introduce two new keywords: `REF` and `VAL`.
@@ -68,7 +39,7 @@ Objective: Overhaul the procedure parameter system to support call-by-reference 
 
 7) Update ASSEMBLY_SPEC.me to document new syntax and remove old syntax.
 
-## Task 3: Implement Safe Conditional Procedure Calls and Returns
+## Task: Implement Safe Conditional Procedure Calls and Returns
 
 Objective: Fix the logical error where a conditional instruction preceding a CALL or RET only affects the first machine instruction of the generated sequence (e.g., a PUSH), instead of the entire operation.**Requirements:**1) **Conditional `CALL` Handling (`CallerMarshallingRule.java`):**
 
@@ -79,6 +50,22 @@ Objective: Fix the logical error where a conditional instruction preceding a CAL
     3. Emit a `JMPI` instruction that targets a new, unique label.
     4. Emit the entire standard marshalling sequence for the `CALL` (`PUSH`/`PUSI`, `CALL`, `POP`/`DROP`).
     5. Emit the unique label from step 3 immediately after the sequence.
+
+Negated conditional instructions:
+    - `IFR`  <-> `INR`
+    - `IFS`  <-> `INS`
+    - `LTR`  <-> `GETR`
+    - `LTI`  <-> `GETI`
+    - `LTS`  <-> `GETS`
+    - `GTR`  <-> `LETR`
+    - `GTI`  <-> `LETI`
+    - `GTS`  <-> `LETS`
+    - `IFTR` <-> `INTR`
+    - `IFTI` <-> `INTI`
+    - `IFTS` <-> `INTS`
+    - `IFMR` <-> `INMR`
+    - `IFMI` <-> `INMI`
+    - `IFMS` <-> `INMS`
 
 2) **Conditional `RET` Handling (`ProcedureMarshallingRule.java`):**
     - Apply the same transformation logic for `RET` instructions within a procedure.
