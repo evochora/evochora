@@ -535,9 +535,15 @@ public final class PersistenceService implements IControllable, Runnable {
                             
                             // Only close database connection if checkpoint was successful or we're skipping due to busy
                             if (checkpointSuccessful) {
-                                connection.close();
-                                connection = null;
-                                log.debug("Database connection closed during auto-pause to prevent WAL/SHM file leaks");
+                                // Check if this is an in-memory database
+                                boolean isInMemory = jdbcUrlInUse != null && jdbcUrlInUse.contains("mode=memory");
+                                if (isInMemory) {
+                                    log.debug("Skipping database connection close for in-memory database during auto-pause");
+                                } else {
+                                    connection.close();
+                                    connection = null;
+                                    log.debug("Database connection closed during auto-pause to prevent WAL/SHM file leaks");
+                                }
                             } else {
                                 log.warn("WAL checkpoint failed, will retry database closure later");
                                 needsRetryClose = true; // Schedule retry for next cycle

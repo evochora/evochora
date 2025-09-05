@@ -29,6 +29,7 @@ Simulate evolution of organisms in n-D worlds, written in Assemnbly.
 - If no i/o ressources are used and test runs in under 0.2s then tag as unit
 - Test must not leave any artifacts like file
 - If tests use sqlite they should use in momenry sqlite
+- Assembly code must be inline and not in a dedicated file.
 - Ths instruction set needs to be initiatlized with Instruction.init() before the compiler or runtime can use any instruction.   
 
 # Architectureal pincipals

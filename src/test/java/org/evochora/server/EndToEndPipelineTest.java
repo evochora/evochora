@@ -74,6 +74,8 @@ class EndToEndPipelineTest {
         
         // Create SimulationEngine with new API
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{100, 30}, true);
+        
+        // Create empty organism list for the test
         java.util.List<org.evochora.server.engine.OrganismPlacement> organismPlacements = new java.util.ArrayList<>();
         java.util.List<org.evochora.runtime.worldgen.IEnergyDistributionCreator> energyStrategies = new java.util.ArrayList<>();
         
@@ -297,7 +299,7 @@ class EndToEndPipelineTest {
     }
 
     /**
-     * Verifies that data flows correctly through the pipeline from the queue to the services.
+     * Verifies that data flows correctly through the pipeline from SimulationEngine to PersistenceService to DebugIndexer.
      * This is an integration test of the core data path.
      * @throws Exception if service interaction fails.
      */

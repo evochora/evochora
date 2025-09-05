@@ -24,6 +24,14 @@
 .REG %KIDX     %DR3   # index 0..3 for K-periods
 .REG %KLEFT    %DR4   # countdown to periodic turn
 
+#-----------------------------
+# Shell
+#-----------------------------
+.PLACE STRUCTURE:1 -1..50|-1
+.PLACE STRUCTURE:1 -1..50|25
+.PLACE STRUCTURE:1 -1|0..24
+.PLACE STRUCTURE:1 50|0..24
+
 # ----------------------------
 # Entry & Init
 # ----------------------------

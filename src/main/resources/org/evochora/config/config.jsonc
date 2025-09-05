@@ -29,7 +29,7 @@
           "strategy": "fixed",
           // [MANDATORY] Specific positions to place organisms (for "fixed" strategy)
           "positions": [
-            [0, 0]
+            [1, 1]
           ]
         }
       }
