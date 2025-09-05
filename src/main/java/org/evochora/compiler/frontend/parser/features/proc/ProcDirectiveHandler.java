@@ -35,9 +35,11 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
         Token procName = context.consume(TokenType.IDENTIFIER, "Expected procedure name after .PROC.");
         boolean exported = false;
         List<Token> parameters = new ArrayList<>();
+        List<Token> refParameters = new ArrayList<>();
+        List<Token> valParameters = new ArrayList<>();
         boolean withFound = false;
 
-        // Flexible loop to parse optional keywords like EXPORT and WITH
+        // Flexible loop to parse optional keywords like EXPORT, WITH, REF, and VAL
         while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
             if (context.check(TokenType.IDENTIFIER)) {
                 String keyword = context.peek().text();
@@ -47,7 +49,21 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
                 } else if ("WITH".equalsIgnoreCase(keyword)) {
                     context.advance();
                     withFound = true;
-                    break; // After WITH, only parameters follow
+                    // After WITH, only parameters follow until newline
+                    while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
+                        parameters.add(context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after WITH."));
+                    }
+                    break; // No other keywords should follow WITH on the same line
+                } else if ("REF".equalsIgnoreCase(keyword)) {
+                    context.advance();
+                    while (!context.isAtEnd() && context.check(TokenType.IDENTIFIER) && !"VAL".equalsIgnoreCase(context.peek().text())) {
+                        refParameters.add(context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after REF."));
+                    }
+                } else if ("VAL".equalsIgnoreCase(keyword)) {
+                    context.advance();
+                    while (!context.isAtEnd() && context.check(TokenType.IDENTIFIER) && !"REF".equalsIgnoreCase(context.peek().text())) {
+                        valParameters.add(context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after VAL."));
+                    }
                 } else {
                     // Unknown keyword in declaration
                     context.getDiagnostics().reportError("Unexpected token '" + keyword + "' in procedure declaration.", procName.fileName(), procName.line());
@@ -55,12 +71,6 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
                 }
             } else {
                 break; // Not an identifier, so no more optional keywords
-            }
-        }
-
-        if (withFound) {
-            while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
-                parameters.add(context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after WITH."));
             }
         }
 
@@ -89,7 +99,7 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
             context.advance(); // consume .ENDP
         }
 
-        ProcedureNode procNode = new ProcedureNode(procName, exported, parameters, body);
+        ProcedureNode procNode = new ProcedureNode(procName, exported, parameters, refParameters, valParameters, body);
         parser.registerProcedure(procNode);
         return procNode;
     }

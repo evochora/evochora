@@ -160,4 +160,109 @@ public class ProcedureDirectiveTest {
         assertThat(requireNode.path().value()).isEqualTo("lib/utils.s");
         assertThat(requireNode.alias().text()).isEqualTo("utils");
     }
+
+    @Test
+    @Tag("unit")
+    void testParserProcedureWithRefOnly() {
+        // Arrange
+        String source = ".PROC myProc REF rA rB\n.ENDP";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of(""));
+
+        // Act
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(ast).hasSize(1);
+        ProcedureNode procNode = (ProcedureNode) ast.get(0);
+        assertThat(procNode.name().text()).isEqualTo("myProc");
+        assertThat(procNode.refParameters()).hasSize(2).extracting(Token::text).containsExactly("rA", "rB");
+        assertThat(procNode.valParameters()).isEmpty();
+        assertThat(procNode.parameters()).isEmpty();
+    }
+
+    @Test
+    @Tag("unit")
+    void testParserProcedureWithValOnly() {
+        // Arrange
+        String source = ".PROC myProc VAL v1 v2\n.ENDP";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of(""));
+
+        // Act
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(ast).hasSize(1);
+        ProcedureNode procNode = (ProcedureNode) ast.get(0);
+        assertThat(procNode.name().text()).isEqualTo("myProc");
+        assertThat(procNode.valParameters()).hasSize(2).extracting(Token::text).containsExactly("v1", "v2");
+        assertThat(procNode.refParameters()).isEmpty();
+        assertThat(procNode.parameters()).isEmpty();
+    }
+
+    @Test
+    @Tag("unit")
+    void testParserProcedureWithRefAndVal() {
+        // Arrange
+        String source = ".PROC myProc REF rA VAL v1\n.ENDP";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of(""));
+
+        // Act
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(ast).hasSize(1);
+        ProcedureNode procNode = (ProcedureNode) ast.get(0);
+        assertThat(procNode.name().text()).isEqualTo("myProc");
+        assertThat(procNode.refParameters()).hasSize(1).extracting(Token::text).containsExactly("rA");
+        assertThat(procNode.valParameters()).hasSize(1).extracting(Token::text).containsExactly("v1");
+        assertThat(procNode.parameters()).isEmpty();
+    }
+
+    @Test
+    @Tag("unit")
+    void testParserProcedureWithValAndRef() {
+        // Arrange
+        String source = ".PROC myProc VAL v1 REF rA\n.ENDP";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of(""));
+
+        // Act
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(ast).hasSize(1);
+        ProcedureNode procNode = (ProcedureNode) ast.get(0);
+        assertThat(procNode.name().text()).isEqualTo("myProc");
+        assertThat(procNode.valParameters()).hasSize(1).extracting(Token::text).containsExactly("v1");
+        assertThat(procNode.refParameters()).hasSize(1).extracting(Token::text).containsExactly("rA");
+        assertThat(procNode.parameters()).isEmpty();
+    }
+
+    @Test
+    @Tag("unit")
+    void testParserProcedureWithNoParameters() {
+        // Arrange
+        String source = ".PROC myProc\n.ENDP";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of(""));
+
+        // Act
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(ast).hasSize(1);
+        ProcedureNode procNode = (ProcedureNode) ast.get(0);
+        assertThat(procNode.name().text()).isEqualTo("myProc");
+        assertThat(procNode.refParameters()).isEmpty();
+        assertThat(procNode.valParameters()).isEmpty();
+        assertThat(procNode.parameters()).isEmpty();
+    }
 }
