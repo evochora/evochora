@@ -30,8 +30,30 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
      */
     @Override
     public void convert(InstructionNode node, IrGenContext ctx) {
-        List<IrOperand> operands = new ArrayList<>();
         String opcode = node.opcode().text();
+
+        // New CALL syntax with REF and VAL
+        if ("CALL".equalsIgnoreCase(opcode) && (!node.refArguments().isEmpty() || !node.valArguments().isEmpty())) {
+            List<IrOperand> operands = new ArrayList<>();
+            // The first argument is the procedure name
+            if (!node.arguments().isEmpty()) {
+                operands.add(convertOperand(node.arguments().get(0), ctx));
+            }
+
+            List<IrOperand> refOperands = node.refArguments().stream()
+                .map(arg -> convertOperand(arg, ctx))
+                .toList();
+
+            List<IrOperand> valOperands = node.valArguments().stream()
+                .map(arg -> convertOperand(arg, ctx))
+                .toList();
+
+            ctx.emit(new IrInstruction(opcode, operands, refOperands, valOperands, ctx.sourceOf(node)));
+            return;
+        }
+
+        // Legacy CALL syntax and other instructions
+        List<IrOperand> operands = new ArrayList<>();
         int withIdx = -1;
 
         if ("CALL".equalsIgnoreCase(opcode)) {

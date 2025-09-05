@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2024-2024 EvoChora contributors
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 package org.evochora.compiler.frontend;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -10,43 +16,132 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.ir.*;
+import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class IrGeneratorTest {
 
-    @Test
-    @Tag("unit")
-    void generatesIrForSimpleProgram() {
-        String src = ".ORG 0|0\n" +
-                "L1: \n" +
-                "  SETI %DR0 DATA:42\n";
+    @BeforeAll
+    static void setup() {
+        // We need to initialize the instruction set before we can use the compiler.
+        Instruction.init();
+    }
 
+    private IrProgram compileToIr(String source) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
-        Lexer lexer = new Lexer(src, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        assertFalse(diagnostics.hasErrors(), diagnostics.summary());
+        if (diagnostics.hasErrors()) {
+            fail("Lexer errors: " + diagnostics.summary());
+        }
 
         Parser parser = new Parser(tokens, diagnostics, Path.of(""));
         List<AstNode> ast = parser.parse();
-        assertFalse(diagnostics.hasErrors(), diagnostics.summary());
+        if (diagnostics.hasErrors()) {
+            fail("Parser errors: " + diagnostics.summary());
+        }
 
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         new SemanticAnalyzer(diagnostics, symbolTable).analyze(ast);
-        assertFalse(diagnostics.hasErrors(), diagnostics.summary());
+        if (diagnostics.hasErrors()) {
+            fail("Semantic analysis errors: " + diagnostics.summary());
+        }
 
         IrConverterRegistry registry = IrConverterRegistry.initializeWithDefaults();
         IrGenerator irGen = new IrGenerator(diagnostics, registry);
         IrProgram ir = irGen.generate(ast, "TestProg");
-        assertFalse(diagnostics.hasErrors(), diagnostics.summary());
+        if (diagnostics.hasErrors()) {
+            fail("IR generation errors: " + diagnostics.summary());
+        }
+        return ir;
+    }
+
+    @Test
+    @Tag("unit")
+    void generatesIrForNewCallSyntax() {
+        String src = """
+            .PROC myProc REF rA VAL v1
+                CALL myProc REF %DR1 VAL 42
+            .ENDP
+            """;
+        IrProgram ir = compileToIr(src);
+        Optional<IrInstruction> callInstructionOpt = ir.items().stream()
+                .filter(IrInstruction.class::isInstance)
+                .map(IrInstruction.class::cast)
+                .filter(i -> "CALL".equalsIgnoreCase(i.opcode()))
+                .findFirst();
+
+        assertTrue(callInstructionOpt.isPresent(), "CALL instruction not found in IR");
+        IrInstruction callInstruction = callInstructionOpt.get();
+
+        assertEquals(1, callInstruction.operands().size());
+        assertInstanceOf(IrLabelRef.class, callInstruction.operands().get(0));
+        assertEquals("myProc", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
+
+        assertEquals(1, callInstruction.refOperands().size());
+        assertInstanceOf(IrReg.class, callInstruction.refOperands().get(0));
+        assertEquals("%DR1", ((IrReg) callInstruction.refOperands().get(0)).name());
+
+        assertEquals(1, callInstruction.valOperands().size());
+        assertInstanceOf(IrImm.class, callInstruction.valOperands().get(0));
+        assertEquals(42, ((IrImm) callInstruction.valOperands().get(0)).value());
+    }
+
+    @Test
+    @Tag("unit")
+    void generatesIrForLegacyCallSyntax() {
+        String src = """
+            .PROC oldProc WITH p1
+                CALL oldProc WITH p1
+            .ENDP
+            """;
+        IrProgram ir = compileToIr(src);
+        Optional<IrInstruction> callInstructionOpt = ir.items().stream()
+                .filter(IrInstruction.class::isInstance)
+                .map(IrInstruction.class::cast)
+                .filter(i -> "CALL".equalsIgnoreCase(i.opcode()))
+                .findFirst();
+
+        assertTrue(callInstructionOpt.isPresent(), "CALL instruction not found in IR");
+        IrInstruction callInstruction = callInstructionOpt.get();
+
+        assertEquals(1, callInstruction.operands().size());
+        assertInstanceOf(IrLabelRef.class, callInstruction.operands().get(0));
+        assertEquals("oldProc", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
+
+        assertTrue(callInstruction.refOperands().isEmpty());
+        assertTrue(callInstruction.valOperands().isEmpty());
+
+        // Also check that the core.call_with directive was emitted
+        Optional<IrDirective> directiveOpt = ir.items().stream()
+                .filter(IrDirective.class::isInstance)
+                .map(IrDirective.class::cast)
+                .filter(d -> "core".equals(d.namespace()) && "call_with".equals(d.name()))
+                .findFirst();
+        assertTrue(directiveOpt.isPresent(), "core.call_with directive not found for legacy CALL");
+    }
+
+    @Test
+    @Tag("unit")
+    void generatesIrForSimpleProgram() {
+        String src = """
+            .ORG 0|0
+            L1:
+              SETI %DR0 DATA:42
+            """;
+
+        IrProgram ir = compileToIr(src);
 
         List<IrItem> items = ir.items();
         assertTrue(items.size() >= 3, "Expected at least 3 IR items");
