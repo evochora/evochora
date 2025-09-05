@@ -286,6 +286,16 @@ These instructions skip the next instruction if the condition is false.
 * `IFTR %REG1 %REG2`, `IFTI %REG1 <Literal>`, `IFTS`: If molecule types are equal. (Cost: 1)
 * `IFMR %VEC_REG`, `IFMI <Vector>`, `IFMS`: If cell at `DP` + vector is owned by self or direct parent. The vector must be a unit vector. (Cost: 1)
 
+#### Negated Conditional Instructions
+
+These instructions are the logical opposites of the standard conditional instructions. They skip the next instruction if the original condition is met.
+
+* `INR %REG1 %REG2`, `INI %REG1 <Literal>`, `INS`: If values are **not** equal. (Cost: 1)
+* `GETR %REG1 %REG2`, `GETI %REG1 <Literal>`, `GETS`: If value of first argument is **greater than or equal to** second. (Cost: 1)
+* `LETR %REG1 %REG2`, `LETI %REG1 <Literal>`, `LETS`: If value of first argument is **less than or equal to** second. (Cost: 1)
+* `INTR %REG1 %REG2`, `INTI %REG1 <Literal>`, `INTS`: If molecule types are **not** equal. (Cost: 1)
+* `INMR %VEC_REG`, `INMI <Vector>`, `INMS`: If cell at `DP` + vector is **not** owned by self or direct parent. The vector must be a unit vector. (Cost: 1)
+
 ### World Interaction
 
 These instructions interact with the environment grid relative to the **active Data Pointer (`DP`)**. The vector argument must be a unit vector, meaning these instructions can only target adjacent cells.
