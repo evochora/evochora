@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Builds source views for organisms by analyzing their source code and generating annotations.
@@ -20,6 +21,9 @@ public class SourceViewBuilder {
     private static final Logger log = LoggerFactory.getLogger(SourceViewBuilder.class);
     
     private final SourceAnnotator sourceAnnotator;
+    
+    // Performance optimization: cache for coordinate keys to avoid repeated string concatenation
+    private final Map<String, String> coordinateKeyCache = new java.util.concurrent.ConcurrentHashMap<>();
     
     public SourceViewBuilder() {
         this.sourceAnnotator = new SourceAnnotator();
@@ -70,15 +74,21 @@ public class SourceViewBuilder {
             if (ipCoords != null && ipCoords.length >= 2) {
                 int[] ipArray = new int[]{ipCoords[0], ipCoords[1]};
                 
-                // Convert coordinates to linear address using the artifact's mapping
-                String coordKey = ipArray[0] + "|" + ipArray[1];
-                Integer linearAddress = artifact.relativeCoordToLinearAddress().get(coordKey);
-                
-                if (linearAddress != null) {
-                    // Look up source information for this address
-                    SourceInfo sourceInfo = artifact.sourceMap().get(linearAddress);
-                    if (sourceInfo != null) {
-                        return sourceInfo.fileName();
+                // Get organism's starting position
+                int[] startingPos = organism.initialPosition();
+                if (startingPos != null && startingPos.length >= 2) {
+                    // Calculate relative coordinates by subtracting starting position
+                    int[] relativeCoords = new int[]{ipArray[0] - startingPos[0], ipArray[1] - startingPos[1]};
+                    
+                    // Use direct coordinate lookup instead of string concatenation for better performance
+                    Integer linearAddress = findLinearAddressForCoordinates(artifact, relativeCoords);
+                    
+                    if (linearAddress != null) {
+                        // Look up source information for this address
+                        SourceInfo sourceInfo = artifact.sourceMap().get(linearAddress);
+                        if (sourceInfo != null) {
+                            return sourceInfo.fileName();
+                        }
                     }
                 }
             }
@@ -105,15 +115,21 @@ public class SourceViewBuilder {
             if (ipCoords != null && ipCoords.length >= 2) {
                 int[] ipArray = new int[]{ipCoords[0], ipCoords[1]};
                 
-                // Convert coordinates to linear address using the artifact's mapping
-                String coordKey = ipArray[0] + "|" + ipArray[1];
-                Integer linearAddress = artifact.relativeCoordToLinearAddress().get(coordKey);
-                
-                if (linearAddress != null) {
-                    // Look up source information for this address
-                    SourceInfo sourceInfo = artifact.sourceMap().get(linearAddress);
-                    if (sourceInfo != null) {
-                        return sourceInfo.lineNumber();
+                // Get organism's starting position
+                int[] startingPos = organism.initialPosition();
+                if (startingPos != null && startingPos.length >= 2) {
+                    // Calculate relative coordinates by subtracting starting position
+                    int[] relativeCoords = new int[]{ipArray[0] - startingPos[0], ipArray[1] - startingPos[1]};
+                    
+                    // Use direct coordinate lookup instead of string concatenation for better performance
+                    Integer linearAddress = findLinearAddressForCoordinates(artifact, relativeCoords);
+                    
+                    if (linearAddress != null) {
+                        // Look up source information for this address
+                        SourceInfo sourceInfo = artifact.sourceMap().get(linearAddress);
+                        if (sourceInfo != null) {
+                            return sourceInfo.lineNumber();
+                        }
                     }
                 }
             }
@@ -124,6 +140,36 @@ public class SourceViewBuilder {
         
         // Fallback to default value if calculation failed
         return 1;
+    }
+    
+    /**
+     * Optimized coordinate lookup that avoids string concatenation for better performance.
+     * Uses the linearAddressToCoord map to find coordinates directly.
+     * 
+     * @param artifact The program artifact
+     * @param relativeCoords The relative coordinates to look up
+     * @return The linear address, or null if not found
+     */
+    private Integer findLinearAddressForCoordinates(ProgramArtifact artifact, int[] relativeCoords) {
+        // Use cached coordinate key to avoid repeated string concatenation
+        String coordKey = getCachedCoordinateKey(relativeCoords[0], relativeCoords[1]);
+        return artifact.relativeCoordToLinearAddress().get(coordKey);
+    }
+    
+    /**
+     * Gets a cached coordinate key to avoid repeated string concatenation.
+     * This is a significant performance optimization for the debug indexer.
+     * 
+     * @param x The x coordinate
+     * @param y The y coordinate
+     * @return The coordinate key string
+     */
+    private String getCachedCoordinateKey(int x, int y) {
+        // Create a cache key that's fast to compute
+        String cacheKey = x + "," + y;
+        
+        // Use computeIfAbsent for thread-safe caching
+        return coordinateKeyCache.computeIfAbsent(cacheKey, k -> x + "|" + y);
     }
     
     /**

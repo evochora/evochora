@@ -34,13 +34,15 @@ class SourceViewAnnotationTest {
         mockOrganism = mock(RawOrganismState.class);
         when(mockOrganism.id()).thenReturn(42);
         when(mockOrganism.ip()).thenReturn(new int[]{10, 20});
+        when(mockOrganism.initialPosition()).thenReturn(new int[]{10, 20}); // Set initial position same as IP for this test
         
         // Mock artifact with source mapping
         mockArtifact = mock(ProgramArtifact.class);
         
-        // Mock source mapping: IP [10, 20] -> linear address 100 -> source info
+        // Mock source mapping: relative coords [0, 0] -> linear address 100 -> source info
+        // (since IP [10, 20] - Start [10, 20] = [0, 0])
         Map<String, Integer> coordToLinear = new HashMap<>();
-        coordToLinear.put("10|20", 100);
+        coordToLinear.put("0|0", 100);
         when(mockArtifact.relativeCoordToLinearAddress()).thenReturn(coordToLinear);
         
         Map<Integer, SourceInfo> sourceMap = new HashMap<>();

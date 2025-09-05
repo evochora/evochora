@@ -11,7 +11,6 @@ class SidebarSourceView {
         const el = this.root.querySelector('[data-section="source"]');
         if (!el) return;
         
-
         
         // Handle missing sourceView gracefully
         if (!src) {
@@ -62,11 +61,9 @@ class SidebarSourceView {
             // This ensures that currentFileName represents the entry point, not the current execution file
             if (!this.currentFileName) {
                 this.currentFileName = this.selectedFileName;
-                console.log(`SidebarSourceView: Set currentFileName (main program) to "${this.currentFileName}"`);
             }
             
             // Debug logging
-            console.log(`SidebarSourceView: src.fileName="${src.fileName}", selectedFileName="${this.selectedFileName}", currentFileName="${this.currentFileName}"`);
         } else if (!this.selectedFileName && this.allSources && Object.keys(this.allSources).length > 0) {
             // Fallback: Wähle main.s als Standard, falls verfügbar, sonst die erste Datei
             const availableFiles = Object.keys(this.allSources);
@@ -224,7 +221,6 @@ class SidebarSourceView {
         }
         
         // Debug logging
-        console.log(`getRelativePath: fileName="${fileName}", currentMainProgram="${currentMainProgram}", isMainProgram=${isMainProgram}, result="${relativePath}"`);
         
         return relativePath;
     }

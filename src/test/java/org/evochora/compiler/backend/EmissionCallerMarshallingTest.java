@@ -3,13 +3,17 @@ package org.evochora.compiler.backend;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.emit.features.CallerMarshallingRule;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.ir.*;
+import org.evochora.runtime.isa.Instruction;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -26,6 +30,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @DisplayName("Emission: Caller Marshalling Rules")
 public class EmissionCallerMarshallingTest {
+
+    @BeforeAll
+    static void setUp() {
+        Instruction.init();
+    }
 
     private static SourceInfo src(String f, int l) {
         return new SourceInfo(f, l, 0);
@@ -95,6 +104,57 @@ public class EmissionCallerMarshallingTest {
             List<IrItem> out = runEmission(List.of(call));
 
             assertThat(out).hasSize(1).containsExactly(call);
+        }
+    }
+
+    @Test
+    @Tag("unit")
+    @DisplayName("SourceInfo is preserved for marshalling")
+    void sourceInfoIsPreservedForMarshalling() {
+        // Test the CallerMarshallingRule in isolation with a simple core:call_with directive
+        IrDirective callWith = new IrDirective("core", "call_with", 
+            Map.of("actuals", new IrValue.ListVal(List.of(new IrValue.Str("%DR1")))), 
+            src("test.s", 5));
+        IrInstruction call = new IrInstruction("CALL", List.of(new IrVec(new int[]{1, 0})), src("test.s", 5));
+        IrInstruction nop = new IrInstruction("NOP", Collections.emptyList(), src("test.s", 6));
+        
+        List<IrItem> items = List.of(callWith, call, nop);
+
+        // Apply only the CallerMarshallingRule
+        CallerMarshallingRule rule = new CallerMarshallingRule();
+        LinkingContext ctx = new LinkingContext();
+        List<IrItem> emitted = rule.apply(items, ctx);
+
+        // Find the CALL instruction and marshalled instructions in the emitted list
+        IrInstruction callInstruction = null;
+        IrInstruction nopInstruction = null;
+        List<IrInstruction> marshalledInstructions = new ArrayList<>();
+        
+        for (IrItem item : emitted) {
+            if (item instanceof IrInstruction ins) {
+                if ("CALL".equals(ins.opcode())) {
+                    callInstruction = ins;
+                } else if ("NOP".equals(ins.opcode())) {
+                    nopInstruction = ins;
+                } else if ("PUSH".equals(ins.opcode()) || "POP".equals(ins.opcode()) || "PUSI".equals(ins.opcode())) {
+                    marshalledInstructions.add(ins);
+                }
+            }
+        }
+
+        assertThat(callInstruction).isNotNull();
+        assertThat(nopInstruction).isNotNull();
+        assertThat(marshalledInstructions).isNotEmpty();
+
+        // Assert that the line number of the CALL instruction's SourceInfo is correct (line 5)
+        assertThat(callInstruction.source().lineNumber()).isEqualTo(5);
+
+        // Assert that the line number of the NOP instruction's SourceInfo is correct (line 6)
+        assertThat(nopInstruction.source().lineNumber()).isEqualTo(6);
+        
+        // Assert that marshalled instructions inherit the correct SourceInfo from the CALL instruction
+        for (IrInstruction marshalled : marshalledInstructions) {
+            assertThat(marshalled.source().lineNumber()).isEqualTo(5);
         }
     }
 

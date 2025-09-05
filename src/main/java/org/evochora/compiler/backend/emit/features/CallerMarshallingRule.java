@@ -1,5 +1,6 @@
 package org.evochora.compiler.backend.emit.features;
 
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.ir.*;
@@ -63,12 +64,15 @@ public final class CallerMarshallingRule implements IEmissionRule {
 				}
 
 				if (i + 1 < items.size() && items.get(i + 1) instanceof IrInstruction call && "CALL".equals(call.opcode())) {
+					// Extract SourceInfo from the CALL instruction for marshalled instructions
+					SourceInfo originalSourceInfo = call.source();
+					
 					for (String r : actualRegs) {
-						out.add(new IrInstruction("PUSH", List.of(new IrReg(r)), dir.source()));
+						out.add(new IrInstruction("PUSH", List.of(new IrReg(r)), originalSourceInfo));
 					}
 					out.add(items.get(i + 1)); // Add the call
 					for (int a = actualRegs.size() - 1; a >= 0; a--) {
-						out.add(new IrInstruction("POP", List.of(new IrReg(actualRegs.get(a))), dir.source()));
+						out.add(new IrInstruction("POP", List.of(new IrReg(actualRegs.get(a))), originalSourceInfo));
 					}
 					i += 2;
 					continue;
