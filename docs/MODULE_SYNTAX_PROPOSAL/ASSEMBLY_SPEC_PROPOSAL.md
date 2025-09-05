@@ -409,9 +409,8 @@ Makes one or more symbols (procedures, labels, constants) public. By default, al
     
     .EXPORT ADD_FUNC PI  # Makes the procedure and constant public
     
-    ADD_FUNC:
-      .PROC A B
-      ADDS
+    .PROC ADD_FUNC WITH A B
+      ADDR A B
       RET
     .ENDP
     
@@ -431,7 +430,7 @@ Imports another module and makes its exported symbols available under a local al
     
     START:
       # Access the exported symbol using the alias
-      CALL MATH.ADD_FUNC
+      CALL MATH.ADD_FUNC %DR0 %DR1
     ```
 
 ### Other Directives
@@ -446,7 +445,12 @@ Imports another module and makes its exported symbols available under a local al
 
 * `.ORG <Vector>`: Sets the starting coordinate for the following code.
 * `.DIR <Vector>`: Sets the direction in which the compiler places subsequent instructions.
-* `.PLACE <Literal> <Vector>`: Places a molecule at a coordinate relative to the current origin.
+* `.PLACE <Literal> <Placement> [, <Placement> ...]`: Places one or more molecules with the specified `<Literal>` value at various coordinates. The coordinates are relative to the current origin (`.ORG`). Multiple placements can be specified on a single line, separated by commas. A `<Placement>` can be one of the following:
+    * **Vector Literal**: A standard vector like `10|20` places a single molecule.
+    * **Range**: A range like `1..10|20` places molecules along a line.
+    * **2D Range**: A range like `1..10|20..30` places molecules in a rectangular area.
+    * **Stepped Range**: A range like `10:2:20|5` places molecules at every second position.
+    * **Wildcard**: A wildcard `*` can be used to fill an entire dimension. For example, `*|5` places molecules in every cell of row 5. Using a wildcard requires a compilation context (i.e., compiling with `EnvironmentProperties`).
 
 ### Example of a Modern Modular Program
 
@@ -458,10 +462,9 @@ Imports another module and makes its exported symbols available under a local al
 # Export the 'ADD' procedure to make it public.
 .EXPORT ADD
 
-ADD:
-  # This procedure takes two parameters from the stack.
-  .PROC A B
-  ADDS
+# This procedure takes two parameters from the stack.
+.PROC ADD WITH A B
+  ADDR A B
   RET
 .ENDP
 ```
@@ -475,14 +478,11 @@ ADD:
 .IMPORT STD.MATH AS MATH
 
 START:
-  PUSI DATA:10
-  PUSI DATA:20
+  SETI %DR0 DATA:10
+  SETI %DR1 DATA:20
   
   # Call the exported procedure using its qualified name.
-  CALL MATH.ADD
+  CALL MATH.ADD WITH %DR0 %DR1
   
-  POP %DR0  # %DR0 will now contain 30
-  
-  END: 
-    JMPI END
+  # The result is now in %DR0.
 ```

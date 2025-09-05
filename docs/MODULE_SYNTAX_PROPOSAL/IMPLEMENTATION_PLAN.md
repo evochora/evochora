@@ -22,12 +22,12 @@ This is a breaking change that will replace the old syntax (.SCOPE, .REQUIRE, .I
 
 ### **New Language Syntax**
 
-|               |                             |                                                                                                                                                         |
-| ------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Directive** | **Example**                 | **Purpose**                                                                                                                                             |
-| **.MODULE**   | .MODULE std.math            | Declares the canonical, globally unique name for the current file/module. Must appear once at the top of a file.                                        |
-| **.EXPORT**   | .EXPORT my\_proc, my\_const | Makes the specified symbols public. All other symbols in the module remain private.                                                                     |
-| **.IMPORT**   | .IMPORT std.math AS Math    | Imports a module and assigns it a local alias. All references to the module's exported symbols must be qualified with this alias (e.g., Math.my\_proc). |
+|               |                            |                                                                                                                                                         |
+| ------------- |----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Directive** | **Example**                | **Purpose**                                                                                                                                             |
+| **.MODULE**   | .MODULE STD.MATH           | Declares the canonical, globally unique name for the current file/module. Must appear once at the top of a file.                                        |
+| **.EXPORT**   | .EXPORT MY\_PROC MY\_CONST | Makes the specified symbols public. All other symbols in the module remain private.                                                                     |
+| **.IMPORT**   | .IMPORT STD.MATH AS MATH   | Imports a module and assigns it a local alias. All references to the module's exported symbols must be qualified with this alias (e.g., MATH.MY\_PROC). |
 
 
 ### **Implementation Plan**
@@ -38,7 +38,7 @@ This is a breaking change that will replace the old syntax (.SCOPE, .REQUIRE, .I
 
 - Enhance the Symbol class to include a new field for a **unique, immutable Symbol ID** (e.g., a UUID generated upon creation).
 
-- The Symbol should store the symbol's **non-qualified, canonical name** (e.g., add\_func).
+- The Symbol should store the symbol's **non-qualified, canonical name** (e.g., ADD\_FUNC).
 
 2. **SymbolTable Object:**
 
@@ -50,7 +50,7 @@ This is a breaking change that will replace the old syntax (.SCOPE, .REQUIRE, .I
 
 3. **Debugger-Facing Data Structures (ProgramArtifact):**
 
-- Modify the TokenInfo record. It must now store the **original source text** of the token (e.g., "Math.add\_func") and the resolved, canonical **Symbol ID** of the symbol it refers to.
+- Modify the TokenInfo record. It must now store the **original source text** of the token (e.g., "MATH.ADD\_FUNC") and the resolved, canonical **Symbol ID** of the symbol it refers to.
 
 - Add a new map to the ProgramArtifact: a SymbolMetadataMap. This map will serve as a glossary for the debugger, mapping a Symbol ID to a new object containing the symbol's canonical information (e.g., its non-qualified name, its type, its parent module's name, and any parameters).
 
@@ -75,21 +75,21 @@ This is a breaking change that will replace the old syntax (.SCOPE, .REQUIRE, .I
 
 * **ExportNode:** Marks the corresponding symbols in the SymbolTable as public.
 
-* **ImportNode:** Creates a local mapping from the alias (e.g., "Math") to the canonical module name ("std.math").
+* **ImportNode:** Creates a local mapping from the alias (e.g., "MATH") to the canonical module name ("std.math").
 
 - When defining symbols (e.g., procedures), it must register them in the SymbolTable under the **current module's scope**.
 
-- When resolving identifiers, it must handle both qualified names (e.g., "Math.add\_func") by using the import aliases to look in the correct module, and non-qualified names by searching first in the current module and then in the global scope.
+- When resolving identifiers, it must handle both qualified names (e.g., "MATH.ADD\_FUNC") by using the import aliases to look in the correct module, and non-qualified names by searching first in the current module and then in the global scope.
 
 3. **Token Map Generator:**
 
 - This component will run _after_ the SemanticAnalyzer has successfully built the SymbolTable.
 
-- When it traverses the AST and encounters an identifier (e.g., "Math.add\_func"), it will use the SemanticAnalyzer's resolution logic to find the corresponding Symbol object.
+- When it traverses the AST and encounters an identifier (e.g., "MATH.ADD\_FUNC"), it will use the SemanticAnalyzer's resolution logic to find the corresponding Symbol object.
 
 - It will then extract the unique **Symbol ID** from that object.
 
-- Finally, it will create a TokenInfo entry containing both the original source text ("Math.add\_func") and the resolved canonical **Symbol ID**.
+- Finally, it will create a TokenInfo entry containing both the original source text ("MATH.ADD\_FUNC") and the resolved canonical **Symbol ID**.
 
 
 #### **Phase 3: Update Compiler Orchestration**
@@ -102,6 +102,6 @@ This is a breaking change that will replace the old syntax (.SCOPE, .REQUIRE, .I
 
 2. **Compilation Flow:**
 
-- When the SemanticAnalyzer encounters an .IMPORT std.math directive, the compiler will use the pre-scanned map to find the corresponding file and trigger its compilation if it hasn't been compiled already.
+- When the SemanticAnalyzer encounters an .IMPORT STD.MATH directive, the compiler will use the pre-scanned map to find the corresponding file and trigger its compilation if it hasn't been compiled already.
 
 - The compiler will execute the phases in the correct order, ensuring the TokenMapGenerator runs after the SemanticAnalyzer has fully populated the SymbolTable.
