@@ -209,6 +209,14 @@ public abstract class Instruction {
         registerFamily(ConditionalInstruction.class, Map.of(94, "IFMI"), List.of(OperandSource.VECTOR));
         registerFamily(ConditionalInstruction.class, Map.of(95, "IFMS"), List.of(OperandSource.STACK));
 
+        // Negated Conditional-Family
+        registerFamily(ConditionalInstruction.class, Map.of(163, "INR", 164, "GETR", 165, "LETR", 166, "INTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(167, "GETI", 168, "LETI", 169, "INTI", 170, "INI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(ConditionalInstruction.class, Map.of(171, "INS", 172, "GETS", 173, "LETS", 174, "INTS"), List.of(OperandSource.STACK, OperandSource.STACK));
+        registerFamily(ConditionalInstruction.class, Map.of(175, "INMR"), List.of(OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(176, "INMI"), List.of(OperandSource.VECTOR));
+        registerFamily(ConditionalInstruction.class, Map.of(177, "INMS"), List.of(OperandSource.STACK));
+
         // ControlFlow-Family
         registerFamily(ControlFlowInstruction.class, Map.of(20, "JMPI", 34, "CALL"), List.of(OperandSource.LABEL));
         registerFamily(ControlFlowInstruction.class, Map.of(10, "JMPR"), List.of(OperandSource.REGISTER));

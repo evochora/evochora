@@ -33,7 +33,7 @@ public class ConditionalInstruction extends Instruction {
         Environment environment = context.getWorld();
         try {
             String opName = getName();
-            if (opName.startsWith("IFM")) {
+            if (opName.startsWith("IFM") || opName.startsWith("INM")) {
                 List<Operand> operands = resolveOperands(environment);
                 if (operands.size() != 1) {
                     organism.instructionFailed("Invalid operand count for " + opName);
@@ -50,7 +50,9 @@ public class ConditionalInstruction extends Instruction {
                 }
                 int[] targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
                 int ownerId = environment.getOwnerId(targetCoordinate);
-                if (!organism.isCellAccessible(ownerId)) {
+                boolean isAccessible = organism.isCellAccessible(ownerId);
+                boolean conditionMet = opName.startsWith("IFM") ? isAccessible : !isAccessible;
+                if (!conditionMet) {
                     organism.skipNextInstruction(environment);
                 }
                 return;
@@ -66,13 +68,18 @@ public class ConditionalInstruction extends Instruction {
             boolean conditionMet = false;
 
 
-            if (opName.startsWith("IFT")) { // Type comparison
+            if (opName.startsWith("IFT") || opName.startsWith("INT")) { // Type comparison
                 int type1 = (op1.value() instanceof Integer i) ? org.evochora.runtime.model.Molecule.fromInt(i).type() : -1; // -1 for vectors
                 int type2 = (op2.value() instanceof Integer i) ? Molecule.fromInt(i).type() : -1;
-                conditionMet = (type1 == type2);
+                if (opName.startsWith("INT")) {
+                    conditionMet = (type1 != type2);
+                } else {
+                    conditionMet = (type1 == type2);
+                }
             } else { // Value comparison
                 if (op1.value() instanceof int[] v1 && op2.value() instanceof int[] v2) {
-                    conditionMet = Arrays.equals(v1, v2);
+                    boolean areEqual = Arrays.equals(v1, v2);
+                    conditionMet = opName.startsWith("IN") ? !areEqual : areEqual;
                 } else if (op1.value() instanceof Integer i1 && op2.value() instanceof Integer i2) {
                     Molecule s1 = org.evochora.runtime.model.Molecule.fromInt(i1);
                     Molecule s2 = org.evochora.runtime.model.Molecule.fromInt(i2);
@@ -83,8 +90,11 @@ public class ConditionalInstruction extends Instruction {
                         int val2 = s2.toScalarValue();
                         switch (opName) {
                             case "IFR", "IFI", "IFS" -> conditionMet = (val1 == val2);
+                            case "INR", "INI", "INS" -> conditionMet = (val1 != val2);
                             case "GTR", "GTI", "GTS" -> conditionMet = (val1 > val2);
+                            case "GETR", "GETI", "GETS" -> conditionMet = (val1 >= val2);
                             case "LTR", "LTI", "LTS" -> conditionMet = (val1 < val2);
+                            case "LETR", "LETI", "LETS" -> conditionMet = (val1 <= val2);
                             default -> organism.instructionFailed("Unknown conditional operation: " + opName);
                         }
                     }
