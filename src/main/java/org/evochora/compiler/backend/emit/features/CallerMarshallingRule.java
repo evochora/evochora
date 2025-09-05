@@ -22,23 +22,54 @@ public final class CallerMarshallingRule implements IEmissionRule {
 		int i = 0;
 		while (i < items.size()) {
 			IrItem it = items.get(i);
+
+			// New logic for REF/VAL calls
+			if (it instanceof IrInstruction call && "CALL".equals(call.opcode()) && (!call.refOperands().isEmpty() || !call.valOperands().isEmpty())) {
+				// Pre-call: Push arguments. REFs then VALs, each block in reverse.
+				// REF arguments
+				for (int j = call.refOperands().size() - 1; j >= 0; j--) {
+					out.add(new IrInstruction("PUSH", List.of(call.refOperands().get(j)), call.source()));
+				}
+				// VAL arguments
+				for (int j = call.valOperands().size() - 1; j >= 0; j--) {
+					IrOperand operand = call.valOperands().get(j);
+					if (operand instanceof IrImm imm) {
+						out.add(new IrInstruction("PUSI", List.of(imm), call.source()));
+					} else { // IrReg
+						out.add(new IrInstruction("PUSH", List.of(operand), call.source()));
+					}
+				}
+
+				// The CALL itself
+				out.add(call);
+
+				// Post-call: Clean up stack in forward order of declaration
+				// REF arguments are restored to their registers.
+				for (IrOperand refOperand : call.refOperands()) {
+					out.add(new IrInstruction("POP", List.of(refOperand), call.source()));
+				}
+				// VAL arguments are left on the stack for the callee to clean up.
+				i++;
+				continue;
+			}
+
+			// Old logic for `core:call_with`
 			if (it instanceof IrDirective dir && "core".equals(dir.namespace()) && "call_with".equals(dir.name())) {
-				// Extract actuals as a list of register names
 				IrValue.ListVal listVal = (IrValue.ListVal) dir.args().get("actuals");
 				List<IrValue> vals = listVal != null ? listVal.elements() : List.of();
 				List<String> actualRegs = new ArrayList<>(vals.size());
 				for (IrValue v : vals) {
 					if (v instanceof IrValue.Str s) actualRegs.add(s.value());
 				}
-				// Expect next item to be CALL instruction
+
 				if (i + 1 < items.size() && items.get(i + 1) instanceof IrInstruction call && "CALL".equals(call.opcode())) {
-					// Insert PUSH actuals in order
-					for (String r : actualRegs) out.add(new IrInstruction("PUSH", List.of(new IrReg(r)), dir.source()));
-					// Add the CALL itself
-					out.add(call);
-					// Insert POP actuals in reverse order
-					for (int a = actualRegs.size() - 1; a >= 0; a--) out.add(new IrInstruction("POP", List.of(new IrReg(actualRegs.get(a))), dir.source()));
-					// Consume directive and CALL
+					for (String r : actualRegs) {
+						out.add(new IrInstruction("PUSH", List.of(new IrReg(r)), dir.source()));
+					}
+					out.add(items.get(i + 1)); // Add the call
+					for (int a = actualRegs.size() - 1; a >= 0; a--) {
+						out.add(new IrInstruction("POP", List.of(new IrReg(actualRegs.get(a))), dir.source()));
+					}
 					i += 2;
 					continue;
 				}
