@@ -484,4 +484,117 @@ public class SemanticAnalyzerTest {
                 .as("Ein Label, das nach einem RET, aber vor .ENDP definiert wird, sollte gefunden werden.")
                 .isFalse();
     }
+
+    @Test
+    @Tag("unit")
+    void testCallWithCorrectRefAndValArgsIsAllowed() {
+        // Arrange
+        String source = String.join("\n",
+                ".PROC myProc REF rA VAL v1",
+                "  RET",
+                ".ENDP",
+                "CALL myProc REF %DR1 VAL 123"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        // Act
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        analyzer.analyze(ast);
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+    }
+
+    @Test
+    @Tag("unit")
+    void testCallWithNonRegisterRefArgReportsError() {
+        // Arrange
+        String source = String.join("\n",
+                ".PROC myProc REF rA",
+                "  RET",
+                ".ENDP",
+                "CALL myProc REF 123"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        // Act
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        analyzer.analyze(ast);
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics()).anyMatch(d -> d.message().contains("REF arguments must be registers."));
+    }
+
+    @Test
+    @Tag("unit")
+    void testCallWithWrongRefCountReportsError() {
+        // Arrange
+        String source = String.join("\n",
+                ".PROC myProc REF rA rB",
+                "  RET",
+                ".ENDP",
+                "CALL myProc REF %DR1"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        // Act
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        analyzer.analyze(ast);
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics()).anyMatch(d -> d.message().contains("Procedure 'myProc' expects 2 REF argument(s), but received 1."));
+    }
+
+    @Test
+    @Tag("unit")
+    void testCallWithWrongValCountReportsError() {
+        // Arrange
+        String source = String.join("\n",
+                ".PROC myProc VAL v1",
+                "  RET",
+                ".ENDP",
+                "CALL myProc VAL 1 2"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        // Act
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        analyzer.analyze(ast);
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics()).anyMatch(d -> d.message().contains("Procedure 'myProc' expects 1 VAL argument(s), but received 2."));
+    }
+
+    @Test
+    @Tag("unit")
+    void testCallWithRegisterForValArgIsAllowed() {
+        // Arrange
+        String source = String.join("\n",
+                ".PROC myProc VAL v1",
+                "  RET",
+                ".ENDP",
+                "CALL myProc VAL %DR1"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        // Act
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        analyzer.analyze(ast);
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+    }
 }

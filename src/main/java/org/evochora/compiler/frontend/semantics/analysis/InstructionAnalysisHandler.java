@@ -58,43 +58,77 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
             // after the target or after WITH are tolerated as 'actuals'.
             java.util.List<AstNode> argsForSignature = instructionNode.arguments();
             if ("CALL".equalsIgnoreCase(instructionName)) {
-                // Only count the target label as a signature argument
-                if (!instructionNode.arguments().isEmpty()) {
+                // Handle new CALL ... REF ... VAL syntax
+                if (!instructionNode.refArguments().isEmpty() || !instructionNode.valArguments().isEmpty()) {
+                    if (instructionNode.arguments().isEmpty() || !(instructionNode.arguments().get(0) instanceof IdentifierNode procIdentifier)) {
+                        diagnostics.reportError("CALL with REF/VAL requires a procedure name.", instructionNode.opcode().fileName(), instructionNode.opcode().line());
+                        return; // Stop analysis for this instruction
+                    }
+
+                    Optional<Symbol> procSymbolOpt = symbolTable.resolve(procIdentifier.identifierToken());
+                    if (procSymbolOpt.isEmpty() || procSymbolOpt.get().type() != Symbol.Type.PROCEDURE) {
+                        diagnostics.reportError("Procedure '" + procIdentifier.identifierToken().text() + "' not found or is not a procedure.", procIdentifier.identifierToken().fileName(), procIdentifier.identifierToken().line());
+                        return;
+                    }
+
+                    Symbol procSymbol = procSymbolOpt.get();
+                    if (!(procSymbol.node() instanceof org.evochora.compiler.frontend.parser.features.proc.ProcedureNode procedureNode)) {
+                        diagnostics.reportError("Internal error: Symbol for procedure '" + procIdentifier.identifierToken().text() + "' does not contain a valid ProcedureNode.", procIdentifier.identifierToken().fileName(), procIdentifier.identifierToken().line());
+                        return;
+                    }
+
+                    // Validate argument counts
+                    if (instructionNode.refArguments().size() != procedureNode.refParameters().size()) {
+                        diagnostics.reportError(String.format("Procedure '%s' expects %d REF argument(s), but received %d.", procedureNode.name().text(), procedureNode.refParameters().size(), instructionNode.refArguments().size()), instructionNode.opcode().fileName(), instructionNode.opcode().line());
+                    }
+                    if (instructionNode.valArguments().size() != procedureNode.valParameters().size()) {
+                        diagnostics.reportError(String.format("Procedure '%s' expects %d VAL argument(s), but received %d.", procedureNode.name().text(), procedureNode.valParameters().size(), instructionNode.valArguments().size()), instructionNode.opcode().fileName(), instructionNode.opcode().line());
+                    }
+
+                    // Validate REF argument types
+                    for (AstNode refArg : instructionNode.refArguments()) {
+                        if (!(refArg instanceof RegisterNode)) {
+                            diagnostics.reportError("REF arguments must be registers.", instructionNode.opcode().fileName(), instructionNode.opcode().line());
+                        }
+                    }
+                    // Since we've handled the new syntax, we can skip the rest of the generic analysis.
+                    // The main argument (proc name) will be checked against the instruction signature below.
                     argsForSignature = instructionNode.arguments().subList(0, 1);
-                }
-                // Validation of actuals: allow registers or formal parameter names
-                int withIdx = -1;
-                for (int i = 0; i < instructionNode.arguments().size(); i++) {
-                    AstNode a = instructionNode.arguments().get(i);
-                    if (a instanceof IdentifierNode id) {
-                        String t = id.identifierToken().text().toUpperCase();
-                        if ("WITH".equals(t) || ".WITH".equals(t)) { withIdx = i; break; }
+                } else {
+                    // Only count the target label as a signature argument
+                    if (!instructionNode.arguments().isEmpty()) {
+                        argsForSignature = instructionNode.arguments().subList(0, 1);
                     }
-                }
-                // Do not allow additional tokens between target and WITH (prevents e.g. "EXPORT" in between)
-                int unexpectedEnd = withIdx >= 0 ? withIdx : instructionNode.arguments().size();
-                if (unexpectedEnd > 1) {
-                    diagnostics.reportError(
-                            "CALL syntax error: unexpected token before WITH.",
-                            instructionNode.opcode().fileName(),
-                            instructionNode.opcode().line()
-                    );
-                    return;
-                }
-                int actualsStart = withIdx >= 0 ? withIdx + 1 : 1;
-                for (int j = actualsStart; j < instructionNode.arguments().size(); j++) {
-                    AstNode arg = instructionNode.arguments().get(j);
-                    if (arg instanceof RegisterNode) continue;
-                    if (arg instanceof IdentifierNode id) {
-                        var res = symbolTable.resolve(id.identifierToken());
-                        if (res.isPresent() && (res.get().type() == Symbol.Type.VARIABLE || res.get().type() == Symbol.Type.ALIAS)) continue;
+                    // Validation of actuals: allow registers or formal parameter names
+                    int withIdx = -1;
+                    for (int i = 0; i < instructionNode.arguments().size(); i++) {
+                        AstNode a = instructionNode.arguments().get(i);
+                        if (a instanceof IdentifierNode id) {
+                            String t = id.identifierToken().text().toUpperCase();
+                            if ("WITH".equals(t) || ".WITH".equals(t)) {
+                                withIdx = i;
+                                break;
+                            }
+                        }
                     }
-                    diagnostics.reportError(
-                            "CALL actuals must be registers or parameter names.",
-                            instructionNode.opcode().fileName(),
-                            instructionNode.opcode().line()
-                    );
-                    return;
+                    // Do not allow additional tokens between target and WITH (prevents e.g. "EXPORT" in between)
+                    int unexpectedEnd = withIdx >= 0 ? withIdx : instructionNode.arguments().size();
+                    if (unexpectedEnd > 1) {
+                        diagnostics.reportError("CALL syntax error: unexpected token before WITH.", instructionNode.opcode().fileName(), instructionNode.opcode().line());
+                        return;
+                    }
+                    int actualsStart = withIdx >= 0 ? withIdx + 1 : 1;
+                    for (int j = actualsStart; j < instructionNode.arguments().size(); j++) {
+                        AstNode arg = instructionNode.arguments().get(j);
+                        if (arg instanceof RegisterNode) continue;
+                        if (arg instanceof IdentifierNode id) {
+                            var res = symbolTable.resolve(id.identifierToken());
+                            if (res.isPresent() && (res.get().type() == Symbol.Type.VARIABLE || res.get().type() == Symbol.Type.ALIAS))
+                                continue;
+                        }
+                        diagnostics.reportError("CALL actuals must be registers or parameter names.", instructionNode.opcode().fileName(), instructionNode.opcode().line());
+                        return;
+                    }
                 }
             }
 

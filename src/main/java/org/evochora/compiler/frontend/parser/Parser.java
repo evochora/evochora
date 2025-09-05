@@ -162,6 +162,9 @@ public class Parser implements ParsingContext {
     private AstNode instructionStatement() {
         if (match(TokenType.OPCODE)) {
             Token opcode = previous();
+            if ("CALL".equalsIgnoreCase(opcode.text())) {
+                return parseCallInstruction(opcode);
+            }
             List<AstNode> arguments = new ArrayList<>();
             while (!isAtEnd() && !check(TokenType.NEWLINE)) {
                 arguments.add(expression());
@@ -174,6 +177,48 @@ public class Parser implements ParsingContext {
             diagnostics.reportError("Expected instruction or directive, but got '" + unexpected.text() + "'.", unexpected.fileName(), unexpected.line());
         }
         return null;
+    }
+
+    private InstructionNode parseCallInstruction(Token opcode) {
+        AstNode procName = expression();
+
+        List<AstNode> arguments = new ArrayList<>();
+        arguments.add(procName);
+
+        // Check for new syntax (REF/VAL)
+        if (check(TokenType.IDENTIFIER) && ("REF".equalsIgnoreCase(peek().text()) || "VAL".equalsIgnoreCase(peek().text()))) {
+            List<AstNode> refArguments = new ArrayList<>();
+            List<AstNode> valArguments = new ArrayList<>();
+            boolean refParsed = false;
+            boolean valParsed = false;
+
+            while (!isAtEnd() && !check(TokenType.NEWLINE)) {
+                if (!refParsed && check(TokenType.IDENTIFIER) && "REF".equalsIgnoreCase(peek().text())) {
+                    advance(); // Consume REF
+                    refParsed = true;
+                    while (!isAtEnd() && !check(TokenType.NEWLINE) && !(check(TokenType.IDENTIFIER) && "VAL".equalsIgnoreCase(peek().text()))) {
+                        refArguments.add(expression());
+                    }
+                } else if (!valParsed && check(TokenType.IDENTIFIER) && "VAL".equalsIgnoreCase(peek().text())) {
+                    advance(); // Consume VAL
+                    valParsed = true;
+                    while (!isAtEnd() && !check(TokenType.NEWLINE) && !(check(TokenType.IDENTIFIER) && "REF".equalsIgnoreCase(peek().text()))) {
+                        valArguments.add(expression());
+                    }
+                } else {
+                    Token unexpected = advance();
+                    diagnostics.reportError("Unexpected token '" + unexpected.text() + "' in CALL statement. Expected REF, VAL, or newline.", unexpected.fileName(), unexpected.line());
+                    break;
+                }
+            }
+            return new InstructionNode(opcode, arguments, refArguments, valArguments);
+        } else {
+            // Old syntax: CALL proc [WITH] arg1, arg2, ...
+            while (!isAtEnd() && !check(TokenType.NEWLINE)) {
+                arguments.add(expression());
+            }
+            return new InstructionNode(opcode, arguments);
+        }
     }
 
     /**

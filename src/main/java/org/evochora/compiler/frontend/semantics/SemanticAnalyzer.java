@@ -68,7 +68,7 @@ public class SemanticAnalyzer {
             if (node == null) continue;
 
             if (node instanceof ProcedureNode proc) {
-                symbolTable.define(new Symbol(proc.name(), Symbol.Type.PROCEDURE));
+                symbolTable.define(new Symbol(proc.name(), Symbol.Type.PROCEDURE, proc));
                 symbolTable.registerProcedureMeta(proc.name(), proc.exported());
             }
             if (node instanceof RequireNode req) {
