@@ -30,9 +30,9 @@ Objective: Overhaul the procedure parameter system to support call-by-reference 
     - **Procedure Body:** Inside the procedure body, all parameters are treated as standard registers (`%FPRx`) regardless of their `REF` or `VAL` mode.
 
 4) **Handler / Plugin registration system:**
-    - Most compiler phases have an handler or plugin system
+    - Most compiler phases have a handler or plugin system
     - Please keep the main class of every compiler phase as lean as possible, it should only be used to delegate as much as possible to to its handlers / plugins.
-    - You can finde the handler / plugin system in of each phase in its sub-package.
+    - You can find the handler / plugin system of each phase in its sub-package.
     - Please add a new handler / plugin for the new parameter system, and do not put logic into the main class of a compiler phase if it can be avoided.
 
 6) Fix all tests that are broken by the new syntax. All test must pass after the update.
