@@ -53,14 +53,27 @@ public record SerializableSourceInfo(String fileName, int lineNumber, int column
             throw new IllegalArgumentException("Serialized string cannot be null or empty");
         }
         
-        String[] parts = serialized.split(":", 3);
-        if (parts.length < 3) {
+        // Find the last two colons to handle file paths that contain colons (e.g., Windows paths like C:/...)
+        int lastColonIndex = serialized.lastIndexOf(':');
+        if (lastColonIndex == -1) {
             throw new IllegalArgumentException("Invalid serialized format: " + serialized);
         }
         
-        String fileName = parts[0].equals("<unknown>") ? null : parts[0];
-        int lineNumber = Integer.parseInt(parts[1]);
-        int columnNumber = Integer.parseInt(parts[2]);
+        int secondLastColonIndex = serialized.lastIndexOf(':', lastColonIndex - 1);
+        if (secondLastColonIndex == -1) {
+            throw new IllegalArgumentException("Invalid serialized format: " + serialized);
+        }
+        
+        String fileName = serialized.substring(0, secondLastColonIndex);
+        if (fileName.equals("<unknown>")) {
+            fileName = null;
+        }
+        
+        String lineNumberStr = serialized.substring(secondLastColonIndex + 1, lastColonIndex);
+        String columnNumberStr = serialized.substring(lastColonIndex + 1);
+        
+        int lineNumber = Integer.parseInt(lineNumberStr);
+        int columnNumber = Integer.parseInt(columnNumberStr);
         
         return new SerializableSourceInfo(fileName, lineNumber, columnNumber);
     }

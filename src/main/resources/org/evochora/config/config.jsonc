@@ -20,7 +20,7 @@
         // [MANDATORY] Unique identifier for this organism type
         "id": "test",
         // [MANDATORY] Path to the assembly program file for this organism
-        "program": "org/evochora/organism/prototypes/test.s",
+        "program": "assembly/primordial/main.s",
         // [MANDATORY] Initial energy level when organism is created
         "initialEnergy": 5000,
         // [MANDATORY] Placement strategy for organisms

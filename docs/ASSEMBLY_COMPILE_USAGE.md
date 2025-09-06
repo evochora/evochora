@@ -66,8 +66,8 @@ This system allows AI assistants to:
 
 ## Example Assembly Files
 
-- **`example.s`** - Simple example demonstrating basic assembly syntax (recommended for testing)
-- **`examples.s`** - Comprehensive example showing advanced features like procedures, loops, and world interaction
+- **`assembly/examples/simple.s`**  - Simple example demonstrating basic assembly syntax (recommended for testing)
+- **`assembly/examples/complex.s`** - Comprehensive example showing advanced features like procedures, loops, and world interaction
 
 ## Notes
 

@@ -39,13 +39,13 @@ public class CompilerEndToEndTest {
     @Tag("unit")
 	void compilesProcedureAndCallEndToEnd() throws Exception {
 		String source = String.join("\n",
-				".PROC ADD2 EXPORT WITH A B",
+				".PROC ADD2 EXPORT REF A B",
 				"  ADDR A B",
 				"  RET",
 				".ENDP",
 				"SETI %DR0 DATA:1",
 				"SETI %DR1 DATA:2",
-				"CALL ADD2 WITH %DR0 %DR1",
+				"CALL ADD2 REF %DR0 %DR1",
 				"NOP"
 		);
 

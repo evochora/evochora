@@ -84,9 +84,11 @@ public class ProcedureDirectiveTest {
      * Verifies that the parser correctly handles a procedure definition with parameters.
      * It checks that the parameter names are correctly extracted and stored in the {@link ProcedureNode}.
      * This is a unit test for the parser.
+     * TODO: Need to create a new test, that tests the same but with REF / VAL instead of WITH
      */
     @Test
     @Tag("unit")
+    @Tag("legacy-with")
     void testParserProcedureWithParameters() {
         
         // Arrange
@@ -118,9 +120,11 @@ public class ProcedureDirectiveTest {
      * Verifies that the parser can handle a full procedure definition including the EXPORT keyword,
      * parameters, and nested directives like `.PREG` and `.REQUIRE`.
      * This is a unit test for the parser.
+     * TODO: Need to create a new test, that tests the same but with REF / VAL instead of WITH
      */
     @Test
     @Tag("unit")
+    @Tag("legacy-with")
     void testFullProcedureDefinition() {
         
         // Arrange

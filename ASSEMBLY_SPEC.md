@@ -273,7 +273,13 @@ Scans axis-aligned neighbors around the active DP and returns a bitmask indicati
 * `JMPI <Label>`: Jumps to `<Label>`. (Cost: 1)
 * `JMPR %VEC_REG>`: Jumps to the vector address in `<%VEC_REG>`. (Cost: 1)
 * `JMPS`: Jumps to the vector address popped from the stack. (Cost: 1)
-* `CALL <Label>`: Calls the procedure at `<Label>`. (Cost: 1)
+  `CALL <Label> [REF %reg1 ...] [VAL %reg2|Literal ...]`: Calls the procedure at `<Label>`, optionally passing parameters. (Cost: 1)
+    - `REF`: Passes registers by reference.
+    - `VAL`: Passes registers or literal values by value.
+    - **Example**:
+      ```
+      CALL myProc REF %DR0 VAL %DR1 DATA:42
+      ```
 * `RET`: Returns from a procedure. (Cost: 1)
 
 ### Conditional Instructions
@@ -426,7 +432,18 @@ Directives are special commands that instruct the compiler on how to assemble th
 
 A **module** is a source file (e.g., `lib.s`) containing one or more `.PROC` definitions that can be reused. To create and use modules effectively, you combine `.PROC`, `.REQUIRE`, and `.INCLUDE`.
 
-* `.PROC <Name> [EXPORT] [WITH <PARAM1> ...] / .ENDP`: Defines a procedure, a reusable block of code that can be called via `CALL`. By default, procedures are private to their file. The optional `EXPORT` keyword makes the procedure public, allowing it to be used by other modules.
+* `.PROC <Name> [EXPORT] [REF <param1> ...] [VAL <param2> ...] / .ENDP`: Defines a procedure.
+    - `EXPORT`: Makes the procedure visible to other modules.
+    - `REF`: Defines **call-by-reference** parameters. The procedure receives a direct reference to the caller's register. Any modification inside the procedure affects the original register.
+    - `VAL`: Defines **call-by-value** parameters. The procedure receives a copy of the value from the caller's register. Modifications are local and do not affect the original register.
+    - **Example**:
+      ```
+      .PROC myProc REF reg_a VAL val_b  # reg_a is by-reference, val_b is by-value
+        SETI reg_a DATA:100             # This changes the caller's register for reg_a
+        SETI val_b DATA:200             # This only changes the local copy for val_b
+        RET
+      .ENDP
+      ```
 * `.REQUIRE "<path>" AS <Alias>`: Declares a logical dependency on a module. A library file should use this to declare its own dependencies on other libraries.
 * `.INCLUDE "<path>"`: Inlines the content of another source file. The main program file must use this directive to include the source code for all required modules, which gives the main program full control over the physical layout of the code in the environment.
 * `.PREG <%ALIAS> <%PROCREGISTER>`: Within a `.PROC` block, assigns an alias to a procedure-local register (`%PR0` or `%PR1`).
@@ -436,7 +453,7 @@ A **module** is a source file (e.g., `lib.s`) containing one or more `.PROC` def
 **File 1: `lib/math.s`**
 ```
 # This module provides a simple math function.
-.PROC MATH.ADD EXPORT WITH A B  # Make this procedure public
+.PROC MATH.ADD EXPORT VAL A B  # Make this procedure public
   ADDS
   RET
 .ENDP
@@ -447,7 +464,7 @@ A **module** is a source file (e.g., `lib.s`) containing one or more `.PROC` def
 # This module depends on the math library.
 .REQUIRE "lib/math.s" AS MATH
 
-.PROC UTILS.INCREMENT_BOTH EXPORT WITH REG1 REG2
+.PROC UTILS.INCREMENT_BOTH EXPORT REF REG1 REG2
   # Use the procedure from the math library
   PUSH %REG1
   PUSI DATA:1
@@ -483,7 +500,7 @@ START:
   SETI %DR1 DATA:20
   
   # Call the procedure from the utils library
-  CALL UTILS.INCREMENT_BOTH .WITH %DR0 %DR1
+  CALL UTILS.INCREMENT_BOTH REF %DR0 %DR1
   
   # %DR0 is now 11, %DR1 is now 21
   ...

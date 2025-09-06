@@ -51,14 +51,14 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
             String content;
             String logicalName;
             
-            // First, try to resolve as filesystem path (for absolute paths or when basePath is absolute)
+            // First, try to resolve as filesystem path relative to the including file
             Path resolvedPath = context.getBasePath().resolve(relativePath).normalize();
-            if (context.getBasePath().isAbsolute() && Files.exists(resolvedPath)) {
-                // Filesystem path for tests/tools (only when basePath is absolute)
+            if (Files.exists(resolvedPath)) {
+                // Filesystem path - use the resolved path
                 logicalName = resolvedPath.toString().replace('\\', '/');
                 content = Files.readString(resolvedPath);
             } else {
-                // Classpath resource relative to including file
+                // Fallback to classpath resource resolution
                 String including = pathToken.fileName() != null ? pathToken.fileName().replace('\\', '/') : "";
                 String resourceBase = including.contains("/") ? including.substring(0, including.lastIndexOf('/')) : "";
                 

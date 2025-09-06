@@ -100,6 +100,7 @@ public class IrGeneratorTest {
 
     @Test
     @Tag("unit")
+    @Tag("legacy-with")
     void generatesIrForLegacyCallSyntax() {
         String src = """
             .PROC oldProc WITH p1

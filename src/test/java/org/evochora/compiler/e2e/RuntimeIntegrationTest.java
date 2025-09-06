@@ -45,13 +45,13 @@ public class RuntimeIntegrationTest {
     @Tag("integration")
 	void procedureWithParametersAddsValuesAtRuntime() throws Exception {
 		String source = String.join("\n",
-				".PROC ADD2 EXPORT WITH A B",
+				".PROC ADD2 EXPORT REF A B",
 				"  ADDR A B",
 				"  RET",
 				".ENDP",
 				"SETI %DR0 DATA:1",
 				"SETI %DR1 DATA:2",
-				"CALL ADD2 WITH %DR0 %DR1",
+				"CALL ADD2 REF %DR0 %DR1",
 				"NOP"
 		);
 
@@ -99,12 +99,12 @@ public class RuntimeIntegrationTest {
     @Tag("integration")
     void procedureCopyOut_worksWithoutProgramArtifact() throws Exception {
         String source = String.join("\n",
-                ".PROC INCREMENT EXPORT WITH VALUE",
+                ".PROC INCREMENT EXPORT REF VALUE",
                 "  ADDI VALUE DATA:1",
                 "  RET",
                 ".ENDP",
                 "SETI %DR0 DATA:41",
-                "CALL INCREMENT WITH %DR0",
+                "CALL INCREMENT REF %DR0",
                 "NOP"
         );
 
@@ -136,8 +136,12 @@ public class RuntimeIntegrationTest {
         assertThat(org.isInstructionFailed()).isFalse();
     }
 
+    /**
+     * TODO: Need to create a new test, that tests the same but with REF / VAL instead of WITH
+     */
     @Test
     @Tag("integration")
+    @Tag("legacy-with")
     void procedureCall_worksCorrectlyWithCorruptedProgramArtifact() throws Exception {
         String sourceCode = String.join("\n",
                 ".PROC ADD EXPORT WITH A B",

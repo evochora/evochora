@@ -159,13 +159,13 @@ class SourceAnnotatorTest {
         // 1. Arrange: Create an artifact with procedure calls
         String source = String.join("\n",
                 "  NOP",  // Add NOP before procedure to shift coordinates
-                ".PROC MY_PROC EXPORT WITH PARAM1 PARAM2",
+                ".PROC MY_PROC EXPORT REF PARAM1 PARAM2",
                 "  NOP",
                 "  RET",
                 ".ENDP",
                 "",
                 "START:",
-                "  CALL MY_PROC WITH %DR0 %DR1",
+                "  CALL MY_PROC REF %DR0 %DR1",
                 "  JMPI START"
         );
         Compiler compiler = new Compiler();
@@ -201,7 +201,7 @@ class SourceAnnotatorTest {
         );
 
         SourceAnnotator annotator = new SourceAnnotator();
-        String lineToAnnotate = "  CALL MY_PROC WITH %DR0 %DR1";
+        String lineToAnnotate = "  CALL MY_PROC REF %DR0 %DR1";
         int lineNumber = 8; // CALL instruction is actually on line 8 based on TokenMap output
 
         // 2. Act: Execute the annotation (this is the active line)

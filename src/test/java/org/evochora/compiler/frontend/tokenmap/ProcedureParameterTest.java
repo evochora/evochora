@@ -13,7 +13,11 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * TODO: Need to create a new test, that tests the same but with REF / VAL instead of WITH
+ */
 @Tag("unit")
+@Tag("legay-with")
 class ProcedureParameterTest extends CompilerTestBase {
 
     @BeforeAll

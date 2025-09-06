@@ -466,7 +466,7 @@ public final class ServiceManager {
                 org.evochora.runtime.isa.Instruction.init();
                 
                 org.evochora.compiler.Compiler compiler = new org.evochora.compiler.Compiler();
-                org.evochora.compiler.api.ProgramArtifact artifact = compiler.compile(sourceLines, organismConfig.id, envProps);
+                org.evochora.compiler.api.ProgramArtifact artifact = compiler.compile(sourceLines, programPath.toString(), envProps);
                 
                 // Create placements for each position
                 if (organismConfig.placement != null && organismConfig.placement.positions != null) {

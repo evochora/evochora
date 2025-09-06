@@ -48,10 +48,13 @@ public class EmissionIntegrationTest {
      * prologue and epilogue.
      * This is an integration test as it covers the lexer, parser, semantic analyzer, IR generator,
      * and emission rule engine.
+     *
+     * TODO: Need to create a new test, that tests the same but with REF / VAL instead of WITH
      */
     @Test
     @Tag("integration")
-    void endToEnd_CallerAndCalleeMarshalling() {
+    @Tag("legacy-with")
+    void endToEnd_CallerAndCalleeMarshalling_legacy() {
         String src = String.join("\n",
                 ".PROC INC WITH A",
                 "  RET",
