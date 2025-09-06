@@ -2,6 +2,7 @@ package org.evochora.server.engine;
 
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
@@ -25,6 +26,7 @@ class SimulationEngineOwnershipTest {
 
     @BeforeEach
     void setUp() {
+        Instruction.init();
         queue = new InMemoryTickQueue();
         engine = new SimulationEngine(queue, testEnvProps,
              new ArrayList<>(), new ArrayList<>());
@@ -111,8 +113,8 @@ class SimulationEngineOwnershipTest {
         ProgramArtifact artifact1 = compiler.compile(lines, "test_program_1", testEnvProps);
         ProgramArtifact artifact2 = compiler.compile(lines, "test_program_2", testEnvProps);
         
-        OrganismPlacement placement1 = OrganismPlacement.of(artifact1, 1000, new int[]{0, 0}, "organism_1");
-        OrganismPlacement placement2 = OrganismPlacement.of(artifact2, 1000, new int[]{5, 5}, "organism_2");
+        OrganismPlacement placement1 = OrganismPlacement.of(artifact1, 1000, new int[]{0, 0});
+        OrganismPlacement placement2 = OrganismPlacement.of(artifact2, 1000, new int[]{5, 5});
         
         SimulationEngine testEngine = new SimulationEngine(queue, testEnvProps,
              List.of(placement1, placement2), new ArrayList<>());

@@ -49,12 +49,22 @@ public class VMDataInstructionTest {
         }
     }
 
-    private void placeInstructionWithVector(String name, int reg, int[] vector) {
+    private void placeInstructionWithRegisterAndVector(String name, int reg, int[] vector) {
         int opcode = Instruction.getInstructionIdByName(name);
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
         environment.setMolecule(new Molecule(Config.TYPE_DATA, reg), currentPos);
+        for (int val : vector) {
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
+            environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
+        }
+    }
+
+    private void placeInstructionWithVector(String name, int[] vector) {
+        int opcode = Instruction.getInstructionIdByName(name);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
+        int[] currentPos = org.getIp();
         for (int val : vector) {
             currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
             environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
@@ -96,7 +106,7 @@ public class VMDataInstructionTest {
     @Tag("unit")
     void testSetv() {
         int[] vec = new int[]{3, 4};
-        placeInstructionWithVector("SETV", 0, vec);
+        placeInstructionWithRegisterAndVector("SETV", 0, vec);
         sim.tick();
         Object reg0 = org.getDr(0);
         assertThat(reg0).isInstanceOf(int[].class);
@@ -142,6 +152,21 @@ public class VMDataInstructionTest {
         placeInstruction("PUSI", literal);
         sim.tick();
         assertThat(org.getDataStack().pop()).isEqualTo(literal);
+    }
+
+    /**
+     * Tests the PUSV (Push Vector) instruction.
+     * This is a unit test for the VM's instruction logic.
+     */
+    @Test
+    @Tag("unit")
+    void testPusv() {
+        int[] vec = new int[]{5, 6};
+        placeInstructionWithVector("PUSV", vec);
+        sim.tick();
+        Object stackValue = org.getDataStack().pop();
+        assertThat(stackValue).isInstanceOf(int[].class);
+        assertThat((int[]) stackValue).containsExactly(vec);
     }
 
     /**

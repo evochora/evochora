@@ -474,19 +474,18 @@ public final class ServiceManager {
                         org.evochora.server.engine.OrganismPlacement placement = org.evochora.server.engine.OrganismPlacement.of(
                             artifact,
                             organismConfig.initialEnergy,
-                            position,
-                            organismConfig.id
+                            position
                         );
                         placements.add(placement);
-                        log.info("Created organism placement: {} at position {} with energy {}", 
-                                organismConfig.id, java.util.Arrays.toString(position), organismConfig.initialEnergy);
+                        log.info("Created organism placement at position {} with energy {}", 
+                                java.util.Arrays.toString(position), organismConfig.initialEnergy);
                     }
                 } else {
-                    log.warn("No placement positions configured for organism: {}", organismConfig.id);
+                    log.warn("No placement positions configured for organism with program: {}", organismConfig.program);
                 }
                 
             } catch (Exception e) {
-                log.error("Failed to create organism placement for {}: {}", organismConfig.id, e.getMessage(), e);
+                log.error("Failed to create organism placement for program {}: {}", organismConfig.program, e.getMessage(), e);
             }
         }
         

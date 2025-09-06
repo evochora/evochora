@@ -17,10 +17,8 @@
     // [OPTIONAL] List of organisms to place in the world (default: empty array)
     "organisms": [
       {
-        // [MANDATORY] Unique identifier for this organism type
-        "id": "test",
         // [MANDATORY] Path to the assembly program file for this organism
-        "program": "assembly/test/main2.s",
+        "program": "assembly/primordial/main.s",
         // [MANDATORY] Initial energy level when organism is created
         "initialEnergy": 5000,
         // [MANDATORY] Placement strategy for organisms

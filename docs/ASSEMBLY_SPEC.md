@@ -195,6 +195,7 @@ The instruction set defines the fundamental operations an organism can perform. 
 * `PUSH %REG`: Pushes the value of `<%REG>` onto the Data Stack. (Cost: 1)
 * `POP %REG`: Pops a value from the Data Stack into `<%REG>`. (Cost: 1)
 * `PUSI <Literal>`: Pushes the immediate `<Literal>` onto the Data Stack. (Cost: 1)
+* `PUSV <Vector>`: Pushes the vector `<Vector>` onto the Data Stack. (Cost: 1)
 * `DUP`: Duplicates the top value on the Data Stack. (Cost: 1)
 * `SWAP`: Swaps the top two values on the Data Stack. (Cost: 1)
 * `DROP`: Discards the top value on the Data Stack. (Cost: 1)

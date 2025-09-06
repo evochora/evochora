@@ -76,7 +76,6 @@ public class BenchmarkTest {
         // Erstelle Organismen in einer For-Schleife
         for (int i = 0; i < organismCount; i++) {
             organismConfigs.add(new OrganismConfig(
-                "benchmark_organism_" + (i + 1), // Eindeutige ID
                 assemblyProgram,
                 new int[]{0, i}, // Startposition: x=0, y=i (jeder in eigener Zeile)
                 100000 // Startenergie
@@ -86,13 +85,11 @@ public class BenchmarkTest {
     
     // Helper class for organism configuration
     private static class OrganismConfig {
-        final String id;
         final String assemblyProgram;
         final int[] startPosition;
         final int startEnergy;
         
-        OrganismConfig(String id, String assemblyProgram, int[] startPosition, int startEnergy) {
-            this.id = id;
+        OrganismConfig(String assemblyProgram, int[] startPosition, int startEnergy) {
             this.assemblyProgram = assemblyProgram;
             this.startPosition = startPosition;
             this.startEnergy = startEnergy;
@@ -209,7 +206,7 @@ public class BenchmarkTest {
                     ProgramArtifact artifact = compiler.compile(lines, "benchmark_organism", environmentProperties);
                     
                     // Create placement
-                    return OrganismPlacement.of(artifact, config.startEnergy, config.startPosition, config.id);
+                    return OrganismPlacement.of(artifact, config.startEnergy, config.startPosition);
                 } catch (Exception e) {
                     throw new RuntimeException("Failed to compile organism program: " + e.getMessage(), e);
                 }

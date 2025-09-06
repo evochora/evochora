@@ -108,6 +108,45 @@ public class EmissionCallerMarshallingTest {
 
         @Test
         @Tag("unit")
+        @DisplayName("Should marshall CALL with label as VAL parameter using PUSV")
+        void marshallsCallWithLabelAsValParameter() {
+            // IR for: CALL myProc VAL myLabel
+            IrLabelRef target = new IrLabelRef("myProc");
+            IrLabelRef labelParam = new IrLabelRef("myLabel");
+            IrInstruction call = new IrInstruction("CALL", List.of(target), Collections.emptyList(), List.of(labelParam), src("main.s", 1));
+
+            List<IrItem> out = runEmission(List.of(call));
+
+            // Expect: PUSV myLabel, CALL myProc
+            assertThat(out).hasSize(2);
+            assertThat(out.get(0)).isEqualTo(new IrInstruction("PUSV", List.of(labelParam), call.source()));
+            assertThat(out.get(1)).isEqualTo(call);
+        }
+
+        @Test
+        @Tag("unit")
+        @DisplayName("Should marshall CALL with mixed REF, VAL immediate, and VAL label parameters")
+        void marshallsCallWithMixedParameters() {
+            // IR for: CALL myProc REF %rA VAL 123 VAL myLabel
+            IrReg rA = new IrReg("%rA");
+            IrImm imm123 = new IrImm(123);
+            IrLabelRef target = new IrLabelRef("myProc");
+            IrLabelRef labelParam = new IrLabelRef("myLabel");
+            IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rA), List.of(imm123, labelParam), src("main.s", 1));
+
+            List<IrItem> out = runEmission(List.of(call));
+
+            // Expect: PUSH %rA, PUSV myLabel, PUSI 123, CALL myProc, POP %rA
+            assertThat(out).hasSize(5);
+            assertThat(out.get(0)).isEqualTo(new IrInstruction("PUSH", List.of(rA), call.source()));
+            assertThat(out.get(1)).isEqualTo(new IrInstruction("PUSV", List.of(labelParam), call.source()));
+            assertThat(out.get(2)).isEqualTo(new IrInstruction("PUSI", List.of(imm123), call.source()));
+            assertThat(out.get(3)).isEqualTo(call);
+            assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rA), call.source()));
+        }
+
+        @Test
+        @Tag("unit")
         @DisplayName("Should transform conditional CALL with REF operand")
         void shouldTransformConditionalCallWithRef() {
             // IR for: IFR %rA, CALL myProc REF %rA

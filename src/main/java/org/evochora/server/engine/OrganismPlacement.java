@@ -12,37 +12,22 @@ import org.evochora.compiler.api.ProgramArtifact;
  * @param programArtifact The compiled program artifact containing the organism's code
  * @param initialEnergy The initial energy level for the organism
  * @param startPosition The starting position coordinates for the organism
- * @param organismId Optional explicit organism ID (null for auto-generated)
  */
 public record OrganismPlacement(
     ProgramArtifact programArtifact,
     int initialEnergy, 
-    int[] startPosition,
-    String organismId
+    int[] startPosition
 ) {
     /**
-     * Creates an OrganismPlacement with a generated organism ID.
+     * Creates an OrganismPlacement.
      * 
      * @param programArtifact The compiled program artifact
      * @param initialEnergy The initial energy level
      * @param startPosition The starting position coordinates
-     * @return A new OrganismPlacement with auto-generated organism ID
+     * @return A new OrganismPlacement
      */
     public static OrganismPlacement of(ProgramArtifact programArtifact, int initialEnergy, int[] startPosition) {
-        return new OrganismPlacement(programArtifact, initialEnergy, startPosition, null);
-    }
-    
-    /**
-     * Creates an OrganismPlacement with an explicit organism ID.
-     * 
-     * @param programArtifact The compiled program artifact
-     * @param initialEnergy The initial energy level
-     * @param startPosition The starting position coordinates
-     * @param organismId The explicit organism ID
-     * @return A new OrganismPlacement with the specified organism ID
-     */
-    public static OrganismPlacement of(ProgramArtifact programArtifact, int initialEnergy, int[] startPosition, String organismId) {
-        return new OrganismPlacement(programArtifact, initialEnergy, startPosition, organismId);
+        return new OrganismPlacement(programArtifact, initialEnergy, startPosition);
     }
     
     /**

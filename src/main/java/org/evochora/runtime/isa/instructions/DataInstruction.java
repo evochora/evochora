@@ -66,6 +66,12 @@ public class DataInstruction extends Instruction {
                     organism.getDataStack().push(operands.get(0).value());
                     break;
                 }
+                case "PUSV": {
+                    if (operands.size() != 1) { organism.instructionFailed("Invalid operands for PUSV"); return; }
+                    if (organism.getDataStack().size() >= Config.DS_MAX_DEPTH) { organism.instructionFailed("Stack Overflow"); return; }
+                    organism.getDataStack().push(operands.get(0).value());
+                    break;
+                }
                 default:
                     organism.instructionFailed("Unknown data instruction: " + opName);
             }

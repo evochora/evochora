@@ -88,8 +88,8 @@ public final class CallerMarshallingRule implements IEmissionRule {
             if (operand instanceof IrImm imm) {
                 out.add(new IrInstruction("PUSI", List.of(imm), call.source()));
             } else if (operand instanceof IrLabelRef) {
-                // Labels as VAL parameters should be pushed as immediate values (addresses)
-                out.add(new IrInstruction("PUSI", List.of(operand), call.source()));
+                // Labels as VAL parameters should be pushed as vectors (addresses)
+                out.add(new IrInstruction("PUSV", List.of(operand), call.source()));
             } else {
                 out.add(new IrInstruction("PUSH", List.of(operand), call.source()));
             }

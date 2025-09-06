@@ -197,6 +197,7 @@ public abstract class Instruction {
         registerFamily(DataInstruction.class, Map.of(22, "PUSH"), List.of(OperandSource.REGISTER));
         registerFamily(DataInstruction.class, Map.of(23, "POP"), List.of(OperandSource.REGISTER));
         registerFamily(DataInstruction.class, Map.of(58, "PUSI"), List.of(OperandSource.IMMEDIATE));
+        registerFamily(DataInstruction.class, Map.of(178, "PUSV"), List.of(OperandSource.VECTOR));
 
         // Stack-Family
         registerFamily(StackInstruction.class, Map.of(60, "DUP", 61, "SWAP", 62, "DROP", 63, "ROT"), List.of());

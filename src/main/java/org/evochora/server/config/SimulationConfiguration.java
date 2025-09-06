@@ -28,7 +28,6 @@ public final class SimulationConfiguration {
     }
 
     public static final class OrganismConfig {
-        public String id;
         public String program;
         public int initialEnergy;
         public PlacementConfig placement;
