@@ -105,6 +105,41 @@ public class EmissionCallerMarshallingTest {
 
             assertThat(out).hasSize(1).containsExactly(call);
         }
+
+        @Test
+        @Tag("unit")
+        @DisplayName("Should transform conditional CALL with REF operand")
+        void shouldTransformConditionalCallWithRef() {
+            // IR for: IFR %rA, CALL myProc REF %rA
+            IrReg rA = new IrReg("%rA");
+            IrInstruction ifr = new IrInstruction("IFR", List.of(rA), src("main.s", 1));
+            IrLabelRef target = new IrLabelRef("myProc");
+            IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
+
+            List<IrItem> out = runEmission(List.of(ifr, call));
+
+            // Expect: INR %rA, JMPI _safe_call_X, PUSH %rA, CALL myProc, POP %rA, _safe_call_X:
+            assertThat(out).hasSize(6);
+            assertThat(out.get(0)).isInstanceOf(IrInstruction.class);
+            IrInstruction negated = (IrInstruction) out.get(0);
+            assertThat(negated.opcode()).isEqualTo("INR");
+            assertThat(negated.operands()).containsExactly(rA);
+
+            assertThat(out.get(1)).isInstanceOf(IrInstruction.class);
+            IrInstruction jmpi = (IrInstruction) out.get(1);
+            assertThat(jmpi.opcode()).isEqualTo("JMPI");
+            assertThat(jmpi.operands().get(0)).isInstanceOf(IrLabelRef.class);
+            String labelName = ((IrLabelRef) jmpi.operands().get(0)).labelName();
+            assertThat(labelName).startsWith("_safe_call_");
+
+            assertThat(out.get(2)).isEqualTo(new IrInstruction("PUSH", List.of(rA), call.source()));
+            assertThat(out.get(3)).isEqualTo(call);
+            assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rA), call.source()));
+
+            assertThat(out.get(5)).isInstanceOf(IrLabelDef.class);
+            IrLabelDef labelDef = (IrLabelDef) out.get(5);
+            assertThat(labelDef.name()).isEqualTo(labelName);
+        }
     }
 
     @Test

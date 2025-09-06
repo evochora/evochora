@@ -1,5 +1,6 @@
 package org.evochora.compiler.backend.emit.features;
 
+import org.evochora.compiler.backend.emit.ConditionalUtils;
 import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.ir.*;
@@ -7,15 +8,17 @@ import org.evochora.compiler.ir.*;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
  * Inserts procedure prologue and epilogue code for parameter marshalling.
- * It transforms `proc_enter` and `proc_exit` directives into PUSH/POP sequences
- * to handle formal parameters.
+ * It handles standard and conditional RET instructions.
  */
 public class ProcedureMarshallingRule implements IEmissionRule {
+
+    private static final AtomicInteger safeRetCounter = new AtomicInteger(0);
 
     @Override
     public List<IrItem> apply(List<IrItem> items, LinkingContext linkingContext) {
@@ -24,71 +27,25 @@ public class ProcedureMarshallingRule implements IEmissionRule {
         while (i < items.size()) {
             IrItem it = items.get(i);
             if (it instanceof IrDirective dir && "core".equals(dir.namespace()) && "proc_enter".equals(dir.name())) {
+                int bodyEndIndex = findBodyEnd(items, i);
+                List<IrItem> body = items.subList(i + 1, bodyEndIndex);
+                out.add(it);
 
                 List<String> refParamNames = getParamNames(dir, "refParams");
                 List<String> valParamNames = getParamNames(dir, "valParams");
 
                 if (!refParamNames.isEmpty() || !valParamNames.isEmpty()) {
                     // New REF/VAL syntax
-                    out.add(it);
-                    handleNewSyntax(out, items, i, dir, refParamNames, valParamNames);
-                    int j = i + 1;
-                    while (j < items.size() && !(items.get(j) instanceof IrDirective d2 && "core".equals(d2.namespace()) && "proc_exit".equals(d2.name()))) {
-                        j++;
-                    }
-                    i = j;
+                    handleNewSyntax(out, dir, body, refParamNames, valParamNames);
                 } else {
-                    // Old ".PROC WITH" syntax - original logic
-                    long arityLong = dir.args().getOrDefault("arity", new IrValue.Int64(0)) instanceof IrValue.Int64 iv ? iv.value() : 0L;
-                    int arity = (int) Math.max(0, Math.min(8, arityLong));
-                    out.add(it);
-
-                    // Prologue: Load parameters from the stack into the %FPR registers
-                    for (int p = arity - 1; p >= 0; p--) {
-                        out.add(new IrInstruction("POP", List.of(new IrReg("%FPR" + p)), it.source()));
-                    }
-
-                    // Find the body of the procedure up to the corresponding proc_exit
-                    int j = i + 1;
-                    List<IrItem> body = new ArrayList<>();
-                    for (; j < items.size(); j++) {
-                        IrItem bi = items.get(j);
-                        if (bi instanceof IrDirective d2 && "core".equals(d2.namespace()) && "proc_exit".equals(d2.name())) {
-                            break;
-                        }
-                        body.add(bi);
-                    }
-
-                    // Copy the body and insert the epilogue before EACH RET
-                    boolean sawRet = false;
-                    for (IrItem bi : body) {
-                        if (bi instanceof IrInstruction instr && "RET".equals(instr.opcode())) {
-                            // Insert epilogue before RET
-                            for (int p = 0; p < arity; p++) {
-                                out.add(new IrInstruction("PUSH", List.of(new IrReg("%FPR" + p)), it.source()));
-                            }
-                            out.add(instr);
-                            sawRet = true;
-                        } else {
-                            out.add(bi);
-                        }
-                    }
-
-                    // If no RET was present in the body, only insert epilogue (no implicit RET)
-                    if (!sawRet) {
-                        for (int p = 0; p < arity; p++) {
-                            out.add(new IrInstruction("PUSH", List.of(new IrReg("%FPR" + p)), it.source()));
-                        }
-                    }
-
-                    // Append proc_exit
-                    if (j < items.size()) {
-                        out.add(items.get(j));
-                    }
-
-                    i = j + 1;
-                    continue;
+                    // Old ".PROC WITH" syntax
+                    handleLegacySyntax(out, dir, body);
                 }
+
+                if (bodyEndIndex < items.size()) {
+                    out.add(items.get(bodyEndIndex)); // Add proc_exit
+                }
+                i = bodyEndIndex + 1;
             } else {
                 out.add(it);
                 i++;
@@ -97,7 +54,7 @@ public class ProcedureMarshallingRule implements IEmissionRule {
         return out;
     }
 
-    private void handleNewSyntax(List<IrItem> out, List<IrItem> items, int startIndex, IrDirective enterDirective, List<String> refParams, List<String> valParams) {
+    private void handleNewSyntax(List<IrItem> out, IrDirective enterDirective, List<IrItem> body, List<String> refParams, List<String> valParams) {
         List<String> allParams = Stream.concat(refParams.stream(), valParams.stream()).collect(Collectors.toList());
 
         // Prologue: POP all parameters into FPRs
@@ -105,25 +62,72 @@ public class ProcedureMarshallingRule implements IEmissionRule {
             out.add(new IrInstruction("POP", List.of(new IrReg("%FPR" + p)), enterDirective.source()));
         }
 
-        // Find body and handle epilogue
-        int bodyEndIndex = findBodyEnd(items, startIndex);
-        List<IrItem> body = items.subList(startIndex + 1, bodyEndIndex);
+        // Process body for RET instructions
+        processBodyForRets(out, body, refParams, -1);
+    }
 
-        for (IrItem bodyItem : body) {
-            if (bodyItem instanceof IrInstruction instr && "RET".equals(instr.opcode())) {
-                // Epilogue: PUSH only REF parameters before RET
-                for (int p = 0; p < refParams.size(); p++) {
-                    out.add(new IrInstruction("PUSH", List.of(new IrReg("%FPR" + p)), instr.source()));
+    private void handleLegacySyntax(List<IrItem> out, IrDirective enterDirective, List<IrItem> body) {
+        long arityLong = enterDirective.args().getOrDefault("arity", new IrValue.Int64(0)) instanceof IrValue.Int64 iv ? iv.value() : 0L;
+        int arity = (int) Math.max(0, Math.min(8, arityLong));
+
+        // Prologue: Load parameters from the stack into the %FPR registers
+        for (int p = arity - 1; p >= 0; p--) {
+            out.add(new IrInstruction("POP", List.of(new IrReg("%FPR" + p)), enterDirective.source()));
+        }
+
+        // Process body for RET instructions
+        processBodyForRets(out, body, null, arity);
+    }
+
+    private void processBodyForRets(List<IrItem> out, List<IrItem> body, List<String> refParams, int arity) {
+        int i = 0;
+        while (i < body.size()) {
+            IrItem currentItem = body.get(i);
+
+            // Check for conditional RET
+            if (i + 1 < body.size() && currentItem instanceof IrInstruction conditional && ConditionalUtils.isConditional(conditional.opcode())) {
+                if (body.get(i + 1) instanceof IrInstruction ret && "RET".equals(ret.opcode())) {
+                    handleConditionalRet(out, conditional, ret, refParams, arity);
+                    i += 2;
+                    continue;
                 }
-                out.add(instr); // Add the RET instruction itself
-            } else {
-                out.add(bodyItem);
+            }
+
+            // Handle standard RET
+            if (currentItem instanceof IrInstruction ret && "RET".equals(ret.opcode())) {
+                emitStandardEpilogue(out, ret, refParams, arity);
+                i++;
+                continue;
+            }
+
+            out.add(currentItem);
+            i++;
+        }
+    }
+
+    private void handleConditionalRet(List<IrItem> out, IrInstruction conditional, IrInstruction ret, List<String> refParams, int arity) {
+        String label = "_safe_ret_" + safeRetCounter.getAndIncrement();
+        String negatedOpcode = ConditionalUtils.getNegatedOpcode(conditional.opcode());
+
+        out.add(new IrInstruction(negatedOpcode, conditional.operands(), conditional.source()));
+        out.add(new IrInstruction("JMPI", List.of(new IrLabelRef(label)), conditional.source()));
+
+        emitStandardEpilogue(out, ret, refParams, arity);
+
+        out.add(new IrLabelDef(label, ret.source()));
+    }
+
+    private void emitStandardEpilogue(List<IrItem> out, IrInstruction ret, List<String> refParams, int arity) {
+        if (refParams != null) { // New REF/VAL syntax
+            for (int p = 0; p < refParams.size(); p++) {
+                out.add(new IrInstruction("PUSH", List.of(new IrReg("%FPR" + p)), ret.source()));
+            }
+        } else { // Legacy arity syntax
+            for (int p = 0; p < arity; p++) {
+                out.add(new IrInstruction("PUSH", List.of(new IrReg("%FPR" + p)), ret.source()));
             }
         }
-
-        if (bodyEndIndex < items.size()) {
-            out.add(items.get(bodyEndIndex)); // Add proc_exit
-        }
+        out.add(ret);
     }
 
     private int findBodyEnd(List<IrItem> items, int startIndex) {
