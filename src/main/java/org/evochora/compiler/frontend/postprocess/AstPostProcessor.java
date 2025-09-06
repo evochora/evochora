@@ -55,14 +55,14 @@ public class AstPostProcessor {
             return;
         }
         
-
-
         String identifierName = idNode.identifierToken().text();
         
-        // Check if this identifier is a register alias (both .REG and .PREG aliases are in registerAliases map)
-        if (registerAliases.containsKey(identifierName)) {
-            String resolvedName = registerAliases.get(identifierName);
-            createRegisterReplacement(idNode, identifierName, resolvedName);
+        // Check if this identifier is a register alias
+        // Register aliases are stored with UPPERCASE names as keys
+        String upperName = identifierName.toUpperCase();
+        if (registerAliases.containsKey(upperName)) {
+            String resolvedName = registerAliases.get(upperName);
+            createRegisterReplacement(idNode, upperName, resolvedName);
             return;
         }
         
@@ -78,36 +78,42 @@ public class AstPostProcessor {
         }
     }
     
+    
     /**
      * Creates a RegisterNode replacement for an identifier that resolves to a register alias.
      *
-     * @param idNode the original identifier node
+     * @param originalNode the original identifier node
      * @param aliasName the alias name (e.g., "TMP")
      * @param resolvedRegister the resolved register (e.g., "%PR0")
      */
-    private void createRegisterReplacement(IdentifierNode idNode, String aliasName, String resolvedRegister) {
-        // Create a new token representing the resolved register
-        // This token contains the resolved register text but keeps the original location
-        Token resolvedRegisterToken = new Token(
-            TokenType.REGISTER,           // Now it's a register, not an identifier
-            resolvedRegister,             // e.g., "%PR0" - the text
-            null,                        // No processed value for registers
+    private void createRegisterReplacement(AstNode originalNode, String aliasName, String resolvedRegister) {
+        if (!(originalNode instanceof IdentifierNode idNode)) {
+            throw new IllegalArgumentException("Expected IdentifierNode, got: " + originalNode.getClass().getSimpleName());
+        }
+        
+        SourceInfo sourceInfo = new SourceInfo(
+            idNode.identifierToken().fileName(),
             idNode.identifierToken().line(),
-            idNode.identifierToken().column(),
-            idNode.identifierToken().fileName()
+            idNode.identifierToken().column()
+        );
+        
+        // Create a new token representing the resolved register
+        Token resolvedRegisterToken = new Token(
+            TokenType.REGISTER,
+            resolvedRegister,
+            null,
+            sourceInfo.lineNumber(),
+            sourceInfo.columnNumber(),
+            sourceInfo.fileName()
         );
         
         RegisterNode replacement = new RegisterNode(
-            resolvedRegister,             // e.g., "%PR0"
-            aliasName,                   // e.g., "TMP"
-            new SourceInfo(              // Create SourceInfo from the token
-                idNode.identifierToken().fileName(),
-                idNode.identifierToken().line(),
-                idNode.identifierToken().column()
-            ),
-            resolvedRegisterToken         // Token with resolved register text
+            resolvedRegister,
+            aliasName,
+            sourceInfo,
+            resolvedRegisterToken
         );
-        replacements.put(idNode, replacement);
+        replacements.put(originalNode, replacement);
     }
     
     private void collectConstants(AstNode node) {

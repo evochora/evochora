@@ -183,4 +183,108 @@ public class IrGeneratorTest {
         String lineContent2 = artifact.sources().get(infoForArg1.fileName()).get(infoForArg1.lineNumber() - 1);
         assertThat(lineContent2.trim()).isEqualTo("SETI %DR0 DATA:42");
     }
+
+    @Test
+    @Tag("unit")
+    void resolvesRefParametersWithinProcedure() {
+        String src = """
+            .PROC myProc REF rA VAL v1
+                ADDR rA v1
+                RET
+            .ENDP
+            """;
+        IrProgram ir = compileToIr(src);
+        
+        // Find the ADDR instruction within the procedure
+        Optional<IrInstruction> addrInstructionOpt = ir.items().stream()
+                .filter(IrInstruction.class::isInstance)
+                .map(IrInstruction.class::cast)
+                .filter(i -> "ADDR".equalsIgnoreCase(i.opcode()))
+                .findFirst();
+
+        assertTrue(addrInstructionOpt.isPresent(), "ADDR instruction not found in IR");
+        IrInstruction addrInstruction = addrInstructionOpt.get();
+
+        // Check that parameters are resolved to %FPRx registers
+        assertEquals(2, addrInstruction.operands().size());
+        assertInstanceOf(IrReg.class, addrInstruction.operands().get(0));
+        assertInstanceOf(IrReg.class, addrInstruction.operands().get(1));
+        
+        // REF parameter should be %FPR0, VAL parameter should be %FPR1
+        assertEquals("%FPR0", ((IrReg) addrInstruction.operands().get(0)).name());
+        assertEquals("%FPR1", ((IrReg) addrInstruction.operands().get(1)).name());
+    }
+
+    @Test
+    @Tag("unit")
+    void resolvesValParametersWithinProcedure() {
+        String src = """
+            .PROC myProc VAL v1 v2
+                ADDR v1 v2
+                RET
+            .ENDP
+            """;
+        IrProgram ir = compileToIr(src);
+        
+        // Find the ADDR instruction within the procedure
+        Optional<IrInstruction> addrInstructionOpt = ir.items().stream()
+                .filter(IrInstruction.class::isInstance)
+                .map(IrInstruction.class::cast)
+                .filter(i -> "ADDR".equalsIgnoreCase(i.opcode()))
+                .findFirst();
+
+        assertTrue(addrInstructionOpt.isPresent(), "ADDR instruction not found in IR");
+        IrInstruction addrInstruction = addrInstructionOpt.get();
+
+        // Check that parameters are resolved to %FPRx registers
+        assertEquals(2, addrInstruction.operands().size());
+        assertInstanceOf(IrReg.class, addrInstruction.operands().get(0));
+        assertInstanceOf(IrReg.class, addrInstruction.operands().get(1));
+        
+        // VAL parameters should be %FPR0 and %FPR1
+        assertEquals("%FPR0", ((IrReg) addrInstruction.operands().get(0)).name());
+        assertEquals("%FPR1", ((IrReg) addrInstruction.operands().get(1)).name());
+    }
+
+    @Test
+    @Tag("unit")
+    void resolvesNestedCallWithRefParameters() {
+        String src = """
+            .PROC outerProc REF rA VAL v1
+                CALL innerProc REF rA VAL v1
+                RET
+            .ENDP
+            
+            .PROC innerProc REF rB VAL v2
+                NOP
+                RET
+            .ENDP
+            """;
+        IrProgram ir = compileToIr(src);
+        
+        // Find the CALL instruction within the outer procedure
+        Optional<IrInstruction> callInstructionOpt = ir.items().stream()
+                .filter(IrInstruction.class::isInstance)
+                .map(IrInstruction.class::cast)
+                .filter(i -> "CALL".equalsIgnoreCase(i.opcode()))
+                .findFirst();
+
+        assertTrue(callInstructionOpt.isPresent(), "CALL instruction not found in IR");
+        IrInstruction callInstruction = callInstructionOpt.get();
+
+        // Check that the CALL has the correct operands
+        assertEquals(1, callInstruction.operands().size());
+        assertInstanceOf(IrLabelRef.class, callInstruction.operands().get(0));
+        assertEquals("innerProc", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
+
+        // Check REF operands - should be resolved to %FPRx
+        assertEquals(1, callInstruction.refOperands().size());
+        assertInstanceOf(IrReg.class, callInstruction.refOperands().get(0));
+        assertEquals("%FPR0", ((IrReg) callInstruction.refOperands().get(0)).name());
+
+        // Check VAL operands - should be resolved to %FPRx
+        assertEquals(1, callInstruction.valOperands().size());
+        assertInstanceOf(IrReg.class, callInstruction.valOperands().get(0));
+        assertEquals("%FPR1", ((IrReg) callInstruction.valOperands().get(0)).name());
+    }
 }

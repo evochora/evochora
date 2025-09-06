@@ -87,9 +87,16 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
 
                     // Validate REF argument types
                     for (AstNode refArg : instructionNode.refArguments()) {
-                        if (!(refArg instanceof RegisterNode)) {
-                            diagnostics.reportError("REF arguments must be registers.", instructionNode.opcode().fileName(), instructionNode.opcode().line());
+                        if (refArg instanceof RegisterNode) continue;
+                        if (refArg instanceof IdentifierNode id) {
+                            var res = symbolTable.resolve(id.identifierToken());
+                            if (res.isPresent() && (res.get().type() == Symbol.Type.VARIABLE || res.get().type() == Symbol.Type.ALIAS))
+                                continue;
+                            // Check if this is a parameter name (will be resolved to %FPRx later)
+                            // Parameter names are valid in REF arguments
+                            continue;
                         }
+                        diagnostics.reportError("REF arguments must be registers.", instructionNode.opcode().fileName(), instructionNode.opcode().line());
                     }
                     // Since we've handled the new syntax, we can skip the rest of the generic analysis.
                     // The main argument (proc name) will be checked against the instruction signature below.

@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.parser.ast;
 
 import org.evochora.compiler.frontend.lexer.Token;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -46,15 +47,44 @@ public record InstructionNode(
 
     @Override
     public List<AstNode> getChildren() {
-        // The children of an instruction are its arguments.
-        return arguments;
+        // The children of an instruction are its arguments, refArguments, and valArguments.
+        List<AstNode> allChildren = new ArrayList<>();
+        allChildren.addAll(arguments);
+        allChildren.addAll(refArguments);
+        allChildren.addAll(valArguments);
+        return allChildren;
     }
     
     @Override
     public AstNode reconstructWithChildren(List<AstNode> newChildren) {
-        // Create a new InstructionNode with the new children (arguments),
-        // preserving the existing ref/val arguments. This is consistent with
-        // how other nodes like ProcedureNode handle reconstruction.
-        return new InstructionNode(opcode, newChildren, this.refArguments, this.valArguments);
+        // Split newChildren back into arguments, refArguments, and valArguments
+        // The order is: arguments, then refArguments, then valArguments
+        int argumentsSize = this.arguments.size();
+        int refArgumentsSize = this.refArguments.size();
+        int valArgumentsSize = this.valArguments.size();
+        
+        List<AstNode> newArguments = new ArrayList<>();
+        List<AstNode> newRefArguments = new ArrayList<>();
+        List<AstNode> newValArguments = new ArrayList<>();
+        
+        // Split the newChildren back into their respective lists
+        int index = 0;
+        
+        // Add arguments
+        for (int i = 0; i < argumentsSize && index < newChildren.size(); i++) {
+            newArguments.add(newChildren.get(index++));
+        }
+        
+        // Add refArguments
+        for (int i = 0; i < refArgumentsSize && index < newChildren.size(); i++) {
+            newRefArguments.add(newChildren.get(index++));
+        }
+        
+        // Add valArguments
+        for (int i = 0; i < valArgumentsSize && index < newChildren.size(); i++) {
+            newValArguments.add(newChildren.get(index++));
+        }
+        
+        return new InstructionNode(opcode, newArguments, newRefArguments, newValArguments);
     }
 }

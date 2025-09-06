@@ -2,13 +2,7 @@ package org.evochora.compiler.frontend.irgen.converters;
 
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.IdentifierNode;
-import org.evochora.compiler.frontend.parser.ast.InstructionNode;
-import org.evochora.compiler.frontend.parser.ast.NumberLiteralNode;
-import org.evochora.compiler.frontend.parser.ast.RegisterNode;
-import org.evochora.compiler.frontend.parser.ast.TypedLiteralNode;
-import org.evochora.compiler.frontend.parser.ast.VectorLiteralNode;
+import org.evochora.compiler.frontend.parser.ast.*;
 import org.evochora.compiler.ir.*;
 
 import java.util.ArrayList;
@@ -121,7 +115,9 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
                 return new IrReg("%FPR" + idxOpt.get());
             }
             java.util.Optional<IrOperand> constOpt = ctx.resolveConstant(nameU);
-            if (constOpt.isPresent()) return constOpt.get();
+            if (constOpt.isPresent()) {
+                return constOpt.get();
+            }
             return new IrLabelRef(id.identifierToken().text());
         }
         return new IrLabelRef(arg.toString());
@@ -134,32 +130,22 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
      * @return The parsed integer value.
      */
     private int parseIntegerLiteral(String text) {
-        if (text == null || text.isEmpty()) return 0;
-        String s = text.trim();
-        int sign = 1;
-        if (s.startsWith("+")) {
-            s = s.substring(1);
-        } else if (s.startsWith("-")) {
-            sign = -1;
-            s = s.substring(1);
+        if (text == null || text.isEmpty()) {
+            throw new IllegalArgumentException("Empty literal text");
         }
 
-        String lower = s.toLowerCase();
-        int radix = 10;
-        String digits = lower;
-        if (lower.startsWith("0b")) {
-            radix = 2;
-            digits = lower.substring(2);
-        } else if (lower.startsWith("0x")) {
-            radix = 16;
-            digits = lower.substring(2);
-        } else if (lower.startsWith("0o")) {
-            radix = 8;
-            digits = lower.substring(2);
-        }
+        // Remove underscores for parsing
+        String cleanText = text.replace("_", "");
 
-        // Remove underscores for readability if present
-        digits = digits.replace("_", "");
-        return sign * Integer.parseInt(digits, radix);
+        // Handle different bases
+        if (cleanText.startsWith("0x") || cleanText.startsWith("0X")) {
+            return Integer.parseInt(cleanText.substring(2), 16);
+        } else if (cleanText.startsWith("0b") || cleanText.startsWith("0B")) {
+            return Integer.parseInt(cleanText.substring(2), 2);
+        } else if (cleanText.startsWith("0o") || cleanText.startsWith("0O")) {
+            return Integer.parseInt(cleanText.substring(2), 8);
+        } else {
+            return Integer.parseInt(cleanText);
+        }
     }
 }

@@ -90,9 +90,24 @@ public class SemanticAnalyzer {
                 SymbolTable.Scope newScope = symbolTable.enterScope();
                 scopeMap.put(node, newScope);
 
-                if (node instanceof ProcedureNode proc2 && proc2.parameters() != null) {
-                    for (org.evochora.compiler.frontend.lexer.Token p : proc2.parameters()) {
-                        symbolTable.define(new Symbol(p, Symbol.Type.VARIABLE));
+                if (node instanceof ProcedureNode proc2) {
+                    // Define old-style parameters
+                    if (proc2.parameters() != null) {
+                        for (org.evochora.compiler.frontend.lexer.Token p : proc2.parameters()) {
+                            symbolTable.define(new Symbol(p, Symbol.Type.VARIABLE));
+                        }
+                    }
+                    // Define REF parameters
+                    if (proc2.refParameters() != null) {
+                        for (org.evochora.compiler.frontend.lexer.Token p : proc2.refParameters()) {
+                            symbolTable.define(new Symbol(p, Symbol.Type.VARIABLE));
+                        }
+                    }
+                    // Define VAL parameters
+                    if (proc2.valParameters() != null) {
+                        for (org.evochora.compiler.frontend.lexer.Token p : proc2.valParameters()) {
+                            symbolTable.define(new Symbol(p, Symbol.Type.VARIABLE));
+                        }
                     }
                 }
 
