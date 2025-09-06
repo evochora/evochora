@@ -58,6 +58,7 @@ public class ProcedureMarshallingRule implements IEmissionRule {
         List<String> allParams = Stream.concat(refParams.stream(), valParams.stream()).collect(Collectors.toList());
 
         // Prologue: POP all parameters into FPRs
+        // Parameters are pushed in reverse order (VALs first, then REFs), so we pop them in the same order
         for (int p = 0; p < allParams.size(); p++) {
             out.add(new IrInstruction("POP", List.of(new IrReg("%FPR" + p)), enterDirective.source()));
         }
@@ -119,6 +120,7 @@ public class ProcedureMarshallingRule implements IEmissionRule {
 
     private void emitStandardEpilogue(List<IrItem> out, IrInstruction ret, List<String> refParams, int arity) {
         if (refParams != null) { // New REF/VAL syntax
+            // Only push REF parameters back to stack (VAL parameters are call-by-value)
             for (int p = 0; p < refParams.size(); p++) {
                 out.add(new IrInstruction("PUSH", List.of(new IrReg("%FPR" + p)), ret.source()));
             }

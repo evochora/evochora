@@ -59,7 +59,7 @@ public class Emitter {
                 int opcode = isa.getInstructionIdByName(ins.opcode()).orElseThrow(() ->
                         new RuntimeException(formatSource(ins.source(), "Unknown opcode: " + ins.opcode())));
                 int[] opcodeCoord = linearToCoord.get(address);
-                if (opcodeCoord == null) throw new IllegalStateException("Missing coord for address " + address);
+                if (opcodeCoord == null) throw new CompilationException(formatSource(ins.source(), "Missing coord for address " + address));
                 machineCodeLayout.put(opcodeCoord, opcode);
                 address++;
 
@@ -70,7 +70,7 @@ public class Emitter {
                             int[] comps = vec.components();
                             for (int c : comps) {
                                 int[] coord = linearToCoord.get(address);
-                                if (coord == null) throw new IllegalStateException("Missing coord for address " + address);
+                                if (coord == null) throw new CompilationException(formatSource(ins.source(), "Missing coord for address " + address));
                                 machineCodeLayout.put(coord, new Molecule(Config.TYPE_DATA, c).toInt());
                                 address++;
                             }
@@ -81,7 +81,7 @@ public class Emitter {
                                 throw new CompilationException(formatSource(ins.source(), "Unknown label reference: " + ref.labelName()));
                             }
                             int[] dstCoord = linearToCoord.get(targetAddr);
-                            if (dstCoord == null) throw new IllegalStateException("Missing coord for label target address " + targetAddr);
+                            if (dstCoord == null) throw new CompilationException(formatSource(ins.source(), "Missing coord for label target address " + targetAddr));
                             int dims = Math.max(opcodeCoord.length, dstCoord.length);
                             int[] delta = new int[dims];
                             for (int d = 0; d < dims; d++) {
@@ -91,13 +91,13 @@ public class Emitter {
                             }
                             for (int c : delta) {
                                 int[] coord = linearToCoord.get(address);
-                                if (coord == null) throw new IllegalStateException("Missing coord for address " + address);
+                                if (coord == null) throw new CompilationException(formatSource(ins.source(), "Missing coord for address " + address));
                                 machineCodeLayout.put(coord, new Molecule(Config.TYPE_DATA, c).toInt());
                                 address++;
                             }
                         } else {
                             int[] coord = linearToCoord.get(address);
-                            if (coord == null) throw new IllegalStateException("Missing coord for address " + address);
+                            if (coord == null) throw new CompilationException(formatSource(ins.source(), "Missing coord for address " + address));
                             Integer value = encodeOperand(op, isa, ins.source());
                             machineCodeLayout.put(coord, value);
                             address++;

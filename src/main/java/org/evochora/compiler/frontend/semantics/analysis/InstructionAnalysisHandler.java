@@ -98,6 +98,30 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         }
                         diagnostics.reportError("REF arguments must be registers.", instructionNode.opcode().fileName(), instructionNode.opcode().line());
                     }
+                    
+                    // Validate VAL argument types
+                    for (AstNode valArg : instructionNode.valArguments()) {
+                        if (valArg instanceof RegisterNode) continue;
+                        if (valArg instanceof NumberLiteralNode) continue;
+                        if (valArg instanceof TypedLiteralNode) continue;
+                        if (valArg instanceof IdentifierNode id) {
+                            var res = symbolTable.resolve(id.identifierToken());
+                            if (res.isPresent()) {
+                                // Allow labels as VAL parameters
+                                if (res.get().type() == Symbol.Type.LABEL) {
+                                    continue;
+                                }
+                                // Allow variables and aliases as VAL parameters
+                                if (res.get().type() == Symbol.Type.VARIABLE || res.get().type() == Symbol.Type.ALIAS) {
+                                    continue;
+                                }
+                            }
+                            // Check if this is a parameter name (will be resolved to %FPRx later)
+                            // Parameter names are valid in VAL arguments
+                            continue;
+                        }
+                        diagnostics.reportError("VAL arguments must be registers, literals, or labels.", instructionNode.opcode().fileName(), instructionNode.opcode().line());
+                    }
                     // Since we've handled the new syntax, we can skip the rest of the generic analysis.
                     // The main argument (proc name) will be checked against the instruction signature below.
                     argsForSignature = instructionNode.arguments().subList(0, 1);
