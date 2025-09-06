@@ -49,12 +49,12 @@ public class EmissionProcedureMarshallingTest {
 
 		// Assert Logic: POP, POP, NOP, PUSH, RET
 		assertThat(((IrInstruction) instructions.get(0)).opcode()).isEqualTo("POP");
-		assertThat(((IrInstruction) instructions.get(0)).operands().get(0).toString()).isEqualTo("%FPR0");
+		assertThat(((IrReg) ((IrInstruction) instructions.get(0)).operands().get(0)).name()).isEqualTo("%FPR0");
 		assertThat(((IrInstruction) instructions.get(1)).opcode()).isEqualTo("POP");
-		assertThat(((IrInstruction) instructions.get(1)).operands().get(0).toString()).isEqualTo("%FPR1");
+		assertThat(((IrReg) ((IrInstruction) instructions.get(1)).operands().get(0)).name()).isEqualTo("%FPR1");
 		assertThat(((IrInstruction) instructions.get(2)).opcode()).isEqualTo("NOP");
 		assertThat(((IrInstruction) instructions.get(3)).opcode()).isEqualTo("PUSH");
-		assertThat(((IrInstruction) instructions.get(3)).operands().get(0).toString()).isEqualTo("%FPR0");
+		assertThat(((IrReg) ((IrInstruction) instructions.get(3)).operands().get(0)).name()).isEqualTo("%FPR0");
 		assertThat(((IrInstruction) instructions.get(4)).opcode()).isEqualTo("RET");
 
 		// Assert SourceInfo
