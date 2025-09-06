@@ -8,6 +8,7 @@ import org.evochora.compiler.ir.IrValue;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Converts {@link ProcedureNode} into generic enter/exit directives (namespace "core").
@@ -35,6 +36,12 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 		enterArgs.put("name", new IrValue.Str(node.name().text()));
 		enterArgs.put("arity", new IrValue.Int64(node.parameters() != null ? node.parameters().size() : 0));
 		enterArgs.put("exported", new IrValue.Bool(node.exported()));
+		if (node.refParameters() != null) {
+			enterArgs.put("refParams", new IrValue.ListVal(node.refParameters().stream().map(t -> new IrValue.Str(t.text())).collect(Collectors.toList())));
+		}
+		if (node.valParameters() != null) {
+			enterArgs.put("valParams", new IrValue.ListVal(node.valParameters().stream().map(t -> new IrValue.Str(t.text())).collect(Collectors.toList())));
+		}
 		ctx.emit(new IrDirective("core", "proc_enter", enterArgs, ctx.sourceOf(node)));
 
 		// Convert body inline to preserve logical grouping
@@ -44,6 +51,12 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 		exitArgs.put("name", new IrValue.Str(node.name().text()));
 		exitArgs.put("arity", new IrValue.Int64(node.parameters() != null ? node.parameters().size() : 0));
 		exitArgs.put("exported", new IrValue.Bool(node.exported()));
+		if (node.refParameters() != null) {
+			exitArgs.put("refParams", new IrValue.ListVal(node.refParameters().stream().map(t -> new IrValue.Str(t.text())).collect(Collectors.toList())));
+		}
+		if (node.valParameters() != null) {
+			exitArgs.put("valParams", new IrValue.ListVal(node.valParameters().stream().map(t -> new IrValue.Str(t.text())).collect(Collectors.toList())));
+		}
 		ctx.emit(new IrDirective("core", "proc_exit", exitArgs, ctx.sourceOf(node)));
 		ctx.popProcedureParams();
 	}

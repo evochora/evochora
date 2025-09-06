@@ -1,7 +1,6 @@
 package org.evochora.compiler.backend;
 
-import org.evochora.compiler.backend.emit.EmissionRegistry;
-import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.emit.features.ProcedureMarshallingRule;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.ir.*;
 import org.evochora.compiler.api.SourceInfo;
@@ -14,55 +13,87 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Tests the emission rules for procedure marshalling, specifically the handling of
- * `core:proc_enter` and `core:proc_exit` directives. These tests ensure that the
- * compiler correctly generates procedure prologues and epilogues.
- * This is a unit test and does not require any external resources.
- */
 public class EmissionProcedureMarshallingTest {
 
     	private static SourceInfo src(String file, int line) { return new SourceInfo(file, line, 0); }
 
-	/**
-	 * Verifies that the emission process generates the correct prologue and epilogue
-	 * for a procedure based on its arity. For a procedure with one argument,
-	 * it expects a POP instruction after the `proc_enter` directive to retrieve the
-	 * argument, and a PUSH instruction before the `proc_exit` directive to
-	 * place the return value on the stack.
-	 * This test is a unit test and operates solely on in-memory IR data structures.
-	 */
 	@Test
 	@Tag("unit")
-	void insertsPrologAndEpilogBasedOnArity() {
-		Map<String, IrValue> enter = new HashMap<>();
-		enter.put("name", new IrValue.Str("INC"));
-		enter.put("arity", new IrValue.Int64(1));
-		IrDirective procEnter = new IrDirective("core", "proc_enter", enter, src("m.s", 1));
+	void marshallingAndSourceInfoForRefAndValProcedure() {
+		Map<String, IrValue> enterArgs = new HashMap<>();
+		enterArgs.put("name", new IrValue.Str("myProc"));
+		enterArgs.put("refParams", new IrValue.ListVal(List.of(new IrValue.Str("%rA"))));
+		enterArgs.put("valParams", new IrValue.ListVal(List.of(new IrValue.Str("v1"))));
+		IrDirective procEnter = new IrDirective("core", "proc_enter", enterArgs, src("test.s", 2));
 
-		IrInstruction body = new IrInstruction("ADDI", List.of(new IrReg("%FPR0"), new IrTypedImm("DATA", 1)), src("m.s", 2));
+		List<IrItem> body = List.of(
+				new IrInstruction("NOP", List.of(), src("test.s", 3)),
+				new IrInstruction("RET", List.of(), src("test.s", 4))
+		);
 
-		Map<String, IrValue> exit = new HashMap<>();
-		exit.put("name", new IrValue.Str("INC"));
-		exit.put("arity", new IrValue.Int64(1));
-		IrDirective procExit = new IrDirective("core", "proc_exit", exit, src("m.s", 3));
+		IrDirective procExit = new IrDirective("core", "proc_exit", new HashMap<>(), src("test.s", 5));
 
-		List<IrItem> items = List.of(procEnter, body, procExit);
-		EmissionRegistry reg = EmissionRegistry.initializeWithDefaults();
-		LinkingContext ctx = new LinkingContext();
+		List<IrItem> items = new java.util.ArrayList<>();
+		items.add(procEnter);
+		items.addAll(body);
+		items.add(procExit);
 
-		List<IrItem> rewritten = items;
-		for (IEmissionRule rule : reg.rules()) rewritten = rule.apply(rewritten, ctx);
+		ProcedureMarshallingRule rule = new ProcedureMarshallingRule();
+		List<IrItem> rewritten = rule.apply(items, new LinkingContext());
 
-		// Expected sequence: proc_enter, POP %FPR0, body, PUSH %FPR0, proc_exit
-		assertThat(rewritten).hasSize(5);
-		assertThat(((IrDirective) rewritten.get(0)).name()).isEqualTo("proc_enter");
-		assertThat(((IrInstruction) rewritten.get(1)).opcode()).isEqualTo("POP");
-		assertThat(((IrInstruction) rewritten.get(1)).operands().get(0)).isInstanceOf(IrReg.class);
-		assertThat(((IrReg) ((IrInstruction) rewritten.get(1)).operands().get(0)).name()).isEqualTo("%FPR0");
-		assertThat(((IrInstruction) rewritten.get(2)).opcode()).isEqualTo("ADDI");
-		assertThat(((IrInstruction) rewritten.get(3)).opcode()).isEqualTo("PUSH");
-		assertThat(((IrReg) ((IrInstruction) rewritten.get(3)).operands().get(0)).name()).isEqualTo("%FPR0");
-		assertThat(((IrDirective) rewritten.get(4)).name()).isEqualTo("proc_exit");
+		List<IrItem> instructions = rewritten.stream().filter(i -> i instanceof IrInstruction).toList();
+
+		if (instructions.size() != 5) {
+			throw new AssertionError("Expected 5 instructions, but got " + instructions.size());
+		}
+
+		// Assert Logic: POP, POP, NOP, PUSH, RET
+		assertThat(((IrInstruction) instructions.get(0)).opcode()).isEqualTo("POP");
+		assertThat(((IrInstruction) instructions.get(0)).operands().get(0).toString()).isEqualTo("%FPR0");
+		assertThat(((IrInstruction) instructions.get(1)).opcode()).isEqualTo("POP");
+		assertThat(((IrInstruction) instructions.get(1)).operands().get(0).toString()).isEqualTo("%FPR1");
+		assertThat(((IrInstruction) instructions.get(2)).opcode()).isEqualTo("NOP");
+		assertThat(((IrInstruction) instructions.get(3)).opcode()).isEqualTo("PUSH");
+		assertThat(((IrInstruction) instructions.get(3)).operands().get(0).toString()).isEqualTo("%FPR0");
+		assertThat(((IrInstruction) instructions.get(4)).opcode()).isEqualTo("RET");
+
+		// Assert SourceInfo
+		assertThat(((IrInstruction) instructions.get(0)).source().lineNumber()).isEqualTo(2); // POP
+		assertThat(((IrInstruction) instructions.get(1)).source().lineNumber()).isEqualTo(2); // POP
+		assertThat(((IrInstruction) instructions.get(2)).source().lineNumber()).isEqualTo(3); // NOP
+		assertThat(((IrInstruction) instructions.get(3)).source().lineNumber()).isEqualTo(4); // PUSH
+		assertThat(((IrInstruction) instructions.get(4)).source().lineNumber()).isEqualTo(4); // RET
+	}
+
+	@Test
+	@Tag("unit")
+	void backwardCompatibilityTest() {
+		Map<String, IrValue> enterArgs = new HashMap<>();
+		enterArgs.put("name", new IrValue.Str("old"));
+		enterArgs.put("arity", new IrValue.Int64(1));
+		IrDirective procEnter = new IrDirective("core", "proc_enter", enterArgs, src("test.s", 2));
+
+		List<IrItem> body = List.of(
+				new IrInstruction("NOP", List.of(), src("test.s", 3)),
+				new IrInstruction("RET", List.of(), src("test.s", 4))
+		);
+
+		IrDirective procExit = new IrDirective("core", "proc_exit", new HashMap<>(), src("test.s", 5));
+
+		List<IrItem> items = new java.util.ArrayList<>();
+		items.add(procEnter);
+		items.addAll(body);
+		items.add(procExit);
+
+		ProcedureMarshallingRule rule = new ProcedureMarshallingRule();
+		List<IrItem> rewritten = rule.apply(items, new LinkingContext());
+
+		List<IrItem> instructions = rewritten.stream().filter(i -> i instanceof IrInstruction).toList();
+
+		assertThat(instructions).hasSize(4);
+		assertThat(((IrInstruction) instructions.get(0)).opcode()).isEqualTo("POP");
+		assertThat(((IrInstruction) instructions.get(1)).opcode()).isEqualTo("NOP");
+		assertThat(((IrInstruction) instructions.get(2)).opcode()).isEqualTo("PUSH");
+		assertThat(((IrInstruction) instructions.get(3)).opcode()).isEqualTo("RET");
 	}
 }
