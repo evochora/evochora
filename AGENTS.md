@@ -32,6 +32,13 @@ Simulate evolution of organisms in n-D worlds, written in Assemnbly.
 - Assembly code must be inline and not in a dedicated file.
 - Ths instruction set needs to be initiatlized with Instruction.init() before the compiler or runtime can use any instruction.   
 
+## Assembly Compile System
+- Use `./gradlew compile -Pfile="<path>" [-Penv="<dimensions>[:<toroidal>]"]` to compile assembly files
+- Default environment: 1000x1000:toroidal
+- Outputs JSON ProgramArtifact with machineCodeLayout, labels, registers, procedures, etc.
+- Allows AI assistants to analyze assembly code and help with programming
+- See `docs/ASSEMBLY_COMPILE_USAGE.md` for detailed usage
+
 # Architectureal pincipals
 - Compiler phases are immutable
 - Every compiler phase runs exactly only once

@@ -64,6 +64,31 @@ tasks.register<Jar>("cliJar") {
     dependsOn(tasks.jar)
 }
 
+// Compile Task - Compile assembly file to ProgramArtifact JSON
+tasks.register<JavaExec>("compile") {
+    group = "application"
+    description = "Compile assembly file to ProgramArtifact JSON"
+    mainClass.set("org.evochora.server.CommandLineInterface")
+    classpath = sourceSets.main.get().runtimeClasspath
+    
+    args("compile")
+    
+    doFirst {
+        val file = project.findProperty("file")?.toString()
+        if (file != null) {
+            args(file)
+            
+            // Add environment properties if specified
+            val env = project.findProperty("env")?.toString()
+            if (env != null) {
+                args("--env=$env")
+            }
+        } else {
+            throw GradleException("File parameter required. Use: ./gradlew compile --file=<path> [--env=<dimensions>[:<toroidal>]]")
+        }
+    }
+}
+
 tasks.test {
     useJUnitPlatform {
         excludeTags("benchmark") // Exclude benchmark tests from regular test runs
