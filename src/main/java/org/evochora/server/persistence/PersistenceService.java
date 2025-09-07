@@ -50,6 +50,8 @@ public final class PersistenceService implements IControllable, Runnable {
     private String jdbcUrlInUse;
     private volatile long lastPersistedTick = -1L;
     private long startTime = System.currentTimeMillis(); // Added for TPS calculation
+    
+    // Simple TPS calculation - no complex timer tracking needed
 
     private PreparedStatement tickInsertStatement;
     private int batchCount = 0; // Count of ticks in current batch
@@ -99,6 +101,7 @@ public final class PersistenceService implements IControllable, Runnable {
         
         // Set the pause flag - the service will pause after finishing current batch
         paused.set(true);
+        // Manual pause
         log.debug("Manual pause flag set, service will pause after finishing current batch and close database");
     }
 
@@ -106,6 +109,7 @@ public final class PersistenceService implements IControllable, Runnable {
     public void resume() { 
         paused.set(false); 
         autoPaused.set(false);
+        // Don't start processing timer here - it will start when actual tick processing begins
     }
 
     @Override
@@ -187,26 +191,17 @@ public final class PersistenceService implements IControllable, Runnable {
         long currentTime = System.currentTimeMillis();
         long currentTick = getLastPersistedTick();
         
-        if (currentTick <= 0) {
+        if (currentTick <= 0 || startTime <= 0) {
             return 0.0;
         }
         
-        // Calculate TPS since tick 0, excluding pause time
-        long timeDiff = currentTime - startTime;
-        if (timeDiff > 0) {
-            // If paused, calculate TPS only for active time
-            if (paused.get()) {
-                // Estimate active time by assuming we're not paused for the entire duration
-                // This is a simplified approach - in a real implementation you'd track pause/resume times
-                long estimatedActiveTime = timeDiff - (timeDiff / 10); // Assume 90% active time when paused
-                if (estimatedActiveTime > 0) {
-                    return (double) currentTick / (estimatedActiveTime / 1000.0);
-                }
-            }
-            return (double) currentTick / (timeDiff / 1000.0);
+        long totalTime = currentTime - startTime;
+        if (totalTime <= 0) {
+            return 0.0;
         }
         
-        return 0.0;
+        // Simple calculation: ticks / time since start
+        return (double) currentTick / (totalTime / 1000.0);
     }
 
     public String getStatus() {
@@ -214,20 +209,17 @@ public final class PersistenceService implements IControllable, Runnable {
             return "stopped";
         }
         
-        if (paused.get()) {
-            String dbInfo = jdbcUrlOverride != null ? jdbcUrlOverride : 
-                           (dbFilePath != null ? dbFilePath.toString() : "unknown");
-            long currentTick = getLastPersistedTick();
-            String status = autoPaused.get() ? "auto-paused" : "paused";
-            return String.format("%s tick:%d %s", status, currentTick, dbInfo);
-        }
-        
         String dbInfo = jdbcUrlOverride != null ? jdbcUrlOverride : 
                        (dbFilePath != null ? dbFilePath.toString() : "unknown");
         long currentTick = getLastPersistedTick();
         double tps = calculateTPS();
         
-        return String.format("started tick:%d %s TPS:%.2f", currentTick, dbInfo, tps);
+        if (paused.get()) {
+            String status = autoPaused.get() ? "auto-paused" : "paused";
+            return String.format("%-12s %-8d %-8.2f %s", status, currentTick, tps, dbInfo);
+        }
+        
+        return String.format("%-12s %-8d %-8.2f %s", "started", currentTick, tps, dbInfo);
     }
     
     private void resetTPS() {
@@ -304,35 +296,24 @@ public final class PersistenceService implements IControllable, Runnable {
     private void closeQuietly() {
         synchronized (connectionLock) {
             try {
-            // Finalize any remaining batch operations
-            if (tickInsertStatement != null) {
-                if (batchCount % batchSize != 0) { // Use batchSize here
-                    tickInsertStatement.executeBatch();
-                    actualBatchCount++; // Increment actual batch count
+                // Finalize any remaining batch operations
+                if (tickInsertStatement != null) {
+                    if (batchCount % batchSize != 0) { // Use batchSize here
+                        tickInsertStatement.executeBatch();
+                        actualBatchCount++; // Increment actual batch count
+                    }
+                    tickInsertStatement.close();
+                    tickInsertStatement = null;
                 }
-                tickInsertStatement.close();
-                tickInsertStatement = null;
-            }
-            
-            // Enhanced WAL and SHM handling to ensure no files are left behind
-            if (connection != null && !connection.isClosed()) {
-                try (Statement st = connection.createStatement()) {
-                    // Force all pending changes to be written to main database
-                    st.execute("PRAGMA wal_checkpoint(FULL)");
-                    log.debug("WAL checkpoint completed before closing database");
-                    
-                    // Force a final checkpoint to ensure all data is flushed
-                    st.execute("PRAGMA wal_checkpoint(TRUNCATE)");
-                    log.debug("Final WAL truncate checkpoint completed");
-                    
-                    // Ensure WAL mode is properly closed and files are released
-                    st.execute("PRAGMA journal_mode=DELETE");
-                    log.debug("WAL mode disabled, journal mode set to DELETE");
-                    
-                    // Final checkpoint after disabling WAL to ensure all data is in main file
-                    st.execute("PRAGMA wal_checkpoint(FULL)");
-                    log.debug("Final checkpoint after WAL disable completed");
-                                    } catch (Exception e) {
+                
+                // Perform WAL checkpoint to ensure all data is written to main database
+                // This prevents WAL and SHM files from being left behind
+                if (connection != null && !connection.isClosed()) {
+                    try (Statement st = connection.createStatement()) {
+                        // Perform a FULL checkpoint to write all WAL data to main database
+                        st.execute("PRAGMA wal_checkpoint(FULL)");
+                        log.debug("WAL checkpoint completed - all data written to main database");
+                    } catch (Exception e) {
                         // Skip WAL checkpoint if database is busy - this is normal with concurrent access
                         if (e.getMessage().contains("SQLITE_BUSY") || e.getMessage().contains("database is locked")) {
                             log.info("Skipping WAL checkpoint before closing due to concurrent access: {}", e.getMessage());
@@ -343,13 +324,14 @@ public final class PersistenceService implements IControllable, Runnable {
                             log.warn("Error during WAL checkpoint before closing: {}", e.getMessage());
                         }
                     }
-            }
-            
-            // Only close connection if it's not already null
-            if (connection != null) {
-                connection.close();
-                connection = null;
-            }
+                }
+                
+                // Close the connection - this will properly release WAL and SHM files
+                if (connection != null) {
+                    connection.close();
+                    connection = null;
+                    log.debug("Database connection closed - WAL and SHM files should be released");
+                }
             } catch (Exception e) {
                 log.warn("Error during database cleanup: {}", e.getMessage());
             }
@@ -361,6 +343,8 @@ public final class PersistenceService implements IControllable, Runnable {
         try {
             while (running.get()) {
                 if (paused.get()) {
+                    // Paused
+                    
                     // In pause mode: check periodically for new ticks
                     Thread.sleep(1000); // Check every second for new ticks
                     
@@ -400,6 +384,8 @@ public final class PersistenceService implements IControllable, Runnable {
                     List<IQueueMessage> batch = new ArrayList<>();
                     IQueueMessage msg = queue.poll(100, TimeUnit.MILLISECONDS); // Non-blocking poll
                     if (msg != null) {
+                        // Start processing batch
+                        
                         batch.add(msg);
                         // Collect more messages if available
                         while (batch.size() < batchSize && (msg = queue.poll()) != null) { // Use batchSize here
@@ -431,6 +417,8 @@ public final class PersistenceService implements IControllable, Runnable {
                             }
                         }
                         
+                        // Batch processing completed
+                        
                         // Log batch processing
                         if (batch.size() > 0) {
                             log.debug("Processed batch of {} messages", batch.size());
@@ -458,9 +446,9 @@ public final class PersistenceService implements IControllable, Runnable {
                                 // Perform WAL checkpoint to ensure all changes are in the main database
                                 if (connection != null && !connection.isClosed()) {
                                     try (Statement st = connection.createStatement()) {
-                                        // Checkpoint WAL to main database
+                                        // Perform a FULL checkpoint to write all WAL data to main database
                                         st.execute("PRAGMA wal_checkpoint(FULL)");
-                                        log.debug("WAL checkpoint completed before manual pause");
+                                        log.debug("WAL checkpoint completed before manual pause - all data written to main database");
                                     } catch (Exception e) {
                                         // Skip WAL checkpoint if database is busy - this is normal with concurrent access
                                         if (e.getMessage().contains("SQLITE_BUSY") || e.getMessage().contains("database is locked")) {
@@ -503,55 +491,43 @@ public final class PersistenceService implements IControllable, Runnable {
                             if (connection != null && !connection.isClosed()) {
                                 boolean checkpointSuccessful = false;
                                 try (Statement st = connection.createStatement()) {
-                                // Force all pending changes to be written to main database
-                                st.execute("PRAGMA wal_checkpoint(FULL)");
-                                log.debug("WAL checkpoint completed before auto-pause");
+                                    // Perform a FULL checkpoint to write all WAL data to main database
+                                    st.execute("PRAGMA wal_checkpoint(FULL)");
+                                    log.debug("WAL checkpoint completed before auto-pause - all data written to main database");
+                                    checkpointSuccessful = true;
+                                } catch (Exception e) {
+                                    // Skip WAL checkpoint if database is busy - this is normal with concurrent access
+                                    if (e.getMessage().contains("SQLITE_BUSY") || e.getMessage().contains("database is locked")) {
+                                        log.info("Skipping WAL checkpoint before auto-pause due to concurrent access: {}", e.getMessage());
+                                        checkpointSuccessful = true; // Consider this successful for busy cases
+                                    } else if (e.getMessage().contains("stmt pointer is closed") || e.getMessage().contains("database has been closed")) {
+                                        // Statement or database already closed is a real problem - data might be incomplete
+                                        log.error("Database or statement was already closed before WAL checkpoint - data may be incomplete! {}", e.getMessage());
+                                    } else {
+                                        log.warn("Error during WAL checkpoint before auto-pause: {}", e.getMessage());
+                                    }
+                                }
                                 
-                                // Force a final checkpoint to ensure all data is flushed
-                                st.execute("PRAGMA wal_checkpoint(TRUNCATE)");
-                                log.debug("Final WAL truncate checkpoint completed before auto-pause");
-                                
-                                // Ensure WAL mode is properly closed and files are released
-                                st.execute("PRAGMA journal_mode=DELETE");
-                                log.debug("WAL mode disabled before auto-pause");
-                                
-                                // Final checkpoint after disabling WAL to ensure all data is in main file
-                                st.execute("PRAGMA wal_checkpoint(FULL)");
-                                log.debug("Final checkpoint after WAL disable before auto-pause");
-                                
-                                checkpointSuccessful = true;
-                            } catch (Exception e) {
-                                // Skip WAL checkpoint if database is busy - this is normal with concurrent access
-                                if (e.getMessage().contains("SQLITE_BUSY") || e.getMessage().contains("database is locked")) {
-                                    log.info("Skipping WAL checkpoint before auto-pause due to concurrent access: {}", e.getMessage());
-                                    checkpointSuccessful = true; // Consider this successful for busy cases
-                                } else if (e.getMessage().contains("stmt pointer is closed") || e.getMessage().contains("database has been closed")) {
-                                    // Statement or database already closed is a real problem - data might be incomplete
-                                    log.error("Database or statement was already closed before WAL checkpoint - data may be incomplete! {}", e.getMessage());
+                                // Only close database connection if checkpoint was successful or we're skipping due to busy
+                                if (checkpointSuccessful) {
+                                    // Check if this is an in-memory database
+                                    boolean isInMemory = jdbcUrlInUse != null && jdbcUrlInUse.contains("mode=memory");
+                                    if (isInMemory) {
+                                        log.debug("Skipping database connection close for in-memory database during auto-pause");
+                                    } else {
+                                        connection.close();
+                                        connection = null;
+                                        log.debug("Database connection closed during auto-pause - WAL and SHM files should be released");
+                                    }
                                 } else {
-                                    log.warn("Error during WAL checkpoint before auto-pause: {}", e.getMessage());
+                                    log.warn("WAL checkpoint failed, will retry database closure later");
+                                    needsRetryClose = true; // Schedule retry for next cycle
                                 }
                             }
-                            
-                            // Only close database connection if checkpoint was successful or we're skipping due to busy
-                            if (checkpointSuccessful) {
-                                // Check if this is an in-memory database
-                                boolean isInMemory = jdbcUrlInUse != null && jdbcUrlInUse.contains("mode=memory");
-                                if (isInMemory) {
-                                    log.debug("Skipping database connection close for in-memory database during auto-pause");
-                                } else {
-                                    connection.close();
-                                    connection = null;
-                                    log.debug("Database connection closed during auto-pause to prevent WAL/SHM file leaks");
-                                }
-                            } else {
-                                log.warn("WAL checkpoint failed, will retry database closure later");
-                                needsRetryClose = true; // Schedule retry for next cycle
-                            }
-                        }
                         } // End synchronized block
                         
                         // Auto-pause - mark as auto-paused and set pause flag
+                        // Auto-pausing
                         autoPaused.set(true);
                         paused.set(true);
                         
@@ -681,6 +657,8 @@ public final class PersistenceService implements IControllable, Runnable {
             }
             
             lastPersistedTick = rts.tickNumber();
+            
+            // Tick persisted
         } catch (Exception e) {
             log.warn("Failed to serialize raw tick {}: {}", rts.tickNumber(), e.getMessage());
             throw e;

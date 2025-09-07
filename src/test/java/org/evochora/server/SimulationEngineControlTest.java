@@ -104,7 +104,7 @@ class SimulationEngineControlTest {
     @Test
     @Tag("integration")
     void simple_start_shutdown_test() throws Exception {
-        ITickMessageQueue q = new InMemoryTickQueue();
+        ITickMessageQueue q = new InMemoryTickQueue(1000);
         sim = new SimulationEngine(q, new EnvironmentProperties(new int[]{10, 10}, true), 
              new ArrayList<>(), new ArrayList<>());
 
@@ -133,7 +133,7 @@ class SimulationEngineControlTest {
     @Test
     @Tag("integration")
     void start_pause_resume_shutdown_cycle_advances_ticks() throws Exception {
-        ITickMessageQueue q = new InMemoryTickQueue();
+        ITickMessageQueue q = new InMemoryTickQueue(1000);
         sim = new SimulationEngine(q, new EnvironmentProperties(new int[]{10, 10}, true), 
              new ArrayList<>(), new ArrayList<>());
 
@@ -194,7 +194,7 @@ class SimulationEngineControlTest {
     @Test
     @Tag("integration")
     void minimal_shutdown_test() throws Exception {
-        ITickMessageQueue q = new InMemoryTickQueue();
+        ITickMessageQueue q = new InMemoryTickQueue(1000);
         sim = new SimulationEngine(q, new EnvironmentProperties(new int[]{10, 10}, true), 
              new ArrayList<>(), new ArrayList<>());
 
@@ -221,7 +221,7 @@ class SimulationEngineControlTest {
     @Test
     @Tag("integration")
     void immediate_shutdown_test() throws Exception {
-        ITickMessageQueue q = new InMemoryTickQueue();
+        ITickMessageQueue q = new InMemoryTickQueue(1000);
         sim = new SimulationEngine(q, new EnvironmentProperties(new int[]{5, 5}, true), 
              new ArrayList<>(), new ArrayList<>());
 

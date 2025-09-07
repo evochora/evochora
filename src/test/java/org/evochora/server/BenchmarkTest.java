@@ -42,7 +42,7 @@ public class BenchmarkTest {
     private int simulationTicks = 5000;
     private int persistenceBatchSize = 1000;
     private int indexerBatchSize = 1000;
-    private EnvironmentProperties environmentProperties = new EnvironmentProperties(new int[]{10, 10}, true);
+    private EnvironmentProperties environmentProperties = new EnvironmentProperties(new int[]{100, 100}, true);
     
     // ===== TIMEOUT CONFIGURATION =====
     private int simulationReadyTimeoutMs = 5000; // Max wait for simulation to be ready
@@ -66,9 +66,9 @@ public class BenchmarkTest {
         // Assembly-Programm für alle Organismen (gleiche Art)
         String assemblyProgram = String.join("\n",
             "START:",
-//            "  SETI %DR0 DATA:1",
-//            "  SETI %DR0 DATA:1",
-//            "  ADDR %DR0 %DR1",
+            "  SETI %DR0 DATA:1",
+            "  SETI %DR0 DATA:1",
+            "  ADDR %DR0 %DR1",
             "  NOP",
             "  JMPI START"
         );
@@ -97,8 +97,8 @@ public class BenchmarkTest {
     }
     
     private List<Map<String, Object>> energyStrategies = List.of(
-        //Map.of("type", "solar", "params", Map.of("probability", 0.001, "amount", 50, "safetyRadius", 2, "executionsPerTick", 1)),
-        //Map.of("type", "geyser", "params", Map.of("count", 5, "interval", 100, "amount", 200, "safetyRadius", 2))
+        Map.of("type", "solar", "params", Map.of("probability", 0.3, "amount", 50, "safetyRadius", 2, "executionsPerTick", 1)),
+        Map.of("type", "geyser", "params", Map.of("count", 3, "interval", 10, "amount", 200, "safetyRadius", 2))
     );
     private String outputDirectory = "runs/";
     
@@ -273,7 +273,7 @@ public class BenchmarkTest {
     private void runSimulationWithPersistence(String rawJdbcUrl) {
         try {
             // Setup queue
-            InMemoryTickQueue queue = new InMemoryTickQueue();
+            InMemoryTickQueue queue = new InMemoryTickQueue(10000);
             
 
             

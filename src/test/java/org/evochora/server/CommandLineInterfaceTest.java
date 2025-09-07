@@ -120,7 +120,7 @@ class CommandLineInterfaceTest {
         
         // Verify exit functionality
         assertTrue(output.contains("Stopping all services") || output.contains("All services stopped") || 
-                   output.contains("CLI shutdown"), 
+                   output.contains("Shutting down services"), 
                    "CLI should be able to exit gracefully");
         
         // Verify no critical errors occurred

@@ -18,7 +18,7 @@
     "organisms": [
       {
         // [MANDATORY] Path to the assembly program file for this organism
-        "program": "assembly/primordial/main.s",
+        "program": "assembly/test/main.s",
         // [MANDATORY] Initial energy level when organism is created
         "initialEnergy": 5000,
         // [MANDATORY] Placement strategy for organisms
@@ -79,9 +79,11 @@
       // [OPTIONAL] Directory path where simulation output files are stored (default: "runs/")
       "outputPath": "runs/",
       // [OPTIONAL] Tick numbers at which simulation should automatically pause (default: null)
-      "autoPauseTicks": [5000, 10000, 15000],
+      //"autoPauseTicks": [5000, 10000, 15000],
       // [OPTIONAL] Whether to skip ProgramArtifact features (default: false)
-      "skipProgramArtefact": false
+      "skipProgramArtefact": false,
+      // [OPTIONAL] Maximum number of messages in queue (default: 10000)
+      "maxMessageCount": 10000
     },
     
     // [OPTIONAL] Debug indexer service configuration (default: autoStart=true, batchSize=1000)
@@ -116,6 +118,15 @@
       "port": 7070,
       // [OPTIONAL] Host address to bind the server to (default: "localhost")
       "host": "localhost"
+    },
+    // [OPTIONAL] Logging configuration
+    "logging": {
+      // [OPTIONAL] Default log level for all loggers (default: "WARN")
+      "defaultLogLevel": "WARN",
+      // [OPTIONAL] Per-logger specific log levels
+      "logLevels": {
+        "org.evochora.server.ServiceManager": "INFO"
+      }
     }
   }
 }

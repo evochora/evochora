@@ -1,69 +1,48 @@
 package org.evochora.server.queue;
 
 import org.evochora.server.contracts.IQueueMessage;
-import org.evochora.runtime.Config;
 
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * In-memory queue backed by LinkedBlockingQueue with a soft byte-based capacity.
- * The internal queue is bounded by a computed element count derived from {@link Config#getMaxQueueBytes()}.
+ * In-memory implementation of the tick message queue.
+ * Uses a LinkedBlockingQueue with configurable element capacity.
  */
 public final class InMemoryTickQueue implements ITickMessageQueue {
 
     private final LinkedBlockingQueue<IQueueMessage> delegate;
-    private final AtomicLong approximateBytesUsed = new AtomicLong(0);
-    private final long maxQueueBytes;
+    private final int maxMessageCount;
 
     /**
-     * Constructs a queue with capacity inferred from a byte budget.
-     * We approximate message sizes conservatively:
-     * - ProgramArtifactMessage: ~64 KB
-     * - WorldStateMessage: configured as ~1 MB by default
-     * This is a heuristic to bound memory; precise sizing is complex without off-heap measurement.
+     * Creates a new in-memory tick queue with the specified element capacity.
+     *
+     * @param maxMessageCount the maximum number of messages the queue can hold
      */
-    public InMemoryTickQueue() {
-        this.maxQueueBytes = Math.max(256 * 1024 * 1024L, Config.MAX_QUEUE_BYTES); // Increase to 256MB
-        int elementCapacity = Math.max(5000, (int) Math.min(Integer.MAX_VALUE, this.maxQueueBytes / 200_000L)); // Much more elements, smaller size estimate
-        this.delegate = new LinkedBlockingQueue<>(elementCapacity);
+    public InMemoryTickQueue(int maxMessageCount) {
+        this.maxMessageCount = maxMessageCount;
+        this.delegate = new LinkedBlockingQueue<>(maxMessageCount);
     }
+
 
     @Override
     public void put(IQueueMessage message) throws InterruptedException {
-        // Backpressure on bytes as best-effort: block while approx bytes >= max
-        long estimatedSize = estimateSizeBytes(message);
-        while ((approximateBytesUsed.get() + estimatedSize) > maxQueueBytes) {
-            TimeUnit.MILLISECONDS.sleep(1);
-        }
         delegate.put(message);
-        approximateBytesUsed.addAndGet(estimatedSize);
     }
 
     @Override
     public IQueueMessage take() throws InterruptedException {
-        IQueueMessage msg = delegate.take();
-        approximateBytesUsed.addAndGet(-estimateSizeBytes(msg));
-        return msg;
+        return delegate.take();
     }
 
     @Override
     public IQueueMessage poll(long timeout, TimeUnit unit) throws InterruptedException {
-        IQueueMessage msg = delegate.poll(timeout, unit);
-        if (msg != null) {
-            approximateBytesUsed.addAndGet(-estimateSizeBytes(msg));
-        }
-        return msg;
+        return delegate.poll(timeout, unit);
     }
 
     @Override
     public IQueueMessage poll() {
-        IQueueMessage msg = delegate.poll();
-        if (msg != null) {
-            approximateBytesUsed.addAndGet(-estimateSizeBytes(msg));
-        }
-        return msg;
+        return delegate.poll();
     }
 
     @Override
@@ -71,13 +50,51 @@ public final class InMemoryTickQueue implements ITickMessageQueue {
         return delegate.size();
     }
 
-    private long estimateSizeBytes(IQueueMessage message) {
-        // Heuristic: 64 KB for artifacts, 1 MB for world states, 4 KB fallback
-        String type = message.getClass().getSimpleName();
-        if (type.equals("ProgramArtifactMessage")) return 64 * 1024L;
-        if (type.equals("WorldStateMessage") || type.equals("PreparedTickState")) return 1_000_000L;
-        return 4 * 1024L;
+
+    /**
+     * Checks if the queue can accept another message.
+     *
+     * @return true if there is space for another message
+     */
+    public boolean canAcceptMessage() {
+        return delegate.remainingCapacity() > 0;
     }
+
+    /**
+     * Attempts to add a message to the queue with a short timeout.
+     * Used by SimulationEngine to detect if the queue is full without blocking.
+     *
+     * @param message the message to add
+     * @return true if the message was added, false if the queue is full
+     */
+    public boolean tryPut(IQueueMessage message) {
+        try {
+            return delegate.offer(message, 1, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    /**
+     * Gets the current number of messages in the queue.
+     *
+     * @return the current message count
+     */
+    public int getCurrentMessageCount() {
+        return delegate.size();
+    }
+
+    /**
+     * Gets the maximum number of messages the queue can hold.
+     *
+     * @return the maximum message count
+     */
+    public int getMaxMessageCount() {
+        return maxMessageCount;
+    }
+
+
 }
 
 

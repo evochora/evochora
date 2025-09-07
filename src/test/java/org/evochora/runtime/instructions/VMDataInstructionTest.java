@@ -178,8 +178,7 @@ public class VMDataInstructionTest {
     @Test
     @Tag("integration")
     void testSetvJsonSerialization() throws Exception {
-        System.out.println("=== JSON Serialization Test ===");
-        
+
         // Simuliere genau das, was im Web Debugger passiert
         org.evochora.compiler.Compiler compiler = new org.evochora.compiler.Compiler();
         java.util.List<String> lines = java.util.Arrays.asList(
@@ -207,12 +206,8 @@ public class VMDataInstructionTest {
         
         // Prüfe ob DR5 korrekt gesetzt wurde
         Object dr5Value = testOrg.getDr(5);
-        System.out.println("DR5 after SETV execution: " + dr5Value);
         assertThat(dr5Value).isInstanceOf(int[].class);
-        
-        // Jetzt teste ich, ob der Wert bei der JSON-Serialisierung verloren geht
-        System.out.println("Testing JSON serialization...");
-        
+
         // Erstelle einen RawOrganismState (wie in SimulationEngine.toRawState)
         java.util.List<Object> drsCopy = new java.util.ArrayList<>(testOrg.getDrs());
         org.evochora.server.contracts.raw.RawOrganismState rawState = new org.evochora.server.contracts.raw.RawOrganismState(
@@ -232,18 +227,13 @@ public class VMDataInstructionTest {
         // Teste JSON-Serialisierung (wie in DebugIndexer.writePreparedTick)
         com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
         String json = objectMapper.writeValueAsString(rawTickState);
-        System.out.println("JSON serialization successful, length: " + json.length());
-        
+
         // Prüfe ob der Vektor in der JSON enthalten ist
         assertThat(json).contains("[1,0]");
-        System.out.println("SUCCESS: VECTOR value preserved in JSON serialization!");
-        
+
         // Teste JSON-Deserialisierung
         org.evochora.server.contracts.raw.RawTickState deserialized = objectMapper.readValue(json, org.evochora.server.contracts.raw.RawTickState.class);
         Object dr5Deserialized = deserialized.organisms().get(0).drs().get(5);
-        System.out.println("DR5 after JSON deserialization: " + dr5Deserialized);
         assertThat(dr5Deserialized).isInstanceOf(java.util.List.class);
-        
-        System.out.println("SUCCESS: VECTOR value preserved through JSON round-trip!");
     }
 }

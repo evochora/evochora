@@ -48,7 +48,7 @@ class PersistenceServicePerformanceTest {
         // Use temporary SQLite for faster tests
         this.dbPath = "jdbc:sqlite:file:memdb_perf?mode=memory&cache=shared";
         
-        queue = new InMemoryTickQueue();
+        queue = new InMemoryTickQueue(1000);
         persistenceService = new PersistenceService(queue, dbPath, new EnvironmentProperties(new int[]{100, 30}, true), BATCH_SIZE);
     }
 

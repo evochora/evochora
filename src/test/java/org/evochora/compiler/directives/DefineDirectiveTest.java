@@ -96,10 +96,7 @@ public class DefineDirectiveTest {
         Map<String, String> registerAliases = new HashMap<>();
         Map<String, org.evochora.compiler.frontend.lexer.Token> parserAliases = parser.getGlobalRegisterAliases();
         
-        System.err.println("=== PARSER ALIASES ===");
-        System.err.println("Parser aliases size: " + parserAliases.size());
         parserAliases.forEach((aliasName, registerToken) -> {
-            System.err.println("Alias: " + aliasName + " -> " + registerToken.text());
             registerAliases.put(aliasName, registerToken.text());
         });
         
@@ -107,16 +104,6 @@ public class DefineDirectiveTest {
         List<AstNode> processedAst = ast.stream()
             .map(node -> astPostProcessor.process(node))
             .toList();
-
-        // Check diagnostics for parsing errors
-        System.err.println("=== CHECKING DIAGNOSTICS ===");
-        System.err.println("Has errors: " + diagnostics.hasErrors());
-        if (diagnostics.hasErrors()) {
-            System.err.println("=== DIAGNOSTICS SUMMARY ===");
-            System.err.println(diagnostics.summary());
-        } else {
-            System.err.println("No diagnostics errors found");
-        }
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();

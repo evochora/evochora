@@ -28,7 +28,7 @@ class InMemoryTickQueueTest {
     @Test
     @Tag("unit")
     void putAndTake_shouldExchangeMessages() throws Exception {
-        InMemoryTickQueue queue = new InMemoryTickQueue();
+        InMemoryTickQueue queue = new InMemoryTickQueue(1000);
         IQueueMessage message = new RawTickState(1L, Collections.emptyList(), Collections.emptyList());
 
         queue.put(message);
@@ -49,7 +49,7 @@ class InMemoryTickQueueTest {
     @Test
     @Tag("unit")
     void capacity_shouldApplyBackpressureByBytesHeuristic() throws Exception {
-        InMemoryTickQueue queue = new InMemoryTickQueue();
+        InMemoryTickQueue queue = new InMemoryTickQueue(1000);
 
         var exec = Executors.newSingleThreadExecutor();
         Future<?> producer = exec.submit(() -> {

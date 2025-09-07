@@ -234,8 +234,6 @@ class RawTickStateReaderTest {
         // Assert: Should be reasonably fast (less than 10ms for 1000 accesses)
         assertThat(totalTime).isLessThan(10_000_000); // 10ms in nanoseconds
         
-        System.out.println("Performance test: 1000 random cell accesses in " + 
-                          (totalTime / 1_000_000.0) + " ms");
     }
 
     /**

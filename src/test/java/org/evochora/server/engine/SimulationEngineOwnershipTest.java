@@ -27,7 +27,7 @@ class SimulationEngineOwnershipTest {
     @BeforeEach
     void setUp() {
         Instruction.init();
-        queue = new InMemoryTickQueue();
+        queue = new InMemoryTickQueue(1000);
         engine = new SimulationEngine(queue, testEnvProps,
              new ArrayList<>(), new ArrayList<>());
     }

@@ -8,6 +8,10 @@ import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -65,7 +69,7 @@ class PersistenceServiceTest {
     @Test
     @Tag("unit")
     void writesRawTickStateRows() throws Exception {
-        ITickMessageQueue q = new InMemoryTickQueue();
+        ITickMessageQueue q = new InMemoryTickQueue(1000);
         // Use the available constructor with worldShape and batchSize
         PersistenceService persist = new PersistenceService(q, "jdbc:sqlite:file:memdb_persistence?mode=memory&cache=shared", new EnvironmentProperties(new int[]{10, 10}, true), 1);
         persist.start();
@@ -102,4 +106,5 @@ class PersistenceServiceTest {
         Thread.sleep(1000);
         assertThat(persist.isRunning()).isFalse();
     }
+
 }

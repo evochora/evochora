@@ -27,7 +27,7 @@ class SimulationEngineAutoPauseTest {
 
     @BeforeEach
     void setUp() {
-        queue = new InMemoryTickQueue();
+        queue = new InMemoryTickQueue(1000);
         engine = new SimulationEngine(queue, new EnvironmentProperties(new int[]{10, 10}, true), 
              new ArrayList<>(), new ArrayList<>());
     }

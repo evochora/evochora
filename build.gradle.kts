@@ -94,6 +94,7 @@ tasks.test {
         excludeTags("benchmark") // Exclude benchmark tests from regular test runs
     }
     jvmArgs("-Duser.language=en", "-Duser.country=US")
+    jvmArgs("-XX:+EnableDynamicAgentLoading")
     finalizedBy(tasks.jacocoTestReport)
     testLogging {
         events("passed", "skipped", "failed")

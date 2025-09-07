@@ -73,7 +73,6 @@ class DebugIndexerPerformanceTest {
      * @throws Exception if database setup fails.
      */
     private Connection createTestDatabase(String dbPath) throws Exception {
-        System.out.println("Creating test database at: " + dbPath);
         conn = DriverManager.getConnection(dbPath);
         try (Statement stmt = conn.createStatement()) {
             // Create raw_ticks table with the correct schema

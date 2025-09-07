@@ -43,6 +43,7 @@ public final class SimulationConfiguration {
         public IndexerServiceConfig indexer;
         public PersistenceServiceConfig persistence;
         public ServerServiceConfig server;
+        public LoggingConfig logging;
     }
 
     public static final class SimulationServiceConfig {
@@ -50,6 +51,7 @@ public final class SimulationConfiguration {
         public String outputPath;
         public int[] autoPauseTicks; // Array of tick values where simulation should auto-pause
         public Boolean skipProgramArtefact; // Whether to skip ProgramArtifact features (default: false)
+        public Integer maxMessageCount; // Maximum number of messages in queue (default: 10000)
     }
 
     public static final class IndexerServiceConfig {
@@ -89,6 +91,19 @@ public final class SimulationConfiguration {
             return pipeline.server.port;
         }
         return 7070; // default
+    }
+
+    /**
+     * Configuration for logging behavior.
+     */
+    public static final class LoggingConfig {
+        /** Default log level for all loggers not explicitly configured. */
+        public String defaultLogLevel = "WARN";
+        
+        /** Per-logger specific log levels. Key is logger name, value is log level. */
+        public Map<String, String> logLevels = Map.of(
+            "org.evochora.server.ServiceManager", "INFO"
+        );
     }
 }
 

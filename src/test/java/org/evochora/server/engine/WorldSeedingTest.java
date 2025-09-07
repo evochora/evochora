@@ -25,7 +25,7 @@ class WorldSeedingTest {
 
     @BeforeEach
     void setUp() {
-        queue = new InMemoryTickQueue();
+        queue = new InMemoryTickQueue(1000);
         engine = new SimulationEngine(queue, testEnvProps,
              new ArrayList<>(), new ArrayList<>());
     }
@@ -48,7 +48,6 @@ class WorldSeedingTest {
 
         while (!condition.getAsBoolean()) {
             if (System.currentTimeMillis() - startTime > timeoutMs) {
-                System.out.println("Timeout waiting for: " + description);
                 return false;
             }
             try {

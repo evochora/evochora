@@ -14,7 +14,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -218,19 +217,36 @@ public final class CommandLineInterface {
     }
     
     public void run() throws Exception {
-        this.queue = new InMemoryTickQueue();
+        // ASCII Art Logo and scientific claim - show FIRST before any service logs
+        System.out.println();
+        System.out.println("  ________      ______   _____ _    _  ____  _____            ");
+        System.out.println(" |  ____\\ \\    / / __ \\ / ____| |  | |/ __ \\|  __ \\     /\\    ");
+        System.out.println(" | |__   \\ \\  / / |  | | |    | |__| | |  | | |__) |   /  \\   ");
+        System.out.println(" |  __|   \\ \\/ /| |  | | |    |  __  | |  | |  _  /   / /\\ \\  ");
+        System.out.println(" | |____   \\  / | |__| | |____| |  | | |__| | | \\ \\  / ____ \\ ");
+        System.out.println(" |______|   \\/   \\____/ \\_____|_|  |_|\\____/|_|  \\_\\/_/    \\_\\");
+        System.out.println();
+        System.out.println("           Advanced Evolutionary Simulation Platform");
+        System.out.println();
+        
         if (this.cfg == null) {
             this.cfg = ConfigLoader.loadDefault();
         }
+        
+        // Create queue with configured message count limit
+        int maxMessageCount = 10000; // 10000 messages default
+        if (this.cfg.pipeline != null && this.cfg.pipeline.simulation != null) {
+            if (this.cfg.pipeline.simulation.maxMessageCount != null) {
+                maxMessageCount = this.cfg.pipeline.simulation.maxMessageCount;
+            }
+        }
+        
+        this.queue = new InMemoryTickQueue(maxMessageCount);
+        
         this.serviceManager = new ServiceManager(queue, cfg);
 
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-        System.out.println("Evochora CLI ready. Commands: start | pause | resume | status | exit");
-        System.out.println("  start [service] - start all services or specific service");
-        System.out.println("  pause [service] - pause all services or specific service");
-        System.out.println("  resume [service] - resume all services or specific service");
-        System.out.println("  status - show status of all services");
-        System.out.println("  exit - shutdown and exit");
+        System.out.println("Evochora CLI ready. Commands: start | pause | resume | status | help | exit");
 
         while (true) {
             System.err.print(">>> ");
@@ -241,7 +257,7 @@ public final class CommandLineInterface {
             if (cmd.equalsIgnoreCase("start")) {
                 System.out.println("Starting all services...");
                 serviceManager.startAll();
-                System.out.println("All services started successfully");
+                // Don't print success message - ServiceManager logs the actual status
                 
             } else if (cmd.startsWith("start ")) {
                 String serviceName = cmd.substring(6).trim().toLowerCase();
@@ -269,8 +285,71 @@ public final class CommandLineInterface {
                 serviceManager.resumeService(serviceName);
                 
             } else if (cmd.equalsIgnoreCase("status")) {
-                System.out.println("Service Status:");
                 System.out.println(serviceManager.getStatus());
+                
+            } else if (cmd.startsWith("loglevel ")) {
+                String[] parts = cmd.substring(9).trim().split("\\s+");
+                if (parts.length == 1) {
+                    String level = parts[0].toUpperCase();
+                    if (level.equals("RESET")) {
+                        serviceManager.resetLogLevels();
+                        System.out.println("Log levels reset to config.jsonc values");
+                    } else if (serviceManager.isValidLogLevel(level)) {
+                        serviceManager.setDefaultLogLevel(level);
+                    } else {
+                        System.out.println("Invalid log level: " + level);
+                        System.out.println("Valid levels: TRACE, DEBUG, INFO, WARN, ERROR");
+                    }
+                } else if (parts.length == 2) {
+                    // loglevel sim INFO (specific logger)
+                    String loggerAlias = parts[0].toLowerCase();
+                    String level = parts[1].toUpperCase();
+                    if (serviceManager.isValidLogLevel(level)) {
+                        serviceManager.setLogLevel(loggerAlias, level);
+                    } else {
+                        System.out.println("Invalid log level: " + level);
+                        System.out.println("Valid levels: TRACE, DEBUG, INFO, WARN, ERROR");
+                    }
+                } else {
+                    System.out.println("Usage: loglevel [logger] [level] or loglevel reset");
+                    System.out.println("Examples: loglevel DEBUG, loglevel sim INFO, loglevel cli WARN, loglevel reset");
+                }
+            } else if (cmd.equalsIgnoreCase("loglevel")) {
+                // Show current log levels
+                System.out.println("Current log levels:");
+                System.out.printf("%-12s %s%n", "Logger", "Level");
+                System.out.printf("%-12s %s%n", "------", "-----");
+                System.out.printf("%-12s %s%n", "default", serviceManager.getCurrentLogLevel("default"));
+                System.out.printf("%-12s %s%n", "sim", serviceManager.getCurrentLogLevel("sim"));
+                System.out.printf("%-12s %s%n", "persist", serviceManager.getCurrentLogLevel("persist"));
+                System.out.printf("%-12s %s%n", "indexer", serviceManager.getCurrentLogLevel("indexer"));
+                System.out.printf("%-12s %s%n", "web", serviceManager.getCurrentLogLevel("web"));
+                System.out.printf("%-12s %s%n", "cli", serviceManager.getCurrentLogLevel("cli"));
+                
+            } else if (cmd.equalsIgnoreCase("help")) {
+                System.out.println("Evochora CLI Commands:");
+                System.out.println();
+                System.out.printf("%-18s %s%n", "  start [service]", "Start all services or a specific service");
+                System.out.printf("%-18s %s%n", "", "Available services: sim, persist, indexer, web");
+                System.out.println();
+                System.out.printf("%-18s %s%n", "  pause [service]", "Pause all services or a specific service");
+                System.out.printf("%-18s %s%n", "", "Services will stop processing but maintain their state");
+                System.out.println();
+                System.out.printf("%-18s %s%n", "  resume [service]", "Resume all services or a specific service");
+                System.out.printf("%-18s %s%n", "", "Services will continue from where they were paused");
+                System.out.println();
+                System.out.printf("%-18s %s%n", "  status", "Show current status of all services");
+                System.out.printf("%-18s %s%n", "", "Displays running state, health, and configuration");
+                System.out.println();
+                System.out.printf("%-18s %s%n", "  loglevel", "Show current log levels for all loggers");
+                System.out.printf("%-18s %s%n", "  loglevel [level]", "Set default log level (TRACE, DEBUG, INFO, WARN, ERROR)");
+                System.out.printf("%-18s %s%n", "  loglevel [logger] [level]", "Set log level for specific logger");
+                System.out.printf("%-18s %s%n", "", "Available loggers: sim, persist, indexer, web, cli");
+                System.out.printf("%-18s %s%n", "  loglevel reset", "Reset all log levels to config.jsonc values");
+                System.out.println();
+                System.out.printf("%-18s %s%n", "  help", "Show this detailed help information");
+                System.out.println();
+                System.out.printf("%-18s %s%n", "  exit", "Shutdown all services and exit the CLI");
                 
             } else if (cmd.equalsIgnoreCase("exit") || cmd.equalsIgnoreCase("quit")) {
                 break;
@@ -278,13 +357,12 @@ public final class CommandLineInterface {
             } else if (cmd.isEmpty()) {
                 continue;
             } else {
-                System.out.println("Unknown command. Available: start [service] | pause [service] | resume [service] | status | exit");
+                System.out.println("Unknown command. Type 'help' for detailed information or use: start | pause | resume | status | exit");
             }
         }
 
         // Cleanup
         System.out.println("Shutting down services...");
         serviceManager.stopAll();
-        System.out.println("CLI shutdown complete");
     }
 }

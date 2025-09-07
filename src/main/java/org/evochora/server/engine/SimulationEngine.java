@@ -34,6 +34,7 @@ public class SimulationEngine implements IControllable, Runnable {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final AtomicBoolean autoPaused = new AtomicBoolean(false);
+    private final AtomicBoolean manuallyPaused = new AtomicBoolean(false);
     private final org.evochora.runtime.model.EnvironmentProperties environmentProperties;
     private final Logger logger;
     private Simulation simulation;
@@ -45,6 +46,8 @@ public class SimulationEngine implements IControllable, Runnable {
     private int[] autoPauseTicks = null; // Configuration for auto-pause ticks
     private int nextAutoPauseIndex = 0; // Index of next auto-pause tick to check
     private Long maxTicks = null; // Maximum number of ticks to run before stopping (null = no limit)
+    
+    // Simple TPS calculation - no complex timer tracking needed
     
     // TEST FLAG: ProgramArtifact-Funktionalität ein-/ausschalten
     // true = normal (mit ProgramArtifact), false = nur Code platzieren (ohne ProgramArtifact)
@@ -184,13 +187,16 @@ public class SimulationEngine implements IControllable, Runnable {
 
     @Override
     public void pause() { 
-        paused.set(true); 
+        manuallyPaused.set(true);
+        paused.set(true);
     }
 
     @Override
     public void resume() { 
+        manuallyPaused.set(false);
         paused.set(false); 
         autoPaused.set(false);
+        // Don't start processing timer here - it will start when actual tick processing begins
     }
 
     @Override
@@ -226,17 +232,17 @@ public class SimulationEngine implements IControllable, Runnable {
         long currentTime = System.currentTimeMillis();
         long currentTick = getCurrentTick();
         
-        if (currentTick <= 0) {
+        if (currentTick <= 0 || startTime <= 0) {
             return 0.0;
         }
         
-        // Calculate TPS since tick 0
-        long timeDiff = currentTime - startTime;
-        if (timeDiff > 0) {
-            return (double) currentTick / (timeDiff / 1000.0);
+        long totalTime = currentTime - startTime;
+        if (totalTime <= 0) {
+            return 0.0;
         }
         
-        return 0.0;
+        // Simple calculation: ticks / time since start
+        return (double) currentTick / (totalTime / 1000.0);
     }
     
     public long getCurrentTick() {
@@ -285,14 +291,41 @@ public class SimulationEngine implements IControllable, Runnable {
         double tps = calculateTPS();
         
         if (isPaused) {
-            String pauseType = autoPaused.get() ? "auto-paused" : "paused";
-            return String.format("%s tick:%d organisms:[%d,%d] queue:%d", 
-                    pauseType, currentTick, counts[0], counts[1], queueSize);
+            String pauseType;
+            if (manuallyPaused.get()) {
+                pauseType = "paused";
+            } else if (autoPaused.get()) {
+                pauseType = "auto-paused";
+            } else {
+                pauseType = "paused";
+            }
+            if (queue instanceof org.evochora.server.queue.InMemoryTickQueue) {
+                org.evochora.server.queue.InMemoryTickQueue memQueue = (org.evochora.server.queue.InMemoryTickQueue) queue;
+                int currentMessages = memQueue.getCurrentMessageCount();
+                int maxMessages = memQueue.getMaxMessageCount();
+                String queueStatus = String.format("queue:%d/%d elements", currentMessages, maxMessages);
+                return String.format("%-12s %-8d %-8.2f %s",
+                        pauseType, currentTick, tps,
+                        String.format("organisms:[%d,%d] %s", counts[0], counts[1], queueStatus));
+            } else {
+                return String.format("%-12s %-8d %-8.2f %s",
+                        pauseType, currentTick, tps,
+                        String.format("organisms:[%d,%d] queue:%d elements", counts[0], counts[1], queueSize));
+            }
         }
         
-        return String.format("%s tick:%d organisms:[%d,%d] queue:%d TPS:%.2f", 
-                isRunning ? "started" : "stopped",
-                currentTick, counts[0], counts[1], queueSize, tps);
+        if (queue instanceof org.evochora.server.queue.InMemoryTickQueue) {
+            org.evochora.server.queue.InMemoryTickQueue memQueue = (org.evochora.server.queue.InMemoryTickQueue) queue;
+            int currentMessages = memQueue.getCurrentMessageCount();
+            int maxMessages = memQueue.getMaxMessageCount();
+            return String.format("%-12s %-8d %-8.2f %s",
+                    isRunning ? "started" : "stopped", currentTick, tps,
+                    String.format("organisms:[%d,%d] queue:%d/%d elements", counts[0], counts[1], currentMessages, maxMessages));
+        } else {
+            return String.format("%-12s %-8d %-8.2f %s",
+                    isRunning ? "started" : "stopped", currentTick, tps,
+                    String.format("organisms:[%d,%d] queue:%d elements", counts[0], counts[1], queueSize));
+        }
     }
 
     @Override
@@ -420,9 +453,20 @@ public class SimulationEngine implements IControllable, Runnable {
             // Start simulation loop
             while (running.get()) {
                 if (paused.get()) {
-                    // Use a short sleep instead of busy-wait to avoid consuming CPU
+        // Auto-resume if queue has space and we're in auto-pause (but not manually paused)
+        if (autoPaused.get() && !manuallyPaused.get() && queue instanceof org.evochora.server.queue.InMemoryTickQueue) {
+            org.evochora.server.queue.InMemoryTickQueue memQueue = (org.evochora.server.queue.InMemoryTickQueue) queue;
+            if (memQueue.canAcceptMessage()) {
+                log.info("Auto-resuming simulation - queue has space");
+                autoPaused.set(false);
+                paused.set(false);
+                continue;
+            }
+        }
+                    
+                    // Use polling with 100ms sleep for auto-pause
                     try {
-                        Thread.sleep(10); // 10ms sleep is much more efficient than spin-wait
+                        Thread.sleep(100); // 100ms polling as requested
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         break;
@@ -431,6 +475,20 @@ public class SimulationEngine implements IControllable, Runnable {
                 }
 
                 try {
+                    // Check if queue can accept the next tick BEFORE processing it (only if not manually paused)
+                    if (!manuallyPaused.get() && queue instanceof org.evochora.server.queue.InMemoryTickQueue) {
+                        org.evochora.server.queue.InMemoryTickQueue memQueue = (org.evochora.server.queue.InMemoryTickQueue) queue;
+                        if (!memQueue.canAcceptMessage()) {
+                            log.info("Auto-pausing simulation - queue is full");
+                            autoPaused.set(true);
+                            paused.set(true);
+                            continue;
+                        }
+                    } else if (!manuallyPaused.get()) {
+                        // Only InMemoryTickQueue is supported for auto-pause functionality
+                        throw new UnsupportedOperationException("Auto-pause is only supported with InMemoryTickQueue, got: " + queue.getClass().getSimpleName());
+                    }
+                    
                     // Check if we should auto-pause at this tick
                     if (shouldAutoPause()) {
                         log.info("Auto-pausing simulation at tick {}", simulation.getCurrentTick());
@@ -459,15 +517,20 @@ public class SimulationEngine implements IControllable, Runnable {
                         }
                     }
                     
-                    // Always create raw tick state, but throttle simulation if queue is too full
+                    // Always create raw tick state
                     RawTickState tickMsg = toRawState(simulation);
-                    queue.put(tickMsg);
                     
-                    // Throttle simulation if persistence is falling behind
-                    if (queue.size() > 1000) {
-                        // Slow down simulation to let persistence catch up
-                        Thread.sleep(1); // 1ms delay to reduce pressure
-                        log.debug("Throttling simulation - queue size: {}", queue.size());
+                    // Try to put message - if it fails, go to auto-pause
+                    if (queue instanceof org.evochora.server.queue.InMemoryTickQueue) {
+                        org.evochora.server.queue.InMemoryTickQueue memQueue = (org.evochora.server.queue.InMemoryTickQueue) queue;
+                        if (!memQueue.tryPut(tickMsg)) {
+                            log.info("Auto-pausing simulation - queue is full");
+                            autoPaused.set(true);
+                            paused.set(true);
+                            continue;
+                        }
+                    } else {
+                        queue.put(tickMsg);
                     }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();

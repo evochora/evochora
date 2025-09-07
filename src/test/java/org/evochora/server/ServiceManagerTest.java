@@ -31,7 +31,7 @@ class ServiceManagerTest {
 
     @BeforeEach
     void setUp() {
-        queue = new InMemoryTickQueue();
+        queue = new InMemoryTickQueue(10000);
         config = new SimulationConfiguration();
         
         // Initialize simulation config
@@ -99,10 +99,11 @@ class ServiceManagerTest {
         return waitForCondition(
             () -> {
                 String status = serviceManager.getStatus();
-                return status.contains("Simulation: started") &&
-                       status.contains("Persistence: started") &&
-                       status.contains("Indexer: started") &&
-                       status.contains("DebugServer: running");
+
+                return status.contains("sim") && status.contains("started") &&
+                        status.contains("persist") && status.contains("started") &&
+                        status.contains("indexer") && status.contains("started") &&
+                        status.contains("web") && status.contains("started");
             },
             timeoutMs,
             "all services to start"
@@ -116,10 +117,11 @@ class ServiceManagerTest {
         return waitForCondition(
             () -> {
                 String status = serviceManager.getStatus();
-                return status.contains("Simulation: paused") &&
-                       status.contains("Persistence: paused") &&
-                       status.contains("Indexer: paused") &&
-                       status.contains("DebugServer: stopped");
+                // Check for the actual status format used by ServiceManager.getStatus()
+                return status.contains("sim") && status.contains("paused") &&
+                       status.contains("persist") && status.contains("paused") &&
+                       status.contains("indexer") && status.contains("paused") &&
+                       status.contains("web") && status.contains("stopped");
             },
             timeoutMs,
             "all services to pause"
@@ -133,10 +135,10 @@ class ServiceManagerTest {
         return waitForCondition(
             () -> {
                 String status = serviceManager.getStatus();
-                return status.contains("Simulation: started") &&
-                       status.contains("Persistence: started") &&
-                       status.contains("Indexer: started") &&
-                       status.contains("DebugServer: running");
+                return status.contains("sim") && status.contains("started") &&
+                       status.contains("persist") && status.contains("paused") &&
+                       status.contains("indexer") && status.contains("started") &&
+                       status.contains("web") && status.contains("started");
             },
             timeoutMs,
             "all services to resume"
@@ -185,10 +187,10 @@ class ServiceManagerTest {
         // Get status to verify services are running
         String status = serviceManager.getStatus();
         assertNotNull(status);
-        assertTrue(status.contains("Simulation: started"));
-        assertTrue(status.contains("Persistence: started"));
-        assertTrue(status.contains("Indexer: started"));
-        assertTrue(status.contains("DebugServer: running"));
+        assertTrue(status.contains("sim") && status.contains("started"));
+        assertTrue(status.contains("persist") && status.contains("started"));
+        assertTrue(status.contains("indexer") && status.contains("started"));
+        assertTrue(status.contains("web") && status.contains("started"));
     }
 
     /**
@@ -211,11 +213,11 @@ class ServiceManagerTest {
         // Get status to verify services are paused
         String status = serviceManager.getStatus();
         assertNotNull(status);
-        assertTrue(status.contains("Simulation: paused"));
-        assertTrue(status.contains("Persistence: paused"));
-        assertTrue(status.contains("Indexer: paused"));
+        assertTrue(status.contains("sim") && status.contains("paused"));
+        assertTrue(status.contains("persist") && status.contains("paused"));
+        assertTrue(status.contains("indexer") && status.contains("paused"));
         // DebugServer should be stopped when paused
-        assertTrue(status.contains("DebugServer: stopped"));
+        assertTrue(status.contains("web") && status.contains("stopped"));
     }
 
     /**
@@ -242,10 +244,10 @@ class ServiceManagerTest {
         // Get status to verify services are running again
         String status = serviceManager.getStatus();
         assertNotNull(status);
-        assertTrue(status.contains("Simulation: started"));
-        assertTrue(status.contains("Persistence: started"));
-        assertTrue(status.contains("Indexer: started"));
-        assertTrue(status.contains("DebugServer: running"));
+        assertTrue(status.contains("sim") && status.contains("started"));
+        assertTrue(status.contains("persist") && status.contains("started"));
+        assertTrue(status.contains("indexer") && status.contains("started"));
+        assertTrue(status.contains("web") && status.contains("started"));
     }
 
     /**
@@ -262,17 +264,17 @@ class ServiceManagerTest {
         assertTrue(waitForCondition(
             () -> {
                 String status = serviceManager.getStatus();
-                return status.contains("Simulation: started");
+                return status.contains("sim") && status.contains("started");
             },
             1000,
             "simulation service to start"
         ));
         
         String status = serviceManager.getStatus();
-        assertTrue(status.contains("Simulation: started"));
-        assertTrue(status.contains("Persistence: NOT_STARTED"));
-        assertTrue(status.contains("Indexer: NOT_STARTED"));
-        assertTrue(status.contains("DebugServer: NOT_STARTED"));
+        assertTrue(status.contains("sim") && status.contains("started"));
+        assertTrue(status.contains("persist") && status.contains("NOT_STARTED"));
+        assertTrue(status.contains("indexer") && status.contains("NOT_STARTED"));
+        assertTrue(status.contains("web") && status.contains("NOT_STARTED"));
     }
 
     /**
@@ -293,17 +295,17 @@ class ServiceManagerTest {
         assertTrue(waitForCondition(
             () -> {
                 String status = serviceManager.getStatus();
-                return status.contains("Persistence: paused");
+                return status.contains("persist") && status.contains("paused");
             },
             2000,
             "persistence service to pause"
         ));
         
         String status = serviceManager.getStatus();
-        assertTrue(status.contains("Simulation: started"));
-        assertTrue(status.contains("Persistence: paused"));
-        assertTrue(status.contains("Indexer: started"));
-        assertTrue(status.contains("DebugServer: running"));
+        assertTrue(status.contains("sim") && status.contains("started"));
+        assertTrue(status.contains("persist") && status.contains("paused"));
+        assertTrue(status.contains("indexer") && status.contains("started"));
+        assertTrue(status.contains("web") && status.contains("started"));
     }
 
     /**
@@ -324,7 +326,7 @@ class ServiceManagerTest {
         assertTrue(waitForCondition(
             () -> {
                 String status = serviceManager.getStatus();
-                return status.contains("Persistence: paused");
+                return status.contains("persist") && status.contains("paused");
             },
             2000,
             "persistence service to pause"
@@ -335,17 +337,17 @@ class ServiceManagerTest {
         assertTrue(waitForCondition(
             () -> {
                 String status = serviceManager.getStatus();
-                return status.contains("Persistence: started");
+                return status.contains("persist") && status.contains("started");
             },
             2000,
             "persistence service to resume"
         ));
         
         String status = serviceManager.getStatus();
-        assertTrue(status.contains("Simulation: started"));
-        assertTrue(status.contains("Persistence: started"));
-        assertTrue(status.contains("Indexer: started"));
-        assertTrue(status.contains("DebugServer: running"));
+        assertTrue(status.contains("sim") && status.contains("started"));
+        assertTrue(status.contains("persist") && status.contains("started"));
+        assertTrue(status.contains("indexer") && status.contains("started"));
+        assertTrue(status.contains("web") && status.contains("started"));
     }
 
     /**

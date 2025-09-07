@@ -78,7 +78,7 @@ public class PipelineFlowTest {
         this.debugDbPath = "jdbc:sqlite:file:" + uniqueDbName + "_debug?mode=memory&cache=shared&journal_mode=WAL&synchronous=NORMAL&locking_mode=NORMAL&cache_size=10000&temp_store=MEMORY&busy_timeout=30000&read_uncommitted=true";
         
         // Create queue
-        queue = new InMemoryTickQueue();
+        queue = new InMemoryTickQueue(1000);
         
         // Create organism placements with simple NOP program
         organismPlacements = createTestOrganisms();

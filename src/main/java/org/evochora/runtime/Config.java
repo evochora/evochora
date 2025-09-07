@@ -82,11 +82,6 @@ public final class Config {
     public static final String RUNS_DIRECTORY = "runs";
 
     /**
-     * The maximum size in bytes for the message queue (512 MB).
-     */
-    public static final long MAX_QUEUE_BYTES = 512L * 1024L * 1024L;
-
-    /**
      * The number of bits used to represent the value part of a cell.
      */
     public static final int VALUE_BITS = 16;

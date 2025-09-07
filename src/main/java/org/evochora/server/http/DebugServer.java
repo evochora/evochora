@@ -117,7 +117,7 @@ public final class DebugServer {
             String dbInfo = dbPath != null ? dbPath.replace('/', '\\') : "unknown";
             log.info("DebugServer: port:{} reading {}", port, dbInfo);
         } catch (Exception e) {
-            log.error("DebugServer failed to start HTTP server: {}", e.getMessage());
+            log.debug("DebugServer failed to start HTTP server: {}", e.getMessage());
             throw new RuntimeException("Failed to start HTTP server", e);
         }
     }
@@ -166,7 +166,8 @@ public final class DebugServer {
         
         // Show full path including directory like DebugIndexer does, using backslashes for consistency
         String dbInfo = dbPath != null ? dbPath.replace('/', '\\') : "unknown";
-        return String.format("started port:%d reading %s", port, dbInfo);
+        return String.format("%-12s %-12s %-8s %-8s %s", "started", "", "", "", 
+                String.format("port:%d reading %s", port, dbInfo));
     }
     
     private double calculateTPS() {

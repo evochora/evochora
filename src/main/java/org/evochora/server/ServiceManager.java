@@ -45,34 +45,34 @@ public final class ServiceManager {
         this.queue = queue;
         this.config = config;
         
+        // Apply logging configuration before any other operations
+        applyLoggingConfiguration();
+        
         // Check autoStart configuration and start services automatically
-        log.info("Checking autoStart configuration...");
+        log.debug("Checking autoStart configuration...");
+        log.info("Auto-starting services...");
         
         if (config.pipeline != null && config.pipeline.simulation != null && 
             Boolean.TRUE.equals(config.pipeline.simulation.autoStart)) {
-            log.info("Auto-starting simulation service...");
             startSimulation();
         }
         
         if (config.pipeline != null && config.pipeline.persistence != null && 
             Boolean.TRUE.equals(config.pipeline.persistence.autoStart)) {
-            log.info("Auto-starting persistence service...");
             startPersistence();
         }
         
         if (config.pipeline != null && config.pipeline.indexer != null && 
             Boolean.TRUE.equals(config.pipeline.indexer.autoStart)) {
-            log.info("Auto-starting indexer service...");
             startIndexer();
         }
         
         if (config.pipeline != null && config.pipeline.server != null && 
             Boolean.TRUE.equals(config.pipeline.server.autoStart)) {
-            log.info("Auto-starting debug server...");
             startDebugServer();
         }
         
-        log.info("AutoStart configuration processed");
+        log.debug("AutoStart configuration processed");
     }
     
     /**
@@ -81,8 +81,17 @@ public final class ServiceManager {
     public void startAll() {
         log.info("Starting all services...");
         
+        boolean allServicesStarted = true;
+        boolean anyServiceStarted = false;
+        
         // Start simulation first
-        startSimulation();
+        if (!simulationRunning.get()) {
+            startSimulation();
+            log.info("Simulation service started");
+            anyServiceStarted = true;
+        } else {
+            log.info("Simulation service already running");
+        }
         
         // Wait a bit for simulation to initialize
         try {
@@ -92,7 +101,13 @@ public final class ServiceManager {
         }
         
         // Start persistence service
-        startPersistence();
+        if (!persistenceRunning.get()) {
+            startPersistence();
+            log.info("Persistence service started");
+            anyServiceStarted = true;
+        } else {
+            log.info("Persistence service already running");
+        }
         
         // Wait for persistence to create database
         try {
@@ -102,12 +117,39 @@ public final class ServiceManager {
         }
         
         // Start indexer
-        startIndexer();
+        if (!indexerRunning.get()) {
+            startIndexer();
+            log.info("Indexer service started");
+            anyServiceStarted = true;
+        } else {
+            log.info("Indexer service already running");
+        }
         
         // Start debug server
-        startDebugServer();
+        if (!serverRunning.get()) {
+            startDebugServer();
+            if (serverRunning.get()) {
+                log.info("Debug server started");
+                anyServiceStarted = true;
+            }
+        } else {
+            log.info("Debug server already running");
+        }
         
-        log.info("All services started successfully");
+        // Check if debug server actually started
+        if (!serverRunning.get()) {
+            allServicesStarted = false;
+        }
+        
+        if (allServicesStarted) {
+            if (anyServiceStarted) {
+                log.info("All services started successfully");
+            } else {
+                log.info("All services already running");
+            }
+        } else {
+            log.warn("Some services failed to start. Check logs for details.");
+        }
     }
     
     /**
@@ -116,6 +158,7 @@ public final class ServiceManager {
     public void startService(String serviceName) {
         switch (serviceName.toLowerCase()) {
             case "simulation":
+            case "sim":
                 startSimulation();
                 break;
             case "persist":
@@ -126,6 +169,7 @@ public final class ServiceManager {
                 startIndexer();
                 break;
             case "server":
+            case "web":
                 startDebugServer();
                 break;
             default:
@@ -139,24 +183,66 @@ public final class ServiceManager {
     public void pauseAll() {
         log.info("Pausing all services...");
         
+        boolean anyServicePaused = false;
+        
         if (simulationEngine.get() != null && simulationRunning.get()) {
-            simulationEngine.get().pause();
+            if (!simulationEngine.get().isPaused()) {
+                simulationEngine.get().pause();
+                log.info("Simulation service paused");
+                anyServicePaused = true;
+            } else {
+                log.info("Simulation service already paused");
+            }
+        } else if (simulationEngine.get() != null) {
+            log.info("Simulation service not running, cannot pause");
+        } else {
+            log.info("Simulation service not available");
         }
         
         if (persistenceService.get() != null && persistenceRunning.get()) {
-            persistenceService.get().pause();
+            if (!persistenceService.get().isPaused()) {
+                persistenceService.get().pause();
+                log.info("Persistence service paused");
+                anyServicePaused = true;
+            } else {
+                log.info("Persistence service already paused");
+            }
+        } else if (persistenceService.get() != null) {
+            log.info("Persistence service not running, cannot pause");
+        } else {
+            log.info("Persistence service not available");
         }
         
         if (indexer.get() != null && indexerRunning.get()) {
-            indexer.get().pause();
+            if (!indexer.get().isPaused()) {
+                indexer.get().pause();
+                log.info("Indexer service paused");
+                anyServicePaused = true;
+            } else {
+                log.info("Indexer service already paused");
+            }
+        } else if (indexer.get() != null) {
+            log.info("Indexer service not running, cannot pause");
+        } else {
+            log.info("Indexer service not available");
         }
         
         if (debugServer.get() != null && serverRunning.get()) {
             debugServer.get().stop();
             serverRunning.set(false);
+            log.info("Debug server stopped");
+            anyServicePaused = true;
+        } else if (debugServer.get() != null) {
+            log.info("Debug server not running, cannot stop");
+        } else {
+            log.info("Debug server not available");
         }
         
-        log.info("All services paused");
+        if (anyServicePaused) {
+            log.info("All services paused");
+        } else {
+            log.info("No services needed pausing");
+        }
     }
     
     /**
@@ -165,6 +251,7 @@ public final class ServiceManager {
     public void pauseService(String serviceName) {
         switch (serviceName.toLowerCase()) {
             case "simulation":
+            case "sim":
                 if (simulationEngine.get() != null && simulationRunning.get()) {
                     simulationEngine.get().pause();
                     log.info("Simulation paused");
@@ -184,6 +271,7 @@ public final class ServiceManager {
                 }
                 break;
             case "server":
+            case "web":
                 if (debugServer.get() != null && serverRunning.get()) {
                     debugServer.get().stop();
                     serverRunning.set(false);
@@ -201,23 +289,67 @@ public final class ServiceManager {
     public void resumeAll() {
         log.info("Resuming all services...");
         
+        boolean anyServiceResumed = false;
+        
         if (simulationEngine.get() != null && simulationRunning.get()) {
-            simulationEngine.get().resume();
+            if (simulationEngine.get().isPaused()) {
+                simulationEngine.get().resume();
+                log.info("Simulation service resumed");
+                anyServiceResumed = true;
+            } else {
+                log.info("Simulation service already running");
+            }
+        } else if (simulationEngine.get() != null) {
+            log.info("Simulation service not running, cannot resume");
+        } else {
+            log.info("Simulation service not available");
         }
         
         if (persistenceService.get() != null && persistenceRunning.get()) {
-            persistenceService.get().resume();
+            if (persistenceService.get().isPaused()) {
+                persistenceService.get().resume();
+                log.info("Persistence service resumed");
+                anyServiceResumed = true;
+            } else {
+                log.info("Persistence service already running");
+            }
+        } else if (persistenceService.get() != null) {
+            log.info("Persistence service not running, cannot resume");
+        } else {
+            log.info("Persistence service not available");
         }
         
         if (indexer.get() != null && indexerRunning.get()) {
-            indexer.get().resume();
+            if (indexer.get().isPaused()) {
+                indexer.get().resume();
+                log.info("Indexer service resumed");
+                anyServiceResumed = true;
+            } else {
+                log.info("Indexer service already running");
+            }
+        } else if (indexer.get() != null) {
+            log.info("Indexer service not running, cannot resume");
+        } else {
+            log.info("Indexer service not available");
         }
         
         if (debugServer.get() != null && !serverRunning.get()) {
             startDebugServer();
+            if (serverRunning.get()) {
+                log.info("Debug server started");
+                anyServiceResumed = true;
+            }
+        } else if (debugServer.get() != null) {
+            log.info("Debug server already running");
+        } else {
+            log.info("Debug server not available");
         }
         
-        log.info("All services resumed");
+        if (anyServiceResumed) {
+            log.info("All services resumed");
+        } else {
+            log.info("No services needed resuming");
+        }
     }
     
     /**
@@ -226,6 +358,7 @@ public final class ServiceManager {
     public void resumeService(String serviceName) {
         switch (serviceName.toLowerCase()) {
             case "simulation":
+            case "sim":
                 if (simulationEngine.get() != null) {
                     simulationEngine.get().resume();
                     log.info("Simulation resumed");
@@ -251,6 +384,7 @@ public final class ServiceManager {
                 }
                 break;
             case "server":
+            case "web":
                 if (debugServer.get() != null && !serverRunning.get()) {
                     startDebugServer();
                     log.info("Debug server resumed");
@@ -300,32 +434,42 @@ public final class ServiceManager {
     public String getStatus() {
         StringBuilder status = new StringBuilder();
         
+        // Header
+        status.append(String.format("%-12s %-12s %-8s %-8s %s%n", 
+                "Service", "Status", "Ticks", "TPS", "Details"));
+        status.append(String.format("%-12s %-12s %-8s %-8s %s%n", 
+                "--------", "------", "-----", "---", "-------"));
+        
         // Simulation status
         if (simulationEngine.get() != null) {
-            status.append("Simulation: ").append(simulationEngine.get().getStatus()).append("\n");
+            String simulationStatus = simulationEngine.get().getStatus();
+            status.append(String.format("%-12s %s%n", "sim", simulationStatus));
         } else {
-            status.append("Simulation: NOT_STARTED\n");
+            status.append(String.format("%-12s %-12s %-8s %s%n", "sim", "NOT_STARTED", "", ""));
         }
         
         // Persistence status
         if (persistenceService.get() != null) {
-            status.append("Persistence: ").append(persistenceService.get().getStatus()).append("\n");
+            String persistenceStatus = persistenceService.get().getStatus();
+            status.append(String.format("%-12s %s%n", "persist", persistenceStatus));
         } else {
-            status.append("Persistence: NOT_STARTED\n");
+            status.append(String.format("%-12s %-12s %-8s %s%n", "persist", "NOT_STARTED", "", ""));
         }
         
         // Indexer status
         if (indexer.get() != null) {
-            status.append("Indexer: ").append(indexer.get().getStatus()).append("\n");
+            String indexerStatus = indexer.get().getStatus();
+            status.append(String.format("%-12s %s%n", "indexer", indexerStatus));
         } else {
-            status.append("Indexer: NOT_STARTED\n");
+            status.append(String.format("%-12s %-12s %-8s %s%n", "indexer", "NOT_STARTED", "", ""));
         }
         
         // Debug server status
         if (debugServer.get() != null) {
-            status.append("DebugServer: ").append(debugServer.get().isRunning() ? "running" : "stopped").append("\n");
+            String serverStatus = debugServer.get().getStatus();
+            status.append(String.format("%-12s %s%n", "web", serverStatus));
         } else {
-            status.append("DebugServer: NOT_STARTED\n");
+            status.append(String.format("%-12s %-12s %-8s %s%n", "web", "NOT_STARTED", "", ""));
         }
         
         return status.toString();
@@ -398,7 +542,8 @@ public final class ServiceManager {
             persistenceService.set(service);
             service.start();
             persistenceRunning.set(true);
-            log.info("Persistence service started");
+            String dbUrl = persistenceService.get().getJdbcUrl();
+            log.info("Persistence service started: {}", dbUrl != null ? dbUrl : "in-memory database");
         }
     }
     
@@ -416,7 +561,8 @@ public final class ServiceManager {
                 indexer.set(service);
                 service.start();
                 indexerRunning.set(true);
-                log.info("Indexer started");
+                log.info("Indexer started: reading {}, writing {}", 
+                    indexerRawDbUrl, indexerDebugDbUrl);
             } else {
                 log.warn("Cannot start indexer: persistence service not running");
             }
@@ -436,7 +582,7 @@ public final class ServiceManager {
             return placements;
         }
         
-        log.info("Creating {} organism placements from configuration", config.simulation.organisms.size());
+        log.debug("Creating {} organism placements from configuration", config.simulation.organisms.size());
         
         for (SimulationConfiguration.OrganismConfig organismConfig : config.simulation.organisms) {
             try {
@@ -485,11 +631,11 @@ public final class ServiceManager {
                 }
                 
             } catch (Exception e) {
-                log.error("Failed to create organism placement for program {}: {}", organismConfig.program, e.getMessage(), e);
+                log.error("Failed to create organism placement for program {}: {}", organismConfig.program, e.getMessage());
             }
         }
         
-        log.info("Successfully created {} organism placements", placements.size());
+        log.debug("Successfully created {} organism placements", placements.size());
         return placements;
     }
 
@@ -514,8 +660,13 @@ public final class ServiceManager {
             
             DebugServer server = new DebugServer();
             debugServer.set(server);
-            server.start(debugDbPath, port);
-            serverRunning.set(true);
+            try {
+                server.start(debugDbPath, port);
+                serverRunning.set(true);
+            } catch (RuntimeException e) {
+                log.error("Debug server port {} in use: {}", port, e.getMessage());
+                // Don't set serverRunning to true, but continue with other services
+            }
         }
     }
     
@@ -547,5 +698,225 @@ public final class ServiceManager {
             log.warn("Error finding debug database: {}", e.getMessage());
             return null;
         }
+    }
+    
+    /**
+     * Applies logging configuration from the config to set appropriate log levels.
+     */
+    private void applyLoggingConfiguration() {
+        try {
+            // Try to access Logback LoggerContext via reflection (since it's runtimeOnly)
+            Object loggerContext = LoggerFactory.getILoggerFactory();
+            Class<?> levelClass = Class.forName("ch.qos.logback.classic.Level");
+            Class<?> loggerClass = Class.forName("ch.qos.logback.classic.Logger");
+            
+            // Check for System Properties first (command line override)
+            String defaultLevel = System.getProperty("log.level");
+            if (defaultLevel != null) {
+                Object level = levelClass.getMethod("toLevel", String.class)
+                    .invoke(null, defaultLevel.toUpperCase());
+                Object rootLogger = loggerContext.getClass().getMethod("getLogger", String.class)
+                    .invoke(loggerContext, org.slf4j.Logger.ROOT_LOGGER_NAME);
+                loggerClass.getMethod("setLevel", levelClass).invoke(rootLogger, level);
+                log.debug("Applied default log level from System Property: {}", defaultLevel);
+            }
+            
+            // Apply System Properties for specific loggers
+            System.getProperties().entrySet().stream()
+                .filter(entry -> entry.getKey().toString().startsWith("log."))
+                .filter(entry -> !entry.getKey().toString().equals("log.level"))
+                .forEach(entry -> {
+                    try {
+                        String loggerName = entry.getKey().toString().substring(4); // Remove "log." prefix
+                        String logLevel = entry.getValue().toString();
+                        Object level = levelClass.getMethod("toLevel", String.class)
+                            .invoke(null, logLevel.toUpperCase());
+                        Object logger = loggerContext.getClass().getMethod("getLogger", String.class)
+                            .invoke(loggerContext, loggerName);
+                        loggerClass.getMethod("setLevel", levelClass).invoke(logger, level);
+                        log.debug("Applied log level from System Property: {} = {}", loggerName, logLevel);
+                    } catch (Exception e) {
+                        log.warn("Failed to apply log level from System Property: {}", e.getMessage());
+                    }
+                });
+            
+            // Fallback to config.jsonc if no System Properties were set
+            if (defaultLevel == null && System.getProperties().entrySet().stream()
+                .noneMatch(entry -> entry.getKey().toString().startsWith("log."))) {
+                
+                if (config.pipeline != null && config.pipeline.logging != null) {
+                    // Set default log level from config
+                    if (config.pipeline.logging.defaultLogLevel != null) {
+                        Object level = levelClass.getMethod("toLevel", String.class)
+                            .invoke(null, config.pipeline.logging.defaultLogLevel.toUpperCase());
+                        Object rootLogger = loggerContext.getClass().getMethod("getLogger", String.class)
+                            .invoke(loggerContext, org.slf4j.Logger.ROOT_LOGGER_NAME);
+                        loggerClass.getMethod("setLevel", levelClass).invoke(rootLogger, level);
+                    }
+                    
+                    // Set per-logger log levels from config
+                    if (config.pipeline.logging.logLevels != null) {
+                        for (var entry : config.pipeline.logging.logLevels.entrySet()) {
+                            String loggerName = entry.getKey();
+                            String logLevel = entry.getValue();
+                            Object level = levelClass.getMethod("toLevel", String.class)
+                                .invoke(null, logLevel.toUpperCase());
+                            Object logger = loggerContext.getClass().getMethod("getLogger", String.class)
+                                .invoke(loggerContext, loggerName);
+                            loggerClass.getMethod("setLevel", levelClass).invoke(logger, level);
+                        }
+                    }
+                    log.debug("Applied logging configuration from config.jsonc");
+                }
+            }
+            
+            log.debug("Successfully configured Logback logging levels");
+        } catch (Exception e) {
+            // Fallback: If Logback is not available, use System properties for SLF4J Simple Logger
+            log.warn("Could not configure Logback, falling back to SLF4J Simple Logger: {}", e.getMessage());
+            
+            String defaultLevel = System.getProperty("log.level");
+            if (defaultLevel != null) {
+                System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", defaultLevel.toLowerCase());
+            } else if (config.pipeline != null && config.pipeline.logging != null && config.pipeline.logging.defaultLogLevel != null) {
+                System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", config.pipeline.logging.defaultLogLevel.toLowerCase());
+            }
+            
+            // Apply System Properties for specific loggers
+            System.getProperties().entrySet().stream()
+                .filter(entry -> entry.getKey().toString().startsWith("log."))
+                .filter(entry -> !entry.getKey().toString().equals("log.level"))
+                .forEach(entry -> {
+                    String loggerName = entry.getKey().toString().substring(4);
+                    String logLevel = entry.getValue().toString();
+                    System.setProperty("org.slf4j.simpleLogger.log." + loggerName, logLevel.toLowerCase());
+                });
+            
+            // Fallback to config.jsonc if no System Properties were set
+            if (defaultLevel == null && System.getProperties().entrySet().stream()
+                .noneMatch(entry -> entry.getKey().toString().startsWith("log."))) {
+                
+                if (config.pipeline != null && config.pipeline.logging != null && config.pipeline.logging.logLevels != null) {
+                    for (var entry : config.pipeline.logging.logLevels.entrySet()) {
+                        String loggerName = entry.getKey();
+                        String logLevel = entry.getValue();
+                        System.setProperty("org.slf4j.simpleLogger.log." + loggerName, logLevel.toLowerCase());
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * Validates if a log level is valid.
+     */
+    public boolean isValidLogLevel(String level) {
+        if (level == null || level.trim().isEmpty()) {
+            return false;
+        }
+        String upperLevel = level.toUpperCase();
+        return upperLevel.equals("TRACE") || upperLevel.equals("DEBUG") || 
+               upperLevel.equals("INFO") || upperLevel.equals("WARN") || 
+               upperLevel.equals("ERROR");
+    }
+    
+    /**
+     * Gets the current log level for a specific logger.
+     */
+    public String getCurrentLogLevel(String loggerAlias) {
+        try {
+            String loggerName = mapLoggerAlias(loggerAlias);
+            Object loggerContext = LoggerFactory.getILoggerFactory();
+            Class<?> loggerClass = Class.forName("ch.qos.logback.classic.Logger");
+            
+            Object logger = loggerContext.getClass().getMethod("getLogger", String.class)
+                .invoke(loggerContext, loggerName);
+            Object level = loggerClass.getMethod("getLevel").invoke(logger);
+            
+            if (level != null) {
+                return level.toString();
+            } else {
+                // If logger has no specific level, get root logger level
+                Object rootLogger = loggerContext.getClass().getMethod("getLogger", String.class)
+                    .invoke(loggerContext, org.slf4j.Logger.ROOT_LOGGER_NAME);
+                Object rootLevel = loggerClass.getMethod("getLevel").invoke(rootLogger);
+                return rootLevel != null ? rootLevel.toString() : "UNKNOWN";
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get current log level for {}: {}", loggerAlias, e.getMessage());
+            return "UNKNOWN";
+        }
+    }
+    
+    /**
+     * Sets the default log level at runtime.
+     */
+    public void setDefaultLogLevel(String level) {
+        try {
+            Object loggerContext = LoggerFactory.getILoggerFactory();
+            Class<?> levelClass = Class.forName("ch.qos.logback.classic.Level");
+            Class<?> loggerClass = Class.forName("ch.qos.logback.classic.Logger");
+            
+            Object levelObj = levelClass.getMethod("toLevel", String.class)
+                .invoke(null, level.toUpperCase());
+            Object rootLogger = loggerContext.getClass().getMethod("getLogger", String.class)
+                .invoke(loggerContext, org.slf4j.Logger.ROOT_LOGGER_NAME);
+            loggerClass.getMethod("setLevel", levelClass).invoke(rootLogger, levelObj);
+            
+            log.info("Default log level set to: {}", level);
+        } catch (Exception e) {
+            log.error("Failed to set default log level: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Sets the log level for a specific logger at runtime.
+     */
+    public void setLogLevel(String loggerAlias, String level) {
+        try {
+            // Map aliases to full logger names
+            String loggerName = mapLoggerAlias(loggerAlias);
+            
+            Object loggerContext = LoggerFactory.getILoggerFactory();
+            Class<?> levelClass = Class.forName("ch.qos.logback.classic.Level");
+            Class<?> loggerClass = Class.forName("ch.qos.logback.classic.Logger");
+            
+            Object levelObj = levelClass.getMethod("toLevel", String.class)
+                .invoke(null, level.toUpperCase());
+            Object logger = loggerContext.getClass().getMethod("getLogger", String.class)
+                .invoke(loggerContext, loggerName);
+            loggerClass.getMethod("setLevel", levelClass).invoke(logger, levelObj);
+            
+            log.info("Log level for {} set to: {}", loggerName, level);
+        } catch (Exception e) {
+            log.error("Failed to set log level for {}: {}", loggerAlias, e.getMessage());
+        }
+    }
+    
+    /**
+     * Resets all log levels to config.jsonc values.
+     */
+    public void resetLogLevels() {
+        // Clear System Properties
+        System.getProperties().entrySet().removeIf(entry -> 
+            entry.getKey().toString().startsWith("log."));
+        
+        // Reapply configuration from config.jsonc
+        applyLoggingConfiguration();
+        log.info("Log levels reset to config.jsonc values");
+    }
+    
+    /**
+     * Maps logger aliases to full logger names.
+     */
+    private String mapLoggerAlias(String alias) {
+        return switch (alias.toLowerCase()) {
+            case "sim" -> "org.evochora.server.engine.SimulationEngine";
+            case "persist" -> "org.evochora.server.persistence.PersistenceService";
+            case "indexer" -> "org.evochora.server.indexer.DebugIndexer";
+            case "web" -> "org.evochora.server.http.DebugServer";
+            case "cli" -> "org.evochora.server.ServiceManager";
+            default -> alias; // Assume it's already a full logger name
+        };
     }
 }

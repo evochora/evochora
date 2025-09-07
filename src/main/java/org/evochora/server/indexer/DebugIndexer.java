@@ -46,6 +46,9 @@ public class DebugIndexer implements IControllable, Runnable {
     private long nextTickToProcess = 0L; // Start at 0 to include tick 0
     private final ObjectMapper objectMapper = new ObjectMapper();
     
+    // TPS calculation with active processing time tracking
+    // Simple TPS calculation - no complex timer tracking needed
+    
     // Track if raw_ticks table has ever existed to distinguish between startup and table disappearance
     private boolean rawTicksTableEverExisted = false;
     private String rawDbPath;
@@ -118,6 +121,7 @@ public class DebugIndexer implements IControllable, Runnable {
         
         // Set the pause flag - the service will pause after finishing current batch
         paused.set(true);
+        // Manual pause
         log.debug("Manual pause flag set, service will pause after finishing current batch and close database");
         
         // For manual pause: immediately close database to ensure WAL is properly flushed
@@ -136,6 +140,7 @@ public class DebugIndexer implements IControllable, Runnable {
     public void resume() {
         paused.set(false);
         autoPaused.set(false);
+        // Don't start processing timer here - it will start when actual tick processing begins
         
         // Reopen database connection if it was closed during manual pause
         try {
@@ -274,35 +279,22 @@ public class DebugIndexer implements IControllable, Runnable {
         long currentTime = System.currentTimeMillis();
         long currentTick = nextTickToProcess; // Use local counter instead of database query
         
-        if (currentTick <= 0) {
+        if (currentTick <= 0 || startTime <= 0) {
             return 0.0;
         }
         
-        // Calculate TPS since tick 0
-        long timeDiff = currentTime - startTime;
-        if (timeDiff > 0) {
-            return (double) currentTick / (timeDiff / 1000.0);
+        long totalTime = currentTime - startTime;
+        if (totalTime <= 0) {
+            return 0.0;
         }
         
-        return 0.0;
+        // Simple calculation: ticks / time since start
+        return (double) currentTick / (totalTime / 1000.0);
     }
 
     public String getStatus() {
         if (!running.get()) {
             return "stopped";
-        }
-        
-        if (paused.get()) {
-            try {
-                long currentTick = getLastProcessedTick(); // Use last processed tick instead of next tick to process
-                String rawDbInfo = rawDbPath != null ? rawDbPath.replace('/', '\\') : "unknown";
-                String debugDbInfo = debugDbPath != null ? debugDbPath.replace('/', '\\') : "unknown";
-                String status = autoPaused.get() ? "auto-paused" : "paused";
-                return String.format("%s tick:%d reading %s writing %s", 
-                        status, currentTick, rawDbInfo, debugDbInfo);
-            } catch (Exception e) {
-                return String.format("paused ERROR:%s", e.getMessage());
-            }
         }
         
         try {
@@ -311,10 +303,18 @@ public class DebugIndexer implements IControllable, Runnable {
             String debugDbInfo = debugDbPath != null ? debugDbPath.replace('/', '\\') : "unknown";
             double tps = calculateTPS();
             
-            return String.format("started tick:%d reading %s writing %s TPS:%.2f", 
-                    currentTick, rawDbInfo, debugDbInfo, tps);
+            if (paused.get()) {
+                String status = autoPaused.get() ? "auto-paused" : "paused";
+                return String.format("%-12s %-8d %-8.2f %s", 
+                        status, currentTick, tps,
+                        String.format("reading %s writing %s", rawDbInfo, debugDbInfo));
+            }
+            
+            return String.format("%-12s %-8d %-8.2f %s", 
+                    "started", currentTick, tps,
+                    String.format("reading %s writing %s", rawDbInfo, debugDbInfo));
         } catch (Exception e) {
-            return String.format("started ERROR:%s", e.getMessage());
+            return String.format("ERROR: %s", e.getMessage());
         }
     }
 
@@ -326,6 +326,8 @@ public class DebugIndexer implements IControllable, Runnable {
 
             while (running.get()) {
                 if (paused.get()) {
+                    // Paused
+                    
                     // In pause mode: check periodically for new ticks (only if auto-paused)
                     if (autoPaused.get()) {
                         try {
@@ -401,6 +403,7 @@ public class DebugIndexer implements IControllable, Runnable {
                              databaseManager.closeQuietly();
                              
                              // Auto-pause - mark as auto-paused and set pause flag
+                             // Auto-pausing
                              autoPaused.set(true);
                              paused.set(true);
                              
@@ -460,6 +463,7 @@ public class DebugIndexer implements IControllable, Runnable {
                             databaseManager.closeQuietly();
                             
                             // Auto-pause - mark as auto-paused and set pause flag
+                            // Auto-pausing
                             autoPaused.set(true);
                             paused.set(true);
                             
@@ -823,6 +827,8 @@ public class DebugIndexer implements IControllable, Runnable {
                 log.warn("Processing ticks in degraded mode - database operations are disabled");
             }
             
+            // Start processing batch
+            
             try (PreparedStatement ps = rawConn.prepareStatement(
                     "SELECT tick_number, tick_data_json FROM raw_ticks WHERE tick_number >= ? ORDER BY tick_number LIMIT ?")) {
                 ps.setLong(1, nextTickToProcess);
@@ -844,6 +850,8 @@ public class DebugIndexer implements IControllable, Runnable {
                             // Update next tick to process
                             if (tickNumber >= nextTickToProcess) {
                                 nextTickToProcess = tickNumber + 1;
+                                
+                                // Tick processed
                             }
                             processedAny = true;
                             processedCount++;

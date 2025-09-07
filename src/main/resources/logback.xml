@@ -7,7 +7,7 @@
   <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
     <target>System.out</target>
     <encoder>
-      <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+      <pattern>%d{HH:mm:ss.SSS} %highlight(%-5level) [%thread] %logger{36} - %msg%n</pattern>
     </encoder>
   </appender>
 
@@ -24,16 +24,16 @@
   <logger name="org.eclipse.jetty.io" level="OFF" additivity="false"/>
   <logger name="org.eclipse.jetty.http" level="OFF" additivity="false"/>
 
-  <!-- Evochora-spezifische Logger auf INFO für Start/Stop-Logs -->
-  <logger name="org.evochora" level="INFO" additivity="false">
+icht ma  <!-- Evochora-spezifische Logger - Level wird zur Laufzeit konfiguriert -->
+  <logger name="org.evochora" additivity="false">
     <appender-ref ref="STDOUT" />
   </logger>
 
-  <logger name="org.evochora.compiler" level="INFO" additivity="false">
+  <logger name="org.evochora.compiler" additivity="false">
     <appender-ref ref="STDOUT" />
   </logger>
 
-  <logger name="org.evochora.server" level="INFO" additivity="false">
+  <logger name="org.evochora.server" additivity="false">
     <appender-ref ref="STDOUT" />
   </logger>
 
