@@ -48,20 +48,15 @@ public class EmissionIntegrationTest {
      * prologue and epilogue.
      * This is an integration test as it covers the lexer, parser, semantic analyzer, IR generator,
      * and emission rule engine.
-     *
-     * TODO: Need to create a new test, that tests the same but with REF / VAL instead of WITH
      */
     @Test
     @Tag("integration")
-    @Tag("legacy-with")
-    void endToEnd_CallerAndCalleeMarshalling_legacy() {
+    void endToEnd_CallerAndCalleeMarshalling() {
         String src = String.join("\n",
-                ".PROC INC WITH A",
+                ".PROC INC REF A",
                 "  RET",
                 ".ENDP",
-                "L:",
-                "  NOP",
-                "CALL L WITH %DR1"
+                "CALL INC REF %DR1"
         );
 
         DiagnosticsEngine diags = new DiagnosticsEngine();
@@ -81,13 +76,6 @@ public class EmissionIntegrationTest {
         IrGenerator gen = new IrGenerator(diags, reg);
         IrProgram ir = gen.generate(ast, "Test");
         List<IrItem> items = new ArrayList<>(ir.items());
-
-        // Expect a core:call_with directive before CALL
-        int callIdx = -1;
-        for (int i = 0; i < items.size(); i++) if (items.get(i) instanceof IrInstruction ins && ins.opcode().equals("CALL")) { callIdx = i; break; }
-        assertThat(callIdx).isGreaterThan(0);
-        assertThat(items.get(callIdx - 1)).isInstanceOf(IrDirective.class);
-        assertThat(((IrDirective) items.get(callIdx - 1)).name()).isEqualTo("call_with");
 
         // Apply emission rules
         EmissionRegistry eReg = EmissionRegistry.initializeWithDefaults();

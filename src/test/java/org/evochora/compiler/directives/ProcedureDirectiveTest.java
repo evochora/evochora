@@ -84,16 +84,14 @@ public class ProcedureDirectiveTest {
      * Verifies that the parser correctly handles a procedure definition with parameters.
      * It checks that the parameter names are correctly extracted and stored in the {@link ProcedureNode}.
      * This is a unit test for the parser.
-     * TODO: Need to create a new test, that tests the same but with REF / VAL instead of WITH
      */
     @Test
     @Tag("unit")
-    @Tag("legacy-with")
     void testParserProcedureWithParameters() {
         
         // Arrange
         String source = String.join("\n",
-                ".PROC ADD WITH A B",
+                ".PROC ADD REF A B",
                 "  ADDS",
                 ".ENDP"
         );
@@ -111,25 +109,23 @@ public class ProcedureDirectiveTest {
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
         assertThat(procNode.name().text()).isEqualTo("ADD");
         assertThat(procNode.exported()).isFalse();
-        assertThat(procNode.parameters()).hasSize(2);
-        assertThat(procNode.parameters().get(0).text()).isEqualTo("A");
-        assertThat(procNode.parameters().get(1).text()).isEqualTo("B");
+        assertThat(procNode.refParameters()).hasSize(2);
+        assertThat(procNode.refParameters().get(0).text()).isEqualTo("A");
+        assertThat(procNode.refParameters().get(1).text()).isEqualTo("B");
     }
 
     /**
      * Verifies that the parser can handle a full procedure definition including the EXPORT keyword,
      * parameters, and nested directives like `.PREG` and `.REQUIRE`.
      * This is a unit test for the parser.
-     * TODO: Need to create a new test, that tests the same but with REF / VAL instead of WITH
      */
     @Test
     @Tag("unit")
-    @Tag("legacy-with")
     void testFullProcedureDefinition() {
         
         // Arrange
         String source = String.join("\n",
-                ".PROC FULL_PROC EXPORT WITH A",
+                ".PROC FULL_PROC EXPORT REF A",
                 "  .PREG %TMP %PR0",
                 "  .REQUIRE \"lib/utils.s\" AS utils",
                 "  NOP",
@@ -149,7 +145,7 @@ public class ProcedureDirectiveTest {
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
         assertThat(procNode.name().text()).isEqualTo("FULL_PROC");
         assertThat(procNode.exported()).isTrue();
-        assertThat(procNode.parameters()).hasSize(1).extracting(Token::text).containsExactly("A");
+        assertThat(procNode.refParameters()).hasSize(1).extracting(Token::text).containsExactly("A");
 
         List<AstNode> bodyDirectives = procNode.body().stream()
                 .filter(n -> !(n instanceof InstructionNode))

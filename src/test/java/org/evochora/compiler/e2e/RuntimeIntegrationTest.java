@@ -136,21 +136,16 @@ public class RuntimeIntegrationTest {
         assertThat(org.isInstructionFailed()).isFalse();
     }
 
-    /**
-     * TODO: Need to create a new test, that tests the same but with REF / VAL instead of WITH
-     */
     @Test
     @Tag("integration")
-    @Tag("legacy-with")
     void procedureCall_worksCorrectlyWithCorruptedProgramArtifact() throws Exception {
         String sourceCode = String.join("\n",
-                ".PROC ADD EXPORT WITH A B",
-                "  ADDR A B",
+                ".PROC INC EXPORT REF A",
+                "  ADDI A DATA:1",
                 "  RET",
                 ".ENDP",
-                "SETI %DR0 DATA:10",
-                "SETI %DR1 DATA:20",
-                "CALL ADD WITH %DR0 %DR1",
+                "SETI %DR0 DATA:29",
+                "CALL INC REF %DR0",
                 "NOP"
         );
 

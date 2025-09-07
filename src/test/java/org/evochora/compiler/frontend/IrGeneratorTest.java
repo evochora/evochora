@@ -100,11 +100,10 @@ public class IrGeneratorTest {
 
     @Test
     @Tag("unit")
-    @Tag("legacy-with")
-    void generatesIrForLegacyCallSyntax() {
+    void generatesIrForRefCallSyntax() {
         String src = """
-            .PROC oldProc WITH p1
-                CALL oldProc WITH p1
+            .PROC oldProc REF p1
+                CALL oldProc REF p1
             .ENDP
             """;
         IrProgram ir = compileToIr(src);
@@ -121,16 +120,11 @@ public class IrGeneratorTest {
         assertInstanceOf(IrLabelRef.class, callInstruction.operands().get(0));
         assertEquals("oldProc", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
 
-        assertTrue(callInstruction.refOperands().isEmpty());
-        assertTrue(callInstruction.valOperands().isEmpty());
+        assertEquals(1, callInstruction.refOperands().size());
+        assertInstanceOf(IrReg.class, callInstruction.refOperands().get(0));
+        assertEquals("%FPR0", ((IrReg) callInstruction.refOperands().get(0)).name());
 
-        // Also check that the core.call_with directive was emitted
-        Optional<IrDirective> directiveOpt = ir.items().stream()
-                .filter(IrDirective.class::isInstance)
-                .map(IrDirective.class::cast)
-                .filter(d -> "core".equals(d.namespace()) && "call_with".equals(d.name()))
-                .findFirst();
-        assertTrue(directiveOpt.isPresent(), "core.call_with directive not found for legacy CALL");
+        assertTrue(callInstruction.valOperands().isEmpty());
     }
 
     @Test

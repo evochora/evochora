@@ -26,13 +26,13 @@ class CallAnnotationTest {
     @Tag("legacy-with")
     void testCallInstructionAnnotationIntegration() throws Exception {
         String source = String.join("\n",
-            ".PROC PROC1 EXPORT WITH PROC1REG1 PROC1REG2",
+            ".PROC PROC1 EXPORT REF PROC1REG1 PROC1REG2",
             "  NOP",
             "  RET",
             ".ENDP",
             "",
             "START:",
-            "  CALL PROC1 WITH %DR0 %DR1",
+            "  CALL PROC1 REF %DR0 %DR1",
             "  JMPI START"
         );
         
@@ -41,7 +41,7 @@ class CallAnnotationTest {
         
         TokenAnnotator annotator = new TokenAnnotator();
         
-        String callLine = "  CALL PROC1 WITH %DR0 %DR1";
+        String callLine = "  CALL PROC1 REF %DR0 %DR1";
         int callLineNumber = 7;
         
         List<TokenAnnotation> annotations = annotator.analyzeLine("call_integration_test.s", callLineNumber, artifact, null);
