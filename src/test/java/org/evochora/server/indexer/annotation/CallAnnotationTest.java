@@ -23,6 +23,7 @@ class CallAnnotationTest {
     }
 
     @Test
+    @Tag("legacy-with")
     void testCallInstructionAnnotationIntegration() throws Exception {
         String source = String.join("\n",
             ".PROC PROC1 EXPORT WITH PROC1REG1 PROC1REG2",

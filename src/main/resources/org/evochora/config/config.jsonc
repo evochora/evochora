@@ -125,7 +125,7 @@
       "defaultLogLevel": "WARN",
       // [OPTIONAL] Per-logger specific log levels
       "logLevels": {
-        "org.evochora.server.ServiceManager": "INFO"
+        "org.evochora.server.ServiceManager": "DEBUG"
       }
     }
   }

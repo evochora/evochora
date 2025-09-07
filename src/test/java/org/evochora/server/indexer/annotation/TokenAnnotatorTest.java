@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>These are unit tests that execute quickly without I/O operations.</p>
  */
 @Tag("unit")
+@Tag("legacy-with")
 class TokenAnnotatorTest {
     
     private TokenAnnotator annotator;

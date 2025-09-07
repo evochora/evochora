@@ -146,10 +146,15 @@ public class SimulationEngine implements IControllable, Runnable {
         this.nextAutoPauseIndex = 0;
         if (this.autoPauseTicks != null) {
             java.util.Arrays.sort(this.autoPauseTicks); // Ensure ticks are in ascending order
-            log.info("Auto-pause ticks configured: {}", java.util.Arrays.toString(this.autoPauseTicks));
-        } else {
-            log.info("Auto-pause ticks disabled");
         }
+    }
+
+    /**
+     * Gets the current auto-pause ticks configuration.
+     * @return Array of tick values where simulation should auto-pause, or null if disabled
+     */
+    public int[] getAutoPauseTicks() {
+        return this.autoPauseTicks != null ? java.util.Arrays.copyOf(this.autoPauseTicks, this.autoPauseTicks.length) : null;
     }
 
     /**
@@ -261,7 +266,8 @@ public class SimulationEngine implements IControllable, Runnable {
         }
         
         long currentTick = simulation.getCurrentTick();
-        if (currentTick == autoPauseTicks[nextAutoPauseIndex]) {
+        // Check if we've reached or passed the next auto-pause tick
+        if (currentTick >= autoPauseTicks[nextAutoPauseIndex]) {
             nextAutoPauseIndex++;
             return true;
         }
@@ -475,6 +481,13 @@ public class SimulationEngine implements IControllable, Runnable {
                 }
 
                 try {
+                    // Check if we should pause at this tick FIRST (has priority over queue-full)
+                    if (shouldAutoPause()) {
+                        manuallyPaused.set(true);
+                        paused.set(true);
+                        continue;
+                    }
+                    
                     // Check if queue can accept the next tick BEFORE processing it (only if not manually paused)
                     if (!manuallyPaused.get() && queue instanceof org.evochora.server.queue.InMemoryTickQueue) {
                         org.evochora.server.queue.InMemoryTickQueue memQueue = (org.evochora.server.queue.InMemoryTickQueue) queue;
@@ -487,14 +500,6 @@ public class SimulationEngine implements IControllable, Runnable {
                     } else if (!manuallyPaused.get()) {
                         // Only InMemoryTickQueue is supported for auto-pause functionality
                         throw new UnsupportedOperationException("Auto-pause is only supported with InMemoryTickQueue, got: " + queue.getClass().getSimpleName());
-                    }
-                    
-                    // Check if we should auto-pause at this tick
-                    if (shouldAutoPause()) {
-                        log.info("Auto-pausing simulation at tick {}", simulation.getCurrentTick());
-                        autoPaused.set(true);
-                        paused.set(true);
-                        continue;
                     }
 
                     simulation.tick();

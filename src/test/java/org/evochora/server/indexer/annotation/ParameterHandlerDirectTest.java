@@ -25,6 +25,7 @@ class ParameterHandlerDirectTest {
     }
 
     @Test
+    @Tag("legacy-with")
     void testParameterTokenHandlerDirectly() throws Exception {
         String source = ".PROC PROC1 EXPORT WITH PROC1REG1 PROC1REG2\n  NOP\n  RET\n.ENDP";
         

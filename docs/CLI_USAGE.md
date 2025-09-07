@@ -33,6 +33,36 @@ Display the current status of all services, including:
 - **auto-paused** - Service automatically paused due to no work available
 - **stopped** - Service is not running
 
+### `loglevel [logger] [level]`
+Control logging verbosity for debugging and monitoring:
+
+- **`loglevel`** - Show current log levels for all loggers
+- **`loglevel [level]`** - Set default log level for all loggers (TRACE, DEBUG, INFO, WARN, ERROR)
+- **`loglevel [logger] [level]`** - Set log level for specific logger
+- **`loglevel reset`** - Reset all log levels to config.jsonc values
+
+**Available loggers:**
+- `sim` - Simulation engine
+- `persist` - Persistence service  
+- `indexer` - Debug indexer
+- `web` - Web debug server
+- `cli` - CLI interface
+
+**Available levels:**
+- `TRACE` - Most verbose, shows all operations
+- `DEBUG` - Detailed debugging information
+- `INFO` - General information messages
+- `WARN` - Warning messages only
+- `ERROR` - Error messages only
+
+**Examples:**
+```
+>>> loglevel DEBUG          # Set all loggers to DEBUG
+>>> loglevel sim TRACE      # Set simulation engine to TRACE
+>>> loglevel indexer WARN   # Set indexer to WARN only
+>>> loglevel reset          # Reset to config.jsonc values
+```
+
 ### `exit` or `quit`
 Gracefully shutdown all services and exit the CLI.
 
@@ -109,9 +139,112 @@ Services have dependencies and must be started in order:
 >>> exit
 ```
 
+## Command Line Log Level Configuration
+
+You can also set log levels directly when starting the CLI via Gradle, which overrides the config.jsonc settings:
+
+### System Properties for Log Levels
+
+**Default log level for all loggers:**
+```bash
+./gradlew run -Dlog.level=DEBUG
+./gradlew run -Dlog.level=INFO
+./gradlew run -Dlog.level=WARN
+./gradlew run -Dlog.level=ERROR
+./gradlew run -Dlog.level=TRACE
+```
+
+**Specific logger configuration:**
+```bash
+# Set specific loggers to different levels (use full Java class names)
+./gradlew run -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -Dlog.org.evochora.server.indexer.DebugIndexer=TRACE -Dlog.org.evochora.server.http.DebugServer=WARN
+
+# Combine default and specific settings
+./gradlew run -Dlog.level=INFO -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -Dlog.org.evochora.server.persistence.PersistenceService=WARN
+```
+
+**For compilation tasks:**
+```bash
+./gradlew compile -Pfile="assembly/test/main.s" -Dlog.level=DEBUG
+```
+
+**For JAR execution:**
+```bash
+# Build the CLI JAR first
+./gradlew cliJar
+
+# Run with log level configuration
+java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar
+
+# Run with specific logger configuration (use full Java class names)
+java -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar
+
+# Compile assembly with JAR and debug logging
+java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar compile assembly/test/main.s
+```
+
+### How Command Line Override Works
+
+1. **System Properties take precedence** over config.jsonc settings
+2. **`log.level`** sets the default level for all loggers
+3. **`log.<logger>`** sets specific logger levels (e.g., `log.sim`, `log.persist`, `log.indexer`, `log.web`, `log.cli`)
+4. **Fallback to config.jsonc** if no System Properties are set
+
+### Available Logger Names
+
+**For System Properties (use full Java class names):**
+- `log.org.evochora.server.engine.SimulationEngine` - Simulation engine logging
+- `log.org.evochora.server.persistence.PersistenceService` - Persistence service logging  
+- `log.org.evochora.server.indexer.DebugIndexer` - Debug indexer logging
+- `log.org.evochora.server.http.DebugServer` - Web debug server logging
+- `log.org.evochora.server.ServiceManager` - CLI interface logging
+
+**For CLI commands (use short aliases):**
+- `sim` - Simulation engine logging
+- `persist` - Persistence service logging  
+- `indexer` - Debug indexer logging
+- `web` - Web debug server logging
+- `cli` - CLI interface logging
+
+### Example Commands
+
+**Gradle execution:**
+```bash
+# Start CLI with debug logging for all services
+./gradlew run -Dlog.level=DEBUG
+
+# Start with detailed simulation logging but quiet other services
+./gradlew run -Dlog.level=WARN -Dlog.org.evochora.server.engine.SimulationEngine=TRACE
+
+# Compile assembly with debug output
+./gradlew compile -Pfile="assembly/primordial/main.s" -Dlog.level=DEBUG
+
+# Start with mixed logging levels (use full Java class names)
+./gradlew run -Dlog.level=INFO -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -Dlog.org.evochora.server.indexer.DebugIndexer=TRACE -Dlog.org.evochora.server.http.DebugServer=ERROR
+```
+
+**JAR execution:**
+```bash
+# Build the CLI JAR first
+./gradlew cliJar
+
+# Start CLI with debug logging
+java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar
+
+# Start with mixed logging levels (use full Java class names)
+java -Dlog.level=INFO -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -Dlog.org.evochora.server.indexer.DebugIndexer=TRACE -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar
+
+# Compile assembly with debug output using JAR
+java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar compile assembly/primordial/main.s
+
+# Compile with specific environment and debug logging
+java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar compile assembly/test/main.s --env=2000x2000:flat
+```
+
 ## Troubleshooting
 
 - If a service fails to start, check that its dependencies are running
 - Use `status` to see the current state of all services
 - Services in "auto-paused" state will automatically resume when work becomes available
 - Manually paused services require explicit resume commands
+- Use `loglevel` command or System Properties to increase logging verbosity for debugging
