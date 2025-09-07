@@ -45,6 +45,9 @@ public class DebugIndexer implements IControllable, Runnable {
     private long startTime = System.currentTimeMillis();
     private long nextTickToProcess = 0L; // Start at 0 to include tick 0
     private final ObjectMapper objectMapper = new ObjectMapper();
+    
+    // Track if raw_ticks table has ever existed to distinguish between startup and table disappearance
+    private boolean rawTicksTableEverExisted = false;
     private String rawDbPath;
     private String debugDbPath;
 
@@ -326,7 +329,7 @@ public class DebugIndexer implements IControllable, Runnable {
                     // In pause mode: check periodically for new ticks (only if auto-paused)
                     if (autoPaused.get()) {
                         try {
-                            Thread.sleep(1000); // Check every second for new ticks
+                            Thread.sleep(200); // Check every 200ms for new ticks
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                             break;
@@ -346,7 +349,7 @@ public class DebugIndexer implements IControllable, Runnable {
                             databaseManager.closeQuietly();
                         }
                         try {
-                            Thread.sleep(1000); // Check every second
+                            Thread.sleep(200); // Check every 200ms
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                             break;
@@ -406,7 +409,7 @@ public class DebugIndexer implements IControllable, Runnable {
                              
                              // Wait a bit before checking for new ticks
                              try {
-                                 Thread.sleep(1000); // Check every second
+                                 Thread.sleep(200); // Check every 200ms
                              } catch (InterruptedException e) {
                                  Thread.currentThread().interrupt();
                                  break;
@@ -465,7 +468,7 @@ public class DebugIndexer implements IControllable, Runnable {
                             
                             // Wait a bit before checking for new ticks
                             try {
-                                Thread.sleep(1000); // Check every second
+                                Thread.sleep(200); // Check every 200ms
                             } catch (InterruptedException e) {
                                 Thread.currentThread().interrupt();
                                 break;
@@ -564,7 +567,7 @@ public class DebugIndexer implements IControllable, Runnable {
                 }
                 
                 // Sleep before next cycle
-                Thread.sleep(1000);
+                Thread.sleep(200);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
@@ -591,12 +594,18 @@ public class DebugIndexer implements IControllable, Runnable {
             countPs.setLong(1, nextTickToProcess);
             try (ResultSet countRs = countPs.executeQuery()) {
                 if (countRs.next()) {
+                    // Mark that the table exists and is accessible
+                    rawTicksTableEverExisted = true;
                     return countRs.getLong(1) > 0;
                 }
             }
                  } catch (Exception e) {
-             // Ignore errors when checking for new ticks
-         }
+            if (rawTicksTableEverExisted) {
+                // Table was there before but now missing - this is an error!
+                log.warn("raw_ticks table disappeared after being available in hasNewTicksToProcess: {}", e.getMessage());
+            }
+            // Return false to indicate no ticks available (whether startup or error)
+        }
         return false;
     }
 
@@ -618,7 +627,7 @@ public class DebugIndexer implements IControllable, Runnable {
                         // No ticks available yet, wait and retry
                         log.info("Waiting for first tick to be available in raw database...");
                         try {
-                            Thread.sleep(1000);
+                            Thread.sleep(200);
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                             break;
@@ -676,7 +685,7 @@ public class DebugIndexer implements IControllable, Runnable {
                 if (running.get()) {
                     log.info("Waiting for raw database to be available: {}", e.getMessage());
                     try {
-                        Thread.sleep(100); // Reduced from 1000ms to 100ms for faster response
+                        Thread.sleep(200); // Check every 200ms for faster response
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                         break;
@@ -782,11 +791,19 @@ public class DebugIndexer implements IControllable, Runnable {
                 try (ResultSet countRs = countPs.executeQuery()) {
                     if (countRs.next()) {
                         totalAvailableTicks = countRs.getLong(1);
+                        // Mark that the table exists and is accessible
+                        rawTicksTableEverExisted = true;
                     }
                 }
             } catch (Exception e) {
-                log.warn("COUNT query failed: {}", e.getMessage());
-                return -1; // Indicate error
+                if (rawTicksTableEverExisted) {
+                    // Table was there before but now missing - this is an error!
+                    log.warn("raw_ticks table disappeared after being available: {}", e.getMessage());
+                    return -1;
+                } else {
+                    // Table doesn't exist yet - this is expected during startup
+                    return -1;
+                }
             }
             
             // If we have no ticks remaining, return 0
@@ -911,6 +928,26 @@ public class DebugIndexer implements IControllable, Runnable {
 
     public long getLastProcessedTick() { 
         return nextTickToProcess > 0 ? nextTickToProcess - 1 : 0; 
+    }
+    
+    /**
+     * Returns a copy of all program artifacts processed by this indexer.
+     * This method works even when the database connection is closed (uses internal state).
+     * 
+     * @return A map of program ID to ProgramArtifact, or empty map if none available
+     */
+    public Map<String, ProgramArtifact> getProgramArtifacts() {
+        return new HashMap<>(artifacts); // Return defensive copy
+    }
+    
+    /**
+     * Returns the environment properties (world shape, toroidal status) loaded by this indexer.
+     * This method works even when the database connection is closed (uses internal state).
+     * 
+     * @return EnvironmentProperties, or null if not yet loaded
+     */
+    public EnvironmentProperties getEnvironmentProperties() {
+        return envProps; // Return reference (EnvironmentProperties is immutable)
     }
     
     public String getRawDbPath() { return rawDbPath; }

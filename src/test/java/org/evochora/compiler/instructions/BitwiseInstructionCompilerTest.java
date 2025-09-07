@@ -55,4 +55,24 @@ class BitwiseInstructionCompilerTest extends CompilerTestBase {
             assertThat(artifact.machineCodeLayout()).isNotEmpty();
         });
     }
+
+    @Test
+    void testRotate_PopCount_BitScan_operations() {
+        String source = String.join("\n",
+                "ROTR %DR0 %DR1",
+                "ROTI %DR0 DATA:1",
+                "ROTS",
+                "PCNR %DR0 %DR1",
+                "PCNS",
+                "BSNR %DR0 %DR1 %DR2",
+                "BSNI %DR0 %DR1 DATA:1",
+                "BSNS"
+        );
+        List<String> lines = List.of(source.split("\n"));
+        assertDoesNotThrow(() -> {
+            ProgramArtifact artifact = compiler.compile(lines, "bit_auto.s", testEnvProps);
+            assertThat(artifact).isNotNull();
+            assertThat(artifact.machineCodeLayout()).isNotEmpty();
+        });
+    }
 }

@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 @Tag("unit")
-class StateInstructionCompilerTest extends CompilerTestBase {
+class LocationInstructionCompilerTest extends CompilerTestBase {
 
     private Compiler compiler;
 
@@ -25,51 +25,50 @@ class StateInstructionCompilerTest extends CompilerTestBase {
     }
 
     @Test
-    void testTURN_SYNC_NRG_POS_DIFF_RAND_SEEK_SCAN_FORK() {
+    void testLocationStack_operations() {
         String source = String.join("\n",
-                "TURN %LR0",
-                "TRNI 1|0",
-                "TRNS",
-                "SYNC",
-                "NRG %DR0",
-                "NRGS",
-                "POS %LR0",
-                "POSS",
-                "DIFF %LR0",
-                "DIFS",
-                "RAND %DR0",
-                "RNDS",
-                "SEEK %LR0",
-                "SEKI 1|0",
-                "SEKS",
-                "SCAN %DR0 %LR0",
-                "SCNI %DR0 1|0",
-                "SCNS",
-                "FORK %LR0 %DR0 %LR1",
-                "FRKI 1|0 DATA:100 0|1",
-                "FRKS"
+                "DUPL",
+                "SWPL",
+                "DRPL",
+                "ROTL",
+                "DPLS",
+                "SKLS",
+                "LSDS"
         );
         List<String> lines = List.of(source.split("\n"));
         assertDoesNotThrow(() -> {
-            ProgramArtifact artifact = compiler.compile(lines, "state_auto.s", testEnvProps);
+            ProgramArtifact artifact = compiler.compile(lines, "location_auto.s", testEnvProps);
             assertThat(artifact).isNotNull();
             assertThat(artifact.machineCodeLayout()).isNotEmpty();
         });
     }
 
     @Test
-    void testActiveDP_RandomBit_operations() {
+    void testLocationRegister_operations() {
         String source = String.join("\n",
-                "ADPR %DR0",
-                "ADPI DATA:1",
-                "ADPS",
-                "RBIR %DR0 %DR1",
-                "RBII %DR0 DATA:1",
-                "RBIS"
+                "DPLR %DR0",
+                "SKLR %DR0",
+                "PUSL %DR0",
+                "LRDS %DR0",
+                "POPL %DR0"
         );
         List<String> lines = List.of(source.split("\n"));
         assertDoesNotThrow(() -> {
-            ProgramArtifact artifact = compiler.compile(lines, "state_auto.s", testEnvProps);
+            ProgramArtifact artifact = compiler.compile(lines, "location_auto.s", testEnvProps);
+            assertThat(artifact).isNotNull();
+            assertThat(artifact.machineCodeLayout()).isNotEmpty();
+        });
+    }
+
+    @Test
+    void testLocationRegisterPair_operations() {
+        String source = String.join("\n",
+                "LRDR %DR0 %DR1",
+                "LSDR %DR0"
+        );
+        List<String> lines = List.of(source.split("\n"));
+        assertDoesNotThrow(() -> {
+            ProgramArtifact artifact = compiler.compile(lines, "location_auto.s", testEnvProps);
             assertThat(artifact).isNotNull();
             assertThat(artifact.machineCodeLayout()).isNotEmpty();
         });

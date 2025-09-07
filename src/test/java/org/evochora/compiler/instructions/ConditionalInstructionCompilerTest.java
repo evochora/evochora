@@ -50,4 +50,31 @@ class ConditionalInstructionCompilerTest extends CompilerTestBase {
             assertThat(artifact.machineCodeLayout()).isNotEmpty();
         });
     }
+
+    @Test
+    void testNegatedConditional_variants() {
+        String source = String.join("\n",
+                "INR %DR0 %DR1",
+                "GETR %DR0 %DR1",
+                "LETR %DR0 %DR1",
+                "INTR %DR0 %DR1",
+                "GETI %DR0 DATA:1",
+                "LETI %DR0 DATA:1",
+                "INTI %DR0 DATA:1",
+                "INI %DR0 DATA:1",
+                "INS",
+                "GETS",
+                "LETS",
+                "INTS",
+                "INMR %LR0",
+                "INMI 1|0",
+                "INMS"
+        );
+        List<String> lines = List.of(source.split("\n"));
+        assertDoesNotThrow(() -> {
+            ProgramArtifact artifact = compiler.compile(lines, "cond_auto.s", testEnvProps);
+            assertThat(artifact).isNotNull();
+            assertThat(artifact.machineCodeLayout()).isNotEmpty();
+        });
+    }
 }

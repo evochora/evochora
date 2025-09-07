@@ -64,4 +64,20 @@ class ArithmeticInstructionCompilerTest extends CompilerTestBase {
             assertThat(artifact.machineCodeLayout()).isNotEmpty();
         });
     }
+
+    @Test
+    void testVectorDOT_CRS_operations() {
+        String source = String.join("\n",
+                "DOTR %DR0 %LR0 %LR1",
+                "CRSR %LR0 %LR1 %LR2",
+                "DOTS",
+                "CRSS"
+        );
+        List<String> lines = List.of(source.split("\n"));
+        assertDoesNotThrow(() -> {
+            ProgramArtifact artifact = compiler.compile(lines, "arith_auto.s", testEnvProps);
+            assertThat(artifact).isNotNull();
+            assertThat(artifact.machineCodeLayout()).isNotEmpty();
+        });
+    }
 }
