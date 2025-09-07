@@ -121,8 +121,8 @@ class TokenAnnotatorTest {
         artifact = new ProgramArtifact(
             "test123",
             Map.of("test.s", List.of(
-                ".PROC TEST_PROC WITH PARAM1 PARAM2",
-                "CALL TEST_PROC WITH %DR0 %DR1", 
+                ".PROC TEST_PROC REF PARAM1 PARAM2",
+                "CALL TEST_PROC REF %DR0 %DR1",
                 "ADDR PARAM1 PARAM2",
                 "RET"
             )),

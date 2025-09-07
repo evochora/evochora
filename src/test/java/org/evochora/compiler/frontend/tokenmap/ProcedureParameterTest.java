@@ -13,11 +13,9 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * TODO: Need to create a new test, that tests the same but with REF / VAL instead of WITH
- */
+// TODO: This test was not migrated to REF/VAL syntax due to a compiler bug that prevents REF parameters from being added to the token map.
 @Tag("unit")
-@Tag("legay-with")
+@Tag("legacy-with")
 class ProcedureParameterTest extends CompilerTestBase {
 
     @BeforeAll
