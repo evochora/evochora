@@ -57,7 +57,7 @@ public class RegisterTokenHandler implements ITokenHandler {
             // Note: Frontend will add brackets, so don't include them here
             Object value = getRegisterValue(token, o);
             if (value != null) {
-                String annotationText = String.format("=%s", formatValue(value));
+                String annotationText = formatValue(value);
                 return new TokenAnalysisResult(token, TokenType.REGISTER_REFERENCE, annotationText, "reg");
             }
         }
@@ -150,18 +150,18 @@ public class RegisterTokenHandler implements ITokenHandler {
     }
     
     /**
-     * Formats a vector as [x|y|...].
+     * Formats a vector as x|y|... (without brackets, frontend adds them).
      */
     private String formatVector(int[] vector) {
-        if (vector == null) return "[]";
-        return "[" + Arrays.stream(vector).mapToObj(String::valueOf).collect(java.util.stream.Collectors.joining("|")) + "]";
+        if (vector == null) return "";
+        return Arrays.stream(vector).mapToObj(String::valueOf).collect(java.util.stream.Collectors.joining("|"));
     }
     
     /**
-     * Formats a list as [x|y|...] for JSON deserialized vectors.
+     * Formats a list as x|y|... (without brackets, frontend adds them) for JSON deserialized vectors.
      */
     private String formatListAsVector(java.util.List<?> list) {
-        if (list == null) return "[]";
-        return "[" + list.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining("|")) + "]";
+        if (list == null) return "";
+        return list.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining("|"));
     }
 }

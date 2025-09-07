@@ -316,6 +316,11 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 * `POKE %SRC_REG %VEC_REG`, `POKI %SRC_REG <Vector>`, `POKS`: Writes molecule from `<%SRC_REG>` or stack to an empty cell at `DP` + vector. (Base Cost: 1)
   - Additional cost: ENERGY or STRUCTURE writes cost `|value|`; CODE or DATA writes cost `5`.
   - Note: The additional cost is charged even if the target cell is occupied and the write fails.
+* `PPKR %REG %VEC_REG`, `PPKI %REG <Vector>`, `PPKS`: Atomically reads and consumes molecule at `DP` + vector, then writes new molecule from `%REG` or stack to the same cell. (Base Cost: 1)
+  - PEEK costs: Same as individual PEEK instruction (ENERGY adds to ER, STRUCTURE/CODE/DATA costs apply based on ownership). If cell is empty, no PEEK costs apply.
+  - POKE costs: Same as individual POKE instruction (ENERGY/STRUCTURE cost `|value|`, CODE/DATA cost `5`).
+  - Note: Only one base cost of 1 is charged (not 2), but all additional costs from both PEEK and POKE apply.
+  - If target cell is empty, stores empty molecule (CODE:0) in destination and proceeds with POKE.
 * `SEEK %VEC_REG`, `SEKI <Vector>`, `SEKS`: Moves active `DP` by vector if target cell is empty or accessible (owned by self or direct parent). (Cost: 1)
 
 ### State and Location Operations

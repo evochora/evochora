@@ -195,7 +195,7 @@ class SourceAnnotatorTest {
                 .findFirst()
                 .orElse(null);
         assertThat(dr0Span).isNotNull();
-        assertThat(dr0Span.annotationText()).isEqualTo("=DATA:42");
+        assertThat(dr0Span.annotationText()).isEqualTo("DATA:42");
     }
     
 

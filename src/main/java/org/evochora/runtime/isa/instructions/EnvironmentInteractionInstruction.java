@@ -41,6 +41,8 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                 handlePoke(context);
             } else if ("PEEK".equals(opName) || "PEKI".equals(opName) || "PEKS".equals(opName)) {
                 handlePeek(context);
+            } else if ("PPKR".equals(opName) || "PPKI".equals(opName) || "PPKS".equals(opName)) {
+                handlePeekPoke(context);
             } else {
                 organism.instructionFailed("Unknown world interaction instruction: " + opName);
             }
@@ -167,6 +169,103 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         environment.clearOwner(targetCoordinate);
     }
 
+    private void handlePeekPoke(ExecutionContext context) {
+        Organism organism = context.getOrganism();
+        Environment environment = context.getWorld();
+        List<Operand> operands = resolveOperands(environment);
+        int targetReg;
+        Object valueToWrite;
+        int[] vector;
+
+        if ("PPKS".equals(getName())) {
+            if (operands.size() < 2) { organism.instructionFailed("Invalid operands for PPKS."); return; }
+            targetReg = -1; // Stack operation
+            valueToWrite = operands.get(0).value();
+            vector = (int[]) operands.get(1).value();
+        } else if ("PPKI".equals(getName())) {
+            if (operands.size() < 2) { organism.instructionFailed("Invalid operands for PPKI."); return; }
+            targetReg = operands.get(0).rawSourceId();
+            valueToWrite = readOperand(operands.get(0).rawSourceId()); // Same register for read/write
+            vector = (int[]) operands.get(1).value(); // Read vector from operands
+        } else {
+            if (operands.size() < 2) { organism.instructionFailed("Invalid operands for PPKR."); return; }
+            targetReg = operands.get(0).rawSourceId();
+            valueToWrite = readOperand(operands.get(0).rawSourceId()); // Same register for read/write
+            vector = (int[]) operands.get(1).value();
+        }
+
+
+        if (this.targetCoordinate == null) {
+            this.targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
+        }
+        
+
+        if (getConflictStatus() == ConflictResolutionStatus.WON_EXECUTION || getConflictStatus() == ConflictResolutionStatus.NOT_APPLICABLE) {
+            
+            // First, handle the PEEK part
+            Molecule currentMolecule = environment.getMolecule(targetCoordinate);
+            
+            
+            Object valueToStore;
+            if (currentMolecule.isEmpty()) {
+                // If cell is empty, store empty molecule (CODE:0)
+                valueToStore = new Molecule(Config.TYPE_CODE, 0).toInt();
+            } else {
+                // Calculate PEEK costs
+                if (currentMolecule.type() == Config.TYPE_ENERGY) {
+                    int energyToTake = Math.min(currentMolecule.toScalarValue(), Config.MAX_ORGANISM_ENERGY - organism.getEr());
+                    organism.addEr(energyToTake);
+                    valueToStore = new Molecule(Config.TYPE_ENERGY, energyToTake).toInt();
+                } else {
+                    int ownerId = environment.getOwnerId(targetCoordinate);
+                    if (currentMolecule.type() == Config.TYPE_STRUCTURE) {
+                        if (!organism.isCellAccessible(ownerId)) {
+                            int cost = Math.abs(currentMolecule.toScalarValue());
+                            if (cost > 0) organism.takeEr(cost);
+                        }
+                    } else if (currentMolecule.type() == Config.TYPE_CODE || currentMolecule.type() == Config.TYPE_DATA) {
+                        // Treat ownerId==0 as foreign/neutral for cost purposes
+                        if (!(ownerId == organism.getId() && ownerId != 0)) {
+                            organism.takeEr(5);
+                        }
+                    }
+                    valueToStore = currentMolecule.toInt();
+                }
+            }
+
+            // Store the peeked value (or empty molecule if cell was empty)
+            if (targetReg != -1) {
+                writeOperand(targetReg, valueToStore);
+            } else {
+                organism.getDataStack().push(valueToStore);
+            }
+
+            // Clear the cell (if it wasn't already empty)
+            if (!currentMolecule.isEmpty()) {
+                environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), targetCoordinate);
+                environment.clearOwner(targetCoordinate);
+            }
+
+            // Now handle the POKE part
+            if (valueToWrite instanceof int[]) {
+                organism.instructionFailed("PPK: Cannot write vectors to the world.");
+                return;
+            }
+            Molecule toWrite = org.evochora.runtime.model.Molecule.fromInt((Integer) valueToWrite);
+            int additionalCost = 0;
+            if (toWrite.type() == Config.TYPE_ENERGY || toWrite.type() == Config.TYPE_STRUCTURE) {
+                additionalCost = Math.abs(toWrite.toScalarValue());
+            } else if (toWrite.type() == Config.TYPE_CODE || toWrite.type() == Config.TYPE_DATA) {
+                additionalCost = 5;
+            }
+            if (additionalCost > 0) organism.takeEr(additionalCost);
+
+            // Write the new value (cell is now empty, so this should always succeed)
+            environment.setMolecule(toWrite, organism.getId(), targetCoordinate);
+        }
+    }
+
+
     @Override
     public List<int[]> getTargetCoordinates() {
         if (this.targetCoordinate != null) {
@@ -181,9 +280,9 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             int[] currentIp = organism.getIpBeforeFetch();
 
             if (opName.endsWith("S")) {
-                if (organism.getDataStack().size() >= (opName.equals("POKS") ? 2 : 1)) {
+                if (organism.getDataStack().size() >= (opName.equals("POKS") || opName.equals("PPKS") ? 2 : 1)) {
                     Iterator<Object> it = organism.getDataStack().iterator();
-                    if (opName.equals("POKS")) it.next();
+                    if (opName.equals("POKS") || opName.equals("PPKS")) it.next();
                     Object vecObj = it.next();
                     if (vecObj instanceof int[]) {
                         vector = (int[]) vecObj;

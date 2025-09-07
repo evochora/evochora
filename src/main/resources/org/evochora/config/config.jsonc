@@ -18,7 +18,7 @@
     "organisms": [
       {
         // [MANDATORY] Path to the assembly program file for this organism
-        "program": "assembly/test/main.s",
+        "program": "assembly/primordial/main.s",
         // [MANDATORY] Initial energy level when organism is created
         "initialEnergy": 5000,
         // [MANDATORY] Placement strategy for organisms
@@ -79,7 +79,7 @@
       // [OPTIONAL] Directory path where simulation output files are stored (default: "runs/")
       "outputPath": "runs/",
       // [OPTIONAL] Tick numbers at which simulation should automatically pause (default: null)
-      //"autoPauseTicks": [5000, 10000, 15000],
+      "autoPauseTicks": [5000, 10000, 15000],
       // [OPTIONAL] Whether to skip ProgramArtifact features (default: false)
       "skipProgramArtefact": false,
       // [OPTIONAL] Maximum number of messages in queue (default: 10000)

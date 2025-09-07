@@ -229,6 +229,10 @@ public abstract class Instruction {
         registerFamily(EnvironmentInteractionInstruction.class, Map.of(57, "POKI", 56, "PEKI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
         registerFamily(EnvironmentInteractionInstruction.class, Map.of(91, "POKS"), List.of(OperandSource.STACK, OperandSource.STACK));
         registerFamily(EnvironmentInteractionInstruction.class, Map.of(90, "PEKS"), List.of(OperandSource.STACK));
+        // Combined PEEK+POKE instructions
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(179, "PPKR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(180, "PPKI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(181, "PPKS"), List.of(OperandSource.STACK, OperandSource.STACK));
 
         // State (SCAN, SEEK & Rest)
         registerFamily(StateInstruction.class, Map.of(16, "SCAN"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));

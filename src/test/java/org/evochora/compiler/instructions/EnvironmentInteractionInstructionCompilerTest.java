@@ -41,4 +41,77 @@ class EnvironmentInteractionInstructionCompilerTest extends CompilerTestBase {
             assertThat(artifact.machineCodeLayout()).isNotEmpty();
         });
     }
+
+    @Test
+    void testPPKR_compilation() {
+        String source = String.join("\n",
+                ".PLACE DATA:99 0|1",
+                ".ORG 0|0",
+                "SETI %DR0 DATA:111",
+                "SETV %DR1 0|1",
+                "PPKR %DR0 %DR1"
+        );
+        List<String> lines = List.of(source.split("\n"));
+        assertDoesNotThrow(() -> {
+            ProgramArtifact artifact = compiler.compile(lines, "ppkr_auto.s", testEnvProps);
+            assertThat(artifact).isNotNull();
+            assertThat(artifact.machineCodeLayout()).isNotEmpty();
+            
+            // Verify that PPKR instruction was compiled
+            var machineCode = artifact.machineCodeLayout();
+            assertThat(machineCode.values()).contains(179); // PPKR instruction ID
+            
+            // After PPKR execution: DR0 should contain DATA:99 (read from cell 0|1), DR1 unchanged
+            // Cell 0|1 should contain DATA:111 (written from %DR0)
+        });
+    }
+
+    @Test
+    void testPPKI_compilation() {
+        String source = String.join("\n",
+                ".PLACE DATA:99 0|1",
+                ".ORG 0|0",
+                "SETI %DR0 DATA:111",
+                "PPKI %DR0 0|1"
+        );
+        List<String> lines = List.of(source.split("\n"));
+        assertDoesNotThrow(() -> {
+            ProgramArtifact artifact = compiler.compile(lines, "ppki_auto.s", testEnvProps);
+            assertThat(artifact).isNotNull();
+            assertThat(artifact.machineCodeLayout()).isNotEmpty();
+            
+            // Verify that PPKI instruction was compiled
+            var machineCode = artifact.machineCodeLayout();
+            assertThat(machineCode.values()).contains(180); // PPKI instruction ID
+            
+            // After PPKI execution: DR0 should contain DATA:99 (read from cell 0|1)
+            // Cell 0|1 should contain DATA:111 (written from %DR0)
+        });
+    }
+
+    @Test
+    void testPPKS_compilation() {
+        String source = String.join("\n",
+                ".PLACE DATA:99 0|1",
+                ".ORG 0|0",
+                "SETI %DR0 DATA:111",
+                "PUSH %DR0",
+                "PUSV 0|1",
+                "PPKS"
+        );
+        List<String> lines = List.of(source.split("\n"));
+        assertDoesNotThrow(() -> {
+            ProgramArtifact artifact = compiler.compile(lines, "ppks_auto.s", testEnvProps);
+            assertThat(artifact).isNotNull();
+            assertThat(artifact.machineCodeLayout()).isNotEmpty();
+            
+            // Verify that PPKS instruction was compiled
+            var machineCode = artifact.machineCodeLayout();
+            assertThat(machineCode.values()).contains(181); // PPKS instruction ID
+            
+            // After PPKS execution: DR0 should contain DATA:99 (read from cell 0|1)
+            // Cell 0|1 should contain DATA:111 (written from stack)
+            // Stack should be empty (both values popped)
+        });
+    }
 }
