@@ -68,7 +68,7 @@ public class TickProcessor {
                 .map(c -> {
                     Molecule m = Molecule.fromInt(c.molecule());
                     String opcodeName = null;
-                    if (m.type() == Config.TYPE_CODE && m.value() != 0) {
+                    if (m.type() == Config.TYPE_CODE && (m.value() != 0 || c.ownerId() != 0)) {
                         opcodeName = Instruction.getInstructionNameById(m.toInt());
                     }
                                          return new PreparedTickState.Cell(toList(c.pos()), MoleculeTypeUtils.typeIdToName(m.type()), m.toScalarValue(), c.ownerId(), opcodeName);

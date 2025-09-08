@@ -49,7 +49,7 @@ public final class SimulationConfiguration {
     public static final class SimulationServiceConfig {
         public Boolean autoStart;
         public String outputPath;
-        public int[] autoPauseTicks; // Array of tick values where simulation should auto-pause
+        public int[] checkpointPauseTicks; // Array of tick values where simulation should checkpoint-pause
         public Boolean skipProgramArtefact; // Whether to skip ProgramArtifact features (default: false)
         public Integer maxMessageCount; // Maximum number of messages in queue (default: 10000)
     }

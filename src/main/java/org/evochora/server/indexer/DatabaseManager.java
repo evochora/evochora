@@ -231,21 +231,23 @@ public class DatabaseManager {
             // Perform WAL checkpoint to ensure all changes are in the main database
             if (connection != null && !connection.isClosed()) {
                 try (Statement st = connection.createStatement()) {
-                    // Force all pending changes to be written
+                    // First, ensure all pending changes are written to WAL
                     st.execute("PRAGMA wal_checkpoint(FULL)");
                     log.debug("WAL checkpoint completed before closing");
                     
-                    // Force a final checkpoint to ensure all data is flushed
+                    // Force a final checkpoint to ensure all data is flushed to main database
                     st.execute("PRAGMA wal_checkpoint(TRUNCATE)");
                     log.debug("Final WAL truncate checkpoint completed");
                     
-                    // Ensure WAL mode is properly closed and files are released
-                    st.execute("PRAGMA journal_mode=DELETE");
-                    log.debug("WAL mode disabled, journal mode set to DELETE");
-                    
-                    // Final checkpoint after disabling WAL to ensure all data is in main file
+                    // Additional checkpoint to ensure all data is committed
                     st.execute("PRAGMA wal_checkpoint(FULL)");
-                    log.debug("Final checkpoint after WAL disable completed");
+                    log.debug("Final WAL checkpoint completed");
+                    
+                    // Force a synchronous write to ensure all data is on disk
+                    st.execute("PRAGMA synchronous=FULL");
+                    st.execute("PRAGMA wal_checkpoint(FULL)");
+                    log.debug("Synchronous WAL checkpoint completed");
+                    
                 } catch (Exception e) {
                     // Skip WAL checkpoint if database is busy - this is normal with concurrent access
                     if (e.getMessage().contains("SQLITE_BUSY") || e.getMessage().contains("database is locked")) {

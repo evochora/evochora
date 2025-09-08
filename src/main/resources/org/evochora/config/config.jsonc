@@ -9,7 +9,7 @@
     // [OPTIONAL] Environment configuration (default: shape=[120,80], toroidal=true)
     "environment": {
       // [OPTIONAL] Dimensions of the simulation world (default: [120, 80])
-      "shape": [80, 30],
+      "shape": [80, 50],
       // [OPTIONAL] Whether the world wraps around at edges (default: true)
       "toroidal": true
     },
@@ -17,7 +17,26 @@
     // [OPTIONAL] List of organisms to place in the world (default: empty array)
     "organisms": [
 
+      /***** Primordial *****/
+      {
+        // [MANDATORY] Path to the assembly program file for this organism
+        "program": "assembly/primordial/primordial4.s",
+        // [MANDATORY] Initial energy level when organism is created
+        "initialEnergy": 5000,
+        // [MANDATORY] Placement strategy for organisms
+        "placement": {
+          // [MANDATORY] Placement strategy type ("fixed", "random", "grid")
+          "strategy": "fixed",
+          // [MANDATORY] Specific positions to place organisms (for "fixed" strategy)
+          "positions": [
+            [1, 1]
+          ]
+        }
+      }
+      
+
       /***** Prodecure tests *****/
+      /*
       {
         // [MANDATORY] Path to the assembly program file for this organism
         "program": "assembly/test/main_with.s",
@@ -65,6 +84,7 @@
           ]
         }
       }
+      */
 
     ],
     
@@ -114,7 +134,7 @@
       // [OPTIONAL] Directory path where simulation output files are stored (default: "runs/")
       "outputPath": "runs/",
       // [OPTIONAL] Tick numbers at which simulation should automatically pause (default: null)
-      "autoPauseTicks": [5000, 10000, 15000],
+      "checkpointPauseTicks": [5000, 10000, 15000],
       // [OPTIONAL] Whether to skip ProgramArtifact features (default: false)
       "skipProgramArtefact": false,
       // [OPTIONAL] Maximum number of messages in queue (default: 10000)

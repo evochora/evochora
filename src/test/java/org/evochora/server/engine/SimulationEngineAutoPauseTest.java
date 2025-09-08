@@ -93,7 +93,7 @@ class SimulationEngineAutoPauseTest {
     @Test
     void testAutoPauseConfiguration() throws Exception {
         // Set auto-pause at tick 5
-        engine.setAutoPauseTicks(new int[]{5});
+        engine.setCheckpointPauseTicks(new int[]{5});
         
         // Start the engine
         engine.start();
@@ -128,7 +128,7 @@ class SimulationEngineAutoPauseTest {
     @Test
     void testMultipleAutoPausePoints() throws Exception {
         // Set auto-pause at multiple ticks
-        engine.setAutoPauseTicks(new int[]{5, 10, 15});
+        engine.setCheckpointPauseTicks(new int[]{5, 10, 15});
         
         // Start the engine
         engine.start();

@@ -517,9 +517,19 @@ public final class ServiceManager {
             
             engine.setSeed(config.simulation.seed);
             
-            // Set auto-pause configuration if available
-            if (config.pipeline.simulation != null && config.pipeline.simulation.autoPauseTicks != null) {
-                engine.setAutoPauseTicks(config.pipeline.simulation.autoPauseTicks);
+            // Set checkpoint-pause configuration if available
+            if (config.pipeline.simulation != null && config.pipeline.simulation.checkpointPauseTicks != null) {
+                engine.setCheckpointPauseTicks(config.pipeline.simulation.checkpointPauseTicks);
+                
+                // Set up checkpoint-pause callback for logging (runs in SimulationEngine thread)
+                engine.setCheckpointPauseCallback((pausedAtTick, remainingTicks) -> {
+                    if (remainingTicks.length > 0) {
+                        log.info("Checkpoint-paused simulation at tick {} (remaining checkpoint-pause ticks: {})", 
+                                pausedAtTick, java.util.Arrays.toString(remainingTicks));
+                    } else {
+                        log.info("Checkpoint-paused simulation at tick {} (no more checkpoint-pause ticks configured)", pausedAtTick);
+                    }
+                });
             }
             
             simulationEngine.set(engine);
@@ -648,11 +658,12 @@ public final class ServiceManager {
         if (debugServer.get() == null || !serverRunning.get()) {
             String debugDbPath;
             int port = config.pipeline.server != null && config.pipeline.server.port != null ? config.pipeline.server.port : 7070;
+            String host = config.pipeline.server != null && config.pipeline.server.host != null ? config.pipeline.server.host : "localhost";
             
             // Try to get debug database from indexer first (normal pipeline mode)
             if (indexer.get() != null) {
                 debugDbPath = indexer.get().getDebugDbPath();
-                log.info("Debug server started in pipeline mode on port {} reading {}", port, debugDbPath);
+                log.info("Debug server started in pipeline mode on http://{}:{} reading {}", host, port, debugDbPath);
             } else {
                 // Standalone mode: find debug database manually
                 debugDbPath = findLatestDebugDatabase();
@@ -660,7 +671,7 @@ public final class ServiceManager {
                     log.error("No debug database found. Please ensure a debug database exists in the runs directory.");
                     return;
                 }
-                log.info("Debug server started in standalone mode on port {} reading {}", port, debugDbPath);
+                log.info("Debug server started in standalone mode on http://{}:{} reading {}", host, port, debugDbPath);
             }
             
             DebugServer server = new DebugServer();

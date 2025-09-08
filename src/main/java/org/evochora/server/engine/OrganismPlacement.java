@@ -51,4 +51,13 @@ public record OrganismPlacement(
             }
         }
     }
+    
+    /**
+     * Gets the start position as the initial IP position.
+     * 
+     * @return The start position coordinates
+     */
+    public int[] getInitialIpPosition() {
+        return startPosition.clone();
+    }
 }

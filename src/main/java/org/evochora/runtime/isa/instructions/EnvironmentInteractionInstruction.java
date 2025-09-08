@@ -308,10 +308,15 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                 }
             }
 
-            if (vector != null) {
-                this.targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
-                return List.of(this.targetCoordinate);
+        if (vector != null) {
+            // Validate that vector is a unit vector for world interaction
+            if (!organism.isUnitVector(vector)) {
+                return List.of();
             }
+            
+            this.targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
+            return List.of(this.targetCoordinate);
+        }
 
         } catch (Exception e) {
             return List.of();

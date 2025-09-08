@@ -307,9 +307,23 @@ public final class PersistenceService implements IControllable, Runnable {
                 // This prevents WAL and SHM files from being left behind
                 if (connection != null && !connection.isClosed()) {
                     try (Statement st = connection.createStatement()) {
-                        // Perform a FULL checkpoint to write all WAL data to main database
+                        // First, ensure all pending changes are written to WAL
                         st.execute("PRAGMA wal_checkpoint(FULL)");
-                        log.debug("WAL checkpoint completed - all data written to main database");
+                        log.debug("WAL checkpoint completed before closing");
+                        
+                        // Force a final checkpoint to ensure all data is flushed to main database
+                        st.execute("PRAGMA wal_checkpoint(TRUNCATE)");
+                        log.debug("Final WAL truncate checkpoint completed");
+                        
+                        // Additional checkpoint to ensure all data is committed
+                        st.execute("PRAGMA wal_checkpoint(FULL)");
+                        log.debug("Final WAL checkpoint completed");
+                        
+                        // Force a synchronous write to ensure all data is on disk
+                        st.execute("PRAGMA synchronous=FULL");
+                        st.execute("PRAGMA wal_checkpoint(FULL)");
+                        log.debug("Synchronous WAL checkpoint completed");
+                        
                     } catch (Exception e) {
                         // Skip WAL checkpoint if database is busy - this is normal with concurrent access
                         if (e.getMessage().contains("SQLITE_BUSY") || e.getMessage().contains("database is locked")) {
@@ -443,9 +457,23 @@ public final class PersistenceService implements IControllable, Runnable {
                                 // Perform WAL checkpoint to ensure all changes are in the main database
                                 if (connection != null && !connection.isClosed()) {
                                     try (Statement st = connection.createStatement()) {
-                                        // Perform a FULL checkpoint to write all WAL data to main database
+                                        // First, ensure all pending changes are written to WAL
                                         st.execute("PRAGMA wal_checkpoint(FULL)");
-                                        log.debug("WAL checkpoint completed before manual pause - all data written to main database");
+                                        log.debug("WAL checkpoint completed before manual pause");
+                                        
+                                        // Force a final checkpoint to ensure all data is flushed to main database
+                                        st.execute("PRAGMA wal_checkpoint(TRUNCATE)");
+                                        log.debug("Final WAL truncate checkpoint completed before manual pause");
+                                        
+                                        // Additional checkpoint to ensure all data is committed
+                                        st.execute("PRAGMA wal_checkpoint(FULL)");
+                                        log.debug("Final WAL checkpoint completed before manual pause");
+                                        
+                                        // Force a synchronous write to ensure all data is on disk
+                                        st.execute("PRAGMA synchronous=FULL");
+                                        st.execute("PRAGMA wal_checkpoint(FULL)");
+                                        log.debug("Synchronous WAL checkpoint completed before manual pause");
+                                        
                                     } catch (Exception e) {
                                         // Skip WAL checkpoint if database is busy - this is normal with concurrent access
                                         if (e.getMessage().contains("SQLITE_BUSY") || e.getMessage().contains("database is locked")) {
@@ -488,9 +516,23 @@ public final class PersistenceService implements IControllable, Runnable {
                             if (connection != null && !connection.isClosed()) {
                                 boolean checkpointSuccessful = false;
                                 try (Statement st = connection.createStatement()) {
-                                    // Perform a FULL checkpoint to write all WAL data to main database
+                                    // First, ensure all pending changes are written to WAL
                                     st.execute("PRAGMA wal_checkpoint(FULL)");
-                                    log.debug("WAL checkpoint completed before auto-pause - all data written to main database");
+                                    log.debug("WAL checkpoint completed before auto-pause");
+                                    
+                                    // Force a final checkpoint to ensure all data is flushed to main database
+                                    st.execute("PRAGMA wal_checkpoint(TRUNCATE)");
+                                    log.debug("Final WAL truncate checkpoint completed before auto-pause");
+                                    
+                                    // Additional checkpoint to ensure all data is committed
+                                    st.execute("PRAGMA wal_checkpoint(FULL)");
+                                    log.debug("Final WAL checkpoint completed before auto-pause");
+                                    
+                                    // Force a synchronous write to ensure all data is on disk
+                                    st.execute("PRAGMA synchronous=FULL");
+                                    st.execute("PRAGMA wal_checkpoint(FULL)");
+                                    log.debug("Synchronous WAL checkpoint completed before auto-pause");
+                                    
                                     checkpointSuccessful = true;
                                 } catch (Exception e) {
                                     // Skip WAL checkpoint if database is busy - this is normal with concurrent access

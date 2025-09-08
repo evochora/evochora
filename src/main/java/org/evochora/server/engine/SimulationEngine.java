@@ -18,6 +18,9 @@ import org.evochora.server.queue.ITickMessageQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -28,6 +31,11 @@ import java.util.stream.Collectors;
 public class SimulationEngine implements IControllable, Runnable {
 
     private static final Logger log = LoggerFactory.getLogger(SimulationEngine.class);
+    
+    @FunctionalInterface
+    public interface CheckpointPauseCallback {
+        void onCheckpointPause(int pausedAtTick, int[] remainingTicks);
+    }
 
     private final ITickMessageQueue queue;
     private final Thread thread;
@@ -43,9 +51,10 @@ public class SimulationEngine implements IControllable, Runnable {
     private IRandomProvider randomProvider;
     private Long seed = null;
     private long startTime = 0;
-    private int[] autoPauseTicks = null; // Configuration for auto-pause ticks
-    private int nextAutoPauseIndex = 0; // Index of next auto-pause tick to check
+    private int[] checkpointPauseTicks = null; // Configuration for checkpoint-pause ticks
+    private int nextCheckpointPauseIndex = 0; // Index of next checkpoint-pause tick to check
     private Long maxTicks = null; // Maximum number of ticks to run before stopping (null = no limit)
+    private CheckpointPauseCallback checkpointPauseCallback = null; // Callback for checkpoint-pause events
     
     // Simple TPS calculation - no complex timer tracking needed
     
@@ -136,23 +145,23 @@ public class SimulationEngine implements IControllable, Runnable {
     }
 
     /**
-     * Sets the auto-pause ticks configuration.
-     * @param autoPauseTicks Array of tick values where simulation should auto-pause, or null to disable
+     * Sets the checkpoint-pause ticks configuration.
+     * @param checkpointPauseTicks Array of tick values where simulation should checkpoint-pause, or null to disable
      */
-    public void setAutoPauseTicks(int[] autoPauseTicks) {
-        this.autoPauseTicks = autoPauseTicks != null ? java.util.Arrays.copyOf(autoPauseTicks, autoPauseTicks.length) : null;
-        this.nextAutoPauseIndex = 0;
-        if (this.autoPauseTicks != null) {
-            java.util.Arrays.sort(this.autoPauseTicks); // Ensure ticks are in ascending order
+    public void setCheckpointPauseTicks(int[] checkpointPauseTicks) {
+        this.checkpointPauseTicks = checkpointPauseTicks != null ? java.util.Arrays.copyOf(checkpointPauseTicks, checkpointPauseTicks.length) : null;
+        this.nextCheckpointPauseIndex = 0;
+        if (this.checkpointPauseTicks != null) {
+            java.util.Arrays.sort(this.checkpointPauseTicks); // Ensure ticks are in ascending order
         }
     }
 
     /**
-     * Gets the current auto-pause ticks configuration.
-     * @return Array of tick values where simulation should auto-pause, or null if disabled
+     * Gets the current checkpoint-pause ticks configuration.
+     * @return Array of tick values where simulation should checkpoint-pause, or null if disabled
      */
-    public int[] getAutoPauseTicks() {
-        return this.autoPauseTicks != null ? java.util.Arrays.copyOf(this.autoPauseTicks, this.autoPauseTicks.length) : null;
+    public int[] getCheckpointPauseTicks() {
+        return this.checkpointPauseTicks != null ? java.util.Arrays.copyOf(this.checkpointPauseTicks, this.checkpointPauseTicks.length) : null;
     }
 
     /**
@@ -166,6 +175,14 @@ public class SimulationEngine implements IControllable, Runnable {
         } else {
             log.info("Maximum ticks disabled - simulation will run indefinitely");
         }
+    }
+    
+    /**
+     * Sets the checkpoint-pause callback for logging purposes.
+     * @param callback Callback to invoke when checkpoint-pause occurs
+     */
+    public void setCheckpointPauseCallback(CheckpointPauseCallback callback) {
+        this.checkpointPauseCallback = callback;
     }
 
     @Override
@@ -249,18 +266,29 @@ public class SimulationEngine implements IControllable, Runnable {
     public Simulation getSimulation() { return simulation; }
 
     /**
-     * Checks if the simulation should auto-pause at the current tick.
-     * @return true if auto-pause should occur, false otherwise
+     * Checks if the simulation should checkpoint-pause at the current tick.
+     * @return true if checkpoint-pause should occur, false otherwise
      */
-    private boolean shouldAutoPause() {
-        if (autoPauseTicks == null || autoPauseTicks.length == 0 || nextAutoPauseIndex >= autoPauseTicks.length) {
+    private boolean shouldCheckpointPause() {
+        if (checkpointPauseTicks == null || checkpointPauseTicks.length == 0 || nextCheckpointPauseIndex >= checkpointPauseTicks.length) {
             return false;
         }
         
         long currentTick = simulation.getCurrentTick();
-        // Check if we've reached or passed the next auto-pause tick
-        if (currentTick >= autoPauseTicks[nextAutoPauseIndex]) {
-            nextAutoPauseIndex++;
+        // Check if we've reached or passed the next checkpoint-pause tick
+        if (currentTick >= checkpointPauseTicks[nextCheckpointPauseIndex]) {
+            int pausedAtTick = checkpointPauseTicks[nextCheckpointPauseIndex];
+            nextCheckpointPauseIndex++;
+            
+            // Calculate remaining ticks and invoke callback
+            if (checkpointPauseCallback != null) {
+                int[] remainingTicks = new int[checkpointPauseTicks.length - nextCheckpointPauseIndex];
+                if (remainingTicks.length > 0) {
+                    System.arraycopy(checkpointPauseTicks, nextCheckpointPauseIndex, remainingTicks, 0, remainingTicks.length);
+                }
+                checkpointPauseCallback.onCheckpointPause(pausedAtTick, remainingTicks);
+            }
+            
             return true;
         }
         
@@ -275,6 +303,7 @@ public class SimulationEngine implements IControllable, Runnable {
         }
         return new int[]{living, dead};
     }
+    
 
     public String getStatus() {
         if (simulation == null) {
@@ -345,10 +374,11 @@ public class SimulationEngine implements IControllable, Runnable {
                         ProgramArtifact artifact = placement.programArtifact();
                         artifactsById.put(artifact.programId(), artifact);
                         
-                        // Create organism
+                        // Create organism with IP offset
+                        int[] initialIpPosition = placement.getInitialIpPosition();
                         org.evochora.runtime.model.Organism organism = org.evochora.runtime.model.Organism.create(
                             simulation, 
-                            placement.startPosition(), 
+                            initialIpPosition, 
                             placement.initialEnergy(), 
                             simulation.getLogger()
                         );
@@ -356,6 +386,7 @@ public class SimulationEngine implements IControllable, Runnable {
                         if (enableProgramArtifactFeatures) {
                             organism.setProgramId(artifact.programId());
                         }
+                        
                         
                         simulation.addOrganism(organism);
                         
@@ -452,16 +483,16 @@ public class SimulationEngine implements IControllable, Runnable {
             // Start simulation loop
             while (running.get()) {
                 if (paused.get()) {
-        // Auto-resume if queue has space and we're in auto-pause (but not manually paused)
-        if (autoPaused.get() && !manuallyPaused.get() && queue instanceof org.evochora.server.queue.InMemoryTickQueue) {
-            org.evochora.server.queue.InMemoryTickQueue memQueue = (org.evochora.server.queue.InMemoryTickQueue) queue;
-            if (memQueue.canAcceptMessage()) {
-                log.debug("Auto-resuming simulation - queue has space");
-                autoPaused.set(false);
-                paused.set(false);
-                continue;
-            }
-        }
+                    // Auto-resume if queue has space and we're in auto-pause (but not manually paused)
+                    if (autoPaused.get() && !manuallyPaused.get() && queue instanceof org.evochora.server.queue.InMemoryTickQueue) {
+                        org.evochora.server.queue.InMemoryTickQueue memQueue = (org.evochora.server.queue.InMemoryTickQueue) queue;
+                        if (memQueue.canAcceptMessage()) {
+                            log.debug("Auto-resuming simulation - queue has space");
+                            autoPaused.set(false);
+                            paused.set(false);
+                            continue;
+                        }
+                    }
                     
                     // Use polling with 100ms sleep for auto-pause
                     try {
@@ -475,7 +506,7 @@ public class SimulationEngine implements IControllable, Runnable {
 
                 try {
                     // Check if we should pause at this tick FIRST (has priority over queue-full)
-                    if (shouldAutoPause()) {
+                    if (shouldCheckpointPause()) {
                         manuallyPaused.set(true);
                         paused.set(true);
                         continue;
@@ -599,23 +630,15 @@ public class SimulationEngine implements IControllable, Runnable {
         for (Organism o : simulation.getOrganisms()) {
             if (o.isDead()) continue; // Skip dead organisms for performance
             
-            // Minimize defensive copying - only copy essential data
-            java.util.Deque<SerializableProcFrame> serializableCallStack = o.getCallStack().stream()
-                    .map(f -> new SerializableProcFrame(
-                            f.procName, f.absoluteReturnIp, f.savedPrs, f.savedFprs, f.fprBindings))
-                    .collect(Collectors.toCollection(java.util.ArrayDeque::new));
-
-            // Only copy stacks if they're not empty
-            java.util.Deque<Object> dataStackCopy = o.getDataStack().isEmpty() ? 
-                new java.util.ArrayDeque<>() : new java.util.ArrayDeque<>(o.getDataStack());
-            java.util.Deque<int[]> locationStackCopy = o.getLocationStack().isEmpty() ? 
-                new java.util.ArrayDeque<>() : new java.util.ArrayDeque<>(o.getLocationStack());
-
+            // Use the optimized createRawOrganismState method with lazy loading and caching
+            RawOrganismState rawState = o.createRawOrganismState();
+            
+            // Add the remaining fields that are not handled by createRawOrganismState
             organisms.add(new RawOrganismState(
-                    o.getId(), o.getParentId(), o.getBirthTick(), o.getProgramId(), o.getInitialPosition(),
-                    o.getIp(), o.getDv(), o.getDps(), o.getActiveDpIndex(), o.getEr(),
-                    o.getDrs(), o.getPrs(), o.getFprs(), o.getLrs(),
-                    dataStackCopy, locationStackCopy, serializableCallStack,
+                    rawState.id(), rawState.parentId(), rawState.birthTick(), rawState.programId(), rawState.initialPosition(),
+                    rawState.ip(), rawState.dv(), rawState.dps(), rawState.activeDpIndex(), rawState.er(),
+                    rawState.drs(), rawState.prs(), rawState.fprs(), rawState.lrs(),
+                    rawState.dataStack(), rawState.locationStack(), rawState.callStack(),
                     o.isDead(), o.isInstructionFailed(), o.getFailureReason(),
                     o.shouldSkipIpAdvance(), o.getIpBeforeFetch(), o.getDvBeforeFetch()
             ));

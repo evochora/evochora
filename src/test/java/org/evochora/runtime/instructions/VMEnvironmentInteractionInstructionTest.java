@@ -328,6 +328,7 @@ public class VMEnvironmentInteractionInstructionTest {
         assertThat(org.getEr()).isEqualTo(expectedEnergy).as("Energy should be consumed correctly: base 1 + poke 5 = 6 (no peek costs on empty cell)");
     }
 
+
     @org.junit.jupiter.api.AfterEach
     void assertNoInstructionFailure() {
         // Only assert no failure for tests that don't expect failures

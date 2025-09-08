@@ -183,7 +183,6 @@ public class StateInstruction extends Instruction {
         int upperBound = s.toScalarValue();
         if (upperBound <= 0) {
             organism.instructionFailed("RAND upper bound must be > 0.");
-            writeOperand(op.rawSourceId(), new Molecule(s.type(), 0).toInt());
             return;
         }
         Random random = organism.getRandom();

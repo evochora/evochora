@@ -98,7 +98,7 @@ class WorldRenderer {
         this.ctx.fillStyle = this.getBackgroundColorForType(cell.type);
         this.ctx.fillRect(x, y, this.config.cellSize, this.config.cellSize);
 
-        if ((cell.type === this.config.typeCode && cell.value !== 0) || cell.type !== this.config.typeCode) {
+        if ((cell.type === this.config.typeCode && (cell.value !== 0 || cell.ownerId !== 0)) || cell.type !== this.config.typeCode) {
             this.ctx.fillStyle = this.getTextColorForType(cell.type);
             this.ctx.font = this.cellFont;
             this.ctx.textAlign = 'center';
@@ -294,7 +294,7 @@ class WorldRenderer {
         
         // Tooltip-Inhalt erstellen
         const typeName = this.getTypeName(cell.type);
-        const opcodeInfo = cell.opcodeName ? `(${cell.opcodeName})` : '';
+        const opcodeInfo = (cell.opcodeName && (cell.ownerId !== 0 || cell.value !== 0)) ? `(${cell.opcodeName})` : '';
         
         this.tooltip.innerHTML = `
             <span class="tooltip-coords">[${gridX}|${gridY}]</span>
