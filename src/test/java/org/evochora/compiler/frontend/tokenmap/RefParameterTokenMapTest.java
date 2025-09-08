@@ -3,13 +3,11 @@ package org.evochora.compiler.frontend.tokenmap;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.CompilerTestBase;
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.compiler.api.TokenInfo;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Disabled;
 
 
 import java.util.List;
@@ -17,7 +15,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 @Tag("unit")
-class NewRefParameterTokenMapTest extends CompilerTestBase {
+class RefParameterTokenMapTest extends CompilerTestBase {
 
     @BeforeAll
     static void init() {
@@ -25,7 +23,7 @@ class NewRefParameterTokenMapTest extends CompilerTestBase {
     }
 
     @Test
-    @Disabled("Not sure if REF params need to be the TokenMap, need to investigate!")
+    //@Disabled("Not sure if REF params need to be the TokenMap, need to investigate!")
     void testRefParameterIsInTokenMap() throws Exception {
         String source = String.join("\n",
                 ".PROC MY_PROC REF PARAM1",

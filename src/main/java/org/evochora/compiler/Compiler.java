@@ -18,6 +18,8 @@ import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.frontend.tokenmap.TokenMapGenerator;
+
+import java.util.ArrayList;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.evochora.compiler.ir.IrProgram;
 import org.evochora.compiler.backend.layout.LayoutEngine;
@@ -113,9 +115,29 @@ public class Compiler implements ICompiler {
 
         Map<String, List<String>> procNameToParamNames = new HashMap<>();
         parser.getProcedureTable().forEach((name, procNode) -> {
-            List<String> paramNames = procNode.parameters().stream()
-                    .map(Token::text)
-                    .collect(Collectors.toList());
+            List<String> paramNames = new ArrayList<>();
+            
+            // Add REF parameters first (they come first in the procedure definition)
+            if (procNode.refParameters() != null) {
+                paramNames.addAll(procNode.refParameters().stream()
+                        .map(Token::text)
+                        .collect(Collectors.toList()));
+            }
+            
+            // Add VAL parameters second
+            if (procNode.valParameters() != null) {
+                paramNames.addAll(procNode.valParameters().stream()
+                        .map(Token::text)
+                        .collect(Collectors.toList()));
+            }
+            
+            // Add old WITH syntax parameters last (for backward compatibility)
+            if (procNode.parameters() != null) {
+                paramNames.addAll(procNode.parameters().stream()
+                        .map(Token::text)
+                        .collect(Collectors.toList()));
+            }
+            
             procNameToParamNames.put(name.toUpperCase(), paramNames);
         });
 

@@ -18,7 +18,7 @@
     "organisms": [
       {
         // [MANDATORY] Path to the assembly program file for this organism
-        "program": "assembly/test/main.s",
+        "program": "assembly/test/main_with.s",
         // [MANDATORY] Initial energy level when organism is created
         "initialEnergy": 5000,
         // [MANDATORY] Placement strategy for organisms
@@ -30,7 +30,40 @@
             [1, 1]
           ]
         }
+      },
+
+      {
+        // [MANDATORY] Path to the assembly program file for this organism
+        "program": "assembly/test/main_ref.s",
+        // [MANDATORY] Initial energy level when organism is created
+        "initialEnergy": 5000,
+        // [MANDATORY] Placement strategy for organisms
+        "placement": {
+          // [MANDATORY] Placement strategy type ("fixed", "random", "grid")
+          "strategy": "fixed",
+          // [MANDATORY] Specific positions to place organisms (for "fixed" strategy)
+          "positions": [
+            [1, 7]
+          ]
+        }
+      },
+
+      {
+        // [MANDATORY] Path to the assembly program file for this organism
+        "program": "assembly/test/main_refval.s",
+        // [MANDATORY] Initial energy level when organism is created
+        "initialEnergy": 5000,
+        // [MANDATORY] Placement strategy for organisms
+        "placement": {
+          // [MANDATORY] Placement strategy type ("fixed", "random", "grid")
+          "strategy": "fixed",
+          // [MANDATORY] Specific positions to place organisms (for "fixed" strategy)
+          "positions": [
+            [1, 14]
+          ]
+        }
       }
+
     ],
     
     // [OPTIONAL] Energy sources and distribution strategies (default: empty list)

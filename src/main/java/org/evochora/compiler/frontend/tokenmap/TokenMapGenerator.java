@@ -150,9 +150,29 @@ public class TokenMapGenerator {
             
             // Add parameter tokens as VARIABLE type in the procedure's scope
             // Parameters are metadata stored in the procedure node, not separate AST nodes
-            for (int i = 0; i < procNode.parameters().size(); i++) {
-                org.evochora.compiler.frontend.lexer.Token param = procNode.parameters().get(i);
-                addParameterToken(param, Symbol.Type.VARIABLE, procNode.name().text().toUpperCase(), i);
+            
+            // Add old WITH syntax parameters
+            if (procNode.parameters() != null) {
+                for (int i = 0; i < procNode.parameters().size(); i++) {
+                    org.evochora.compiler.frontend.lexer.Token param = procNode.parameters().get(i);
+                    addParameterToken(param, Symbol.Type.VARIABLE, procNode.name().text().toUpperCase(), i);
+                }
+            }
+            
+            // Process new REF syntax parameters
+            if (procNode.refParameters() != null) {
+                for (int i = 0; i < procNode.refParameters().size(); i++) {
+                    org.evochora.compiler.frontend.lexer.Token param = procNode.refParameters().get(i);
+                    addParameterToken(param, Symbol.Type.VARIABLE, procNode.name().text().toUpperCase(), i);
+                }
+            }
+            
+            // Process new VAL syntax parameters
+            if (procNode.valParameters() != null) {
+                for (int i = 0; i < procNode.valParameters().size(); i++) {
+                    org.evochora.compiler.frontend.lexer.Token param = procNode.valParameters().get(i);
+                    addParameterToken(param, Symbol.Type.VARIABLE, procNode.name().text().toUpperCase(), i);
+                }
             }
         } else if (node instanceof IdentifierNode identifierNode) {
             // Add the identifier token - resolve its type from symbol table

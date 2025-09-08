@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
 // TODO: This test was not migrated to REF/VAL syntax due to a compiler bug that prevents REF parameters from being added to the token map.
 @Tag("unit")
 @Tag("legacy-with")
-class ProcedureParameterTest extends CompilerTestBase {
+class WithParameterTokenMapTest extends CompilerTestBase {
 
     @BeforeAll
     static void init() {
