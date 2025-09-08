@@ -18,7 +18,7 @@
     "organisms": [
       {
         // [MANDATORY] Path to the assembly program file for this organism
-        "program": "assembly/primordial/main.s",
+        "program": "assembly/test/main.s",
         // [MANDATORY] Initial energy level when organism is created
         "initialEnergy": 5000,
         // [MANDATORY] Placement strategy for organisms
