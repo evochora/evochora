@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
 // TODO: This test was not migrated to REF/VAL syntax due to a compiler bug that prevents REF parameters from being added to the token map.
 @Tag("unit")
 @Tag("legacy-with")
-class ParameterHandlerDirectTest {
+class WithParameterHandlerDirectTest {
 
     private final EnvironmentProperties testEnvProps = new EnvironmentProperties(new int[]{100, 100}, true);
 
