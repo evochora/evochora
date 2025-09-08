@@ -1,6 +1,8 @@
 package org.evochora.server.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonLocation;
 
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -18,6 +20,42 @@ public final class ConfigLoader {
     private static final String DEFAULT_RESOURCE_PATH = "org/evochora/config/config.jsonc";
 
     private ConfigLoader() {}
+    
+    /**
+     * Formats a JSON parsing exception into a user-friendly error message.
+     * 
+     * @param e the exception
+     * @param configPath the path to the config file
+     * @return a formatted error message
+     */
+    private static String formatJsonError(Exception e, String configPath) {
+        if (e instanceof JsonParseException) {
+            JsonParseException jsonEx = (JsonParseException) e;
+            JsonLocation location = jsonEx.getLocation();
+            
+            StringBuilder sb = new StringBuilder();
+            sb.append("Invalid JSON in '").append(configPath).append("'");
+            
+            if (location != null) {
+                sb.append(" at line ").append(location.getLineNr());
+            }
+            
+            // Extract the problematic character
+            String message = jsonEx.getOriginalMessage();
+            if (message != null && message.contains("Unexpected character")) {
+                int charStart = message.indexOf('\'') + 1;
+                int charEnd = message.indexOf('\'', charStart);
+                if (charStart > 0 && charEnd > charStart) {
+                    String problemChar = message.substring(charStart, charEnd);
+                    sb.append(": unexpected '").append(problemChar).append("'");
+                }
+            }
+            
+            return sb.toString();
+        } else {
+            return "Failed to load '" + configPath + "': " + e.getMessage();
+        }
+    }
 
     /**
      * Strips comments from JSONC content to make it valid JSON.
@@ -82,6 +120,27 @@ public final class ConfigLoader {
                 String jsonContent = stripComments(jsoncContent);
                 // Parse the JSON
                 return OBJECT_MAPPER.readValue(jsonContent, SimulationConfiguration.class);
+            } else {
+                throw new RuntimeException("Default config file not found in resources: " + DEFAULT_RESOURCE_PATH);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(formatJsonError(e, DEFAULT_RESOURCE_PATH));
+        }
+    }
+    
+    /**
+     * Loads the default configuration with fallback for missing options.
+     * This method is used internally when some configuration options are missing.
+     */
+    public static SimulationConfiguration loadDefaultWithFallback() {
+        try (InputStream is = ConfigLoader.class.getClassLoader().getResourceAsStream(DEFAULT_RESOURCE_PATH)) {
+            if (is != null) {
+                // Read the JSONC content
+                String jsoncContent = new String(is.readAllBytes());
+                // Strip comments to get valid JSON
+                String jsonContent = stripComments(jsoncContent);
+                // Parse the JSON
+                return OBJECT_MAPPER.readValue(jsonContent, SimulationConfiguration.class);
             }
         } catch (Exception ignore) {}
         
@@ -123,6 +182,14 @@ public final class ConfigLoader {
         serverService.host = "localhost";
         pipelineConfig.server = serverService;
         
+        // Create logging config for fallback
+        SimulationConfiguration.LoggingConfig loggingConfig = new SimulationConfiguration.LoggingConfig();
+        loggingConfig.defaultLogLevel = "INFO";
+        loggingConfig.logLevels = new java.util.HashMap<>();
+        loggingConfig.logLevels.put("org.evochora.server.CommandLineInterface", "INFO");
+        loggingConfig.logLevels.put("org.evochora.server.ServiceManager", "INFO");
+        pipelineConfig.logging = loggingConfig;
+        
         cfg.pipeline = pipelineConfig;
         
         return cfg;
@@ -136,6 +203,8 @@ public final class ConfigLoader {
             String jsonContent = stripComments(jsoncContent);
             // Parse the JSON
             return OBJECT_MAPPER.readValue(jsonContent, SimulationConfiguration.class);
+        } catch (Exception e) {
+            throw new Exception(formatJsonError(e, file.toString()));
         }
     }
 }

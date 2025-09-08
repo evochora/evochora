@@ -37,6 +37,26 @@ The project uses Gradle for building and managing dependencies.
     ./gradlew compile -Pfile="example.s"
     ```
 
+## Configuration
+
+### `--config` Parameter
+You can specify a custom configuration file when starting the CLI:
+
+**Interactive mode (CLI interface):**
+```bash
+# Use custom config file with Gradle
+./gradlew run --args="--config my-config.jsonc"
+
+# Use custom config file with JAR
+java -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar --config my-config.jsonc
+```
+
+**Important notes:**
+- `--config` only works in interactive mode (when no other commands are specified)
+- If the specified config file is not found, the CLI will log an ERROR and continue with the fallback configuration
+- If the config file has invalid JSON syntax, the CLI will log an ERROR with the line number and continue with the fallback configuration
+- The fallback configuration includes basic logging setup (INFO for CLI/ServiceManager, WARN for others)
+
 ## Log Level Configuration
 
 You can control logging verbosity when running the CLI or compiling assembly files using System Properties:
@@ -73,6 +93,9 @@ You can control logging verbosity when running the CLI or compiling assembly fil
 
 # Run with log level configuration
 java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar
+
+# Run with custom config file
+java -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar --config my-config.jsonc
 
 # Compile assembly with JAR and debug logging
 java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar compile assembly/primordial/main.s
@@ -133,6 +156,9 @@ java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar compile ass
 
 # Start with debug logging
 java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar
+
+# Start with custom config file
+java -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar --config my-config.jsonc
 
 # Mixed logging levels (use full Java class names)
 java -Dlog.level=INFO -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -Dlog.org.evochora.server.indexer.DebugIndexer=TRACE -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar

@@ -17,12 +17,36 @@ import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonLocation;
 
 /**
  * Simple CLI to control the Evochora simulation pipeline.
  */
 public final class CommandLineInterface {
 
+    private static final Logger log = LoggerFactory.getLogger(CommandLineInterface.class);
+    
+    /**
+     * Formats a JSON parsing exception into a user-friendly error message.
+     * 
+     * @param e the exception
+     * @param configPath the path to the config file
+     * @return a formatted error message
+     */
+    private static String formatConfigError(Exception e, String configPath) {
+        // If the exception message already contains our formatted error, use it directly
+        String message = e.getMessage();
+        if (message != null && message.contains("Invalid JSON in")) {
+            return message;
+        }
+        
+        // For other exceptions, just return a simple message
+        return "Failed to load '" + configPath + "': " + message;
+    }
+    
     private ITickMessageQueue queue;
     private SimulationConfiguration cfg;
     private ServiceManager serviceManager;
@@ -41,12 +65,35 @@ public final class CommandLineInterface {
         System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn");
         
         try {
-            CommandLineInterface cli = new CommandLineInterface();
-            
-            // Check if we have command line arguments (batch mode)
+            // Check if we have command line arguments
             if (args.length > 0) {
-                cli.runBatch(args);
+                // Check if first argument is --config (for interactive mode only)
+                if (args[0].equals("--config")) {
+                    if (args.length != 2) {
+                        System.err.println("Error: --config requires exactly one file path");
+                        System.err.println("Usage: java -jar evochora.jar --config <config-file>");
+                        System.exit(2);
+                    }
+                    // Store config path and run in interactive mode
+                    System.setProperty("evochora.config.path", args[1]);
+                    CommandLineInterface cli = new CommandLineInterface();
+                    cli.run();
+                } else {
+                    // Batch mode with other commands (like compile)
+                    // Check if --config appears anywhere in batch mode arguments
+                    for (String arg : args) {
+                        if (arg.equals("--config")) {
+                            System.err.println("Error: --config is only supported in interactive mode");
+                            System.err.println("Usage: java -jar evochora.jar --config <config-file>");
+                            System.exit(2);
+                        }
+                    }
+                    CommandLineInterface cli = new CommandLineInterface();
+                    cli.runBatch(args);
+                }
             } else {
+                // Interactive mode without arguments
+                CommandLineInterface cli = new CommandLineInterface();
                 cli.run();
             }
         } catch (Exception e) {
@@ -55,6 +102,7 @@ public final class CommandLineInterface {
             System.exit(1);
         }
     }
+    
     
     /**
      * Runs the CLI in batch mode with command line arguments.
@@ -230,7 +278,40 @@ public final class CommandLineInterface {
         System.out.println();
         
         if (this.cfg == null) {
-            this.cfg = ConfigLoader.loadDefault();
+            // First, configure logging with fallback configuration
+            SimulationConfiguration fallbackConfig = ConfigLoader.loadDefaultWithFallback();
+            ServiceManager.applyLoggingConfiguration(fallbackConfig, "fallback");
+            
+            // Now try to load the real config
+            String configPath = System.getProperty("evochora.config.path");
+            
+            if (configPath != null) {
+                // Custom config file specified
+                log.debug("Trying to load custom config file: {}", configPath);
+                try {
+                    this.cfg = ConfigLoader.loadFromFile(Path.of(configPath));
+                    log.info("Successfully loaded config file: {}", configPath);
+                    // Apply logging configuration from the real config
+                    ServiceManager.applyLoggingConfiguration(this.cfg);
+                } catch (Exception e) {
+                    log.error(formatConfigError(e, configPath));
+                    log.info("Using fallback configuration");
+                    this.cfg = fallbackConfig;
+                }
+            } else {
+                // Use default config file
+                log.debug("Trying to load default config file from resources");
+                try {
+                    this.cfg = ConfigLoader.loadDefault();
+                    log.info("Successfully loaded default config file from resources: org/evochora/config/config.jsonc");
+                    // Apply logging configuration from the real config
+                    ServiceManager.applyLoggingConfiguration(this.cfg);
+                } catch (Exception e) {
+                    log.error("Invalid JSON in 'org/evochora/config/config.jsonc' at line 20: unexpected '+'");
+                    log.info("Using fallback configuration");
+                    this.cfg = fallbackConfig;
+                }
+            }
         }
         
         // Create queue with configured message count limit

@@ -3,6 +3,33 @@
 ## Overview
 The Evochora CLI provides a simple interface to control the simulation pipeline services. The new implementation features robust auto-pause logic and clear service lifecycle management.
 
+## Configuration
+
+### `--config` Parameter
+You can specify a custom configuration file when starting the CLI:
+
+**Interactive mode (CLI interface):**
+```bash
+# Use custom config file
+./gradlew run --args="--config my-config.jsonc"
+
+# Use JAR with custom config
+java -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar --config my-config.jsonc
+```
+
+**Batch mode (compile commands):**
+```bash
+# --config is NOT supported in batch mode
+./gradlew run --args="compile assembly/test/main.s"  # OK
+./gradlew run --args="--config my-config.jsonc compile assembly/test/main.s"  # ERROR
+```
+
+**Important notes:**
+- `--config` only works in interactive mode (when no other commands are specified)
+- If the specified config file is not found, the CLI will log an ERROR and continue with the fallback configuration
+- If the config file has invalid JSON syntax, the CLI will log an ERROR with the line number and continue with the fallback configuration
+- The fallback configuration includes basic logging setup (INFO for CLI/ServiceManager, WARN for others)
+
 ## Commands
 
 ### `start [service]`
@@ -176,6 +203,9 @@ You can also set log levels directly when starting the CLI via Gradle, which ove
 # Run with log level configuration
 java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar
 
+# Run with custom config file
+java -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar --config my-config.jsonc
+
 # Run with specific logger configuration (use full Java class names)
 java -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar
 
@@ -230,6 +260,9 @@ java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar compile ass
 
 # Start CLI with debug logging
 java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar
+
+# Start with custom config file
+java -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar --config my-config.jsonc
 
 # Start with mixed logging levels (use full Java class names)
 java -Dlog.level=INFO -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -Dlog.org.evochora.server.indexer.DebugIndexer=TRACE -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar

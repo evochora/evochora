@@ -86,9 +86,6 @@ public final class PersistenceService implements IControllable, Runnable {
     public void start() {
         if (running.compareAndSet(false, true)) {
             setupDatabase();
-            String dbInfo = jdbcUrlOverride != null ? jdbcUrlOverride : 
-                           (dbFilePath != null ? dbFilePath.toString() : "unknown");
-            log.info("PersistenceService: {}", dbInfo);
             thread.start();
         }
     }

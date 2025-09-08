@@ -16,6 +16,7 @@
     
     // [OPTIONAL] List of organisms to place in the world (default: empty array)
     "organisms": [
+
       {
         // [MANDATORY] Path to the assembly program file for this organism
         "program": "assembly/test/main_with.s",
@@ -158,7 +159,7 @@
       "defaultLogLevel": "WARN",
       // [OPTIONAL] Per-logger specific log levels
       "logLevels": {
-        "org.evochora.server.ServiceManager": "DEBUG"
+        "org.evochora.server.ServiceManager": "INFO"
       }
     }
   }

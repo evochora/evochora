@@ -45,9 +45,6 @@ public final class ServiceManager {
         this.queue = queue;
         this.config = config;
         
-        // Apply logging configuration before any other operations
-        applyLoggingConfiguration();
-        
         // Check autoStart configuration and start services automatically
         log.debug("Checking autoStart configuration...");
         log.info("Auto-starting services...");
@@ -528,7 +525,15 @@ public final class ServiceManager {
             simulationEngine.set(engine);
             engine.start();
             simulationRunning.set(true);
-            log.info("Simulation engine started with ProgramArtifact features: {}", skipProgramArtefact ? "disabled" : "enabled");
+            log.debug("Simulation engine thread started");
+            
+            // Log that simulation is fully initialized (after a short delay to ensure initialization is complete)
+            String envInfo = String.format("[%d, %d]", config.simulation.environment.shape[0], config.simulation.environment.shape[1]);
+            String seedInfo = config.simulation.seed != null ? String.valueOf(config.simulation.seed) : "default";
+            int organismCount = config.simulation.organisms != null ? config.simulation.organisms.size() : 0;
+            log.info("Simulation engine started: Environment {} toroidal:{} seed:{} organisms:{} ProgramArtifact features: {}", 
+                    envInfo, config.simulation.environment.toroidal, seedInfo, organismCount,
+                    skipProgramArtefact ? "disabled" : "enabled");
         }
     }
     
@@ -578,7 +583,7 @@ public final class ServiceManager {
         java.util.List<org.evochora.server.engine.OrganismPlacement> placements = new java.util.ArrayList<>();
         
         if (config.simulation == null || config.simulation.organisms == null) {
-            log.info("No organisms configured in simulation");
+            log.warn("No organisms configured in simulation");
             return placements;
         }
         
@@ -704,6 +709,20 @@ public final class ServiceManager {
      * Applies logging configuration from the config to set appropriate log levels.
      */
     private void applyLoggingConfiguration() {
+        applyLoggingConfiguration(this.config);
+    }
+    
+    /**
+     * Applies logging configuration from the given config to set appropriate log levels.
+     */
+    public static void applyLoggingConfiguration(SimulationConfiguration config) {
+        applyLoggingConfiguration(config, "config file");
+    }
+    
+    /**
+     * Applies logging configuration from the given config to set appropriate log levels.
+     */
+    public static void applyLoggingConfiguration(SimulationConfiguration config, String source) {
         try {
             // Try to access Logback LoggerContext via reflection (since it's runtimeOnly)
             Object loggerContext = LoggerFactory.getILoggerFactory();
@@ -766,7 +785,7 @@ public final class ServiceManager {
                             loggerClass.getMethod("setLevel", levelClass).invoke(logger, level);
                         }
                     }
-                    log.debug("Applied logging configuration from config.jsonc");
+                    log.debug("Applied logging configuration from {}", source);
                 }
             }
             

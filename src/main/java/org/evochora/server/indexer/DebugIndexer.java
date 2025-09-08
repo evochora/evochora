@@ -91,14 +91,10 @@ public class DebugIndexer implements IControllable, Runnable {
     @Override
     public void start() {
         if (running.compareAndSet(false, true)) {
-            String rawDbName = rawDbPath.substring(rawDbPath.lastIndexOf('/') + 1);
-            String debugDbName = debugDbPath.substring(debugDbPath.lastIndexOf('/') + 1);
-            log.info("DebugIndexer: reading {} writing {}", rawDbName, debugDbName);
-            
             try {
                 databaseManager.setupDebugDatabase();
                 databaseHealthy.set(true);
-                log.info("DebugIndexer: database setup successful, starting processing thread");
+                log.debug("DebugIndexer: database setup successful, starting processing thread");
             } catch (Exception e) {
                 databaseHealthy.set(false);
                 log.warn("Failed to setup debug database: {} - starting with queuing enabled", e.getMessage(), e);
@@ -109,7 +105,7 @@ public class DebugIndexer implements IControllable, Runnable {
             thread.start();
             queueProcessorThread.start();
             queueProcessorRunning.set(true);
-            log.info("DebugIndexer started with health status: {}", getHealthStatus());
+            log.debug("DebugIndexer started with health status: {}", getHealthStatus());
         }
     }
 
@@ -629,7 +625,7 @@ public class DebugIndexer implements IControllable, Runnable {
                 try (ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM raw_ticks")) {
                     if (!rs.next() || rs.getLong(1) == 0) {
                         // No ticks available yet, wait and retry
-                        log.info("Waiting for first tick to be available in raw database...");
+                        log.debug("Waiting for first tick to be available in raw database...");
                         try {
                             Thread.sleep(200);
                         } catch (InterruptedException e) {
@@ -673,16 +669,16 @@ public class DebugIndexer implements IControllable, Runnable {
                 // Fourth: Write all program artifacts to debug database
                     writeProgramArtifacts();
                 if (databaseHealthy.get()) {
-                    log.info("Successfully wrote {} program artifacts to debug database", this.artifacts.size());
+                    log.debug("Successfully wrote {} program artifacts to debug database", this.artifacts.size());
                 }
                 
                 // Fifth: Copy simulation metadata to debug database
                     writeSimulationMetadata();
                 if (databaseHealthy.get()) {
-                    log.info("Successfully wrote simulation metadata to debug database");
+                    log.debug("Successfully wrote simulation metadata to debug database");
                 }
                 
-                log.info("Successfully loaded initial data from raw database");
+                log.debug("Successfully loaded initial data from raw database");
                 break; // Successfully loaded, exit the loop
                 
             } catch (Exception e) {

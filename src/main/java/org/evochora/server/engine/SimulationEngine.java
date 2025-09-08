@@ -78,8 +78,6 @@ public class SimulationEngine implements IControllable, Runnable {
         
         // Setze ProgramArtifact-Konfiguration direkt
         this.enableProgramArtifactFeatures = !skipProgramArtefact;
-        log.info("ProgramArtifact features: {} (skipProgramArtefact={})", 
-                this.enableProgramArtifactFeatures ? "enabled" : "disabled", skipProgramArtefact);
     }
     
     /**
@@ -179,12 +177,6 @@ public class SimulationEngine implements IControllable, Runnable {
             simulation.setRandomProvider(randomProvider);
             
             String seedInfo = seed != null ? String.valueOf(seed) : "default";
-            String envInfo = environmentProperties != null ? 
-                String.format("[%d, %d]", environmentProperties.getWorldShape()[0], environmentProperties.getWorldShape()[1]) : "null";
-            log.info("SimulationEngine: Environment {} toroidal:{} seed:{}", 
-                    envInfo,
-                    environmentProperties.isToroidal(),
-                    seedInfo);
             
             thread.start();
         }
@@ -446,6 +438,7 @@ public class SimulationEngine implements IControllable, Runnable {
                 }
             }
 
+
             // Send initial tick state (tick 0) before starting the simulation loop
             try {
                 RawTickState initialTickMsg = toRawState(simulation);
@@ -463,7 +456,7 @@ public class SimulationEngine implements IControllable, Runnable {
         if (autoPaused.get() && !manuallyPaused.get() && queue instanceof org.evochora.server.queue.InMemoryTickQueue) {
             org.evochora.server.queue.InMemoryTickQueue memQueue = (org.evochora.server.queue.InMemoryTickQueue) queue;
             if (memQueue.canAcceptMessage()) {
-                log.info("Auto-resuming simulation - queue has space");
+                log.debug("Auto-resuming simulation - queue has space");
                 autoPaused.set(false);
                 paused.set(false);
                 continue;
@@ -492,7 +485,7 @@ public class SimulationEngine implements IControllable, Runnable {
                     if (!manuallyPaused.get() && queue instanceof org.evochora.server.queue.InMemoryTickQueue) {
                         org.evochora.server.queue.InMemoryTickQueue memQueue = (org.evochora.server.queue.InMemoryTickQueue) queue;
                         if (!memQueue.canAcceptMessage()) {
-                            log.info("Auto-pausing simulation - queue is full");
+                            log.debug("Auto-pausing simulation - queue is full");
                             autoPaused.set(true);
                             paused.set(true);
                             continue;
@@ -529,7 +522,7 @@ public class SimulationEngine implements IControllable, Runnable {
                     if (queue instanceof org.evochora.server.queue.InMemoryTickQueue) {
                         org.evochora.server.queue.InMemoryTickQueue memQueue = (org.evochora.server.queue.InMemoryTickQueue) queue;
                         if (!memQueue.tryPut(tickMsg)) {
-                            log.info("Auto-pausing simulation - queue is full");
+                            log.debug("Auto-pausing simulation - queue is full");
                             autoPaused.set(true);
                             paused.set(true);
                             continue;

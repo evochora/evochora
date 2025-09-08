@@ -113,9 +113,6 @@ public final class DebugServer {
 
             this.app.start(port);
             this.isRunning = true;
-            // Show full path including directory like getStatus method does, using backslashes for consistency
-            String dbInfo = dbPath != null ? dbPath.replace('/', '\\') : "unknown";
-            log.info("DebugServer: port:{} reading {}", port, dbInfo);
         } catch (Exception e) {
             log.debug("DebugServer failed to start HTTP server: {}", e.getMessage());
             throw new RuntimeException("Failed to start HTTP server", e);
