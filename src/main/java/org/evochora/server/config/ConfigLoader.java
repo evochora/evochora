@@ -1,14 +1,13 @@
 package org.evochora.server.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.core.JsonParseException;
-import com.fasterxml.jackson.core.JsonLocation;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonSyntaxException;
+import com.google.gson.JsonParseException;
 
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.io.BufferedReader;
-import java.io.StringReader;
 import java.io.IOException;
 
 /**
@@ -16,7 +15,9 @@ import java.io.IOException;
  * Supports both // and /* *\/ style comments.
  */
 public final class ConfigLoader {
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final Gson GSON = new GsonBuilder()
+        .setLenient() // Allow comments and other JSON5 features
+        .create();
     private static final String DEFAULT_RESOURCE_PATH = "org/evochora/config/config.jsonc";
 
     private ConfigLoader() {}
@@ -29,25 +30,33 @@ public final class ConfigLoader {
      * @return a formatted error message
      */
     private static String formatJsonError(Exception e, String configPath) {
-        if (e instanceof JsonParseException) {
-            JsonParseException jsonEx = (JsonParseException) e;
-            JsonLocation location = jsonEx.getLocation();
+        if (e instanceof JsonSyntaxException) {
+            JsonSyntaxException jsonEx = (JsonSyntaxException) e;
+            String message = jsonEx.getMessage();
             
             StringBuilder sb = new StringBuilder();
             sb.append("Invalid JSON in '").append(configPath).append("'");
             
-            if (location != null) {
-                sb.append(" at line ").append(location.getLineNr());
-            }
-            
-            // Extract the problematic character
-            String message = jsonEx.getOriginalMessage();
-            if (message != null && message.contains("Unexpected character")) {
-                int charStart = message.indexOf('\'') + 1;
-                int charEnd = message.indexOf('\'', charStart);
-                if (charStart > 0 && charEnd > charStart) {
-                    String problemChar = message.substring(charStart, charEnd);
-                    sb.append(": unexpected '").append(problemChar).append("'");
+            // Gson provides good error messages with line numbers
+            if (message != null) {
+                // Extract line number from Gson error message
+                if (message.contains("at line")) {
+                    int lineStart = message.indexOf("at line") + 7;
+                    int lineEnd = message.indexOf("column", lineStart);
+                    if (lineEnd > lineStart) {
+                        String lineInfo = message.substring(lineStart, lineEnd).trim();
+                        sb.append(" at line ").append(lineInfo);
+                    }
+                }
+                
+                // Extract the actual error description
+                if (message.contains("Expected")) {
+                    int expectedStart = message.indexOf("Expected");
+                    int pathStart = message.indexOf("at line");
+                    if (pathStart > expectedStart) {
+                        String errorDesc = message.substring(expectedStart, pathStart).trim();
+                        sb.append(": ").append(errorDesc);
+                    }
                 }
             }
             
@@ -57,69 +66,14 @@ public final class ConfigLoader {
         }
     }
 
-    /**
-     * Strips comments from JSONC content to make it valid JSON.
-     * Supports both // and /* *\/ style comments.
-     */
-    private static String stripComments(String jsoncContent) throws IOException {
-        StringBuilder result = new StringBuilder();
-        BufferedReader reader = new BufferedReader(new StringReader(jsoncContent));
-        String line;
-        boolean inMultiLineComment = false;
-        
-        while ((line = reader.readLine()) != null) {
-            String strippedLine = line;
-            
-            if (inMultiLineComment) {
-                // Check if multi-line comment ends on this line
-                int endComment = strippedLine.indexOf("*/");
-                if (endComment != -1) {
-                    inMultiLineComment = false;
-                    strippedLine = strippedLine.substring(endComment + 2);
-                } else {
-                    // Still in multi-line comment, skip this line
-                    continue;
-                }
-            }
-            
-            // Check for start of multi-line comment
-            int startComment = strippedLine.indexOf("/*");
-            if (startComment != -1) {
-                inMultiLineComment = true;
-                strippedLine = strippedLine.substring(0, startComment);
-                
-                // Check if comment ends on same line
-                int endComment = strippedLine.indexOf("*/");
-                if (endComment != -1) {
-                    inMultiLineComment = false;
-                    strippedLine = strippedLine.substring(0, startComment) + strippedLine.substring(endComment + 2);
-                }
-            }
-            
-            // Remove single-line comments
-            int singleLineComment = strippedLine.indexOf("//");
-            if (singleLineComment != -1) {
-                strippedLine = strippedLine.substring(0, singleLineComment);
-            }
-            
-            // Only add non-empty lines
-            if (!strippedLine.trim().isEmpty()) {
-                result.append(strippedLine).append("\n");
-            }
-        }
-        
-        return result.toString();
-    }
 
     public static SimulationConfiguration loadDefault() {
         try (InputStream is = ConfigLoader.class.getClassLoader().getResourceAsStream(DEFAULT_RESOURCE_PATH)) {
             if (is != null) {
                 // Read the JSONC content
                 String jsoncContent = new String(is.readAllBytes());
-                // Strip comments to get valid JSON
-                String jsonContent = stripComments(jsoncContent);
-                // Parse the JSON
-                return OBJECT_MAPPER.readValue(jsonContent, SimulationConfiguration.class);
+                // Parse the JSONC directly with Gson (supports comments natively)
+                return GSON.fromJson(jsoncContent, SimulationConfiguration.class);
             } else {
                 throw new RuntimeException("Default config file not found in resources: " + DEFAULT_RESOURCE_PATH);
             }
@@ -137,10 +91,8 @@ public final class ConfigLoader {
             if (is != null) {
                 // Read the JSONC content
                 String jsoncContent = new String(is.readAllBytes());
-                // Strip comments to get valid JSON
-                String jsonContent = stripComments(jsoncContent);
-                // Parse the JSON
-                return OBJECT_MAPPER.readValue(jsonContent, SimulationConfiguration.class);
+                // Parse the JSONC directly with Gson (supports comments natively)
+                return GSON.fromJson(jsoncContent, SimulationConfiguration.class);
             }
         } catch (Exception ignore) {}
         
@@ -199,10 +151,8 @@ public final class ConfigLoader {
         try (InputStream is = Files.newInputStream(file)) {
             // Read the JSONC content
             String jsoncContent = new String(is.readAllBytes());
-            // Strip comments to get valid JSON
-            String jsonContent = stripComments(jsoncContent);
-            // Parse the JSON
-            return OBJECT_MAPPER.readValue(jsonContent, SimulationConfiguration.class);
+            // Parse the JSONC directly with Gson (supports comments natively)
+            return GSON.fromJson(jsoncContent, SimulationConfiguration.class);
         } catch (Exception e) {
             throw new Exception(formatJsonError(e, file.toString()));
         }

@@ -7,8 +7,8 @@
 # Library einbinden & Abhängigkeit deklarieren
 # ----------------------------
 .ORG 0|4
-.INCLUDE "lib/behavior.s"
-.REQUIRE "lib/behavior.s" AS BEHAV
+.INCLUDE "lib/behavior4.s"
+.REQUIRE "lib/behavior4.s" AS BEHAV
 
 # ----------------------------
 # Konstanten

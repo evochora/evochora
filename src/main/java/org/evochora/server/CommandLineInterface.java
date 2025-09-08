@@ -307,7 +307,8 @@ public final class CommandLineInterface {
                     // Apply logging configuration from the real config
                     ServiceManager.applyLoggingConfiguration(this.cfg);
                 } catch (Exception e) {
-                    log.error("Invalid JSON in 'org/evochora/config/config.jsonc' at line 20: unexpected '+'");
+                    String errorMessage = formatConfigError(e, "org/evochora/config/config.jsonc");
+                    log.error(errorMessage);
                     log.info("Using fallback configuration");
                     this.cfg = fallbackConfig;
                 }
