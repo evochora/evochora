@@ -1,8 +1,8 @@
-# lib/energy_search.s
+# lib/behavior.s
 # Exportierte Energiesuche: ballistisch + periodischer Turn mit Primperioden.
 # Keine externen Abhängigkeiten außer den übergebenen Parametern.
 
-# Procedure: ENERGY_SEARCH_PROC
+# Procedure: BEHAV.ENERGY_SEARCH
 # Params (per .WITH):
 #   DIR       : Bewegungsrichtungs-Vektor (wird in-place gedreht)
 #   FWD_MASK  : gecachte Vorwärts-Bitmaske (wird nach jedem Turn aktualisiert)
