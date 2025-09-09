@@ -64,6 +64,9 @@ class CallAnnotationTest {
         
         assertTrue(proc1Annotation.annotationText().contains("|"), "Jump target should contain coordinate separator");
         
+        // Verify column information is preserved
+        assertTrue(proc1Annotation.column() >= 0, "PROC1 annotation should have column information");
+        
         assertNotNull(artifact.tokenMap(), "TokenMap should exist");
         assertTrue(artifact.tokenMap().size() > 0, "TokenMap should contain tokens");
     }

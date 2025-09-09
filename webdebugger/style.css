@@ -323,7 +323,7 @@ main.container {
     font-style: italic;
     color: #a0e0a0; /* Helle grüne Farbe */
     font-size: 0.9em;
-    margin-left: 4px;
+    margin-left: 1px;
     opacity: 0.8;
 }
 .injected-value.callParam { color: #ffd27f; }

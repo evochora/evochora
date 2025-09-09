@@ -67,12 +67,16 @@ class SidebarNextInstructionView {
                     formattedArgs.push(`[${vectorArgs.join('|')}]`);
                 }
             } else if (argType === 'REGISTER') {
-                // Register: %DR0[=CODE:0] (aktueller Wert aus Internal State)
+                // Register: %DR0[CODE:0] for direct registers, %TMP[%DR0=CODE:0] for aliases
                 const argText = String(args[i]);
                 const value = this.extractValueFromMolecule(argText);
                 const registerName = this.formatRegisterName(value);
                 const currentValue = this.getCurrentRegisterValue(value, internalState);
-                formattedArgs.push(`${registerName}<span class="injected-value">[=${currentValue}]</span>`);
+                
+                // Only use = for FPR registers (aliases), not for direct DR/PR/LR registers
+                const isDirectRegister = registerName.match(/^%[DL]?R\d+$/);
+                const separator = isDirectRegister ? '' : '=';
+                formattedArgs.push(`${registerName}<span class="injected-value">[${separator}${currentValue}]</span>`);
                 i++;
             } else {
                 // LITERAL/UNKNOWN: Zeige einzeln

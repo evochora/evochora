@@ -142,8 +142,8 @@ class TokenAnnotatorTest {
         
         // Create organism state with some register values
         List<Object> drs = new ArrayList<>();
-        drs.add(42); // %DR0 = DATA:42
-        drs.add(15); // %DR1 = DATA:15
+        drs.add(new org.evochora.runtime.model.Molecule(org.evochora.runtime.Config.TYPE_DATA, 42).toInt()); // %DR0 = DATA:42
+        drs.add(new org.evochora.runtime.model.Molecule(org.evochora.runtime.Config.TYPE_DATA, 15).toInt()); // %DR1 = DATA:15
         
         organismState = new RawOrganismState(
             1, // id
@@ -201,8 +201,13 @@ class TokenAnnotatorTest {
         
         // Verify we have register value annotations
         boolean hasRegisterAnnotation = annotations.stream()
-            .anyMatch(a -> a.annotationText().contains("CODE:"));
+            .anyMatch(a -> a.annotationText().contains("DATA:"));
         assertTrue(hasRegisterAnnotation, "Should have register value annotations");
+        
+        // Verify column information is preserved
+        boolean hasColumnInfo = annotations.stream()
+            .anyMatch(a -> a.column() >= 0);
+        assertTrue(hasColumnInfo, "Should have column information");
     }
     
     @Test

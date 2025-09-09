@@ -1,7 +1,6 @@
 package org.evochora.server.indexer;
 
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.compiler.api.TokenInfo;
 import org.evochora.server.contracts.debug.PreparedTickState.InlineSpan;
 import org.evochora.server.contracts.raw.RawOrganismState;
 import org.evochora.server.indexer.annotation.TokenAnnotator;
@@ -50,12 +49,11 @@ public class SourceAnnotator {
      * Converts TokenAnnotation objects to InlineSpan objects for web debugger compatibility.
      * This method handles the conversion from our internal token analysis to the web debugger's expected format.
      * 
-     * TODO: Future improvement - use precise column information from TokenInfo for accurate positioning
-     * instead of string-splitting approach. This would require modifying TokenAnnotation to include column data.
+     * Uses precise column information from TokenAnnotation for accurate positioning instead of string-splitting approach.
      * 
      * @param tokenAnnotations The token annotations from TokenAnnotator
      * @param lineNumber The line number for the annotations
-     * @param sourceLine The source line content for occurrence calculation
+     * @param sourceLine The source line content (used for fallback occurrence calculation)
      * @return List of InlineSpan objects ready for the web debugger
      */
     private List<InlineSpan> convertToInlineSpans(List<TokenAnnotation> tokenAnnotations, int lineNumber, String sourceLine) {
@@ -65,35 +63,35 @@ public class SourceAnnotator {
             return spans;
         }
 
-        // Calculate token occurrences in the source line for proper positioning
-        // This is a best-effort approach using string matching
-        // TODO: Replace with precise column-based positioning using TokenInfo data
-        Map<String, Integer> tokenOccurrences = new HashMap<>();
-        String[] tokens = sourceLine.trim().split("\\s+");
-        
-        for (String token : tokens) {
-            if (token != null && !token.trim().isEmpty()) {
-                tokenOccurrences.compute(token, (k, v) -> (v == null) ? 1 : v + 1);
-            }
+        // Group annotations by token text to calculate occurrences
+        Map<String, List<TokenAnnotation>> tokenGroups = new HashMap<>();
+        for (TokenAnnotation annotation : tokenAnnotations) {
+            tokenGroups.computeIfAbsent(annotation.token(), k -> new ArrayList<>()).add(annotation);
         }
         
-        // Convert each TokenAnnotation to InlineSpan
-        for (TokenAnnotation tokenAnnotation : tokenAnnotations) {
-            String tokenText = tokenAnnotation.token();
+        // Convert each TokenAnnotation to InlineSpan using column-based positioning
+        for (Map.Entry<String, List<TokenAnnotation>> entry : tokenGroups.entrySet()) {
+            String tokenText = entry.getKey();
+            List<TokenAnnotation> annotationsForToken = entry.getValue();
             
-            // Find the occurrence of this token in the source line
-            int occurrence = tokenOccurrences.getOrDefault(tokenText, 1);
+            // Sort annotations by column position to determine occurrence order
+            annotationsForToken.sort((a, b) -> Integer.compare(a.column(), b.column()));
             
-            // Create InlineSpan with the converted data
-            InlineSpan span = new InlineSpan(
-                lineNumber,
-                tokenText,
-                occurrence,
-                tokenAnnotation.annotationText(),
-                tokenAnnotation.kind()
-            );
-            
-            spans.add(span);
+            // Create InlineSpan for each occurrence of this token
+            for (int i = 0; i < annotationsForToken.size(); i++) {
+                TokenAnnotation annotation = annotationsForToken.get(i);
+                int occurrence = i + 1; // 1-based occurrence
+                
+                InlineSpan span = new InlineSpan(
+                    lineNumber,
+                    tokenText,
+                    occurrence,
+                    annotation.annotationText(),
+                    annotation.kind()
+                );
+                
+                spans.add(span);
+            }
         }
         
         return spans;

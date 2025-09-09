@@ -10,5 +10,6 @@ package org.evochora.server.indexer.annotation;
 public record TokenAnnotation(
     String token,           // The token being annotated
     String annotationText,  // The annotation text (e.g., "[12|1]", "[=DATA:42]")
-    String kind            // The kind of annotation (e.g., "label", "reg", "param", "call", "ret")
+    String kind,           // The kind of annotation (e.g., "label", "reg", "param", "call", "ret")
+    int column             // The column position of the token in the source line
 ) {}

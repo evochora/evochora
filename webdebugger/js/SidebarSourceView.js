@@ -176,53 +176,19 @@ class SidebarSourceView {
     getRelativePath(fileName) {
         if (!fileName) return '';
         
-        // Behalte .s Endung für bessere Lesbarkeit
-        let relativePath = fileName;
+        // Normalisiere Pfad-Separatoren (Windows \ zu /)
+        const normalizedFileName = fileName.replace(/\\/g, '/');
         
-        // Finde das aktuelle Hauptprogramm basierend auf der aktuellen fileName
-        // Die fileName aus der sourceView ist das Hauptprogramm
-        const currentMainProgram = this.currentFileName || this.selectedFileName;
-        
-        if (!currentMainProgram) {
-            // Fallback: Zeige den vollen Pfad
-            return fileName;
+        // Extrahiere den relativen Pfad vom Projekt-Root
+        // Suche nach "assembly/" als Startpunkt für den relativen Pfad
+        const assemblyIndex = normalizedFileName.indexOf('assembly/');
+        if (assemblyIndex !== -1) {
+            // Extrahiere alles ab "assembly/" bis zum Ende
+            return normalizedFileName.substring(assemblyIndex);
         }
         
-        const isMainProgram = fileName === currentMainProgram;
-        
-        if (isMainProgram) {
-            // Für das Hauptprogramm: Zeige nur den Dateinamen
-            const parts = relativePath.split('/');
-            relativePath = parts[parts.length - 1];
-        } else {
-            // Für Include-Dateien: Berechne den relativen Pfad zum Hauptprogramm
-            // Beispiel: 
-            // Hauptdatei: "org/evochora/organism/prototypes/test.s"
-            // Include-Datei: "org/evochora/organism/prototypes/lib/test.s"
-            // Ergebnis: "lib/test.s"
-            
-            const mainParts = currentMainProgram.split('/');
-            const includeParts = relativePath.split('/');
-            
-            // Finde den gemeinsamen Prefix
-            let commonPrefixLength = 0;
-            for (let i = 0; i < Math.min(mainParts.length, includeParts.length); i++) {
-                if (mainParts[i] === includeParts[i]) {
-                    commonPrefixLength++;
-                } else {
-                    break;
-                }
-            }
-            
-            // Entferne den gemeinsamen Prefix
-            if (commonPrefixLength > 0) {
-                relativePath = includeParts.slice(commonPrefixLength).join('/');
-            }
-        }
-        
-        // Debug logging
-        
-        return relativePath;
+        // Fallback: Wenn "assembly/" nicht gefunden wird, zeige den vollen Pfad
+        return normalizedFileName;
     }
     
     createAssemblyCodeView(sourceLines, src) {
@@ -273,14 +239,22 @@ class SidebarSourceView {
                     const token = span.tokenToAnnotate;
                     const annotation = span.annotationText;
                     const kind = span.kind || 'info';
+                    const occurrence = span.occurrence || 1;
                     
-                                         if (token && annotation) {
-                         // Create annotation HTML with token in normal color and annotation in green
-                         const annotationHtml = `${token}<span class="injected-value ${kind}">[${annotation}]</span>`;
-                         
-                         // Replace token with annotated version
-                         formattedLine = formattedLine.replace(token, annotationHtml);
-                     }
+                    if (token && annotation) {
+                        // Create annotation HTML with token in normal color and annotation in green
+                        const annotationHtml = `${token}<span class="injected-value ${kind}">[${annotation}]</span>`;
+                        
+                        // Replace the specific occurrence of the token
+                        let currentOccurrence = 0;
+                        formattedLine = formattedLine.replace(new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), (match) => {
+                            currentOccurrence++;
+                            if (currentOccurrence === occurrence) {
+                                return annotationHtml;
+                            }
+                            return match;
+                        });
+                    }
                 }
             }
         }

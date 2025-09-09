@@ -21,7 +21,11 @@ class ToolbarView {
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 const v = parseInt(input.value, 10);
-                if (!Number.isNaN(v)) this.controller.navigateToTick(v);
+                if (!Number.isNaN(v)) {
+                    this.controller.navigateToTick(v);
+                    // Select all text after navigation so user can immediately type new number
+                    setTimeout(() => input.select(), 0);
+                }
             }
         });
         input.addEventListener('change', () => {

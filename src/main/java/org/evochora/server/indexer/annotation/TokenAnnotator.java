@@ -61,33 +61,33 @@ public class TokenAnnotator {
     public List<TokenAnnotation> analyzeLine(String fileName, int lineNumber, ProgramArtifact artifact, RawOrganismState organismState) {
         List<TokenAnnotation> annotations = new ArrayList<>();
         
-        // Get tokens for this specific line from the specific file using precise lookup
-        List<TokenInfo> lineTokens = new ArrayList<>();
-        
         // Use the precise file-line-column lookup structure
         Map<Integer, Map<Integer, List<TokenInfo>>> fileTokens = artifact.tokenLookup().get(fileName);
-        if (fileTokens != null) {
-            Map<Integer, List<TokenInfo>> lineTokensMap = fileTokens.get(lineNumber);
-            if (lineTokensMap != null) {
-                // Collect all tokens from all columns on this line
-                lineTokensMap.values().forEach(lineTokens::addAll);
-            }
+        if (fileTokens == null) {
+            return annotations; // No tokens for this file
         }
         
-        if (lineTokens.isEmpty()) {
+        Map<Integer, List<TokenInfo>> lineTokensMap = fileTokens.get(lineNumber);
+        if (lineTokensMap == null) {
             return annotations; // No tokens on this line
         }
         
-        // Analyze each token using the appropriate handler
-        for (TokenInfo tokenInfo : lineTokens) {
-            String tokenText = tokenInfo.tokenText();
+        // Process each column position separately to preserve column information
+        for (Map.Entry<Integer, List<TokenInfo>> columnEntry : lineTokensMap.entrySet()) {
+            int column = columnEntry.getKey();
+            List<TokenInfo> tokensAtColumn = columnEntry.getValue();
             
-            // Find the appropriate handler for this token
-            ITokenHandler handler = findHandler(tokenText, lineNumber, fileName, artifact, tokenInfo);
-            if (handler != null) {
-                TokenAnalysisResult result = handler.analyze(tokenText, lineNumber, artifact, tokenInfo, organismState);
-                if (result != null) {
-                    annotations.add(new TokenAnnotation(tokenText, result.annotationText(), result.kind()));
+            // Analyze each token at this column position
+            for (TokenInfo tokenInfo : tokensAtColumn) {
+                String tokenText = tokenInfo.tokenText();
+                
+                // Find the appropriate handler for this token
+                ITokenHandler handler = findHandler(tokenText, lineNumber, fileName, artifact, tokenInfo);
+                if (handler != null) {
+                    TokenAnalysisResult result = handler.analyze(tokenText, lineNumber, artifact, tokenInfo, organismState);
+                    if (result != null) {
+                        annotations.add(new TokenAnnotation(tokenText, result.annotationText(), result.kind(), column));
+                    }
                 }
             }
         }

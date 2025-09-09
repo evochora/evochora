@@ -8,10 +8,6 @@
 # Register-Aliase (nur Main-State)
 # ----------------------------
 .REG %ER       %DR0   # current energy
-.REG %DIR      %DR1   # movement direction vector (x|y)
-.REG %FWD_MASK %DR2   # cached forward direction as bitmask
-.REG %KIDX     %DR3   # index 0..3 for K-periods
-.REG %KLEFT    %DR4   # countdown to periodic turn
 
 # ----------------------------
 # Constants
@@ -38,14 +34,6 @@ START:
 # ----------------------------
 .ORG 1|2
 INIT:
-  # Initialrichtung = rechts; Vorwärtsmaske einmalig cachen
-  SETV %DIR 1|0
-  V2BR %FWD_MASK %DIR
-
-  # Periodischer Turn-State initial
-  SETI %KIDX  DATA:0
-  SETI %KLEFT DATA:89   # entspricht K0 in der Lib
-
   JMPI MAIN_LOOP
 
 # ----------------------------
@@ -56,7 +44,7 @@ MAIN_LOOP:
   NRG %ER
   GTI %ER REPRODUCTION_THRESHOLD
   JMPI REPRODUCE
-  CALL ENERGY.ENERGY_SEARCH_PROC REF %DIR %FWD_MASK %KIDX %KLEFT
+  CALL ENERGY.ENERGY_SEARCH_PROC
   JMPI MAIN_LOOP
 
 # ----------------------------
