@@ -58,6 +58,9 @@ public class ControlFlowInstruction extends Instruction {
         try {
             switch (opName) {
                 case "CALL":
+                    if (operands.size() < 1) { organism.instructionFailed("CALL requires target delta operand."); return; }
+                    Object callTargetObj = operands.get(0).value();
+                    if (!(callTargetObj instanceof int[])) { organism.instructionFailed("CALL target must be a vector."); return; }
                     int[] targetDelta = (int[]) operands.get(0).value();
                     callHandler.executeCall(targetDelta, artifact); // Correct!
                     break;
@@ -67,6 +70,9 @@ public class ControlFlowInstruction extends Instruction {
                 case "JMPI":
                 case "JMPR":
                 case "JMPS":
+                    if (operands.size() < 1) { organism.instructionFailed("Jump instruction requires target delta operand."); return; }
+                    Object jumpTargetObj = operands.get(0).value();
+                    if (!(jumpTargetObj instanceof int[])) { organism.instructionFailed("Jump target must be a vector."); return; }
                     int[] delta = (int[]) operands.get(0).value();
                     int[] targetIp = organism.getTargetCoordinate(organism.getInitialPosition(), delta, environment);
                     organism.setIp(targetIp);

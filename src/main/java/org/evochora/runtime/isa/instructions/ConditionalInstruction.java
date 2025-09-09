@@ -35,6 +35,9 @@ public class ConditionalInstruction extends Instruction {
             String opName = getName();
             if (opName.startsWith("IFM") || opName.startsWith("INM")) {
                 List<Operand> operands = resolveOperands(environment);
+                if (organism.isInstructionFailed()) {
+                    return;
+                }
                 if (operands.size() != 1) {
                     organism.instructionFailed("Invalid operand count for " + opName);
                     return;
@@ -58,6 +61,9 @@ public class ConditionalInstruction extends Instruction {
                 return;
             }
             List<Operand> operands = resolveOperands(environment);
+            if (organism.isInstructionFailed()) {
+                return;
+            }
             if (operands.size() != 2) {
                 organism.instructionFailed("Invalid operand count for conditional operation.");
                 return;
@@ -109,6 +115,7 @@ public class ConditionalInstruction extends Instruction {
 
         } catch (NoSuchElementException e) {
             organism.instructionFailed("Stack underflow during conditional operation.");
+            return;
         }
     }
 }

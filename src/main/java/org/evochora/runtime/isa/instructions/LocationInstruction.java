@@ -31,6 +31,9 @@ public class LocationInstruction extends Instruction {
         Environment env = context.getWorld();
         String name = getName();
         List<Operand> ops = resolveOperands(env);
+        if (org.isInstructionFailed()) {
+            return;
+        }
 
         Deque<int[]> ls = org.getLocationStack();
 
@@ -106,7 +109,9 @@ public class LocationInstruction extends Instruction {
                 int lrIdx = ops.get(1).rawSourceId();
                 int[] vec = org.getLr(lrIdx);
                 if (vec == null) { org.instructionFailed("Invalid LR index"); return; }
-                writeOperand(destReg, vec);
+                if (!writeOperand(destReg, vec)) {
+                    return;
+                }
                 break;
             }
             case "LRDS": {
@@ -122,7 +127,9 @@ public class LocationInstruction extends Instruction {
                 int destReg = ops.get(0).rawSourceId();
                 if (ls.isEmpty()) { org.instructionFailed("LSDR on empty LS"); return; }
                 int[] vec = ls.peek();
-                writeOperand(destReg, vec);
+                if (!writeOperand(destReg, vec)) {
+                    return;
+                }
                 break;
             }
             case "LSDS": {

@@ -32,6 +32,9 @@ public class VectorInstruction extends Instruction {
         try {
             String opName = getName();
             List<Operand> operands = resolveOperands(context.getWorld());
+            if (organism.isInstructionFailed()) {
+                return;
+            }
 
             int dims = context.getWorld().getShape().length;
             switch (opName) {
@@ -51,8 +54,10 @@ public class VectorInstruction extends Instruction {
             }
         } catch (NoSuchElementException e) {
             organism.instructionFailed("Stack underflow during vector operation.");
+            return;
         } catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
             organism.instructionFailed("Invalid operand types for vector operation: " + e.getMessage());
+            return;
         }
     }
 
@@ -85,7 +90,9 @@ public class VectorInstruction extends Instruction {
         int vj = vector[axis2];
         rotated[axis1] = vj;
         rotated[axis2] = -vi;
-        writeOperand(vecReg, rotated);
+        if (!writeOperand(vecReg, rotated)) {
+            return;
+        }
     }
 
     private void handleVectorRotateStack() {
@@ -158,7 +165,9 @@ public class VectorInstruction extends Instruction {
             organism.instructionFailed("B2V requires a single-bit direction mask.");
             return;
         }
-        writeOperand(destReg, vec);
+        if (!writeOperand(destReg, vec)) {
+            return;
+        }
     }
 
     private void handleBitToVectorStack(int dims) {
@@ -267,7 +276,9 @@ public class VectorInstruction extends Instruction {
             return;
         }
 
-        writeOperand(destReg, new Molecule(Config.TYPE_DATA, vector[index]).toInt());
+        if (!writeOperand(destReg, new Molecule(Config.TYPE_DATA, vector[index]).toInt())) {
+            return;
+        }
     }
 
     private void handleVectorGetStack() {
@@ -325,7 +336,9 @@ public class VectorInstruction extends Instruction {
 
         int[] newVector = Arrays.copyOf(vector, vector.length);
         newVector[index] = value;
-        writeOperand(vecReg, newVector);
+        if (!writeOperand(vecReg, newVector)) {
+            return;
+        }
     }
 
     private void handleVectorSetStack() {
@@ -387,7 +400,9 @@ public class VectorInstruction extends Instruction {
             newVector[i] = Molecule.fromInt(val).toScalarValue();
         }
 
-        writeOperand(destReg, newVector);
+        if (!writeOperand(destReg, newVector)) {
+            return;
+        }
     }
 
     private void handleVectorBuildStack(int dims) {

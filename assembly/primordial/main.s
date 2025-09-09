@@ -3,48 +3,84 @@
 # Main loop with reproduction and energy search (both mocks)
 # STRUCTURE shell around organism
 
+
+# ----------------------------
+# Register-Aliase (nur Main-State)
+# ----------------------------
+.REG %ER       %DR0   # current energy
+.REG %DIR      %DR1   # movement direction vector (x|y)
+.REG %FWD_MASK %DR2   # cached forward direction as bitmask
+.REG %KIDX     %DR3   # index 0..3 for K-periods
+.REG %KLEFT    %DR4   # countdown to periodic turn
+
+
+# ----------------------------
+# Library einbinden & Abhängigkeit deklarieren
+# ----------------------------
+.ORG 1|5
+.INCLUDE "lib/energy_search.s"
+.REQUIRE "lib/energy_search.s" AS ENERGY
+
 # ----------------------------
 # Constants
 # ----------------------------
 .DEFINE REPRODUCTION_THRESHOLD DATA:25000
 
 # ----------------------------
-# STRUCTURE Shell (20x15)
+# STRUCTURE Shell (50x30)
 # ----------------------------
-.PLACE STRUCTURE:1 0..50|1
-.PLACE STRUCTURE:1 0..50|31
-.PLACE STRUCTURE:1 0|1..30
-.PLACE STRUCTURE:1 50|1..30
+.PLACE STRUCTURE:1 0..70|1
+.PLACE STRUCTURE:1 0..70|30
+.PLACE STRUCTURE:1 0|2..29
+.PLACE STRUCTURE:1 70|2..29
 
 # ----------------------------
-# Entry & Init
+# Trampolin
 # ----------------------------
-.ORG 2|2
+.ORG 0|0
 START:
+  JMPI INIT
+
+# ----------------------------
+# Init
+# ----------------------------
+.ORG 1|2
+INIT:
+  # Initialrichtung = rechts; Vorwärtsmaske einmalig cachen
+  SETV %DIR 1|0
+  V2BR %FWD_MASK %DIR
+
+  # Periodischer Turn-State initial
+  SETI %KIDX  DATA:0
+  SETI %KLEFT DATA:89   # entspricht K0 in der Lib
+
   JMPI MAIN_LOOP
+
 
 # ----------------------------
 # Main loop
 # ----------------------------
-.ORG 2|3
+.ORG 1|3
 MAIN_LOOP:
-  NRG %DR0
-  GTI %DR0 REPRODUCTION_THRESHOLD
+  NRG %ER
+  GTI %ER REPRODUCTION_THRESHOLD
   JMPI REPRODUCE
   JMPI ENERGY_SEARCH
 
 # ----------------------------
-# Reproduction (mock)
+# Energy search
 # ----------------------------
-.ORG 2|4
-REPRODUCE:
-  NOP
+.ORG 1|4
+ENERGY_SEARCH:
+  # Ruft die exportierte Bibliotheks-Prozedur auf.
+  # Die Proc greift nur auf diese vier Register zu und verändert sie in-place.
+  CALL ENERGY.ENERGY_SEARCH_PROC WITH %DIR %FWD_MASK %KIDX %KLEFT
   JMPI MAIN_LOOP
 
 # ----------------------------
-# Energy search (mock)
+# Reproduction (mock)
 # ----------------------------
-.ORG 2|5
-ENERGY_SEARCH:
+.ORG 1|29
+REPRODUCE:
   NOP
   JMPI MAIN_LOOP

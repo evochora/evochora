@@ -138,6 +138,9 @@ public class StateInstruction extends Instruction {
     private void handleFork(List<Operand> operands, Simulation simulation) {
         if (operands.size() != 3) { organism.instructionFailed("Invalid operands for FORK."); return; }
         int[] delta = (int[]) operands.get(0).value();
+        if (!organism.isUnitVector(delta)) {
+            return;
+        }
         int energy = org.evochora.runtime.model.Molecule.fromInt((Integer) operands.get(1).value()).toScalarValue();
         int[] childDv = (int[]) operands.get(2).value();
         int totalCost = getCost(organism, simulation.getEnvironment(), null);
@@ -195,7 +198,7 @@ public class StateInstruction extends Instruction {
         Object nObj = organism.getDataStack().pop();
         if (!(nObj instanceof Integer ni)) { organism.instructionFailed("RNDS requires scalar on stack."); return; }
         int upperBound = org.evochora.runtime.model.Molecule.fromInt(ni).toScalarValue();
-        if (upperBound <= 0) { organism.instructionFailed("RNDS upper bound must be > 0."); organism.getDataStack().push(new Molecule(Config.TYPE_DATA, 0).toInt()); return; }
+        if (upperBound <= 0) { organism.instructionFailed("RNDS upper bound must be > 0."); return; }
         int v = organism.getRandom().nextInt(upperBound);
         organism.getDataStack().push(new Molecule(Config.TYPE_DATA, v).toInt());
     }
@@ -265,6 +268,9 @@ public class StateInstruction extends Instruction {
             return;
         }
         int[] vector = (int[]) operands.get(0).value();
+        if (!organism.isUnitVector(vector)) {
+            return;
+        }
         int[] targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
 
         Molecule moleculeAtTarget = environment.getMolecule(targetCoordinate);
@@ -280,6 +286,9 @@ public class StateInstruction extends Instruction {
         if ("FRKI".equals(opName)) {
             if (operands.size() != 3) { organism.instructionFailed("FRKI expects <Vec>, <Lit>, <Vec>."); return; }
             int[] delta = (int[]) operands.get(0).value();
+            if (!organism.isUnitVector(delta)) {
+                return;
+            }
             int energy = org.evochora.runtime.model.Molecule.fromInt((Integer) operands.get(1).value()).toScalarValue();
             int[] childDv = (int[]) operands.get(2).value();
             int totalCost = getCost(organism, environment, null);
@@ -302,6 +311,9 @@ public class StateInstruction extends Instruction {
             Object deltaObj = organism.getDataStack().pop();
             if (!(dvObj instanceof int[] childDv) || !(energyObj instanceof Integer ei) || !(deltaObj instanceof int[] delta)) {
                 organism.instructionFailed("FRKS stack contents invalid.");
+                return;
+            }
+            if (!organism.isUnitVector(delta)) {
                 return;
             }
             int energy = org.evochora.runtime.model.Molecule.fromInt(ei).toScalarValue();
@@ -331,6 +343,9 @@ public class StateInstruction extends Instruction {
             if (operands.size() != 2) { organism.instructionFailed("Invalid operands for " + opName); return; }
             targetReg = operands.get(0).rawSourceId();
             vector = (int[]) operands.get(1).value();
+        }
+        if (!organism.isUnitVector(vector)) {
+            return;
         }
         int[] target = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
         Molecule s = environment.getMolecule(target);

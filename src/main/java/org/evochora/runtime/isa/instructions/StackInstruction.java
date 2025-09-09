@@ -66,6 +66,7 @@ public class StackInstruction extends Instruction {
             }
         } catch (NoSuchElementException e) {
             organism.instructionFailed("Stack underflow during " + opName);
+            return;
         }
     }
 

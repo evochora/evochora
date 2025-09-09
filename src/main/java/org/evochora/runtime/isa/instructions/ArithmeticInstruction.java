@@ -31,6 +31,9 @@ public class ArithmeticInstruction extends Instruction {
         try {
             Organism organism = context.getOrganism();
             List<Operand> operands = resolveOperands(context.getWorld());
+            if (organism.isInstructionFailed()) {
+                return;
+            }
             if (getName().startsWith("DOT") || getName().startsWith("CRS")) {
                 handleVectorProducts(context.getWorld(), operands);
                 return;
@@ -114,13 +117,16 @@ public class ArithmeticInstruction extends Instruction {
 
             // Write result back (either to register or stack)
             if (op1.rawSourceId() != -1) { // -1 means the operand came from the stack
-                writeOperand(op1.rawSourceId(), result);
+                if (!writeOperand(op1.rawSourceId(), result)) {
+                    return;
+                }
             } else {
                 organism.getDataStack().push(result);
             }
 
         } catch (NoSuchElementException e) {
             organism.instructionFailed("Stack underflow during arithmetic operation.");
+            return;
         }
     }
 
@@ -158,9 +164,12 @@ public class ArithmeticInstruction extends Instruction {
                 case "CRSR" -> cross2d(v1, v2);
                 default -> 0;
             };
-            writeOperand(destReg, new Molecule(Config.TYPE_DATA, result).toInt());
+            if (!writeOperand(destReg, new Molecule(Config.TYPE_DATA, result).toInt())) {
+                return;
+            }
         } catch (NoSuchElementException e) {
             organism.instructionFailed("Stack underflow during vector product operation.");
+            return;
         }
     }
 

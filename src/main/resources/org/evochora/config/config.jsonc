@@ -9,7 +9,7 @@
     // [OPTIONAL] Environment configuration (default: shape=[120,80], toroidal=true)
     "environment": {
       // [OPTIONAL] Dimensions of the simulation world (default: [120, 80])
-      "shape": [80, 50],
+      "shape": [100, 100],
       // [OPTIONAL] Whether the world wraps around at edges (default: true)
       "toroidal": true
     },
@@ -19,6 +19,24 @@
 
       /***** Primordial *****/
       {
+        // [MANDATORY] Path to the assembly program file for this organism
+        "program": "assembly/primordial/main.s",
+        // [MANDATORY] Initial energy level when organism is created
+        "initialEnergy": 5000,
+        // [MANDATORY] Placement strategy for organisms
+        "placement": {
+          // [MANDATORY] Placement strategy type ("fixed", "random", "grid")
+          "strategy": "fixed",
+          // [MANDATORY] Specific positions to place organisms (for "fixed" strategy)
+          "positions": [
+            [1, 1]
+          ]
+        }
+      }
+
+      /* Funktionierender Energy Search */
+      /* mit hülle */
+      /*{
         // [MANDATORY] Path to the assembly program file for this organism
         "program": "assembly/primordial/primordial4.s",
         // [MANDATORY] Initial energy level when organism is created
@@ -33,6 +51,23 @@
           ]
         }
       }
+
+      /* ohne hülle */
+      /*{
+        // [MANDATORY] Path to the assembly program file for this organism
+        "program": "assembly/legacy/prototypes/primordial3.s",
+        // [MANDATORY] Initial energy level when organism is created
+        "initialEnergy": 5000,
+        // [MANDATORY] Placement strategy for organisms
+        "placement": {
+          // [MANDATORY] Placement strategy type ("fixed", "random", "grid")
+          "strategy": "fixed",
+          // [MANDATORY] Specific positions to place organisms (for "fixed" strategy)
+          "positions": [
+            [0, 0]
+          ]
+        }
+      }*/
       
 
       /***** Prodecure tests *****/

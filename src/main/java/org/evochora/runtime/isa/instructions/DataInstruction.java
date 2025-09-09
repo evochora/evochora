@@ -38,14 +38,18 @@ public class DataInstruction extends Instruction {
                     if (operands.size() != 2) { organism.instructionFailed("Invalid operands for " + opName); return; }
                     Operand dest = operands.get(0);
                     Operand source = operands.get(1);
-                    writeOperand(dest.rawSourceId(), source.value());
+                    if (!writeOperand(dest.rawSourceId(), source.value())) {
+                        return;
+                    }
                     break;
                 }
                 case "SETR": {
                     if (operands.size() != 2) { organism.instructionFailed("Invalid operands for SETR"); return; }
                     Operand dest = operands.get(0);
                     Operand source = operands.get(1);
-                    writeOperand(dest.rawSourceId(), source.value());
+                    if (!writeOperand(dest.rawSourceId(), source.value())) {
+                        return;
+                    }
                     break;
                 }
                 case "PUSH": {
@@ -57,7 +61,9 @@ public class DataInstruction extends Instruction {
                 case "POP": {
                     if (operands.size() != 1) { organism.instructionFailed("Invalid operands for POP"); return; }
                     Object value = organism.getDataStack().pop();
-                    writeOperand(operands.get(0).rawSourceId(), value);
+                    if (!writeOperand(operands.get(0).rawSourceId(), value)) {
+                        return;
+                    }
                     break;
                 }
                 case "PUSI": {

@@ -32,6 +32,9 @@ public class BitwiseInstruction extends Instruction {
         Organism organism = context.getOrganism();
         try {
             List<Operand> operands = resolveOperands(context.getWorld());
+            if (organism.isInstructionFailed()) {
+                return;
+            }
             String opName = getName();
 
             // --- New: Rotation (ROT*), Population Count (PCN*), Bit Scan N-th (BSN*) ---
@@ -63,7 +66,9 @@ public class BitwiseInstruction extends Instruction {
                     Object result = new Molecule(s1.type(), resultValue).toInt();
 
                     if (op1.rawSourceId() != -1) {
-                        writeOperand(op1.rawSourceId(), result);
+                        if (!writeOperand(op1.rawSourceId(), result)) {
+                            return;
+                        }
                     } else {
                         organism.getDataStack().push(result);
                     }
@@ -120,7 +125,9 @@ public class BitwiseInstruction extends Instruction {
                 Object result = new Molecule(s1.type(), (int)scalarResult).toInt();
 
                 if (op1.rawSourceId() != -1) {
-                    writeOperand(op1.rawSourceId(), result);
+                    if (!writeOperand(op1.rawSourceId(), result)) {
+                        return;
+                    }
                 } else {
                     organism.getDataStack().push(result);
                 }
@@ -131,6 +138,7 @@ public class BitwiseInstruction extends Instruction {
 
         } catch (NoSuchElementException e) {
             organism.instructionFailed("Stack underflow during bitwise operation.");
+            return;
         }
     }
 
@@ -163,7 +171,9 @@ public class BitwiseInstruction extends Instruction {
         }
         int rotated = rotate(val.toScalarValue(), amt.toScalarValue());
         if (opVal.rawSourceId() != -1) {
-            writeOperand(opVal.rawSourceId(), new Molecule(val.type(), rotated).toInt());
+            if (!writeOperand(opVal.rawSourceId(), new Molecule(val.type(), rotated).toInt())) {
+                return;
+            }
         } else {
             organism.instructionFailed("ROT destination must be a register.");
         }
@@ -197,7 +207,9 @@ public class BitwiseInstruction extends Instruction {
         Molecule src = org.evochora.runtime.model.Molecule.fromInt((Integer) srcOp.value());
         int cnt = Integer.bitCount(src.toScalarValue() & ((1 << Config.VALUE_BITS) - 1));
         if (dest.rawSourceId() != -1) {
-            writeOperand(dest.rawSourceId(), new Molecule(src.type(), cnt).toInt());
+            if (!writeOperand(dest.rawSourceId(), new Molecule(src.type(), cnt).toInt())) {
+                return;
+            }
         } else {
             organism.instructionFailed("PCNR destination must be a register.");
         }
@@ -230,9 +242,13 @@ public class BitwiseInstruction extends Instruction {
         if (dest.rawSourceId() != -1) {
             if (mask == 0) {
                 organism.instructionFailed("BSN failed: invalid N or not enough set bits.");
-                writeOperand(dest.rawSourceId(), new Molecule(src.type(), 0).toInt());
+                if (!writeOperand(dest.rawSourceId(), new Molecule(src.type(), 0).toInt())) {
+                    return;
+                }
             } else {
-                writeOperand(dest.rawSourceId(), new Molecule(src.type(), mask).toInt());
+                if (!writeOperand(dest.rawSourceId(), new Molecule(src.type(), mask).toInt())) {
+                    return;
+                }
             }
         } else {
             organism.instructionFailed("BSN destination must be a register.");
