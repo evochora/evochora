@@ -14,7 +14,10 @@
   .PREG %MASK %PR0   # Bitmaske von SNTI/SPNR
   .PREG %VEC  %PR1   # temporärer Richtungsvektor
 
+JMPI MOVE_LOOP
+.PLACE DATA:0 0..3|1
 
+.ORG 0|2
 MOVE_LOOP:
   # 1) Umgebung scannen – wenn Energie da, sofort nehmen und zurück
   SNTI %MASK ENERGY:0
@@ -25,7 +28,7 @@ MOVE_LOOP:
   PEEK %MASK %VEC
   RET
 
-.ORG 0|1
+.ORG 0|3
 DO_MOVE:
   # 2) Vorwärts passierbar?
   SPNR %MASK
@@ -43,7 +46,7 @@ DO_MOVE:
 
   JMPI MOVE_LOOP
 
-.ORG 0|2
+.ORG 0|4
 PERIODIC_TURN:
   # 90° CW drehen (Achsen 0,1) ohne externe Temp-Register
   RTRI DIR DATA:0 DATA:1
@@ -69,7 +72,7 @@ PT_LOAD:
   SETI KLEFT DATA:103
   JMPI MOVE_LOOP
 
-.ORG 0|3
+.ORG 0|5
 PT_K0:
   SETI KLEFT DATA:89
   JMPI MOVE_LOOP
