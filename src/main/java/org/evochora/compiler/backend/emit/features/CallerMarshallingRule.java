@@ -98,9 +98,9 @@ public final class CallerMarshallingRule implements IEmissionRule {
         // The CALL itself.
         out.add(call);
 
-        // Post-call: Clean up stack (pop REF args).
-        for (IrOperand refOperand : call.refOperands()) {
-            out.add(new IrInstruction("POP", List.of(refOperand), call.source()));
+        // Post-call: Clean up stack (pop REF args in reverse order).
+        for (int j = call.refOperands().size() - 1; j >= 0; j--) {
+            out.add(new IrInstruction("POP", List.of(call.refOperands().get(j)), call.source()));
         }
     }
 

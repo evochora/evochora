@@ -17,6 +17,23 @@
     // [OPTIONAL] List of organisms to place in the world (default: empty array)
     "organisms": [
 
+      /***** Test *****/
+      /*{
+        // [MANDATORY] Path to the assembly program file for this organism
+        "program": "assembly/test/testref.s",
+        // [MANDATORY] Initial energy level when organism is created
+        "initialEnergy": 5000,
+        // [MANDATORY] Placement strategy for organisms
+        "placement": {
+          // [MANDATORY] Placement strategy type ("fixed", "random", "grid")
+          "strategy": "fixed",
+          // [MANDATORY] Specific positions to place organisms (for "fixed" strategy)
+          "positions": [
+            [1, 1]
+          ]
+        }
+      }*/
+
       /***** Primordial *****/
       {
         // [MANDATORY] Path to the assembly program file for this organism

@@ -174,9 +174,14 @@ public class Compiler implements ICompiler {
         for (Map.Entry<String, String> entry : astRegisterAliases.entrySet()) {
             String aliasName = entry.getKey();
             String registerName = entry.getValue();
-            // Convert register name (e.g., "%PR0") to register ID
-            if (registerName.startsWith("%PR")) {
-                int registerId = Integer.parseInt(registerName.substring(3));
+            // Convert register name (e.g., "%PR0", "%FPR0") to register ID
+            if (registerName.startsWith("%FPR")) {
+                int registerIndex = Integer.parseInt(registerName.substring(4));
+                int registerId = org.evochora.runtime.isa.Instruction.FPR_BASE + registerIndex;
+                finalAliasMap.put(aliasName, registerId);
+            } else if (registerName.startsWith("%PR")) {
+                int registerIndex = Integer.parseInt(registerName.substring(3));
+                int registerId = org.evochora.runtime.isa.Instruction.PR_BASE + registerIndex;
                 finalAliasMap.put(aliasName, registerId);
             } else if (registerName.startsWith("%DR")) {
                 int registerId = Integer.parseInt(registerName.substring(3));

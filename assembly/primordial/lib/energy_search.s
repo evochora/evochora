@@ -9,7 +9,7 @@
 #   KIDX      : Index 0..3 für K-Perioden (wird zyklisch erhöht)
 #   KLEFT     : Countdown bis zum erzwungenen Turn (wird neu geladen)
 
-.PROC ENERGY_SEARCH_PROC EXPORT WITH DIR FWD_MASK KIDX KLEFT
+.PROC ENERGY_SEARCH_PROC EXPORT REF DIR FWD_MASK KIDX KLEFT
   # Lokale (procedure-saving) Register
   .PREG %MASK %PR0   # Bitmaske von SNTI/SPNR
   .PREG %VEC  %PR1   # temporärer Richtungsvektor

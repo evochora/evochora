@@ -78,7 +78,15 @@ public class RegisterTokenHandler implements ITokenHandler {
         if (artifact.registerAliasMap() != null) {
             Integer regId = artifact.registerAliasMap().get(upperToken);
             if (regId != null) {
-                return "%DR" + regId;
+                // BUGFIX: Use register ID ranges to determine register type
+                // DR: 0-999, PR: 1000-1999 (PR_BASE), FPR: 2000+ (FPR_BASE)
+                if (regId >= org.evochora.runtime.isa.Instruction.FPR_BASE) {
+                    return "%FPR" + (regId - org.evochora.runtime.isa.Instruction.FPR_BASE);
+                } else if (regId >= org.evochora.runtime.isa.Instruction.PR_BASE) {
+                    return "%PR" + (regId - org.evochora.runtime.isa.Instruction.PR_BASE);
+                } else {
+                    return "%DR" + regId;
+                }
             }
         }
         

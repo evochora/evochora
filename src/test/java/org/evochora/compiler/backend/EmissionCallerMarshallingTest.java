@@ -85,13 +85,13 @@ public class EmissionCallerMarshallingTest {
 
             List<IrItem> out = runEmission(List.of(call));
 
-            // Expect: PUSH %rY, PUSH %rX, CALL p, POP %rX, POP %rY
+            // Expect: PUSH %rY, PUSH %rX, CALL p, POP %rY, POP %rX (reverse order)
             assertThat(out).hasSize(5);
             assertThat(out.get(0)).isEqualTo(new IrInstruction("PUSH", List.of(rY), call.source()));
             assertThat(out.get(1)).isEqualTo(new IrInstruction("PUSH", List.of(rX), call.source()));
             assertThat(out.get(2)).isEqualTo(call);
-            assertThat(out.get(3)).isEqualTo(new IrInstruction("POP", List.of(rX), call.source()));
-            assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rY), call.source()));
+            assertThat(out.get(3)).isEqualTo(new IrInstruction("POP", List.of(rY), call.source()));
+            assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rX), call.source()));
         }
 
         @Test
