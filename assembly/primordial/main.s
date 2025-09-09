@@ -13,14 +13,6 @@
 .REG %KIDX     %DR3   # index 0..3 for K-periods
 .REG %KLEFT    %DR4   # countdown to periodic turn
 
-
-# ----------------------------
-# Library einbinden & Abhängigkeit deklarieren
-# ----------------------------
-.ORG 1|5
-.INCLUDE "lib/energy_search.s"
-.REQUIRE "lib/energy_search.s" AS ENERGY
-
 # ----------------------------
 # Constants
 # ----------------------------
@@ -64,17 +56,16 @@ MAIN_LOOP:
   NRG %ER
   GTI %ER REPRODUCTION_THRESHOLD
   JMPI REPRODUCE
-  JMPI ENERGY_SEARCH
+  CALL ENERGY.ENERGY_SEARCH_PROC WITH %DIR %FWD_MASK %KIDX %KLEFT
+  JMPI MAIN_LOOP
 
 # ----------------------------
 # Energy search
 # ----------------------------
 .ORG 1|4
-ENERGY_SEARCH:
-  # Ruft die exportierte Bibliotheks-Prozedur auf.
-  # Die Proc greift nur auf diese vier Register zu und verändert sie in-place.
-  CALL ENERGY.ENERGY_SEARCH_PROC WITH %DIR %FWD_MASK %KIDX %KLEFT
-  JMPI MAIN_LOOP
+.INCLUDE "lib/energy_search.s"
+.REQUIRE "lib/energy_search.s" AS ENERGY
+  
 
 # ----------------------------
 # Reproduction (mock)
