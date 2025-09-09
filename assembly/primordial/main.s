@@ -35,10 +35,17 @@
 .PLACE STRUCTURE:1 70|2..29
 
 # ----------------------------
-# Entry & Init / Trampolin
+# Entry / Trampolin
 # ----------------------------
 .ORG 0|0
 START:
+  JMPI INIT
+
+# ----------------------------
+# Init
+# ----------------------------
+.ORG 1|2
+INIT:
   # Initialrichtung = rechts; Vorwärtsmaske einmalig cachen
   SETV %DIR 1|0
   V2BR %FWD_MASK %DIR
@@ -52,7 +59,7 @@ START:
 # ----------------------------
 # Main loop
 # ----------------------------
-.ORG 1|2
+.ORG 1|3
 MAIN_LOOP:
   NRG %ER
   GTI %ER REPRODUCTION_THRESHOLD
@@ -62,7 +69,7 @@ MAIN_LOOP:
 # ----------------------------
 # Energy search
 # ----------------------------
-.ORG 1|3
+.ORG 1|4
 ENERGY_SEARCH:
   # Ruft die exportierte Bibliotheks-Prozedur auf.
   # Die Proc greift nur auf diese vier Register zu und verändert sie in-place.
