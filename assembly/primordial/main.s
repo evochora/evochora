@@ -12,7 +12,7 @@
 # ----------------------------
 # Constants
 # ----------------------------
-.DEFINE REPRODUCTION_THRESHOLD DATA:25000
+.DEFINE REPRODUCTION_CONTINUE_THRESHOLD DATA:25000
 
 # ----------------------------
 # STRUCTURE Shell (50x30)
@@ -42,23 +42,27 @@ INIT:
 .ORG 1|3
 MAIN_LOOP:
   NRG %ER
-  GTI %ER REPRODUCTION_THRESHOLD
-  JMPI REPRODUCE
-  CALL ENERGY.ENERGY_SEARCH_PROC
+  GTI %ER REPRODUCTION_CONTINUE_THRESHOLD
+    CALL REPRODUCE.CONTINUE
+  CALL ENERGY.HARVEST
   JMPI MAIN_LOOP
 
 # ----------------------------
 # Energy search
 # ----------------------------
 .ORG 1|4
-.INCLUDE "lib/energy_search.s"
-.REQUIRE "lib/energy_search.s" AS ENERGY
+.INCLUDE "lib/energy.s"
+.REQUIRE "lib/energy.s" AS ENERGY
   
 
 # ----------------------------
 # Reproduction (mock)
 # ----------------------------
-.ORG 1|29
-REPRODUCE:
-  NOP
-  JMPI MAIN_LOOP
+.ORG 1|11
+.INCLUDE "lib/reproduce.s"
+.REQUIRE "lib/reproduce.s" AS REPRODUCE
+
+# ----------------------------
+# Safty jump back
+# ----------------------------
+JMPI MAIN_LOOP
