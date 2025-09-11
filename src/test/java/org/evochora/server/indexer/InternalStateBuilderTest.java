@@ -149,6 +149,9 @@ class InternalStateBuilderTest {
         // Check dps
         assertEquals(1, state.dps().size());
         assertEquals(List.of(5, 6), state.dps().get(0));
+        
+        // Check activeDpIndex
+        assertEquals(0, state.activeDpIndex());
     }
 
     @Test
@@ -191,6 +194,7 @@ class InternalStateBuilderTest {
         assertEquals(0, state.locationStack().size());
         assertEquals(0, state.callStack().size());
         assertEquals(0, state.dps().size());
+        assertEquals(0, state.activeDpIndex());
     }
 
     @Test
@@ -248,5 +252,41 @@ class InternalStateBuilderTest {
         // All should have the same structure
         assertEquals(stateValid.dataRegisters().size(), stateInvalid.dataRegisters().size());
         assertEquals(stateValid.dataRegisters().size(), stateNone.dataRegisters().size());
+    }
+
+    @Test
+    void testBuildInternalStateWithDifferentActiveDpIndex() {
+        // Test with activeDpIndex = 1
+        RawOrganismState organismWithDp1 = new RawOrganismState(
+            4, // id
+            null, // parentId
+            0L, // birthTick
+            "test_program", // programId
+            new int[]{0, 0}, // initialPosition
+            new int[]{0, 0}, // ip
+            new int[]{0, 0}, // dv
+            List.of(new int[]{5, 6}, new int[]{7, 8}), // dps with 2 entries
+            1, // activeDpIndex = 1
+            100, // er
+            new ArrayList<>(), // drs
+            new ArrayList<>(), // prs
+            new ArrayList<>(), // fprs
+            new ArrayList<>(), // lrs
+            new LinkedList<>(), // dataStack
+            new LinkedList<>(), // locationStack
+            new LinkedList<>(), // callStack
+            false, // isDead
+            false, // instructionFailed
+            null, // failureReason
+            false, // skipIpAdvance
+            new int[]{0, 0}, // ipBeforeFetch
+            new int[]{0, 0} // dvBeforeFetch
+        );
+        
+        PreparedTickState.InternalState state = builder.buildInternalState(organismWithDp1, mockArtifact, ArtifactValidity.VALID);
+        
+        assertNotNull(state);
+        assertEquals(2, state.dps().size());
+        assertEquals(1, state.activeDpIndex());
     }
 }

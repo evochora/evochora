@@ -209,6 +209,9 @@ public abstract class Instruction {
         registerFamily(ConditionalInstruction.class, Map.of(93, "IFMR"), List.of(OperandSource.REGISTER));
         registerFamily(ConditionalInstruction.class, Map.of(94, "IFMI"), List.of(OperandSource.VECTOR));
         registerFamily(ConditionalInstruction.class, Map.of(95, "IFMS"), List.of(OperandSource.STACK));
+        registerFamily(ConditionalInstruction.class, Map.of(182, "IFPR"), List.of(OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(183, "IFPI"), List.of(OperandSource.VECTOR));
+        registerFamily(ConditionalInstruction.class, Map.of(184, "IFPS"), List.of(OperandSource.STACK));
 
         // Negated Conditional-Family
         registerFamily(ConditionalInstruction.class, Map.of(163, "INR", 164, "GETR", 165, "LETR", 166, "INTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
@@ -217,6 +220,9 @@ public abstract class Instruction {
         registerFamily(ConditionalInstruction.class, Map.of(175, "INMR"), List.of(OperandSource.REGISTER));
         registerFamily(ConditionalInstruction.class, Map.of(176, "INMI"), List.of(OperandSource.VECTOR));
         registerFamily(ConditionalInstruction.class, Map.of(177, "INMS"), List.of(OperandSource.STACK));
+        registerFamily(ConditionalInstruction.class, Map.of(185, "INPR"), List.of(OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(186, "INPI"), List.of(OperandSource.VECTOR));
+        registerFamily(ConditionalInstruction.class, Map.of(187, "INPS"), List.of(OperandSource.STACK));
 
         // ControlFlow-Family
         registerFamily(ControlFlowInstruction.class, Map.of(20, "JMPI", 34, "CALL"), List.of(OperandSource.LABEL));
@@ -264,7 +270,7 @@ public abstract class Instruction {
         registerFamily(StateInstruction.class, Map.of(102, "ADPS"), List.of());
         // New: FRKI and FRKS
         registerFamily(StateInstruction.class, Map.of(106, "FRKI"), List.of(OperandSource.VECTOR, OperandSource.IMMEDIATE, OperandSource.VECTOR));
-        registerFamily(StateInstruction.class, Map.of(107, "FRKS"), List.of(OperandSource.STACK));
+        registerFamily(StateInstruction.class, Map.of(107, "FRKS"), List.of());
 
         // NOP
         registerFamily(NopInstruction.class, Map.of(0, "NOP"), List.of());
@@ -306,6 +312,9 @@ public abstract class Instruction {
         registerFamily(StateInstruction.class, Map.of(149, "RBIR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(150, "RBII"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
         registerFamily(StateInstruction.class, Map.of(151, "RBIS"), List.of());
+        // New: GDVR and GDVS (get DV value)
+        registerFamily(StateInstruction.class, Map.of(188, "GDVR"), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(189, "GDVS"), List.of());
     }
 
     private static final int DEFAULT_VECTOR_DIMS = 2;

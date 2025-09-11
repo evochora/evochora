@@ -11,12 +11,12 @@ class ApiService {
                 if (res.status === 404) {
                     const errorData = await res.json().catch(() => ({}));
                     if (errorData.error) {
-                        this.statusManager.showError(errorData.error);
+                        this.statusManager.showError(errorData.error, 3000);
                     } else {
-                        this.statusManager.showError(`Tick ${tick} nicht gefunden`);
+                        this.statusManager.showError(`Tick ${tick} nicht gefunden`, 3000);
                     }
                 } else {
-                    this.statusManager.showError(`HTTP Fehler: ${res.status}`);
+                    this.statusManager.showError(`HTTP Fehler: ${res.status}`, 3000);
                 }
                 throw new Error(`HTTP ${res.status}`);
             }
@@ -25,7 +25,7 @@ class ApiService {
             
             // Validiere die Antwort-Struktur
             if (!this.validateTickData(data)) {
-                this.statusManager.showError('Unerwartetes Datenformat vom Server');
+                this.statusManager.showError('Unerwartetes Datenformat vom Server', 3000);
                 throw new Error('Invalid data format');
             }
             
@@ -35,14 +35,14 @@ class ApiService {
             // Spezifische Fehlerbehandlung
             if (error.name === 'TypeError' && error.message.includes('fetch')) {
                 // Netzwerkfehler - Server nicht erreichbar
-                this.statusManager.showError('Debug Server nicht erreichbar - ist er gestartet?');
+                this.statusManager.showError('Debug Server nicht erreichbar - ist er gestartet?', 3000);
             } else if (error.message === 'Invalid data format') {
                 // Bereits behandelt
             } else if (error.message.includes('HTTP')) {
                 // HTTP-Fehler bereits behandelt
             } else {
                 // Unerwarteter Fehler
-                this.statusManager.showError(`Unerwarteter Fehler: ${error.message}`);
+                this.statusManager.showError(`Unerwarteter Fehler: ${error.message}`, 3000);
             }
             throw error;
         }

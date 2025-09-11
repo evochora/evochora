@@ -23,7 +23,7 @@ public final class Config {
     /**
      * The maximum energy an organism can accumulate.
      */
-    public static final int MAX_ORGANISM_ENERGY = 100000;
+    public static final int MAX_ORGANISM_ENERGY = 32767; // avoid register overflow using NRG instruction (16 bit)
 
     /**
      * If true, enforces strict type checking during operations.

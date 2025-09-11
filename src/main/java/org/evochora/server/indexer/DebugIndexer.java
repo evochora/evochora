@@ -66,15 +66,21 @@ public class DebugIndexer implements IControllable, Runnable {
     private final InstructionBuilder instructionBuilder;
     private final InternalStateBuilder internalStateBuilder;
     private final TickProcessor tickProcessor;
+    private final org.evochora.server.config.SimulationConfiguration.CompressionConfig compressionConfig;
 
     public DebugIndexer(String rawDbPath, int batchSize) {
-        this(rawDbPath, rawDbPath.replace("_raw.sqlite", "_debug.sqlite"), batchSize);
+        this(rawDbPath, rawDbPath.replace("_raw.sqlite", "_debug.sqlite"), batchSize, null);
     }
 
     public DebugIndexer(String rawDbUrl, String debugDbUrl, int batchSize) {
+        this(rawDbUrl, debugDbUrl, batchSize, null);
+    }
+
+    public DebugIndexer(String rawDbUrl, String debugDbUrl, int batchSize, org.evochora.server.config.SimulationConfiguration.CompressionConfig compressionConfig) {
         this.rawDbPath = rawDbUrl;
         this.debugDbPath = debugDbUrl;
         this.batchSize = batchSize;
+        this.compressionConfig = compressionConfig;
         this.databaseManager = new DatabaseManager(debugDbUrl, batchSize);
         this.sourceViewBuilder = new SourceViewBuilder();
         this.instructionBuilder = new InstructionBuilder();
@@ -547,7 +553,12 @@ public class DebugIndexer implements IControllable, Runnable {
                         if (tick != null) {
                             try {
                                 String json = objectMapper.writeValueAsString(tick);
-                                databaseManager.writePreparedTick(tick.tickNumber(), json);
+                                if (compressionConfig != null && compressionConfig.enabled) {
+                                    byte[] compressed = org.evochora.server.compression.CompressionUtils.compressWithMagic(json, compressionConfig.algorithm);
+                                    databaseManager.writePreparedTick(tick.tickNumber(), compressed);
+                                } else {
+                                    databaseManager.writePreparedTick(tick.tickNumber(), json);
+                                }
                                 queueSize.decrementAndGet();
                                 processedCount++;
                                 log.debug("Processed queued tick {} from queue", tick.tickNumber());
@@ -912,7 +923,12 @@ public class DebugIndexer implements IControllable, Runnable {
         
         try {
             String json = objectMapper.writeValueAsString(preparedTick);
-            databaseManager.writePreparedTick(preparedTick.tickNumber(), json);
+            if (compressionConfig != null && compressionConfig.enabled) {
+                byte[] compressed = org.evochora.server.compression.CompressionUtils.compressWithMagic(json, compressionConfig.algorithm);
+                databaseManager.writePreparedTick(preparedTick.tickNumber(), compressed);
+            } else {
+                databaseManager.writePreparedTick(preparedTick.tickNumber(), json);
+            }
         } catch (Exception e) {
             log.error("Failed to write prepared tick {} to database: {} - marking database as unhealthy, future writes will be skipped", preparedTick.tickNumber(), e.getMessage(), e);
             // Mark database as unhealthy and continue processing

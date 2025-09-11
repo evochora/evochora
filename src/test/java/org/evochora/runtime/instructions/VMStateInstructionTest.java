@@ -11,6 +11,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 
+import java.util.Deque;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -402,6 +404,87 @@ public class VMStateInstructionTest {
 
         assertThat(org.getDataStack().pop()).isEqualTo(payload);
         assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
+    }
+
+    /**
+     * Tests the GDVR instruction (get DV to register).
+     * This is a unit test for the VM's instruction logic.
+     */
+    @Test
+    @Tag("unit")
+    void testGdvr() {
+        int[] expectedDv = org.getDv();
+        placeInstruction("GDVR", 0);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(expectedDv);
+    }
+
+    /**
+     * Tests the GDVS instruction (get DV to stack).
+     * This is a unit test for the VM's instruction logic.
+     */
+    @Test
+    @Tag("unit")
+    void testGdvs() {
+        int[] expectedDv = org.getDv();
+        placeInstruction("GDVS");
+        sim.tick();
+        Object top = org.getDataStack().pop();
+        assertThat(top).isInstanceOf(int[].class);
+        assertThat((int[]) top).isEqualTo(expectedDv);
+    }
+
+    /**
+     * Tests the FRKS instruction (fork from stack).
+     * This test verifies the correct stack order: [delta, energy, childDv] (top to bottom).
+     * This is a unit test for the VM's instruction logic.
+     */
+    @Test
+    @Tag("unit")
+    void testFrks() {
+        // Set up: ensure we have enough energy and a clear target location
+        org.addEr(1000); // Give organism more energy for the fork operation
+        org.setDp(0, org.getIp());
+        
+        // Prepare stack with values in the order expected by assembly code:
+        // Stack order (top to bottom): [childDv, energy, delta]
+        // 1. Push delta vector (direction to place child) - goes to bottom
+        int[] delta = new int[]{1, 0};
+        org.getDataStack().push(delta);
+        
+        // 2. Push energy for child - goes to middle
+        int energy = new Molecule(Config.TYPE_DATA, 100).toInt();
+        org.getDataStack().push(energy);
+        
+        // 3. Push child direction vector (childDv) - goes to top
+        int[] childDv = new int[]{0, 1};
+        org.getDataStack().push(childDv);
+        
+        // Verify stack has 3 elements
+        assertThat(org.getDataStack().size()).isEqualTo(3);
+        
+        // Execute FRKS
+        placeInstruction("FRKS");
+        sim.tick();
+        
+        // Verify instruction succeeded
+        assertThat(org.isInstructionFailed()).isFalse();
+        
+        // Verify stack is empty
+        assertThat(org.getDataStack().size()).isEqualTo(0);
+        
+        // Verify child was created (simulation should have 2 organisms now)
+        assertThat(sim.getOrganisms().size()).isEqualTo(2);
+        
+        // Find the child organism
+        Organism child = sim.getOrganisms().stream()
+            .filter(o -> o.getId() != org.getId())
+            .findFirst()
+            .orElse(null);
+        
+        assertThat(child).isNotNull();
+        assertThat(child.getDv()).isEqualTo(childDv);
+        assertThat(child.getParentId()).isEqualTo(org.getId());
     }
 
     @org.junit.jupiter.api.AfterEach

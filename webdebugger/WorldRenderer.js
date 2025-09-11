@@ -1,6 +1,6 @@
 class WorldRenderer {
     static organismColorPalette = [
-        '#dc143c', '#1e90ff', '#32cd32', '#ffd700',
+        '#32cd32', '#1e90ff', '#dc143c', '#ffd700',
         '#ffa500', '#9370db', '#00ffff'
     ];
 
@@ -129,6 +129,7 @@ class WorldRenderer {
         // Draw all DPs for the organism (selected or not)
         const dpsArray = Array.isArray(organism.dps) ? organism.dps
             : (organism.dpsJson ? (() => { try { const a = JSON.parse(organism.dpsJson); return Array.isArray(a) ? a : null; } catch { return null; } })() : null);
+        const activeDpIndex = organism.activeDpIndex || 0; // Aktiver DP-Index
         if (Array.isArray(dpsArray)) {
             const byCell = new Map();
             dpsArray.forEach((dpPos, idx) => {
@@ -137,7 +138,8 @@ class WorldRenderer {
                 byCell.get(key).idxs.push(idx);
             });
             for (const { pos, idxs } of byCell.values()) {
-                this.drawDp(pos, color, idxs);
+                const isActive = idxs.includes(activeDpIndex);
+                this.drawDp(pos, color, idxs, isActive);
             }
         }
         // DV marker: draw at the edge of the IP cell for any available dv vector (dv or dvJson)
@@ -162,27 +164,60 @@ class WorldRenderer {
 
     }
 
-    drawDp(pos, color, indices) {
+    drawDp(pos, color, indices, isActive = false) {
         const x = pos[0] * this.config.cellSize;
         const y = pos[1] * this.config.cellSize;
         this.ctx.strokeStyle = color;
-        this.ctx.lineWidth = 1.5;
+        this.ctx.lineWidth = 2.0; // Dicker als vorher (1.5), aber dünner als IP (2.5)
         this.ctx.setLineDash([3, 3]); // Gestrichelte Linie für DP
-        this.ctx.strokeRect(x + 2, y + 2, this.config.cellSize - 4, this.config.cellSize - 4);
+        this.ctx.strokeRect(x, y, this.config.cellSize, this.config.cellSize); // So groß wie IP-Rahmen
         this.ctx.setLineDash([]); // Linienstil zurücksetzen
+        
+        // Schraffur für aktiven DP
+        if (isActive) {
+            this.ctx.strokeStyle = color;
+            this.ctx.lineWidth = 1.0;
+            this.ctx.setLineDash([]); // Durchgezogene Linien für Schraffur
+            const cellSize = this.config.cellSize;
+            const spacing = 4; // Abstand zwischen Schraffurlinien
+            // Diagonale Schraffur von links oben nach rechts unten, nur innerhalb der Zelle
+            for (let i = -cellSize; i < cellSize; i += spacing) {
+                this.ctx.beginPath();
+                // Startpunkt: links oben oder links außerhalb
+                const startX = Math.max(x, x + i);
+                const startY = y + Math.max(0, -i);
+                // Endpunkt: rechts unten oder rechts außerhalb
+                const endX = Math.min(x + cellSize, x + i + cellSize);
+                const endY = y + Math.min(cellSize, cellSize - i);
+                this.ctx.moveTo(startX, startY);
+                this.ctx.lineTo(endX, endY);
+                this.ctx.stroke();
+            }
+        }
+        
         if (Array.isArray(indices) && indices.length > 0) {
-            this.ctx.fillStyle = color;
-            this.ctx.font = `bold ${this.config.cellSize * 0.35}px 'Monospaced', 'Courier New'`;
+            const text = indices.join(',');
+            const centerX = x + this.config.cellSize / 2;
+            const centerY = y + this.config.cellSize / 2 + 1;
+            
+            // Schatten für bessere Sichtbarkeit
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            this.ctx.font = `900 ${this.config.cellSize * 0.45}px 'Monospaced', 'Courier New'`; // 900 = extra bold, 45% für mehrere DPs
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
-            const text = indices.join(',');
-            this.ctx.fillText(text, x + this.config.cellSize / 2, y + this.config.cellSize / 2 + 1);
+            this.ctx.fillText(text, centerX + 1, centerY + 1); // Schatten
+            
+            // Haupttext
+            this.ctx.fillStyle = color;
+            this.ctx.fillText(text, centerX, centerY);
         }
     }
 
     getOrganismColor(id) {
         if (!this.organismColorMap.has(id)) {
-            this.organismColorMap.set(id, WorldRenderer.organismColorPalette[id % WorldRenderer.organismColorPalette.length]);
+            // Organismus ID 1 bekommt Index 0, ID 2 bekommt Index 1, etc.
+            const paletteIndex = (id - 1) % WorldRenderer.organismColorPalette.length;
+            this.organismColorMap.set(id, WorldRenderer.organismColorPalette[paletteIndex]);
         }
         return this.organismColorMap.get(id);
     }

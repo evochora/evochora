@@ -48,7 +48,7 @@ class SidebarStateView {
         };
 
         // Hilfsfunktion für DP-Formatierung mit dynamischer Anzahl (schmalere Breite)
-        const formatDPs = (dps, previousDps) => {
+        const formatDPs = (dps, previousDps, activeDpIndex) => {
             if (!dps || dps.length === 0) return '';
 
             const formatted = [];
@@ -57,6 +57,11 @@ class SidebarStateView {
                 let value = '';
                 if (dps[i] && dps[i].length > 0) {
                     value = `${dps[i].join('|')}`;
+
+                    // Setze aktiven DP in eckige Klammern
+                    if (i === activeDpIndex) {
+                        value = `[${value}]`;
+                    }
 
                     // Prüfe, ob sich der DP-Wert geändert hat (nur bei "weiter" Navigation)
                     if (navigationDirection === 'forward' && previousDps && previousDps[i] && previousDps[i].length > 0) {
@@ -93,8 +98,9 @@ class SidebarStateView {
             // Begrenze auf maxColumns Werte
             let displayStack = formattedStack;
             if (formattedStack.length > maxColumns) {
-                displayStack = formattedStack.slice(0, maxColumns - 1); // -1 für "..."
-                displayStack.push('...'); // Zeige an, dass es mehr gibt
+                displayStack = formattedStack.slice(0, maxColumns - 1); // -1 für "(+X)"
+                const remainingCount = formattedStack.length - (maxColumns - 1);
+                displayStack.push(`(+${remainingCount})`); // Zeige Anzahl der nicht angezeigten Einträge
             }
 
             // Formatiere jeden Wert mit fester Breite (7 Zeichen wie bei Registern)
@@ -228,8 +234,9 @@ class SidebarStateView {
                 const maxColumns = 8; // Standard, könnte dynamisch sein
                 let displayEntries = formattedEntries;
                 if (formattedEntries.length > maxColumns) {
-                    displayEntries = formattedEntries.slice(0, maxColumns - 1); // -1 für "..."
-                    displayEntries.push('...'); // Zeige an, dass es mehr gibt
+                    displayEntries = formattedEntries.slice(0, maxColumns - 1); // -1 für "(+X)"
+                    const remainingCount = formattedEntries.length - (maxColumns - 1);
+                    displayEntries.push(`(+${remainingCount})`); // Zeige Anzahl der nicht angezeigten Einträge
                 }
 
                 // Verteile auf Spalten statt mit -> verketten
@@ -248,7 +255,7 @@ class SidebarStateView {
         const callStackChanged = navigationDirection === 'forward' &&
             (JSON.stringify(state.callStack) !== JSON.stringify(this.previousState?.callStack));
 
-        el.innerHTML = `<div class="code-view" style="font-size:0.9em;">DP:  ${formatDPs(state.dps, this.previousState?.dps)}\nDR:  ${formatRegisters(state.dataRegisters, this.previousState?.dataRegisters, true)}\nPR:  ${formatRegisters(state.procRegisters, this.previousState?.procRegisters, true)}\nFPR: ${formatRegisters(state.fpRegisters, this.previousState?.fpRegisters, true)}\nLR:  ${formatRegisters(state.locationRegisters, this.previousState?.locationRegisters, true)}\n${dataStackChanged ? '<div class="changed-line">DS:  ' : 'DS:  '}${formatStack(state.dataStack, this.previousState?.dataStack, state.dataRegisters?.length || 8, true)}${dataStackChanged ? '</div>' : ''}\n${locationStackChanged ? '<div class="changed-line">LS:  ' : 'LS:  '}${formatStack(state.locationStack, this.previousState?.locationStack, state.dataRegisters?.length || 8, true)}${locationStackChanged ? '</div>' : ''}\n${callStackChanged ? '<div class="changed-line">CS:  ' : 'CS:  '}${formatCallStack(state.callStack, this.previousState?.callStack)}${callStackChanged ? '</div>' : ''}</div>`;
+        el.innerHTML = `<div class="code-view" style="font-size:0.9em;">DP:  ${formatDPs(state.dps, this.previousState?.dps, state.activeDpIndex)}\nDR:  ${formatRegisters(state.dataRegisters, this.previousState?.dataRegisters, true)}\nPR:  ${formatRegisters(state.procRegisters, this.previousState?.procRegisters, true)}\nFPR: ${formatRegisters(state.fpRegisters, this.previousState?.fpRegisters, true)}\nLR:  ${formatRegisters(state.locationRegisters, this.previousState?.locationRegisters, true)}\n${dataStackChanged ? '<div class="changed-line">DS:  ' : 'DS:  '}${formatStack(state.dataStack, this.previousState?.dataStack, state.dataRegisters?.length || 8, true)}${dataStackChanged ? '</div>' : ''}\n${locationStackChanged ? '<div class="changed-line">LS:  ' : 'LS:  '}${formatStack(state.locationStack, this.previousState?.locationStack, state.dataRegisters?.length || 8, true)}${locationStackChanged ? '</div>' : ''}\n${callStackChanged ? '<div class="changed-line">CS:  ' : 'CS:  '}${formatCallStack(state.callStack, this.previousState?.callStack)}${callStackChanged ? '</div>' : ''}</div>`;
 
         // Speichere den aktuellen Zustand für den nächsten Vergleich
         this.previousState = { ...state };

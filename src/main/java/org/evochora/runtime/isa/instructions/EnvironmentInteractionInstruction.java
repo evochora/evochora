@@ -102,7 +102,9 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             if (additionalCost > 0) organism.takeEr(additionalCost);
 
             if (environment.getMolecule(targetCoordinate).isEmpty()) {
-                environment.setMolecule(toWrite, organism.getId(), targetCoordinate);
+                // For CODE:0, always set owner to 0
+                int ownerId = (toWrite.type() == Config.TYPE_CODE && toWrite.toScalarValue() == 0) ? 0 : organism.getId();
+                environment.setMolecule(toWrite, ownerId, targetCoordinate);
             } else {
                 organism.instructionFailed("POKE: Target cell is not empty.");
                 if (getConflictStatus() != ConflictResolutionStatus.NOT_APPLICABLE) setConflictStatus(ConflictResolutionStatus.LOST_TARGET_OCCUPIED);
@@ -261,7 +263,9 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             if (additionalCost > 0) organism.takeEr(additionalCost);
 
             // Write the new value (cell is now empty, so this should always succeed)
-            environment.setMolecule(toWrite, organism.getId(), targetCoordinate);
+            // For CODE:0, always set owner to 0
+            int ownerId = (toWrite.type() == Config.TYPE_CODE && toWrite.toScalarValue() == 0) ? 0 : organism.getId();
+            environment.setMolecule(toWrite, ownerId, targetCoordinate);
         }
     }
 

@@ -9,7 +9,7 @@
     // [OPTIONAL] Environment configuration (default: shape=[120,80], toroidal=true)
     "environment": {
       // [OPTIONAL] Dimensions of the simulation world (default: [120, 80])
-      "shape": [100, 100],
+      "shape": [300, 300],
       // [OPTIONAL] Whether the world wraps around at edges (default: true)
       "toroidal": true
     },
@@ -39,14 +39,14 @@
         // [MANDATORY] Path to the assembly program file for this organism
         "program": "assembly/primordial/main.s",
         // [MANDATORY] Initial energy level when organism is created
-        "initialEnergy": 5000,
+        "initialEnergy": 12000,
         // [MANDATORY] Placement strategy for organisms
         "placement": {
           // [MANDATORY] Placement strategy type ("fixed", "random", "grid")
           "strategy": "fixed",
           // [MANDATORY] Specific positions to place organisms (for "fixed" strategy)
           "positions": [
-            [1, 1]
+            [135, 125]
           ]
         }
       }
@@ -148,11 +148,11 @@
         // [MANDATORY] Parameters specific to this energy source type
         "params": {
           // [MANDATORY] Number of energy geysers to create
-          "count": 5,
+          "count": 20,
           // [MANDATORY] Interval between energy bursts (in ticks)
-          "interval": 25,
+          "interval": 5,
           // [MANDATORY] Amount of energy provided per burst
-          "amount": 500,
+          "amount": 2500,
           // [MANDATORY] Safety radius around organisms (no energy in this area)
           "safetyRadius": 2
         }
@@ -163,9 +163,9 @@
         // [MANDATORY] Parameters specific to solar energy
         "params": {
           // [MANDATORY] Probability of energy generation per tick (0.0 to 1.0)
-          "probability": 0.2,
+          "probability": 0.002,
           // [MANDATORY] Amount of energy provided per generation
-          "amount": 1500,
+          "amount": 1000,
           // [MANDATORY] Safety radius around organisms
           "safetyRadius": 1,
           // [MANDATORY] Maximum executions per tick
@@ -186,23 +186,11 @@
       // [OPTIONAL] Directory path where simulation output files are stored (default: "runs/")
       "outputPath": "runs/",
       // [OPTIONAL] Tick numbers at which simulation should automatically pause (default: null)
-      "checkpointPauseTicks": [5000, 10000, 15000],
+      "checkpointPauseTicks": [50000, 100000],
       // [OPTIONAL] Whether to skip ProgramArtifact features (default: false)
       "skipProgramArtefact": false,
       // [OPTIONAL] Maximum number of messages in queue (default: 10000)
-      "maxMessageCount": 10000
-    },
-    
-    // [OPTIONAL] Debug indexer service configuration (default: autoStart=true, batchSize=1000)
-    "indexer": {
-      // [OPTIONAL] Whether to automatically start indexer when pipeline starts (default: true)
-      "autoStart": true,
-      // [OPTIONAL] Directory path to monitor for new simulation runs (default: "runs/")
-      "inputPath": "runs/",
-      // [OPTIONAL] Directory path where indexed debug databases are stored (default: "runs/")
-      "outputPath": "runs/",
-      // [OPTIONAL] Number of database operations to batch together for performance (default: 1000)
-      "batchSize": 1000
+      "maxMessageCount": 50000
     },
     
     // [OPTIONAL] Persistence service configuration (default: autoStart=true, batchSize=1000)
@@ -210,8 +198,28 @@
       // [OPTIONAL] Whether to automatically start persistence when pipeline starts (default: true)
       "autoStart": true,
       // [OPTIONAL] Number of database operations to batch together for performance (default: 1000)
-      "batchSize": 1000
+      "batchSize": 5000
     },
+
+    // [OPTIONAL] Debug indexer service configuration (default: autoStart=true, batchSize=1000)
+    "indexer": {
+      // [OPTIONAL] Whether to automatically start indexer when pipeline starts (default: true)
+      "autoStart": true,
+      // [OPTIONAL] Directory path to monitor for new simulation runs (default: "runs/")
+      "inputPath": "runs/",
+      // [OPTIONAL] Compression configuration for prepared tick data
+      "compression": {
+        // [OPTIONAL] Whether to enable compression (default: false)
+        "enabled": true,
+        // [OPTIONAL] Compression algorithm to use (default: "gzip")
+        "algorithm": "gzip"
+      },
+      // [OPTIONAL] Directory path where indexed debug databases are stored (default: "runs/")
+      "outputPath": "runs/",
+      // [OPTIONAL] Number of database operations to batch together for performance (default: 1000)
+      "batchSize": 5000
+    },
+    
     
     // [OPTIONAL] Web server configuration (default: autoStart=true, port=7070, host="localhost")
     "server": {
@@ -224,7 +232,14 @@
       // [OPTIONAL] TCP port number for the web server (default: 7070)
       "port": 7070,
       // [OPTIONAL] Host address to bind the server to (default: "localhost")
-      "host": "localhost"
+      "host": "localhost",
+      // [OPTIONAL] Compression configuration for HTTP responses
+      "compression": {
+        // [OPTIONAL] Whether to enable HTTP gzip compression (default: false)
+        "enabled": true,
+        // [OPTIONAL] Compression algorithm to use (default: "gzip")
+        "algorithm": "gzip"
+      }
     },
     // [OPTIONAL] Logging configuration
     "logging": {

@@ -31,11 +31,17 @@ public final class DebugServer {
     private boolean isAutoPaused = false;
     private long lastStatusTime = 0;
     private double lastTPS = 0.0;
+    private org.evochora.server.config.SimulationConfiguration.CompressionConfig compressionConfig;
 
     public void start(String dbPath, int port) {
+        start(dbPath, port, null);
+    }
+
+    public void start(String dbPath, int port, org.evochora.server.config.SimulationConfiguration.CompressionConfig compressionConfig) {
         try {
             this.dbPath = dbPath;
             this.port = port;
+            this.compressionConfig = compressionConfig;
             
             // Prüfe, ob es eine JDBC-URL oder ein Dateipfad ist
             if (dbPath.startsWith("jdbc:sqlite:")) {
@@ -100,7 +106,15 @@ public final class DebugServer {
                         
                         // Keep inlineValues intact; UI deduplicates identical spans so only the usage will be shown once
                         String out = objectMapper.writeValueAsString(map);
-                        ctx.contentType("application/json").result(out);
+                        
+                        // Apply gzip compression if enabled
+                        if (compressionConfig != null && compressionConfig.enabled) {
+                            byte[] compressed = gzipCompress(out);
+                            ctx.header("Content-Encoding", "gzip");
+                            ctx.contentType("application/json").result(compressed);
+                        } else {
+                            ctx.contentType("application/json").result(out);
+                        }
                     } catch (Exception e) {
                         log.warn("Failed to augment tick json for tick {}: {}", tick, e.getMessage());
                         ctx.contentType("application/json").result(json);
@@ -188,12 +202,34 @@ public final class DebugServer {
         lastTPS = 0.0;
     }
 
+    private byte[] gzipCompress(String data) throws java.io.IOException {
+        try (java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+             java.util.zip.GZIPOutputStream gzipOut = new java.util.zip.GZIPOutputStream(baos)) {
+            gzipOut.write(data.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            gzipOut.finish();
+            return baos.toByteArray();
+        }
+    }
+
     private String fetchTickJson(long tick) {
         try (Connection conn = DriverManager.getConnection(this.jdbcUrl);
              PreparedStatement ps = conn.prepareStatement("SELECT tick_data_json FROM prepared_ticks WHERE tick_number = ?")) {
             ps.setLong(1, tick);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
+                    if (compressionConfig != null && compressionConfig.enabled) {
+                        // Try to read as bytes first (compressed data)
+                        try {
+                            byte[] data = rs.getBytes(1);
+                            if (data != null) {
+                                return org.evochora.server.compression.CompressionUtils.decompressIfNeeded(data);
+                            }
+                        } catch (Exception e) {
+                            // Fallback to string if bytes fail
+                            log.debug("Failed to read as bytes, trying as string: {}", e.getMessage());
+                        }
+                    }
+                    // Fallback to string (uncompressed data)
                     return rs.getString(1);
                 }
                 return null;

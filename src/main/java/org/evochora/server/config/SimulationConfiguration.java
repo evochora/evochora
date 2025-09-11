@@ -59,6 +59,7 @@ public final class SimulationConfiguration {
         public String inputPath;
         public String outputPath;
         public int batchSize = 1000; // Default batch size
+        public CompressionConfig compression = new CompressionConfig(); // Default: disabled
     }
 
     public static final class PersistenceServiceConfig {
@@ -73,6 +74,7 @@ public final class SimulationConfiguration {
         public String debugDbFile; // optional: specific debug DB to serve
         public Integer port;
         public String host;
+        public CompressionConfig compression = new CompressionConfig(); // Default: disabled
     }
 
     // Configuration structure
@@ -96,6 +98,14 @@ public final class SimulationConfiguration {
     /**
      * Configuration for logging behavior.
      */
+    public static final class CompressionConfig {
+        /** Whether compression is enabled (default: false) */
+        public boolean enabled = false;
+        
+        /** Compression algorithm to use (default: "gzip") */
+        public String algorithm = "gzip";
+    }
+
     public static final class LoggingConfig {
         /** Default log level for all loggers not explicitly configured. */
         public String defaultLogLevel = "WARN";

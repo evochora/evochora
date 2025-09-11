@@ -60,6 +60,34 @@ public class ConditionalInstruction extends Instruction {
                 }
                 return;
             }
+            if (opName.startsWith("IFP") || opName.startsWith("INP")) {
+                List<Operand> operands = resolveOperands(environment);
+                if (organism.isInstructionFailed()) {
+                    return;
+                }
+                if (operands.size() != 1) {
+                    organism.instructionFailed("Invalid operand count for " + opName);
+                    return;
+                }
+                Operand op = operands.get(0);
+                if (!(op.value() instanceof int[])) {
+                    organism.instructionFailed(opName + " requires a vector argument.");
+                    return;
+                }
+                int[] vector = (int[]) op.value();
+                if (!organism.isUnitVector(vector)) {
+                    return;
+                }
+                int[] targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
+                Molecule molecule = environment.getMolecule(targetCoordinate);
+                int ownerId = environment.getOwnerId(targetCoordinate);
+                boolean isPassable = molecule.isEmpty() || organism.isCellAccessible(ownerId);
+                boolean conditionMet = opName.startsWith("IFP") ? isPassable : !isPassable;
+                if (!conditionMet) {
+                    organism.skipNextInstruction(environment);
+                }
+                return;
+            }
             List<Operand> operands = resolveOperands(environment);
             if (organism.isInstructionFailed()) {
                 return;

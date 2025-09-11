@@ -570,8 +570,9 @@ public final class ServiceManager {
                 String indexerRawDbUrl = rawDbUrl.replace("memdb_", "memdb_indexer_");
                 String indexerDebugDbUrl = indexerRawDbUrl.replace("_raw", "_debug");
                 int batchSize = config.pipeline.indexer != null ? config.pipeline.indexer.batchSize : 1000;
+                org.evochora.server.config.SimulationConfiguration.CompressionConfig indexerCompression = config.pipeline.indexer != null ? config.pipeline.indexer.compression : null;
                 // DebugIndexer lädt EnvironmentProperties aus der Datenbank
-                DebugIndexer service = new DebugIndexer(indexerRawDbUrl, indexerDebugDbUrl, batchSize);
+                DebugIndexer service = new DebugIndexer(indexerRawDbUrl, indexerDebugDbUrl, batchSize, indexerCompression);
                 
                 indexer.set(service);
                 service.start();
@@ -677,7 +678,8 @@ public final class ServiceManager {
             DebugServer server = new DebugServer();
             debugServer.set(server);
             try {
-                server.start(debugDbPath, port);
+                org.evochora.server.config.SimulationConfiguration.CompressionConfig serverCompression = config.pipeline.server != null ? config.pipeline.server.compression : null;
+                server.start(debugDbPath, port, serverCompression);
                 serverRunning.set(true);
             } catch (RuntimeException e) {
                 log.error("Debug server port {} in use: {}", port, e.getMessage());

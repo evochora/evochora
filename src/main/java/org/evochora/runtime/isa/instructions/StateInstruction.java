@@ -105,6 +105,10 @@ public class StateInstruction extends Instruction {
                 case "SCNS":
                     handleScan(opName, operands, context.getWorld());
                     break;
+                case "GDVR":
+                case "GDVS":
+                    handleGdv(opName, operands);
+                    break;
                 default:
                     organism.instructionFailed("Unknown state instruction: " + opName);
             }
@@ -143,10 +147,10 @@ public class StateInstruction extends Instruction {
         }
         int energy = org.evochora.runtime.model.Molecule.fromInt((Integer) operands.get(1).value()).toScalarValue();
         int[] childDv = (int[]) operands.get(2).value();
-        int totalCost = getCost(organism, simulation.getEnvironment(), null);
-        if (energy > 0 && organism.getEr() >= totalCost) {
+        // The VirtualMachine already deducted the base cost (10), now we need to deduct the energy given to child
+        if (energy > 0 && organism.getEr() >= energy) {
             int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), delta, simulation.getEnvironment());
-            organism.takeEr(totalCost);
+            organism.takeEr(energy); // Deduct the energy given to the child
             Organism child = Organism.create(simulation, childIp, energy, organism.getLogger());
             child.setDv(childDv);
             child.setParentId(organism.getId());
@@ -291,10 +295,10 @@ public class StateInstruction extends Instruction {
             }
             int energy = org.evochora.runtime.model.Molecule.fromInt((Integer) operands.get(1).value()).toScalarValue();
             int[] childDv = (int[]) operands.get(2).value();
-            int totalCost = getCost(organism, environment, null);
-            if (energy > 0 && organism.getEr() >= totalCost) {
+            // The VirtualMachine already deducted the base cost (1), now we need to deduct the energy given to child
+            if (energy > 0 && organism.getEr() >= energy) {
                 int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), delta, environment);
-                organism.takeEr(totalCost);
+                organism.takeEr(energy); // Deduct the energy given to the child
                 Organism child = Organism.create(simulation, childIp, energy, organism.getLogger());
                 child.setDv(childDv);
                 child.setParentId(organism.getId());
@@ -317,10 +321,10 @@ public class StateInstruction extends Instruction {
                 return;
             }
             int energy = org.evochora.runtime.model.Molecule.fromInt(ei).toScalarValue();
-            int totalCost = getCost(organism, environment, null);
-            if (energy > 0 && organism.getEr() >= totalCost) {
+            // The VirtualMachine already deducted the base cost (1), now we need to deduct the energy given to child
+            if (energy > 0 && organism.getEr() >= energy) {
                 int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), delta, environment);
-                organism.takeEr(totalCost);
+                organism.takeEr(energy); // Deduct the energy given to the child
                 Organism child = Organism.create(simulation, childIp, energy, organism.getLogger());
                 child.setDv(childDv);
                 child.setParentId(organism.getId());
@@ -517,13 +521,40 @@ public class StateInstruction extends Instruction {
     public int getCost(Organism organism, Environment environment, List<Integer> rawArguments) {
         String name = getName();
         if (name.equals("FORK")) {
-            List<Operand> operands = resolveOperands(environment);
-            if (operands.size() == 3 && operands.get(1).value() instanceof Integer) {
-                return 10 + org.evochora.runtime.model.Molecule.fromInt((Integer)operands.get(1).value()).toScalarValue();
-            }
-            return 10;
+            // FORK has base cost 1, energy deduction is handled separately in the instruction
+            return 1;
+        }
+        if (name.equals("FRKI") || name.equals("FRKS")) {
+            // FRKI and FRKS have base cost 1, energy deduction is handled separately in the instruction
+            return 1;
         }
         // New state ops have base cost 1; return default (1) via super
         return super.getCost(organism, environment, rawArguments);
+    }
+
+    /**
+     * Handles the GDVR and GDVS instructions (Get DV to Register/Stack).
+     * Places the current DV value into the specified register or on the data stack.
+     * @param opName The instruction name (GDVR or GDVS)
+     * @param operands The operands (only used for GDVR)
+     */
+    private void handleGdv(String opName, List<Operand> operands) {
+        int[] currentDv = organism.getDv();
+        
+        if ("GDVS".equals(opName)) {
+            if (operands.size() != 0) { 
+                organism.instructionFailed("GDVS expects no operands."); 
+                return; 
+            }
+            organism.getDataStack().push(currentDv);
+        } else {
+            // GDVR
+            if (operands.size() != 1) { 
+                organism.instructionFailed("GDVR requires one register operand."); 
+                return; 
+            }
+            int targetReg = operands.get(0).rawSourceId();
+            writeOperand(targetReg, currentDv);
+        }
     }
 }

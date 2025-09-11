@@ -60,6 +60,9 @@ public class InternalStateBuilder {
         // DPS from organism
         List<List<Integer>> dps = organism.dps() != null ? organism.dps().stream().map(this::toList).toList() : new ArrayList<>();
         
+        // Active DP Index from organism
+        int activeDpIndex = organism.activeDpIndex();
+        
         return new PreparedTickState.InternalState(
             dataRegisters,      // dataRegisters
             procRegisters,      // procRegisters  
@@ -68,7 +71,8 @@ public class InternalStateBuilder {
             dataStack,          // dataStack
             locationStack,      // locationStack
             callStack,          // callStack
-            dps                 // dps
+            dps,                // dps
+            activeDpIndex       // activeDpIndex
         );
     }
     

@@ -118,18 +118,20 @@ public class RegDirectiveTest {
         // Assert - Should have compilation error
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.summary()).contains("Invalid register '%DR99'");
-        assertThat(diagnostics.summary()).contains(".REG directive only supports data registers %DR0-%DR7");
+        assertThat(diagnostics.summary()).contains(String.format(".REG directive supports data registers %%DR0-%%DR%d and location registers %%LR0-%%LR%d", 
+            org.evochora.runtime.Config.NUM_DATA_REGISTERS - 1, 
+            org.evochora.runtime.Config.NUM_LOCATION_REGISTERS - 1));
     }
 
     /**
-     * Verifies that the semantic analyzer correctly rejects non-DR register types.
+     * Verifies that the semantic analyzer correctly rejects non-DR/LR register types.
      */
     @Test
     @Tag("unit")
     void testRegDirectiveWithNonDRRegister() {
-        // Arrange - Test with non-DR register (PR and LR are not allowed in .REG)
+        // Arrange - Test with non-DR/LR register (PR and FPR are not allowed in .REG)
         String source = String.join("\n",
-                ".REG COUNTER %PR0",  // Invalid: .REG only supports DR registers
+                ".REG COUNTER %PR0",  // Invalid: .REG only supports DR and LR registers
                 "SETI COUNTER DATA:42"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -146,7 +148,9 @@ public class RegDirectiveTest {
         // Assert - Should have compilation error
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.summary()).contains("Invalid register '%PR0'");
-        assertThat(diagnostics.summary()).contains(".REG directive only supports data registers %DR0-%DR7");
+        assertThat(diagnostics.summary()).contains(String.format(".REG directive supports data registers %%DR0-%%DR%d and location registers %%LR0-%%LR%d", 
+            org.evochora.runtime.Config.NUM_DATA_REGISTERS - 1, 
+            org.evochora.runtime.Config.NUM_LOCATION_REGISTERS - 1));
     }
 
     /**
@@ -174,6 +178,62 @@ public class RegDirectiveTest {
         // Assert - Should have compilation error
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.summary()).contains("Invalid register '%PR0'");
-        assertThat(diagnostics.summary()).contains(".REG directive only supports data registers %DR0-%DR7");
+        assertThat(diagnostics.summary()).contains(String.format(".REG directive supports data registers %%DR0-%%DR%d and location registers %%LR0-%%LR%d", 
+            org.evochora.runtime.Config.NUM_DATA_REGISTERS - 1, 
+            org.evochora.runtime.Config.NUM_LOCATION_REGISTERS - 1));
+    }
+
+    /**
+     * Verifies that the semantic analyzer correctly accepts location register aliases.
+     */
+    @Test
+    @Tag("unit")
+    void testRegDirectiveWithLocationRegister() {
+        // Arrange - Test with valid location register
+        String source = String.join("\n",
+                ".REG POSITION %LR0",  // Valid: .REG now supports LR registers
+                "DPLR POSITION"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, Path.of(""));
+
+        // Act - Run full compiler pipeline up to AstPostProcessor
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+        
+        // Semantic Analysis - Populates symbol table with aliases
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        semanticAnalyzer.analyze(ast);
+        
+        // AST Post-Processing - Resolves register aliases
+        Map<String, String> registerAliases = new HashMap<>();
+        Map<String, org.evochora.compiler.frontend.lexer.Token> parserAliases = parser.getGlobalRegisterAliases();
+        
+        parserAliases.forEach((aliasName, registerToken) -> {
+            registerAliases.put(aliasName, registerToken.text());
+        });
+        
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, registerAliases);
+        List<AstNode> processedAst = ast.stream()
+            .map(node -> astPostProcessor.process(node))
+            .toList();
+
+        // Assert - Should compile successfully
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(processedAst).hasSize(2);
+        
+        // First node should be the RegNode
+        assertThat(processedAst.get(0)).isInstanceOf(org.evochora.compiler.frontend.parser.features.reg.RegNode.class);
+        
+        // Second node should be the InstructionNode
+        assertThat(processedAst.get(1)).isInstanceOf(InstructionNode.class);
+        InstructionNode dplr = (InstructionNode) processedAst.get(1);
+        assertThat(dplr.arguments()).hasSize(1);
+
+        assertThat(dplr.arguments().get(0)).isInstanceOf(RegisterNode.class);
+        RegisterNode reg = (RegisterNode) dplr.arguments().get(0);
+        assertThat(reg.registerToken().text()).isEqualTo("%LR0");
     }
 }

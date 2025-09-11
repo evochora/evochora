@@ -15,7 +15,7 @@
   .ORG 0|0
   JMPI HARVEST_START
 
-  # 3 DATA-Felder in der Zeile über PROC_START (x=0..2, y=-1 relativ zu PROC_START)
+  # 3 DATA-Felder in der Zeile über HARVEST_START (x=0..2, y=-1 relativ zu HARVEST_START)
   .PLACE DATA:1  0|1    # FWD_MASK: rechts (Bitmaske)
   .PLACE DATA:0  1|1    # KIDX: Index 0
   .PLACE DATA:89 2|1    # KLEFT: K0-Periode
@@ -45,11 +45,15 @@
       IFI %MASK ENERGY:0
         JMPI HARVEST_MOVE
       PEEK %MASK %VEC
+      JMPI HARVEST_SAVE_AND_RETURN
+
+    .ORG 0|4
+    HARVEST_SAVE_AND_RETURN:
       # vor RET: "in einem Rutsch" speichern
       STATIC3_STORE %FWD_MASK %KIDX %KLEFT
       RET
 
-    .ORG 0|4
+    .ORG 0|5
     HARVEST_MOVE:
       # 2) Vorwärts passierbar?
       SPNR %MASK
@@ -67,7 +71,7 @@
 
       JMPI HARVEST_LOOP
 
-    .ORG 0|5
+    .ORG 0|6
     HARVEST_TURN:
       # 90° CW drehen (Achsen 0,1) ohne externe Temp-Register
       RTRI %DIR DATA:0 DATA:1
@@ -93,7 +97,7 @@
       SETI %KLEFT DATA:103
       JMPI HARVEST_LOOP
 
-    .ORG 0|6
+    .ORG 0|7
     HARVEST_PT_K0:
       SETI %KLEFT DATA:89
       JMPI HARVEST_LOOP

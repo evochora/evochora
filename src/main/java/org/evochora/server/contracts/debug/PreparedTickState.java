@@ -54,7 +54,8 @@ public record PreparedTickState(
             List<String> dataStack,
             List<String> locationStack,
             List<CallStackEntry> callStack,
-            List<List<Integer>> dps
+            List<List<Integer>> dps,
+            int activeDpIndex
     ) {}
 
     public record RegisterValue(String id, String alias, String value) {}

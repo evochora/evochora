@@ -7,50 +7,43 @@
 # ----------------------------
 # Register-Aliase (nur Main-State)
 # ----------------------------
-.REG %ER       %DR0   # current energy
+.REG %ER %DR0   # current energy
 
 # ----------------------------
 # Constants
 # ----------------------------
-.DEFINE REPRODUCTION_CONTINUE_THRESHOLD DATA:25000
+.DEFINE REPRODUCTION_CONTINUE_THRESHOLD DATA:10000
 
 # ----------------------------
 # STRUCTURE Shell (50x30)
 # ----------------------------
-.PLACE STRUCTURE:1 0..70|1
-.PLACE STRUCTURE:1 0..70|30
-.PLACE STRUCTURE:1 0|2..29
-.PLACE STRUCTURE:1 70|2..29
-
-# ----------------------------
-# Entry / Trampolin
-# ----------------------------
-.ORG 0|0
-START:
-  JMPI INIT
+.PLACE STRUCTURE:1 -1..49|-1
+.PLACE STRUCTURE:1 -1..49|28
+.PLACE STRUCTURE:1 -1|0..27
+.PLACE STRUCTURE:1 49|0..27
 
 # ----------------------------
 # Init
 # ----------------------------
-.ORG 1|2
+.ORG 0|0
 INIT:
   JMPI MAIN_LOOP
 
 # ----------------------------
 # Main loop
 # ----------------------------
-.ORG 1|3
+.ORG 0|1
 MAIN_LOOP:
   NRG %ER
   GTI %ER REPRODUCTION_CONTINUE_THRESHOLD
-    CALL REPRODUCE.CONTINUE
+    CALL REPRODUCE.CONTINUE REF %ER
   CALL ENERGY.HARVEST
   JMPI MAIN_LOOP
 
 # ----------------------------
 # Energy search
 # ----------------------------
-.ORG 1|4
+.ORG 0|2
 .INCLUDE "lib/energy.s"
 .REQUIRE "lib/energy.s" AS ENERGY
   
@@ -58,7 +51,7 @@ MAIN_LOOP:
 # ----------------------------
 # Reproduction (mock)
 # ----------------------------
-.ORG 1|11
+.ORG 0|10
 .INCLUDE "lib/reproduce.s"
 .REQUIRE "lib/reproduce.s" AS REPRODUCE
 

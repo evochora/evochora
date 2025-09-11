@@ -78,7 +78,12 @@ class AppController {
             // ISA-Mapping is intentionally not used; rely solely on cell.opcodeName provided by backend
             const typeToId = t => ({ CODE:0, DATA:1, ENERGY:2, STRUCTURE:3 })[t] ?? 1;
             const cells = (data.worldState?.cells||[]).map(c => ({ position: JSON.stringify(c.position), type: typeToId(c.type), value: c.value, ownerId: c.ownerId, opcodeName: c.opcodeName }));
-            const organisms = (data.worldState?.organisms||[]).map(o => ({ organismId: o.id, programId: o.programId, energy: o.energy, positionJson: JSON.stringify(o.position), dps: o.dps, dv: o.dv }));
+            const organisms = (data.worldState?.organisms||[]).map(o => {
+                // Hole den korrekten activeDpIndex aus organismDetails
+                const details = data.organismDetails?.[o.id];
+                const correctActiveDpIndex = details?.internalState?.activeDpIndex ?? o.activeDpIndex ?? 0;
+                return { organismId: o.id, programId: o.programId, energy: o.energy, positionJson: JSON.stringify(o.position), dps: o.dps, dv: o.dv, activeDpIndex: correctActiveDpIndex };
+            });
             this.renderer.draw({ cells, organisms, selectedOrganismId: this.state.selectedOrganismId });
             const ids = Object.keys(data.organismDetails||{});
             const sel = this.state.selectedOrganismId && ids.includes(this.state.selectedOrganismId) ? this.state.selectedOrganismId : null;

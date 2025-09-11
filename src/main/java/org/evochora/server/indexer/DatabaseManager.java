@@ -108,6 +108,10 @@ public class DatabaseManager {
      * @throws Exception if writing fails
      */
     public void writePreparedTick(long tickNumber, String tickDataJson) throws Exception {
+        writePreparedTick(tickNumber, tickDataJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    public void writePreparedTick(long tickNumber, byte[] tickDataBytes) throws Exception {
         synchronized (connectionLock) {
             // Ensure database connection is available
             if (connection == null || connection.isClosed()) {
@@ -134,7 +138,7 @@ public class DatabaseManager {
             }
             
             tickInsertStatement.setLong(1, tickNumber);
-            tickInsertStatement.setString(2, tickDataJson);
+            tickInsertStatement.setBytes(2, tickDataBytes);
             tickInsertStatement.addBatch();
         } catch (SQLException e) {
             log.warn("Failed to add tick {} to batch: {} - statement may be closed", tickNumber, e.getMessage());

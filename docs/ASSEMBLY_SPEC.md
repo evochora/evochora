@@ -292,6 +292,7 @@ These instructions skip the next instruction if the condition is false.
 * `GTR %REG1 %REG2`, `GTI %REG1 <Literal>`, `GTS`: If value of first argument is greater than second. (Cost: 1)
 * `IFTR %REG1 %REG2`, `IFTI %REG1 <Literal>`, `IFTS`: If molecule types are equal. (Cost: 1)
 * `IFMR %VEC_REG`, `IFMI <Vector>`, `IFMS`: If cell at `DP` + vector is owned by self or direct parent. The vector must be a unit vector. (Cost: 1)
+* `IFPR %VEC_REG`, `IFPI <Vector>`, `IFPS`: If cell at `DP` + vector is passable (empty or owned by self or direct parent). The vector must be a unit vector. (Cost: 1)
 
 #### Negated Conditional Instructions
 
@@ -302,6 +303,7 @@ These instructions are the logical opposites of the standard conditional instruc
 * `LETR %REG1 %REG2`, `LETI %REG1 <Literal>`, `LETS`: If value of first argument is **less than or equal to** second. (Cost: 1)
 * `INTR %REG1 %REG2`, `INTI %REG1 <Literal>`, `INTS`: If molecule types are **not** equal. (Cost: 1)
 * `INMR %VEC_REG`, `INMI <Vector>`, `INMS`: If cell at `DP` + vector is **not** owned by self or direct parent. The vector must be a unit vector. (Cost: 1)
+* `INPR %VEC_REG`, `INPI <Vector>`, `INPS`: If cell at `DP` + vector is **not** passable (not empty and not owned by self or direct parent). The vector must be a unit vector. (Cost: 1)
 
 ### World Interaction
 
@@ -313,10 +315,10 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
   - STRUCTURE: If the cell is not accessible (neither owned by self nor direct parent), pay additional `|value|` energy.
   - CODE/DATA: Pay an additional flat cost of `5` unless the cell is owned by self (ownerId != 0). Unowned and parent-owned cells still incur this `5` cost.
 * `SCAN %DEST_REG %VEC_REG`, `SCNI %DEST_REG <Vector>`, `SCNS`: Reads molecule at `DP` + vector without consuming it. (Cost: 1)
-* `POKE %SRC_REG %VEC_REG`, `POKI %SRC_REG <Vector>`, `POKS`: Writes molecule from `<%SRC_REG>` or stack to an empty cell at `DP` + vector. (Base Cost: 1)
+* `POKE %SRC_REG %VEC_REG`, `POKI %SRC_REG <Vector>`, `POKS`: Writes molecule from `<%SRC_REG>` or stack to an empty cell at `DP` + vector and sets the ownership (Base Cost: 1)
   - Additional cost: ENERGY or STRUCTURE writes cost `|value|`; CODE or DATA writes cost `5`.
   - Note: The additional cost is charged even if the target cell is occupied and the write fails.
-* `PPKR %REG %VEC_REG`, `PPKI %REG <Vector>`, `PPKS`: Atomically reads and consumes molecule at `DP` + vector, then writes new molecule from `%REG` or stack to the same cell. (Base Cost: 1)
+* `PPKR %REG %VEC_REG`, `PPKI %REG <Vector>`, `PPKS`: Atomically reads and consumes molecule at `DP` + vector into `%REG`, and writes new molecule that was in`%REG` or stack to the same cell, basically swaps molecule in cell with the one in register or stack. Sets the ownership (Base Cost: 1)
   - PEEK costs: Same as individual PEEK instruction (ENERGY adds to ER, STRUCTURE/CODE/DATA costs apply based on ownership). If cell is empty, no PEEK costs apply.
   - POKE costs: Same as individual POKE instruction (ENERGY/STRUCTURE cost `|value|`, CODE/DATA cost `5`).
   - Note: Only one base cost of 1 is charged (not 2), but all additional costs from both PEEK and POKE apply.
@@ -332,8 +334,9 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 * `DIFF %REG`, `DIFS`: Stores the vector `DP` - `IP` in `<%REG>` or on the stack. (Cost: 1)
 * `NRG %REG`, `NRGS`: Stores current `ER` in `<%REG>` or on the stack. (Cost: 1)
 * `RAND %REG`, `RNDS`: Stores a random number [0, `<%REG>`) back into `<%REG>` or on the stack. (Cost: 1)
-* `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`: Creates a child organism. (Cost: 10 + energy)
-* `FRKI <DP_Vec> <NRG_Lit> <DV_Vec>`, `FRKS`: Creates a child organism (immediate/stack variants). (Cost: 1)
+* `GDVR %VEC_REG`, `GDVS`: Stores current `DV` in `<%VEC_REG>` or on the stack. (Cost: 1)
+* `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`: Creates a child organism. (Cost: 1 + energy)
+* `FRKI <DP_Vec> <NRG_Lit> <DV_Vec>`, `FRKS`: Creates a child organism (immediate/stack variants). (Cost: 1 + energy)
 * `ADPR %REG`, `ADPI <Literal>`, `ADPS`: Sets the active Data Pointer index. (Cost: 1)
 
 ### Location Stack and Register Operations
@@ -410,7 +413,7 @@ Directives are special commands that instruct the compiler on how to assemble th
 ### Definitions and Aliases
 
 * `.DEFINE <NAME> <VALUE>`: Creates a simple text substitution. The compiler will replace every occurrence of `<NAME>` with `<VALUE>` before parsing.
-* `.REG <%ALIAS> <%REGISTER>`: Assigns a custom name (`<%ALIAS>`) to a register (e.g., `.REG %COUNTER %DR0`).
+* `.REG <%ALIAS> <%REGISTER>`: Assigns a custom name (`<%ALIAS>`) to a register. Supports both data registers (e.g., `.REG %COUNTER %DR0`) and location registers (e.g., `.REG %POSITION %LR0`).
 
 ### Layout Control
 
