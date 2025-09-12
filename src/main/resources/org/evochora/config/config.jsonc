@@ -4,12 +4,14 @@
   // ============================================================================
   "simulation": {
     // [OPTIONAL] Random seed for reproducible simulation runs (default: 123456789)
-    "seed": 123456789,
+    //"seed": 323456789, // nach oben!!
+    "seed": 123456789, // nach rechts
     
     // [OPTIONAL] Environment configuration (default: shape=[120,80], toroidal=true)
     "environment": {
       // [OPTIONAL] Dimensions of the simulation world (default: [120, 80])
-      "shape": [160, 100],
+      //"shape": [160, 100],
+      "shape": [110, 40],
       // [OPTIONAL] Whether the world wraps around at edges (default: true)
       "toroidal": true
     },
@@ -46,7 +48,8 @@
           "strategy": "fixed",
           // [MANDATORY] Specific positions to place organisms (for "fixed" strategy)
           "positions": [
-            [55, 45]
+            //[55, 35]
+            [1, 1]
           ]
         }
       }
@@ -148,11 +151,11 @@
         // [MANDATORY] Parameters specific to this energy source type
         "params": {
           // [MANDATORY] Number of energy geysers to create
-          "count": 0,
+          "count": 1,
           // [MANDATORY] Interval between energy bursts (in ticks)
-          "interval": 5,
+          "interval": 10,
           // [MANDATORY] Amount of energy provided per burst
-          "amount": 10000,
+          "amount": 999,
           // [MANDATORY] Safety radius around organisms (no energy in this area)
           "safetyRadius": 2
         }
@@ -165,7 +168,7 @@
           // [MANDATORY] Probability of energy generation per tick (0.0 to 1.0)
           "probability": 0.01,
           // [MANDATORY] Amount of energy provided per generation
-          "amount": 10000,
+          "amount": 999,
           // [MANDATORY] Safety radius around organisms
           "safetyRadius": 1,
           // [MANDATORY] Maximum executions per tick
@@ -186,11 +189,11 @@
       // [OPTIONAL] Directory path where simulation output files are stored (default: "runs/")
       "outputPath": "runs/",
       // [OPTIONAL] Tick numbers at which simulation should automatically pause (default: null)
-      "checkpointPauseTicks": [50000, 100000, 150000, 200000],
+      "checkpointPauseTicks": [10000,20000,30000,200000],
       // [OPTIONAL] Whether to skip ProgramArtifact features (default: false)
       "skipProgramArtefact": false,
       // [OPTIONAL] Maximum number of messages in queue (default: 10000)
-      "maxMessageCount": 50000
+      "maxMessageCount": 10000
     },
     
     // [OPTIONAL] Persistence service configuration (default: autoStart=true, batchSize=1000)

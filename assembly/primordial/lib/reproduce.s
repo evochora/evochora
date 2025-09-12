@@ -278,7 +278,7 @@
 
     PUSH %DIRVEC                   # Die obere linke Ecke des Kindes liegt in Reproduktionsrichtung
     PUSI REPRODUCTION_CHILD_INITAL_ENERGY   # Energie für das Kind auf den DS legen
-    GDVS                           # Kinde bekommt selbe DV Richtung wie Elternorganismus
+    GDVS                           # Kind bekommt selbe DV Richtung wie Elternorganismus
     FRKS                           # FORKen, Alle 3 Werte werden vom Stack entfernt
 
     # Aufräumen und fertig

@@ -36,7 +36,6 @@
 
     HARVEST_LOOP:
       # 1) Umgebung scannen – wenn Energie da, sofort nehmen und zurück
-      ############### Neue Implementierung für den darunter auskommentierten Code ################
       SNTI %MASK ENERGY:0
       IFI %MASK DATA:0
         JMPI HARVEST_MOVE
@@ -47,15 +46,6 @@
       SCAN %MASK %VEC
       LETI %MASK ENERGY:0
         JMPI HARVEST_MOVE
-
-#      SNTI %MASK ENERGY:0
-#      IFI %MASK DATA:0
-#        JMPI HARVEST_MOVE
-#      RBIR %VEC %MASK
-#      B2VR %VEC %VEC
-#      SCAN %MASK %VEC
-#      IFI %MASK ENERGY:0
-#        JMPI HARVEST_MOVE
 
       PEEK %MASK %VEC
       JMPI HARVEST_SAVE_AND_RETURN
