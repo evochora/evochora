@@ -7,7 +7,8 @@
 # ----------------------------
 # Register-Aliase (nur Main-State)
 # ----------------------------
-.REG %ER %DR0   # current energy
+.REG %ER  %DR0   # current energy
+.REG %INI %DR1
 
 # ----------------------------
 # Constants
@@ -27,6 +28,25 @@
 # ----------------------------
 .ORG 0|0
 INIT:
+  DPLS
+  SETI %INI DATA:0
+
+LOCALSTATE_MOVE:
+  GTI %INI DATA:9
+    JMPI LOCALSTATE_WRITE
+
+  ADDI %INI DATA:1
+  SEKI 0|1
+  JMPI LOCALSTATE_MOVE
+
+LOCALSTATE_WRITE:
+  SETI %INI DATA:0
+  PPKI %INI 0|1
+  SEKI 1|0
+
+  SETI %INI DATA:-1
+  PPKI %INI 0|1
+  SKLS
   JMPI MAIN_LOOP
 
 # ----------------------------

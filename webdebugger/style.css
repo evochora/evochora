@@ -185,7 +185,7 @@ main.container {
 
 /* Adjust world container when sidebar is visible */
 .container.sidebar-visible .world-container {
-    margin-right: 550px; /* Same width as sidebar */
+    margin-right: 580px; /* Same width as sidebar */
     padding-right: 0px; /* Remove right padding from container */
     padding-left: 20px; /* Keep left padding */
     padding-top: 20px; /* Keep top padding */
@@ -209,7 +209,7 @@ main.container {
 
 /* Seitenleiste (standardmäßig versteckt) */
 .sidebar {
-    width: 550px; /* Verbreitert für mehr Platz */
+    width: 620px; /* Optimiert um horizontalen Scroll zu vermeiden */
     background-color: #191923;
     border-left: 1px solid #333;
     position: absolute;
@@ -292,7 +292,7 @@ main.container {
 .source-code-view {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
+    overflow-y: hidden; /* Disable scrolling - child handles it */
     overflow-x: auto;
     white-space: normal;
 }
@@ -458,9 +458,9 @@ main.container {
     line-height: inherit !important;
     vertical-align: text-top !important; /* Verhindert das Nach-oben-Rutschen */
                  /* Feste Breite basierend auf Zeichenanzahl */
-             width: 7ch !important; /* Feste Breite für Register/DPs */
-             min-width: 7ch !important;
-             max-width: 7ch !important;
+             width: 8ch !important; /* Feste Breite für Register/DPs - kompakter */
+             min-width: 8ch !important;
+             max-width: 8ch !important;
     text-align: left !important;
     overflow: hidden !important;
 }
@@ -530,17 +530,18 @@ main.container {
     background: #000; /* Ursprüngliche schwarze Hintergrundfarbe */
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
-    overflow-x: auto; /* Horizontaler Scrollbalken immer sichtbar, wenn nötig */
+    overflow: hidden; /* Disable scrolling - child handles it */
 }
 
 .assembly-code-view {
     font-family: 'Courier New', monospace;
     font-size: 0.8em; /* Kleinere Schriftgröße für den Quelltext */
     line-height: 1.1; /* Kompakte Zeilen */
-    padding: 8px 8px 8px 0; /* Kein linkes Padding - nur oben, rechts und unten */
+    padding: 8px 8px 25px 0; /* Extra padding at bottom to prevent text cutoff */
     background: #000; /* Ursprüngliche schwarze Hintergrundfarbe */
-    /* overflow-x entfernt - der Container übernimmt den horizontalen Scroll */
+    overflow-y: auto; /* Enable vertical scrolling */
+    overflow-x: hidden; /* Disable horizontal scrolling - parent handles it */
+    height: calc(100vh - 400px); /* Dynamic height based on viewport */
 }
 
 .source-line {

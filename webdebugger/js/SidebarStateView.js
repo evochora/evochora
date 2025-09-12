@@ -40,8 +40,8 @@ class SidebarStateView {
                         }
                     }
                 }
-                // Breite: 7 Zeichen für perfekte Ausrichtung ohne Scroll
-                formatted.push(String(value).padEnd(7));
+                // Breite: 8 Zeichen für perfekte Ausrichtung ohne Scroll
+                formatted.push(String(value).padEnd(8));
             }
 
             return formatted.join('');
@@ -72,8 +72,15 @@ class SidebarStateView {
                         }
                     }
                 }
-                // Breite: 7 Zeichen für perfekte Ausrichtung ohne Scroll
-                formatted.push(value.padEnd(7));
+                
+                // Breite: 8 Zeichen für perfekte Ausrichtung ohne Scroll
+                formatted.push(value.padEnd(8));
+                
+                // Füge Abstand zwischen allen DPs hinzu: DP0 in Spalte 1, DP1 in Spalte 3, DP2 in Spalte 5, etc.
+                if (i < dps.length - 1) {
+                    // Nach jedem DP: 1 zusätzliche Spalte (8 Zeichen) für Spalten 1, 3, 5, 7, ...
+                    formatted.push(' '.repeat(8));
+                }
             }
 
             return formatted.join('');
@@ -103,9 +110,9 @@ class SidebarStateView {
                 displayStack.push(`(+${remainingCount})`); // Zeige Anzahl der nicht angezeigten Einträge
             }
 
-            // Formatiere jeden Wert mit fester Breite (7 Zeichen wie bei Registern)
+            // Formatiere jeden Wert mit fester Breite (8 Zeichen wie bei Registern)
             const formattedValues = displayStack.map(value => {
-                return String(value).padEnd(7);
+                return String(value).padEnd(8);
             });
 
             return formattedValues.join('');
@@ -240,7 +247,7 @@ class SidebarStateView {
                 }
 
                 // Verteile auf Spalten statt mit -> verketten
-                return displayEntries.map(entry => String(entry).padEnd(7)).join('');
+                return displayEntries.map(entry => String(entry).padEnd(8)).join('');
             }
         };
 

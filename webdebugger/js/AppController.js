@@ -40,18 +40,18 @@ class AppController {
     }
     
     async init() {
+        // Load URL parameters first
+        this.loadFromUrl();
+        
         // Load simulation metadata first to get correct world dimensions
         // NEU: Kein separater /api/meta Request mehr - worldMeta kommt aus Tick-Response
-        await this.navigateToTick(0); 
+        await this.navigateToTick(this.state.currentTick); 
     }
     
     async navigateToTick(tick) {
         let target = typeof tick === 'number' ? tick : 0;
         if (target < 0) target = 0;
-        if (typeof this.state.totalTicks === 'number' && this.state.totalTicks > 0) {
-            const maxTick = Math.max(0, this.state.totalTicks - 1);
-            if (target > maxTick) target = maxTick;
-        }
+        // Tick validation against totalTicks removed - allow navigation to any tick
         
         // Bestimme die Navigationsrichtung für Änderungs-Hervorhebung
         if (target === this.state.currentTick + 1) {
@@ -97,6 +97,7 @@ class AppController {
                 this.sidebarManager.setToggleButtonVisible(false);
             }
             this.updateTickUi();
+            this.saveToUrl(); // Save state to URL
         } catch (error) {
             // Error is already displayed by ApiService
             console.error('Failed to navigate to tick:', error);
@@ -131,6 +132,7 @@ class AppController {
                     this.sidebar.update(det, this.lastNavigationDirection);
                     this.sidebarManager.autoShow();
                     this.sidebarManager.setToggleButtonVisible(true);
+                    this.saveToUrl(); // Save state to URL
                     break;
                 }
             }
@@ -153,5 +155,44 @@ class AppController {
         if (this.toolbar && this.toolbar.handleKeyRelease) {
             this.toolbar.handleKeyRelease();
         }
+    }
+    
+    // Load state from URL parameters
+    loadFromUrl() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const tick = urlParams.get('tick');
+        const organism = urlParams.get('organism');
+        
+        if (tick !== null) {
+            const tickNumber = parseInt(tick, 10);
+            if (!isNaN(tickNumber) && tickNumber >= 0) {
+                this.state.currentTick = tickNumber;
+            }
+        }
+        
+        if (organism !== null) {
+            this.state.selectedOrganismId = organism;
+        }
+    }
+    
+    // Save state to URL parameters
+    saveToUrl() {
+        const url = new URL(window.location);
+        const params = url.searchParams;
+        
+        if (this.state.currentTick !== null && this.state.currentTick !== 0) {
+            params.set('tick', this.state.currentTick.toString());
+        } else {
+            params.delete('tick');
+        }
+        
+        if (this.state.selectedOrganismId !== null) {
+            params.set('organism', this.state.selectedOrganismId);
+        } else {
+            params.delete('organism');
+        }
+        
+        // Update URL without reloading the page
+        window.history.replaceState({}, '', url.toString());
     }
 }

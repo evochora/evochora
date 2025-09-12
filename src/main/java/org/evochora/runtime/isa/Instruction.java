@@ -281,8 +281,8 @@ public abstract class Instruction {
 
         // Location instruction family registrations
         registerFamily(LocationInstruction.class, Map.of(112, "DUPL", 113, "SWPL", 114, "DRPL", 115, "ROTL", 116, "DPLS", 117, "SKLS", 122, "LSDS"), List.of());
-        registerFamily(LocationInstruction.class, Map.of(118, "DPLR", 120, "SKLR", 121, "PUSL", 123, "LRDS", 125, "POPL"), List.of(OperandSource.REGISTER));
-        registerFamily(LocationInstruction.class, Map.of(124, "LRDR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(LocationInstruction.class, Map.of(118, "DPLR", 120, "SKLR", 121, "PUSL", 123, "LRDS", 125, "POPL", 191, "CRLR"), List.of(OperandSource.REGISTER));
+        registerFamily(LocationInstruction.class, Map.of(124, "LRDR", 190, "LRLR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(LocationInstruction.class, Map.of(126, "LSDR"), List.of(OperandSource.REGISTER));
 
         // Vector Manipulation Instruction Family

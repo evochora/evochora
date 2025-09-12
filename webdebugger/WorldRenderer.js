@@ -76,8 +76,46 @@ class WorldRenderer {
                 this.drawCell(cell);
             }
         }
+        
+        // Sammle alle DPs von allen Organismen und zeichne sie koordiniert
         if (organisms) {
-            for (const organism of organisms) this.drawOrganism(organism, selectedOrganismId === organism.organismId);
+            const allDps = new Map(); // key: position, value: { color, indices, isActive }
+            
+            // Sammle DPs von allen Organismen
+            for (const organism of organisms) {
+                const color = this.getOrganismColor(organism.organismId);
+                const dpsArray = Array.isArray(organism.dps) ? organism.dps
+                    : (organism.dpsJson ? (() => { try { const a = JSON.parse(organism.dpsJson); return Array.isArray(a) ? a : null; } catch { return null; } })() : null);
+                const activeDpIndex = organism.activeDpIndex || 0;
+                
+                if (Array.isArray(dpsArray)) {
+                    dpsArray.forEach((dpPos, idx) => {
+                        const key = Array.isArray(dpPos) ? dpPos.join('|') : String(dpPos);
+                        const isActive = idx === activeDpIndex;
+                        
+                        if (!allDps.has(key)) {
+                            allDps.set(key, { pos: dpPos, color: color, indices: [], isActive: false });
+                        }
+                        
+                        const dpData = allDps.get(key);
+                        dpData.indices.push(idx);
+                        // Ein DP ist aktiv, wenn mindestens ein Organismus diesen DP als aktiv markiert hat
+                        if (isActive) {
+                            dpData.isActive = true;
+                        }
+                    });
+                }
+            }
+            
+            // Zeichne alle Organismen (ohne DPs)
+            for (const organism of organisms) {
+                this.drawOrganismWithoutDps(organism, selectedOrganismId === organism.organismId);
+            }
+            
+            // Zeichne alle DPs koordiniert
+            for (const dpData of allDps.values()) {
+                this.drawDp(dpData.pos, dpData.color, dpData.indices, dpData.isActive);
+            }
         }
     }
 
@@ -111,6 +149,39 @@ class WorldRenderer {
                 text = cell.value.toString();
             }
             this.ctx.fillText(text, x + this.config.cellSize / 2, y + this.config.cellSize / 2 + 1);
+        }
+    }
+
+    drawOrganismWithoutDps(organism, isSelected) {
+        const pos = this.parsePosition(organism.positionJson);
+        if (!pos) return;
+
+        const color = this.getOrganismColor(organism.organismId);
+        const x = pos[0] * this.config.cellSize;
+        const y = pos[1] * this.config.cellSize;
+
+        this.ctx.strokeStyle = organism.energy <= 0 ? this.config.colorDead : color;
+        this.ctx.lineWidth = 2.5;
+        this.ctx.strokeRect(x, y, this.config.cellSize, this.config.cellSize);
+
+        // DV marker: draw at the edge of the IP cell for any available dv vector (dv or dvJson)
+        let dvVec = null;
+        if (organism.dvJson) {
+            const pv = this.parsePosition(organism.dvJson);
+            if (Array.isArray(pv)) dvVec = pv;
+        } else if (Array.isArray(organism.dv)) {
+            dvVec = organism.dv;
+        }
+        if (Array.isArray(dvVec)) {
+            const edgeOffset = this.config.cellSize * 0.5;
+            this.ctx.fillStyle = color;
+            const cx = x + this.config.cellSize / 2;
+            const cy = y + this.config.cellSize / 2;
+            const px = cx + Math.sign(dvVec[0]||0) * edgeOffset * 0.9;
+            const py = cy + Math.sign(dvVec[1]||0) * edgeOffset * 0.9;
+            this.ctx.beginPath();
+            this.ctx.arc(px, py, this.config.cellSize * 0.1, 0, 2*Math.PI);
+            this.ctx.fill();
         }
     }
 

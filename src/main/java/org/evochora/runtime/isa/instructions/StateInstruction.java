@@ -155,6 +155,7 @@ public class StateInstruction extends Instruction {
             child.setDv(childDv);
             child.setParentId(organism.getId());
             child.setBirthTick(simulation.getCurrentTick());
+            child.setProgramId(organism.getProgramId());
             simulation.addNewOrganism(child);
         } else {
             organism.instructionFailed("FORK failed due to insufficient energy or invalid parameters.");
@@ -228,7 +229,6 @@ public class StateInstruction extends Instruction {
         if (operands.size() != 2) { organism.instructionFailed(opName + " requires two operands."); return; }
         Operand dest = operands.get(0);
         Operand src = operands.get(1);
-        if (!(dest.value() instanceof Integer)) { organism.instructionFailed(opName + " destination must be a scalar register."); return; }
 
         Molecule srcMol;
         if ("RBII".equals(opName)) {
@@ -303,6 +303,7 @@ public class StateInstruction extends Instruction {
                 child.setDv(childDv);
                 child.setParentId(organism.getId());
                 child.setBirthTick(simulation.getCurrentTick());
+                child.setProgramId(organism.getProgramId());
                 simulation.addNewOrganism(child);
             } else {
                 organism.instructionFailed("FRKI failed due to insufficient energy or invalid parameters.");
@@ -329,6 +330,7 @@ public class StateInstruction extends Instruction {
                 child.setDv(childDv);
                 child.setParentId(organism.getId());
                 child.setBirthTick(simulation.getCurrentTick());
+                child.setProgramId(organism.getProgramId());
                 simulation.addNewOrganism(child);
             } else {
                 organism.instructionFailed("FRKS failed due to insufficient energy or invalid parameters.");

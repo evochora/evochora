@@ -16,15 +16,14 @@
   .PREG %SHELL   %PR0     # Hüllen Molekül als Terminator Symbol
   .PREG %DIRMASK %PR1     # Richtung der Reproduktion als Bitmaske - static local state
   .PREG %DIRVEC  %PR2     # Richtung der Reproduktion als Vektor
-  .PREG %SIDEVEC %PR3     # In der ersten und letzten Zeile Vektor zu Hüllenseite, sonst DATA:0, im local state DATA:-1 für rechts (letzte Zeile) und DATA:1 für links (erste Zeile)
+  .PREG %SIDEVEC %PR3     # In der ersten und letzten Zeile Vektor zu Hüllenseite, sonst DATA:0, im local state DATA:1 für rechts (letzte Zeile) und DATA:-1 für links (erste Zeile)
   .PREG %TMP     %PR4     # Tempräres register für schenlle Vergleiche
-
 
   JMPI CONTINUE_INIT
 
   # 3 DATA-Felder in der Zeile über CONTINUE_INIT (x=0..2, y=-1 relativ zu CONTINUE_INIT)
   .PLACE DATA:0  0|1    # %DIRMASK
-  .PLACE DATA:1  1|1    # %DIRVEC
+  .PLACE DATA:-1  1|1    # %DIRVEC
 
   .ORG 0|2
   CONTINUE_INIT:                                  # State laden
@@ -54,7 +53,7 @@
     IFI %SIDEVEC DATA:0
       JMPI CONTINUE_SIDEVEC_0
 
-    GTI %SIDEVEC DATA:0
+    LTI %SIDEVEC DATA:0
       JMPI CONTINUE_SIDEVEC_L
 
     SETR %SIDEVEC %DIRVEC
@@ -177,15 +176,16 @@
 
   .ORG 0|11
   CONTINUE_WRITELINE:              # Schreib Loop
-    INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
-      PEEK %TMP %DIRVEC            # ... dann lösche ich es
+    ##INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
+    ##  PEEK %TMP %DIRVEC            # ... dann lösche ich es
 
     POP %TMP                       # Nächstes Symbol von DS holen
 
     IFR %TMP %SHELL                # Kommt als nächstes das Terminator Symbol?
       JMPI CONTINUE_WRITEFINISH    # Dann Zeilenabschluss
 
-    POKE %TMP %DIRVEC              # Schreiben
+    ##POKE %TMP %DIRVEC              # Schreiben
+    PPKR %TMP %DIRVEC
 
     SETV %TMP 0|0
     IFR %SIDEVEC %TMP              # Wenn wir nicht an der Seite der Hülle sind, ...
@@ -239,7 +239,7 @@
     POKE %SHELL %SIDEVEC
 
     # Wenn %SIDEVEC links, dann ist alles kopiert und wir können zum FORK
-    CRSR %TMP %DIRVEC %SIDEVEC     # X-Produkt ist 1, wenn %SIDEVEC nach links zeigt
+    CRSR %TMP %DIRVEC %SIDEVEC     # X-Produkt ist 1, wenn %SIDEVEC nach rechts zeigt
     GTI %TMP DATA:0                # Wenn X-Produkt > 0, ...
       JMPI CONTINUE_FORK           # ... dann mit FORK beginnen
 
@@ -282,8 +282,16 @@
     FRKS                           # FORKen, Alle 3 Werte werden vom Stack entfernt
 
     # Aufräumen und fertig
-    SETV %SIDEVEC 1|0              # Beim nächsten Mal muss die linke Hülle bei der ersten Seite mit gemacht werden
+    SETV %SIDEVEC 0|-1             # %SIDEVEC auf links für neue Reproduktion
     SETI %DIRMASK DATA:0           # Beim nächsten Mal wird eine Richtung neu zufällig gewählt
+    CRLR %CONTCORD                 # Beim nächsten Mal brauchen wir eine leere Zeilen Koordinate, damit von vorne begonnen wird
+    CRLR %FORKCORD                 # Auch die Koordinate für das FORK muss neu berechnet werden
+
+    # DP0 und DP1 wiederherstellen
+    ADPI DATA:1
+    SKLS
+    ADPI DATA:0
+    SKLS
 
     JMPI CONTINUE_SAVE_AND_RET
 
@@ -295,7 +303,7 @@
     IFR %SIDEVEC %TMP                             # Für Mittelzeile sind wir fertig
       JMPI CONTINUE_SIDVEC_STORE_0
 
-    CRSR %SIDEVEC %DIRVEC %SIDEVEC                # X-Produkt gibt 1 für links und -1 für rechts
+    CRSR %SIDEVEC %DIRVEC %SIDEVEC                # X-Produkt gibt 1 für rechts und -1 für links
     JMPI CONTINUE_STORE_STATE
 
   CONTINUE_SIDVEC_STORE_0:

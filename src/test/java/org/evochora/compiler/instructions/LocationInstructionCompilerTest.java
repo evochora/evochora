@@ -73,4 +73,37 @@ class LocationInstructionCompilerTest extends CompilerTestBase {
             assertThat(artifact.machineCodeLayout()).isNotEmpty();
         });
     }
+
+    @Test
+    void testLrlrInstruction() {
+        String source = String.join("\n",
+                "LRLR %LR2 %LR1",
+                "LRLR %LR0 %LR3"
+        );
+        List<String> lines = List.of(source.split("\n"));
+        assertDoesNotThrow(() -> {
+            ProgramArtifact artifact = compiler.compile(lines, "lrlr_test.s", testEnvProps);
+            assertThat(artifact).isNotNull();
+            assertThat(artifact.machineCodeLayout()).isNotEmpty();
+        });
+    }
+
+    /**
+     * Tests compilation of CRLR instruction.
+     */
+    @Test
+    void testCrlrInstruction() {
+        String source = String.join("\n",
+                "CRLR %LR0",
+                "CRLR %LR1",
+                "CRLR %LR2",
+                "CRLR %LR3"
+        );
+        List<String> lines = List.of(source.split("\n"));
+        assertDoesNotThrow(() -> {
+            ProgramArtifact artifact = compiler.compile(lines, "crlr_test.s", testEnvProps);
+            assertThat(artifact).isNotNull();
+            assertThat(artifact.machineCodeLayout()).isNotEmpty();
+        });
+    }
 }

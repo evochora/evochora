@@ -134,29 +134,43 @@ class SidebarSourceView {
             return;
         }
         
-        // Erstelle den Dropdown für Assembly-Dateien
-        const dropdownHtml = this.createFileDropdown();
-        
-        // Hole den Inhalt der ausgewählten Datei
-        const selectedSource = this.allSources[this.selectedFileName] || [];
-        
-        // Erstelle den Assembly-Code mit Zeilennummern
-        const assemblyCodeHtml = this.createAssemblyCodeView(selectedSource, src);
-        
-        // Kombiniere alles - OHNE Label "Assembly-Datei:"
-        el.innerHTML = `<div class="source-view-container"><div class="file-selector"><select id="assembly-file-select" class="assembly-file-dropdown">${dropdownHtml}</select></div><div class="assembly-code-container">${assemblyCodeHtml}</div></div>`;
-        
-        // Event-Listener für den Dropdown
-        const dropdown = el.querySelector('#assembly-file-select');
-        if (dropdown) {
-            dropdown.value = this.selectedFileName || '';
-            dropdown.addEventListener('change', (e) => {
-                this.selectedFileName = e.target.value;
-                this.renderSourceView(el, src);
-            });
+        // Check if this is the first render or if we need to rebuild the structure
+        const existingContainer = el.querySelector('.source-view-container');
+        if (!existingContainer) {
+            // First render - create the full structure
+            const dropdownHtml = this.createFileDropdown();
+            const selectedSource = this.allSources[this.selectedFileName] || [];
+            const assemblyCodeHtml = this.createAssemblyCodeView(selectedSource, src);
+            
+            el.innerHTML = `<div class="source-view-container"><div class="file-selector"><select id="assembly-file-select" class="assembly-file-dropdown">${dropdownHtml}</select></div><div class="assembly-code-container">${assemblyCodeHtml}</div></div>`;
+            
+            // Event-Listener für den Dropdown
+            const dropdown = el.querySelector('#assembly-file-select');
+            if (dropdown) {
+                dropdown.value = this.selectedFileName || '';
+                dropdown.addEventListener('change', (e) => {
+                    this.selectedFileName = e.target.value;
+                    this.renderSourceView(el, src);
+                });
+            }
+        } else {
+            // Update only the content, preserve scroll position
+            const selectedSource = this.allSources[this.selectedFileName] || [];
+            const assemblyCodeHtml = this.createAssemblyCodeView(selectedSource, src);
+            
+            const assemblyContainer = el.querySelector('.assembly-code-container');
+            if (assemblyContainer) {
+                assemblyContainer.innerHTML = assemblyCodeHtml;
+            }
+            
+            // Update dropdown if needed
+            const dropdown = el.querySelector('#assembly-file-select');
+            if (dropdown && dropdown.value !== this.selectedFileName) {
+                dropdown.value = this.selectedFileName || '';
+            }
         }
         
-        // CRITICAL: Scroll to current line after rendering
+        // Check if we need to scroll to keep the current line visible
         this.scrollToCurrentLine(el);
     }
     
@@ -269,24 +283,46 @@ class SidebarSourceView {
             return;
         }
         
-        // Fallback für den Fall, dass keine allSources verfügbar sind
-        const header = `//${this.getRelativePath(src.fileName) || 'Unknown'}`;
+        // Check if this is the first render or if we need to rebuild the structure
+        const existingContainer = el.querySelector('#source-code-view');
+        if (!existingContainer) {
+            // First render - create the full structure
+            const header = `//${this.getRelativePath(src.fileName) || 'Unknown'}`;
+            
+            // CRITICAL: Don't filter out empty lines - preserve original line numbers for correct highlighting
+            const linesHtml = (src.lines || []).map((l, index) => {
+                const lineNumber = index + 1; // Original line number from source file
+                // CRITICAL: Use src.currentLine to highlight the current execution line
+                const isCurrentLine = src.currentLine === lineNumber;
+                const lineClass = isCurrentLine ? 'source-line current-line' : 'source-line';
+                return `<div class="${lineClass}" data-line="${lineNumber}"><span class="line-number">${lineNumber}</span><pre data-line="${lineNumber}">${String(l.content || '').replace(/</g, '&lt;')}</pre></div>`;
+            }).join('');
+            
+            el.innerHTML = `<div class="code-view source-code-view" id="source-code-view" style="font-size:0.9em;"><div class="source-line"><span class="line-number"></span><pre>${header}</pre></div>${linesHtml}</div>`;
+            
+            // Verarbeite Inline-Values (ursprüngliche Logik)
+            this.processInlineValues(el, src);
+        } else {
+            // Update only the content, preserve scroll position
+            const linesHtml = (src.lines || []).map((l, index) => {
+                const lineNumber = index + 1; // Original line number from source file
+                // CRITICAL: Use src.currentLine to highlight the current execution line
+                const isCurrentLine = src.currentLine === lineNumber;
+                const lineClass = isCurrentLine ? 'source-line current-line' : 'source-line';
+                return `<div class="${lineClass}" data-line="${lineNumber}"><span class="line-number">${lineNumber}</span><pre data-line="${lineNumber}">${String(l.content || '').replace(/</g, '&lt;')}</pre></div>`;
+            }).join('');
+            
+            // Update only the lines content, keep the header
+            const headerLine = existingContainer.querySelector('.source-line:first-child');
+            if (headerLine) {
+                existingContainer.innerHTML = `<div class="source-line"><span class="line-number"></span><pre>//${this.getRelativePath(src.fileName) || 'Unknown'}</pre></div>${linesHtml}`;
+            }
+            
+            // Verarbeite Inline-Values (ursprüngliche Logik)
+            this.processInlineValues(el, src);
+        }
         
-        // CRITICAL: Don't filter out empty lines - preserve original line numbers for correct highlighting
-        const linesHtml = (src.lines || []).map((l, index) => {
-            const lineNumber = index + 1; // Original line number from source file
-            // CRITICAL: Use src.currentLine to highlight the current execution line
-            const isCurrentLine = src.currentLine === lineNumber;
-            const lineClass = isCurrentLine ? 'source-line current-line' : 'source-line';
-            return `<div class="${lineClass}" data-line="${lineNumber}"><span class="line-number">${lineNumber}</span><pre data-line="${lineNumber}">${String(l.content || '').replace(/</g, '&lt;')}</pre></div>`;
-        }).join('');
-        
-        el.innerHTML = `<div class="code-view source-code-view" id="source-code-view" style="font-size:0.9em;"><div class="source-line"><span class="line-number"></span><pre>${header}</pre></div>${linesHtml}</div>`;
-        
-        // Verarbeite Inline-Values (ursprüngliche Logik)
-        this.processInlineValues(el, src);
-        
-        // Scroll zur aktuellen Zeile
+        // Check if we need to scroll to keep the current line visible
         this.scrollToCurrentLine(el);
     }
     
@@ -355,17 +391,39 @@ class SidebarSourceView {
     }
     
     scrollToCurrentLine(el) {
-        const container = el.querySelector('#source-code-view, #assembly-code-view');
-        // CRITICAL: Look for the current execution line (either current-line or highlight class)
-        const highlighted = container ? container.querySelector('.source-line.current-line, .source-line.highlight') : null;
+        const container = el.querySelector('#assembly-code-view');
+        const highlighted = container ? container.querySelector('.source-line.current-line') : null;
+        
         if (container && highlighted) {
-            try {
-                // Scroll the current line to the center of the viewport
-                highlighted.scrollIntoView({ block: 'center', behavior: 'smooth' });
-            } catch (e) {
-                // Fallback: manueller Scroll
-                const top = highlighted.offsetTop - (container.clientHeight / 2) + (highlighted.clientHeight / 2);
-                container.scrollTop = Math.max(0, Math.min(top, container.scrollHeight - container.clientHeight));
+            // Check if the highlighted line is already visible in the viewport
+            const containerRect = container.getBoundingClientRect();
+            const highlightedRect = highlighted.getBoundingClientRect();
+            
+            // Calculate if the line is visible within the container's viewport
+            const lineOffsetTop = highlighted.offsetTop;
+            const containerScrollTop = container.scrollTop;
+            const containerVisibleHeight = container.clientHeight;
+            const containerTotalHeight = container.scrollHeight;
+            
+            // Check if the line is within the visible area of the container
+            // We need to account for the container's scroll position
+            
+            // The line is visible if it's within the scrolled viewport
+            const isVisible = lineOffsetTop >= containerScrollTop && 
+                            lineOffsetTop <= (containerScrollTop + containerVisibleHeight);
+            
+            // Only scroll if the line is not visible
+            if (!isVisible) {
+                // Manual scroll calculation to center the line
+                const lineHeight = highlighted.clientHeight;
+                const containerHeight = container.clientHeight;
+                const targetScrollTop = lineOffsetTop - (containerHeight / 2) + (lineHeight / 2);
+                
+                // Ensure we don't scroll beyond the bounds
+                const maxScrollTop = container.scrollHeight - containerHeight;
+                const finalScrollTop = Math.max(0, Math.min(targetScrollTop, maxScrollTop));
+                
+                container.scrollTop = finalScrollTop;
             }
         }
     }

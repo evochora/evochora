@@ -9,7 +9,7 @@
     // [OPTIONAL] Environment configuration (default: shape=[120,80], toroidal=true)
     "environment": {
       // [OPTIONAL] Dimensions of the simulation world (default: [120, 80])
-      "shape": [300, 300],
+      "shape": [160, 100],
       // [OPTIONAL] Whether the world wraps around at edges (default: true)
       "toroidal": true
     },
@@ -39,14 +39,14 @@
         // [MANDATORY] Path to the assembly program file for this organism
         "program": "assembly/primordial/main.s",
         // [MANDATORY] Initial energy level when organism is created
-        "initialEnergy": 12000,
+        "initialEnergy": 30000,
         // [MANDATORY] Placement strategy for organisms
         "placement": {
           // [MANDATORY] Placement strategy type ("fixed", "random", "grid")
           "strategy": "fixed",
           // [MANDATORY] Specific positions to place organisms (for "fixed" strategy)
           "positions": [
-            [135, 125]
+            [55, 45]
           ]
         }
       }
@@ -148,11 +148,11 @@
         // [MANDATORY] Parameters specific to this energy source type
         "params": {
           // [MANDATORY] Number of energy geysers to create
-          "count": 20,
+          "count": 0,
           // [MANDATORY] Interval between energy bursts (in ticks)
           "interval": 5,
           // [MANDATORY] Amount of energy provided per burst
-          "amount": 2500,
+          "amount": 10000,
           // [MANDATORY] Safety radius around organisms (no energy in this area)
           "safetyRadius": 2
         }
@@ -163,9 +163,9 @@
         // [MANDATORY] Parameters specific to solar energy
         "params": {
           // [MANDATORY] Probability of energy generation per tick (0.0 to 1.0)
-          "probability": 0.002,
+          "probability": 0.01,
           // [MANDATORY] Amount of energy provided per generation
-          "amount": 1000,
+          "amount": 10000,
           // [MANDATORY] Safety radius around organisms
           "safetyRadius": 1,
           // [MANDATORY] Maximum executions per tick
@@ -186,7 +186,7 @@
       // [OPTIONAL] Directory path where simulation output files are stored (default: "runs/")
       "outputPath": "runs/",
       // [OPTIONAL] Tick numbers at which simulation should automatically pause (default: null)
-      "checkpointPauseTicks": [50000, 100000],
+      "checkpointPauseTicks": [50000, 100000, 150000, 200000],
       // [OPTIONAL] Whether to skip ProgramArtifact features (default: false)
       "skipProgramArtefact": false,
       // [OPTIONAL] Maximum number of messages in queue (default: 10000)
@@ -198,7 +198,7 @@
       // [OPTIONAL] Whether to automatically start persistence when pipeline starts (default: true)
       "autoStart": true,
       // [OPTIONAL] Number of database operations to batch together for performance (default: 1000)
-      "batchSize": 5000
+      "batchSize": 1000
     },
 
     // [OPTIONAL] Debug indexer service configuration (default: autoStart=true, batchSize=1000)
@@ -217,7 +217,7 @@
       // [OPTIONAL] Directory path where indexed debug databases are stored (default: "runs/")
       "outputPath": "runs/",
       // [OPTIONAL] Number of database operations to batch together for performance (default: 1000)
-      "batchSize": 5000
+      "batchSize": 1000
     },
     
     

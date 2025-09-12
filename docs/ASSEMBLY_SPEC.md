@@ -354,6 +354,8 @@ These instructions manage the Location Stack (`LS`) and Location Registers (`%LR
 * `LRDR %DEST_REG %LR<Index>`: Copies the vector from `%LR<Index>` into `<%DEST_REG>`. (Cost: 1)
 * `LRDS %LR<Index>`: Pushes the vector from `%LR<Index>` onto the `DS`. (Cost: 1)
 * `LSDR %DEST_REG`: Copies the top vector from `LS` into `<%DEST_REG>` without popping. (Cost: 1)
+* `LRLR %LR<Dest> %LR<Src>`: Copies the vector from `%LR<Src>` into `%LR<Dest>`. (Cost: 1)
+* `CRLR %LR<Index>`: Sets `%LR<Index>` to the vector `[0, 0]`. (Cost: 1)
 
 ### Vector Component Operations
 
