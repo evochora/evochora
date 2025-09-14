@@ -161,8 +161,14 @@ class WebGLRenderer {
     }
 
     drawOrganismWithoutDps(organism, isSelected) {
-        const pos = this.parsePosition(organism.positionJson);
-        if (!pos) return;
+        let pos;
+        if (organism.positionJson) {
+            pos = this.parsePosition(organism.positionJson);
+        } else if (organism.position) {
+            pos = organism.position;
+        }
+
+        if (!pos || !Array.isArray(pos)) return;
 
         const color = this.getOrganismColor(organism.organismId);
         const x = pos[0] * this.config.cellSize;

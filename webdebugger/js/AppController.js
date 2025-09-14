@@ -109,9 +109,9 @@ class AppController {
         const y = event.clientY - rect.top;
         const gridX = Math.floor(x / this.renderer.config.cellSize);
         const gridY = Math.floor(y / this.renderer.config.cellSize);
-        const organisms = (this.state.lastTickData?.worldState?.organisms)||[];
+        const organisms = (this.state.lastTickData?.worldState?.organisms) || [];
         for (const o of organisms) {
-            const pos = JSON.parse(o.positionJson);
+            const pos = o.position;
             if (Array.isArray(pos) && pos[0] === gridX && pos[1] === gridY) {
                 this.state.selectedOrganismId = String(o.id);
                 const det = this.state.lastTickData.organismDetails?.[this.state.selectedOrganismId];
