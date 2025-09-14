@@ -10,8 +10,8 @@
     // [OPTIONAL] Environment configuration (default: shape=[120,80], toroidal=true)
     "environment": {
       // [OPTIONAL] Dimensions of the simulation world (default: [120, 80])
-      //"shape": [160, 100],
-      "shape": [110, 40],
+      "shape": [260, 160],
+      //"shape": [110, 40],
       // [OPTIONAL] Whether the world wraps around at edges (default: true)
       "toroidal": true
     },
@@ -48,8 +48,8 @@
           "strategy": "fixed",
           // [MANDATORY] Specific positions to place organisms (for "fixed" strategy)
           "positions": [
-            //[55, 35]
-            [1, 1]
+            [105, 65]
+            //[1, 1]
           ]
         }
       }
@@ -189,7 +189,7 @@
       // [OPTIONAL] Directory path where simulation output files are stored (default: "runs/")
       "outputPath": "runs/",
       // [OPTIONAL] Tick numbers at which simulation should automatically pause (default: null)
-      "checkpointPauseTicks": [10000,20000,30000,200000],
+      "checkpointPauseTicks": [50000,200000],
       // [OPTIONAL] Whether to skip ProgramArtifact features (default: false)
       "skipProgramArtefact": false,
       // [OPTIONAL] Maximum number of messages in queue (default: 10000)
