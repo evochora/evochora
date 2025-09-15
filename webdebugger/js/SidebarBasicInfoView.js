@@ -12,9 +12,17 @@ class SidebarBasicInfoView {
         const changeFlags = this.calculateChanges(info, navigationDirection);
         
         // Unveränderliche Infos über der Box
+        // Check if parent is still alive
+        const parentId = info.parentId;
+        const isParentAlive = this.isParentAlive(parentId);
+        
         const unchangeableInfo = [
             `<div class="unchangeable-info-item"><span class="unchangeable-info-label">ID:</span><span class="unchangeable-info-value">${info.id}</span></div>`,
-            `<div class="unchangeable-info-item"><span class="unchangeable-info-label">Parent:</span><span class="unchangeable-info-value">${info.parentId && info.parentId !== 'null' && info.parentId !== 'undefined' ? `<span class="clickable-parent" data-parent-id="${info.parentId}">${info.parentId}</span>` : 'N/A'}</span></div>`,
+            `<div class="unchangeable-info-item"><span class="unchangeable-info-label">Parent:</span><span class="unchangeable-info-value">${parentId && parentId !== 'null' && parentId !== 'undefined' ? 
+                (isParentAlive ? 
+                    `<span class="clickable-parent alive" data-parent-id="${parentId}">${parentId}</span>` : 
+                    `<span class="parent-dead">${parentId}</span>`) : 
+                'N/A'}</span></div>`,
             `<div class="unchangeable-info-item"><span class="unchangeable-info-label">Birth:</span><span class="unchangeable-info-value">${info.birthTick}</span></div>`,
             `<div class="unchangeable-info-item"><span class="unchangeable-info-label">Program:</span><span class="unchangeable-info-value">${info.programId || 'N/A'}</span></div>`
         ].join('');
@@ -63,13 +71,36 @@ class SidebarBasicInfoView {
         return changeFlags;
     }
     
+    isParentAlive(parentId) {
+        if (!parentId || parentId === 'null' || parentId === 'undefined') {
+            return false;
+        }
+        
+        if (!this.appController || !this.appController.state.lastTickData) {
+            return false;
+        }
+        
+        const organisms = this.appController.state.lastTickData.worldState?.organisms || [];
+        return organisms.some(o => String(o.id) === String(parentId));
+    }
+    
     navigateToParent(parentId) {
-        // Finde den Birth-Tick des Parents
-        if (this.appController && this.appController.state.lastTickData) {
-            const organisms = this.appController.state.lastTickData.worldState?.organisms || [];
-            const parent = organisms.find(o => String(o.id) === parentId);
-            if (parent && parent.birthTick !== undefined) {
-                this.appController.navigateToTick(parent.birthTick);
+        if (!this.appController || !this.appController.state.lastTickData) {
+            return;
+        }
+        
+        const organisms = this.appController.state.lastTickData.worldState?.organisms || [];
+        const parent = organisms.find(o => String(o.id) === parentId);
+        
+        if (parent) {
+            // Parent ist noch lebendig - wähle ihn im Dropdown aus
+            this.appController.selectOrganismById(parentId);
+        } else {
+            // Parent ist tot - navigiere zum Birth-Tick
+            const organismDetails = this.appController.state.lastTickData.organismDetails || {};
+            const parentDetails = organismDetails[parentId];
+            if (parentDetails && parentDetails.birthTick !== undefined) {
+                this.appController.navigateToTick(parentDetails.birthTick);
             }
         }
     }

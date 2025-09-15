@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Evochora Web Renderer</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@8.12.0/dist/pixi.min.js"></script>
 </head>
 <body>
 
@@ -20,6 +21,11 @@
         <button id="btn-goto">Gehe zu</button>
         <button id="btn-prev">&lt; Zurück</button>
         <button id="btn-next">Weiter &gt;</button>
+        <div class="organism-selector-wrapper">
+            <select id="organism-selector" aria-label="Organismus auswählen">
+                <option value="">--- (0/0)</option>
+            </select>
+        </div>
     </div>
 </header>
 
@@ -43,7 +49,7 @@
     </div>
 </main>
 
-            <script src="WorldRenderer.js"></script>
+            <script src="WebGLRenderer.js"></script>
             <script src="js/StatusManager.js"></script>
             <script src="js/ApiService.js"></script>
             <script src="js/SidebarBasicInfoView.js"></script>

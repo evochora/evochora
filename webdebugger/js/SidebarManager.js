@@ -26,6 +26,15 @@ class SidebarManager {
         // If manually hidden, deselect the organism to prevent auto-reopening
         if (manual && this.appController) {
             this.appController.state.selectedOrganismId = null;
+            
+            // Update dropdown to show "---" selection
+            const selector = document.getElementById('organism-selector');
+            if (selector) {
+                selector.value = '';
+            }
+            
+            // Save to URL to remove organism parameter
+            this.appController.saveToUrl();
         }
     }
     
