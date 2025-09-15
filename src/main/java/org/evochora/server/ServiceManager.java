@@ -549,10 +549,8 @@ public final class ServiceManager {
     
     private void startPersistence() {
         if (persistenceService.get() == null || !persistenceRunning.get()) {
-            int batchSize = config.pipeline.persistence != null ? config.pipeline.persistence.batchSize : 1000;
-            String jdbcUrl = config.pipeline.persistence != null ? config.pipeline.persistence.jdbcUrl : null;
             EnvironmentProperties envProps = new EnvironmentProperties(config.simulation.environment.shape, config.simulation.environment.toroidal);
-            PersistenceService service = new PersistenceService(queue, jdbcUrl, envProps, batchSize);
+            PersistenceService service = new PersistenceService(queue, envProps, config.pipeline.persistence);
             
             persistenceService.set(service);
             service.start();
@@ -569,10 +567,8 @@ public final class ServiceManager {
                 // Generate unique URLs for indexer to avoid shared cache conflicts
                 String indexerRawDbUrl = rawDbUrl.replace("memdb_", "memdb_indexer_");
                 String indexerDebugDbUrl = indexerRawDbUrl.replace("_raw", "_debug");
-                int batchSize = config.pipeline.indexer != null ? config.pipeline.indexer.batchSize : 1000;
-                org.evochora.server.config.SimulationConfiguration.CompressionConfig indexerCompression = config.pipeline.indexer != null ? config.pipeline.indexer.compression : null;
                 // DebugIndexer lädt EnvironmentProperties aus der Datenbank
-                DebugIndexer service = new DebugIndexer(indexerRawDbUrl, indexerDebugDbUrl, batchSize, indexerCompression);
+                DebugIndexer service = new DebugIndexer(indexerRawDbUrl, indexerDebugDbUrl, config.pipeline.indexer);
                 
                 indexer.set(service);
                 service.start();

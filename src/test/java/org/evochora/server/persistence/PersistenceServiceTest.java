@@ -5,6 +5,7 @@ import org.evochora.server.contracts.raw.RawTickState;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
 import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.server.config.SimulationConfiguration;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -71,7 +72,10 @@ class PersistenceServiceTest {
     void writesRawTickStateRows() throws Exception {
         ITickMessageQueue q = new InMemoryTickQueue(1000);
         // Use the available constructor with worldShape and batchSize
-        PersistenceService persist = new PersistenceService(q, "jdbc:sqlite:file:memdb_persistence?mode=memory&cache=shared", new EnvironmentProperties(new int[]{10, 10}, true), 1);
+        SimulationConfiguration.PersistenceServiceConfig config = new SimulationConfiguration.PersistenceServiceConfig();
+        config.jdbcUrl = "jdbc:sqlite:file:memdb_persistence?mode=memory&cache=shared";
+        config.batchSize = 1;
+        PersistenceService persist = new PersistenceService(q, new EnvironmentProperties(new int[]{10, 10}, true), config);
         persist.start();
 
         var rawCell = new RawCellState(new int[]{1, 2}, 42, 1);

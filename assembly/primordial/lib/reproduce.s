@@ -145,13 +145,16 @@
     #  PEEK %TMP %DIRVEC            # ... dann lösche ich es
 
 
+    # Lese DP auf die Hülle setzen
+    ADPI DATA:0
+    SEEK %DIRVEC
+
     # Nach innen drehen zum Lesen
     RTRI %DIRVEC DATA:0 DATA:1
     RTRI %DIRVEC DATA:0 DATA:1
 
     # Stop-Molekül auf den DS legen, damit Schreib-DP weiß wo er aufhören muss, und Lesevorgang aktivieren
     PUSH %SHELL
-    ADPI DATA:0
     JMPI CONTINUE_READLINE
 
   .ORG 0|10
@@ -217,7 +220,7 @@
 
   .ORG 0|13
   CONTINUE_WRITE_FINISH_END:
-    SEEK %DIRVEC
+    #SEEK %DIRVEC
     INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %DIRVEC            # ... dann lösche ich es
     POKE %SHELL %DIRVEC            # Hüllenabschluss der Zeile schreiben
@@ -230,9 +233,9 @@
   .ORG 0|14
   CONTINUE_WRITEFINISH_CORNER:
     # Ecke schreiben
-    INPR %SIDEVEC                  # Wenn das Molekül nicht passierbar,...
-      PEEK %TMP %SIDEVEC           # ... dann lösche ich es
-    POKE %SHELL %SIDEVEC
+    #INPR %SIDEVEC                  # Wenn das Molekül nicht passierbar,...
+    #  PEEK %TMP %SIDEVEC           # ... dann lösche ich es
+    #POKE %SHELL %SIDEVEC
     SEEK %DIRVEC                   # Vorwärts
     INPR %SIDEVEC                  # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %SIDEVEC           # ... dann lösche ich es

@@ -8,6 +8,7 @@ import org.evochora.server.indexer.ArtifactValidator.ArtifactValidity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
+import org.evochora.server.config.SimulationConfiguration;
 
 import java.util.HashMap;
 import java.util.List;
@@ -28,7 +29,9 @@ class SourceViewAnnotationTest {
 
     @BeforeEach
     void setUp() {
-        debugIndexer = new DebugIndexer("test_raw.db", 100);
+        SimulationConfiguration.IndexerServiceConfig config = new SimulationConfiguration.IndexerServiceConfig();
+        config.batchSize = 100;
+        debugIndexer = new DebugIndexer("test_raw.db", "test_debug.db", config);
         
         // Mock organism with IP at position [10, 20]
         mockOrganism = mock(RawOrganismState.class);

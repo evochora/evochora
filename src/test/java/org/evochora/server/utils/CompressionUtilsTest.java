@@ -1,4 +1,4 @@
-package org.evochora.server.compression;
+package org.evochora.server.utils;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;

@@ -222,7 +222,7 @@ public final class DebugServer {
                         try {
                             byte[] data = rs.getBytes(1);
                             if (data != null) {
-                                return org.evochora.server.compression.CompressionUtils.decompressIfNeeded(data);
+                                return org.evochora.server.utils.CompressionUtils.decompressIfNeeded(data);
                             }
                         } catch (Exception e) {
                             // Fallback to string if bytes fail

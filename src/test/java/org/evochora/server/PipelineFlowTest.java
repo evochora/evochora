@@ -8,6 +8,7 @@ import org.evochora.server.indexer.DebugIndexer;
 import org.evochora.server.http.DebugServer;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.server.config.SimulationConfiguration;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.worldgen.IEnergyDistributionCreator;
@@ -96,8 +97,13 @@ public class PipelineFlowTest {
         
         // maxTicks will be set by individual tests as needed
         
-        persistenceService = new PersistenceService(queue, rawDbPath, environmentProperties, persistenceBatchSize);
-        debugIndexer = new DebugIndexer(rawDbPath, debugDbPath, indexerBatchSize);
+        SimulationConfiguration.PersistenceServiceConfig persistenceConfig = new SimulationConfiguration.PersistenceServiceConfig();
+        persistenceConfig.jdbcUrl = rawDbPath;
+        persistenceConfig.batchSize = persistenceBatchSize;
+        persistenceService = new PersistenceService(queue, environmentProperties, persistenceConfig);
+        SimulationConfiguration.IndexerServiceConfig indexerConfig = new SimulationConfiguration.IndexerServiceConfig();
+        indexerConfig.batchSize = indexerBatchSize;
+        debugIndexer = new DebugIndexer(rawDbPath, debugDbPath, indexerConfig);
         debugServer = new DebugServer();
     }
     
@@ -273,8 +279,13 @@ public class PipelineFlowTest {
         );
         // No setMaxTicks() - let it run indefinitely for pause/resume testing
         
-        PersistenceService pauseTestPersistence = new PersistenceService(queue, rawDbPath, environmentProperties, persistenceBatchSize);
-        DebugIndexer pauseTestIndexer = new DebugIndexer(rawDbPath, debugDbPath, indexerBatchSize);
+        SimulationConfiguration.PersistenceServiceConfig pauseTestConfig = new SimulationConfiguration.PersistenceServiceConfig();
+        pauseTestConfig.jdbcUrl = rawDbPath;
+        pauseTestConfig.batchSize = persistenceBatchSize;
+        PersistenceService pauseTestPersistence = new PersistenceService(queue, environmentProperties, pauseTestConfig);
+        SimulationConfiguration.IndexerServiceConfig pauseTestIndexerConfig = new SimulationConfiguration.IndexerServiceConfig();
+        pauseTestIndexerConfig.batchSize = indexerBatchSize;
+        DebugIndexer pauseTestIndexer = new DebugIndexer(rawDbPath, debugDbPath, pauseTestIndexerConfig);
         
         // 2. Start services
         pauseTestEngine.start();
@@ -354,8 +365,13 @@ public class PipelineFlowTest {
         );
         shutdownTestEngine.setMaxTicks(100L); // Use maxTicks for predictable tick count
 
-        PersistenceService shutdownTestPersistence = new PersistenceService(queue, testRawDbPath, environmentProperties, persistenceBatchSize);
-        DebugIndexer shutdownTestIndexer = new DebugIndexer(testRawDbPath, testDebugDbPath, indexerBatchSize);
+        SimulationConfiguration.PersistenceServiceConfig shutdownTestConfig = new SimulationConfiguration.PersistenceServiceConfig();
+        shutdownTestConfig.jdbcUrl = testRawDbPath;
+        shutdownTestConfig.batchSize = persistenceBatchSize;
+        PersistenceService shutdownTestPersistence = new PersistenceService(queue, environmentProperties, shutdownTestConfig);
+        SimulationConfiguration.IndexerServiceConfig shutdownTestIndexerConfig = new SimulationConfiguration.IndexerServiceConfig();
+        shutdownTestIndexerConfig.batchSize = indexerBatchSize;
+        DebugIndexer shutdownTestIndexer = new DebugIndexer(testRawDbPath, testDebugDbPath, shutdownTestIndexerConfig);
 
         // 3. Start all services
         shutdownTestEngine.start();

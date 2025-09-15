@@ -31,12 +31,15 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Comprehensive benchmark test for the complete Evochora pipeline.
+ * Comprehensive benchmark test for the complete Evochora pipeline WITHOUT my optimizations.
+ * This is identical to BenchmarkTest but with my optimizations disabled to demonstrate
+ * the performance impact of the optimizations I added to config.jsonc.
+ * 
  * Tests simulation engine, persistence service, and debug indexer performance
  * with configurable parameters for detailed performance analysis.
  */
 @Tag("benchmark")
-public class BenchmarkTest {
+public class BenchmarkNoOptimizationTest {
 
     // ===== CONFIGURABLE BENCHMARK PARAMETERS =====
     private int simulationTicks = 20000;
@@ -204,7 +207,7 @@ public class BenchmarkTest {
                     // Compile the assembly program
                     Compiler compiler = new Compiler();
                     List<String> lines = List.of(config.assemblyProgram.split("\n"));
-                    ProgramArtifact artifact = compiler.compile(lines, "benchmark_organism", environmentProperties);
+                    ProgramArtifact artifact = compiler.compile(lines, "benchmark_organism_no_opt", environmentProperties);
                     
                     // Create placement
                     return OrganismPlacement.of(artifact, config.startEnergy, config.startPosition);
@@ -237,7 +240,7 @@ public class BenchmarkTest {
     void complete_pipeline_benchmark() {
         // Add a unique test identifier to prevent Gradle from caching this test
         String testId = java.util.UUID.randomUUID().toString();
-        System.out.println("Starting benchmark test with ID: " + testId);
+        System.out.println("Starting benchmark test WITHOUT my optimizations with ID: " + testId);
         // Ensure output directory exists
         try {
             Files.createDirectories(Paths.get(outputDirectory));
@@ -248,8 +251,8 @@ public class BenchmarkTest {
         // Create temporary database files with unique identifiers
         String timestamp = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String uniqueId = testId.substring(0, 8); // Use first 8 characters of UUID
-        Path rawDbFile = Paths.get(outputDirectory, "benchmark_" + timestamp + "_" + uniqueId + "_raw.db");
-        Path debugDbFile = Paths.get(outputDirectory, "benchmark_" + timestamp + "_" + uniqueId + "_debug.db");
+        Path rawDbFile = Paths.get(outputDirectory, "benchmark_no_opt_" + timestamp + "_" + uniqueId + "_raw.db");
+        Path debugDbFile = Paths.get(outputDirectory, "benchmark_no_opt_" + timestamp + "_" + uniqueId + "_debug.db");
         filesToCleanup.add(rawDbFile);
         filesToCleanup.add(debugDbFile);
         
@@ -296,10 +299,16 @@ public class BenchmarkTest {
             // Wait for simulation to be ready
             waitForSimulationReady(engine);
             
-            // Create persistence service directly
+            // Create persistence service directly WITH MY OPTIMIZATIONS DISABLED
             SimulationConfiguration.PersistenceServiceConfig persistenceConfig = new SimulationConfiguration.PersistenceServiceConfig();
             persistenceConfig.jdbcUrl = rawJdbcUrl;
             persistenceConfig.batchSize = persistenceBatchSize;
+            
+            // DISABLE my optimizations from config.jsonc:
+            persistenceConfig.database.cacheSize = 1000; // Instead of 10000
+            persistenceConfig.database.mmapSize = 1048576L; // Instead of 268MB (268435456L)
+            persistenceConfig.database.pageSize = 1024; // Instead of 4096
+            persistenceConfig.memoryOptimization.enabled = false; // Instead of true
             persistenceService = new PersistenceService(queue, environmentProperties, persistenceConfig);
             
             // Mark start times
@@ -347,18 +356,18 @@ public class BenchmarkTest {
      */
     private void runDebugIndexer(String rawJdbcUrl, String debugJdbcUrl) {
         try {
-            // Setup debug indexer
+            // Setup debug indexer WITH MY OPTIMIZATIONS DISABLED
             SimulationConfiguration.IndexerServiceConfig indexerConfig = new SimulationConfiguration.IndexerServiceConfig();
             indexerConfig.batchSize = indexerBatchSize;
-
+            
             // DISABLE my optimizations from config.jsonc:
             indexerConfig.compression.enabled = indexerComprssionEnabled; // Instead of true
-            //indexerConfig.database.cacheSize = 1000; // Instead of 10000
-            //indexerConfig.database.mmapSize = 1048576L; // Instead of 268MB (268435456L)
-            //indexerConfig.database.pageSize = 1024; // Instead of 4096
-            //indexerConfig.parallelProcessing.enabled = false; // Instead of true
-            //indexerConfig.parallelProcessing.threadCount = 1; // Instead of auto-detection
-            //indexerConfig.memoryOptimization.enabled = false; // Instead of true
+            indexerConfig.database.cacheSize = 1000; // Instead of 10000
+            indexerConfig.database.mmapSize = 1048576L; // Instead of 268MB (268435456L)
+            indexerConfig.database.pageSize = 1024; // Instead of 4096
+            indexerConfig.parallelProcessing.enabled = false; // Instead of true
+            indexerConfig.parallelProcessing.threadCount = 1; // Instead of auto-detection
+            indexerConfig.memoryOptimization.enabled = false; // Instead of true
             debugIndexer = new DebugIndexer(rawJdbcUrl, debugJdbcUrl, indexerConfig);
             
             // Mark start time
@@ -527,7 +536,7 @@ public class BenchmarkTest {
         double persistenceEffectiveBatchSize = calculateEffectiveBatchSize((int) ticksPersisted.get(), persistenceDuration, persistenceBatchSize, persistenceBatchCount);
         double indexerEffectiveBatchSize = calculateEffectiveBatchSize((int) ticksIndexed.get(), indexerDuration, indexerBatchSize, indexerBatchCount);
         
-        System.out.println("\n=== EVOCHORA PIPELINE BENCHMARK RESULTS ===");
+        System.out.println("\n=== EVOCHORA PIPELINE BENCHMARK RESULTS (WITHOUT MY OPTIMIZATIONS) ===");
         System.out.println("Configuration:");
         System.out.printf("  Simulation ticks: %d%n", simulationTicks);
         System.out.printf("  World shape: %s%n", java.util.Arrays.toString(environmentProperties.getWorldShape()));
@@ -537,6 +546,12 @@ public class BenchmarkTest {
         System.out.printf("  Indexer batch size: %d%n", indexerBatchSize);
         System.out.printf("  Energy strategies: %d%n", energyStrategies.size());
         System.out.printf("  Compression: enabled %s%n", indexerComprssionEnabled ? "True" : "False");
+        System.out.println("⚠️  OPTIMIZATIONS DISABLED:");
+        System.out.println("   • Database Cache: 1000 (instead of 10000)");
+        System.out.println("   • MMAP Size: 1MB (instead of 268MB)");
+        System.out.println("   • Page Size: 1024 (instead of 4096)");
+        System.out.println("   • Memory Optimization: disabled");
+        System.out.println("   • Multi-Core Processing: disabled (1 thread only)");
         System.out.println("Timeouts:");
         System.out.printf("  Simulation ready: %d ms%n", simulationReadyTimeoutMs);
         System.out.printf("  Simulation complete: %d ms%n", simulationCompleteTimeoutMs);
@@ -574,7 +589,7 @@ public class BenchmarkTest {
         System.out.printf("  Ticks per second: %.2f%n", indexerTicksPerSecond);
         
         System.out.printf("\nTotal Pipeline Duration: %.2f seconds%n", totalDuration);
-        System.out.println("=== END BENCHMARK RESULTS ===\n");
+        System.out.println("=== END BENCHMARK RESULTS (WITHOUT MY OPTIMIZATIONS) ===\n");
     }
 
     /**

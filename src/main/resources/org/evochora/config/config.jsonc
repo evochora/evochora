@@ -6,7 +6,7 @@
     // [OPTIONAL] Random seed for reproducible simulation runs (default: 123456789)
     //"seed": 323456789, // nach oben!!
     "seed": 123456789, // nach rechts
-    
+
     // [OPTIONAL] Environment configuration (default: shape=[120,80], toroidal=true)
     "environment": {
       // [OPTIONAL] Dimensions of the simulation world (default: [120, 80])
@@ -15,7 +15,7 @@
       // [OPTIONAL] Whether the world wraps around at edges (default: true)
       "toroidal": true
     },
-    
+
     // [OPTIONAL] List of organisms to place in the world (default: empty array)
     "organisms": [
 
@@ -88,7 +88,7 @@
           ]
         }
       }*/
-      
+
 
       /***** Prodecure tests *****/
       /*
@@ -142,7 +142,7 @@
       */
 
     ],
-    
+
     // [OPTIONAL] Energy sources and distribution strategies (default: empty list)
     "energyStrategies": [
       {
@@ -177,7 +177,7 @@
       }
     ]
   },
-  
+
   // ============================================================================
   // PIPELINE CONFIGURATION
   // ============================================================================
@@ -193,15 +193,29 @@
       // [OPTIONAL] Whether to skip ProgramArtifact features (default: false)
       "skipProgramArtefact": false,
       // [OPTIONAL] Maximum number of messages in queue (default: 10000)
-      "maxMessageCount": 50000
+      "maxMessageCount": 10000
     },
-    
+
     // [OPTIONAL] Persistence service configuration (default: autoStart=true, batchSize=1000)
     "persistence": {
       // [OPTIONAL] Whether to automatically start persistence when pipeline starts (default: true)
       "autoStart": true,
       // [OPTIONAL] Number of database operations to batch together for performance (default: 1000)
-      "batchSize": 1000
+      "batchSize": 1000,
+      // [OPTIONAL] Database performance optimizations
+      "database": {
+        // [OPTIONAL] SQLite cache size in pages (default: 5000)
+        "cacheSize": 5000,
+        // [OPTIONAL] Memory-mapped I/O size in bytes (default: 8MB)
+        "mmapSize": 8388608,  // 268435456
+        // [OPTIONAL] SQLite page size in bytes (default: 4096)
+        "pageSize": 4096
+      },
+      // [OPTIONAL] Memory optimization settings
+      "memoryOptimization": {
+        // [OPTIONAL] Whether to enable memory optimizations (default: false)
+        "enabled": false
+      }
     },
 
     // [OPTIONAL] Debug indexer service configuration (default: autoStart=true, batchSize=1000)
@@ -220,10 +234,31 @@
       // [OPTIONAL] Directory path where indexed debug databases are stored (default: "runs/")
       "outputPath": "runs/",
       // [OPTIONAL] Number of database operations to batch together for performance (default: 1000)
-      "batchSize": 1000
+      "batchSize": 1000,
+      // [OPTIONAL] Database performance optimizations
+      "database": {
+        // [OPTIONAL] SQLite cache size in pages (default: 5000)
+        "cacheSize": 5000,
+        // [OPTIONAL] Memory-mapped I/O size in bytes (default: 8MB)
+        "mmapSize": 8388608,  // 268435456
+        // [OPTIONAL] SQLite page size in bytes (default: 4096)
+        "pageSize": 4096
+      },
+      // [OPTIONAL] Parallel processing configuration
+      "parallelProcessing": {
+        // [OPTIONAL] Whether to enable parallel processing (default: false)
+        "enabled": false,
+        // [OPTIONAL] Number of threads (0 = auto: CPU cores / 2, default: 0)
+        "threadCount": 0
+      },
+      // [OPTIONAL] Memory optimization settings
+      "memoryOptimization": {
+        // [OPTIONAL] Whether to enable memory optimizations (default: false)
+        "enabled": false
+      }
     },
-    
-    
+
+
     // [OPTIONAL] Web server configuration (default: autoStart=true, port=7070, host="localhost")
     "server": {
       // [OPTIONAL] Whether to automatically start web server when pipeline starts (default: true)

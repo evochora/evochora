@@ -1,4 +1,4 @@
-package org.evochora.server.compression;
+package org.evochora.server.utils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

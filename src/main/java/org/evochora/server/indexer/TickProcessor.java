@@ -11,6 +11,7 @@ import org.evochora.server.contracts.debug.PreparedTickState;
 import org.evochora.server.contracts.raw.RawOrganismState;
 import org.evochora.server.contracts.raw.RawTickState;
 import org.evochora.server.indexer.ArtifactValidator.ArtifactValidity;
+import org.evochora.server.config.SimulationConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,17 +35,30 @@ public class TickProcessor {
     private final SourceViewBuilder sourceViewBuilder;
     private final InstructionBuilder instructionBuilder;
     private final InternalStateBuilder internalStateBuilder;
+    private final SimulationConfiguration.MemoryOptimizationConfig memoryOptimizationConfig;
+    
+    // ThreadLocal collections for memory optimization
+    private final ThreadLocal<ArrayList<RawOrganismState>> tempOrganismList;
+    private final ThreadLocal<HashMap<String, Object>> tempMap;
     
     public TickProcessor(ObjectMapper objectMapper, 
                         ArtifactValidator artifactValidator,
                         SourceViewBuilder sourceViewBuilder,
                         InstructionBuilder instructionBuilder,
-                        InternalStateBuilder internalStateBuilder) {
+                        InternalStateBuilder internalStateBuilder,
+                        SimulationConfiguration.MemoryOptimizationConfig memoryOptimizationConfig) {
         this.objectMapper = objectMapper;
         this.artifactValidator = artifactValidator;
         this.sourceViewBuilder = sourceViewBuilder;
         this.instructionBuilder = instructionBuilder;
         this.internalStateBuilder = internalStateBuilder;
+        this.memoryOptimizationConfig = memoryOptimizationConfig != null ? memoryOptimizationConfig : new SimulationConfiguration.MemoryOptimizationConfig();
+        
+        // Initialize ThreadLocal collections if memory optimization is enabled
+        this.tempOrganismList = ThreadLocal.withInitial(() -> 
+            this.memoryOptimizationConfig.enabled ? new ArrayList<>(100) : new ArrayList<>());
+        this.tempMap = ThreadLocal.withInitial(() -> 
+            this.memoryOptimizationConfig.enabled ? new HashMap<>(50) : new HashMap<>());
     }
     
     /**

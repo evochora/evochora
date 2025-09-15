@@ -3,6 +3,7 @@ package org.evochora.server.indexer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
+import org.evochora.server.config.SimulationConfiguration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -20,7 +21,9 @@ class DebugIndexerValidationUnitTest {
     @BeforeEach
     void setUp() {
         // Use in-memory database URLs for fast initialization
-        indexer = new DebugIndexer("jdbc:sqlite:file:memdb_validation?mode=memory&cache=shared", 1000);
+        SimulationConfiguration.IndexerServiceConfig config = new SimulationConfiguration.IndexerServiceConfig();
+        config.batchSize = 1000;
+        indexer = new DebugIndexer("jdbc:sqlite:file:memdb_validation?mode=memory&cache=shared", "jdbc:sqlite:file:memdb_validation_debug?mode=memory&cache=shared", config);
     }
 
     /**
@@ -84,13 +87,21 @@ class DebugIndexerValidationUnitTest {
     @Tag("unit")
     void testConfigurationValidation() {
         // Test configuration validation
-        DebugIndexer validConfig = new DebugIndexer("jdbc:sqlite:file:memdb_valid?mode=memory&cache=shared", 1000);
+        SimulationConfiguration.IndexerServiceConfig validConfigConfig = new SimulationConfiguration.IndexerServiceConfig();
+        validConfigConfig.batchSize = 1000;
+        DebugIndexer validConfig = new DebugIndexer("jdbc:sqlite:file:memdb_valid?mode=memory&cache=shared", "jdbc:sqlite:file:memdb_valid_debug?mode=memory&cache=shared", validConfigConfig);
         assertThat(validConfig).isNotNull();
         
         // Should accept various valid configurations
-        DebugIndexer config1 = new DebugIndexer("jdbc:sqlite:file:memdb_c1?mode=memory&cache=shared", 1);
-        DebugIndexer config2 = new DebugIndexer("jdbc:sqlite:file:memdb_c2?mode=memory&cache=shared", 100);
-        DebugIndexer config3 = new DebugIndexer("jdbc:sqlite:file:memdb_c3?mode=memory&cache=shared", 10000);
+        SimulationConfiguration.IndexerServiceConfig config1Config = new SimulationConfiguration.IndexerServiceConfig();
+        config1Config.batchSize = 1;
+        DebugIndexer config1 = new DebugIndexer("jdbc:sqlite:file:memdb_c1?mode=memory&cache=shared", "jdbc:sqlite:file:memdb_c1_debug?mode=memory&cache=shared", config1Config);
+        SimulationConfiguration.IndexerServiceConfig config2Config = new SimulationConfiguration.IndexerServiceConfig();
+        config2Config.batchSize = 100;
+        DebugIndexer config2 = new DebugIndexer("jdbc:sqlite:file:memdb_c2?mode=memory&cache=shared", "jdbc:sqlite:file:memdb_c2_debug?mode=memory&cache=shared", config2Config);
+        SimulationConfiguration.IndexerServiceConfig config3Config = new SimulationConfiguration.IndexerServiceConfig();
+        config3Config.batchSize = 10000;
+        DebugIndexer config3 = new DebugIndexer("jdbc:sqlite:file:memdb_c3?mode=memory&cache=shared", "jdbc:sqlite:file:memdb_c3_debug?mode=memory&cache=shared", config3Config);
         
         assertThat(config1).isNotNull();
         assertThat(config2).isNotNull();
@@ -105,13 +116,19 @@ class DebugIndexerValidationUnitTest {
     @Tag("unit")
     void testDatabaseUrlValidation() {
         // Test database URL validation
-        DebugIndexer jdbcUrl = new DebugIndexer("jdbc:sqlite:file:memdb_jdbc?mode=memory&cache=shared", 1000);
+        SimulationConfiguration.IndexerServiceConfig jdbcConfig = new SimulationConfiguration.IndexerServiceConfig();
+        jdbcConfig.batchSize = 1000;
+        DebugIndexer jdbcUrl = new DebugIndexer("jdbc:sqlite:file:memdb_jdbc?mode=memory&cache=shared", "jdbc:sqlite:file:memdb_jdbc_debug?mode=memory&cache=shared", jdbcConfig);
         assertThat(jdbcUrl).isNotNull();
         
-        DebugIndexer filePath = new DebugIndexer("test_validation.sqlite", 1000);
+        SimulationConfiguration.IndexerServiceConfig fileConfig = new SimulationConfiguration.IndexerServiceConfig();
+        fileConfig.batchSize = 1000;
+        DebugIndexer filePath = new DebugIndexer("test_validation.sqlite", "test_validation_debug.sqlite", fileConfig);
         assertThat(filePath).isNotNull();
         
-        DebugIndexer inMemory = new DebugIndexer(":memory:", 1000);
+        SimulationConfiguration.IndexerServiceConfig memoryConfig = new SimulationConfiguration.IndexerServiceConfig();
+        memoryConfig.batchSize = 1000;
+        DebugIndexer inMemory = new DebugIndexer(":memory:", ":memory:", memoryConfig);
         assertThat(inMemory).isNotNull();
     }
 
@@ -123,9 +140,15 @@ class DebugIndexerValidationUnitTest {
     @Tag("unit")
     void testBatchSizeValidation() {
         // Test batch size validation
-        DebugIndexer batch1 = new DebugIndexer("jdbc:sqlite:file:memdb_batch1?mode=memory&cache=shared", 1);
-        DebugIndexer batch100 = new DebugIndexer("jdbc:sqlite:file:memdb_batch100?mode=memory&cache=shared", 100);
-        DebugIndexer batch1000 = new DebugIndexer("jdbc:sqlite:file:memdb_batch1000?mode=memory&cache=shared", 1000);
+        SimulationConfiguration.IndexerServiceConfig batch1Config = new SimulationConfiguration.IndexerServiceConfig();
+        batch1Config.batchSize = 1;
+        DebugIndexer batch1 = new DebugIndexer("jdbc:sqlite:file:memdb_batch1?mode=memory&cache=shared", "jdbc:sqlite:file:memdb_batch1_debug?mode=memory&cache=shared", batch1Config);
+        SimulationConfiguration.IndexerServiceConfig batch100Config = new SimulationConfiguration.IndexerServiceConfig();
+        batch100Config.batchSize = 100;
+        DebugIndexer batch100 = new DebugIndexer("jdbc:sqlite:file:memdb_batch100?mode=memory&cache=shared", "jdbc:sqlite:file:memdb_batch100_debug?mode=memory&cache=shared", batch100Config);
+        SimulationConfiguration.IndexerServiceConfig batch1000Config = new SimulationConfiguration.IndexerServiceConfig();
+        batch1000Config.batchSize = 1000;
+        DebugIndexer batch1000 = new DebugIndexer("jdbc:sqlite:file:memdb_batch1000?mode=memory&cache=shared", "jdbc:sqlite:file:memdb_batch1000_debug?mode=memory&cache=shared", batch1000Config);
         
         assertThat(batch1).isNotNull();
         assertThat(batch100).isNotNull();
@@ -145,11 +168,15 @@ class DebugIndexerValidationUnitTest {
     @Tag("unit")
     void testConstructorValidation() {
         // Test constructor validation
-        DebugIndexer singleParam = new DebugIndexer("jdbc:sqlite:file:memdb_single?mode=memory&cache=shared", 1000);
+        SimulationConfiguration.IndexerServiceConfig singleConfig = new SimulationConfiguration.IndexerServiceConfig();
+        singleConfig.batchSize = 1000;
+        DebugIndexer singleParam = new DebugIndexer("jdbc:sqlite:file:memdb_single?mode=memory&cache=shared", "jdbc:sqlite:file:memdb_single_debug?mode=memory&cache=shared", singleConfig);
         assertThat(singleParam).isNotNull();
         
-        DebugIndexer twoParams = new DebugIndexer("jdbc:sqlite:file:memdb_raw?mode=memory&cache=shared", 
-                                                 "jdbc:sqlite:file:memdb_debug?mode=memory&cache=shared", 1000);
+        SimulationConfiguration.IndexerServiceConfig twoParamsConfig = new SimulationConfiguration.IndexerServiceConfig();
+        twoParamsConfig.batchSize = 1000;
+        DebugIndexer twoParams = new DebugIndexer("jdbc:sqlite:file:memdb_raw?mode=memory&cache=shared",
+                                                 "jdbc:sqlite:file:memdb_debug?mode=memory&cache=shared", twoParamsConfig);
         assertThat(twoParams).isNotNull();
         
         // Both constructors should work
@@ -165,8 +192,12 @@ class DebugIndexerValidationUnitTest {
     @Tag("unit")
     void testStateConsistencyValidation() {
         // Test state consistency validation
-        DebugIndexer indexer1 = new DebugIndexer("jdbc:sqlite:file:memdb_consist1?mode=memory&cache=shared", 500);
-        DebugIndexer indexer2 = new DebugIndexer("jdbc:sqlite:file:memdb_consist2?mode=memory&cache=shared", 500);
+        SimulationConfiguration.IndexerServiceConfig consist1Config = new SimulationConfiguration.IndexerServiceConfig();
+        consist1Config.batchSize = 500;
+        DebugIndexer indexer1 = new DebugIndexer("jdbc:sqlite:file:memdb_consist1?mode=memory&cache=shared", "jdbc:sqlite:file:memdb_consist1_debug?mode=memory&cache=shared", consist1Config);
+        SimulationConfiguration.IndexerServiceConfig consist2Config = new SimulationConfiguration.IndexerServiceConfig();
+        consist2Config.batchSize = 500;
+        DebugIndexer indexer2 = new DebugIndexer("jdbc:sqlite:file:memdb_consist2?mode=memory&cache=shared", "jdbc:sqlite:file:memdb_consist2_debug?mode=memory&cache=shared", consist2Config);
         
         assertThat(indexer1).isNotNull();
         assertThat(indexer2).isNotNull();
@@ -188,7 +219,9 @@ class DebugIndexerValidationUnitTest {
         long startTime = System.nanoTime();
         
         for (int i = 0; i < 15; i++) {
-            DebugIndexer fastIndexer = new DebugIndexer("jdbc:sqlite:file:memdb_perf" + i + "?mode=memory&cache=shared", 1000);
+            SimulationConfiguration.IndexerServiceConfig perfConfig = new SimulationConfiguration.IndexerServiceConfig();
+            perfConfig.batchSize = 1000;
+            DebugIndexer fastIndexer = new DebugIndexer("jdbc:sqlite:file:memdb_perf" + i + "?mode=memory&cache=shared", "jdbc:sqlite:file:memdb_perf" + i + "_debug?mode=memory&cache=shared", perfConfig);
             assertThat(fastIndexer).isNotNull();
             assertThat(fastIndexer.isRunning()).isFalse();
         }
@@ -209,8 +242,12 @@ class DebugIndexerValidationUnitTest {
     @Tag("unit")
     void testIsolationValidation() {
         // Test isolation validation - different instances shouldn't interfere
-        DebugIndexer isolated1 = new DebugIndexer("jdbc:sqlite:file:memdb_isol1?mode=memory&cache=shared", 100);
-        DebugIndexer isolated2 = new DebugIndexer("jdbc:sqlite:file:memdb_isol2?mode=memory&cache=shared", 2000);
+        SimulationConfiguration.IndexerServiceConfig isolated1Config = new SimulationConfiguration.IndexerServiceConfig();
+        isolated1Config.batchSize = 100;
+        DebugIndexer isolated1 = new DebugIndexer("jdbc:sqlite:file:memdb_isol1?mode=memory&cache=shared", "jdbc:sqlite:file:memdb_isol1_debug?mode=memory&cache=shared", isolated1Config);
+        SimulationConfiguration.IndexerServiceConfig isolated2Config = new SimulationConfiguration.IndexerServiceConfig();
+        isolated2Config.batchSize = 2000;
+        DebugIndexer isolated2 = new DebugIndexer("jdbc:sqlite:file:memdb_isol2?mode=memory&cache=shared", "jdbc:sqlite:file:memdb_isol2_debug?mode=memory&cache=shared", isolated2Config);
         
         assertThat(isolated1).isNotNull();
         assertThat(isolated2).isNotNull();

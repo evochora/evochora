@@ -10,6 +10,7 @@ import org.evochora.server.contracts.debug.PreparedTickState;
 import org.evochora.server.contracts.raw.RawOrganismState;
 import org.evochora.server.contracts.raw.RawTickState;
 import org.junit.jupiter.api.Tag;
+import org.evochora.server.config.SimulationConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -187,7 +188,9 @@ class DebugIndexerTestHelper implements AutoCloseable {
      */
     public DebugIndexer createIndexer() {
         log.debug("Creating DebugIndexer with batch size 1 for reliable testing");
-        return new DebugIndexer(rawJdbcUrl, debugJdbcUrl, 1); // Batch size = 1 für zuverlässige Tests
+        SimulationConfiguration.IndexerServiceConfig config = new SimulationConfiguration.IndexerServiceConfig();
+        config.batchSize = 1; // Batch size = 1 für zuverlässige Tests
+        return new DebugIndexer(rawJdbcUrl, debugJdbcUrl, config);
     }
 
     /**

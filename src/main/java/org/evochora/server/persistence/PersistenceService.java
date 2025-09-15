@@ -8,6 +8,7 @@ import org.evochora.server.contracts.raw.RawTickState; // NEU
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.server.queue.ITickMessageQueue;
+import org.evochora.server.config.SimulationConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,7 +43,7 @@ public final class PersistenceService implements IControllable, Runnable {
     private volatile boolean needsRetryClose = false; // Flag to retry database closure
     private final Object connectionLock = new Object(); // Synchronization for database operations
     private final EnvironmentProperties envProps;
-    private final int batchSize; // Configurable batch size
+    private final SimulationConfiguration.PersistenceServiceConfig config; // Consolidated configuration
 
     private Connection connection;
     private Path dbFilePath;
@@ -56,31 +57,32 @@ public final class PersistenceService implements IControllable, Runnable {
     private PreparedStatement tickInsertStatement;
     private int batchCount = 0; // Count of ticks in current batch
     private int actualBatchCount = 0; // Count of actual batches executed
+    
+    // Memory optimization: ThreadLocal collections to reduce allocations
+    private ThreadLocal<ArrayList<IQueueMessage>> tempMessageList;
 
-    public PersistenceService(ITickMessageQueue queue) {
-        this(queue, null, null, 1000);
-    }
-
-    public PersistenceService(ITickMessageQueue queue, String jdbcUrlOverride) {
-        this(queue, jdbcUrlOverride, null, 1000);
-    }
-
-    public PersistenceService(ITickMessageQueue queue, EnvironmentProperties envProps) {
-        this(queue, null, envProps, 1000);
-    }
-
-    public PersistenceService(ITickMessageQueue queue, EnvironmentProperties envProps, int batchSize) {
-        this(queue, null, envProps, batchSize);
-    }
-
-    public PersistenceService(ITickMessageQueue queue, String jdbcUrlOverride, EnvironmentProperties envProps, int batchSize) {
+    /**
+     * Creates a new PersistenceService with consolidated configuration.
+     * 
+     * @param queue The message queue to consume from
+     * @param envProps Environment properties for the simulation
+     * @param config Consolidated persistence service configuration
+     */
+    public PersistenceService(ITickMessageQueue queue, EnvironmentProperties envProps, SimulationConfiguration.PersistenceServiceConfig config) {
         this.queue = queue;
-        this.jdbcUrlOverride = jdbcUrlOverride;
         this.envProps = envProps;
-        this.batchSize = batchSize; // Use passed batch size
+        this.config = config != null ? config : new SimulationConfiguration.PersistenceServiceConfig();
+        this.jdbcUrlOverride = this.config.jdbcUrl;
+        
+        // Initialize ThreadLocal collections after config is set
+        this.tempMessageList = ThreadLocal.withInitial(() -> 
+            this.config.memoryOptimization.enabled ? 
+                new ArrayList<>(this.config.batchSize) : new ArrayList<>());
+        
         this.thread = new Thread(this, "PersistenceService");
         this.thread.setDaemon(true);
     }
+
 
     @Override
     public void start() {
@@ -124,10 +126,10 @@ public final class PersistenceService implements IControllable, Runnable {
             try {
                 log.debug("Performing immediate database cleanup during shutdown");
                 // Execute any remaining batch operations before closing
-                if (tickInsertStatement != null && batchCount % batchSize != 0) {
+                if (tickInsertStatement != null && batchCount % config.batchSize != 0) {
                     tickInsertStatement.executeBatch();
                     actualBatchCount++; // Increment actual batch count
-                    log.debug("Executed final batch of {} ticks during shutdown", batchCount % batchSize);
+                    log.debug("Executed final batch of {} ticks during shutdown", batchCount % config.batchSize);
                 }
                 closeQuietly();
                 log.debug("Database cleanup completed during shutdown");
@@ -153,10 +155,10 @@ public final class PersistenceService implements IControllable, Runnable {
             try {
                 log.debug("Performing database cleanup during force shutdown");
                 // Execute any remaining batch operations before closing
-                if (tickInsertStatement != null && batchCount % batchSize != 0) {
+                if (tickInsertStatement != null && batchCount % config.batchSize != 0) {
                     tickInsertStatement.executeBatch();
                     actualBatchCount++; // Increment actual batch count
-                    log.debug("Executed final batch of {} ticks during force shutdown", batchCount % batchSize);
+                    log.debug("Executed final batch of {} ticks during force shutdown", batchCount % config.batchSize);
                 }
                 closeQuietly();
                 log.debug("Database cleanup completed during force shutdown");
@@ -182,7 +184,7 @@ public final class PersistenceService implements IControllable, Runnable {
     public long getCurrentTick() { return lastPersistedTick; }
     public String getJdbcUrl() { return jdbcUrlInUse; }
     public int getBatchCount() { return actualBatchCount; }
-    public int getBatchSize() { return batchSize; }
+    public int getBatchSize() { return config.batchSize; }
 
     private double calculateTPS() {
         long currentTime = System.currentTimeMillis();
@@ -252,11 +254,13 @@ public final class PersistenceService implements IControllable, Runnable {
         // Create connection
         Connection conn = DriverManager.getConnection(jdbcUrl);
         
-        // Apply performance optimizations
+        // Apply performance optimizations using configurable values
         try (Statement st = conn.createStatement()) {
             st.execute("PRAGMA journal_mode=WAL"); // Write-Ahead Logging for better concurrency
             st.execute("PRAGMA synchronous=NORMAL"); // Faster writes
-            st.execute("PRAGMA cache_size=10000"); // Larger cache
+            st.execute("PRAGMA cache_size=" + config.database.cacheSize); // Configurable cache size
+            st.execute("PRAGMA mmap_size=" + config.database.mmapSize); // Configurable memory-mapped I/O
+            st.execute("PRAGMA page_size=" + config.database.pageSize); // Configurable page size
             st.execute("PRAGMA temp_store=MEMORY"); // Use memory for temp tables
         }
         
@@ -271,13 +275,13 @@ public final class PersistenceService implements IControllable, Runnable {
             
             try (Statement st = connection.createStatement()) {
                 // NEUES SCHEMA
-                st.execute("CREATE TABLE IF NOT EXISTS program_artifacts (program_id TEXT PRIMARY KEY, artifact_json TEXT)");
-                st.execute("CREATE TABLE IF NOT EXISTS raw_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json TEXT)");
-                st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
+                st.execute("CREATE TABLE IF NOT EXISTS program_artifacts (program_id TEXT PRIMARY KEY, artifact_json BLOB)");
+                st.execute("CREATE TABLE IF NOT EXISTS raw_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json BLOB)");
+                st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value BLOB)");
                 try (PreparedStatement ps = connection.prepareStatement("INSERT OR REPLACE INTO simulation_metadata (key, value) VALUES (?, ?)")) {
                     if (envProps != null) {
                         ps.setString(1, "worldShape");
-                        ps.setString(2, objectMapper.writeValueAsString(envProps.getWorldShape()));
+                        ps.setBytes(2, objectMapper.writeValueAsBytes(envProps.getWorldShape()));
                         ps.executeUpdate();
                     }
                     ps.setString(1, "runMode");
@@ -295,7 +299,7 @@ public final class PersistenceService implements IControllable, Runnable {
             try {
                 // Finalize any remaining batch operations
                 if (tickInsertStatement != null) {
-                    if (batchCount % batchSize != 0) { // Use batchSize here
+                    if (batchCount % config.batchSize != 0) { // Use config.batchSize here
                         tickInsertStatement.executeBatch();
                         actualBatchCount++; // Increment actual batch count
                     }
@@ -392,14 +396,15 @@ public final class PersistenceService implements IControllable, Runnable {
 
                 try {
                     // Process multiple messages in batch for better performance
-                    List<IQueueMessage> batch = new ArrayList<>();
+                    List<IQueueMessage> batch = tempMessageList.get();
+                    batch.clear(); // Reuse existing list
                     IQueueMessage msg = queue.poll(100, TimeUnit.MILLISECONDS); // Non-blocking poll
                     if (msg != null) {
                         // Start processing batch
                         
                         batch.add(msg);
                         // Collect more messages if available
-                        while (batch.size() < batchSize && (msg = queue.poll()) != null) { // Use batchSize here
+                        while (batch.size() < config.batchSize && (msg = queue.poll()) != null) { // Use config.batchSize here
                             batch.add(msg);
                         }
                         
@@ -444,11 +449,11 @@ public final class PersistenceService implements IControllable, Runnable {
                                 log.debug("Closing database cleanly for manual pause");
                                 
                                 // First, execute any remaining batch operations
-                                if (tickInsertStatement != null && batchCount % batchSize != 0) {
+                                if (tickInsertStatement != null && batchCount % config.batchSize != 0) {
                                     try {
                                         tickInsertStatement.executeBatch();
                                         actualBatchCount++; // Increment actual batch count
-                                        log.debug("Executed final batch of {} ticks before pause", batchCount % batchSize);
+                                        log.debug("Executed final batch of {} ticks before pause", batchCount % config.batchSize);
                                     } catch (Exception e) {
                                         log.warn("Error executing final batch before pause: {}", e.getMessage());
                                     }
@@ -497,9 +502,9 @@ public final class PersistenceService implements IControllable, Runnable {
                         
                         // For auto-pause: execute any remaining incomplete batches before pausing
                         // This ensures all data is committed and available to other threads
-                        if (tickInsertStatement != null && batchCount % batchSize != 0) {
+                        if (tickInsertStatement != null && batchCount % config.batchSize != 0) {
                             try {
-                                int remainingCount = batchCount % batchSize;
+                                int remainingCount = batchCount % config.batchSize;
                                 int[] result = tickInsertStatement.executeBatch();
                                 actualBatchCount++; // Increment actual batch count
                                 log.debug("Executed final batch of {} ticks before auto-pause, result: {}", remainingCount, java.util.Arrays.toString(result));
@@ -648,11 +653,11 @@ public final class PersistenceService implements IControllable, Runnable {
         
         try {
             LinearizedProgramArtifact linearized = pam.programArtifact().toLinearized(envProps);
-            String json = objectMapper.writeValueAsString(linearized);
+            byte[] jsonBytes = objectMapper.writeValueAsBytes(linearized);
             
             try (PreparedStatement ps = connection.prepareStatement("INSERT OR REPLACE INTO program_artifacts(program_id, artifact_json) VALUES (?, ?)")) {
                 ps.setString(1, pam.programId());
-                ps.setString(2, json);
+                ps.setBytes(2, jsonBytes);
                 ps.executeUpdate();
             }
         } catch (Exception e) {
@@ -672,7 +677,7 @@ public final class PersistenceService implements IControllable, Runnable {
             }
             
             // Use batch insert for better performance
-            String json = objectMapper.writeValueAsString(rts);
+            byte[] jsonBytes = objectMapper.writeValueAsBytes(rts);
             
             // Use a single prepared statement for all ticks
             if (tickInsertStatement == null) {
@@ -681,14 +686,14 @@ public final class PersistenceService implements IControllable, Runnable {
             }
             
             tickInsertStatement.setLong(1, rts.tickNumber());
-            tickInsertStatement.setString(2, json);
+            tickInsertStatement.setBytes(2, jsonBytes);
             tickInsertStatement.addBatch();
             
             // Execute batch every 1000 ticks for optimal performance
-            if (++batchCount % batchSize == 0) {
+            if (++batchCount % config.batchSize == 0) {
                 int[] result = tickInsertStatement.executeBatch();
                 actualBatchCount++; // Increment actual batch count
-                log.debug("Executed batch of {} ticks, result: {}", batchSize, java.util.Arrays.toString(result));
+                log.debug("Executed batch of {} ticks, result: {}", config.batchSize, java.util.Arrays.toString(result));
                 // Only clear batch if statement still exists (avoid race condition during shutdown)
                 if (tickInsertStatement != null) {
                     tickInsertStatement.clearBatch();

@@ -41,7 +41,12 @@ class AppController {
         this.setupOrganismSelector();
         
         this.loadFromUrl();
-        await this.navigateToTick(this.state.currentTick); 
+        await this.navigateToTick(this.state.currentTick);
+        
+        // Auto-scroll to organism only on initial load (from URL parameter)
+        if (this.state.selectedOrganismId) {
+            this.scrollToOrganism(this.state.selectedOrganismId);
+        }
     }
     
     async navigateToTick(tick) {
@@ -91,10 +96,8 @@ class AppController {
                 this.sidebarManager.setToggleButtonVisible(false);
             }
             
-            // If an organism is selected, scroll to it (especially important for initial load from URL)
-            if (this.state.selectedOrganismId) {
-                this.scrollToOrganism(this.state.selectedOrganismId);
-            }
+            // Note: Auto-scrolling to organism only happens on initial load or dropdown selection,
+            // not during tick navigation to avoid disrupting user's view
             
             this.updateTickUi();
             this.saveToUrl();

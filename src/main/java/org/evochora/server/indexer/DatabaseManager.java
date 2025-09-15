@@ -1,5 +1,6 @@
 package org.evochora.server.indexer;
 
+import org.evochora.server.config.SimulationConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,6 +20,7 @@ public class DatabaseManager {
     
     private final String debugDbPath;
     private final int batchSize;
+    private final SimulationConfiguration.DatabaseConfig databaseConfig;
     private Connection connection;
     private PreparedStatement tickInsertStatement;
     private int batchCount = 0; // Count of ticks in current batch
@@ -26,13 +28,16 @@ public class DatabaseManager {
     private volatile boolean isClosing = false; // Flag to prevent race conditions
     private final Object connectionLock = new Object(); // Synchronization for database operations
     
-    public DatabaseManager(String debugDbPath) {
-        this(debugDbPath, 1000); // Default batch size for backward compatibility
-    }
-    
-    public DatabaseManager(String debugDbPath, int batchSize) {
+    /**
+     * Creates a new DatabaseManager with full configuration support.
+     * @param debugDbPath The debug database path
+     * @param batchSize The batch size for operations
+     * @param databaseConfig Database configuration for optimizations
+     */
+    public DatabaseManager(String debugDbPath, int batchSize, SimulationConfiguration.DatabaseConfig databaseConfig) {
         this.debugDbPath = debugDbPath;
         this.batchSize = batchSize;
+        this.databaseConfig = databaseConfig != null ? databaseConfig : new SimulationConfiguration.DatabaseConfig();
     }
     
     /**
@@ -56,11 +61,13 @@ public class DatabaseManager {
             conn = DriverManager.getConnection("jdbc:sqlite:" + pathOrUrl);
         }
         
-        // Apply performance optimizations
+        // Apply performance optimizations using configurable values
         try (Statement st = conn.createStatement()) {
             st.execute("PRAGMA journal_mode=WAL"); // Write-Ahead Logging for better concurrency
             st.execute("PRAGMA synchronous=NORMAL"); // Faster writes
-            st.execute("PRAGMA cache_size=10000"); // Larger cache
+            st.execute("PRAGMA cache_size=" + databaseConfig.cacheSize); // Configurable cache size
+            st.execute("PRAGMA mmap_size=" + databaseConfig.mmapSize); // Configurable mmap size
+            st.execute("PRAGMA page_size=" + databaseConfig.pageSize); // Configurable page size
             st.execute("PRAGMA temp_store=MEMORY"); // Use memory for temp tables
         }
         
@@ -92,9 +99,9 @@ public class DatabaseManager {
         
         // Create tables
         try (Statement st = connection.createStatement()) {
-            st.execute("CREATE TABLE IF NOT EXISTS prepared_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json TEXT)");
-            st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value TEXT)");
-            st.execute("CREATE TABLE IF NOT EXISTS program_artifacts (program_id TEXT PRIMARY KEY, artifact_json TEXT)");
+            st.execute("CREATE TABLE IF NOT EXISTS prepared_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json BLOB)");
+            st.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value BLOB)");
+            st.execute("CREATE TABLE IF NOT EXISTS program_artifacts (program_id TEXT PRIMARY KEY, artifact_json BLOB)");
         }
         
         log.debug("Debug database setup completed for: {}", debugDbPath);

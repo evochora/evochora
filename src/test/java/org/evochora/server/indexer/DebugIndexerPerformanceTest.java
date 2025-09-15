@@ -11,6 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.Tag;
+import org.evochora.server.config.SimulationConfiguration;
 
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -49,7 +50,9 @@ class DebugIndexerPerformanceTest {
         this.rawDbPath = "jdbc:sqlite:file:memdb_perf_raw" + testCounter + "?mode=memory&cache=shared";
         this.debugDbPath = "jdbc:sqlite:file:memdb_perf_debug" + testCounter + "?mode=memory&cache=shared";
         
-        debugIndexer = new DebugIndexer(rawDbPath, debugDbPath, BATCH_SIZE);
+        SimulationConfiguration.IndexerServiceConfig config = new SimulationConfiguration.IndexerServiceConfig();
+        config.batchSize = BATCH_SIZE;
+        debugIndexer = new DebugIndexer(rawDbPath, debugDbPath, config);
     }
 
     @AfterEach
@@ -332,9 +335,17 @@ class DebugIndexerPerformanceTest {
     void testBatchSizeImpactOnPerformance() throws Exception {
         conn = createTestDatabase(rawDbPath);
         
-        DebugIndexer smallBatchIndexer = new DebugIndexer(rawDbPath, rawDbPath.replace("_raw", "_small_debug"), 100);
-        DebugIndexer mediumBatchIndexer = new DebugIndexer(rawDbPath, rawDbPath.replace("_raw", "_medium_debug"), 1000);
-        DebugIndexer largeBatchIndexer = new DebugIndexer(rawDbPath, rawDbPath.replace("_raw", "_large_debug"), 5000);
+        SimulationConfiguration.IndexerServiceConfig smallBatchConfig = new SimulationConfiguration.IndexerServiceConfig();
+        smallBatchConfig.batchSize = 100;
+        DebugIndexer smallBatchIndexer = new DebugIndexer(rawDbPath, rawDbPath.replace("_raw", "_small_debug"), smallBatchConfig);
+        
+        SimulationConfiguration.IndexerServiceConfig mediumBatchConfig = new SimulationConfiguration.IndexerServiceConfig();
+        mediumBatchConfig.batchSize = 1000;
+        DebugIndexer mediumBatchIndexer = new DebugIndexer(rawDbPath, rawDbPath.replace("_raw", "_medium_debug"), mediumBatchConfig);
+        
+        SimulationConfiguration.IndexerServiceConfig largeBatchConfig = new SimulationConfiguration.IndexerServiceConfig();
+        largeBatchConfig.batchSize = 5000;
+        DebugIndexer largeBatchIndexer = new DebugIndexer(rawDbPath, rawDbPath.replace("_raw", "_large_debug"), largeBatchConfig);
         
         smallBatchIndexer.start();
         mediumBatchIndexer.start();

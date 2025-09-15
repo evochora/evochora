@@ -60,12 +60,17 @@ public final class SimulationConfiguration {
         public String outputPath;
         public int batchSize = 1000; // Default batch size
         public CompressionConfig compression = new CompressionConfig(); // Default: disabled
+        public DatabaseConfig database = new DatabaseConfig(); // Default database settings
+        public ParallelProcessingConfig parallelProcessing = new ParallelProcessingConfig(); // Default: enabled
+        public MemoryOptimizationConfig memoryOptimization = new MemoryOptimizationConfig(); // Default: enabled
     }
 
     public static final class PersistenceServiceConfig {
         public boolean autoStart;
         public int batchSize = 1000; // Default batch size
         public String jdbcUrl;
+        public DatabaseConfig database = new DatabaseConfig(); // Default database settings
+        public MemoryOptimizationConfig memoryOptimization = new MemoryOptimizationConfig(); // Default: enabled
     }
 
     public static final class ServerServiceConfig {
@@ -114,6 +119,39 @@ public final class SimulationConfiguration {
         public Map<String, String> logLevels = Map.of(
             "org.evochora.server.ServiceManager", "INFO"
         );
+    }
+
+    /**
+     * Database performance configuration for SQLite optimizations.
+     */
+    public static final class DatabaseConfig {
+        /** SQLite cache size in pages (default: 5000) */
+        public int cacheSize = 5000;
+        
+        /** Memory-mapped I/O size in bytes (default: 8MB) */
+        public long mmapSize = 8388608L;
+        
+        /** SQLite page size in bytes (default: 4096) */
+        public int pageSize = 4096;
+    }
+
+    /**
+     * Parallel processing configuration for multi-core optimization.
+     */
+    public static final class ParallelProcessingConfig {
+        /** Whether to enable parallel processing (default: false) */
+        public boolean enabled = false;
+        
+        /** Number of threads (0 = auto: CPU cores / 2, default: 0) */
+        public int threadCount = 0;
+    }
+
+    /**
+     * Memory optimization configuration for reducing allocations.
+     */
+    public static final class MemoryOptimizationConfig {
+        /** Whether to enable memory optimizations (default: false) */
+        public boolean enabled = false;
     }
 }
 

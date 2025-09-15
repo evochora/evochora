@@ -18,6 +18,8 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -36,12 +38,31 @@ public class DebugIndexer implements IControllable, Runnable {
     private final AtomicInteger queueSize = new AtomicInteger(0);
     private final Thread queueProcessorThread;
     private final AtomicBoolean queueProcessorRunning = new AtomicBoolean(false);
+    
+    // Helper class for parallel processing
+    private static class TickData {
+        final long tickNumber;
+        final String rawTickJson;
+        
+        TickData(long tickNumber, String rawTickJson) {
+            this.tickNumber = tickNumber;
+            this.rawTickJson = rawTickJson;
+        }
+    }
 
     private final Thread thread;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final AtomicBoolean autoPaused = new AtomicBoolean(false);
     private final AtomicBoolean databaseHealthy = new AtomicBoolean(true);
+    
+    // Multi-core processing
+    private final ForkJoinPool processingPool;
+    private final int threadCount;
+    
+    // Memory optimizations - ThreadLocal collections to reduce allocations
+    private final ThreadLocal<ArrayList<TickData>> tempTickDataList;
+    private final ThreadLocal<ArrayList<CompletableFuture<Void>>> tempFuturesList;
     private long startTime = System.currentTimeMillis();
     private long nextTickToProcess = 0L; // Start at 0 to include tick 0
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -55,6 +76,7 @@ public class DebugIndexer implements IControllable, Runnable {
     private String debugDbPath;
 
     private final int batchSize; // Configurable batch size
+    private final org.evochora.server.config.SimulationConfiguration.IndexerServiceConfig config; // Consolidated configuration
     private EnvironmentProperties envProps; // Environment properties loaded from database
 
     private Map<String, ProgramArtifact> artifacts = new HashMap<>();
@@ -68,24 +90,37 @@ public class DebugIndexer implements IControllable, Runnable {
     private final TickProcessor tickProcessor;
     private final org.evochora.server.config.SimulationConfiguration.CompressionConfig compressionConfig;
 
-    public DebugIndexer(String rawDbPath, int batchSize) {
-        this(rawDbPath, rawDbPath.replace("_raw.sqlite", "_debug.sqlite"), batchSize, null);
-    }
-
-    public DebugIndexer(String rawDbUrl, String debugDbUrl, int batchSize) {
-        this(rawDbUrl, debugDbUrl, batchSize, null);
-    }
-
-    public DebugIndexer(String rawDbUrl, String debugDbUrl, int batchSize, org.evochora.server.config.SimulationConfiguration.CompressionConfig compressionConfig) {
+    /**
+     * Creates a new DebugIndexer with consolidated configuration.
+     * 
+     * @param rawDbUrl URL to the raw database
+     * @param debugDbUrl URL to the debug database
+     * @param config Consolidated indexer service configuration
+     */
+    public DebugIndexer(String rawDbUrl, String debugDbUrl, org.evochora.server.config.SimulationConfiguration.IndexerServiceConfig config) {
         this.rawDbPath = rawDbUrl;
         this.debugDbPath = debugDbUrl;
-        this.batchSize = batchSize;
-        this.compressionConfig = compressionConfig;
-        this.databaseManager = new DatabaseManager(debugDbUrl, batchSize);
+        this.config = config != null ? config : new org.evochora.server.config.SimulationConfiguration.IndexerServiceConfig();
+        this.batchSize = this.config.batchSize;
+        this.compressionConfig = this.config.compression;
+        
+        // Initialize multi-core processing
+        this.threadCount = this.config.parallelProcessing.enabled ? 
+            (this.config.parallelProcessing.threadCount > 0 ? this.config.parallelProcessing.threadCount : Runtime.getRuntime().availableProcessors()) : 1;
+        this.processingPool = this.config.parallelProcessing.enabled ? 
+            new ForkJoinPool(this.threadCount) : null;
+        
+        // Initialize ThreadLocal collections if memory optimization is enabled
+        this.tempTickDataList = ThreadLocal.withInitial(() -> 
+            this.config.memoryOptimization.enabled ? new ArrayList<>(this.batchSize) : new ArrayList<>());
+        this.tempFuturesList = ThreadLocal.withInitial(() -> 
+            this.config.memoryOptimization.enabled ? new ArrayList<>(this.threadCount) : new ArrayList<>());
+        
+        this.databaseManager = new DatabaseManager(debugDbUrl, this.batchSize, this.config.database);
         this.sourceViewBuilder = new SourceViewBuilder();
         this.instructionBuilder = new InstructionBuilder();
         this.internalStateBuilder = new InternalStateBuilder();
-        this.tickProcessor = new TickProcessor(objectMapper, artifactValidator, sourceViewBuilder, instructionBuilder, internalStateBuilder);
+        this.tickProcessor = new TickProcessor(objectMapper, artifactValidator, sourceViewBuilder, instructionBuilder, internalStateBuilder, this.config.memoryOptimization);
         this.thread = new Thread(this, "DebugIndexer");
         this.thread.setDaemon(true);
         
@@ -93,6 +128,7 @@ public class DebugIndexer implements IControllable, Runnable {
         this.queueProcessorThread = new Thread(this::processQueuedData, "DebugIndexer-QueueProcessor");
         this.queueProcessorThread.setDaemon(true);
     }
+
     
     @Override
     public void start() {
@@ -184,6 +220,11 @@ public class DebugIndexer implements IControllable, Runnable {
             
             thread.interrupt();
             queueProcessorThread.interrupt();
+            
+            // Shutdown processing pool if it exists
+            if (processingPool != null) {
+                processingPool.shutdown();
+            }
         }
     }
     
@@ -552,12 +593,13 @@ public class DebugIndexer implements IControllable, Runnable {
                         PreparedTickState tick = dataQueue.poll();
                         if (tick != null) {
                             try {
-                                String json = objectMapper.writeValueAsString(tick);
+                                byte[] jsonBytes = objectMapper.writeValueAsBytes(tick);
                                 if (compressionConfig != null && compressionConfig.enabled) {
-                                    byte[] compressed = org.evochora.server.compression.CompressionUtils.compressWithMagic(json, compressionConfig.algorithm);
+                                    String jsonString = new String(jsonBytes, java.nio.charset.StandardCharsets.UTF_8);
+                                    byte[] compressed = org.evochora.server.utils.CompressionUtils.compressWithMagic(jsonString, compressionConfig.algorithm);
                                     databaseManager.writePreparedTick(tick.tickNumber(), compressed);
                                 } else {
-                                    databaseManager.writePreparedTick(tick.tickNumber(), json);
+                                    databaseManager.writePreparedTick(tick.tickNumber(), jsonBytes);
                                 }
                                 queueSize.decrementAndGet();
                                 processedCount++;
@@ -721,15 +763,15 @@ public class DebugIndexer implements IControllable, Runnable {
                 "INSERT OR REPLACE INTO simulation_metadata(key, value) VALUES (?, ?)")) {
             
             // World shape
-            String worldShapeJson = objectMapper.writeValueAsString(envProps.getWorldShape());
+            byte[] worldShapeBytes = objectMapper.writeValueAsBytes(envProps.getWorldShape());
             ps.setString(1, "worldShape");
-            ps.setString(2, worldShapeJson);
+            ps.setBytes(2, worldShapeBytes);
             ps.addBatch();
             
             // Toroidal status
-            String isToroidalJson = objectMapper.writeValueAsString(envProps.isToroidal());
+            byte[] isToroidalBytes = objectMapper.writeValueAsBytes(envProps.isToroidal());
             ps.setString(1, "isToroidal");
-            ps.setString(2, isToroidalJson);
+            ps.setBytes(2, isToroidalBytes);
             ps.addBatch();
             
             // Execute batch
@@ -769,9 +811,9 @@ public class DebugIndexer implements IControllable, Runnable {
             
             for (Map.Entry<String, ProgramArtifact> entry : this.artifacts.entrySet()) {
                 try {
-                    String json = objectMapper.writeValueAsString(entry.getValue());
+                    byte[] jsonBytes = objectMapper.writeValueAsBytes(entry.getValue());
                     ps.setString(1, entry.getKey());
-                    ps.setString(2, json);
+                    ps.setBytes(2, jsonBytes);
                     ps.executeUpdate();
                     log.debug("Wrote program artifact {} to debug database", entry.getKey());
                 } catch (Exception e) {
@@ -842,29 +884,76 @@ public class DebugIndexer implements IControllable, Runnable {
                 ps.setInt(2, actualBatchSize);
                 
                 try (ResultSet rs = ps.executeQuery()) {
+                    // Use ThreadLocal collections for memory optimization
+                    List<CompletableFuture<Void>> futures = this.config.memoryOptimization.enabled ? 
+                        tempFuturesList.get() : new ArrayList<>();
                     boolean processedAny = false;
                     int processedCount = 0;
                     
+                    // Clear and reuse ThreadLocal list
+                    List<TickData> tickDataList = this.config.memoryOptimization.enabled ? 
+                        tempTickDataList.get() : new ArrayList<>();
+                    if (this.config.memoryOptimization.enabled) {
+                        tickDataList.clear();
+                    }
                     while (rs.next()) {
                         long tickNumber = rs.getLong(1);
                         String rawTickJson = rs.getString(2);
-                        
-                        try {
-                            RawTickState rawTickState = objectMapper.readValue(rawTickJson, new TypeReference<>() {});
-                            PreparedTickState preparedTick = tickProcessor.transformRawToPrepared(rawTickState, artifacts, envProps);
-                            writePreparedTick(preparedTick);
+                        tickDataList.add(new TickData(tickNumber, rawTickJson));
+                    }
+                    
+                    // Process ticks in parallel if multi-core processing is enabled
+                    if (processingPool != null && tickDataList.size() > 1) {
+                        // Split into chunks for parallel processing
+                        int chunkSize = Math.max(1, tickDataList.size() / threadCount);
+                        for (int i = 0; i < tickDataList.size(); i += chunkSize) {
+                            int endIndex = Math.min(i + chunkSize, tickDataList.size());
+                            List<TickData> chunk = tickDataList.subList(i, endIndex);
                             
-                            // Update next tick to process
-                            if (tickNumber >= nextTickToProcess) {
-                                nextTickToProcess = tickNumber + 1;
+                            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                                for (TickData tickData : chunk) {
+                                    try {
+                                        RawTickState rawTickState = objectMapper.readValue(tickData.rawTickJson, new TypeReference<>() {});
+                                        PreparedTickState preparedTick = tickProcessor.transformRawToPrepared(rawTickState, artifacts, envProps);
+                                        writePreparedTick(preparedTick);
+                                    } catch (Exception e) {
+                                        if (running.get()) {
+                                            log.warn("Failed to process tick {}: {}", tickData.tickNumber, e.getMessage());
+                                        }
+                                    }
+                                }
+                            }, processingPool);
+                            futures.add(future);
+                        }
+                        
+                        // Wait for all parallel processing to complete
+                        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+                        processedCount = tickDataList.size();
+                        processedAny = processedCount > 0;
+                        
+                        // Update next tick to process
+                        if (processedAny && !tickDataList.isEmpty()) {
+                            long maxTickNumber = tickDataList.stream().mapToLong(td -> td.tickNumber).max().orElse(nextTickToProcess - 1);
+                            nextTickToProcess = maxTickNumber + 1;
+                        }
+                    } else {
+                        // Sequential processing (single-threaded or small batches)
+                        for (TickData tickData : tickDataList) {
+                            try {
+                                RawTickState rawTickState = objectMapper.readValue(tickData.rawTickJson, new TypeReference<>() {});
+                                PreparedTickState preparedTick = tickProcessor.transformRawToPrepared(rawTickState, artifacts, envProps);
+                                writePreparedTick(preparedTick);
                                 
-                                // Tick processed
-                            }
-                            processedAny = true;
-                            processedCount++;
-                        } catch (Exception e) {
-                            if (running.get()) {
-                                log.warn("Failed to process tick {}: {}", tickNumber, e.getMessage());
+                                // Update next tick to process
+                                if (tickData.tickNumber >= nextTickToProcess) {
+                                    nextTickToProcess = tickData.tickNumber + 1;
+                                }
+                                processedAny = true;
+                                processedCount++;
+                            } catch (Exception e) {
+                                if (running.get()) {
+                                    log.warn("Failed to process tick {}: {}", tickData.tickNumber, e.getMessage());
+                                }
                             }
                         }
                     }
@@ -922,12 +1011,13 @@ public class DebugIndexer implements IControllable, Runnable {
         }
         
         try {
-            String json = objectMapper.writeValueAsString(preparedTick);
+            byte[] jsonBytes = objectMapper.writeValueAsBytes(preparedTick);
             if (compressionConfig != null && compressionConfig.enabled) {
-                byte[] compressed = org.evochora.server.compression.CompressionUtils.compressWithMagic(json, compressionConfig.algorithm);
+                String jsonString = new String(jsonBytes, java.nio.charset.StandardCharsets.UTF_8);
+                byte[] compressed = org.evochora.server.utils.CompressionUtils.compressWithMagic(jsonString, compressionConfig.algorithm);
                 databaseManager.writePreparedTick(preparedTick.tickNumber(), compressed);
             } else {
-                databaseManager.writePreparedTick(preparedTick.tickNumber(), json);
+                databaseManager.writePreparedTick(preparedTick.tickNumber(), jsonBytes);
             }
         } catch (Exception e) {
             log.error("Failed to write prepared tick {} to database: {} - marking database as unhealthy, future writes will be skipped", preparedTick.tickNumber(), e.getMessage(), e);
