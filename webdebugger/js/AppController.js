@@ -38,6 +38,8 @@ class AppController {
         await this.renderer.init();
         this.renderer.app.view.addEventListener('click', (e) => this.onCanvasClick(e));
         
+        this.setupOrganismSelector();
+        
         this.loadFromUrl();
         await this.navigateToTick(this.state.currentTick); 
     }
@@ -74,6 +76,10 @@ class AppController {
                 return { organismId: o.id, programId: o.programId, energy: o.energy, positionJson: JSON.stringify(o.position), dps: o.dps, dv: o.dv, activeDpIndex: correctActiveDpIndex };
             });
             this.renderer.draw({ cells, organisms, selectedOrganismId: this.state.selectedOrganismId });
+            
+            // Update organism selector dropdown
+            this.updateOrganismSelector(data.worldState?.organisms || []);
+            
             const ids = Object.keys(data.organismDetails||{});
             const sel = this.state.selectedOrganismId && ids.includes(this.state.selectedOrganismId) ? this.state.selectedOrganismId : null;
             if (sel) {
@@ -84,6 +90,12 @@ class AppController {
                 this.sidebarManager.autoHide();
                 this.sidebarManager.setToggleButtonVisible(false);
             }
+            
+            // If an organism is selected, scroll to it (especially important for initial load from URL)
+            if (this.state.selectedOrganismId) {
+                this.scrollToOrganism(this.state.selectedOrganismId);
+            }
+            
             this.updateTickUi();
             this.saveToUrl();
         } catch (error) {
@@ -114,6 +126,13 @@ class AppController {
             const pos = o.position;
             if (Array.isArray(pos) && pos[0] === gridX && pos[1] === gridY) {
                 this.state.selectedOrganismId = String(o.id);
+                
+                // Update dropdown selection
+                const selector = document.getElementById('organism-selector');
+                if (selector) {
+                    selector.value = this.state.selectedOrganismId;
+                }
+                
                 const det = this.state.lastTickData.organismDetails?.[this.state.selectedOrganismId];
                 if (det) {
                     this.sidebar.update(det, this.lastNavigationDirection);
@@ -175,5 +194,149 @@ class AppController {
         }
         
         window.history.replaceState({}, '', url.toString());
+    }
+    
+    setupOrganismSelector() {
+        const selector = document.getElementById('organism-selector');
+        if (!selector) return;
+        
+        selector.addEventListener('change', (event) => {
+            const organismId = event.target.value;
+            if (organismId) {
+                this.selectOrganismById(organismId);
+            } else {
+                this.state.selectedOrganismId = null;
+                this.sidebarManager.hideSidebar(true);
+                this.saveToUrl();
+            }
+        });
+    }
+    
+    updateOrganismSelector(organisms) {
+        const selector = document.getElementById('organism-selector');
+        if (!selector) return;
+        
+        // Calculate organism counts
+        const aliveCount = organisms.length;
+        const totalCount = this.getTotalOrganismCount();
+        
+        // Clear existing options except the first one
+        selector.innerHTML = `<option value="">--- (${aliveCount}/${totalCount})</option>`;
+        
+        // Add organism options with improved formatting
+        organisms.forEach(organism => {
+            const option = document.createElement('option');
+            option.value = organism.id;
+            
+            // Get organism color
+            const color = this.getOrganismColor(organism.id);
+            const energy = organism.energy || 0;
+            const x = organism.position?.[0] ?? '?';
+            const y = organism.position?.[1] ?? '?';
+            
+            // Format: <ID>: [x | y] (<ER wert>)
+            option.textContent = `${organism.id}: [${x} | ${y}] (${energy})`;
+            
+            // Set color style
+            option.style.color = color;
+            
+            selector.appendChild(option);
+        });
+        
+        // Set selected value if there's a selected organism
+        if (this.state.selectedOrganismId) {
+            selector.value = this.state.selectedOrganismId;
+        }
+    }
+    
+    getTotalOrganismCount() {
+        // Try to get total count from organism details
+        const organismDetails = this.state.lastTickData?.organismDetails || {};
+        const detailIds = Object.keys(organismDetails);
+        
+        if (detailIds.length > 0) {
+            // Find the highest organism ID to estimate total count
+            const maxId = Math.max(...detailIds.map(id => parseInt(id, 10)));
+            return maxId;
+        }
+        
+        // Fallback: use current alive count if no details available
+        const organisms = this.state.lastTickData?.worldState?.organisms || [];
+        return organisms.length;
+    }
+    
+    getOrganismColor(id) {
+        // Use the same color palette as WebGLRenderer
+        const organismColorPalette = [
+            '#32cd32', '#1e90ff', '#dc143c', '#ffd700',
+            '#ffa500', '#9370db', '#00ffff'
+        ];
+        
+        if (typeof id === 'string') {
+            id = parseInt(id, 10);
+        }
+        
+        if (isNaN(id) || id < 1) {
+            return '#ffffff'; // Default white for invalid IDs
+        }
+        
+        const paletteIndex = (id - 1) % organismColorPalette.length;
+        return organismColorPalette[paletteIndex];
+    }
+    
+    selectOrganismById(organismId) {
+        this.state.selectedOrganismId = String(organismId);
+        
+        // Update dropdown selection
+        const selector = document.getElementById('organism-selector');
+        if (selector) {
+            selector.value = this.state.selectedOrganismId;
+        }
+        
+        const det = this.state.lastTickData?.organismDetails?.[this.state.selectedOrganismId];
+        if (det) {
+            this.sidebar.update(det, this.lastNavigationDirection);
+            this.sidebarManager.autoShow();
+            this.sidebarManager.setToggleButtonVisible(true);
+            this.saveToUrl();
+            
+            // Scroll to organism IP
+            this.scrollToOrganism(organismId);
+        }
+    }
+    
+    scrollToOrganism(organismId) {
+        const organisms = this.state.lastTickData?.worldState?.organisms || [];
+        const organism = organisms.find(o => String(o.id) === String(organismId));
+        
+        if (!organism || !organism.position || !Array.isArray(organism.position)) {
+            return;
+        }
+        
+        const [gridX, gridY] = organism.position;
+        const cellSize = this.renderer.config.cellSize;
+        
+        // Calculate pixel position of the organism
+        const pixelX = gridX * cellSize;
+        const pixelY = gridY * cellSize;
+        
+        // Get world container
+        const worldContainer = this.worldContainer;
+        if (!worldContainer) return;
+        
+        // Calculate center position in the container
+        const containerWidth = worldContainer.clientWidth;
+        const containerHeight = worldContainer.clientHeight;
+        
+        // Calculate scroll position to center the organism
+        const scrollLeft = Math.max(0, pixelX - containerWidth / 2);
+        const scrollTop = Math.max(0, pixelY - containerHeight / 2);
+        
+        // Smooth scroll to the organism
+        worldContainer.scrollTo({
+            left: scrollLeft,
+            top: scrollTop,
+            behavior: 'smooth'
+        });
     }
 }

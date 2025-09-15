@@ -140,6 +140,32 @@ button {
 }
 button:hover { background-color: #4a4a6a; }
 
+.organism-selector-wrapper {
+    position: relative;
+}
+
+#organism-selector {
+    width: 200px;
+    background-color: #222;
+    border: 1px solid #555;
+    color: #e0e0e0;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: inherit;
+}
+
+#organism-selector:hover {
+    background-color: #333;
+}
+
+#organism-selector:focus {
+    outline: none;
+    border-color: #777;
+    box-shadow: 0 0 0 2px rgba(119, 119, 119, 0.2);
+}
+
 .tick-input-wrapper {
     position: relative;
     display: inline-flex;
@@ -395,6 +421,12 @@ main.container {
 
 .clickable-parent:hover {
     color: #6bb3ff;
+}
+
+.parent-dead {
+    color: #666;
+    text-decoration: line-through;
+    cursor: not-allowed;
 }
 
 .changeable-box {

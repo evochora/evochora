@@ -11,6 +11,8 @@ class WebGLRenderer {
         this.organismColorMap = new Map();
         this.cellData = new Map();
         this.cellObjects = new Map();
+        this.organismGraphics = new Map(); // Cache for organism graphics
+        this.dpGraphics = new Map(); // Cache for DP graphics
         this.app = new PIXI.Application();
         this.tooltip = document.getElementById('cell-tooltip');
         this.tooltipTimeout = null;
@@ -31,6 +33,10 @@ class WebGLRenderer {
             backgroundColor: this.config.backgroundColor,
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
+            // Performance optimizations
+            powerPreference: 'high-performance',
+            antialias: false,
+            backgroundAlpha: 1,
         });
         this.container.innerHTML = '';
         this.container.appendChild(this.app.view);
@@ -42,6 +48,7 @@ class WebGLRenderer {
         this.app.stage.addChild(this.cellContainer, this.textContainer, this.markerContainer);
 
         this.setupTooltipEvents();
+        this.setupRightClickScrolling();
     }
 
     updateWorldShape(worldShape) {
@@ -80,8 +87,42 @@ class WebGLRenderer {
             }
         }
 
-        // Draw organisms
+        // Draw organisms and DPs synchronously for better performance
+        this.drawOrganismsAndDps(organisms, selectedOrganismId);
+    }
+
+    drawOrganismsAndDps(organisms, selectedOrganismId) {
+
+        // Clear existing graphics but keep them for reuse
         this.markerContainer.removeChildren();
+        
+        // Clear graphics cache for organisms that no longer exist
+        const currentOrganismIds = new Set(organisms?.map(o => o.organismId) || []);
+        for (const [id, graphics] of this.organismGraphics.entries()) {
+            if (!currentOrganismIds.has(id)) {
+                this.organismGraphics.delete(id);
+            }
+        }
+        
+        // Clear DP graphics cache for DPs that no longer exist
+        const currentDpKeys = new Set();
+        if (organisms) {
+            for (const organism of organisms) {
+                const dpsArray = Array.isArray(organism.dps) ? organism.dps : (organism.dpsJson ? JSON.parse(organism.dpsJson) : null);
+                if (Array.isArray(dpsArray)) {
+                    dpsArray.forEach(dpPos => {
+                        const key = Array.isArray(dpPos) ? dpPos.join('|') : String(dpPos);
+                        currentDpKeys.add(key);
+                    });
+                }
+            }
+        }
+        for (const [key, graphics] of this.dpGraphics.entries()) {
+            if (!currentDpKeys.has(key)) {
+                this.dpGraphics.delete(key);
+            }
+        }
+        
         if (organisms) {
             const allDps = new Map();
             for (const organism of organisms) {
@@ -103,10 +144,12 @@ class WebGLRenderer {
                 }
             }
 
+            // Draw organisms first
             for (const organism of organisms) {
                 this.drawOrganismWithoutDps(organism, selectedOrganismId === organism.organismId);
             }
 
+            // Draw DPs on top
             for (const dpData of allDps.values()) {
                 this.drawDp(dpData.pos, dpData.color, dpData.indices, dpData.isActive);
             }
@@ -174,50 +217,99 @@ class WebGLRenderer {
         const x = pos[0] * this.config.cellSize;
         const y = pos[1] * this.config.cellSize;
 
-        const graphics = new PIXI.Graphics();
-        graphics.stroke({
-            width: 2.5,
-            color: organism.energy <= 0 ? this.config.colorDead : color
-        });
-        graphics.drawRect(x, y, this.config.cellSize, this.config.cellSize);
-        this.markerContainer.addChild(graphics);
-
+        // Draw arrow pointing in DP direction instead of rectangle outline
         let dvVec = null;
         if (organism.dvJson) dvVec = this.parsePosition(organism.dvJson);
         else if (Array.isArray(organism.dv)) dvVec = organism.dv;
 
-        if (Array.isArray(dvVec)) {
-            const dvMarker = new PIXI.Graphics();
-            const edgeOffset = this.config.cellSize * 0.5;
+        // Reuse existing graphics or create new one
+        let organismGraphics = this.organismGraphics.get(organism.organismId);
+        if (!organismGraphics) {
+            organismGraphics = new PIXI.Graphics();
+            this.organismGraphics.set(organism.organismId, organismGraphics);
+        }
+        
+        organismGraphics.clear();
+        const strokeColor = organism.energy <= 0 ? this.convertColorToPixi(this.config.colorDead) : color;
+        
+        // Draw semi-transparent background for the whole cell
+        organismGraphics.beginFill(strokeColor, 0.2);
+        organismGraphics.drawRect(x, y, this.config.cellSize, this.config.cellSize);
+        organismGraphics.endFill();
+        
+        if (Array.isArray(dvVec) && (dvVec[0] !== 0 || dvVec[1] !== 0)) {
+            // Calculate arrow position and direction - make it fill the whole cell
             const cx = x + this.config.cellSize / 2;
             const cy = y + this.config.cellSize / 2;
-            const px = cx + Math.sign(dvVec[0] || 0) * edgeOffset * 0.9;
-            const py = cy + Math.sign(dvVec[1] || 0) * edgeOffset * 0.9;
-            dvMarker.circle(px, py, this.config.cellSize * 0.1);
-            dvMarker.fill(color);
-            this.markerContainer.addChild(dvMarker);
+            
+            // Normalize direction vector
+            const length = Math.sqrt(dvVec[0] * dvVec[0] + dvVec[1] * dvVec[1]);
+            const dirX = dvVec[0] / length;
+            const dirY = dvVec[1] / length;
+            
+            // Calculate arrow points to fill the entire cell
+            const halfCellSize = this.config.cellSize / 2;
+            
+            // Arrow tip position (at the edge of the cell in direction of movement)
+            const tipX = cx + dirX * halfCellSize;
+            const tipY = cy + dirY * halfCellSize;
+            
+            // Arrow base positions (at the opposite edge of the cell)
+            const base1X = cx - dirX * halfCellSize + (-dirY) * halfCellSize;
+            const base1Y = cy - dirY * halfCellSize + dirX * halfCellSize;
+            const base2X = cx - dirX * halfCellSize - (-dirY) * halfCellSize;
+            const base2Y = cy - dirY * halfCellSize - dirX * halfCellSize;
+            
+            // Draw arrow triangle with solid fill
+            organismGraphics.beginFill(strokeColor, 0.8);
+            organismGraphics.moveTo(tipX, tipY);
+            organismGraphics.lineTo(base1X, base1Y);
+            organismGraphics.lineTo(base2X, base2Y);
+            organismGraphics.lineTo(tipX, tipY);
+            organismGraphics.endFill();
+        } else {
+            // If no direction vector, draw a filled circle that fills most of the cell
+            const cx = x + this.config.cellSize / 2;
+            const cy = y + this.config.cellSize / 2;
+            const radius = this.config.cellSize * 0.4;
+            
+            organismGraphics.beginFill(strokeColor, 0.8);
+            organismGraphics.circle(cx, cy, radius);
+            organismGraphics.endFill();
         }
+        
+        this.markerContainer.addChild(organismGraphics);
     }
 
     drawDp(pos, color, indices, isActive = false) {
         const x = pos[0] * this.config.cellSize;
         const y = pos[1] * this.config.cellSize;
+        const dpKey = `${pos[0]},${pos[1]}`;
 
-        const graphics = new PIXI.Graphics();
-        graphics.stroke({ width: 2.0, color });
-        // Dashed line not directly supported in PIXI.Graphics, so we draw a solid line as a fallback.
-        // For a true dashed line, a more complex solution like PIXI.TilingSprite or a custom shader would be needed.
-        // Given the constraints, a solid line is a reasonable substitute.
-        graphics.drawRect(x, y, this.config.cellSize, this.config.cellSize);
-
-        if (isActive) {
-            graphics.stroke({ width: 1.0, color });
-            const spacing = 4;
-            for (let i = -this.config.cellSize; i < this.config.cellSize; i += spacing) {
-                graphics.moveTo(x + Math.max(0, i), y + Math.max(0, -i));
-                graphics.lineTo(x + Math.min(this.config.cellSize, i + this.config.cellSize), y + Math.min(this.config.cellSize, this.config.cellSize - i));
-            }
+        // Reuse existing graphics or create new one
+        let graphics = this.dpGraphics.get(dpKey);
+        if (!graphics) {
+            graphics = new PIXI.Graphics();
+            this.dpGraphics.set(dpKey, graphics);
         }
+        
+        // Draw DP as a semi-transparent overlay with border
+        // Use simpler rendering for better performance
+        graphics.lineStyle(1.0, color, 0.8); // Thinner border for performance
+        graphics.drawRect(x, y, this.config.cellSize, this.config.cellSize);
+        
+        if (isActive) {
+            // Active DP: darker overlay
+            graphics.beginFill(color, 0.3); // Semi-transparent
+            graphics.drawRect(x, y, this.config.cellSize, this.config.cellSize);
+            graphics.endFill();
+        } else {
+            // Inactive DP: lighter overlay
+            graphics.beginFill(color, 0.15); // Very light overlay
+            graphics.drawRect(x, y, this.config.cellSize, this.config.cellSize);
+            graphics.endFill();
+        }
+        
         this.markerContainer.addChild(graphics);
 
         if (Array.isArray(indices) && indices.length > 0) {
@@ -225,7 +317,7 @@ class WebGLRenderer {
                 text: indices.join(','),
                 style: {
                     ...this.cellFont,
-                    fill: color,
+                    fill: color, // Back to organism color
                     fontWeight: '900',
                     fontSize: this.config.cellSize * 0.45,
                     dropShadow: true,
@@ -248,10 +340,19 @@ class WebGLRenderer {
         } catch (e) { return null; }
     }
 
+    convertColorToPixi(cssColor) {
+        if (typeof cssColor === 'string' && cssColor.startsWith('#')) {
+            return parseInt(cssColor.replace('#', ''), 16);
+        }
+        return cssColor; // Already in correct format or not a hex string
+    }
+
     getOrganismColor(id) {
         if (!this.organismColorMap.has(id)) {
             const paletteIndex = (id - 1) % WebGLRenderer.organismColorPalette.length;
-            this.organismColorMap.set(id, WebGLRenderer.organismColorPalette[paletteIndex]);
+            const cssColor = WebGLRenderer.organismColorPalette[paletteIndex];
+            const pixiColor = this.convertColorToPixi(cssColor);
+            this.organismColorMap.set(id, pixiColor);
         }
         return this.organismColorMap.get(id);
     }
@@ -367,4 +468,61 @@ class WebGLRenderer {
             this.tooltip.classList.remove('show');
         }
     }
+
+    setupRightClickScrolling() {
+        let isRightClickScrolling = false;
+        let lastMousePos = { x: 0, y: 0 };
+        
+        // Right mouse button down
+        this.app.view.addEventListener('mousedown', (event) => {
+            if (event.button === 2) { // Right mouse button
+                isRightClickScrolling = true;
+                lastMousePos = { x: event.clientX, y: event.clientY };
+                this.app.view.style.cursor = 'grabbing';
+                event.preventDefault();
+            }
+        });
+        
+        // Mouse move during right click
+        this.app.view.addEventListener('mousemove', (event) => {
+            if (isRightClickScrolling) {
+                const deltaX = event.clientX - lastMousePos.x;
+                const deltaY = event.clientY - lastMousePos.y;
+                
+                // Get the world container (parent of canvas)
+                const worldContainer = this.app.view.parentElement;
+                if (worldContainer) {
+                    worldContainer.scrollLeft -= deltaX;
+                    worldContainer.scrollTop -= deltaY;
+                }
+                
+                lastMousePos = { x: event.clientX, y: event.clientY };
+                event.preventDefault();
+            }
+        });
+        
+        // Mouse button up
+        this.app.view.addEventListener('mouseup', (event) => {
+            if (event.button === 2) { // Right mouse button
+                isRightClickScrolling = false;
+            }
+            // Always reset cursor to default arrow when any mouse button is released
+            this.app.view.style.cursor = 'default';
+        });
+        
+        // Mouse leave - stop scrolling
+        this.app.view.addEventListener('mouseleave', () => {
+            isRightClickScrolling = false;
+            this.app.view.style.cursor = 'default';
+        });
+        
+        // Prevent context menu on right click
+        this.app.view.addEventListener('contextmenu', (event) => {
+            event.preventDefault();
+        });
+        
+        // Change cursor to indicate scrollable area
+        this.app.view.style.cursor = 'default';
+    }
+
 }

@@ -9,7 +9,7 @@
     // [OPTIONAL] Environment configuration (default: shape=[120,80], toroidal=true)
     "environment": {
       // [OPTIONAL] Dimensions of the simulation world (default: [120, 80])
-      "shape": [160, 100],
+      "shape": [260, 160],
       // [OPTIONAL] Whether the world wraps around at edges (default: true)
       "toroidal": true
     },
@@ -46,7 +46,7 @@
           "strategy": "fixed",
           // [MANDATORY] Specific positions to place organisms (for "fixed" strategy)
           "positions": [
-            [55, 45]
+            [105, 65]
           ]
         }
       }
@@ -148,11 +148,11 @@
         // [MANDATORY] Parameters specific to this energy source type
         "params": {
           // [MANDATORY] Number of energy geysers to create
-          "count": 0,
+          "count": 5,
           // [MANDATORY] Interval between energy bursts (in ticks)
           "interval": 5,
           // [MANDATORY] Amount of energy provided per burst
-          "amount": 10000,
+          "amount": 999,
           // [MANDATORY] Safety radius around organisms (no energy in this area)
           "safetyRadius": 2
         }
@@ -163,9 +163,9 @@
         // [MANDATORY] Parameters specific to solar energy
         "params": {
           // [MANDATORY] Probability of energy generation per tick (0.0 to 1.0)
-          "probability": 0.01,
+          "probability": 0.05,
           // [MANDATORY] Amount of energy provided per generation
-          "amount": 10000,
+          "amount": 999,
           // [MANDATORY] Safety radius around organisms
           "safetyRadius": 1,
           // [MANDATORY] Maximum executions per tick
