@@ -1,17 +1,14 @@
 package org.evochora.datapipeline.core;
 
-import picocli.CommandLine;
-import picocli.CommandLine.Command;
-import picocli.CommandLine.Option;
-
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 import java.io.File;
-import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
@@ -31,9 +28,12 @@ import java.util.concurrent.Callable;
     name = "datapipeline",
     mixinStandardHelpOptions = true,
     version = "Evochora Data Pipeline 1.0",
-    description = "Manages and runs the Evochora data pipeline services."
+    description = "Manages and runs the Evochora data pipeline services.",
+    subcommands = { CompileCommand.class, CommandLine.HelpCommand.class }
 )
 public class CommandLineInterface implements Callable<Integer> {
+
+    private static final Logger log = LoggerFactory.getLogger(CommandLineInterface.class);
 
     @Option(names = {"-c", "--config"}, description = "Path to the HOCON configuration file.")
     File configFile;
@@ -58,24 +58,23 @@ public class CommandLineInterface implements Callable<Integer> {
      */
     @Override
     public Integer call() throws Exception {
-        System.out.println("Data Pipeline CLI started.");
+        log.info("Data Pipeline CLI started.");
 
         Config finalConfig = loadConfiguration();
-        System.out.println("Configuration loaded. Initializing ServiceManager...");
+        log.info("Configuration loaded. Initializing ServiceManager...");
 
         ServiceManager serviceManager = new ServiceManager(finalConfig);
 
         // Add a shutdown hook for graceful termination
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.out.println("Shutdown signal received. Stopping services...");
+            log.info("Shutdown signal received. Stopping services...");
             serviceManager.stopAll();
-            System.out.println("All services stopped.");
+            log.info("All services stopped.");
         }));
 
-        System.out.println("Starting services...");
+        log.info("Starting services...");
         serviceManager.startAll();
-        System.out.println("All services started. The application is now running.");
-        System.out.println("Press Ctrl+C to exit.");
+        log.info("All services started. The application is now running. Press Ctrl+C to exit.");
 
         // Keep the main thread alive
         while (!Thread.currentThread().isInterrupted()) {
