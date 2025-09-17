@@ -3,7 +3,7 @@ pipeline {
     test-stream {
       className = "org.evochora.datapipeline.channels.InMemoryChannel"
       options {
-        capacity = 10
+        capacity = 200
       }
     }
   }

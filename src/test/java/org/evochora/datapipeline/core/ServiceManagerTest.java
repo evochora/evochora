@@ -8,20 +8,18 @@ import org.evochora.datapipeline.channels.InMemoryChannel;
 import org.evochora.datapipeline.services.testing.DummyConsumerService;
 import org.evochora.datapipeline.services.testing.DummyProducerService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@Tag("integration")
 public class ServiceManagerTest {
 
     private Config config;
 
     @BeforeEach
     void setUp() {
-        // Load the test configuration from src/test/resources
         config = ConfigFactory.parseResources("pipeline.hocon");
     }
 
@@ -29,19 +27,12 @@ public class ServiceManagerTest {
     void pipelineShouldBeConstructedCorrectly() {
         ServiceManager serviceManager = new ServiceManager(config);
 
-        // Assert that one channel and two services have been created
         assertEquals(1, serviceManager.getChannels().size(), "Should have 1 channel");
         assertTrue(serviceManager.getChannels().get("test-stream") instanceof InMemoryChannel, "Channel should be InMemoryChannel");
 
         assertEquals(2, serviceManager.getServices().size(), "Should have 2 services");
-        IService producer = serviceManager.getServices().get("test-producer");
-        IService consumer = serviceManager.getServices().get("test-consumer");
-
-        assertNotNull(producer, "Producer should not be null");
-        assertTrue(producer instanceof DummyProducerService, "Service should be DummyProducerService");
-
-        assertNotNull(consumer, "Consumer should not be null");
-        assertTrue(consumer instanceof DummyConsumerService, "Service should be DummyConsumerService");
+        assertTrue(serviceManager.getServices().get("test-producer") instanceof DummyProducerService);
+        assertTrue(serviceManager.getServices().get("test-consumer") instanceof DummyConsumerService);
     }
 
     @Test
@@ -49,44 +40,46 @@ public class ServiceManagerTest {
         ServiceManager serviceManager = new ServiceManager(config);
         serviceManager.startAll();
 
-        // Wait a reasonable amount of time for the producer to send all its messages.
-        // The producer sends 100 messages, let's give it a couple of seconds.
-        Thread.sleep(2000);
+        // The producer sends 100 messages, sleeping 10ms after each.
+        // It will take at least 100 * 10ms = 1000ms.
+        // We wait a bit longer to be safe.
+        Thread.sleep(1500);
 
         serviceManager.stopAll();
 
         DummyConsumerService consumer = (DummyConsumerService) serviceManager.getServices().get("test-consumer");
-        assertEquals(100, consumer.getReceivedMessageCount(), "Consumer should have received 100 messages");
+        assertEquals(100, consumer.getReceivedMessageCount(), "Consumer should have received all 100 messages");
     }
 
     @Test
     void pauseAndResumeShouldControlFlow() throws InterruptedException {
         ServiceManager serviceManager = new ServiceManager(config);
         DummyConsumerService consumer = (DummyConsumerService) serviceManager.getServices().get("test-consumer");
-        DummyProducerService producer = (DummyProducerService) serviceManager.getServices().get("test-producer");
-
-        CountDownLatch producerPausedLatch = new CountDownLatch(1);
-        producer.setLatch(producerPausedLatch);
+        IService producer = serviceManager.getServices().get("test-producer");
 
         serviceManager.startAll();
+        Thread.sleep(100); // Give producer time to send a few messages (e.g., ~10)
 
-        // Pause the producer and wait for it to acknowledge the pause
         serviceManager.pauseService("test-producer");
-        assertTrue(producerPausedLatch.await(2, TimeUnit.SECONDS), "Producer should have acknowledged pause");
-        assertEquals(State.PAUSED, producer.getServiceStatus().state(), "Producer should be in PAUSED state");
+        assertEquals(State.PAUSED, producer.getServiceStatus().state(), "Producer state should be PAUSED");
 
-        // Capture the message count while paused
-        int messageCountWhenPaused = consumer.getReceivedMessageCount();
+        int countWhenPaused = consumer.getReceivedMessageCount();
+        assertTrue(countWhenPaused > 0, "Producer should have sent some messages before pausing");
+        assertTrue(countWhenPaused < 100, "Producer should not have sent all messages before pausing");
 
-        // Resume the producer
+        // Wait a bit to make sure no more messages are coming through while paused
+        Thread.sleep(200);
+        assertEquals(countWhenPaused, consumer.getReceivedMessageCount(), "Message count should not change while paused");
+
         serviceManager.resumeService("test-producer");
-        assertEquals(State.RUNNING, producer.getServiceStatus().state(), "Producer should be in RUNNING state");
+        assertEquals(State.RUNNING, producer.getServiceStatus().state(), "Producer state should be RUNNING after resume");
 
-        // Wait for the pipeline to complete
-        Thread.sleep(2000);
+        // Wait for the rest of the messages to be sent.
+        // The producer was paused after ~100ms, so it sent ~10 messages.
+        // It needs to send ~90 more, which will take ~900ms. We wait for 1.5s to be safe.
+        Thread.sleep(1500);
 
         serviceManager.stopAll();
-        assertTrue(consumer.getReceivedMessageCount() > messageCountWhenPaused, "Consumer should have received more messages after resume");
-        assertEquals(100, consumer.getReceivedMessageCount(), "Consumer should have received all 100 messages after resume");
+        assertEquals(100, consumer.getReceivedMessageCount(), "All messages should be received after resuming");
     }
 }
