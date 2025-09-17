@@ -29,6 +29,8 @@ dependencies {
     implementation("io.javalin:javalin:6.1.3")
     implementation("com.typesafe:config:1.4.3")
     implementation("net.logstash.logback:logstash-logback-encoder:8.1")
+    implementation("org.jline:jline:3.30.3")
+    runtimeOnly("org.jline:jline-terminal-jansi:3.30.3")
 
 }
 

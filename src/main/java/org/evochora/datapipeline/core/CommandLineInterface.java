@@ -2,6 +2,13 @@ package org.evochora.datapipeline.core;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.jline.reader.EndOfFileException;
+import org.jline.reader.LineReader;
+import org.jline.reader.LineReaderBuilder;
+import org.jline.reader.UserInterruptException;
+import org.jline.reader.impl.history.DefaultHistory;
+import org.jline.terminal.Terminal;
+import org.jline.terminal.TerminalBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
@@ -72,20 +79,84 @@ public class CommandLineInterface implements Callable<Integer> {
             log.info("All services stopped.");
         }));
 
-        log.info("Starting services...");
-        serviceManager.startAll();
-        log.info("All services started. The application is now running. Press Ctrl+C to exit.");
+        Terminal terminal = TerminalBuilder.builder().system(true).build();
+        LineReader lineReader = LineReaderBuilder.builder()
+                .terminal(terminal)
+                .history(new DefaultHistory())
+                .build();
 
-        // Keep the main thread alive
-        while (!Thread.currentThread().isInterrupted()) {
+        String prompt = "datapipeline> ";
+        while (true) {
+            String line;
             try {
-                Thread.sleep(Long.MAX_VALUE);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+                line = lineReader.readLine(prompt);
+                if (line == null) {
+                    break;
+                }
+
+                String[] parts = line.trim().split("\\s+");
+                String command = parts[0].toLowerCase();
+
+                switch (command) {
+                    case "start":
+                        if (parts.length > 1) {
+                            serviceManager.startService(parts[1]);
+                        } else {
+                            serviceManager.startAll();
+                        }
+                        break;
+                    case "stop":
+                        serviceManager.stopAll();
+                        break;
+                    case "pause":
+                        if (parts.length > 1) {
+                            serviceManager.pauseService(parts[1]);
+                        } else {
+                            serviceManager.pauseAll();
+                        }
+                        break;
+                    case "resume":
+                        if (parts.length > 1) {
+                            serviceManager.resumeService(parts[1]);
+                        } else {
+                            serviceManager.resumeAll();
+                        }
+                        break;
+                    case "status":
+                        System.out.println(serviceManager.getStatus());
+                        break;
+                    case "help":
+                        printHelp();
+                        break;
+                    case "exit":
+                        serviceManager.stopAll();
+                        return 0;
+                    default:
+                        log.warn("Unknown command: {}. Type 'help' for a list of commands.", command);
+                        break;
+                }
+            } catch (UserInterruptException e) {
+                // Ctrl+C
+                serviceManager.stopAll();
+                return 0;
+            } catch (EndOfFileException e) {
+                // Ctrl+D
+                serviceManager.stopAll();
+                return 0;
             }
         }
-
         return 0;
+    }
+
+    private void printHelp() {
+        System.out.println("Available commands:");
+        System.out.println("  start [service] - Start all services or a specific service.");
+        System.out.println("  stop            - Stop all services.");
+        System.out.println("  pause [service] - Pause all services or a specific service.");
+        System.out.println("  resume [service]- Resume all services or a specific service.");
+        System.out.println("  status          - Show the status of all services.");
+        System.out.println("  help            - Show this help message.");
+        System.out.println("  exit            - Stop all services and exit the application.");
     }
 
     /**
@@ -140,14 +211,17 @@ public class CommandLineInterface implements Callable<Integer> {
      * The main entry point for the CLI application.
      * <p>
      * This method initializes and executes the picocli command-line parser.
-     * The exit code of the application is determined by the return value of the
-     * {@link #call()} method.
+     * If no subcommand is specified, it enters interactive mode.
      * </p>
      *
      * @param args The command-line arguments passed to the application.
      */
     public static void main(String[] args) {
         int exitCode = new CommandLine(new CommandLineInterface()).execute(args);
-        System.exit(exitCode);
+        // Don't exit if we are in interactive mode (exit code 0 from call())
+        // Picocli will exit automatically for subcommands.
+        if (exitCode != 0) {
+            System.exit(exitCode);
+        }
     }
 }

@@ -185,6 +185,45 @@ public class ServiceManager {
         IService service = services.get(serviceName);
         if (service != null) {
             service.resume();
+        } else {
+            log.warn("Service not found: {}", serviceName);
+        }
+    }
+
+    /**
+     * Pauses all managed services.
+     */
+    public void pauseAll() {
+        for (IService service : services.values()) {
+            service.pause();
+        }
+        log.info("All services paused.");
+    }
+
+    /**
+     * Resumes all managed services.
+     */
+    public void resumeAll() {
+        for (IService service : services.values()) {
+            service.resume();
+        }
+        log.info("All services resumed.");
+    }
+
+    /**
+     * Starts a specific service by its name.
+     *
+     * @param serviceName The name of the service to start.
+     */
+    public void startService(String serviceName) {
+        IService service = services.get(serviceName);
+        if (service != null) {
+            Thread thread = new Thread(service::start);
+            thread.setName(serviceName);
+            serviceThreads.put(serviceName, thread);
+            thread.start();
+        } else {
+            log.warn("Service not found: {}", serviceName);
         }
     }
 
@@ -193,6 +232,23 @@ public class ServiceManager {
      *
      * @return A list of {@link ServiceStatus} objects.
      */
+    /**
+     * Retrieves the status of all managed services as a formatted string.
+     *
+     * @return A string containing the status of all services.
+     */
+    public String getStatus() {
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("%-20s %-10s%n", "SERVICE", "STATUS"));
+        sb.append("-------------------- ----------\n");
+        for (Map.Entry<String, IService> entry : services.entrySet()) {
+            String serviceName = entry.getKey();
+            ServiceStatus status = entry.getValue().getServiceStatus();
+            sb.append(String.format("%-20s %-10s%n", serviceName, status.state()));
+        }
+        return sb.toString();
+    }
+
     public List<ServiceStatus> getPipelineStatus() {
         List<ServiceStatus> statuses = new ArrayList<>();
         for (IService service : services.values()) {
