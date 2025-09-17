@@ -86,7 +86,7 @@ public class CommandLineInterface implements Callable<Integer> {
             System.out.println(" | |____   \\  / | |__| | |____| |  | | |__| | | \\ \\  / ____ \\ ");
             System.out.println(" |______|   \\/   \\____/ \\_____|_|  |_|\\____/|_|  \\_\\/_/    \\_\\");
             System.out.println();
-            System.out.println("           Advanced Evolutionary Simulation Platform");
+            System.out.println("                Evolution Simulation Platform");
             System.out.println();
         }
         
