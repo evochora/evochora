@@ -20,7 +20,7 @@ public class ServiceManager {
 
     private final Map<String, Object> channels = new HashMap<>();
     private final Map<String, IService> services = new HashMap<>();
-    private final List<Thread> serviceThreads = new ArrayList<>();
+    private final Map<String, Thread> serviceThreads = new HashMap<>();
 
     /**
      * Constructs a ServiceManager for a pipeline defined by the given configuration.
@@ -95,9 +95,12 @@ public class ServiceManager {
      * Starts all managed services, each in its own thread.
      */
     public void startAll() {
-        for (IService service : services.values()) {
+        for (Map.Entry<String, IService> entry : services.entrySet()) {
+            String serviceName = entry.getKey();
+            IService service = entry.getValue();
             Thread thread = new Thread(service::start);
-            serviceThreads.add(thread);
+            thread.setName(serviceName);
+            serviceThreads.put(serviceName, thread);
             thread.start();
         }
     }
@@ -109,7 +112,7 @@ public class ServiceManager {
         for (IService service : services.values()) {
             service.stop();
         }
-        for (Thread thread : serviceThreads) {
+        for (Thread thread : serviceThreads.values()) {
             try {
                 thread.join(1000); // Wait for thread to die
                 if (thread.isAlive()) {
@@ -165,5 +168,9 @@ public class ServiceManager {
 
     public Map<String, Object> getChannels() {
         return channels;
+    }
+
+    public Map<String, Thread> getServiceThreads() {
+        return serviceThreads;
     }
 }

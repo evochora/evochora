@@ -13,9 +13,14 @@ public class DummyProducerService extends BaseService {
 
     private final int messageCount;
     private IOutputChannel<Integer> outputChannel;
+    private int executionDelay = 0;
 
     public DummyProducerService(Config options) {
         this.messageCount = options.hasPath("messageCount") ? options.getInt("messageCount") : 10;
+    }
+
+    public void setExecutionDelay(int millis) {
+        this.executionDelay = millis;
     }
 
     @Override
@@ -37,7 +42,9 @@ public class DummyProducerService extends BaseService {
                     break;
                 }
                 outputChannel.write(i);
-                Thread.sleep(10); // Slow down the producer
+                if (executionDelay > 0) {
+                    Thread.sleep(executionDelay);
+                }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
