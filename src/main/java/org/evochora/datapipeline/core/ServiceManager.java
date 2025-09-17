@@ -5,6 +5,8 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.api.services.ServiceStatus;
 import org.evochora.datapipeline.services.BaseService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Constructor;
 import java.util.ArrayList;
@@ -18,6 +20,7 @@ import java.util.Map;
  */
 public class ServiceManager {
 
+    private static final Logger log = LoggerFactory.getLogger(ServiceManager.class);
     private final Map<String, Object> channels = new HashMap<>();
     private final Map<String, IService> services = new HashMap<>();
     private final Map<String, Thread> serviceThreads = new HashMap<>();
@@ -28,7 +31,43 @@ public class ServiceManager {
      * @param rootConfig The root configuration object for the pipeline.
      */
     public ServiceManager(Config rootConfig) {
+        applyLoggingConfiguration(rootConfig);
         buildPipeline(rootConfig);
+    }
+
+    private static void applyLoggingConfiguration(Config config) {
+        if (!config.hasPath("logging")) {
+            return;
+        }
+        Config loggingConfig = config.getConfig("logging");
+
+        try {
+            Object loggerContext = LoggerFactory.getILoggerFactory();
+            Class<?> levelClass = Class.forName("ch.qos.logback.classic.Level");
+            Class<?> loggerClass = Class.forName("ch.qos.logback.classic.Logger");
+
+            if (loggingConfig.hasPath("root")) {
+                String rootLevel = loggingConfig.getString("root");
+                Object level = levelClass.getMethod("toLevel", String.class).invoke(null, rootLevel.toUpperCase());
+                Object rootLogger = loggerContext.getClass().getMethod("getLogger", String.class).invoke(loggerContext, Logger.ROOT_LOGGER_NAME);
+                loggerClass.getMethod("setLevel", levelClass).invoke(rootLogger, level);
+                log.debug("Applied root log level from config: {}", rootLevel);
+            }
+
+            if (loggingConfig.hasPath("loggers")) {
+                Config loggersConfig = loggingConfig.getConfig("loggers");
+                for (Map.Entry<String, Object> entry : loggersConfig.root().unwrapped().entrySet()) {
+                    String loggerName = entry.getKey();
+                    String logLevel = entry.getValue().toString();
+                    Object level = levelClass.getMethod("toLevel", String.class).invoke(null, logLevel.toUpperCase());
+                    Object logger = loggerContext.getClass().getMethod("getLogger", String.class).invoke(loggerContext, loggerName);
+                    loggerClass.getMethod("setLevel", levelClass).invoke(logger, level);
+                    log.debug("Applied log level from config: {} = {}", loggerName, logLevel);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to apply logging configuration from HOCON config", e);
+        }
     }
 
     private void buildPipeline(Config rootConfig) {
