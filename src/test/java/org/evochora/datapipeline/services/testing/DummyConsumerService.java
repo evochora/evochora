@@ -2,6 +2,7 @@ package org.evochora.datapipeline.services.testing;
 
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.channels.IInputChannel;
+import org.evochora.datapipeline.api.channels.IMonitorableChannel;
 import org.evochora.datapipeline.api.services.State;
 import org.evochora.datapipeline.services.BaseService;
 
@@ -30,12 +31,31 @@ public class DummyConsumerService extends BaseService {
     protected void run() {
         try {
             while (currentState.get() == State.RUNNING && !Thread.currentThread().isInterrupted()) {
-                inputChannel.read();
+                // Reading is blocking but will be interrupted by stopAll()
+                Integer message = inputChannel.read();
                 receivedMessageCount.incrementAndGet();
             }
         } catch (InterruptedException e) {
+            // Interruption is a signal to stop, but we must drain the queue first.
             Thread.currentThread().interrupt();
         } finally {
+            // After being stopped or interrupted, drain any remaining messages from the channel.
+            // This requires a cast because the interface doesn't support non-blocking reads.
+            if (inputChannel instanceof IMonitorableChannel) {
+                IMonitorableChannel monitorableChannel = (IMonitorableChannel) inputChannel;
+                while (monitorableChannel.getQueueSize() > 0) {
+                    try {
+                        // We can't use a non-blocking poll from the interface,
+                        // but we can read and assume it won't block if size > 0.
+                        inputChannel.read();
+                        receivedMessageCount.incrementAndGet();
+                    } catch (InterruptedException e) {
+                        // Should not happen as we are not in a blocking read here, but if it does...
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
             currentState.set(State.STOPPED);
         }
     }
