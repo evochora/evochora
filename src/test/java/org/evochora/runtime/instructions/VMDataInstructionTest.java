@@ -208,7 +208,7 @@ public class VMDataInstructionTest {
         Object dr5Value = testOrg.getDr(5);
         assertThat(dr5Value).isInstanceOf(int[].class);
 
-        // Erstelle einen RawOrganismState (wie in SimulationEngine.toRawState)
+        // Erstelle einen RawOrganismState (wie in DummyService.toRawState)
         java.util.List<Object> drsCopy = new java.util.ArrayList<>(testOrg.getDrs());
         org.evochora.server.contracts.raw.RawOrganismState rawState = new org.evochora.server.contracts.raw.RawOrganismState(
             testOrg.getId(), testOrg.getParentId(), testOrg.getBirthTick(), testOrg.getProgramId(), testOrg.getInitialPosition(),

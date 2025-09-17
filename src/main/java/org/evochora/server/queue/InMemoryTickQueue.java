@@ -62,7 +62,7 @@ public final class InMemoryTickQueue implements ITickMessageQueue {
 
     /**
      * Attempts to add a message to the queue with a short timeout.
-     * Used by SimulationEngine to detect if the queue is full without blocking.
+     * Used by DummyService to detect if the queue is full without blocking.
      *
      * @param message the message to add
      * @return true if the message was added, false if the queue is full

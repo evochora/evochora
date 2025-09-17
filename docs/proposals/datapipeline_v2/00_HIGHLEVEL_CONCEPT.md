@@ -80,7 +80,7 @@ pipeline {
   }
   services {
     simulation {
-      className = "org.evochora.datapipeline.services.SimulationEngine"
+      className = "org.evochora.datapipeline.services.DummyService"
       outputs = ["raw-tick-stream"]
       options { organismSources = ["assembly/primordial/main.s"] }
     }

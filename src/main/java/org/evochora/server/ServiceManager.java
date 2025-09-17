@@ -506,7 +506,7 @@ public final class ServiceManager {
                 }
             }
             
-            // Create SimulationEngine with new API
+            // Create DummyService with new API
             SimulationEngine engine = new SimulationEngine(
                 queue, 
                 envProps,
@@ -521,7 +521,7 @@ public final class ServiceManager {
             if (config.pipeline.simulation != null && config.pipeline.simulation.checkpointPauseTicks != null) {
                 engine.setCheckpointPauseTicks(config.pipeline.simulation.checkpointPauseTicks);
                 
-                // Set up checkpoint-pause callback for logging (runs in SimulationEngine thread)
+                // Set up checkpoint-pause callback for logging (runs in DummyService thread)
                 engine.setCheckpointPauseCallback((pausedAtTick, remainingTicks) -> {
                     if (remainingTicks.length > 0) {
                         log.info("Checkpoint-paused simulation at tick {} (remaining checkpoint-pause ticks: {})", 
@@ -939,7 +939,7 @@ public final class ServiceManager {
      */
     private String mapLoggerAlias(String alias) {
         return switch (alias.toLowerCase()) {
-            case "sim" -> "org.evochora.server.engine.SimulationEngine";
+            case "sim" -> "org.evochora.server.engine.DummyService";
             case "persist" -> "org.evochora.server.persistence.PersistenceService";
             case "indexer" -> "org.evochora.server.indexer.DebugIndexer";
             case "web" -> "org.evochora.server.http.DebugServer";

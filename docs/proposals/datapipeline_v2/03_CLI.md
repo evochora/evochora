@@ -70,7 +70,7 @@ logging {
   format = "PLAIN" # Can be "PLAIN" or "JSON". Defaults to PLAIN for interactive, JSON for headless.
   default-level = "INFO"
   levels {
-    "org.evochora.datapipeline.services.SimulationEngine" = "DEBUG"
+    "org.evochora.datapipeline.services.DummyService" = "DEBUG"
   }
 }
 ```

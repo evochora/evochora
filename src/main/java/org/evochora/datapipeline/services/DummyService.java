@@ -7,22 +7,22 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * A placeholder implementation of the SimulationEngine service.
+ * A placeholder implementation of the DummyService service.
  * <p>
  * This service simulates the core simulation engine that would run the actual
  * Evochora simulation and publish RawTickData messages to the pipeline.
  * For now, it's a simple placeholder that demonstrates the service lifecycle.
  * </p>
  */
-public class SimulationEngine extends BaseService {
+public class DummyService extends BaseService {
 
-    private static final Logger log = LoggerFactory.getLogger(SimulationEngine.class);
+    private static final Logger log = LoggerFactory.getLogger(DummyService.class);
 
     private IOutputChannel<RawTickData> outputChannel;
     private int tickCount = 0;
     private final int maxTicks;
 
-    public SimulationEngine(Config options) {
+    public DummyService(Config options) {
         this.maxTicks = options.hasPath("maxTicks") ? options.getInt("maxTicks") : 1000;
     }
 
@@ -41,7 +41,7 @@ public class SimulationEngine extends BaseService {
 
     @Override
     protected void run() {
-        log.info("Placeholder SimulationEngine is running.");
+        log.info("Placeholder DummyService is running.");
         
         try {
             while (currentState.get() == org.evochora.datapipeline.api.services.State.RUNNING 
@@ -65,11 +65,11 @@ public class SimulationEngine extends BaseService {
                 Thread.sleep(100);
             }
             
-            log.info("SimulationEngine completed after {} ticks", tickCount);
+            log.info("DummyService completed after {} ticks", tickCount);
             
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.info("SimulationEngine interrupted");
+            log.info("DummyService interrupted");
         } finally {
             currentState.set(org.evochora.datapipeline.api.services.State.STOPPED);
         }
