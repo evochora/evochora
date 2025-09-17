@@ -33,7 +33,7 @@ dependencies {
 
 // Definiert die Hauptklasse für den 'run'-Task
 application {
-    mainClass.set("org.evochora.server.CommandLineInterface")
+    mainClass.set("org.evochora.datapipeline.Main")
 }
 
 // Konfiguriere den run-Task für interaktive Eingabe
@@ -48,7 +48,7 @@ tasks.named<JavaExec>("run") {
 tasks.register<Jar>("cliJar") {
     archiveClassifier.set("cli")
     manifest {
-        attributes["Main-Class"] = "org.evochora.server.CommandLineInterface"
+        attributes["Main-Class"] = "org.evochora.datapipeline.Main"
     }
     
     // Add JVM arguments to suppress SLF4J warnings
