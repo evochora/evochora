@@ -25,6 +25,13 @@ public class DummyConsumerService extends BaseService {
     @SuppressWarnings("unchecked")
     public void addInputChannel(String name, IInputChannel<?> channel) {
         this.inputChannel = (IInputChannel<Integer>) channel;
+        // Add channel binding status
+        channelBindings.add(new org.evochora.datapipeline.api.services.ChannelBindingStatus(
+                name, 
+                org.evochora.datapipeline.api.services.Direction.INPUT,
+                org.evochora.datapipeline.api.services.BindingState.ACTIVE,
+                0.0 // Will be updated with actual throughput
+        ));
     }
 
     @Override

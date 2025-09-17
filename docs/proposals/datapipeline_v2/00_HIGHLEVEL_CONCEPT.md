@@ -68,7 +68,7 @@ Message channels are abstracted via interfaces to make the transport mechanism p
 * **Dynamic Loading & Wiring**: The HOCON file specifies the className for each component and its options. The ServiceManager uses reflection to load them.
 * **Multiple Channels**: Services can be connected to multiple input and output channels. The configuration supports this via string lists (inputs, outputs).
 
-**Example pipeline.hocon:**
+**Example evochora.conf:**
 
 ```
 pipeline {
@@ -80,7 +80,7 @@ pipeline {
   }
   services {
     simulation {
-      className = "org.evochora.datapipeline.services.engine.SimulationEngine"
+      className = "org.evochora.datapipeline.services.SimulationEngine"
       outputs = ["raw-tick-stream"]
       options { organismSources = ["assembly/primordial/main.s"] }
     }

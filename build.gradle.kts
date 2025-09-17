@@ -36,7 +36,7 @@ dependencies {
 
 // Definiert die Hauptklasse für den 'run'-Task
 application {
-    mainClass.set("org.evochora.datapipeline.Main")
+    mainClass.set("org.evochora.datapipeline.core.CommandLineInterface")
 }
 
 // Konfiguriere den run-Task für interaktive Eingabe
@@ -51,7 +51,7 @@ tasks.named<JavaExec>("run") {
 tasks.register<Jar>("cliJar") {
     archiveClassifier.set("cli")
     manifest {
-        attributes["Main-Class"] = "org.evochora.datapipeline.Main"
+        attributes["Main-Class"] = "org.evochora.datapipeline.core.CommandLineInterface"
     }
     
     // Add JVM arguments to suppress SLF4J warnings
@@ -73,7 +73,7 @@ tasks.register<Jar>("cliJar") {
 tasks.register<JavaExec>("compile") {
     group = "application"
     description = "Compile assembly file to ProgramArtifact JSON"
-    mainClass.set("org.evochora.server.CommandLineInterface")
+    mainClass.set("org.evochora.datapipeline.core.CommandLineInterface")
     classpath = sourceSets.main.get().runtimeClasspath
     
     args("compile")

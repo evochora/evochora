@@ -36,7 +36,7 @@ Runs the data pipeline.
 Options:
   -h, --help                Displays this help text.
   -c, --config=<filePath>   Path to the HOCON configuration file.
-                            Default: ./pipeline.hocon
+                            Default: ./evochora.conf
       --headless            Starts the application in non-interactive (headless) mode.
       --service=<serviceName> When in headless mode, starts only this specific service.
                             This is a convenience for containerized deployments.
@@ -60,17 +60,17 @@ Options:
 1. **Parse Arguments:** First, parse the command-line arguments using PicoCLI.
 2. Load Configuration: Load the HOCON configuration. The loading process must be layered: \
    a. Fallback Configuration: Load a default reference.conf from the application's classpath. \
-   b. External File: Look for an external configuration file (default ./pipeline.hocon, override with --config). \
+   b. External File: Look for an external configuration file (default ./evochora.conf, override with --config). \
    c. System Properties & Environment Variables: These have the highest precedence.
 3. **Initialize Logging:** Configure the logging system based on the logging block in the loaded configuration.
 
-**Example logging block in pipeline.hocon:**
+**Example logging block in evochora.conf:**
 ```hocon
 logging {
   format = "PLAIN" # Can be "PLAIN" or "JSON". Defaults to PLAIN for interactive, JSON for headless.
   default-level = "INFO"
   levels {
-    "org.evochora.datapipeline.services.engine.SimulationEngine" = "DEBUG"
+    "org.evochora.datapipeline.services.SimulationEngine" = "DEBUG"
   }
 }
 ```

@@ -27,6 +27,13 @@ public class DummyProducerService extends BaseService {
     @SuppressWarnings("unchecked")
     public void addOutputChannel(String name, IOutputChannel<?> channel) {
         this.outputChannel = (IOutputChannel<Integer>) channel;
+        // Add channel binding status
+        channelBindings.add(new org.evochora.datapipeline.api.services.ChannelBindingStatus(
+                name, 
+                org.evochora.datapipeline.api.services.Direction.OUTPUT,
+                org.evochora.datapipeline.api.services.BindingState.ACTIVE,
+                0.0 // Will be updated with actual throughput
+        ));
     }
 
     @Override

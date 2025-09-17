@@ -1,3 +1,4 @@
+# Test configuration for ServiceManager tests
 pipeline {
   channels {
     test-stream {

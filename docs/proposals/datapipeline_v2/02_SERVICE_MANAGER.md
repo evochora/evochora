@@ -150,7 +150,7 @@ The ServiceManager must provide the following public methods to be controlled by
 
 
 
-* **File:** pipeline.hocon (can be placed in a test resources directory)
+* **File:** evochora.conf (can be placed in a test resources directory)
 * **Content:** This file should define a minimal pipeline with one channel and two dummy services (a producer and a consumer) to test the wiring and lifecycle management.
 
 ```hocon
@@ -166,14 +166,14 @@ pipeline {
   services {
     test-producer {
       className = "org.evochora.datapipeline.services.testing.DummyProducerService"
-      output = ["test-stream"]
+      outputs = ["test-stream"]
       options {
         messageCount = 100
       }
     }
     test-consumer {
       className = "org.evochora.datapipeline.services.testing.DummyConsumerService"
-      input = ["test-stream"]
+      inputs = ["test-stream"]
       options {}
     }
   }
@@ -209,7 +209,7 @@ A JUnit test class, ServiceManagerTest.java, must be created to verify the funct
 
 
 * **Test 1: pipelineShouldBeConstructedCorrectly**
-    * **Goal:** Verify that the ServiceManager correctly parses the pipeline.hocon file.
+    * **Goal:** Verify that the ServiceManager correctly parses the evochora.conf file.
     * **Steps:**
         1. Load the test HOCON configuration.
         2. Instantiate the ServiceManager.

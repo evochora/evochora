@@ -1,4 +1,4 @@
-package org.evochora.datapipeline.core;
+package org.evochora.datapipeline.core.cli;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.evochora.compiler.Compiler;

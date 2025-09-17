@@ -31,8 +31,11 @@ public class ServiceManager {
      * @param rootConfig The root configuration object for the pipeline.
      */
     public ServiceManager(Config rootConfig) {
+        log.info("Initializing ServiceManager...");
         applyLoggingConfiguration(rootConfig);
         buildPipeline(rootConfig);
+        log.info("ServiceManager initialized with {} channels and {} services", 
+                channels.size(), services.size());
     }
 
     private static void applyLoggingConfiguration(Config config) {
@@ -46,29 +49,39 @@ public class ServiceManager {
             Class<?> levelClass = Class.forName("ch.qos.logback.classic.Level");
             Class<?> loggerClass = Class.forName("ch.qos.logback.classic.Logger");
 
-            if (loggingConfig.hasPath("root")) {
-                String rootLevel = loggingConfig.getString("root");
-                Object level = levelClass.getMethod("toLevel", String.class).invoke(null, rootLevel.toUpperCase());
-                Object rootLogger = loggerContext.getClass().getMethod("getLogger", String.class).invoke(loggerContext, Logger.ROOT_LOGGER_NAME);
-                loggerClass.getMethod("setLevel", levelClass).invoke(rootLogger, level);
-                log.debug("Applied root log level from config: {}", rootLevel);
-            }
+            // Apply default level (root logger)
+            String defaultLevel = loggingConfig.hasPath("default-level") 
+                    ? loggingConfig.getString("default-level") 
+                    : "INFO";
+            Object level = levelClass.getMethod("toLevel", String.class).invoke(null, defaultLevel.toUpperCase());
+            Object rootLogger = loggerContext.getClass().getMethod("getLogger", String.class).invoke(loggerContext, Logger.ROOT_LOGGER_NAME);
+            loggerClass.getMethod("setLevel", levelClass).invoke(rootLogger, level);
+            log.debug("Applied default log level from config: {}", defaultLevel);
 
-            if (loggingConfig.hasPath("loggers")) {
-                Config loggersConfig = loggingConfig.getConfig("loggers");
-                for (Map.Entry<String, Object> entry : loggersConfig.root().unwrapped().entrySet()) {
+            // Apply specific logger levels
+            if (loggingConfig.hasPath("levels")) {
+                Config levelsConfig = loggingConfig.getConfig("levels");
+                for (Map.Entry<String, Object> entry : levelsConfig.root().unwrapped().entrySet()) {
                     String loggerName = entry.getKey();
                     String logLevel = entry.getValue().toString();
-                    Object level = levelClass.getMethod("toLevel", String.class).invoke(null, logLevel.toUpperCase());
+                    Object loggerLevel = levelClass.getMethod("toLevel", String.class).invoke(null, logLevel.toUpperCase());
                     Object logger = loggerContext.getClass().getMethod("getLogger", String.class).invoke(loggerContext, loggerName);
-                    loggerClass.getMethod("setLevel", levelClass).invoke(logger, level);
+                    loggerClass.getMethod("setLevel", levelClass).invoke(logger, loggerLevel);
                     log.debug("Applied log level from config: {} = {}", loggerName, logLevel);
                 }
             }
+
+            // Format configuration is now handled in RunCommand.loadConfiguration()
+
         } catch (Exception e) {
             log.warn("Failed to apply logging configuration from HOCON config", e);
         }
     }
+
+
+
+
+
 
     private void buildPipeline(Config rootConfig) {
         Config pipelineConfig = rootConfig.getConfig("pipeline");
@@ -134,6 +147,7 @@ public class ServiceManager {
      * Starts all managed services, each in its own thread.
      */
     public void startAll() {
+        log.info("Starting all services...");
         for (Map.Entry<String, IService> entry : services.entrySet()) {
             String serviceName = entry.getKey();
             IService service = entry.getValue();
@@ -141,13 +155,16 @@ public class ServiceManager {
             thread.setName(serviceName);
             serviceThreads.put(serviceName, thread);
             thread.start();
+            log.info("Started service: {}", serviceName);
         }
+        log.info("All services started");
     }
 
     /**
      * Stops all managed services and ensures their threads are properly shut down.
      */
     public void stopAll() {
+        log.info("Stopping all services...");
         for (IService service : services.values()) {
             service.stop();
         }
@@ -162,6 +179,7 @@ public class ServiceManager {
             }
         }
         serviceThreads.clear();
+        log.info("All services stopped");
     }
 
     /**
@@ -235,18 +253,71 @@ public class ServiceManager {
     /**
      * Retrieves the status of all managed services as a formatted string.
      *
-     * @return A string containing the status of all services.
+     * @return A string containing the detailed status of all services and their channel bindings.
      */
     public String getStatus() {
         StringBuilder sb = new StringBuilder();
-        sb.append(String.format("%-20s %-10s%n", "SERVICE", "STATUS"));
-        sb.append("-------------------- ----------\n");
+        
+        // Header
+        sb.append("========================================================================================\n");
+        sb.append(String.format("%-20s | %-7s | %-4s | %-11s | %s%n", 
+                "SERVICE / CHANNEL", "STATE", "I/O", "QUEUE", "ACTIVITY"));
+        sb.append("========================================================================================\n");
+        
         for (Map.Entry<String, IService> entry : services.entrySet()) {
             String serviceName = entry.getKey();
             ServiceStatus status = entry.getValue().getServiceStatus();
-            sb.append(String.format("%-20s %-10s%n", serviceName, status.state()));
+            
+            // Service header line
+            sb.append(String.format("%-20s | %-7s | %-4s | %-11s | %s%n", 
+                    serviceName, status.state(), "", "", getServiceActivity(serviceName)));
+            
+            // Channel bindings
+            for (int i = 0; i < status.channelBindings().size(); i++) {
+                org.evochora.datapipeline.api.services.ChannelBindingStatus binding = status.channelBindings().get(i);
+                String prefix = (i == status.channelBindings().size() - 1) ? "└─ " : "├─ ";
+                String channelInfo = prefix + binding.channelName();
+                
+                String queueInfo = getQueueInfo(binding.channelName());
+                String activityInfo = String.format("(%.1f/s)", binding.messagesPerSecond());
+                
+                sb.append(String.format("%-20s | %-7s | %-4s | %-11s | %s%n", 
+                        channelInfo, binding.state(), binding.direction(), queueInfo, activityInfo));
+            }
+            
+            // Separator line
+            sb.append("---------------------------------------------------------------------------------------\n");
         }
+        
+        // Footer
+        sb.append("========================================================================================\n");
+        
         return sb.toString();
+    }
+    
+    private String getServiceActivity(String serviceName) {
+        // This would be implemented based on the actual service type
+        // For now, return a placeholder
+        if (serviceName.contains("simulation")) {
+            return "Processed Tick: 800";
+        } else if (serviceName.contains("merger")) {
+            return "Merging Tick: 450";
+        } else {
+            return "";
+        }
+    }
+    
+    private String getQueueInfo(String channelName) {
+        Object channel = channels.get(channelName);
+        if (channel instanceof org.evochora.datapipeline.api.channels.IMonitorableChannel) {
+            org.evochora.datapipeline.api.channels.IMonitorableChannel monitorableChannel = 
+                    (org.evochora.datapipeline.api.channels.IMonitorableChannel) channel;
+            long size = monitorableChannel.getQueueSize();
+            long capacity = monitorableChannel.getCapacity();
+            return String.format("%d / %d", size, capacity);
+        } else {
+            return "N/A";
+        }
     }
 
     public List<ServiceStatus> getPipelineStatus() {
@@ -268,4 +339,5 @@ public class ServiceManager {
     public Map<String, Thread> getServiceThreads() {
         return serviceThreads;
     }
+
 }
