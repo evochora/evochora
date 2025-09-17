@@ -27,6 +27,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("info.picocli:picocli:4.7.6")
     implementation("io.javalin:javalin:6.1.3")
+    implementation("com.typesafe:config:1.4.3")
 
 }
 

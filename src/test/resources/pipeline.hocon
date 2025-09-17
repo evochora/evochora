@@ -1,0 +1,24 @@
+pipeline {
+  channels {
+    test-stream {
+      className = "org.evochora.datapipeline.channels.InMemoryChannel"
+      options {
+        capacity = 10
+      }
+    }
+  }
+  services {
+    test-producer {
+      className = "org.evochora.datapipeline.services.testing.DummyProducerService"
+      outputs = ["test-stream"]
+      options {
+        messageCount = 100
+      }
+    }
+    test-consumer {
+      className = "org.evochora.datapipeline.services.testing.DummyConsumerService"
+      inputs = ["test-stream"]
+      options {}
+    }
+  }
+}
