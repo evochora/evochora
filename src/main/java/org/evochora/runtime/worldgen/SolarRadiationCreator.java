@@ -61,6 +61,21 @@ public class SolarRadiationCreator implements IEnergyDistributionCreator {
     }
 
     /**
+     * Config-based constructor for the new data pipeline.
+     * @param randomProvider Source of randomness.
+     * @param config Configuration object containing solar radiation parameters.
+     */
+    public SolarRadiationCreator(IRandomProvider randomProvider, com.typesafe.config.Config config) {
+        this(
+            randomProvider,
+            config.getDouble("probability"),
+            config.getInt("amount"),
+            config.getInt("safetyRadius"),
+            config.getInt("executionsPerTick")
+        );
+    }
+
+    /**
      * Convenience constructor for tests allowing executionsPerTick configuration.
      * @param probability Probability per execution to spawn energy in a random free cell.
      * @param amount Energy amount placed when an execution succeeds.

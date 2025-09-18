@@ -58,7 +58,7 @@ options {
       }
     }
   ]
-  pauseTicks = [50000, 100000]
+  pauseTicks = [50000, 100000]  # Optional: Automatically pause simulation at these tick numbers
 }
 ```
 ## 6. Core Logic (implemented in the run() method)
@@ -66,7 +66,7 @@ options {
     * Create a new simulation instance based on the complete configuration.
     * This includes compiling all source files specified in the `organisms` list and generating the `ProgramArtifact` objects.
     * For each organism configuration, use the specified `placement` strategy (e.g., "fixed") to create and place the initial organisms with their correct `initialEnergy` at the given `positions`.
-    * Dynamically load and instantiate the specified `energyStrategies` using their new `Config`-based constructors.
+    * Dynamically load and instantiate the specified `energyStrategies` using their `className` and `Config`-based constructors.
 2. **Publish Initial Context:**
     * **Crucially**, before starting the simulation loop, the service must create and send a single `SimulationContext` message to **all** configured output channels.
     * This message must be fully populated with the `simulationRunId`, the `EnvironmentProperties`, and the list of all `ProgramArtifacts` generated during initialization. This message provides the static context for the entire following stream of tick data.
@@ -76,6 +76,7 @@ options {
     * After the tick, create a RawTickData message.
     * Write the RawTickData message to **all** configured output channels.
     * Check if the current tickNumber is in the pauseTicks list and call pause() if it is.
+    * **Note:** When paused due to pauseTicks, the service remains paused until manually resumed via the CLI.
     * Repeat.
 
 ## 7. Interface Implementation
@@ -84,9 +85,26 @@ options {
 ## 8. Logging Requirements
 * **INFO**: Log startup and shutdown events.
 * **DEBUG**: Log progress and context publication.
-* **ERROR**: Log unrecoverable simulation errors.
+* **WARN**: Log recoverable errors that allow simulation to continue (e.g., individual organism compilation failures, missing energy strategies).
+* **ERROR**: Log unrecoverable simulation errors that prevent the simulation from running (e.g., no organisms could be compiled, invalid environment configuration).
 
-## 9. Testing Requirements
+## 9. Error Handling Strategy
+The service must implement resilient error handling:
+
+* **Recoverable Errors (WARN level):**
+  * Individual organism compilation failures → Skip the organism, continue with others
+  * Missing energy strategy classes → Skip the strategy, continue with others  
+  * Invalid configuration values → Use defaults, continue simulation
+  * Missing assembly files → Skip the organism, continue with others
+
+* **Critical Errors (ERROR level):**
+  * No organisms could be compiled successfully → Stop service, simulation cannot start
+  * Invalid environment configuration → Stop service, simulation cannot start
+  * Critical system failures → Stop service
+
+The simulation should only stop if it cannot run at all. Individual component failures should be logged as warnings and the simulation should continue with the remaining valid components.
+
+## 10. Testing Requirements
 A JUnit test class, SimulationEngineTest.java, must be created.
 
 * **Test 1: shouldCorrectlyInitializeFromConfig**: Verify that the service correctly parses its configuration, including the dynamic loading of energy strategies.

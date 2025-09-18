@@ -11,10 +11,10 @@ public class ProgramArtifact {
 
     private String programId;
     private Map<String, List<String>> sources;
-    private List<InstructionMapping> machineCodeLayout;
-    private List<PlacedMoleculeMapping> initialWorldObjects;
-    private List<SourceMapEntry> sourceMap;
-    private List<LabelMapping> labelMap;
+    private Map<int[], Integer> machineCodeLayout;
+    private Map<int[], SerializablePlacedMolecule> initialWorldObjects;
+    private Map<Integer, SerializableSourceInfo> sourceMap;
+    private Map<Integer, String> labelAddressToName;
 
     /**
      * Default constructor for deserialization.
@@ -40,35 +40,35 @@ public class ProgramArtifact {
         this.sources = sources;
     }
 
-    public List<InstructionMapping> getMachineCodeLayout() {
+    public Map<int[], Integer> getMachineCodeLayout() {
         return machineCodeLayout;
     }
 
-    public void setMachineCodeLayout(List<InstructionMapping> machineCodeLayout) {
+    public void setMachineCodeLayout(Map<int[], Integer> machineCodeLayout) {
         this.machineCodeLayout = machineCodeLayout;
     }
 
-    public List<PlacedMoleculeMapping> getInitialWorldObjects() {
+    public Map<int[], SerializablePlacedMolecule> getInitialWorldObjects() {
         return initialWorldObjects;
     }
 
-    public void setInitialWorldObjects(List<PlacedMoleculeMapping> initialWorldObjects) {
+    public void setInitialWorldObjects(Map<int[], SerializablePlacedMolecule> initialWorldObjects) {
         this.initialWorldObjects = initialWorldObjects;
     }
 
-    public List<SourceMapEntry> getSourceMap() {
+    public Map<Integer, SerializableSourceInfo> getSourceMap() {
         return sourceMap;
     }
 
-    public void setSourceMap(List<SourceMapEntry> sourceMap) {
+    public void setSourceMap(Map<Integer, SerializableSourceInfo> sourceMap) {
         this.sourceMap = sourceMap;
     }
 
-    public List<LabelMapping> getLabelMap() {
-        return labelMap;
+    public Map<Integer, String> getLabelAddressToName() {
+        return labelAddressToName;
     }
 
-    public void setLabelMap(List<LabelMapping> labelMap) {
-        this.labelMap = labelMap;
+    public void setLabelAddressToName(Map<Integer, String> labelAddressToName) {
+        this.labelAddressToName = labelAddressToName;
     }
 }

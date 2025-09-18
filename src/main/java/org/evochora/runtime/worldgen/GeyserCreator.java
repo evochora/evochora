@@ -53,6 +53,21 @@ public class GeyserCreator implements IEnergyDistributionCreator {
     }
 
     /**
+     * Config-based constructor for the new data pipeline.
+     * @param randomProvider Source of randomness.
+     * @param config Configuration object containing geyser parameters.
+     */
+    public GeyserCreator(IRandomProvider randomProvider, com.typesafe.config.Config config) {
+        this(
+            randomProvider,
+            config.getInt("count"),
+            config.getInt("interval"),
+            config.getInt("amount"),
+            config.getInt("safetyRadius")
+        );
+    }
+
+    /**
      * Backward-compatible constructor for legacy code/tests.
      * @param count Number of geysers to spawn.
      * @param interval Tick interval for eruptions.
