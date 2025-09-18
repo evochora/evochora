@@ -24,6 +24,7 @@ public class ServiceManager {
     private final Map<String, Object> channels = new HashMap<>();
     private final Map<String, IService> services = new HashMap<>();
     private final Map<String, Thread> serviceThreads = new HashMap<>();
+    private volatile boolean stopped = false;
 
     /**
      * Constructs a ServiceManager for a pipeline defined by the given configuration.
@@ -155,31 +156,46 @@ public class ServiceManager {
             thread.setName(serviceName);
             serviceThreads.put(serviceName, thread);
             thread.start();
-            log.info("Started service: {}", serviceName);
         }
-        log.info("All services started");
+        // Individual services will log when they are actually started
     }
 
     /**
      * Stops all managed services and ensures their threads are properly shut down.
      */
     public void stopAll() {
+        if (stopped) {
+            return; // Already stopped, avoid duplicate logging
+        }
+        
         log.info("Stopping all services...");
         for (IService service : services.values()) {
             service.stop();
         }
+        
+        // Wait for all threads to actually finish
+        boolean allStopped = true;
         for (Thread thread : serviceThreads.values()) {
             try {
                 thread.join(1000); // Wait for thread to die
                 if (thread.isAlive()) {
                     thread.interrupt(); // Force interruption if it's stuck
+                    allStopped = false; // At least one thread is still alive
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                allStopped = false;
             }
         }
+        
         serviceThreads.clear();
-        log.info("All services stopped");
+        stopped = true;
+        
+        if (allStopped) {
+            log.info("All services stopped");
+        } else {
+            log.warn("Some services may still be running (forced to stop)");
+        }
     }
 
     /**
@@ -191,6 +207,8 @@ public class ServiceManager {
         IService service = services.get(serviceName);
         if (service != null) {
             service.pause();
+        } else {
+            log.warn("Service not found: {}", serviceName);
         }
     }
 
@@ -299,9 +317,9 @@ public class ServiceManager {
         // This would be implemented based on the actual service type
         // For now, return a placeholder
         if (serviceName.contains("simulation")) {
-            return "Processed Tick: 800";
+            return "Not implemented";
         } else if (serviceName.contains("merger")) {
-            return "Merging Tick: 450";
+            return "Not implemented";
         } else {
             return "";
         }

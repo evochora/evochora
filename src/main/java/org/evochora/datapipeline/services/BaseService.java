@@ -3,6 +3,8 @@ package org.evochora.datapipeline.services;
 import org.evochora.datapipeline.api.channels.IInputChannel;
 import org.evochora.datapipeline.api.channels.IOutputChannel;
 import org.evochora.datapipeline.api.services.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,6 +17,7 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public abstract class BaseService implements IService {
 
+    protected final Logger log = LoggerFactory.getLogger(this.getClass());
     protected final AtomicReference<State> currentState = new AtomicReference<>(State.STOPPED);
     protected final Object pauseLock = new Object();
     protected volatile boolean paused = false;
@@ -24,6 +27,7 @@ public abstract class BaseService implements IService {
     @Override
     public void start() {
         if (currentState.compareAndSet(State.STOPPED, State.RUNNING)) {
+            log.info("Started service: {}", this.getClass().getSimpleName());
             run();
         }
     }
@@ -31,12 +35,14 @@ public abstract class BaseService implements IService {
     @Override
     public void stop() {
         currentState.set(State.STOPPED);
+        log.info("Stopped service: {}", this.getClass().getSimpleName());
     }
 
     @Override
     public void pause() {
         if (currentState.compareAndSet(State.RUNNING, State.PAUSED)) {
             paused = true;
+            log.info("Paused service: {}", this.getClass().getSimpleName());
         }
     }
 
@@ -47,6 +53,7 @@ public abstract class BaseService implements IService {
                 paused = false;
                 pauseLock.notifyAll();
             }
+            log.info("Resumed service: {}", this.getClass().getSimpleName());
         }
     }
 

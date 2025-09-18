@@ -116,7 +116,7 @@ public class SimulationEngine extends BaseService {
     @Override
     public void run() {
         try {
-            log.info("Starting simulation initialization...");
+            log.debug("Starting simulation initialization...");
             
             // Initialize random provider
             randomProvider = seed != null ? new SeededRandomProvider(seed) : new SeededRandomProvider(0L);
@@ -146,16 +146,44 @@ public class SimulationEngine extends BaseService {
             // Publish initial context
             publishSimulationContext(programArtifacts);
             
-            log.info("Simulation initialized successfully. Starting main loop...");
+            log.debug("Simulation initialized successfully. Starting main loop...");
             
-            // Main simulation loop
-            runSimulationLoop(energyStrategies);
+            // Main simulation loop - runs continuously until service is stopped
+            while (currentState.get() != State.STOPPED) {
+                runSimulationLoop(energyStrategies);
+                
+                // If we exit the loop and we're not stopped, we're paused
+                if (currentState.get() == State.PAUSED) {
+                    log.debug("Simulation paused at tick {}", currentTick.get());
+                    synchronized (pauseLock) {
+                        while (currentState.get() == State.PAUSED) {
+                            try {
+                                pauseLock.wait(); // Wait until resume() calls notifyAll()
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                log.info("Simulation interrupted during pause");
+                                return;
+                            }
+                        }
+                    }
+                    log.debug("Simulation resumed at tick {}", currentTick.get());
+                }
+            }
             
         } catch (Exception e) {
             log.error("Critical error during simulation initialization", e);
             throw new RuntimeException("Simulation cannot start", e);
         } finally {
-            log.info("Simulation completed after {} ticks", currentTick.get());
+            // Service lifecycle logging is handled by ServiceManager
+            // Only log simulation-specific events on DEBUG level
+            State finalState = currentState.get();
+            if (finalState == State.STOPPED) {
+                log.debug("Simulation completed after {} ticks", currentTick.get());
+            } else if (finalState == State.PAUSED) {
+                log.debug("Simulation paused after {} ticks", currentTick.get());
+            } else {
+                log.debug("Simulation ended after {} ticks (state: {})", currentTick.get(), finalState);
+            }
         }
     }
 
@@ -418,6 +446,10 @@ public class SimulationEngine extends BaseService {
                     } else {
                         log.warn("Output channel not found: {}", binding.channelName());
                     }
+                } catch (InterruptedException e) {
+                    // Normal shutdown - queue is full or service is stopping
+                    Thread.currentThread().interrupt();
+                    break; // Exit the loop, service is shutting down
                 } catch (Exception e) {
                     log.error("Failed to publish SimulationContext to channel: {}", binding.channelName(), e);
                 }
@@ -428,17 +460,11 @@ public class SimulationEngine extends BaseService {
     private void runSimulationLoop(List<IEnergyDistributionCreator> energyStrategies) {
         while (currentState.get() == State.RUNNING) {
             try {
-                // Check for pause state
-                if (currentState.get() == State.PAUSED) {
-                    Thread.sleep(100); // Polling sleep
-                    continue;
-                }
-                
                 // Check if we should pause at this tick
                 if (shouldPauseAtCurrentTick()) {
-                    log.info("Pausing simulation at tick {}", currentTick.get());
+                    logPauseTickInfo();
                     pause();
-                    continue;
+                    return; // Exit the loop, pause handling is done in run()
                 }
                 
                 // Execute simulation tick
@@ -453,10 +479,11 @@ public class SimulationEngine extends BaseService {
                 // Publish tick data
                 publishTickData();
                 
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.info("Simulation interrupted");
-                break;
+                // Debug log every 100 ticks to see if simulation is running
+                if (currentTick.get() % 100 == 0) {
+                    log.debug("SimulationEngine running at tick {}", currentTick.get());
+                }
+                
             } catch (Exception e) {
                 log.error("Error during simulation tick {}", currentTick.get(), e);
                 // Continue simulation despite individual tick errors
@@ -476,6 +503,27 @@ public class SimulationEngine extends BaseService {
         }
         
         return false;
+    }
+    
+    private void logPauseTickInfo() {
+        long currentTickValue = currentTick.get();
+        
+        if (nextPauseTickIndex < pauseTicks.length) {
+            // There are more pause ticks coming
+            StringBuilder remainingTicks = new StringBuilder();
+            for (int i = nextPauseTickIndex; i < pauseTicks.length; i++) {
+                if (remainingTicks.length() > 0) {
+                    remainingTicks.append(", ");
+                }
+                remainingTicks.append(pauseTicks[i]);
+            }
+            
+            log.info("Pausing simulation at tick {} (remaining pause ticks: {})", 
+                currentTickValue, remainingTicks.toString());
+        } else {
+            // This was the last pause tick
+            log.info("Pausing simulation at tick {} (final pause tick)", currentTickValue);
+        }
     }
     
     private void publishTickData() {
@@ -498,6 +546,10 @@ public class SimulationEngine extends BaseService {
                     } else {
                         log.warn("Output channel not found: {}", binding.channelName());
                     }
+                } catch (InterruptedException e) {
+                    // Normal shutdown - queue is full or service is stopping
+                    Thread.currentThread().interrupt();
+                    break; // Exit the loop, service is shutting down
                 } catch (Exception e) {
                     log.error("Failed to publish RawTickData to channel: {}", binding.channelName(), e);
                 }

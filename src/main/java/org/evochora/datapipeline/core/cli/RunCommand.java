@@ -138,6 +138,11 @@ public class RunCommand implements Callable<Integer> {
                 String[] parts = line.trim().split("\\s+");
                 String command = parts[0].toLowerCase();
 
+                // Skip empty commands (just pressing Enter)
+                if (command.isEmpty()) {
+                    continue;
+                }
+
                 switch (command) {
                     case "start":
                         if (parts.length > 1) {
@@ -148,7 +153,7 @@ public class RunCommand implements Callable<Integer> {
                         break;
                     case "stop":
                         serviceManager.stopAll();
-                        return 0;
+                        break;
                     case "pause":
                         if (parts.length > 1) {
                             serviceManager.pauseService(parts[1]);

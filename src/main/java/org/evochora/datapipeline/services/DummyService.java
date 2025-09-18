@@ -41,7 +41,7 @@ public class DummyService extends BaseService {
 
     @Override
     protected void run() {
-        log.info("Placeholder DummyService is running.");
+        log.debug("Placeholder DummyService is running.");
         
         try {
             while (currentState.get() == org.evochora.datapipeline.api.services.State.RUNNING 
@@ -65,11 +65,11 @@ public class DummyService extends BaseService {
                 Thread.sleep(100);
             }
             
-            log.info("DummyService completed after {} ticks", tickCount);
+            log.debug("DummyService completed after {} ticks", tickCount);
             
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.info("DummyService interrupted");
+            log.debug("DummyService interrupted");
         } finally {
             currentState.set(org.evochora.datapipeline.api.services.State.STOPPED);
         }
