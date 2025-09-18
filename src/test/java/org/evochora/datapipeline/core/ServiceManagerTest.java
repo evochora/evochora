@@ -21,7 +21,35 @@ public class ServiceManagerTest {
 
     @BeforeEach
     void setUp() {
-        config = ConfigFactory.parseResources("pipeline.hocon");
+        // Create test configuration inline - no external dependencies
+        String testConfig = """
+            pipeline {
+                channels {
+                    test-stream {
+                        className = "org.evochora.datapipeline.channels.InMemoryChannel"
+                        options {
+                            capacity = 1000
+                        }
+                    }
+                }
+                services {
+                    test-producer {
+                        className = "org.evochora.datapipeline.services.testing.DummyProducerService"
+                        inputs = []
+                        outputs = ["test-stream"]
+                        options {
+                            messageCount = 100
+                        }
+                    }
+                    test-consumer {
+                        className = "org.evochora.datapipeline.services.testing.DummyConsumerService"
+                        inputs = ["test-stream"]
+                        outputs = []
+                    }
+                }
+            }
+            """;
+        config = ConfigFactory.parseString(testConfig);
     }
 
     @Test
@@ -41,25 +69,20 @@ public class ServiceManagerTest {
         ServiceManager serviceManager = new ServiceManager(config);
         serviceManager.startAll();
 
-        // --- Graceful Shutdown ---
-        IMonitorableChannel channel = (IMonitorableChannel) serviceManager.getChannels().get("test-stream");
-
-        // 1. Wait for the producer to finish its work.
-        Thread producerThread = serviceManager.getServiceThreads().get("test-producer");
-        producerThread.join(); // Wait for the producer thread to terminate
-
-        // 2. Wait for the consumer to drain the queue.
-        while (channel.getQueueSize() > 0) {
-            Thread.sleep(50);
-        }
-
-        // 3. Stop the consumer service by interrupting its thread.
-        Thread consumerThread = serviceManager.getServiceThreads().get("test-consumer");
-        consumerThread.interrupt();
-        consumerThread.join();
-
-        // 4. Assert the final count.
+        // Wait for services to complete their work
+        DummyProducerService producer = (DummyProducerService) serviceManager.getServices().get("test-producer");
         DummyConsumerService consumer = (DummyConsumerService) serviceManager.getServices().get("test-consumer");
+        
+        // Wait for producer to finish (it sends 100 messages then stops)
+        waitForCondition(() -> producer.getServiceStatus().state() == State.STOPPED, 5000, "Producer to finish");
+        
+        // Wait for consumer to process all messages
+        waitForCondition(() -> consumer.getReceivedMessageCount() >= 100, 5000, "Consumer to receive all messages");
+        
+        // Stop all services
+        serviceManager.stopAll();
+        
+        // Assert the final count
         assertEquals(100, consumer.getReceivedMessageCount(), "Consumer should have received all 100 messages");
     }
 
@@ -89,19 +112,30 @@ public class ServiceManagerTest {
         serviceManager.resumeService("test-producer");
         assertEquals(State.RUNNING, producer.getServiceStatus().state(), "Producer state should be RUNNING after resume");
 
-        // --- Graceful Shutdown ---
-        Thread producerThread = serviceManager.getServiceThreads().get("test-producer");
-        producerThread.join();
-
-        IMonitorableChannel channel = (IMonitorableChannel) serviceManager.getChannels().get("test-stream");
-        while (channel.getQueueSize() > 0) {
-            Thread.sleep(50);
-        }
-
-        Thread consumerThread = serviceManager.getServiceThreads().get("test-consumer");
-        consumerThread.interrupt();
-        consumerThread.join();
+        // Wait for producer to finish
+        waitForCondition(() -> producer.getServiceStatus().state() == State.STOPPED, 5000, "Producer to finish");
+        
+        // Wait for consumer to process all messages
+        waitForCondition(() -> consumer.getReceivedMessageCount() >= 100, 5000, "Consumer to receive all messages");
+        
+        // Stop all services
+        serviceManager.stopAll();
 
         assertEquals(100, consumer.getReceivedMessageCount(), "All messages should be received after resuming");
+    }
+    
+    private void waitForCondition(java.util.function.Supplier<Boolean> condition, long timeoutMs, String description) {
+        long startTime = System.currentTimeMillis();
+        while (!condition.get() && (System.currentTimeMillis() - startTime) < timeoutMs) {
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Interrupted while waiting for: " + description, e);
+            }
+        }
+        if (!condition.get()) {
+            throw new AssertionError("Timeout waiting for: " + description);
+        }
     }
 }

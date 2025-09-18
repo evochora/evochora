@@ -50,7 +50,7 @@ public class DummyConsumerService extends AbstractService {
             // This requires a cast because the interface doesn't support non-blocking reads.
             if (inputChannel instanceof IMonitorableChannel) {
                 IMonitorableChannel monitorableChannel = (IMonitorableChannel) inputChannel;
-                while (monitorableChannel.getQueueSize() > 0) {
+                while (monitorableChannel.getBacklogSize() > 0) {
                     try {
                         // We can't use a non-blocking poll from the interface,
                         // but we can read and assume it won't block if size > 0.

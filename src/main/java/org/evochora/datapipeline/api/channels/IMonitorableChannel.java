@@ -10,12 +10,12 @@ public interface IMonitorableChannel {
      *
      * @return The number of messages currently buffered.
      */
-    long getQueueSize();
+    long getBacklogSize();
 
     /**
      * Gets the total capacity of the channel's queue.
      *
-     * @return The maximum number of messages the channel can buffer.
+     * @return The maximum number of messages the channel can buffer, returns -1 if the capacity is unlimited.
      */
     long getCapacity();
 }

@@ -46,7 +46,7 @@ public class InMemoryChannel<T> implements IInputChannel<T>, IOutputChannel<T>, 
     }
 
     @Override
-    public long getQueueSize() {
+    public long getBacklogSize() {
         return queue.size();
     }
 

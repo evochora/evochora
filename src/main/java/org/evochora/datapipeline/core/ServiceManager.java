@@ -330,7 +330,7 @@ public class ServiceManager {
         if (channel instanceof org.evochora.datapipeline.api.channels.IMonitorableChannel) {
             org.evochora.datapipeline.api.channels.IMonitorableChannel monitorableChannel = 
                     (org.evochora.datapipeline.api.channels.IMonitorableChannel) channel;
-            long size = monitorableChannel.getQueueSize();
+            long size = monitorableChannel.getBacklogSize();
             long capacity = monitorableChannel.getCapacity();
             return String.format("%d / %d", size, capacity);
         } else {
