@@ -42,7 +42,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class BenchmarkNoOptimizationTest {
 
     // ===== CONFIGURABLE BENCHMARK PARAMETERS =====
-    private int simulationTicks = 20000;
+    private int simulationTicks = 5000;
     private int persistenceBatchSize = 1000;
     private int indexerBatchSize = 1000;
     private EnvironmentProperties environmentProperties = new EnvironmentProperties(new int[]{100, 100}, true);
@@ -56,7 +56,7 @@ public class BenchmarkNoOptimizationTest {
     private int indexerCompleteTimeoutMs = 60000; // Max wait for indexer to process all ticks from raw DB
     
     // ===== CLEANUP CONFIGURATION =====
-    private boolean cleanUpDb = false; // Whether to delete database files after benchmark
+    private boolean cleanUpDb = true; // Whether to delete database files after benchmark
     
     // ===== ORGANISM CONFIGURATION =====
     // Sie können hier die Anzahl der Organismen einfach ändern

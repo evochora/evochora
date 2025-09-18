@@ -35,4 +35,12 @@ public interface IService {
      *         service's state and its channel bindings.
      */
     ServiceStatus getServiceStatus();
+    
+    /**
+     * Gets activity information to display in the CLI status output.
+     * Each service can decide what information is most relevant to show.
+     * 
+     * @return A string describing the current activity of the service
+     */
+    String getActivityInfo();
 }

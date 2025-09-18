@@ -191,11 +191,7 @@ public class SimulationEngineTest {
     void testRawTickDataWithPlacedMolecules() throws InterruptedException {
         // Start service
         simulationEngine.start();
-        waitForCondition(() -> simulationEngine.getServiceStatus().state() == State.PAUSED, 1000, "Service to start");
-        
-        // Resume service to start simulation
-        simulationEngine.resume();
-        waitForCondition(() -> simulationEngine.getServiceStatus().state() == State.RUNNING, 1000, "Service to resume");
+        waitForCondition(() -> simulationEngine.getServiceStatus().state() == State.RUNNING, 1000, "Service to start");
         
         // Verify service is running
         ServiceStatus status = simulationEngine.getServiceStatus();

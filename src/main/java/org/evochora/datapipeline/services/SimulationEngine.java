@@ -148,9 +148,9 @@ public class SimulationEngine extends AbstractService {
             
             log.debug("Simulation initialized successfully. Starting main loop...");
             
-            // Set initial state to PAUSED - simulation starts paused
-            currentState.set(State.PAUSED);
-            log.debug("Simulation initialized and paused at tick {}", currentTick.get());
+            // Set initial state to RUNNING - simulation starts immediately
+            currentState.set(State.RUNNING);
+            log.debug("Simulation initialized and running at tick {}", currentTick.get());
             
             // Main simulation loop - runs continuously until service is stopped
             while (currentState.get() != State.STOPPED) {
@@ -195,6 +195,21 @@ public class SimulationEngine extends AbstractService {
     public ServiceStatus getServiceStatus() {
         return new ServiceStatus(currentState.get(), new ArrayList<>(channelBindings));
     }
+    
+    /**
+     * Returns the current tick number of the simulation.
+     * This method is used by the ServiceManager to display activity information.
+     * 
+     * @return The current tick number
+     */
+    public long getCurrentTick() {
+        return currentTick.get();
+    }
+    
+    @Override
+    public String getActivityInfo() {
+        return String.format("Tick: %d", currentTick.get());
+    }
 
     // Private helper methods will be implemented in the next steps...
     
@@ -219,7 +234,10 @@ public class SimulationEngine extends AbstractService {
     private List<EnergyStrategyConfig> parseEnergyStrategyConfigs(List<? extends Config> strategyConfigs) {
         List<EnergyStrategyConfig> configs = new ArrayList<>();
         for (Config config : strategyConfigs) {
-            configs.add(new EnergyStrategyConfig(config));
+            // Skip empty configurations (no className field)
+            if (config.hasPath("className")) {
+                configs.add(new EnergyStrategyConfig(config));
+            }
         }
         return configs;
     }
@@ -804,6 +822,9 @@ public class SimulationEngine extends AbstractService {
         final Config options;
         
         EnergyStrategyConfig(Config config) {
+            if (!config.hasPath("className")) {
+                throw new IllegalArgumentException("Energy strategy configuration must have a 'className' field");
+            }
             this.className = config.getString("className");
             this.options = config.hasPath("options") ? config.getConfig("options") : ConfigFactory.empty();
         }

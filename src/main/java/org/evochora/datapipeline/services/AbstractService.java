@@ -24,9 +24,22 @@ public abstract class AbstractService implements IService {
 
     protected final List<ChannelBindingStatus> channelBindings = new ArrayList<>();
 
+    /**
+     * Resets error counts for all channel bindings when the service starts.
+     * This ensures error counts are reset only on service restart, not on every metrics collection.
+     * Note: This method needs to be overridden by services that have access to the actual channel bindings.
+     */
+    protected void resetChannelBindingErrorCounts() {
+        // Default implementation does nothing - services with channel bindings should override this
+        // The ServiceManager will handle resetting error counts for channel bindings it manages
+    }
+
     @Override
     public void start() {
         if (currentState.compareAndSet(State.STOPPED, State.RUNNING)) {
+            // Reset error counts for all channel bindings when service starts
+            resetChannelBindingErrorCounts();
+            
             log.info("Started service: {}", this.getClass().getSimpleName());
             // Start service in separate thread
             Thread serviceThread = new Thread(this::run, this.getClass().getSimpleName().toLowerCase());
@@ -65,7 +78,69 @@ public abstract class AbstractService implements IService {
 
     @Override
     public ServiceStatus getServiceStatus() {
-        return new ServiceStatus(currentState.get(), new ArrayList<>(channelBindings));
+        // Create dynamic channel binding statuses
+        List<ChannelBindingStatus> dynamicBindings = new ArrayList<>();
+        for (ChannelBindingStatus binding : channelBindings) {
+            BindingState dynamicState = determineBindingState(binding);
+            dynamicBindings.add(new ChannelBindingStatus(
+                binding.channelName(),
+                binding.direction(),
+                dynamicState,
+                binding.messagesPerSecond()
+            ));
+        }
+        return new ServiceStatus(currentState.get(), dynamicBindings);
+    }
+    
+    @Override
+    public String getActivityInfo() {
+        // Default implementation - subclasses can override
+        return "";
+    }
+    
+    /**
+     * Determines the binding state based on real-time channel metrics.
+     * 
+     * @param binding The channel binding to analyze
+     * @return The current binding state (ACTIVE or WAITING)
+     */
+    private BindingState determineBindingState(ChannelBindingStatus binding) {
+        // Find the underlying channel from our stored channels
+        Object underlyingChannel = findUnderlyingChannel(binding.channelName());
+        
+        if (underlyingChannel instanceof org.evochora.datapipeline.api.channels.IMonitorableChannel) {
+            org.evochora.datapipeline.api.channels.IMonitorableChannel monitorableChannel = 
+                (org.evochora.datapipeline.api.channels.IMonitorableChannel) underlyingChannel;
+            
+            long backlogSize = monitorableChannel.getBacklogSize();
+            long capacity = monitorableChannel.getCapacity();
+            
+            if (binding.direction() == Direction.INPUT) {
+                // INPUT: WAITING if getBacklogSize() == 0, otherwise ACTIVE
+                return backlogSize == 0 ? BindingState.WAITING : BindingState.ACTIVE;
+            } else {
+                // OUTPUT: WAITING if getCapacity() >= 0 and getBacklogSize() >= getCapacity(), otherwise ACTIVE
+                return (capacity >= 0 && backlogSize >= capacity) ? BindingState.WAITING : BindingState.ACTIVE;
+            }
+        } else {
+            // If not monitorable, default to ACTIVE
+            return BindingState.ACTIVE;
+        }
+    }
+    
+    /**
+     * Finds the underlying channel instance for a given channel name.
+     * This is a simplified implementation - in practice, we'd need to track
+     * the mapping between channel names and their underlying instances.
+     * 
+     * @param channelName The name of the channel
+     * @return The underlying channel object, or null if not found
+     */
+    private Object findUnderlyingChannel(String channelName) {
+        // This is a placeholder implementation
+        // In the real implementation, we'd need to track the underlying channels
+        // For now, return null to trigger the default ACTIVE state
+        return null;
     }
 
     /**
@@ -76,21 +151,35 @@ public abstract class AbstractService implements IService {
 
     /**
      * Adds an input channel to the service. This method is called by the ServiceManager during wiring.
+     * The channel parameter is now a ChannelBinding wrapper that provides monitoring capabilities.
      *
      * @param name    The name of the channel.
-     * @param channel The input channel instance.
+     * @param channel The input channel binding wrapper.
      */
     public void addInputChannel(String name, IInputChannel<?> channel) {
-        // To be implemented by subclasses that need input channels
+        // Create channel binding status for monitoring
+        channelBindings.add(new ChannelBindingStatus(
+            name,
+            Direction.INPUT,
+            BindingState.ACTIVE, // Will be updated dynamically in getServiceStatus()
+            0.0 // Will be updated by metrics collection
+        ));
     }
 
     /**
      * Adds an output channel to the service. This method is called by the ServiceManager during wiring.
+     * The channel parameter is now a ChannelBinding wrapper that provides monitoring capabilities.
      *
      * @param name    The name of the channel.
-     * @param channel The output channel instance.
+     * @param channel The output channel binding wrapper.
      */
     public void addOutputChannel(String name, IOutputChannel<?> channel) {
-        // To be implemented by subclasses that need output channels
+        // Create channel binding status for monitoring
+        channelBindings.add(new ChannelBindingStatus(
+            name,
+            Direction.OUTPUT,
+            BindingState.ACTIVE, // Will be updated dynamically in getServiceStatus()
+            0.0 // Will be updated by metrics collection
+        ));
     }
 }

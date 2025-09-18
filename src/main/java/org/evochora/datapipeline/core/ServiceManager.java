@@ -4,6 +4,8 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.api.services.ServiceStatus;
+import org.evochora.datapipeline.api.services.ChannelMetrics;
+import org.evochora.datapipeline.api.services.State;
 import org.evochora.datapipeline.services.AbstractService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +15,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The central orchestrator for the data pipeline. It is responsible for building the
@@ -24,7 +30,15 @@ public class ServiceManager {
     private final Map<String, Object> channels = new HashMap<>();
     private final Map<String, IService> services = new HashMap<>();
     private final Map<String, Thread> serviceThreads = new HashMap<>();
+    private final List<AbstractChannelBinding<?>> channelBindings = new ArrayList<>();
+    private final Map<String, ChannelMetrics> channelMetrics = new ConcurrentHashMap<>();
+    private ScheduledExecutorService metricsExecutor;
     private volatile boolean stopped = false;
+    private volatile boolean servicesStarted = false;
+    private final boolean autoStart;
+    private final List<String> startupSequence;
+    private final boolean enableMetrics;
+    private final int updateIntervalSeconds;
 
     /**
      * Constructs a ServiceManager for a pipeline defined by the given configuration.
@@ -34,9 +48,28 @@ public class ServiceManager {
     public ServiceManager(Config rootConfig) {
         log.info("Initializing ServiceManager...");
         applyLoggingConfiguration(rootConfig);
+        
+        // Parse configuration first
+        Config pipelineConfig = rootConfig.getConfig("pipeline");
+        this.autoStart = pipelineConfig.hasPath("autoStart") ? pipelineConfig.getBoolean("autoStart") : false;
+        this.startupSequence = pipelineConfig.hasPath("startupSequence") ? 
+            pipelineConfig.getStringList("startupSequence") : new ArrayList<>();
+        
+        // Parse metrics configuration
+        Config metricsConfig = pipelineConfig.hasPath("metrics") ? pipelineConfig.getConfig("metrics") : ConfigFactory.empty();
+        this.enableMetrics = metricsConfig.hasPath("enableMetrics") ? metricsConfig.getBoolean("enableMetrics") : true;
+        this.updateIntervalSeconds = metricsConfig.hasPath("updateIntervalSeconds") ? metricsConfig.getInt("updateIntervalSeconds") : 1;
+        // Now build pipeline with configuration available
         buildPipeline(rootConfig);
-        log.info("ServiceManager initialized with {} channels and {} services", 
-                channels.size(), services.size());
+        
+        log.info("ServiceManager initialized with {} channels and {} services (autoStart: {}, startupSequence: {}, enableMetrics: {})", 
+                channels.size(), services.size(), autoStart, startupSequence, enableMetrics);
+        
+        // Auto-start services if configured
+        if (autoStart) {
+            log.info("Auto-starting services in sequence: {}", startupSequence);
+            startAll();
+        }
     }
 
     private static void applyLoggingConfiguration(Config config) {
@@ -119,7 +152,7 @@ public class ServiceManager {
             }
         }
 
-        // 3. Wire Services and Channels
+        // 3. Wire Services and Channels with Monitoring Wrappers
         for (String serviceName : servicesConfig.root().keySet()) {
             Config serviceConfig = servicesConfig.getConfig(serviceName);
             IService service = services.get(serviceName);
@@ -128,7 +161,11 @@ public class ServiceManager {
                 for (String channelName : serviceConfig.getStringList("inputs")) {
                     Object channel = channels.get(channelName);
                     if (service instanceof AbstractService) {
-                        ((AbstractService) service).addInputChannel(channelName, (org.evochora.datapipeline.api.channels.IInputChannel<?>) channel);
+                        // Create input channel binding wrapper
+                        InputChannelBinding<?> binding = new InputChannelBinding<>(serviceName, channelName, 
+                            (org.evochora.datapipeline.api.channels.IInputChannel<?>) channel);
+                        channelBindings.add(binding);
+                        ((AbstractService) service).addInputChannel(channelName, binding);
                     }
                 }
             }
@@ -137,27 +174,165 @@ public class ServiceManager {
                 for (String channelName : serviceConfig.getStringList("outputs")) {
                     Object channel = channels.get(channelName);
                     if (service instanceof AbstractService) {
-                        ((AbstractService) service).addOutputChannel(channelName, (org.evochora.datapipeline.api.channels.IOutputChannel<?>) channel);
+                        // Create output channel binding wrapper
+                        OutputChannelBinding<?> binding = new OutputChannelBinding<>(serviceName, channelName, 
+                            (org.evochora.datapipeline.api.channels.IOutputChannel<?>) channel);
+                        channelBindings.add(binding);
+                        ((AbstractService) service).addOutputChannel(channelName, binding);
                     }
                 }
+            }
+        }
+        
+        // 4. Start Metrics Collection
+        startMetricsCollection(pipelineConfig);
+    }
+    
+    /**
+     * Starts the metrics collection system with configurable update interval.
+     * 
+     * @param pipelineConfig The pipeline configuration containing metrics settings
+     */
+    private void startMetricsCollection(Config pipelineConfig) {
+        Config metricsConfig = pipelineConfig.hasPath("metrics") ? pipelineConfig.getConfig("metrics") : ConfigFactory.empty();
+        
+        if (!enableMetrics) {
+            log.debug("Metrics collection disabled by configuration");
+            return;
+        }
+        
+        int updateIntervalSeconds = metricsConfig.hasPath("updateIntervalSeconds") ? 
+            metricsConfig.getInt("updateIntervalSeconds") : 3;
+        
+        metricsExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "metrics-collector");
+            t.setDaemon(true);
+            return t;
+        });
+        
+        metricsExecutor.scheduleAtFixedRate(this::collectMetrics, updateIntervalSeconds, updateIntervalSeconds, TimeUnit.SECONDS);
+        log.debug("Started metrics collection with {} second interval", updateIntervalSeconds);
+    }
+    
+    /**
+     * Resets error counts for all channel bindings when services start.
+     * This ensures error counts are reset only on service restart, not on every metrics collection.
+     */
+    private void resetChannelBindingErrorCounts() {
+        for (AbstractChannelBinding<?> binding : channelBindings) {
+            binding.resetErrorCount();
+        }
+        log.debug("Reset error counts for {} channel bindings", channelBindings.size());
+    }
+
+    /**
+     * Collects metrics from all channel bindings and updates the metrics cache.
+     * This method runs periodically to calculate throughput values using a simple rate calculation.
+     */
+    private void collectMetrics() {
+        long currentTime = System.currentTimeMillis();
+        
+        for (AbstractChannelBinding<?> binding : channelBindings) {
+            try {
+                long messageCount = binding.getAndResetCount();
+                long errorCount = binding.getErrorCount();
+                
+                // Calculate messages per second based on actual time elapsed
+                // This is a simple rate calculation, not a moving average
+                double messagesPerSecond = 0.0;
+                if (messageCount > 0) {
+                    // Use the configured update interval for rate calculation
+                    messagesPerSecond = (double) messageCount / updateIntervalSeconds;
+                }
+                
+                String key = String.format("%s:%s:%s", binding.getServiceName(), binding.getChannelName(), binding.getDirection());
+                channelMetrics.put(key, ChannelMetrics.withCurrentTimestamp(messagesPerSecond, (int) errorCount));
+                
+            } catch (Exception e) {
+                log.warn("Failed to collect metrics for binding {}: {}", binding, e.getMessage());
+                // Continue with next binding - don't let metric failures affect pipeline
             }
         }
     }
 
     /**
      * Starts all managed services, each in its own thread.
+     * Uses startupSequence if configured, otherwise starts services in arbitrary order.
+     * Skips services that are already running.
      */
     public void startAll() {
-        log.info("Starting all services...");
-        for (Map.Entry<String, IService> entry : services.entrySet()) {
-            String serviceName = entry.getKey();
-            IService service = entry.getValue();
-            Thread thread = new Thread(service::start);
-            thread.setName(serviceName);
-            serviceThreads.put(serviceName, thread);
-            thread.start();
+        if (servicesStarted) {
+            log.debug("Services already started, skipping duplicate startAll() call");
+            return;
         }
-        // Individual services will log when they are actually started
+        
+        log.info("Starting services...");
+        
+        // Reset error counts for all channel bindings before starting services
+        resetChannelBindingErrorCounts();
+        
+        servicesStarted = true;
+        
+        List<String> servicesToStart = startupSequence.isEmpty() ? 
+            new ArrayList<>(services.keySet()) : startupSequence;
+        
+        for (String serviceName : servicesToStart) {
+            IService service = services.get(serviceName);
+            if (service == null) {
+                log.warn("Service in startup sequence '{}' not configured", serviceName);
+                continue;
+            }
+            
+            State currentState = service.getServiceStatus().state();
+            if (currentState == State.STOPPED) {
+                log.debug("Starting service: {}", serviceName);
+                Thread thread = new Thread(service::start);
+                thread.setName(serviceName);
+                serviceThreads.put(serviceName, thread);
+                thread.start();
+                
+                // If we have a startup sequence, wait for this service to fully start
+                if (!startupSequence.isEmpty()) {
+                    waitForServiceToStart(serviceName, service);
+                }
+            } else {
+                log.debug("Service {} already running (state: {})", serviceName, currentState);
+            }
+        }
+        
+        log.info("Service startup initiated");
+    }
+
+    /**
+     * Waits for a service to fully start by polling its state until it's no longer STOPPED.
+     * This ensures sequential startup when using startupSequence.
+     * 
+     * @param serviceName The name of the service to wait for
+     * @param service The service instance to monitor
+     */
+    private void waitForServiceToStart(String serviceName, IService service) {
+        long startTime = System.currentTimeMillis();
+        long timeoutMs = 10000; // 10 second timeout
+        
+        while (service.getServiceStatus().state() == State.STOPPED) {
+            if (System.currentTimeMillis() - startTime > timeoutMs) {
+                log.warn("Timeout waiting for service '{}' to start after {}ms", serviceName, timeoutMs);
+                break;
+            }
+            
+            try {
+                Thread.sleep(50); // Poll every 50ms
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("Interrupted while waiting for service '{}' to start", serviceName);
+                break;
+            }
+        }
+        
+        State finalState = service.getServiceStatus().state();
+        if (finalState != State.STOPPED) {
+            log.debug("Service '{}' started successfully (state: {})", serviceName, finalState);
+        }
     }
 
     /**
@@ -190,6 +365,19 @@ public class ServiceManager {
         
         serviceThreads.clear();
         stopped = true;
+        
+        // Stop metrics collection
+        if (metricsExecutor != null) {
+            metricsExecutor.shutdown();
+            try {
+                if (!metricsExecutor.awaitTermination(1, TimeUnit.SECONDS)) {
+                    metricsExecutor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                metricsExecutor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
         
         if (allStopped) {
             log.info("All services stopped");
@@ -297,7 +485,23 @@ public class ServiceManager {
                 String channelInfo = prefix + binding.channelName();
                 
                 String queueInfo = getQueueInfo(binding.channelName());
-                String activityInfo = String.format("(%.1f/s)", binding.messagesPerSecond());
+                
+                // Get real metrics from our collection
+                String activityInfo;
+                if (enableMetrics) {
+                    String metricsKey = String.format("%s:%s:%s", serviceName, binding.channelName(), binding.direction());
+                    ChannelMetrics metrics = channelMetrics.get(metricsKey);
+                    double messagesPerSecond = metrics != null ? metrics.messagesPerSecond() : 0.0;
+                    int errorCount = metrics != null ? metrics.errorCount() : 0;
+                    
+                    if (errorCount > 0) {
+                        activityInfo = String.format("(%.1f/s, %d errors)", messagesPerSecond, errorCount);
+                    } else {
+                        activityInfo = String.format("(%.1f/s)", messagesPerSecond);
+                    }
+                } else {
+                    activityInfo = "disabled";
+                }
                 
                 sb.append(String.format("%-20s | %-7s | %-4s | %-11s | %s%n", 
                         channelInfo, binding.state(), binding.direction(), queueInfo, activityInfo));
@@ -314,15 +518,12 @@ public class ServiceManager {
     }
     
     private String getServiceActivity(String serviceName) {
-        // This would be implemented based on the actual service type
-        // For now, return a placeholder
-        if (serviceName.contains("simulation")) {
-            return "Not implemented";
-        } else if (serviceName.contains("merger")) {
-            return "Not implemented";
-        } else {
-            return "";
+        // Let each service decide what to show in the activity column
+        IService service = services.get(serviceName);
+        if (service != null) {
+            return service.getActivityInfo();
         }
+        return "";
     }
     
     private String getQueueInfo(String channelName) {

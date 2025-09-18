@@ -26,6 +26,7 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.1")
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("info.picocli:picocli:4.7.6")
+    annotationProcessor("info.picocli:picocli-codegen:4.7.6")
     implementation("io.javalin:javalin:6.1.3")
     implementation("com.typesafe:config:1.4.3")
     implementation("net.logstash.logback:logstash-logback-encoder:8.1")
@@ -38,6 +39,9 @@ dependencies {
 application {
     mainClass.set("org.evochora.datapipeline.core.CommandLineInterface")
 }
+
+// Application Plugin erstellt bereits Fat JARs mit allen Dependencies
+// Das distZip/distTar Task erstellt ein Verzeichnis mit JAR + libs
 
 // Konfiguriere den run-Task für interaktive Eingabe
 tasks.named<JavaExec>("run") {
