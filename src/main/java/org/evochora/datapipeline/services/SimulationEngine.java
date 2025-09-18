@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * </ul>
  * </p>
  */
-public class SimulationEngine extends BaseService {
+public class SimulationEngine extends AbstractService {
 
     private static final Logger log = LoggerFactory.getLogger(SimulationEngine.class);
 
@@ -148,13 +148,14 @@ public class SimulationEngine extends BaseService {
             
             log.debug("Simulation initialized successfully. Starting main loop...");
             
+            // Set initial state to PAUSED - simulation starts paused
+            currentState.set(State.PAUSED);
+            log.debug("Simulation initialized and paused at tick {}", currentTick.get());
+            
             // Main simulation loop - runs continuously until service is stopped
             while (currentState.get() != State.STOPPED) {
-                runSimulationLoop(energyStrategies);
-                
-                // If we exit the loop and we're not stopped, we're paused
+                // Wait in paused state until resumed
                 if (currentState.get() == State.PAUSED) {
-                    log.debug("Simulation paused at tick {}", currentTick.get());
                     synchronized (pauseLock) {
                         while (currentState.get() == State.PAUSED) {
                             try {
@@ -168,6 +169,9 @@ public class SimulationEngine extends BaseService {
                     }
                     log.debug("Simulation resumed at tick {}", currentTick.get());
                 }
+                
+                // Run simulation loop when not paused
+                runSimulationLoop(energyStrategies);
             }
             
         } catch (Exception e) {

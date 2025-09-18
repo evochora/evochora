@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory;
  * For now, it's a simple placeholder that demonstrates the service lifecycle.
  * </p>
  */
-public class DummyService extends BaseService {
+public class DummyService extends AbstractService {
 
     private static final Logger log = LoggerFactory.getLogger(DummyService.class);
 

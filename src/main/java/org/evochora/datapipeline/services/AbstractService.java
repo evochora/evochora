@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * This class handles the state transitions (RUNNING, PAUSED, STOPPED) and provides
  * a thread-safe mechanism for pausing and resuming the service's execution.
  */
-public abstract class BaseService implements IService {
+public abstract class AbstractService implements IService {
 
     protected final Logger log = LoggerFactory.getLogger(this.getClass());
     protected final AtomicReference<State> currentState = new AtomicReference<>(State.STOPPED);
@@ -28,13 +28,19 @@ public abstract class BaseService implements IService {
     public void start() {
         if (currentState.compareAndSet(State.STOPPED, State.RUNNING)) {
             log.info("Started service: {}", this.getClass().getSimpleName());
-            run();
+            // Start service in separate thread
+            Thread serviceThread = new Thread(this::run, this.getClass().getSimpleName().toLowerCase());
+            serviceThread.start();
         }
     }
 
     @Override
     public void stop() {
         currentState.set(State.STOPPED);
+        // Wake up any waiting threads
+        synchronized (pauseLock) {
+            pauseLock.notifyAll();
+        }
         log.info("Stopped service: {}", this.getClass().getSimpleName());
     }
 

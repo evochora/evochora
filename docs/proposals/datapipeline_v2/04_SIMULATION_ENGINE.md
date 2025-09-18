@@ -7,7 +7,7 @@ To implement the SimulationEngine service. This service is the primary data prod
 
 ## 2. Class Definition
 * **Name:** SimulationEngine
-* **Base Class:** It must extend the existing org.evochora.datapipeline.services.BaseService class.
+* **Base Class:** It must extend the existing org.evochora.datapipeline.services.AbstractService class.
 
 ## 3. Prerequisite: Backward-Compatible Refactoring
 * The existing energy strategy creator classes (e.g., GeyserCreator, SolarRadiationCreator in org.evochora.runtime.worldgen) must be refactored.

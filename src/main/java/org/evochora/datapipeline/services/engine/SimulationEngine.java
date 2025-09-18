@@ -2,7 +2,7 @@ package org.evochora.datapipeline.services.engine;
 
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.services.State;
-import org.evochora.datapipeline.services.BaseService;
+import org.evochora.datapipeline.services.AbstractService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory;
  * new package structure.
  * </p>
  */
-public class SimulationEngine extends BaseService {
+public class SimulationEngine extends AbstractService {
 
     private static final Logger log = LoggerFactory.getLogger(SimulationEngine.class);
 
@@ -23,7 +23,7 @@ public class SimulationEngine extends BaseService {
      * @param config The HOCON configuration for this service.
      */
     public SimulationEngine(Config config) {
-        // The config is passed by the ServiceManager, but the BaseService does not have
+        // The config is passed by the ServiceManager, but the AbstractService does not have
         // a constructor for it. In a real implementation, this config would be used
         // to configure the simulation.
     }

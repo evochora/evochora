@@ -4,7 +4,7 @@ import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.channels.IInputChannel;
 import org.evochora.datapipeline.api.channels.IMonitorableChannel;
 import org.evochora.datapipeline.api.services.State;
-import org.evochora.datapipeline.services.BaseService;
+import org.evochora.datapipeline.services.AbstractService;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * A dummy consumer service for testing purposes. It continuously reads messages
  * from its input channel and counts them until it is stopped.
  */
-public class DummyConsumerService extends BaseService {
+public class DummyConsumerService extends AbstractService {
 
     private final AtomicInteger receivedMessageCount = new AtomicInteger(0);
     private IInputChannel<Integer> inputChannel;

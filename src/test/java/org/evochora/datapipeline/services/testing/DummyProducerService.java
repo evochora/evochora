@@ -3,13 +3,13 @@ package org.evochora.datapipeline.services.testing;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.channels.IOutputChannel;
 import org.evochora.datapipeline.api.services.State;
-import org.evochora.datapipeline.services.BaseService;
+import org.evochora.datapipeline.services.AbstractService;
 
 /**
  * A dummy producer service for testing purposes. It writes a configurable number of
  * integer messages to its output channel and then terminates.
  */
-public class DummyProducerService extends BaseService {
+public class DummyProducerService extends AbstractService {
 
     private final int messageCount;
     private IOutputChannel<Integer> outputChannel;

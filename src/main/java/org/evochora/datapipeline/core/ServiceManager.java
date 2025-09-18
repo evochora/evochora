@@ -4,7 +4,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.api.services.ServiceStatus;
-import org.evochora.datapipeline.services.BaseService;
+import org.evochora.datapipeline.services.AbstractService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -127,8 +127,8 @@ public class ServiceManager {
             if (serviceConfig.hasPath("inputs")) {
                 for (String channelName : serviceConfig.getStringList("inputs")) {
                     Object channel = channels.get(channelName);
-                    if (service instanceof BaseService) {
-                        ((BaseService) service).addInputChannel(channelName, (org.evochora.datapipeline.api.channels.IInputChannel<?>) channel);
+                    if (service instanceof AbstractService) {
+                        ((AbstractService) service).addInputChannel(channelName, (org.evochora.datapipeline.api.channels.IInputChannel<?>) channel);
                     }
                 }
             }
@@ -136,8 +136,8 @@ public class ServiceManager {
             if (serviceConfig.hasPath("outputs")) {
                 for (String channelName : serviceConfig.getStringList("outputs")) {
                     Object channel = channels.get(channelName);
-                    if (service instanceof BaseService) {
-                        ((BaseService) service).addOutputChannel(channelName, (org.evochora.datapipeline.api.channels.IOutputChannel<?>) channel);
+                    if (service instanceof AbstractService) {
+                        ((AbstractService) service).addOutputChannel(channelName, (org.evochora.datapipeline.api.channels.IOutputChannel<?>) channel);
                     }
                 }
             }
