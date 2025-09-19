@@ -102,7 +102,7 @@ public class DatabaseManager {
             }
             
             try {
-                log.info("Creating database connection to: {}", debugDbPath);
+                log.debug("Creating database connection to: {}", debugDbPath);
                 // Create new connection
                 connection = createOptimizedConnection(debugDbPath);
                 
@@ -114,7 +114,7 @@ public class DatabaseManager {
                 // Prepare insert statement
                 prepareInsertStatement();
                 
-                log.info("Database connection established and schema initialized successfully");
+                log.debug("Database connection established and schema initialized successfully");
                 return true;
                 
             } catch (Exception e) {

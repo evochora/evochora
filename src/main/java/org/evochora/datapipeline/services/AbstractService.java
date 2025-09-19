@@ -45,7 +45,6 @@ public abstract class AbstractService implements IService {
             // Reset error counts for all channel bindings when service starts
             resetChannelBindingErrorCounts();
             
-            log.info("Started service: {}", this.getClass().getSimpleName());
             // Start service in separate thread
             Thread serviceThread = new Thread(this::run, this.getClass().getSimpleName().toLowerCase());
             serviceThread.start();
@@ -54,12 +53,14 @@ public abstract class AbstractService implements IService {
 
     @Override
     public void stop() {
-        currentState.set(State.STOPPED);
-        // Wake up any waiting threads
-        synchronized (pauseLock) {
-            pauseLock.notifyAll();
+        if (currentState.compareAndSet(State.RUNNING, State.STOPPED) || 
+            currentState.compareAndSet(State.PAUSED, State.STOPPED)) {
+            // Wake up any waiting threads
+            synchronized (pauseLock) {
+                pauseLock.notifyAll();
+            }
+            log.info("Stopped service: {}", this.getClass().getSimpleName());
         }
-        log.info("Stopped service: {}", this.getClass().getSimpleName());
     }
 
     @Override

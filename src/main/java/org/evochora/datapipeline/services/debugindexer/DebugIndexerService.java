@@ -113,7 +113,7 @@ public class DebugIndexerService extends AbstractService implements Runnable {
             this.memoryOptimizationConfig
         );
         
-        log.info("DebugIndexerService initialized - debugDbPath: {}, batchSize: {}, enabled: {}", 
+        log.debug("DebugIndexerService initialized - debugDbPath: {}, batchSize: {}, enabled: {}", 
                 debugDbPath, batchSize, enabled);
     }
     
@@ -179,7 +179,9 @@ public class DebugIndexerService extends AbstractService implements Runnable {
         processingThread = new Thread(this::processMessages, "DebugIndexerService");
         processingThread.start();
         
-        log.info("DebugIndexerService started with input channel: {} (running: {})", 
+        log.info("Started service: DebugIndexerService - debugDbPath: {}, batchSize: {}", 
+                debugDbPath, batchSize);
+        log.debug("DebugIndexerService started with input channel: {} (running: {})", 
                 inputChannel.getClass().getSimpleName(), running.get());
     }
     

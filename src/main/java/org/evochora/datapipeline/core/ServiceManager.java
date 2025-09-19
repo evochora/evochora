@@ -62,7 +62,7 @@ public class ServiceManager {
         // Now build pipeline with configuration available
         buildPipeline(rootConfig);
         
-        log.info("ServiceManager initialized with {} channels and {} services (autoStart: {}, startupSequence: {}, enableMetrics: {})", 
+        log.debug("ServiceManager initialized with {} channels and {} services (autoStart: {}, startupSequence: {}, enableMetrics: {})",
                 channels.size(), services.size(), autoStart, startupSequence, enableMetrics);
         
         // Auto-start services if configured
@@ -267,7 +267,7 @@ public class ServiceManager {
             return;
         }
         
-        log.info("Starting services...");
+        log.debug("Starting services...");
         
         // Reset error counts for all channel bindings before starting services
         resetChannelBindingErrorCounts();
@@ -301,7 +301,7 @@ public class ServiceManager {
             }
         }
         
-        log.info("Service startup initiated");
+        log.debug("Service startup initiated");
     }
 
     /**

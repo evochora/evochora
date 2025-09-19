@@ -93,7 +93,7 @@ public class SimulationEngine extends AbstractService {
             Arrays.sort(pauseTicks); // Ensure ticks are in ascending order
         }
         
-        log.info("SimulationEngine initialized with {} organisms, {} energy strategies, {} pause ticks", 
+        log.debug("SimulationEngine initialized with {} organisms, {} energy strategies, {} pause ticks", 
             organismConfigs.size(), energyStrategyConfigs.size(), 
             pauseTicks != null ? pauseTicks.length : 0);
     }
@@ -110,6 +110,9 @@ public class SimulationEngine extends AbstractService {
     @Override
     public void run() {
         try {
+            log.info("Started service: SimulationEngine - {} organisms, {} energy strategies, pause ticks: {}", 
+                    organismConfigs.size(), energyStrategyConfigs.size(), 
+                    pauseTicks != null ? Arrays.toString(pauseTicks) : "[]");
             log.debug("Starting simulation initialization...");
             
             // Initialize random provider

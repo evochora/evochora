@@ -65,7 +65,7 @@ public class RunCommand implements Callable<Integer> {
 
         // Set up graceful shutdown
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            log.info("Shutting down...");
+            log.debug("Shutting down...");
             serviceManager.stopAll();
         }));
 
@@ -96,7 +96,7 @@ public class RunCommand implements Callable<Integer> {
     }
 
     private Integer runInteractive(ServiceManager serviceManager) throws Exception {
-        log.info("Starting pipeline in interactive mode...");
+        log.debug("Starting pipeline in interactive mode...");
         serviceManager.startAll();
 
         Terminal terminal;
