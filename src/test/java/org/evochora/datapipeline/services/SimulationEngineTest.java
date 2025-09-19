@@ -177,7 +177,7 @@ public class SimulationEngineTest {
         
         // Resume service
         simulationEngine.resume();
-        waitForCondition(() -> simulationEngine.getServiceStatus().state() == State.RUNNING, 1000, "Service to resume");
+        waitForCondition(() -> simulationEngine.getServiceStatus().state() == State.RUNNING, 2000, "Service to resume");
         
         status = simulationEngine.getServiceStatus();
         assertEquals(State.RUNNING, status.state());

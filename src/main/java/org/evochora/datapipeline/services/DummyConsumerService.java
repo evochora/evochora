@@ -1,37 +1,33 @@
-package org.evochora.datapipeline.services.testing;
+package org.evochora.datapipeline.services;
 
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.channels.IInputChannel;
 import org.evochora.datapipeline.api.channels.IMonitorableChannel;
 import org.evochora.datapipeline.api.services.State;
-import org.evochora.datapipeline.services.AbstractService;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * A dummy consumer service for testing purposes. It continuously reads messages
  * from its input channel and counts them until it is stopped.
+ * Accepts any type of message (generic).
  */
 public class DummyConsumerService extends AbstractService {
 
     private final AtomicInteger receivedMessageCount = new AtomicInteger(0);
-    private IInputChannel<Integer> inputChannel;
+    private IInputChannel<?> inputChannel;
 
     public DummyConsumerService(Config options) {
         // No options needed for this dummy service
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public void addInputChannel(String name, IInputChannel<?> channel) {
-        this.inputChannel = (IInputChannel<Integer>) channel;
-        // Add channel binding status
-        channelBindings.add(new org.evochora.datapipeline.api.services.ChannelBindingStatus(
-                name, 
-                org.evochora.datapipeline.api.services.Direction.INPUT,
-                org.evochora.datapipeline.api.services.BindingState.ACTIVE,
-                0.0 // Will be updated with actual throughput
-        ));
+        // Call parent method to store channel for dynamic status determination
+        super.addInputChannel(name, channel);
+        
+        // Store channel for this service's specific use
+        this.inputChannel = channel;
     }
 
     @Override
@@ -39,7 +35,8 @@ public class DummyConsumerService extends AbstractService {
         try {
             while (currentState.get() == State.RUNNING && !Thread.currentThread().isInterrupted()) {
                 // Reading is blocking but will be interrupted by stopAll()
-                Integer message = inputChannel.read();
+                // Accept any type of message (generic)
+                Object message = inputChannel.read();
                 receivedMessageCount.incrementAndGet();
             }
         } catch (InterruptedException e) {

@@ -7,7 +7,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -23,6 +25,9 @@ public abstract class AbstractService implements IService {
     protected volatile boolean paused = false;
 
     protected final List<ChannelBindingStatus> channelBindings = new ArrayList<>();
+    
+    // Track underlying channel instances by name for dynamic status determination
+    private final Map<String, Object> underlyingChannels = new HashMap<>();
 
     /**
      * Resets error counts for all channel bindings when the service starts.
@@ -120,7 +125,8 @@ public abstract class AbstractService implements IService {
                 return backlogSize == 0 ? BindingState.WAITING : BindingState.ACTIVE;
             } else {
                 // OUTPUT: WAITING if getCapacity() >= 0 and getBacklogSize() >= getCapacity(), otherwise ACTIVE
-                return (capacity >= 0 && backlogSize >= capacity) ? BindingState.WAITING : BindingState.ACTIVE;
+                boolean isFull = (capacity >= 0 && backlogSize >= capacity);
+                return isFull ? BindingState.WAITING : BindingState.ACTIVE;
             }
         } else {
             // If not monitorable, default to ACTIVE
@@ -130,17 +136,22 @@ public abstract class AbstractService implements IService {
     
     /**
      * Finds the underlying channel instance for a given channel name.
-     * This is a simplified implementation - in practice, we'd need to track
-     * the mapping between channel names and their underlying instances.
+     * If the stored channel is a ChannelBinding wrapper, extracts the real underlying channel.
      * 
      * @param channelName The name of the channel
      * @return The underlying channel object, or null if not found
      */
     private Object findUnderlyingChannel(String channelName) {
-        // This is a placeholder implementation
-        // In the real implementation, we'd need to track the underlying channels
-        // For now, return null to trigger the default ACTIVE state
-        return null;
+        Object channel = underlyingChannels.get(channelName);
+        
+        // If it's a ChannelBinding wrapper, extract the real underlying channel
+        if (channel instanceof org.evochora.datapipeline.core.InputChannelBinding) {
+            return ((org.evochora.datapipeline.core.InputChannelBinding<?>) channel).getDelegate();
+        } else if (channel instanceof org.evochora.datapipeline.core.OutputChannelBinding) {
+            return ((org.evochora.datapipeline.core.OutputChannelBinding<?>) channel).getDelegate();
+        }
+        
+        return channel;
     }
 
     /**
@@ -157,6 +168,9 @@ public abstract class AbstractService implements IService {
      * @param channel The input channel binding wrapper.
      */
     public void addInputChannel(String name, IInputChannel<?> channel) {
+        // Store the underlying channel instance for dynamic status determination
+        underlyingChannels.put(name, channel);
+        
         // Create channel binding status for monitoring
         channelBindings.add(new ChannelBindingStatus(
             name,
@@ -174,6 +188,9 @@ public abstract class AbstractService implements IService {
      * @param channel The output channel binding wrapper.
      */
     public void addOutputChannel(String name, IOutputChannel<?> channel) {
+        // Store the underlying channel instance for dynamic status determination
+        underlyingChannels.put(name, channel);
+        
         // Create channel binding status for monitoring
         channelBindings.add(new ChannelBindingStatus(
             name,

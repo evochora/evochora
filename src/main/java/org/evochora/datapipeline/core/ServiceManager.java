@@ -68,6 +68,7 @@ public class ServiceManager {
         // Auto-start services if configured
         if (autoStart) {
             log.info("Auto-starting services in sequence: {}", startupSequence);
+            // Note: Channel wiring happens in buildPipeline() before this point
             startAll();
         }
     }

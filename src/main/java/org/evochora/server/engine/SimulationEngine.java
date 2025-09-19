@@ -63,7 +63,7 @@ public class SimulationEngine implements IControllable, Runnable {
     private boolean enableProgramArtifactFeatures = true; // Default-Wert
 
     /**
-     * Creates a new DummyService with the specified configuration.
+     * Creates a new SimulationEngine with the specified configuration.
      * 
      * @param queue The message queue for communication with other services
      * @param environmentProperties The environment configuration (world shape, toroidal setting)
@@ -81,7 +81,7 @@ public class SimulationEngine implements IControllable, Runnable {
         this.organismPlacements = organismPlacements != null ? new java.util.ArrayList<>(organismPlacements) : new java.util.ArrayList<>();
         this.energyStrategies = energyStrategies != null ? new java.util.ArrayList<>(energyStrategies) : new java.util.ArrayList<>();
         this.randomProvider = null;
-        this.thread = new Thread(this, "DummyService");
+        this.thread = new Thread(this, "SimulationEngine");
         this.thread.setDaemon(true);
         this.logger = LoggerFactory.getLogger(SimulationEngine.class);
         
@@ -90,7 +90,7 @@ public class SimulationEngine implements IControllable, Runnable {
     }
     
     /**
-     * Creates a new DummyService with ProgramArtifact features enabled by default.
+     * Creates a new SimulationEngine with ProgramArtifact features enabled by default.
      */
     public SimulationEngine(ITickMessageQueue queue, 
                            org.evochora.runtime.model.EnvironmentProperties environmentProperties,
@@ -219,8 +219,8 @@ public class SimulationEngine implements IControllable, Runnable {
             long currentTick = getCurrentTick();
             double tps = calculateTPS();
             // Only log if called from the service thread
-            if (Thread.currentThread().getName().equals("DummyService")) {
-                log.info("DummyService: graceful termination tick:{} TPS:{}", currentTick, String.format("%.2f", tps));
+            if (Thread.currentThread().getName().equals("SimulationEngine")) {
+                log.info("SimulationEngine: graceful termination tick:{} TPS:{}", currentTick, String.format("%.2f", tps));
             }
             thread.interrupt();
         }
@@ -574,14 +574,14 @@ public class SimulationEngine implements IControllable, Runnable {
             }
         } catch (Exception e) {
             if (running.get()) {
-                log.error("DummyService fatal error, terminating service: {}", e.getMessage());
+                log.error("SimulationEngine fatal error, terminating service: {}", e.getMessage());
             }
         } finally {
             // Log graceful termination from the service thread
-            if (Thread.currentThread().getName().equals("DummyService")) {
+            if (Thread.currentThread().getName().equals("SimulationEngine")) {
                 long currentTick = getCurrentTick();
                 double tps = calculateTPS();
-                log.info("DummyService: graceful termination tick:{} TPS:{}", currentTick, String.format("%.2f", tps));
+                log.info("SimulationEngine: graceful termination tick:{} TPS:{}", currentTick, String.format("%.2f", tps));
             }
         }
     }

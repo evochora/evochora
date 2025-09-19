@@ -100,17 +100,11 @@ public class SimulationEngine extends AbstractService {
 
     @Override
     public void addOutputChannel(String channelName, IOutputChannel<?> channel) {
+        // Call parent method to store channel for dynamic status determination
+        super.addOutputChannel(channelName, channel);
+        
         // Store channel for message publishing
         outputChannels.put(channelName, channel);
-        
-        // Create channel binding status for this output
-        ChannelBindingStatus bindingStatus = new ChannelBindingStatus(
-            channelName,
-            Direction.OUTPUT,
-            BindingState.ACTIVE,
-            0.0 // messages per second - will be updated dynamically
-        );
-        channelBindings.add(bindingStatus);
     }
 
     @Override
@@ -193,7 +187,8 @@ public class SimulationEngine extends AbstractService {
 
     @Override
     public ServiceStatus getServiceStatus() {
-        return new ServiceStatus(currentState.get(), new ArrayList<>(channelBindings));
+        // Use the parent's dynamic status determination
+        return super.getServiceStatus();
     }
     
     /**

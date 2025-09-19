@@ -3,15 +3,9 @@ package org.evochora.datapipeline.core;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.services.ChannelMetrics;
-import org.evochora.datapipeline.api.services.IService;
-import org.evochora.datapipeline.api.services.State;
-import org.evochora.datapipeline.services.testing.DummyConsumerService;
-import org.evochora.datapipeline.services.testing.DummyProducerService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -40,7 +34,7 @@ public class MetricsCollectionTest {
                 }
                 services {
                     test-producer {
-                        className = "org.evochora.datapipeline.services.testing.DummyProducerService"
+                        className = "org.evochora.datapipeline.services.DummyProducerService"
                         inputs = []
                         outputs = ["test-stream"]
                         options {
@@ -48,7 +42,7 @@ public class MetricsCollectionTest {
                         }
                     }
                     test-consumer {
-                        className = "org.evochora.datapipeline.services.testing.DummyConsumerService"
+                        className = "org.evochora.datapipeline.services.DummyConsumerService"
                         inputs = ["test-stream"]
                         outputs = []
                     }
@@ -91,7 +85,7 @@ public class MetricsCollectionTest {
                 }
                 services {
                     test-producer {
-                        className = "org.evochora.datapipeline.services.testing.DummyProducerService"
+                        className = "org.evochora.datapipeline.services.DummyProducerService"
                         inputs = []
                         outputs = ["test-stream"]
                         options {
@@ -137,7 +131,7 @@ public class MetricsCollectionTest {
                 }
                 services {
                     test-producer {
-                        className = "org.evochora.datapipeline.services.testing.DummyProducerService"
+                        className = "org.evochora.datapipeline.services.DummyProducerService"
                         inputs = []
                         outputs = ["test-stream"]
                         options {

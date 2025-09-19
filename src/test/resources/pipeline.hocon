@@ -10,14 +10,14 @@ pipeline {
   }
   services {
     test-producer {
-      className = "org.evochora.datapipeline.services.testing.DummyProducerService"
+      className = "org.evochora.datapipeline.services.DummyProducerService"
       outputs = ["test-stream"]
       options {
         messageCount = 100
       }
     }
     test-consumer {
-      className = "org.evochora.datapipeline.services.testing.DummyConsumerService"
+      className = "org.evochora.datapipeline.services.DummyConsumerService"
       inputs = ["test-stream"]
       options {}
     }

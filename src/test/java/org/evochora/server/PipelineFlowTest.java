@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Clean, systematic test for the complete pipeline data flow.
- * Tests that data flows correctly from DummyService -> PersistenceService -> DebugIndexer.
+ * Tests that data flows correctly from SimulationEngine -> PersistenceService -> DebugIndexer.
  * Based on BenchmarkTest but simplified for fast execution.
  */
 @Tag("integration")
@@ -166,7 +166,7 @@ public class PipelineFlowTest {
      * Waits for the simulation engine to complete all ticks.
      */
     private void waitForSimulationToComplete() throws InterruptedException {
-        waitForCondition(() -> !simulationEngine.isRunning(), processingTimeoutMs, "DummyService to complete");
+        waitForCondition(() -> !simulationEngine.isRunning(), processingTimeoutMs, "SimulationEngine to complete");
     }
     
     /**
@@ -242,8 +242,8 @@ public class PipelineFlowTest {
         assertTrue(queue.size() < 5, "Queue should be mostly empty after processing, but size is: " + queue.size());
         
         // 9. Verify all services processed the expected number of ticks
-        // DummyService: should have completed (isRunning() = false)
-        assertFalse(simulationEngine.isRunning(), "DummyService should have completed");
+        // SimulationEngine: should have completed (isRunning() = false)
+        assertFalse(simulationEngine.isRunning(), "SimulationEngine should have completed");
         
         // PersistenceService: check via service method
         long lastPersistedTick = persistenceService.getLastPersistedTick();
@@ -293,12 +293,12 @@ public class PipelineFlowTest {
         pauseTestIndexer.start();
         
         // 3. Wait for services to be running
-        waitForCondition(() -> pauseTestEngine.isRunning(), 3000, "DummyService to start");
+        waitForCondition(() -> pauseTestEngine.isRunning(), 3000, "SimulationEngine to start");
         waitForCondition(() -> pauseTestPersistence.isRunning(), 3000, "PersistenceService to start");
         waitForCondition(() -> pauseTestIndexer.isRunning(), 3000, "DebugIndexer to start");
         
         // 4. Verify all services are running
-        assertTrue(pauseTestEngine.isRunning(), "DummyService should be running");
+        assertTrue(pauseTestEngine.isRunning(), "SimulationEngine should be running");
         assertTrue(pauseTestPersistence.isRunning(), "PersistenceService should be running");
         assertTrue(pauseTestIndexer.isRunning(), "DebugIndexer should be running");
         
@@ -308,15 +308,15 @@ public class PipelineFlowTest {
         pauseTestIndexer.pause();
         
         // 6. Wait for services to be paused
-        waitForCondition(() -> pauseTestEngine.isPaused(), 3000, "DummyService to pause");
+        waitForCondition(() -> pauseTestEngine.isPaused(), 3000, "SimulationEngine to pause");
         waitForCondition(() -> pauseTestPersistence.isPaused(), 3000, "PersistenceService to pause");
         waitForCondition(() -> pauseTestIndexer.isPaused(), 3000, "DebugIndexer to pause");
         
         // 7. Verify all services are paused
-        assertTrue(pauseTestEngine.isPaused(), "DummyService should be paused");
+        assertTrue(pauseTestEngine.isPaused(), "SimulationEngine should be paused");
         assertTrue(pauseTestPersistence.isPaused(), "PersistenceService should be paused");
         assertTrue(pauseTestIndexer.isPaused(), "DebugIndexer should be paused");
-        assertTrue(pauseTestEngine.isRunning(), "DummyService should still be running (paused)");
+        assertTrue(pauseTestEngine.isRunning(), "SimulationEngine should still be running (paused)");
         assertTrue(pauseTestPersistence.isRunning(), "PersistenceService should still be running (paused)");
         assertTrue(pauseTestIndexer.isRunning(), "DebugIndexer should still be running (paused)");
         
@@ -326,15 +326,15 @@ public class PipelineFlowTest {
         pauseTestIndexer.resume();
         
         // 9. Wait for services to be resumed
-        waitForCondition(() -> !pauseTestEngine.isPaused(), 3000, "DummyService to resume");
+        waitForCondition(() -> !pauseTestEngine.isPaused(), 3000, "SimulationEngine to resume");
         waitForCondition(() -> !pauseTestPersistence.isPaused(), 3000, "PersistenceService to resume");
         waitForCondition(() -> !pauseTestIndexer.isPaused(), 3000, "DebugIndexer to resume");
         
         // 10. Verify all services are resumed
-        assertFalse(pauseTestEngine.isPaused(), "DummyService should not be paused");
+        assertFalse(pauseTestEngine.isPaused(), "SimulationEngine should not be paused");
         assertFalse(pauseTestPersistence.isPaused(), "PersistenceService should not be paused");
         assertFalse(pauseTestIndexer.isPaused(), "DebugIndexer should not be paused");
-        assertTrue(pauseTestEngine.isRunning(), "DummyService should be running");
+        assertTrue(pauseTestEngine.isRunning(), "SimulationEngine should be running");
         assertTrue(pauseTestPersistence.isRunning(), "PersistenceService should be running");
         assertTrue(pauseTestIndexer.isRunning(), "DebugIndexer should be running");
         
@@ -379,7 +379,7 @@ public class PipelineFlowTest {
         shutdownTestIndexer.start();
 
         // 4. Wait for simulation to complete (100 ticks)
-        waitForCondition(() -> !shutdownTestEngine.isRunning(), 3000, "DummyService to complete");
+        waitForCondition(() -> !shutdownTestEngine.isRunning(), 3000, "SimulationEngine to complete");
 
         // 5. Wait for all ticks to be processed
         waitForCondition(() -> {
@@ -398,12 +398,12 @@ public class PipelineFlowTest {
         shutdownTestIndexer.shutdown();
 
         // 7. Wait for services to be stopped
-        waitForCondition(() -> !shutdownTestEngine.isRunning(), 3000, "DummyService to stop");
+        waitForCondition(() -> !shutdownTestEngine.isRunning(), 3000, "SimulationEngine to stop");
         waitForCondition(() -> !shutdownTestPersistence.isRunning(), 3000, "PersistenceService to stop");
         waitForCondition(() -> !shutdownTestIndexer.isRunning(), 3000, "DebugIndexer to stop");
-
+        
         // 8. Verify all services are stopped
-        assertFalse(shutdownTestEngine.isRunning(), "DummyService should be stopped");
+        assertFalse(shutdownTestEngine.isRunning(), "SimulationEngine should be stopped");
         assertFalse(shutdownTestPersistence.isRunning(), "PersistenceService should be stopped");
         assertFalse(shutdownTestIndexer.isRunning(), "DebugIndexer should be stopped");
 
@@ -502,7 +502,7 @@ public class PipelineFlowTest {
         debugIndexer.start();
 
         // 3. Wait for simulation to complete (50 ticks)
-        waitForCondition(() -> !simulationEngine.isRunning(), 3000, "DummyService to complete");
+        waitForCondition(() -> !simulationEngine.isRunning(), 3000, "SimulationEngine to complete");
 
         // 4. Wait for all ticks to be processed
         waitForCondition(() -> {
@@ -529,7 +529,7 @@ public class PipelineFlowTest {
         debugIndexer.shutdown();
 
         // 8. Wait for services to be stopped
-        waitForCondition(() -> !simulationEngine.isRunning(), 3000, "DummyService to stop");
+        waitForCondition(() -> !simulationEngine.isRunning(), 3000, "SimulationEngine to stop");
         waitForCondition(() -> !persistenceService.isRunning(), 3000, "PersistenceService to stop");
         waitForCondition(() -> !debugIndexer.isRunning(), 3000, "DebugIndexer to stop");
     }

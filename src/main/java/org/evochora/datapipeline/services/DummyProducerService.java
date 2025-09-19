@@ -1,9 +1,8 @@
-package org.evochora.datapipeline.services.testing;
+package org.evochora.datapipeline.services;
 
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.channels.IOutputChannel;
 import org.evochora.datapipeline.api.services.State;
-import org.evochora.datapipeline.services.AbstractService;
 
 /**
  * A dummy producer service for testing purposes. It writes a configurable number of
@@ -26,14 +25,11 @@ public class DummyProducerService extends AbstractService {
     @Override
     @SuppressWarnings("unchecked")
     public void addOutputChannel(String name, IOutputChannel<?> channel) {
+        // Call parent method to store channel for dynamic status determination
+        super.addOutputChannel(name, channel);
+        
+        // Store channel for this service's specific use
         this.outputChannel = (IOutputChannel<Integer>) channel;
-        // Add channel binding status
-        channelBindings.add(new org.evochora.datapipeline.api.services.ChannelBindingStatus(
-                name, 
-                org.evochora.datapipeline.api.services.Direction.OUTPUT,
-                org.evochora.datapipeline.api.services.BindingState.ACTIVE,
-                0.0 // Will be updated with actual throughput
-        ));
     }
 
     @Override

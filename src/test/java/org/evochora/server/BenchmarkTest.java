@@ -195,7 +195,7 @@ public class BenchmarkTest {
     }
     
     /**
-     * Creates organism placements for the DummyService.
+     * Creates organism placements for the SimulationEngine.
      */
     private List<OrganismPlacement> createOrganismPlacements() {
         return organismConfigs.stream()
@@ -216,7 +216,7 @@ public class BenchmarkTest {
     }
     
     /**
-     * Creates energy strategies for the DummyService.
+     * Creates energy strategies for the SimulationEngine.
      */
     private List<IEnergyDistributionCreator> createEnergyStrategies() {
         return energyStrategies.stream()

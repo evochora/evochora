@@ -29,14 +29,11 @@ public class DummyService extends AbstractService {
     @Override
     @SuppressWarnings("unchecked")
     public void addOutputChannel(String name, IOutputChannel<?> channel) {
+        // Call parent method to store channel for dynamic status determination
+        super.addOutputChannel(name, channel);
+        
+        // Store channel for this service's specific use
         this.outputChannel = (IOutputChannel<RawTickData>) channel;
-        // Add channel binding status
-        channelBindings.add(new org.evochora.datapipeline.api.services.ChannelBindingStatus(
-                name, 
-                org.evochora.datapipeline.api.services.Direction.OUTPUT,
-                org.evochora.datapipeline.api.services.BindingState.ACTIVE,
-                0.0 // Will be updated with actual throughput
-        ));
     }
 
     @Override

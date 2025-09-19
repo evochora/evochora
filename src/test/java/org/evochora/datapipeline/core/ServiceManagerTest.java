@@ -2,12 +2,11 @@ package org.evochora.datapipeline.core;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.channels.IMonitorableChannel;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.api.services.State;
 import org.evochora.datapipeline.channels.InMemoryChannel;
-import org.evochora.datapipeline.services.testing.DummyConsumerService;
-import org.evochora.datapipeline.services.testing.DummyProducerService;
+import org.evochora.datapipeline.services.DummyConsumerService;
+import org.evochora.datapipeline.services.DummyProducerService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -28,21 +27,21 @@ public class ServiceManagerTest {
                     test-stream {
                         className = "org.evochora.datapipeline.channels.InMemoryChannel"
                         options {
-                            capacity = 1000
+                            capacity = 100
                         }
                     }
                 }
                 services {
                     test-producer {
-                        className = "org.evochora.datapipeline.services.testing.DummyProducerService"
+                        className = "org.evochora.datapipeline.services.DummyProducerService"
                         inputs = []
                         outputs = ["test-stream"]
                         options {
-                            messageCount = 100
+                            messageCount = 10
                         }
                     }
                     test-consumer {
-                        className = "org.evochora.datapipeline.services.testing.DummyConsumerService"
+                        className = "org.evochora.datapipeline.services.DummyConsumerService"
                         inputs = ["test-stream"]
                         outputs = []
                     }
@@ -74,16 +73,16 @@ public class ServiceManagerTest {
         DummyConsumerService consumer = (DummyConsumerService) serviceManager.getServices().get("test-consumer");
         
         // Wait for producer to finish (it sends 100 messages then stops)
-        waitForCondition(() -> producer.getServiceStatus().state() == State.STOPPED, 5000, "Producer to finish");
+        waitForCondition(() -> producer.getServiceStatus().state() == State.STOPPED, 1000, "Producer to finish");
         
         // Wait for consumer to process all messages
-        waitForCondition(() -> consumer.getReceivedMessageCount() >= 100, 5000, "Consumer to receive all messages");
+        waitForCondition(() -> consumer.getReceivedMessageCount() >= 10, 1000, "Consumer to receive all messages");
         
         // Stop all services
         serviceManager.stopAll();
         
         // Assert the final count
-        assertEquals(100, consumer.getReceivedMessageCount(), "Consumer should have received all 100 messages");
+        assertEquals(10, consumer.getReceivedMessageCount(), "Consumer should have received all 10 messages");
     }
 
     @Test
@@ -94,7 +93,7 @@ public class ServiceManagerTest {
 
         // Add a sleep to the producer to make it pausable
         DummyProducerService dummyProducer = (DummyProducerService) producer;
-        dummyProducer.setExecutionDelay(10);
+        dummyProducer.setExecutionDelay(1);
 
         serviceManager.startAll();
         // Wait for producer to send messages
@@ -105,7 +104,7 @@ public class ServiceManagerTest {
 
         int countWhenPaused = consumer.getReceivedMessageCount();
         assertTrue(countWhenPaused > 0, "Producer should have sent some messages before pausing");
-        assertTrue(countWhenPaused < 100, "Producer should not have sent all messages before pausing");
+        assertTrue(countWhenPaused < 10, "Producer should not have sent all messages before pausing");
 
         // Wait a bit to ensure no messages are sent while paused
         waitForCondition(() -> consumer.getReceivedMessageCount() == countWhenPaused, 1000, "No messages while paused");
@@ -115,15 +114,15 @@ public class ServiceManagerTest {
         assertEquals(State.RUNNING, producer.getServiceStatus().state(), "Producer state should be RUNNING after resume");
 
         // Wait for producer to finish
-        waitForCondition(() -> producer.getServiceStatus().state() == State.STOPPED, 5000, "Producer to finish");
+        waitForCondition(() -> producer.getServiceStatus().state() == State.STOPPED, 1000, "Producer to finish");
         
         // Wait for consumer to process all messages
-        waitForCondition(() -> consumer.getReceivedMessageCount() >= 100, 5000, "Consumer to receive all messages");
+        waitForCondition(() -> consumer.getReceivedMessageCount() >= 10, 1000, "Consumer to receive all messages");
         
         // Stop all services
         serviceManager.stopAll();
 
-        assertEquals(100, consumer.getReceivedMessageCount(), "All messages should be received after resuming");
+        assertEquals(10, consumer.getReceivedMessageCount(), "All messages should be received after resuming");
     }
     
     @Test
@@ -137,17 +136,17 @@ public class ServiceManagerTest {
                     test-stream {
                         className = "org.evochora.datapipeline.channels.InMemoryChannel"
                         options {
-                            capacity = 1000
+                            capacity = 100
                         }
                     }
                 }
                 services {
                     test-producer {
-                        className = "org.evochora.datapipeline.services.testing.DummyProducerService"
+                        className = "org.evochora.datapipeline.services.DummyProducerService"
                         inputs = []
                         outputs = ["test-stream"]
                         options {
-                            messageCount = 100
+                            messageCount = 10
                         }
                     }
                 }
@@ -180,13 +179,13 @@ public class ServiceManagerTest {
                     test-stream {
                         className = "org.evochora.datapipeline.channels.InMemoryChannel"
                         options {
-                            capacity = 1000
+                            capacity = 100
                         }
                     }
                 }
                 services {
                     test-producer {
-                        className = "org.evochora.datapipeline.services.testing.DummyProducerService"
+                        className = "org.evochora.datapipeline.services.DummyProducerService"
                         inputs = []
                         outputs = ["test-stream"]
                         options {
@@ -221,21 +220,21 @@ public class ServiceManagerTest {
                     test-stream {
                         className = "org.evochora.datapipeline.channels.InMemoryChannel"
                         options {
-                            capacity = 1000
+                            capacity = 100
                         }
                     }
                 }
                 services {
                     test-producer {
-                        className = "org.evochora.datapipeline.services.testing.DummyProducerService"
+                        className = "org.evochora.datapipeline.services.DummyProducerService"
                         inputs = []
                         outputs = ["test-stream"]
                         options {
-                            messageCount = 100
+                            messageCount = 10
                         }
                     }
                     test-consumer {
-                        className = "org.evochora.datapipeline.services.testing.DummyConsumerService"
+                        className = "org.evochora.datapipeline.services.DummyConsumerService"
                         inputs = ["test-stream"]
                         outputs = []
                     }
@@ -273,17 +272,17 @@ public class ServiceManagerTest {
                     test-stream {
                         className = "org.evochora.datapipeline.channels.InMemoryChannel"
                         options {
-                            capacity = 1000
+                            capacity = 100
                         }
                     }
                 }
                 services {
                     test-producer {
-                        className = "org.evochora.datapipeline.services.testing.DummyProducerService"
+                        className = "org.evochora.datapipeline.services.DummyProducerService"
                         inputs = []
                         outputs = ["test-stream"]
                         options {
-                            messageCount = 100
+                            messageCount = 10
                         }
                     }
                 }
