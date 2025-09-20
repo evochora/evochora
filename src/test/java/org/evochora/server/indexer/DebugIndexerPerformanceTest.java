@@ -131,6 +131,8 @@ class DebugIndexerPerformanceTest {
             String artifactJson = objectMapper.writeValueAsString(artifact.toLinearized(new EnvironmentProperties(new int[]{10,10}, true)));
             stmt.execute("INSERT OR REPLACE INTO program_artifacts (program_id, artifact_json) VALUES ('test123', '" + artifactJson.replace("'", "''") + "')");
         }
+        
+        
         return conn;
     }
 

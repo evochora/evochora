@@ -81,16 +81,21 @@ public class SimulationEngineTest {
 
         // Create channel bindings
         channelBindings = List.of(
-            new ChannelBindingStatus("context", Direction.OUTPUT, BindingState.ACTIVE, 0.0),
-            new ChannelBindingStatus("tickData", Direction.OUTPUT, BindingState.ACTIVE, 0.0)
+            new ChannelBindingStatus("context-channel", Direction.OUTPUT, BindingState.ACTIVE, 0.0),
+            new ChannelBindingStatus("raw-tick-channel", Direction.OUTPUT, BindingState.ACTIVE, 0.0)
         );
 
-        // Create simulation engine
-        simulationEngine = new SimulationEngine(testConfig);
+        // Create simulation engine with new channel configuration
+        Config outputsConfig = ConfigFactory.parseString("""
+            tickData: "raw-tick-channel"
+            contextData: "context-channel"
+            """);
+        Config configWithChannels = testConfig.withValue("outputs", outputsConfig.root());
+        simulationEngine = new SimulationEngine(configWithChannels);
         
         // Add output channels
-        simulationEngine.addOutputChannel("context", contextChannel);
-        simulationEngine.addOutputChannel("tickData", tickDataChannel);
+        simulationEngine.addOutputChannel("context-channel", contextChannel);
+        simulationEngine.addOutputChannel("raw-tick-channel", tickDataChannel);
     }
 
     @Test
@@ -102,10 +107,10 @@ public class SimulationEngineTest {
         
         // Verify channel bindings
         assertTrue(status.channelBindings().stream()
-            .anyMatch(binding -> binding.channelName().equals("context") && 
+            .anyMatch(binding -> binding.channelName().equals("context-channel") && 
                                 binding.direction() == Direction.OUTPUT));
         assertTrue(status.channelBindings().stream()
-            .anyMatch(binding -> binding.channelName().equals("tickData") && 
+            .anyMatch(binding -> binding.channelName().equals("raw-tick-channel") && 
                                 binding.direction() == Direction.OUTPUT));
     }
 
@@ -259,10 +264,10 @@ public class SimulationEngineTest {
         
         // Verify channel names and directions
         assertTrue(status.channelBindings().stream()
-            .anyMatch(binding -> "context".equals(binding.channelName()) && 
+            .anyMatch(binding -> "context-channel".equals(binding.channelName()) && 
                                 binding.direction() == Direction.OUTPUT));
         assertTrue(status.channelBindings().stream()
-            .anyMatch(binding -> "tickData".equals(binding.channelName()) && 
+            .anyMatch(binding -> "raw-tick-channel".equals(binding.channelName()) && 
                                 binding.direction() == Direction.OUTPUT));
     }
 

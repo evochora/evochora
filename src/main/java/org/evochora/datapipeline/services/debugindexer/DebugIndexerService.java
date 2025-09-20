@@ -47,8 +47,8 @@ public class DebugIndexerService extends AbstractService implements Runnable {
     private final SimulationConfiguration.DatabaseConfig databaseConfig;
     private final SimulationConfiguration.MemoryOptimizationConfig memoryOptimizationConfig;
     
-    // Input channel - accepts both SimulationContext and RawTickData
-    private IInputChannel<Object> inputChannel;
+    // Input channels - accepts both SimulationContext and RawTickData
+    private final Map<String, IInputChannel<Object>> inputChannels = new HashMap<>();
     
     // Processing components
     private final ObjectMapper objectMapper;
@@ -131,7 +131,7 @@ public class DebugIndexerService extends AbstractService implements Runnable {
         super.addInputChannel(name, channel);
         
         // Store channel for this service's specific use
-        this.inputChannel = (IInputChannel<Object>) channel;
+        this.inputChannels.put(name, (IInputChannel<Object>) channel);
         log.debug("Input channel '{}' added to DebugIndexerService: {}", name, channel.getClass().getSimpleName());
     }
     
@@ -152,13 +152,12 @@ public class DebugIndexerService extends AbstractService implements Runnable {
             return;
         }
         
-        if (inputChannel == null) {
-            throw new IllegalStateException("No input channel configured for DebugIndexerService");
+        if (inputChannels.isEmpty()) {
+            throw new IllegalStateException("No input channels configured for DebugIndexerService");
         }
         
-        log.debug("DebugIndexerService: Input channel available: {} (type: {})", 
-                inputChannel.getClass().getSimpleName(), 
-                inputChannel.getClass().getGenericInterfaces()[0].getTypeName());
+        log.debug("DebugIndexerService: {} input channels available: {}", 
+                inputChannels.size(), inputChannels.keySet());
         
         // Ensure database connection
         if (!databaseManager.ensureConnection()) {
@@ -182,8 +181,8 @@ public class DebugIndexerService extends AbstractService implements Runnable {
         
         log.info("Started service: DebugIndexerService - debugDbPath: {}, batchSize: {}", 
                 debugDbPath, batchSize);
-        log.debug("DebugIndexerService started with input channel: {} (running: {})", 
-                inputChannel.getClass().getSimpleName(), running.get());
+        log.debug("DebugIndexerService started with {} input channels: {} (running: {})", 
+                inputChannels.size(), inputChannels.keySet(), running.get());
     }
     
     protected void pauseService() throws Exception {
@@ -339,10 +338,10 @@ public class DebugIndexerService extends AbstractService implements Runnable {
                     break;
                 }
                 
-                // Collect messages into batch
+                // Collect messages into batch from all input channels
                 List<Object> currentBatch = new ArrayList<>();
                 synchronized (batchLock) {
-                    // Read up to batchSize messages
+                    // Read up to batchSize messages from all channels
                     for (int i = 0; i < batchSize; i++) {
                         // Double-check running state before each read
                         if (!running.get() || currentState.get() != State.RUNNING || Thread.currentThread().isInterrupted()) {
@@ -350,17 +349,25 @@ public class DebugIndexerService extends AbstractService implements Runnable {
                             break;
                         }
                         
-                        try {
-                            Object message = inputChannel.read();
-                            if (message != null) {
-                                currentBatch.add(message);
-                            } else {
-                                // No more messages available right now
+                        boolean messageRead = false;
+                        // Try to read from all input channels
+                        for (Map.Entry<String, IInputChannel<Object>> entry : inputChannels.entrySet()) {
+                            try {
+                                Object message = entry.getValue().read();
+                                if (message != null) {
+                                    currentBatch.add(message);
+                                    messageRead = true;
+                                    break; // Only read one message per iteration
+                                }
+                            } catch (InterruptedException e) {
+                                log.debug("Interrupted during message read from channel {}, stopping", entry.getKey());
+                                Thread.currentThread().interrupt();
                                 break;
                             }
-                        } catch (InterruptedException e) {
-                            log.debug("Interrupted during message read, stopping");
-                            Thread.currentThread().interrupt();
+                        }
+                        
+                        if (!messageRead) {
+                            // No more messages available from any channel right now
                             break;
                         }
                     }

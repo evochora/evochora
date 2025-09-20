@@ -70,6 +70,10 @@ public class SimulationEngine extends AbstractService {
     
     // Channel storage for message publishing
     private final Map<String, IOutputChannel<?>> outputChannels = new HashMap<>();
+    
+    // Dedicated channel mappings for different message types
+    private String tickDataChannel;
+    private String contextDataChannel;
 
     /**
      * Creates a new SimulationEngine with the specified configuration.
@@ -91,6 +95,19 @@ public class SimulationEngine extends AbstractService {
         
         if (pauseTicks != null) {
             Arrays.sort(pauseTicks); // Ensure ticks are in ascending order
+        }
+        
+        // Parse dedicated channel mappings
+        if (options.hasPath("outputs")) {
+            Config outputsConfig = options.getConfig("outputs");
+            this.tickDataChannel = outputsConfig.hasPath("tickData") ? 
+                outputsConfig.getString("tickData") : "raw-tick-channel";
+            this.contextDataChannel = outputsConfig.hasPath("contextData") ? 
+                outputsConfig.getString("contextData") : "context-channel";
+        } else {
+            // Fallback to legacy configuration
+            this.tickDataChannel = "raw-tick-channel";
+            this.contextDataChannel = "context-channel";
         }
         
         log.debug("SimulationEngine initialized with {} organisms, {} energy strategies, {} pause ticks", 
@@ -531,25 +548,20 @@ public class SimulationEngine extends AbstractService {
         }
         context.setArtifacts(apiArtifacts);
         
-        // Send to all output channels
-        for (ChannelBindingStatus binding : channelBindings) {
-            if (binding.direction() == Direction.OUTPUT) {
-                try {
-                    IOutputChannel<?> channel = outputChannels.get(binding.channelName());
-                    if (channel != null) {
-                        ((IOutputChannel<SimulationContext>) channel).write(context);
-                        log.debug("Published SimulationContext to channel: {} (artifacts: {})", binding.channelName(), apiArtifacts.size());
-                    } else {
-                        log.warn("Output channel not found: {}", binding.channelName());
-                    }
-                } catch (InterruptedException e) {
-                    // Normal shutdown - queue is full or service is stopping
-                    Thread.currentThread().interrupt();
-                    break; // Exit the loop, service is shutting down
-                } catch (Exception e) {
-                    log.error("Failed to publish SimulationContext to channel: {}", binding.channelName(), e);
-                }
+        // Send SimulationContext to dedicated context channel
+        try {
+            IOutputChannel<?> channel = outputChannels.get(contextDataChannel);
+            if (channel != null) {
+                ((IOutputChannel<SimulationContext>) channel).write(context);
+                log.debug("Published SimulationContext to channel: {} (artifacts: {})", contextDataChannel, apiArtifacts.size());
+            } else {
+                log.warn("Context output channel not found: {}", contextDataChannel);
             }
+        } catch (InterruptedException e) {
+            // Normal shutdown - queue is full or service is stopping
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            log.error("Failed to publish SimulationContext to channel: {}", contextDataChannel, e);
         }
     }
     
@@ -641,25 +653,20 @@ public class SimulationEngine extends AbstractService {
         tickData.setCells(cells);
         tickData.setOrganisms(organisms);
         
-        // Send to all configured output channels
-        for (ChannelBindingStatus binding : channelBindings) {
-            if (binding.direction() == Direction.OUTPUT) {
-                try {
-                    IOutputChannel<?> channel = outputChannels.get(binding.channelName());
-                    if (channel != null) {
-                        ((IOutputChannel<RawTickData>) channel).write(tickData);
-                        log.debug("Published RawTickData to channel: {}", binding.channelName());
-                    } else {
-                        log.warn("Output channel not found: {}", binding.channelName());
-                    }
-                } catch (InterruptedException e) {
-                    // Normal shutdown - queue is full or service is stopping
-                    Thread.currentThread().interrupt();
-                    break; // Exit the loop, service is shutting down
-                } catch (Exception e) {
-                    log.error("Failed to publish RawTickData to channel: {}", binding.channelName(), e);
-                }
+        // Send RawTickData to dedicated tick data channel
+        try {
+            IOutputChannel<?> channel = outputChannels.get(tickDataChannel);
+            if (channel != null) {
+                ((IOutputChannel<RawTickData>) channel).write(tickData);
+                log.debug("Published RawTickData to channel: {}", tickDataChannel);
+            } else {
+                log.warn("Tick data output channel not found: {}", tickDataChannel);
             }
+        } catch (InterruptedException e) {
+            // Normal shutdown - queue is full or service is stopping
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            log.error("Failed to publish RawTickData to channel: {}", tickDataChannel, e);
         }
     }
     
