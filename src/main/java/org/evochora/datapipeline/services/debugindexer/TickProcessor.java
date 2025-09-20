@@ -97,7 +97,7 @@ public class TickProcessor {
 
         Map<String, PreparedTickState.OrganismDetails> details = new HashMap<>();
         for (RawOrganismState o : raw.organisms()) {
-            if (o.isDead()) continue;
+            if (o.isDead()) continue; // Skip dead organisms for performance (identical to old implementation)
             
             // Central method for all organism details
             PreparedTickState.OrganismDetails organismDetails = buildOrganismDetails(o, raw, artifacts, envProps);

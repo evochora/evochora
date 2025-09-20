@@ -12,6 +12,8 @@ import org.evochora.datapipeline.services.debugindexer.annotation.handlers.RetIn
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Main engine for token-level annotation that coordinates handlers using deterministic
@@ -21,6 +23,8 @@ import java.util.Map;
  * TokenMap to provide accurate, deterministic token classification.</p>
  */
 public class TokenAnnotator {
+    
+    private static final Logger log = LoggerFactory.getLogger(TokenAnnotator.class);
     
     private final List<ITokenHandler> handlers;
     

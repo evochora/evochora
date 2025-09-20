@@ -23,6 +23,8 @@ public class DatabaseManager {
     private final SimulationConfiguration.DatabaseConfig databaseConfig;
     private Connection connection;
     private PreparedStatement tickInsertStatement;
+    private PreparedStatement artifactInsertStatement;
+    private PreparedStatement metadataInsertStatement;
     private int batchCount = 0; // Count of ticks in current batch
     private int actualBatchCount = 0; // Count of actual batches executed
     private volatile boolean isClosing = false; // Flag to prevent race conditions
@@ -131,32 +133,43 @@ public class DatabaseManager {
      */
     private void setupDatabaseSchema() throws SQLException {
         try (Statement stmt = connection.createStatement()) {
-            // Create ticks table
-            stmt.execute("""
-                CREATE TABLE IF NOT EXISTS debug_ticks (
-                    tick_number INTEGER PRIMARY KEY,
-                    tick_data BLOB NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-                """);
+            // Create ticks table (identical to old implementation)
+            stmt.execute("CREATE TABLE IF NOT EXISTS prepared_ticks (tick_number INTEGER PRIMARY KEY, tick_data_json BLOB)");
             
-            // Create index for performance
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_debug_ticks_tick_number ON debug_ticks(tick_number)");
+            // Create program artifacts table for source code access
+            stmt.execute("CREATE TABLE IF NOT EXISTS program_artifacts (program_id TEXT PRIMARY KEY, artifact_json BLOB)");
+            
+            // Create simulation metadata table
+            stmt.execute("CREATE TABLE IF NOT EXISTS simulation_metadata (key TEXT PRIMARY KEY, value BLOB)");
             
             log.debug("Database schema initialized successfully");
         }
     }
     
     /**
-     * Prepares the insert statement for batch operations.
+     * Prepares the insert statements for batch operations.
      */
     private void prepareInsertStatement() throws SQLException {
         if (tickInsertStatement != null) {
             tickInsertStatement.close();
         }
+        if (artifactInsertStatement != null) {
+            artifactInsertStatement.close();
+        }
+        if (metadataInsertStatement != null) {
+            metadataInsertStatement.close();
+        }
         
         tickInsertStatement = connection.prepareStatement(
-            "INSERT OR REPLACE INTO debug_ticks (tick_number, tick_data) VALUES (?, ?)"
+            "INSERT OR REPLACE INTO prepared_ticks (tick_number, tick_data_json) VALUES (?, ?)"
+        );
+        
+        artifactInsertStatement = connection.prepareStatement(
+            "INSERT OR REPLACE INTO program_artifacts (program_id, artifact_json) VALUES (?, ?)"
+        );
+        
+        metadataInsertStatement = connection.prepareStatement(
+            "INSERT OR REPLACE INTO simulation_metadata (key, value) VALUES (?, ?)"
         );
     }
     
@@ -189,6 +202,60 @@ public class DatabaseManager {
             } catch (SQLException e) {
                 log.error("Failed to write tick {} to database: {}", tickNumber, e.getMessage(), e);
                 // Mark connection as unhealthy for future operations
+                closeQuietly();
+            }
+        }
+    }
+    
+    /**
+     * Writes a program artifact to the database.
+     * This method is thread-safe and executes immediately.
+     * 
+     * @param programId The program ID
+     * @param artifactJson The serialized artifact JSON
+     */
+    public void writeProgramArtifact(String programId, byte[] artifactJson) {
+        synchronized (connectionLock) {
+            if (isClosing || connection == null || isConnectionClosed()) {
+                return;
+            }
+            
+            try {
+                artifactInsertStatement.setString(1, programId);
+                artifactInsertStatement.setBytes(2, artifactJson);
+                artifactInsertStatement.executeUpdate();
+                
+                log.debug("Wrote program artifact for program ID: {}", programId);
+                
+            } catch (SQLException e) {
+                log.error("Failed to write program artifact for program {}: {}", programId, e.getMessage(), e);
+                closeQuietly();
+            }
+        }
+    }
+    
+    /**
+     * Writes simulation metadata to the database.
+     * This method is thread-safe and executes immediately.
+     * 
+     * @param key The metadata key (e.g., "worldShape", "isToroidal")
+     * @param valueJson The serialized value as JSON bytes
+     */
+    public void writeSimulationMetadata(String key, byte[] valueJson) {
+        synchronized (connectionLock) {
+            if (isClosing || connection == null || isConnectionClosed()) {
+                return;
+            }
+            
+            try {
+                metadataInsertStatement.setString(1, key);
+                metadataInsertStatement.setBytes(2, valueJson);
+                metadataInsertStatement.executeUpdate();
+                
+                log.debug("Wrote simulation metadata: {} = {}", key, new String(valueJson));
+                
+            } catch (SQLException e) {
+                log.error("Failed to write simulation metadata for key {}: {}", key, e.getMessage(), e);
                 closeQuietly();
             }
         }
@@ -295,10 +362,18 @@ public class DatabaseManager {
                 flush();
                 commitWAL();
                 
-                // Close prepared statement
+                // Close prepared statements
                 if (tickInsertStatement != null) {
                     tickInsertStatement.close();
                     tickInsertStatement = null;
+                }
+                if (artifactInsertStatement != null) {
+                    artifactInsertStatement.close();
+                    artifactInsertStatement = null;
+                }
+                if (metadataInsertStatement != null) {
+                    metadataInsertStatement.close();
+                    metadataInsertStatement = null;
                 }
                 
                 // Close connection

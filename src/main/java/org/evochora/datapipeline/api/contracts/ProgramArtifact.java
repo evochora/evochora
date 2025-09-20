@@ -15,6 +15,13 @@ public class ProgramArtifact {
     private Map<int[], SerializablePlacedMolecule> initialWorldObjects;
     private Map<Integer, SerializableSourceInfo> sourceMap;
     private Map<Integer, String> labelAddressToName;
+    private Map<String, Integer> relativeCoordToLinearAddress;
+    private Map<Integer, int[]> linearAddressToCoord;
+    private Map<Integer, int[]> callSiteBindings;
+    private Map<String, Integer> registerAliasMap;
+    private Map<String, List<String>> procNameToParamNames;
+    private Map<SerializableSourceInfo, SerializableTokenInfo> tokenMap;
+    private Map<String, Map<Integer, Map<Integer, List<SerializableTokenInfo>>>> tokenLookup;
 
     /**
      * Default constructor for deserialization.
@@ -70,5 +77,61 @@ public class ProgramArtifact {
 
     public void setLabelAddressToName(Map<Integer, String> labelAddressToName) {
         this.labelAddressToName = labelAddressToName;
+    }
+
+    public Map<String, Integer> getRelativeCoordToLinearAddress() {
+        return relativeCoordToLinearAddress;
+    }
+
+    public void setRelativeCoordToLinearAddress(Map<String, Integer> relativeCoordToLinearAddress) {
+        this.relativeCoordToLinearAddress = relativeCoordToLinearAddress;
+    }
+
+    public Map<Integer, int[]> getCallSiteBindings() {
+        return callSiteBindings;
+    }
+
+    public void setCallSiteBindings(Map<Integer, int[]> callSiteBindings) {
+        this.callSiteBindings = callSiteBindings;
+    }
+
+    public Map<String, Integer> getRegisterAliasMap() {
+        return registerAliasMap;
+    }
+
+    public void setRegisterAliasMap(Map<String, Integer> registerAliasMap) {
+        this.registerAliasMap = registerAliasMap;
+    }
+
+    public Map<Integer, int[]> getLinearAddressToCoord() {
+        return linearAddressToCoord;
+    }
+
+    public void setLinearAddressToCoord(Map<Integer, int[]> linearAddressToCoord) {
+        this.linearAddressToCoord = linearAddressToCoord;
+    }
+
+    public Map<String, List<String>> getProcNameToParamNames() {
+        return procNameToParamNames;
+    }
+
+    public void setProcNameToParamNames(Map<String, List<String>> procNameToParamNames) {
+        this.procNameToParamNames = procNameToParamNames;
+    }
+
+    public Map<SerializableSourceInfo, SerializableTokenInfo> getTokenMap() {
+        return tokenMap;
+    }
+
+    public void setTokenMap(Map<SerializableSourceInfo, SerializableTokenInfo> tokenMap) {
+        this.tokenMap = tokenMap;
+    }
+
+    public Map<String, Map<Integer, Map<Integer, List<SerializableTokenInfo>>>> getTokenLookup() {
+        return tokenLookup;
+    }
+
+    public void setTokenLookup(Map<String, Map<Integer, Map<Integer, List<SerializableTokenInfo>>>> tokenLookup) {
+        this.tokenLookup = tokenLookup;
     }
 }

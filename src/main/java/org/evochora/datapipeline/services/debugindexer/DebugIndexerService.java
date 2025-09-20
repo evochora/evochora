@@ -15,7 +15,6 @@ import org.evochora.server.contracts.raw.RawTickState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -23,7 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.zip.GZIPOutputStream;
 
 /**
  * Debug indexer service that reads from pipeline channels and writes to debug SQLite database.
@@ -45,6 +43,7 @@ public class DebugIndexerService extends AbstractService implements Runnable {
     private final String debugDbPath;
     private final int batchSize;
     private final boolean enabled;
+    private final boolean compressionEnabled;
     private final SimulationConfiguration.DatabaseConfig databaseConfig;
     private final SimulationConfiguration.MemoryOptimizationConfig memoryOptimizationConfig;
     
@@ -84,6 +83,8 @@ public class DebugIndexerService extends AbstractService implements Runnable {
         this.debugDbPath = serviceOptions.hasPath("debugDbPath") ? serviceOptions.getString("debugDbPath") : "runs/sim_run_" + timestamp + "_debug.sqlite";
         this.batchSize = serviceOptions.hasPath("batchSize") ? serviceOptions.getInt("batchSize") : 100;
         this.enabled = serviceOptions.hasPath("enabled") ? serviceOptions.getBoolean("enabled") : true;
+        this.compressionEnabled = serviceOptions.hasPath("compression") && serviceOptions.getConfig("compression").hasPath("enabled") 
+            ? serviceOptions.getConfig("compression").getBoolean("enabled") : false;
         
         // Parse database config if available
         this.databaseConfig = serviceOptions.hasPath("database") 
@@ -401,8 +402,10 @@ public class DebugIndexerService extends AbstractService implements Runnable {
                 }
                 
                 if (message instanceof SimulationContext context) {
+                    log.debug("Received SimulationContext message");
                     processSimulationContext(context);
                 } else if (message instanceof RawTickData tickData) {
+                    log.debug("Received RawTickData message for tick {}", tickData.getTickNumber());
                     processRawTickData(tickData);
                 } else {
                     log.warn("Unknown message type received: {}", message.getClass().getName());
@@ -420,6 +423,10 @@ public class DebugIndexerService extends AbstractService implements Runnable {
      */
     private void processSimulationContext(SimulationContext context) {
         try {
+            log.debug("Processing SimulationContext - artifacts: {}, environment: {}", 
+                     context.getArtifacts() != null ? context.getArtifacts().size() : 0,
+                     context.getEnvironment() != null);
+            
             // Update environment properties if available
             if (context.getEnvironment() != null) {
                 // Convert from datapipeline EnvironmentProperties to runtime EnvironmentProperties
@@ -427,15 +434,44 @@ public class DebugIndexerService extends AbstractService implements Runnable {
                     context.getEnvironment().getWorldShape(),
                     context.getEnvironment().getTopology() == org.evochora.datapipeline.api.contracts.WorldTopology.TORUS
                 );
+                
+                // Write simulation metadata to database
+                try {
+                    byte[] worldShapeJson = objectMapper.writeValueAsBytes(context.getEnvironment().getWorldShape());
+                    databaseManager.writeSimulationMetadata("worldShape", worldShapeJson);
+                    
+                    boolean isToroidal = context.getEnvironment().getTopology() == org.evochora.datapipeline.api.contracts.WorldTopology.TORUS;
+                    byte[] isToroidalJson = objectMapper.writeValueAsBytes(isToroidal);
+                    databaseManager.writeSimulationMetadata("isToroidal", isToroidalJson);
+                    
+                    log.debug("Wrote simulation metadata: worldShape={}, isToroidal={}", 
+                             java.util.Arrays.toString(context.getEnvironment().getWorldShape()), isToroidal);
+                } catch (Exception e) {
+                    log.error("Failed to write simulation metadata: {}", e.getMessage(), e);
+                }
             }
             
             // Update program artifacts if available
             if (context.getArtifacts() != null) {
                 for (org.evochora.datapipeline.api.contracts.ProgramArtifact apiArtifact : context.getArtifacts()) {
+                    log.debug("Converting artifact: {} - machineCodeLayout size: {}", 
+                             apiArtifact.getProgramId(),
+                             apiArtifact.getMachineCodeLayout() != null ? apiArtifact.getMachineCodeLayout().size() : 0);
+                    // Convert to compiler API artifact for TokenAnnotator compatibility
                     ProgramArtifact compilerArtifact = convertToCompilerArtifact(apiArtifact);
                     programArtifacts.put(apiArtifact.getProgramId(), compilerArtifact);
+                    
+                    // Write datapipeline API artifact directly to database (now includes TokenMap data!)
+                    try {
+                        // CRITICAL: Serialize datapipeline API artifact directly - includes all TokenMap data
+                        byte[] artifactJson = objectMapper.writeValueAsBytes(apiArtifact);
+                        databaseManager.writeProgramArtifact(apiArtifact.getProgramId(), artifactJson);
+                        log.debug("Wrote datapipeline ProgramArtifact to database with TokenMap data: {}", apiArtifact.getProgramId());
+                    } catch (Exception e) {
+                        log.error("Failed to write datapipeline ProgramArtifact to database: {}", e.getMessage(), e);
+                    }
                 }
-                log.debug("Converted {} program artifacts from SimulationContext", context.getArtifacts().size());
+                log.debug("Converted and stored {} program artifacts from SimulationContext", context.getArtifacts().size());
             }
             
             log.debug("Updated SimulationContext - environment: {}, artifacts: {}", 
@@ -507,7 +543,7 @@ public class DebugIndexerService extends AbstractService implements Runnable {
             org.evochora.datapipeline.api.contracts.RawCellState apiCell) {
         return new org.evochora.server.contracts.raw.RawCellState(
             apiCell.getPosition(),
-            apiCell.getType(),
+            apiCell.getValue(),  // This is the molecule value!
             apiCell.getOwnerId()
         );
     }
@@ -598,12 +634,12 @@ public class DebugIndexerService extends AbstractService implements Runnable {
             apiOrganism.getParentId(),
             apiOrganism.getBirthTick(),
             apiOrganism.getProgramId(),
-            apiOrganism.getPosition(), // initialPosition (using current position as fallback)
+            apiOrganism.getInitialPosition(), // initialPosition (correct initial position)
             apiOrganism.getPosition(), // ip (instruction pointer)
             apiOrganism.getDv(),
             dps,
             apiOrganism.getActiveDp(),
-            apiOrganism.getPosition()[0], // er (execution register) - using first coordinate as fallback
+            apiOrganism.getEnergy(), // er (execution register) - actual energy value
             dataRegisters,
             procedureRegisters,
             fpRegisters,
@@ -668,11 +704,11 @@ public class DebugIndexerService extends AbstractService implements Runnable {
                 environmentProperties
             );
             
-            // Serialize and compress the prepared tick state
-            byte[] compressedData = compressTickData(preparedTickState);
+            // Serialize the prepared tick state (with optional compression)
+            byte[] tickData = compressionEnabled ? compressTickData(preparedTickState) : serializeTickData(preparedTickState);
             
             // Write to database
-            databaseManager.writePreparedTick(rawTickState.tickNumber(), compressedData);
+            databaseManager.writePreparedTick(rawTickState.tickNumber(), tickData);
             
             // Update last processed tick
             lastProcessedTick = rawTickState.tickNumber();
@@ -683,7 +719,18 @@ public class DebugIndexerService extends AbstractService implements Runnable {
     }
     
     /**
-     * Compresses tick data using GZIP compression.
+     * Serializes tick data to JSON without compression.
+     * 
+     * @param preparedTickState The prepared tick state to serialize
+     * @return The serialized data as byte array
+     * @throws IOException If serialization fails
+     */
+    private byte[] serializeTickData(PreparedTickState preparedTickState) throws IOException {
+        return objectMapper.writeValueAsBytes(preparedTickState);
+    }
+    
+    /**
+     * Compresses tick data using GZIP compression (without magic bytes).
      * 
      * @param preparedTickState The prepared tick state to compress
      * @return The compressed data as byte array
@@ -693,13 +740,9 @@ public class DebugIndexerService extends AbstractService implements Runnable {
         // Serialize to JSON
         byte[] jsonData = objectMapper.writeValueAsBytes(preparedTickState);
         
-        // Compress with GZIP
-        ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
-        try (GZIPOutputStream gzipStream = new GZIPOutputStream(byteStream)) {
-            gzipStream.write(jsonData);
-        }
-        
-        return byteStream.toByteArray();
+        // Convert to string and compress with magic bytes (identical to old implementation)
+        String jsonString = new String(jsonData, java.nio.charset.StandardCharsets.UTF_8);
+        return org.evochora.server.utils.CompressionUtils.compressWithMagic(jsonString, "gzip");
     }
     
     /**
@@ -767,9 +810,9 @@ public class DebugIndexerService extends AbstractService implements Runnable {
             for (Map.Entry<Integer, org.evochora.datapipeline.api.contracts.SerializableSourceInfo> entry : apiArtifact.getSourceMap().entrySet()) {
                 org.evochora.datapipeline.api.contracts.SerializableSourceInfo serializableInfo = entry.getValue();
                 org.evochora.compiler.api.SourceInfo sourceInfo = new org.evochora.compiler.api.SourceInfo(
-                    serializableInfo.sourceName(),
-                    serializableInfo.line(),
-                    serializableInfo.column()
+                    serializableInfo.fileName(),
+                    serializableInfo.lineNumber(),
+                    serializableInfo.columnNumber()
                 );
                 sourceMap.put(entry.getKey(), sourceInfo);
             }
@@ -788,27 +831,106 @@ public class DebugIndexerService extends AbstractService implements Runnable {
             }
         }
         
+        // Convert coordinate mappings (critical for source mapping)
+        Map<String, Integer> relativeCoordToLinearAddress = new HashMap<>();
+        if (apiArtifact.getRelativeCoordToLinearAddress() != null) {
+            for (Map.Entry<String, Integer> entry : apiArtifact.getRelativeCoordToLinearAddress().entrySet()) {
+                relativeCoordToLinearAddress.put(entry.getKey(), entry.getValue());
+            }
+        }
+        
+        Map<Integer, int[]> linearAddressToCoord = new HashMap<>();
+        if (apiArtifact.getLinearAddressToCoord() != null) {
+            for (Map.Entry<Integer, int[]> entry : apiArtifact.getLinearAddressToCoord().entrySet()) {
+                linearAddressToCoord.put(entry.getKey(), entry.getValue());
+            }
+        }
+        
         // Create empty maps for missing fields
         Map<String, Integer> emptyStringIntMap = new HashMap<>();
         Map<Integer, int[]> emptyIntIntArrayMap = new HashMap<>();
         Map<String, List<String>> emptyStringListMap = new HashMap<>();
-        Map<org.evochora.compiler.api.SourceInfo, org.evochora.compiler.api.TokenInfo> emptySourceTokenMap = new HashMap<>();
-        Map<String, Map<Integer, Map<Integer, List<org.evochora.compiler.api.TokenInfo>>>> emptyTokenLookup = new HashMap<>();
+        
+        // CRITICAL: Convert TokenMap data from datapipeline API to compiler API format
+        Map<org.evochora.compiler.api.SourceInfo, org.evochora.compiler.api.TokenInfo> tokenMap = new HashMap<>();
+        Map<String, Map<Integer, Map<Integer, List<org.evochora.compiler.api.TokenInfo>>>> tokenLookup = new HashMap<>();
+        
+        // Convert SerializableSourceInfo/TokenInfo to compiler API format
+        if (apiArtifact.getTokenMap() != null) {
+            for (Map.Entry<org.evochora.datapipeline.api.contracts.SerializableSourceInfo, org.evochora.datapipeline.api.contracts.SerializableTokenInfo> entry : apiArtifact.getTokenMap().entrySet()) {
+                org.evochora.datapipeline.api.contracts.SerializableSourceInfo serializableSourceInfo = entry.getKey();
+                org.evochora.datapipeline.api.contracts.SerializableTokenInfo serializableTokenInfo = entry.getValue();
+                
+                // Convert back to compiler API types
+                org.evochora.compiler.api.SourceInfo sourceInfo = new org.evochora.compiler.api.SourceInfo(
+                    serializableSourceInfo.fileName(), serializableSourceInfo.lineNumber(), serializableSourceInfo.columnNumber());
+                
+                // Convert token type string back to enum
+                org.evochora.compiler.frontend.semantics.Symbol.Type tokenType = 
+                    org.evochora.compiler.frontend.semantics.Symbol.Type.valueOf(serializableTokenInfo.tokenType());
+                
+                org.evochora.compiler.api.TokenInfo tokenInfo = new org.evochora.compiler.api.TokenInfo(
+                    serializableTokenInfo.tokenText(), tokenType, serializableTokenInfo.scope());
+                
+                tokenMap.put(sourceInfo, tokenInfo);
+            }
+        }
+        
+        // CRITICAL: Use the original tokenLookup from datapipeline API (like old system does!)
+        // Convert TokenLookup data from datapipeline API to compiler API format
+        if (apiArtifact.getTokenLookup() != null) {
+            for (Map.Entry<String, Map<Integer, Map<Integer, List<org.evochora.datapipeline.api.contracts.SerializableTokenInfo>>>> fileEntry : apiArtifact.getTokenLookup().entrySet()) {
+                String fileName = fileEntry.getKey();
+                Map<Integer, Map<Integer, List<org.evochora.compiler.api.TokenInfo>>> lineMap = new HashMap<>();
+                
+                for (Map.Entry<Integer, Map<Integer, List<org.evochora.datapipeline.api.contracts.SerializableTokenInfo>>> lineEntry : fileEntry.getValue().entrySet()) {
+                    Integer lineNumber = lineEntry.getKey();
+                    Map<Integer, List<org.evochora.compiler.api.TokenInfo>> columnMap = new HashMap<>();
+                    
+                    for (Map.Entry<Integer, List<org.evochora.datapipeline.api.contracts.SerializableTokenInfo>> columnEntry : lineEntry.getValue().entrySet()) {
+                        Integer column = columnEntry.getKey();
+                        List<org.evochora.compiler.api.TokenInfo> tokens = new ArrayList<>();
+                        
+                        for (org.evochora.datapipeline.api.contracts.SerializableTokenInfo serializableTokenInfo : columnEntry.getValue()) {
+                            org.evochora.compiler.frontend.semantics.Symbol.Type tokenType = 
+                                org.evochora.compiler.frontend.semantics.Symbol.Type.valueOf(serializableTokenInfo.tokenType());
+                            
+                            org.evochora.compiler.api.TokenInfo tokenInfo = new org.evochora.compiler.api.TokenInfo(
+                                serializableTokenInfo.tokenText(), tokenType, serializableTokenInfo.scope());
+                            
+                            tokens.add(tokenInfo);
+                        }
+                        
+                        columnMap.put(column, tokens);
+                    }
+                    lineMap.put(lineNumber, columnMap);
+                }
+                tokenLookup.put(fileName, lineMap);
+            }
+        }
+        
+        // Convert linearAddressToCoord from datapipeline API to compiler API format
+        Map<Integer, int[]> convertedLinearAddressToCoord = new HashMap<>();
+        if (apiArtifact.getLinearAddressToCoord() != null) {
+            for (Map.Entry<Integer, int[]> entry : apiArtifact.getLinearAddressToCoord().entrySet()) {
+                convertedLinearAddressToCoord.put(entry.getKey(), entry.getValue());
+            }
+        }
         
         return new ProgramArtifact(
             apiArtifact.getProgramId(),
             apiArtifact.getSources(),
-            apiArtifact.getMachineCodeLayout(),
+            apiArtifact.getMachineCodeLayout(), // This should work - both are Map<int[], Integer>
             initialWorldObjects,
             sourceMap,
-            emptyIntIntArrayMap, // callSiteBindings
-            emptyStringIntMap, // relativeCoordToLinearAddress
-            emptyIntIntArrayMap, // linearAddressToCoord
+            apiArtifact.getCallSiteBindings() != null ? apiArtifact.getCallSiteBindings() : emptyIntIntArrayMap, // callSiteBindings
+            relativeCoordToLinearAddress, // relativeCoordToLinearAddress (critical for source mapping)
+            convertedLinearAddressToCoord, // linearAddressToCoord (critical for source mapping)
             apiArtifact.getLabelAddressToName(),
-            emptyStringIntMap, // registerAliasMap
-            emptyStringListMap, // procNameToParamNames
-            emptySourceTokenMap, // tokenMap
-            emptyTokenLookup // tokenLookup
+            apiArtifact.getRegisterAliasMap() != null ? apiArtifact.getRegisterAliasMap() : emptyStringIntMap, // registerAliasMap
+            apiArtifact.getProcNameToParamNames() != null ? apiArtifact.getProcNameToParamNames() : emptyStringListMap, // procNameToParamNames
+            tokenMap, // tokenMap - CRITICAL for source annotations
+            tokenLookup // tokenLookup - CRITICAL for source annotations
         );
     }
 }

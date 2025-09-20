@@ -147,7 +147,12 @@ public class SimulationEngine extends AbstractService {
             
             // Set initial state to RUNNING - simulation starts immediately
             currentState.set(State.RUNNING);
-            log.debug("Simulation initialized and running at tick {}", currentTick.get());
+            
+            // Publish initial tick data (tick 0) before starting the loop
+            // Make sure currentTick is synchronized with simulation
+            currentTick.set(simulation.getCurrentTick());
+            publishTickData();
+            log.debug("Published initial tick data at tick {}", currentTick.get());
             
             // Main simulation loop - runs continuously until service is stopped
             while (currentState.get() != State.STOPPED) {
@@ -291,7 +296,10 @@ public class SimulationEngine extends AbstractService {
                 environmentProperties.getWorldShape(), 
                 environmentProperties.getTopology() == WorldTopology.TORUS
             );
-        return compiler.compile(sourceLines, programFile.getAbsolutePath(), runtimeEnvProps);
+        ProgramArtifact result = compiler.compile(sourceLines, programFile.getAbsolutePath(), runtimeEnvProps);
+        
+        
+        return result;
     }
     
     private File resolveProgramFile(String programPath) {
@@ -405,6 +413,7 @@ public class SimulationEngine extends AbstractService {
     }
     
     private void publishSimulationContext(List<ProgramArtifact> programArtifacts) {
+        log.debug("Publishing SimulationContext with {} program artifacts", programArtifacts.size());
         SimulationContext context = new SimulationContext();
         context.setSimulationRunId(simulationRunId);
         context.setEnvironment(environmentProperties);
@@ -451,6 +460,73 @@ public class SimulationEngine extends AbstractService {
             // Direct Map assignment - labelAddressToName is already Map<Integer, String>!
             apiArtifact.setLabelAddressToName(artifact.labelAddressToName());
             
+            // Convert coordinate mappings (critical for source mapping)
+            Map<String, Integer> relativeCoordToLinearAddress = new HashMap<>();
+            for (Map.Entry<String, Integer> entry : artifact.relativeCoordToLinearAddress().entrySet()) {
+                relativeCoordToLinearAddress.put(entry.getKey(), entry.getValue());
+            }
+            apiArtifact.setRelativeCoordToLinearAddress(relativeCoordToLinearAddress);
+            
+            Map<Integer, int[]> linearAddressToCoord = new HashMap<>();
+            for (Map.Entry<Integer, int[]> entry : artifact.linearAddressToCoord().entrySet()) {
+                linearAddressToCoord.put(entry.getKey(), entry.getValue());
+            }
+            apiArtifact.setLinearAddressToCoord(linearAddressToCoord);
+            
+            // CRITICAL: Convert TokenMap data for source annotations
+            Map<org.evochora.datapipeline.api.contracts.SerializableSourceInfo, org.evochora.datapipeline.api.contracts.SerializableTokenInfo> tokenMap = new HashMap<>();
+            if (artifact.tokenMap() != null) {
+                for (Map.Entry<org.evochora.compiler.api.SourceInfo, org.evochora.compiler.api.TokenInfo> entry : artifact.tokenMap().entrySet()) {
+                    org.evochora.compiler.api.SourceInfo sourceInfo = entry.getKey();
+                    org.evochora.compiler.api.TokenInfo tokenInfo = entry.getValue();
+                    
+                    org.evochora.datapipeline.api.contracts.SerializableSourceInfo serializableSourceInfo = 
+                        new org.evochora.datapipeline.api.contracts.SerializableSourceInfo(
+                            sourceInfo.fileName(), sourceInfo.lineNumber(), sourceInfo.columnNumber());
+                    
+                    org.evochora.datapipeline.api.contracts.SerializableTokenInfo serializableTokenInfo = 
+                        new org.evochora.datapipeline.api.contracts.SerializableTokenInfo(
+                            tokenInfo.tokenText(), tokenInfo.tokenType().toString(), tokenInfo.scope());
+                    
+                    tokenMap.put(serializableSourceInfo, serializableTokenInfo);
+                }
+            }
+            apiArtifact.setTokenMap(tokenMap);
+            
+            // CRITICAL: Convert TokenLookup data for source annotations
+            Map<String, Map<Integer, Map<Integer, List<org.evochora.datapipeline.api.contracts.SerializableTokenInfo>>>> tokenLookup = new HashMap<>();
+            if (artifact.tokenLookup() != null) {
+                for (Map.Entry<String, Map<Integer, Map<Integer, List<org.evochora.compiler.api.TokenInfo>>>> fileEntry : artifact.tokenLookup().entrySet()) {
+                    String fileName = fileEntry.getKey();
+                    Map<Integer, Map<Integer, List<org.evochora.datapipeline.api.contracts.SerializableTokenInfo>>> lineMap = new HashMap<>();
+                    
+                    for (Map.Entry<Integer, Map<Integer, List<org.evochora.compiler.api.TokenInfo>>> lineEntry : fileEntry.getValue().entrySet()) {
+                        Integer lineNumber = lineEntry.getKey();
+                        Map<Integer, List<org.evochora.datapipeline.api.contracts.SerializableTokenInfo>> columnMap = new HashMap<>();
+                        
+                        for (Map.Entry<Integer, List<org.evochora.compiler.api.TokenInfo>> columnEntry : lineEntry.getValue().entrySet()) {
+                            Integer column = columnEntry.getKey();
+                            List<org.evochora.datapipeline.api.contracts.SerializableTokenInfo> serializableTokens = new ArrayList<>();
+                            
+                            for (org.evochora.compiler.api.TokenInfo tokenInfo : columnEntry.getValue()) {
+                                serializableTokens.add(new org.evochora.datapipeline.api.contracts.SerializableTokenInfo(
+                                    tokenInfo.tokenText(), tokenInfo.tokenType().toString(), tokenInfo.scope()));
+                            }
+                            
+                            columnMap.put(column, serializableTokens);
+                        }
+                        lineMap.put(lineNumber, columnMap);
+                    }
+                    tokenLookup.put(fileName, lineMap);
+                }
+            }
+            apiArtifact.setTokenLookup(tokenLookup);
+            
+            // Set additional fields from Compiler-API ProgramArtifact
+            apiArtifact.setCallSiteBindings(artifact.callSiteBindings());
+            apiArtifact.setRegisterAliasMap(artifact.registerAliasMap());
+            apiArtifact.setProcNameToParamNames(artifact.procNameToParamNames());
+            
             apiArtifacts.add(apiArtifact);
         }
         context.setArtifacts(apiArtifacts);
@@ -462,7 +538,7 @@ public class SimulationEngine extends AbstractService {
                     IOutputChannel<?> channel = outputChannels.get(binding.channelName());
                     if (channel != null) {
                         ((IOutputChannel<SimulationContext>) channel).write(context);
-                        log.debug("Published SimulationContext to channel: {}", binding.channelName());
+                        log.debug("Published SimulationContext to channel: {} (artifacts: {})", binding.channelName(), apiArtifacts.size());
                     } else {
                         log.warn("Output channel not found: {}", binding.channelName());
                     }
@@ -489,7 +565,8 @@ public class SimulationEngine extends AbstractService {
                 
                 // Execute simulation tick
                 simulation.tick();
-                currentTick.incrementAndGet();
+                // Synchronize our currentTick with the simulation's currentTick (after tick execution)
+                currentTick.set(simulation.getCurrentTick());
                 
                 // Apply energy strategies
                 for (IEnergyDistributionCreator strategy : energyStrategies) {
@@ -552,8 +629,17 @@ public class SimulationEngine extends AbstractService {
         tickData.setTickNumber(currentTick.get());
         
         // Populate with actual simulation data
-        tickData.setCells(extractCellStates());
-        tickData.setOrganisms(extractOrganismStates());
+        List<org.evochora.datapipeline.api.contracts.RawCellState> cells = extractCellStates();
+        List<org.evochora.datapipeline.api.contracts.RawOrganismState> organisms = extractOrganismStates();
+        
+        // Ensure we never set null - use empty lists instead
+        if (cells == null) cells = new ArrayList<>();
+        if (organisms == null) organisms = new ArrayList<>();
+        
+        log.debug("Publishing tick {} - cells: {}, organisms: {}", currentTick.get(), cells.size(), organisms.size());
+        
+        tickData.setCells(cells);
+        tickData.setOrganisms(organisms);
         
         // Send to all configured output channels
         for (ChannelBindingStatus binding : channelBindings) {
@@ -669,6 +755,8 @@ public class SimulationEngine extends AbstractService {
         
         if (simulation != null) {
             for (Organism organism : simulation.getOrganisms()) {
+                if (organism.isDead()) continue; // Skip dead organisms for performance (identical to old implementation)
+                
                 org.evochora.datapipeline.api.contracts.RawOrganismState organismState = 
                     new org.evochora.datapipeline.api.contracts.RawOrganismState();
                 
@@ -682,6 +770,9 @@ public class SimulationEngine extends AbstractService {
                 
                 // Convert position data
                 organismState.setPosition(organism.getIp());
+                
+                // Set initial position (required for source mapping)
+                organismState.setInitialPosition(organism.getInitialPosition());
                 
                 // Convert VM state
                 organismState.setDv(organism.getDv());

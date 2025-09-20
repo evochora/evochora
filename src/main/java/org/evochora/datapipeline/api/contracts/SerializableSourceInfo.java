@@ -1,15 +1,15 @@
 package org.evochora.datapipeline.api.contracts;
 
 /**
- * A serializable representation of a source code location.
+ * Serializable version of SourceInfo for datapipeline API.
+ * Contains the same information as the compiler API SourceInfo.
  *
- * @param sourceName The name of the source file.
- * @param line       The line number in the source file.
- * @param column     The column number in the source file.
+ * @param fileName The file where the code is located
+ * @param lineNumber The line number
+ * @param columnNumber The column number
  */
 public record SerializableSourceInfo(
-    String sourceName,
-    int line,
-    int column
-) {
-}
+    String fileName,
+    int lineNumber,
+    int columnNumber
+) {}

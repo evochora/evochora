@@ -17,6 +17,7 @@ public class RawOrganismState {
 
     // VM State
     private int[] position;
+    private int[] initialPosition;
     private List<int[]> dp;
     private int activeDp;
     private int[] dv;
@@ -105,6 +106,14 @@ public class RawOrganismState {
 
     public void setPosition(int[] position) {
         this.position = position;
+    }
+
+    public int[] getInitialPosition() {
+        return initialPosition;
+    }
+
+    public void setInitialPosition(int[] initialPosition) {
+        this.initialPosition = initialPosition;
     }
 
     public List<int[]> getDp() {
