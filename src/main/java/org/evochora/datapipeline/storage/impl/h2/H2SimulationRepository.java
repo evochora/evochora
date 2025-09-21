@@ -3,9 +3,9 @@ package org.evochora.datapipeline.storage.impl.h2;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.storage.api.indexer.IEnvironmentStateWriter;
 import org.evochora.datapipeline.storage.api.indexer.model.EnvironmentState;
-import org.evochora.datapipeline.storage.api.indexer.model.Position;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.h2.tools.Server;
 
 import java.sql.*;
 import java.util.List;
@@ -27,14 +27,25 @@ public class H2SimulationRepository implements IEnvironmentStateWriter {
     
     private static final Logger logger = LoggerFactory.getLogger(H2SimulationRepository.class);
     
-    private final String jdbcUrl;
+    private final String jdbcUrlTemplate;
     private final String user;
     private final String password;
     private final boolean initializeSchema;
+    private String actualJdbcUrl;
+    
+    // Web Console configuration
+    private final boolean webConsoleEnabled;
+    private final int webConsolePort;
+    private final boolean webConsoleAllowOthers;
+    private final boolean webConsoleSSL;
+    private final String webConsolePath;
+    private final String webConsoleAdminPassword;
+    private final boolean webConsoleBrowser;
     
     private Connection connection;
     private PreparedStatement insertStatement;
     private int dimensions = 0; // Environment dimensions set during initialization
+    private Server webConsoleServer;
     
     /**
      * Creates a new H2SimulationRepository with the specified configuration.
@@ -42,30 +53,102 @@ public class H2SimulationRepository implements IEnvironmentStateWriter {
      * @param config the configuration object containing H2 settings
      */
     public H2SimulationRepository(Config config) {
-        this.jdbcUrl = config.hasPath("jdbcUrl") ? config.getString("jdbcUrl") : 
-            "jdbc:h2:file:./evochora_data/simulation_db;MV_STORE=FALSE;TRACE_LEVEL_FILE=0";
+        if (!config.hasPath("jdbcUrl")) {
+            logger.error("Missing required configuration: jdbcUrl. Cannot initialize H2SimulationRepository without database URL.");
+            throw new IllegalArgumentException("jdbcUrl configuration is required");
+        }
+        this.jdbcUrlTemplate = config.getString("jdbcUrl");
+        
+        if (!config.hasPath("user")) {
+            logger.warn("Missing configuration: user. H2 will use default user 'sa' which may not be suitable for production.");
+        }
         this.user = config.hasPath("user") ? config.getString("user") : "sa";
+        
+        if (!config.hasPath("password")) {
+            logger.warn("Missing configuration: password. H2 will use empty password which may not be suitable for production.");
+        }
         this.password = config.hasPath("password") ? config.getString("password") : "";
+        
+        if (!config.hasPath("initializeSchema")) {
+            logger.warn("Missing configuration: initializeSchema. Defaulting to true - schema will be auto-created.");
+        }
         this.initializeSchema = config.hasPath("initializeSchema") ? config.getBoolean("initializeSchema") : true;
+        
+        // Parse Web Console configuration
+        Config webConsoleConfig = config.hasPath("webConsole") ? config.getConfig("webConsole") : 
+            com.typesafe.config.ConfigFactory.empty();
+        
+        if (!webConsoleConfig.hasPath("enabled")) {
+            logger.debug("Web Console configuration missing: enabled. Defaulting to disabled.");
+        }
+        this.webConsoleEnabled = webConsoleConfig.hasPath("enabled") ? webConsoleConfig.getBoolean("enabled") : false;
+        
+        if (webConsoleEnabled && !webConsoleConfig.hasPath("port")) {
+            logger.warn("Web Console enabled but missing configuration: port. Defaulting to 8082.");
+        }
+        this.webConsolePort = webConsoleConfig.hasPath("port") ? webConsoleConfig.getInt("port") : 8082;
+        
+        if (webConsoleEnabled && !webConsoleConfig.hasPath("allowOthers")) {
+            logger.debug("Web Console configuration missing: allowOthers. Defaulting to false (localhost only).");
+        }
+        this.webConsoleAllowOthers = webConsoleConfig.hasPath("allowOthers") ? webConsoleConfig.getBoolean("allowOthers") : false;
+        
+        if (webConsoleEnabled && !webConsoleConfig.hasPath("webSSL")) {
+            logger.debug("Web Console configuration missing: webSSL. Defaulting to false (HTTP).");
+        }
+        this.webConsoleSSL = webConsoleConfig.hasPath("webSSL") ? webConsoleConfig.getBoolean("webSSL") : false;
+        
+        if (webConsoleEnabled && !webConsoleConfig.hasPath("webPath")) {
+            logger.debug("Web Console configuration missing: webPath. Defaulting to '/console'.");
+        }
+        this.webConsolePath = webConsoleConfig.hasPath("webPath") ? webConsoleConfig.getString("webPath") : "/console";
+        
+        if (webConsoleEnabled && !webConsoleConfig.hasPath("webAdminPassword")) {
+            logger.warn("Web Console enabled but missing configuration: webAdminPassword. Console will be accessible without authentication.");
+        }
+        this.webConsoleAdminPassword = webConsoleConfig.hasPath("webAdminPassword") ? webConsoleConfig.getString("webAdminPassword") : null;
+        
+        if (webConsoleEnabled && !webConsoleConfig.hasPath("browser")) {
+            logger.debug("Web Console configuration missing: browser. Defaulting to false (no auto-open).");
+        }
+        this.webConsoleBrowser = webConsoleConfig.hasPath("browser") ? webConsoleConfig.getBoolean("browser") : false;
     }
     
     @Override
-    public void initialize(int dimensions) {
+    public void initialize(int dimensions, String simulationRunId) {
         if (dimensions <= 0) {
             throw new IllegalArgumentException("Dimensions must be greater than 0, got: " + dimensions);
         }
+        if (simulationRunId == null || simulationRunId.trim().isEmpty()) {
+            throw new IllegalArgumentException("SimulationRunId cannot be null or empty");
+        }
         
         this.dimensions = dimensions;
-        logger.info("Initializing H2SimulationRepository with URL: {} and {} dimensions", jdbcUrl, dimensions);
+        
+        // Replace placeholder in JDBC URL template with actual simulation run ID
+        this.actualJdbcUrl = jdbcUrlTemplate.replace("{simulationRunId}", simulationRunId);
+        
+        logger.info("Initializing H2SimulationRepository with URL: {} and {} dimensions for simulation run: {}", 
+            actualJdbcUrl, dimensions, simulationRunId);
         
         try {
-            connection = DriverManager.getConnection(jdbcUrl, user, password);
+            // Explicitly load H2 driver
+            Class.forName("org.h2.Driver");
+            connection = DriverManager.getConnection(actualJdbcUrl, user, password);
             
             if (initializeSchema) {
                 createEnvironmentStateTable();
             }
             
+            // Start Web Console if enabled
+            if (webConsoleEnabled) {
+                startWebConsole();
+            }
+            
             logger.info("H2SimulationRepository initialized successfully");
+        } catch (ClassNotFoundException e) {
+            logger.error("H2 driver not found in classpath", e);
+            throw new RuntimeException("H2 driver not available", e);
         } catch (SQLException e) {
             logger.error("Failed to initialize H2SimulationRepository", e);
             throw new RuntimeException("Database initialization failed", e);
@@ -74,17 +157,34 @@ public class H2SimulationRepository implements IEnvironmentStateWriter {
     
     /**
      * Closes the database connection and releases resources.
+     * Implements IEnvironmentStateWriter.close() interface method.
      * 
-     * @throws SQLException if closing fails
+     * @throws RuntimeException if closing fails
      */
-    public void close() throws SQLException {
-        if (insertStatement != null) {
-            insertStatement.close();
+    @Override
+    public void close() {
+        try {
+            // Stop Web Console if running
+            if (webConsoleServer != null && webConsoleServer.isRunning(false)) {
+                try {
+                    webConsoleServer.stop();
+                    logger.info("H2 Web Console stopped");
+                } catch (Exception e) {
+                    logger.warn("Failed to stop H2 Web Console", e);
+                }
+            }
+            
+            if (insertStatement != null) {
+                insertStatement.close();
+            }
+            if (connection != null && !connection.isClosed()) {
+                connection.close();
+            }
+            logger.info("H2SimulationRepository closed");
+        } catch (SQLException e) {
+            logger.error("Failed to close H2SimulationRepository", e);
+            throw new RuntimeException("Failed to close H2SimulationRepository", e);
         }
-        if (connection != null && !connection.isClosed()) {
-            connection.close();
-        }
-        logger.info("H2SimulationRepository closed");
     }
     
     @Override
@@ -178,7 +278,7 @@ public class H2SimulationRepository implements IEnvironmentStateWriter {
      */
     private String buildCreateTableSQL() {
         StringBuilder sql = new StringBuilder();
-        sql.append("CREATE TABLE environment_state (");
+        sql.append("CREATE TABLE IF NOT EXISTS environment_state (");
         sql.append("tick BIGINT NOT NULL,");
         sql.append("molecule_type VARCHAR(255) NOT NULL,");
         sql.append("molecule_value INT NOT NULL,");
@@ -201,7 +301,7 @@ public class H2SimulationRepository implements IEnvironmentStateWriter {
         try (Statement stmt = connection.createStatement()) {
             // Primary index on tick and position
             StringBuilder indexSql = new StringBuilder();
-            indexSql.append("CREATE INDEX idx_env_state_tick_pos ON environment_state (tick");
+            indexSql.append("CREATE INDEX IF NOT EXISTS idx_env_state_tick_pos ON environment_state (tick");
             for (int i = 0; i < dimensions; i++) {
                 indexSql.append(",pos_").append(i);
             }
@@ -246,6 +346,46 @@ public class H2SimulationRepository implements IEnvironmentStateWriter {
         int[] coordinates = state.position().coordinates();
         for (int i = 0; i < dimensions; i++) {
             stmt.setInt(5 + i, coordinates[i]);
+        }
+    }
+    
+    /**
+     * Starts the H2 Web Console server with the configured options.
+     */
+    private void startWebConsole() {
+        try {
+            // H2 Web Console with minimal supported options only
+            String[] args = {
+                "-web",
+                "-webPort", String.valueOf(webConsolePort)
+            };
+            
+            // Only add -webAllowOthers if it's true (no value needed)
+            if (webConsoleAllowOthers) {
+                String[] argsWithAllowOthers = new String[args.length + 1];
+                System.arraycopy(args, 0, argsWithAllowOthers, 0, args.length);
+                argsWithAllowOthers[args.length] = "-webAllowOthers";
+                args = argsWithAllowOthers;
+            }
+            
+            webConsoleServer = Server.createWebServer(args);
+            webConsoleServer.start();
+            
+            logger.info("H2 Web Console started on port {} at http://localhost:{}", 
+                webConsolePort, webConsolePort);
+            logger.info("===============================================");
+            logger.info("H2 WEB CONSOLE CONNECTION INFO:");
+            logger.info("===============================================");
+            logger.info("🌐 Open: http://localhost:{}", webConsolePort);
+            logger.info("📋 JDBC URL: {}", actualJdbcUrl);
+            logger.info("👤 User: {}", user);
+            logger.info("🔑 Password: {}", password.isEmpty() ? "(empty)" : "***");
+            logger.info("===============================================");
+            logger.info("💡 Copy these values into the H2 Web Console login form");
+            
+        } catch (Exception e) {
+            logger.error("Failed to start H2 Web Console", e);
+            // Don't throw exception - Web Console is optional
         }
     }
     

@@ -1,18 +1,22 @@
 package org.evochora.datapipeline.services.indexer;
 
 import com.typesafe.config.Config;
+import org.evochora.datapipeline.api.channels.IInputChannel;
 import org.evochora.datapipeline.api.contracts.RawTickData;
 import org.evochora.datapipeline.api.contracts.RawCellState;
-import org.evochora.datapipeline.api.services.State;
+import org.evochora.datapipeline.api.contracts.SimulationContext;
+import org.evochora.datapipeline.api.services.ServiceStatus;
 import org.evochora.datapipeline.storage.api.indexer.IEnvironmentStateWriter;
 import org.evochora.datapipeline.storage.api.indexer.model.EnvironmentState;
 import org.evochora.datapipeline.storage.api.indexer.model.Position;
-import org.evochora.datapipeline.storage.impl.h2.H2SimulationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -21,7 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Service for indexing environment state data to persistent storage.
  * 
- * <p>This service listens to simulation context messages and extracts environment
+ * <p>This service listens to raw tick data messages and extracts environment
  * state information for cells that contain molecules or are owned by organisms.
  * The service implements batch processing with configurable batch size and timeout
  * to optimize database performance.</p>
@@ -30,6 +34,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <ul>
  *   <li>batchSize: Maximum number of environment states per batch (default: 1000)</li>
  *   <li>batchTimeoutMs: Maximum time to wait before flushing a batch (default: 5000ms)</li>
+ *   <li>storageWriter: Configuration for the storage writer implementation</li>
  * </ul>
  * </p>
  * 
@@ -43,232 +48,467 @@ public class EnvironmentStateIndexerService extends org.evochora.datapipeline.se
     // Configuration
     private final int batchSize;
     private final long batchTimeoutMs;
-    private final IEnvironmentStateWriter storageWriter;
+    private final Config serviceConfig;
     
     // Batch processing
     private final List<EnvironmentState> currentBatch = new ArrayList<>();
     private final Object batchLock = new Object();
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-    private final AtomicBoolean batchScheduled = new AtomicBoolean(false);
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    private final AtomicBoolean running = new AtomicBoolean(false);
     
-    // Environment properties
-    private int environmentDimensions = 0;
-    private boolean initialized = false;
+    // Storage
+    private IEnvironmentStateWriter storageWriter;
+    private volatile int environmentDimensions = 0;
+    private volatile boolean storageInitialized = false;
+    private volatile long lastProcessedTick = -1;
+    
+    // Channel management
+    private final Map<String, IInputChannel<?>> inputChannels = new ConcurrentHashMap<>();
+    private String tickDataChannelName;
+    private String contextDataChannelName;
+    private IInputChannel<?> rawTickDataChannel;
+    private IInputChannel<?> contextChannel;
     
     /**
      * Creates a new EnvironmentStateIndexerService with the specified configuration.
-     * 
-     * @param options Configuration options from the pipeline config
+     *
+     * @param config The HOCON configuration options for this service
      */
-    public EnvironmentStateIndexerService(Config options) {
-        // Read from options sub-config
-        Config serviceOptions = options.hasPath("options") ? options.getConfig("options") : options;
+    public EnvironmentStateIndexerService(Config config) {
+        if (!config.hasPath("batchSize")) {
+            log.error("Missing required configuration: batchSize. Cannot initialize EnvironmentStateIndexerService without batch size.");
+            throw new IllegalArgumentException("batchSize configuration is required");
+        }
+        this.batchSize = config.getInt("batchSize");
+        if (batchSize <= 0) {
+            log.error("Invalid batchSize: {}. Must be greater than 0.", batchSize);
+            throw new IllegalArgumentException("batchSize must be greater than 0, got: " + batchSize);
+        }
+
+        if (!config.hasPath("batchTimeoutMs")) {
+            log.error("Missing required configuration: batchTimeoutMs. Cannot initialize EnvironmentStateIndexerService without batch timeout.");
+            throw new IllegalArgumentException("batchTimeoutMs configuration is required");
+        }
+        this.batchTimeoutMs = config.getLong("batchTimeoutMs");
+        if (batchTimeoutMs <= 0) {
+            log.error("Invalid batchTimeoutMs: {}. Must be greater than 0.", batchTimeoutMs);
+            throw new IllegalArgumentException("batchTimeoutMs must be greater than 0, got: " + batchTimeoutMs);
+        }
         
-        this.batchSize = serviceOptions.hasPath("batchSize") ? serviceOptions.getInt("batchSize") : 1000;
-        this.batchTimeoutMs = serviceOptions.hasPath("batchTimeoutMs") ? serviceOptions.getLong("batchTimeoutMs") : 5000L;
+        if (!config.hasPath("storage")) {
+            log.error("Missing required configuration: storage. EnvironmentStateIndexerService requires storage configuration reference.");
+            throw new IllegalArgumentException("storage configuration is required");
+        }
         
-        // Initialize storage writer (for now, hardcoded to H2 - later this will be injected)
-        this.storageWriter = createStorageWriter(serviceOptions);
+        // Parse input channel mappings (similar to SimulationEngine outputs)
+        if (config.hasPath("inputs")) {
+            Config inputsConfig = config.getConfig("inputs");
+            this.tickDataChannelName = inputsConfig.getString("tickData");
+            this.contextDataChannelName = inputsConfig.getString("contextData");
+        } else {
+            throw new IllegalArgumentException("EnvironmentStateIndexerService requires 'inputs' configuration with 'tickData' and 'contextData' channel names");
+        }
         
-        log.info("EnvironmentStateIndexerService initialized - batchSize: {}, batchTimeoutMs: {}ms", 
-                batchSize, batchTimeoutMs);
+        this.serviceConfig = config; // The entire service configuration
+
+        log.info("EnvironmentStateIndexerService initialized - batchSize: {}, batchTimeoutMs: {}ms, tickDataChannel: {}, contextDataChannel: {}",
+            batchSize, batchTimeoutMs, tickDataChannelName, contextDataChannelName);
     }
-    
+
+    @Override
+    public void addInputChannel(String channelKey, org.evochora.datapipeline.api.channels.IInputChannel<?> channel) {
+        log.info("Added input channel: {} (type: {})", channelKey, channel.getClass().getSimpleName());
+
+        // Call parent to add to channelBindings for status display
+        super.addInputChannel(channelKey, channel);
+
+        // Store channel for later use
+        inputChannels.put(channelKey, channel);
+
+        // Identify channel type based on the actual channel name (not the input key)
+        if (channelKey.equals(tickDataChannelName)) {
+            this.rawTickDataChannel = channel;
+            log.info("Identified channel {} as RawTickData channel", channelKey);
+        } else if (channelKey.equals(contextDataChannelName)) {
+            this.contextChannel = channel;
+            log.info("Identified channel {} as SimulationContext channel", channelKey);
+        } else {
+            log.warn("Unknown channel type for {} - expected '{}' or '{}'", 
+                channelKey, tickDataChannelName, contextDataChannelName);
+        }
+    }
+
     @Override
     public void run() {
+        log.info("EnvironmentStateIndexerService run() method started");
         try {
-            log.info("Started EnvironmentStateIndexerService");
-            currentState.set(State.RUNNING);
-            
-            // Main processing loop
-            while (currentState.get() == State.RUNNING && !Thread.currentThread().isInterrupted()) {
-                try {
-                    // Wait for messages or timeout
-                    Thread.sleep(100); // Small delay to prevent busy waiting
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
+            // 1. Context lesen und verarbeiten - so lange bis es funktioniert
+            log.info("Waiting for SimulationContext from contextChannel...");
+            log.info("run() method - running.get(): {}, storageInitialized: {}", running.get(), storageInitialized);
+            while (running.get() && !storageInitialized) {
+                // Check for pause
+                if (paused) {
+                    synchronized (pauseLock) {
+                        while (paused && running.get()) {
+                            try {
+                                pauseLock.wait();
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                return;
+                            }
+                        }
+                    }
+                }
+                
+                log.debug("Reading from contextChannel...");
+                Object contextObj = contextChannel.read();
+                if (contextObj instanceof SimulationContext) {
+                    processSimulationContext((SimulationContext) contextObj);
+                } else {
+                    log.warn("Expected SimulationContext but got: {}", contextObj.getClass().getSimpleName());
                 }
             }
             
+            // 2. Tick-Data verarbeiten - nur wenn Storage initialisiert ist
+            log.debug("Storage initialized, now processing tick data from rawTickDataChannel...");
+            while (running.get()) {
+                // Check for pause BEFORE reading from channel
+                if (paused) {
+                    synchronized (pauseLock) {
+                        while (paused && running.get()) {
+                            try {
+                                pauseLock.wait();
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                return;
+                            }
+                        }
+                    }
+                }
+                
+                // Only read if not paused and still running
+                if (!paused && running.get()) {
+                    log.debug("Reading from rawTickDataChannel...");
+                    Object tickDataObj = rawTickDataChannel.read();
+                    if (tickDataObj instanceof RawTickData) {
+                        processRawTickData((RawTickData) tickDataObj);
+                    } else {
+                        log.warn("Expected RawTickData but got: {}", tickDataObj.getClass().getSimpleName());
+                    }
+                }
+                // Kein Thread.sleep() - read() blockiert bereits!
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.info("EnvironmentStateIndexerService interrupted");
         } catch (Exception e) {
-            log.error("EnvironmentStateIndexerService failed: {}", e.getMessage(), e);
-            currentState.set(State.STOPPED);
+            log.error("Error in EnvironmentStateIndexerService run loop", e);
+            // Ensure resources are cleaned up even on unexpected exceptions
+            try {
+                flushBatch();
+            } catch (Exception flushError) {
+                log.error("Failed to flush batch during exception cleanup", flushError);
+            }
         } finally {
-            // Flush any remaining data
-            flushBatch();
-            scheduler.shutdown();
-            log.info("EnvironmentStateIndexerService stopped");
+            // Ensure service is marked as stopped
+            running.set(false);
         }
     }
-    
+
     @Override
-    public void addInputChannel(String name, org.evochora.datapipeline.api.channels.IInputChannel<?> channel) {
-        super.addInputChannel(name, channel);
+    public void start() {
+        log.info("Starting EnvironmentStateIndexerService");
         
-        if ("raw-tick-channel".equals(name)) {
-            // Start listening to raw tick data messages
-            startListeningToRawTickData((org.evochora.datapipeline.api.channels.IInputChannel<RawTickData>) channel);
+        // Validate channels are available
+        if (contextChannel == null) {
+            log.error("Context channel not available - cannot determine environment dimensions");
+            return;
         }
+        
+        if (rawTickDataChannel == null) {
+            log.error("Raw tick data channel not available - cannot process tick data");
+            return;
+        }
+
+        // Prevent double start
+        if (running.get()) {
+            log.warn("Service is already running - ignoring duplicate start() call");
+            return;
+        }
+
+        // Call parent start() to handle state and thread creation FIRST
+        super.start();
+        
+        // Set running flag to true after parent start() creates the thread
+        running.set(true);
+        
+        // Schedule periodic batch flushing AFTER service is started
+        scheduler.scheduleAtFixedRate(
+            this::flushBatch,
+            batchTimeoutMs,
+            batchTimeoutMs,
+            TimeUnit.MILLISECONDS
+        );
     }
-    
-    /**
-     * Starts listening to raw tick data messages from the specified channel.
-     */
-    private void startListeningToRawTickData(org.evochora.datapipeline.api.channels.IInputChannel<RawTickData> channel) {
-        // This would typically be implemented with a proper message listener
-        // For now, this is a placeholder for the actual implementation
-        log.info("Started listening to raw-tick-channel");
-    }
-    
-    /**
-     * Processes a raw tick data message and extracts environment state data.
-     * This method should be called by the message processing system.
-     * 
-     * @param tickData the raw tick data to process
-     */
-    public void processRawTickData(RawTickData tickData) {
+
+    @Override
+    public void stop() {
+        log.info("Stopping EnvironmentStateIndexerService");
+        
+        // Flush any remaining data
+        flushBatch();
+        
+        // Shutdown scheduler
+        scheduler.shutdown();
         try {
-            // Initialize storage writer with environment dimensions if not done yet
-            if (!initialized) {
-                initializeStorage(tickData);
+            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                scheduler.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            scheduler.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        
+        // Close storage writer
+        if (storageWriter != null) {
+            try {
+                storageWriter.close();
+                log.info("Storage writer closed successfully");
+            } catch (Exception e) {
+                log.error("Error closing storage writer", e);
+            }
+        }
+        
+        // Call parent stop() to handle state management and synchronization
+        super.stop();
+    }
+
+
+    @Override
+    public ServiceStatus getServiceStatus() {
+        // Get base status from parent (includes channel binding statuses)
+        ServiceStatus baseStatus = super.getServiceStatus();
+        
+        // Override state based on our running flag if needed
+        // (The parent already handles currentState correctly)
+        return baseStatus;
+    }
+
+    @Override
+    public String getActivityInfo() {
+        if (lastProcessedTick == -1) {
+            return "No ticks processed yet";
+        }
+        return String.format("Last tick: %d", lastProcessedTick);
+    }
+
+    /**
+     * Returns whether the storage has been initialized.
+     * Used for testing purposes.
+     */
+    protected boolean isStorageInitialized() {
+        return storageInitialized;
+    }
+
+    /**
+     * Processes a simulation context message to extract environment dimensions.
+     * This method initializes the storage writer once dimensions are known.
+     *
+     * @param context the simulation context containing environment information
+     */
+    protected void processSimulationContext(SimulationContext context) {
+        log.info("processSimulationContext called - storageInitialized: {}", storageInitialized);
+        if (storageInitialized) {
+            log.warn("SimulationContext received multiple times - storage already initialized, skipping duplicate context");
+            return;
+        }
+        
+        try {
+            // Extract environment dimensions from context
+            if (context.getEnvironment() == null || context.getEnvironment().getWorldShape() == null) {
+                log.warn("SimulationContext has no environment or world shape information");
+                return;
             }
             
-            // Extract environment states from the tick data
-            List<EnvironmentState> states = extractEnvironmentStates(tickData);
-            
-            if (!states.isEmpty()) {
-                addToBatch(states);
+            this.environmentDimensions = context.getEnvironment().getWorldShape().length;
+            if (environmentDimensions <= 0) {
+                log.warn("Invalid environment dimensions: {}", environmentDimensions);
+                return;
             }
             
+            log.info("Extracted environment dimensions: {} from SimulationContext", environmentDimensions);
+            
+            // Initialize storage with dimensions and simulation run ID
+            initializeStorageWithDimensions(context.getSimulationRunId());
+            
+            // Verify storage was successfully initialized
+            if (storageInitialized) {
+                log.debug("Storage initialized successfully with {} dimensions", environmentDimensions);
+            } else {
+                log.warn("Storage initialization failed - will retry with next SimulationContext");
+            }
         } catch (Exception e) {
-            log.error("Failed to process raw tick data: {}", e.getMessage(), e);
+            log.error("Failed to process SimulationContext: {} - will retry", e.getMessage(), e);
+            storageInitialized = false; // Ensure we retry
+            throw e; // Re-throw to make test failures visible
         }
     }
-    
+
     /**
-     * Initializes the storage writer with environment dimensions.
-     * For now, we assume 2D environment - this should be passed from configuration.
+     * Initializes storage with known dimensions (called after receiving SimulationContext).
      */
-    private void initializeStorage(RawTickData tickData) {
-        // For now, assume 2D environment - this should be passed from configuration
-        environmentDimensions = 2;
-        storageWriter.initialize(environmentDimensions);
-        initialized = true;
-        log.info("Storage initialized with {} dimensions", environmentDimensions);
+    private void initializeStorageWithDimensions(String simulationRunId) {
+        try {
+            // Create storage writer from configuration
+            storageWriter = createStorageWriter();
+            
+            // Initialize storage with dimensions and simulation run ID
+            storageWriter.initialize(environmentDimensions, simulationRunId);
+            
+            storageInitialized = true;
+            log.info("Storage writer initialized successfully with {} dimensions for simulation run: {}", 
+                environmentDimensions, simulationRunId);
+        } catch (Exception e) {
+            log.error("Failed to initialize storage writer with {} dimensions for simulation run {}: {}", 
+                environmentDimensions, simulationRunId, e.getMessage(), e);
+            log.error("Storage writer initialization failed - full stack trace:", e);
+            storageInitialized = false;
+            throw new RuntimeException("Storage initialization failed", e);
+        }
     }
-    
+
     /**
-     * Extracts environment state data from raw tick data.
-     * Only includes cells that have molecules or are owned by organisms.
+     * Creates the storage writer from configuration.
+     */
+    protected IEnvironmentStateWriter createStorageWriter() {
+        try {
+            // Get storage configuration from service config
+            String storageConfigName = serviceConfig.getString("storage");
+            Config storageConfig = serviceConfig.getConfig("storageConfig").getConfig(storageConfigName);
+            String className = storageConfig.getString("className");
+            Config storageOptions = storageConfig.getConfig("options");
+            
+            log.debug("Creating storage writer: {} with options: {}", className, storageOptions);
+            
+            // Instantiate storage writer
+            Class<?> clazz = Class.forName(className);
+            Constructor<?> constructor = clazz.getConstructor(Config.class);
+            return (IEnvironmentStateWriter) constructor.newInstance(storageOptions);
+        } catch (Exception e) {
+            log.error("Failed to create storage writer", e);
+            throw new RuntimeException("Cannot create storage writer", e);
+        }
+    }
+
+    /**
+     * Processes raw tick data by extracting environment state information.
+     */
+    protected void processRawTickData(RawTickData tickData) {
+        if (!storageInitialized) {
+            log.warn("Storage not initialized yet, skipping tick data");
+            return;
+        }
+        
+        // Update last processed tick
+        lastProcessedTick = tickData.getTickNumber();
+        
+        List<EnvironmentState> states = extractEnvironmentStates(tickData);
+        
+        if (!states.isEmpty()) {
+            boolean shouldFlush = false;
+            synchronized (batchLock) {
+                currentBatch.addAll(states);
+                
+                // Check if batch size reached
+                if (currentBatch.size() >= batchSize) {
+                    shouldFlush = true;
+                }
+            }
+            
+            // Flush outside of synchronized block to avoid deadlock
+            if (shouldFlush) {
+                flushBatch();
+            }
+        }
+    }
+
+    /**
+     * Extracts environment state information from raw tick data.
      */
     private List<EnvironmentState> extractEnvironmentStates(RawTickData tickData) {
         List<EnvironmentState> states = new ArrayList<>();
         
-        if (tickData.getCells() == null) {
+        if (tickData.getCells() == null || tickData.getCells().isEmpty()) {
             return states;
         }
         
-        long tick = tickData.getTickNumber();
-        
         for (RawCellState cell : tickData.getCells()) {
-            // Only process cells that have molecules or are owned
-            if (cell.getValue() > 0) {
-                // Cell has a molecule
-                states.add(new EnvironmentState(
-                    tick,
+            // Only process cells that have molecules OR are owned by organisms
+            // Exclude only cells where CODE=0 AND Owner=0
+            boolean shouldExclude = (cell.getType() == org.evochora.runtime.Config.TYPE_CODE && 
+                                    cell.getValue() == 0 && 
+                                    cell.getOwnerId() == 0);
+            
+            if (!shouldExclude) {
+                String moleculeType;
+                try {
+                    moleculeType = getMoleculeTypeName(cell.getType());
+                } catch (IllegalArgumentException e) {
+                    log.warn("Unknown molecule type at position {} in tick {} with owner {}: {}", 
+                        java.util.Arrays.toString(cell.getPosition()), tickData.getTickNumber(), cell.getOwnerId(), e.getMessage());
+                    moleculeType = "UNKNOWN";
+                }
+                
+                EnvironmentState state = new EnvironmentState(
+                    tickData.getTickNumber(),
                     new Position(cell.getPosition()),
-                    String.valueOf(cell.getType()),
+                    moleculeType,
                     cell.getValue(),
                     cell.getOwnerId()
-                ));
-            } else if (cell.getOwnerId() > 0) {
-                // Cell is owned but has no molecule
-                states.add(new EnvironmentState(
-                    tick,
-                    new Position(cell.getPosition()),
-                    "EMPTY", // Placeholder for owned but empty cells
-                    0,
-                    cell.getOwnerId()
-                ));
+                );
+                states.add(state);
             }
         }
         
         return states;
     }
-    
+
     /**
-     * Adds environment states to the current batch and triggers flush if needed.
+     * Converts molecule type ID to human-readable name.
+     * 
+     * @param type The molecule type ID
+     * @return Human-readable name for the type
+     * @throws IllegalArgumentException if the type is unknown
      */
-    private void addToBatch(List<EnvironmentState> states) {
-        synchronized (batchLock) {
-            currentBatch.addAll(states);
-            
-            // Check if batch is full
-            if (currentBatch.size() >= batchSize) {
-                flushBatch();
-            } else if (!batchScheduled.get()) {
-                // Schedule timeout flush
-                scheduleBatchFlush();
-            }
-        }
-    }
-    
-    /**
-     * Schedules a batch flush after the configured timeout.
-     */
-    private void scheduleBatchFlush() {
-        if (batchScheduled.compareAndSet(false, true)) {
-            scheduler.schedule(() -> {
-                synchronized (batchLock) {
-                    if (!currentBatch.isEmpty()) {
-                        flushBatch();
-                    }
-                    batchScheduled.set(false);
-                }
-            }, batchTimeoutMs, TimeUnit.MILLISECONDS);
-        }
+    private String getMoleculeTypeName(int type) {
+        return switch (type) {
+            case org.evochora.runtime.Config.TYPE_CODE -> "CODE";
+            case org.evochora.runtime.Config.TYPE_DATA -> "DATA";
+            case org.evochora.runtime.Config.TYPE_ENERGY -> "ENERGY";
+            case org.evochora.runtime.Config.TYPE_STRUCTURE -> "STRUCTURE";
+            default -> throw new IllegalArgumentException("Unknown molecule type: " + type + " (0x" + Integer.toHexString(type) + ")");
+        };
     }
     
     /**
      * Flushes the current batch to storage.
      */
     private void flushBatch() {
-        List<EnvironmentState> batchToFlush;
+        if (currentBatch.isEmpty()) {
+            return;
+        }
         
+        List<EnvironmentState> batchToFlush;
         synchronized (batchLock) {
-            if (currentBatch.isEmpty()) {
-                return;
-            }
-            
             batchToFlush = new ArrayList<>(currentBatch);
             currentBatch.clear();
-            batchScheduled.set(false);
         }
         
         try {
             storageWriter.writeEnvironmentStates(batchToFlush);
             log.debug("Flushed batch of {} environment states", batchToFlush.size());
         } catch (Exception e) {
-            log.error("Failed to flush batch: {}", e.getMessage(), e);
+            log.error("Failed to flush batch of {} environment states", batchToFlush.size(), e);
         }
-    }
-    
-    @Override
-    public String getActivityInfo() {
-        synchronized (batchLock) {
-            return String.format("Batch: %d/%d", currentBatch.size(), batchSize);
-        }
-    }
-    
-    /**
-     * Creates the storage writer instance. This method is protected to allow
-     * testing with mocked implementations.
-     * 
-     * @param config the configuration for the storage writer
-     * @return the storage writer instance
-     */
-    protected IEnvironmentStateWriter createStorageWriter(Config config) {
-        return new H2SimulationRepository(config);
     }
 }

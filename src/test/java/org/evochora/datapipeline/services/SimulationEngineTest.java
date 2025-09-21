@@ -237,11 +237,15 @@ public class SimulationEngineTest {
 
     @Test
     void testEmptyConfiguration() {
-        // Test with minimal config
+        // Test with minimal config including required outputs
         Config minimalConfig = ConfigFactory.parseString("""
             environment {
                 shape = [5, 5]
                 topology = "PLANE"
+            }
+            outputs {
+                tickData = "raw-tick-data"
+                contextData = "context-data"
             }
             """);
         
@@ -273,7 +277,7 @@ public class SimulationEngineTest {
 
     @Test
     void testErrorHandling() {
-        // Test with invalid configuration
+        // Test with invalid configuration (missing outputs)
         Config invalidConfig = ConfigFactory.parseString("""
             environment {
                 shape = []
@@ -281,13 +285,10 @@ public class SimulationEngineTest {
             }
             """);
         
-        // Should handle invalid config gracefully
-        SimulationEngine invalidEngine = new SimulationEngine(invalidConfig);
-        assertNotNull(invalidEngine);
-        
-        // Service should still be creatable
-        ServiceStatus status = invalidEngine.getServiceStatus();
-        assertEquals(State.STOPPED, status.state());
+        // Should throw exception for missing outputs configuration
+        assertThrows(IllegalArgumentException.class, () -> {
+            new SimulationEngine(invalidConfig);
+        });
     }
 
     /**

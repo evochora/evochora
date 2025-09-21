@@ -30,6 +30,7 @@ public class ServiceManager {
     private final Map<String, Object> channels = new HashMap<>();
     private final Map<String, IService> services = new HashMap<>();
     private final Map<String, Thread> serviceThreads = new HashMap<>();
+    private final Map<String, Config> storageConfigs = new HashMap<>();
     private final List<AbstractChannelBinding<?>> channelBindings = new ArrayList<>();
     private final Map<String, ChannelMetrics> channelMetrics = new ConcurrentHashMap<>();
     private ScheduledExecutorService metricsExecutor;
@@ -72,6 +73,38 @@ public class ServiceManager {
             startAll();
         }
     }
+
+    /**
+     * Instantiates storage configurations from the pipeline configuration.
+     */
+    private void instantiateStorageConfigs(Config pipelineConfig) {
+        if (!pipelineConfig.hasPath("storage")) {
+            log.debug("No storage configuration found");
+            return;
+        }
+        
+        Config storageConfig = pipelineConfig.getConfig("storage");
+        for (String storageName : storageConfig.root().keySet()) {
+            try {
+                Config storageDefinition = storageConfig.getConfig(storageName);
+                storageConfigs.put(storageName, storageDefinition);
+                log.debug("Loaded storage configuration: {}", storageName);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to load storage configuration: " + storageName, e);
+            }
+        }
+        
+        log.info("Loaded {} storage configurations", storageConfigs.size());
+    }
+
+    /**
+     * Gets a storage configuration by name.
+     * This method can be called by services that need storage configuration.
+     */
+    public Config getStorageConfig(String storageName) {
+        return storageConfigs.get(storageName);
+    }
+
 
     private static void applyLoggingConfiguration(Config config) {
         if (!config.hasPath("logging")) {
@@ -136,15 +169,43 @@ public class ServiceManager {
             }
         }
 
-        // 2. Instantiate Services
+        // 2. Instantiate Storage configurations first
+        instantiateStorageConfigs(pipelineConfig);
+
+        // 3. Instantiate Services
         Config servicesConfig = pipelineConfig.getConfig("services");
         for (String serviceName : servicesConfig.root().keySet()) {
             try {
                 Config serviceDefinition = servicesConfig.getConfig(serviceName);
                 String className = serviceDefinition.getString("className");
+                
+                // Create combined configuration: options + outputs + other service-level configs
                 Config serviceOptions = serviceDefinition.hasPath("options")
                         ? serviceDefinition.getConfig("options")
                         : ConfigFactory.empty();
+                
+                // Add outputs configuration if present
+                if (serviceDefinition.hasPath("outputs")) {
+                    serviceOptions = serviceOptions.withValue("outputs", serviceDefinition.getValue("outputs"));
+                }
+                
+                // Add inputs configuration if present (for services that need explicit input mapping)
+                if (serviceDefinition.hasPath("inputs")) {
+                    serviceOptions = serviceOptions.withValue("inputs", serviceDefinition.getConfig("inputs").root());
+                }
+                
+                // Add storage configuration if present
+                if (serviceDefinition.hasPath("options.storage")) {
+                    String storageName = serviceDefinition.getString("options.storage");
+                    Config storageConfig = storageConfigs.get(storageName);
+                    if (storageConfig != null) {
+                        serviceOptions = serviceOptions.withValue("storageConfig", 
+                            com.typesafe.config.ConfigFactory.empty().withValue(storageName, storageConfig.root()).root());
+                    } else {
+                        throw new RuntimeException("Storage configuration not found: " + storageName);
+                    }
+                }
+                
                 Constructor<?> constructor = Class.forName(className).getConstructor(Config.class);
                 IService service = (IService) constructor.newInstance(serviceOptions);
                 services.put(serviceName, service);
@@ -152,34 +213,71 @@ public class ServiceManager {
                 throw new RuntimeException("Failed to instantiate service: " + serviceName, e);
             }
         }
-
-        // 3. Wire Services and Channels with Monitoring Wrappers
+        
+        // 4. Wire Services and Channels with Monitoring Wrappers
         for (String serviceName : servicesConfig.root().keySet()) {
             Config serviceConfig = servicesConfig.getConfig(serviceName);
             IService service = services.get(serviceName);
 
+            // Check for inputs at service level (support both list and object format)
             if (serviceConfig.hasPath("inputs")) {
-                for (String channelName : serviceConfig.getStringList("inputs")) {
-                    Object channel = channels.get(channelName);
-                    if (service instanceof AbstractService) {
-                        // Create input channel binding wrapper
-                        InputChannelBinding<?> binding = new InputChannelBinding<>(serviceName, channelName, 
-                            (org.evochora.datapipeline.api.channels.IInputChannel<?>) channel);
-                        channelBindings.add(binding);
-                        ((AbstractService) service).addInputChannel(channelName, binding);
+                if (serviceConfig.getValue("inputs").valueType() == com.typesafe.config.ConfigValueType.LIST) {
+                    // Legacy format: inputs = ["channel1", "channel2"]
+                    for (String channelName : serviceConfig.getStringList("inputs")) {
+                        Object channel = channels.get(channelName);
+                        if (service instanceof AbstractService) {
+                            // Create input channel binding wrapper
+                            InputChannelBinding<?> binding = new InputChannelBinding<>(serviceName, channelName, 
+                                (org.evochora.datapipeline.api.channels.IInputChannel<?>) channel);
+                            channelBindings.add(binding);
+                            ((AbstractService) service).addInputChannel(channelName, binding);
+                        }
+                    }
+                } else if (serviceConfig.getValue("inputs").valueType() == com.typesafe.config.ConfigValueType.OBJECT) {
+                    // New format: inputs { tickData: "channel1", contextData: "channel2" }
+                    Config inputsConfig = serviceConfig.getConfig("inputs");
+                    for (String channelKey : inputsConfig.root().keySet()) {
+                        String channelName = inputsConfig.getString(channelKey);
+                        Object channel = channels.get(channelName);
+                        if (service instanceof AbstractService) {
+                            // Create input channel binding wrapper
+                            InputChannelBinding<?> binding = new InputChannelBinding<>(serviceName, channelName, 
+                                (org.evochora.datapipeline.api.channels.IInputChannel<?>) channel);
+                            channelBindings.add(binding);
+                            ((AbstractService) service).addInputChannel(channelName, binding);
+                        }
                     }
                 }
             }
+            
 
             if (serviceConfig.hasPath("outputs")) {
-                for (String channelName : serviceConfig.getStringList("outputs")) {
-                    Object channel = channels.get(channelName);
-                    if (service instanceof AbstractService) {
-                        // Create output channel binding wrapper
-                        OutputChannelBinding<?> binding = new OutputChannelBinding<>(serviceName, channelName, 
-                            (org.evochora.datapipeline.api.channels.IOutputChannel<?>) channel);
-                        channelBindings.add(binding);
-                        ((AbstractService) service).addOutputChannel(channelName, binding);
+                // Support both old list format and new object format
+                if (serviceConfig.getValue("outputs").valueType() == com.typesafe.config.ConfigValueType.LIST) {
+                    // Legacy format: outputs = ["channel1", "channel2"]
+                    for (String channelName : serviceConfig.getStringList("outputs")) {
+                        Object channel = channels.get(channelName);
+                        if (service instanceof AbstractService) {
+                            // Create output channel binding wrapper
+                            OutputChannelBinding<?> binding = new OutputChannelBinding<>(serviceName, channelName, 
+                                (org.evochora.datapipeline.api.channels.IOutputChannel<?>) channel);
+                            channelBindings.add(binding);
+                            ((AbstractService) service).addOutputChannel(channelName, binding);
+                        }
+                    }
+                } else {
+                    // New format: outputs { tickData: "channel1", contextData: "channel2" }
+                    Config outputsConfig = serviceConfig.getConfig("outputs");
+                    for (String outputType : outputsConfig.root().keySet()) {
+                        String channelName = outputsConfig.getString(outputType);
+                        Object channel = channels.get(channelName);
+                        if (service instanceof AbstractService) {
+                            // Create output channel binding wrapper
+                            OutputChannelBinding<?> binding = new OutputChannelBinding<>(serviceName, channelName, 
+                                (org.evochora.datapipeline.api.channels.IOutputChannel<?>) channel);
+                            channelBindings.add(binding);
+                            ((AbstractService) service).addOutputChannel(channelName, binding);
+                        }
                     }
                 }
             }

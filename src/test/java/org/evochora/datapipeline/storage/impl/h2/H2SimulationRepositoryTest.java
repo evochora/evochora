@@ -57,16 +57,16 @@ class H2SimulationRepositoryTest {
         int dimensions = 2;
         
         // When & Then
-        assertDoesNotThrow(() -> repository.initialize(dimensions));
+        assertDoesNotThrow(() -> repository.initialize(dimensions, "test-run-123"));
     }
     
     @Test
     void testInitializeWithInvalidDimensions() {
         // Test zero dimensions
-        assertThrows(IllegalArgumentException.class, () -> repository.initialize(0));
+        assertThrows(IllegalArgumentException.class, () -> repository.initialize(0, "test-run"));
         
         // Test negative dimensions
-        assertThrows(IllegalArgumentException.class, () -> repository.initialize(-1));
+        assertThrows(IllegalArgumentException.class, () -> repository.initialize(-1, "test-run"));
     }
     
     @Test
@@ -83,7 +83,7 @@ class H2SimulationRepositoryTest {
     @Test
     void testWriteEnvironmentStatesWithDimensionMismatch() throws Exception {
         // Given
-        repository.initialize(2); // 2D environment
+        repository.initialize(2, "test-run-" + System.currentTimeMillis()); // 2D environment
         List<EnvironmentState> states = List.of(
             new EnvironmentState(1L, new Position(new int[]{1, 2, 3}), "ENERGY", 100, 1L) // 3D position
         );
@@ -95,7 +95,7 @@ class H2SimulationRepositoryTest {
     @Test
     void testWriteEnvironmentStatesWithNullList() throws Exception {
         // Given
-        repository.initialize(2);
+        repository.initialize(2, "test-run-" + System.currentTimeMillis());
         
         // When & Then
         assertThrows(IllegalArgumentException.class, () -> repository.writeEnvironmentStates(null));
@@ -104,7 +104,7 @@ class H2SimulationRepositoryTest {
     @Test
     void testWriteEnvironmentStatesWithEmptyList() throws Exception {
         // Given
-        repository.initialize(2);
+        repository.initialize(2, "test-run-" + System.currentTimeMillis());
         List<EnvironmentState> emptyStates = List.of();
         
         // When & Then
@@ -114,7 +114,7 @@ class H2SimulationRepositoryTest {
     @Test
     void testWriteEnvironmentStatesSuccessfully() throws Exception {
         // Given
-        repository.initialize(2);
+        repository.initialize(2, "test-run-" + System.currentTimeMillis());
         List<EnvironmentState> states = List.of(
             new EnvironmentState(1L, new Position(new int[]{1, 2}), "ENERGY", 100, 1L),
             new EnvironmentState(1L, new Position(new int[]{3, 4}), "FOOD", 50, 2L),
@@ -131,7 +131,7 @@ class H2SimulationRepositoryTest {
     @Test
     void testWriteEnvironmentStatesAtomicOperation() throws Exception {
         // Given
-        repository.initialize(2);
+        repository.initialize(2, "test-run-" + System.currentTimeMillis());
         List<EnvironmentState> validStates = List.of(
             new EnvironmentState(1L, new Position(new int[]{1, 2}), "ENERGY", 100, 1L)
         );
@@ -156,7 +156,7 @@ class H2SimulationRepositoryTest {
     @Test
     void testWriteEnvironmentStatesWithDifferentDimensions() throws Exception {
         // Given
-        repository.initialize(3); // 3D environment
+        repository.initialize(3, "test-simulation-run"); // 3D environment
         List<EnvironmentState> states = List.of(
             new EnvironmentState(1L, new Position(new int[]{1, 2, 3}), "ENERGY", 100, 1L),
             new EnvironmentState(1L, new Position(new int[]{4, 5, 6}), "FOOD", 50, 2L)
@@ -175,7 +175,7 @@ class H2SimulationRepositoryTest {
         int dimensions = 3;
         
         // When
-        repository.initialize(dimensions);
+        repository.initialize(dimensions, "test-simulation-run");
         
         // Then
         verifyTableStructure(dimensions);

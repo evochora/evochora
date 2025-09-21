@@ -27,13 +27,14 @@ import java.util.List;
 public interface IEnvironmentStateWriter {
     
     /**
-     * Initializes the writer with the environment dimensions.
+     * Initializes the writer with the environment dimensions and simulation run ID.
      * This method must be called before any write operations.
-     * 
+     *
      * @param dimensions the number of dimensions in the environment
+     * @param simulationRunId the unique identifier for this simulation run
      * @throws RuntimeException if initialization fails
      */
-    void initialize(int dimensions);
+    void initialize(int dimensions, String simulationRunId);
     
     /**
      * Writes a batch of environment state records to persistent storage.
@@ -52,5 +53,19 @@ public interface IEnvironmentStateWriter {
      * @throws RuntimeException if the write operation fails due to storage issues
      */
     void writeEnvironmentStates(List<EnvironmentState> environmentStates);
+
+    /**
+     * Closes the writer and releases all resources.
+     * 
+     * <p>This method should be called when the writer is no longer needed.
+     * It will close database connections, stop background services,
+     * and perform any necessary cleanup operations.</p>
+     * 
+     * <p>After calling this method, the writer should not be used for
+     * further operations. If needed, a new instance should be created.</p>
+     * 
+     * @throws RuntimeException if closing fails
+     */
+    void close();
     
 }

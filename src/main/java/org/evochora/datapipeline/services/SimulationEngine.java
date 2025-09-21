@@ -100,14 +100,10 @@ public class SimulationEngine extends AbstractService {
         // Parse dedicated channel mappings
         if (options.hasPath("outputs")) {
             Config outputsConfig = options.getConfig("outputs");
-            this.tickDataChannel = outputsConfig.hasPath("tickData") ? 
-                outputsConfig.getString("tickData") : "raw-tick-channel";
-            this.contextDataChannel = outputsConfig.hasPath("contextData") ? 
-                outputsConfig.getString("contextData") : "context-channel";
+            this.tickDataChannel = outputsConfig.getString("tickData");
+            this.contextDataChannel = outputsConfig.getString("contextData");
         } else {
-            // Fallback to legacy configuration
-            this.tickDataChannel = "raw-tick-channel";
-            this.contextDataChannel = "context-channel";
+            throw new IllegalArgumentException("SimulationEngine requires 'outputs' configuration with 'tickData' and 'contextData' channel names");
         }
         
         log.debug("SimulationEngine initialized with {} organisms, {} energy strategies, {} pause ticks", 
@@ -571,7 +567,7 @@ public class SimulationEngine extends AbstractService {
                 // Check if we should pause at this tick
                 if (shouldPauseAtCurrentTick()) {
                     logPauseTickInfo();
-                    pause();
+                    currentState.set(State.PAUSED); // Set state to PAUSED
                     return; // Exit the loop, pause handling is done in run()
                 }
                 
@@ -688,10 +684,15 @@ public class SimulationEngine extends AbstractService {
                     org.evochora.datapipeline.api.contracts.RawCellState apiCell = 
                         new org.evochora.datapipeline.api.contracts.RawCellState();
                     apiCell.setPosition(serverCell.pos());
-                    apiCell.setValue(serverCell.molecule());
+                    // Extract value and type from molecule value using configurable bit layout
+                    int rawValue = serverCell.molecule() & org.evochora.runtime.Config.VALUE_MASK;
+                    // Convert to signed 16-bit value (same logic as Molecule.fromInt())
+                    if ((rawValue & (1 << (org.evochora.runtime.Config.VALUE_BITS - 1))) != 0) {
+                        rawValue |= ~((1 << org.evochora.runtime.Config.VALUE_BITS) - 1);
+                    }
+                    apiCell.setValue(rawValue);
                     apiCell.setOwnerId(serverCell.ownerId());
-                    // Extract type from molecule value using configurable bit layout
-                    apiCell.setType((serverCell.molecule() >> org.evochora.runtime.Config.TYPE_SHIFT) & ((1 << org.evochora.runtime.Config.TYPE_BITS) - 1));
+                    apiCell.setType(serverCell.molecule() & org.evochora.runtime.Config.TYPE_MASK);
                     cells.add(apiCell);
                 }
                 log.debug("Extracted {} occupied cells using sparse tracking", cells.size());
@@ -729,10 +730,15 @@ public class SimulationEngine extends AbstractService {
                 org.evochora.datapipeline.api.contracts.RawCellState cell = 
                     new org.evochora.datapipeline.api.contracts.RawCellState();
                 cell.setPosition(coord.clone());
-                cell.setValue(molecule.toInt());
+                // Extract value and type from molecule value using configurable bit layout
+                int rawValue = molecule.toInt() & org.evochora.runtime.Config.VALUE_MASK;
+                // Convert to signed 16-bit value (same logic as Molecule.fromInt())
+                if ((rawValue & (1 << (org.evochora.runtime.Config.VALUE_BITS - 1))) != 0) {
+                    rawValue |= ~((1 << org.evochora.runtime.Config.VALUE_BITS) - 1);
+                }
+                cell.setValue(rawValue);
                 cell.setOwnerId(ownerId);
-                // Extract type from molecule value using configurable bit layout
-                cell.setType((molecule.toInt() >> org.evochora.runtime.Config.TYPE_SHIFT) & ((1 << org.evochora.runtime.Config.TYPE_BITS) - 1));
+                cell.setType(molecule.toInt() & org.evochora.runtime.Config.TYPE_MASK);
                 cells.add(cell);
             }
         });
