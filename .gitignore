@@ -49,3 +49,4 @@ bin/
 *.log
 /runs/
 /savedSimulations/
+/evochora_data/
