@@ -316,7 +316,7 @@ public class EnvironmentStateIndexerService extends org.evochora.datapipeline.se
      *
      * @param context the simulation context containing environment information
      */
-    protected void processSimulationContext(SimulationContext context) {
+    private void processSimulationContext(SimulationContext context) {
         log.info("processSimulationContext called - storageInitialized: {}", storageInitialized);
         if (storageInitialized) {
             log.warn("SimulationContext received multiple times - storage already initialized, skipping duplicate context");
@@ -403,16 +403,20 @@ public class EnvironmentStateIndexerService extends org.evochora.datapipeline.se
     /**
      * Processes raw tick data by extracting environment state information.
      */
-    protected void processRawTickData(RawTickData tickData) {
+    private void processRawTickData(RawTickData tickData) {
         if (!storageInitialized) {
-            log.warn("Storage not initialized yet, skipping tick data");
-            return;
+            log.error("CRITICAL BUG: processRawTickData called before storage initialization! Data loss occurred!");
+            throw new IllegalStateException("Cannot process tick data before storage is initialized");
         }
         
         // Update last processed tick
         lastProcessedTick = tickData.getTickNumber();
         
         List<EnvironmentState> states = extractEnvironmentStates(tickData);
+        
+        if (states.isEmpty()) {
+            log.error("CRITICAL: No environment states extracted from tick data - data may be empty or invalid");
+        }
         
         if (!states.isEmpty()) {
             boolean shouldFlush = false;

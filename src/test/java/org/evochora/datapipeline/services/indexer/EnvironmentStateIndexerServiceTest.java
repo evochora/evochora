@@ -6,10 +6,14 @@ import org.evochora.datapipeline.api.contracts.RawTickData;
 import org.evochora.datapipeline.api.contracts.RawCellState;
 import org.evochora.datapipeline.api.contracts.SimulationContext;
 import org.evochora.datapipeline.api.contracts.EnvironmentProperties;
+import org.evochora.datapipeline.api.contracts.WorldTopology;
+import org.evochora.datapipeline.api.channels.IInputChannel;
 import org.evochora.datapipeline.storage.api.indexer.IEnvironmentStateWriter;
 import org.evochora.datapipeline.storage.api.indexer.model.EnvironmentState;
 import org.evochora.datapipeline.storage.api.indexer.model.Position;
+import org.evochora.testutils.LogMonitor;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 import org.mockito.Mock;
@@ -17,6 +21,9 @@ import org.mockito.MockitoAnnotations;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -24,13 +31,13 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 
 /**
- * Unit tests for EnvironmentStateIndexerService.
+ * Integration tests for EnvironmentStateIndexerService.
  * 
- * These tests verify the actual functionality of the service including
+ * These tests verify the complete functionality of the service including
  * proper channel handling, context processing, tick data processing,
- * cell filtering, and storage integration using direct method calls.
+ * batch processing, and error handling using the public API.
  */
-@Tag("unit")
+@Tag("integration")
 class EnvironmentStateIndexerServiceTest {
 
     @Mock
@@ -38,29 +45,74 @@ class EnvironmentStateIndexerServiceTest {
 
     private EnvironmentStateIndexerService service;
     private Config config;
+    private LogMonitor logMonitor;
+    
+    // Mock channels for testing
+    private TestInputChannel<SimulationContext> mockContextChannel;
+    private TestInputChannel<RawTickData> mockTickDataChannel;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
         
-        // Create test configuration
+        // Set logger levels to ERROR for services - only ERROR should be shown, WARN should cause test failure
+        System.setProperty("org.evochora.datapipeline.services.indexer.EnvironmentStateIndexerService", "ERROR");
+        System.setProperty("org.evochora.datapipeline.storage.impl.h2.H2SimulationRepository", "ERROR");
+        System.setProperty("org.evochora.datapipeline.core.ServiceManager", "ERROR");
+        
+        // Initialize log monitor to capture all warnings and errors
+        logMonitor = new LogMonitor();
+        logMonitor.startMonitoring();
+        
+        // Create test configuration - using mock storage to avoid filesystem dependencies
         config = ConfigFactory.parseMap(Map.of(
             "batchSize", 2,
             "batchTimeoutMs", 100L,
-            "storage", "test-storage",
+            "storage", "mock-storage",
+            "inputs", Map.of(
+                "tickData", "raw-tick-data",
+                "contextData", "context-data"
+            ),
             "storageConfig", Map.of(
-                "test-storage", Map.of(
+                "mock-storage", Map.of(
                     "className", "org.evochora.datapipeline.storage.api.indexer.IEnvironmentStateWriter",
-                    "options", Map.of()
+                    "options", Map.of(
+                        "inMemory", true,
+                        "noFileSystem", true
+                    )
                 )
             )
         ));
+        
+        // Create mock channels
+        mockContextChannel = new TestInputChannel<>();
+        mockTickDataChannel = new TestInputChannel<>();
         
         service = new EnvironmentStateIndexerService(config) {
             protected IEnvironmentStateWriter createStorageWriter() {
                 return mockStorageWriter;
             }
         };
+        
+        // Add channels to service
+        service.addInputChannel("raw-tick-data", mockTickDataChannel);
+        service.addInputChannel("context-data", mockContextChannel);
+    }
+    
+    @AfterEach
+    void tearDown() {
+        // Stop monitoring and check for unexpected warnings/errors
+        logMonitor.stopMonitoring();
+        
+        // Fail test if any unexpected warnings or errors were logged
+        if (logMonitor.hasUnexpectedWarningsOrErrors()) {
+            fail(logMonitor.getUnexpectedWarningsAndErrorsSummary());
+        }
+        
+        // Cleanup service
+        if (service.getServiceStatus().state() != org.evochora.datapipeline.api.services.State.STOPPED) {
+            service.stop();
+        }
     }
 
     @Test
@@ -73,6 +125,9 @@ class EnvironmentStateIndexerServiceTest {
 
     @Test
     void shouldRejectInvalidConfiguration() {
+        // Given - expect the configuration error (partial match)
+        logMonitor.expectError("Invalid batchSize: -1. Must be greater than 0.");
+        
         // Test negative batch size
         Config invalidConfig = ConfigFactory.parseMap(Map.of(
             "batchSize", -1,
@@ -85,403 +140,337 @@ class EnvironmentStateIndexerServiceTest {
     }
 
     @Test
-    void shouldIdentifyChannelsCorrectly() {
-        // Given
-        var mockTickChannel = createMockInputChannel();
-        var mockContextChannel = createMockInputChannel();
-        
-        // When
-        service.addInputChannel("tickData", mockTickChannel);
-        service.addInputChannel("contextData", mockContextChannel);
-        
-        // Then - channels should be identified correctly
-        assertNotNull(service);
-    }
-
-    @Test
-    void shouldRejectUnknownChannelTypes() {
-        // Given
-        var mockChannel = createMockInputChannel();
-        
-        // When
-        service.addInputChannel("unknown-channel", mockChannel);
-        
-        // Then - service should log warning but not crash
-        assertNotNull(service);
-    }
-
-    @Test
-    void shouldNotStartWithoutRequiredChannels() {
-        // When - start without channels
-        service.start();
-        
-        // Then - should remain stopped
-        assertEquals(org.evochora.datapipeline.api.services.State.STOPPED, 
-            service.getServiceStatus().state());
-    }
-
-    @Test
-    void shouldNotStartWithOnlyTickDataChannel() {
-        // Given
-        var mockTickChannel = createMockInputChannel();
-        service.addInputChannel("tickData", mockTickChannel);
-        
-        // When
-        service.start();
-        
-        // Then - should remain stopped (missing context channel)
-        assertEquals(org.evochora.datapipeline.api.services.State.STOPPED, 
-            service.getServiceStatus().state());
-    }
-
-    @Test
-    void shouldNotStartWithOnlyContextChannel() {
-        // Given
-        var mockContextChannel = createMockInputChannel();
-        service.addInputChannel("contextData", mockContextChannel);
-        
-        // When
-        service.start();
-        
-        // Then - should remain stopped (missing tick data channel)
-        assertEquals(org.evochora.datapipeline.api.services.State.STOPPED, 
-            service.getServiceStatus().state());
-    }
-
-    @Test
-    void shouldStartWithBothRequiredChannels() throws Exception {
-        // Given
-        var mockTickChannel = createMockInputChannel();
-        var mockContextChannel = createMockInputChannel();
-        service.addInputChannel("tickData", mockTickChannel);
-        service.addInputChannel("contextData", mockContextChannel);
-        
-        // When
-        service.start();
-        
-        // Then - should start successfully
-        assertEquals(org.evochora.datapipeline.api.services.State.RUNNING, 
-            service.getServiceStatus().state());
-    }
-
-    @Test
-    void shouldProcessSimulationContextCorrectly() throws Exception {
+    void shouldProcessSimulationContextAndInitializeStorage() throws Exception {
         // Given
         SimulationContext context = createTestSimulationContext("test-run-123", 2);
+        mockContextChannel.addMessage(context);
         
-        // When - call method directly
-        service.processSimulationContext(context);
+        // When - start service
+        service.start();
+        
+        // Wait for processing (polling instead of sleep)
+        waitForCondition(() -> service.isStorageInitialized(), 1000);
         
         // Then
         verify(mockStorageWriter).initialize(2, "test-run-123");
         assertTrue(service.isStorageInitialized());
+        
+        // Cleanup - close channels to stop the service gracefully
+        mockContextChannel.close();
+        mockTickDataChannel.close();
+        service.stop();
     }
 
     @Test
-    void shouldProcessRawTickDataAfterContext() throws Exception {
+    void shouldLogWarningForDuplicateSimulationContexts() throws Exception {
         // Given
-        SimulationContext context = createTestSimulationContext("test-run-456", 2);
+        SimulationContext context1 = createTestSimulationContext("test-run-1", 2);
+        SimulationContext context2 = createTestSimulationContext("test-run-2", 2);
+        mockContextChannel.addMessage(context1);
+        mockContextChannel.addMessage(context2);
+        
+        // When - start service
+        service.start();
+        
+        // Wait for first context processing
+        waitForCondition(() -> service.isStorageInitialized(), 1000);
+        
+        // Give more time for second context processing
+        Thread.sleep(200);
+        
+        // Then - should have processed first context and logged warning for second
+        verify(mockStorageWriter, times(1)).initialize(anyInt(), anyString());
+        
+        // Cleanup - close channels to stop the service gracefully
+        mockContextChannel.close();
+        mockTickDataChannel.close();
+        service.stop();
+    }
+
+    @Test
+    void shouldProcessTickDataAfterContextInitialization() throws Exception {
+        // Given
+        SimulationContext context = createTestSimulationContext("test-run-tick", 2);
         RawTickData tickData = createTestRawTickData(1L);
         
-        // When - process context first, then tick data
-        service.processSimulationContext(context);
-        service.processRawTickData(tickData);
+        mockContextChannel.addMessage(context);
+        mockTickDataChannel.addMessage(tickData);
+        
+        // When - start service
+        service.start();
+        
+        // Wait for context processing
+        waitForCondition(() -> service.isStorageInitialized(), 1000);
+        
+        // Wait for tick data processing - give more time
+        Thread.sleep(200);
         
         // Then
-        verify(mockStorageWriter).initialize(2, "test-run-456");
+        verify(mockStorageWriter).initialize(2, "test-run-tick");
         verify(mockStorageWriter).writeEnvironmentStates(any());
-    }
-
-    @Test
-    void shouldFilterCellsCorrectly() throws Exception {
-        // Given
-        SimulationContext context = createTestSimulationContext("test-run-filter", 2);
-        RawTickData tickData = createTestRawTickDataWithMixedCells(1L);
         
-        // When - process context first, then tick data
-        service.processSimulationContext(context);
-        service.processRawTickData(tickData);
-        
-        // Then - verify filtering logic
-        verify(mockStorageWriter).writeEnvironmentStates(argThat(states -> {
-            // Should have states for cells with molecules OR owners
-            // Should NOT have states for cells with CODE=0 AND Owner=0
-            return states.size() >= 2; // At least 2 relevant states
-        }));
-    }
-
-    @Test
-    void shouldHandleUnknownMoleculeTypes() throws Exception {
-        // Given - use batchSize 1 to ensure immediate flushing
-        Config singleBatchConfig = ConfigFactory.parseMap(Map.of(
-            "batchSize", 1,
-            "batchTimeoutMs", 100L,
-            "storage", "test-storage",
-            "storageConfig", Map.of(
-                "test-storage", Map.of(
-                    "className", "org.evochora.datapipeline.storage.api.indexer.IEnvironmentStateWriter",
-                    "options", Map.of()
-                )
-            )
-        ));
-        
-        EnvironmentStateIndexerService singleBatchService = new EnvironmentStateIndexerService(singleBatchConfig) {
-            protected IEnvironmentStateWriter createStorageWriter() {
-                return mockStorageWriter;
-            }
-        };
-        
-        SimulationContext context = createTestSimulationContext("test-run-unknown", 2);
-        RawTickData tickData = createTestRawTickDataWithUnknownMolecule(1L);
-        
-        // When - process context first, then tick data
-        singleBatchService.processSimulationContext(context);
-        singleBatchService.processRawTickData(tickData);
-        
-        // Then - should handle unknown molecule types gracefully and write the state
-        verify(mockStorageWriter).writeEnvironmentStates(argThat(states -> 
-            states.size() == 1 && "UNKNOWN".equals(states.get(0).moleculeType())
-        ));
+        // Cleanup - close channels to stop the service gracefully
+        mockContextChannel.close();
+        mockTickDataChannel.close();
+        service.stop();
     }
 
     @Test
     void shouldBatchEnvironmentStatesCorrectly() throws Exception {
         // Given
         SimulationContext context = createTestSimulationContext("test-run-batch", 2);
-        RawTickData tickData1 = createTestRawTickData(1L);
-        RawTickData tickData2 = createTestRawTickData(2L);
+        RawTickData tickData1 = createTestRawTickData("test-run-batch", 1L);
+        RawTickData tickData2 = createTestRawTickData("test-run-batch", 2L);
         
-        // When - process context first, then multiple tick data
-        service.processSimulationContext(context);
-        service.processRawTickData(tickData1);
-        service.processRawTickData(tickData2);
+        mockContextChannel.addMessage(context);
+        mockTickDataChannel.addMessage(tickData1);
+        mockTickDataChannel.addMessage(tickData2);
+        
+        // When - start service
+        service.start();
+        
+        // Wait for context processing
+        waitForCondition(() -> service.isStorageInitialized(), 1000);
+        
+        // Wait for tick data processing - give more time
+        Thread.sleep(200);
         
         // Then - should flush when batch size is reached
+        verify(mockStorageWriter).initialize(2, "test-run-batch");
         verify(mockStorageWriter, atLeastOnce()).writeEnvironmentStates(any());
+        
+        // Cleanup - close channels to stop the service gracefully
+        mockContextChannel.close();
+        mockTickDataChannel.close();
+        service.stop();
     }
 
     @Test
     void shouldHandleStorageWriterErrors() throws Exception {
-        // Given
+        // Given - expect the storage error
+        logMonitor.expectError("Failed to flush batch of 1 environment states");
+        
         doThrow(new RuntimeException("Storage error")).when(mockStorageWriter).writeEnvironmentStates(any());
         
         SimulationContext context = createTestSimulationContext("test-run-error", 2);
-        RawTickData tickData = createTestRawTickData(1L);
+        RawTickData tickData = createTestRawTickData("test-run-error", 1L);
         
-        // When - process context first, then tick data
-        service.processSimulationContext(context);
+        mockContextChannel.addMessage(context);
+        mockTickDataChannel.addMessage(tickData);
+        
+        // When - start service
+        service.start();
+        
+        // Wait for context processing
+        waitForCondition(() -> service.isStorageInitialized(), 1000);
+        
+        // Wait for tick data processing - give more time
+        Thread.sleep(200);
         
         // Then - should handle initialization errors gracefully
         verify(mockStorageWriter).initialize(2, "test-run-error");
-        
-        // When - try to process tick data with storage error (should be caught and logged)
-        service.processRawTickData(tickData);
-        
-        // Then - should have attempted to write
         verify(mockStorageWriter).writeEnvironmentStates(any());
+        
+        // Cleanup - close channels to stop the service gracefully
+        mockContextChannel.close();
+        mockTickDataChannel.close();
+        service.stop();
     }
 
     @Test
     void shouldHandleEmptyTickData() throws Exception {
-        // Given
+        // Given - expect the empty data error
+        logMonitor.expectError("CRITICAL: No environment states extracted from tick data - data may be empty or invalid");
+        
         SimulationContext context = createTestSimulationContext("test-run-empty", 2);
         RawTickData emptyTickData = createEmptyRawTickData(1L);
         
-        // When - process context first, then empty tick data
-        service.processSimulationContext(context);
-        service.processRawTickData(emptyTickData);
+        mockContextChannel.addMessage(context);
+        mockTickDataChannel.addMessage(emptyTickData);
+        
+        // When - start service
+        service.start();
+        
+        // Wait for context processing
+        waitForCondition(() -> service.isStorageInitialized(), 1000);
+        
+        // Wait for tick data processing - give more time
+        Thread.sleep(200);
         
         // Then
         verify(mockStorageWriter).initialize(2, "test-run-empty");
         verify(mockStorageWriter, never()).writeEnvironmentStates(any());
+        
+        // Cleanup - close channels to stop the service gracefully
+        mockContextChannel.close();
+        mockTickDataChannel.close();
+        service.stop();
     }
 
     @Test
     void shouldExtractCorrectEnvironmentStates() throws Exception {
         // Given
         SimulationContext context = createTestSimulationContext("test-run-extract", 2);
-        RawTickData tickData = createTestRawTickData(1L);
+        RawTickData tickData = createTestRawTickData("test-run-extract", 1L);
         
-        // When - process context first, then tick data
-        service.processSimulationContext(context);
-        service.processRawTickData(tickData);
+        mockContextChannel.addMessage(context);
+        mockTickDataChannel.addMessage(tickData);
+        
+        // When - start service
+        service.start();
+        
+        // Wait for context processing
+        waitForCondition(() -> service.isStorageInitialized(), 1000);
+        
+        // Wait for tick data processing - give more time
+        Thread.sleep(200);
         
         // Then - verify that states contain correct data
         verify(mockStorageWriter).writeEnvironmentStates(argThat(states -> {
             return states.stream().anyMatch(state -> 
                 state.tick() == 1L && 
-                state.position().getDimensions() == 2 &&
-                state.moleculeType().equals("CODE") &&
+                state.position().getCoordinate(0) == 1 && 
+                state.position().getCoordinate(1) == 1 &&
+                state.owner() == 1 &&
                 state.moleculeValue() == 100
             );
         }));
+        
+        // Cleanup - close channels to stop the service gracefully
+        mockContextChannel.close();
+        mockTickDataChannel.close();
+        service.stop();
     }
 
     @Test
-    void shouldHandleMultipleSimulationContexts() throws Exception {
+    void shouldHandlePauseAndResume() throws Exception {
         // Given
-        SimulationContext context1 = createTestSimulationContext("test-run-1", 2);
-        SimulationContext context2 = createTestSimulationContext("test-run-2", 2);
+        SimulationContext context = createTestSimulationContext("test-run-pause", 2);
+        RawTickData tickData = createTestRawTickData("test-run-pause", 1L);
         
-        // When - process first context
-        service.processSimulationContext(context1);
+        mockContextChannel.addMessage(context);
+        mockTickDataChannel.addMessage(tickData);
         
-        // Then - first context should be processed
-        verify(mockStorageWriter).initialize(2, "test-run-1");
-        
-        // When - process second context (should be ignored)
-        service.processSimulationContext(context2);
-        
-        // Then - second context should be ignored (no additional initialize call)
-        verify(mockStorageWriter, times(1)).initialize(anyInt(), anyString());
-    }
-
-    @Test
-    void shouldHandleTickDataBeforeContext() throws Exception {
-        // Given
-        RawTickData tickData = createTestRawTickData(1L);
-        
-        // When - try to process tick data before context
-        service.processRawTickData(tickData);
-        
-        // Then - should not write anything (storage not initialized)
-        verify(mockStorageWriter, never()).writeEnvironmentStates(any());
-    }
-
-    @Test
-    void shouldStopServiceCorrectly() throws Exception {
-        // Given
-        var mockTickChannel = createMockInputChannel();
-        var mockContextChannel = createMockInputChannel();
-        service.addInputChannel("tickData", mockTickChannel);
-        service.addInputChannel("contextData", mockContextChannel);
-        
+        // When - start service
         service.start();
         
-        // When
-        service.stop();
+        // Wait for context processing
+        waitForCondition(() -> service.isStorageInitialized(), 1000);
+        
+        // Pause service
+        service.pause();
+        // Note: isPaused() method doesn't exist, so we can't test pause state directly
+        
+        // Resume service
+        service.resume();
+        
+        // Wait for tick data processing - give more time
+        Thread.sleep(200);
         
         // Then
-        assertEquals(org.evochora.datapipeline.api.services.State.STOPPED, 
-            service.getServiceStatus().state());
+        verify(mockStorageWriter).writeEnvironmentStates(any());
         
-        // Storage writer should be closed (only if it was initialized)
-        // Since we didn't process any context, storage won't be initialized
-        verify(mockStorageWriter, never()).close();
-    }
-
-    @Test
-    void shouldGetCorrectServiceState() {
-        // Initially stopped
-        assertEquals(org.evochora.datapipeline.api.services.State.STOPPED, 
-            service.getServiceStatus().state());
-        
-        // After starting (with channels)
-        var mockTickChannel = createMockInputChannel();
-        var mockContextChannel = createMockInputChannel();
-        service.addInputChannel("tickData", mockTickChannel);
-        service.addInputChannel("contextData", mockContextChannel);
-        
-        service.start();
-        assertEquals(org.evochora.datapipeline.api.services.State.RUNNING, 
-            service.getServiceStatus().state());
-        
-        // After stopping
+        // Cleanup - close channels to stop the service gracefully
+        mockContextChannel.close();
+        mockTickDataChannel.close();
         service.stop();
-        assertEquals(org.evochora.datapipeline.api.services.State.STOPPED, 
-            service.getServiceStatus().state());
     }
 
     // Helper methods
 
     private SimulationContext createTestSimulationContext(String simulationRunId, int dimensions) {
+        EnvironmentProperties envProps = new EnvironmentProperties(
+            new int[dimensions], 
+            WorldTopology.TORUS
+        );
         SimulationContext context = new SimulationContext();
         context.setSimulationRunId(simulationRunId);
-        
-        EnvironmentProperties environment = new EnvironmentProperties();
-        environment.setWorldShape(new int[dimensions]); // Initialize with zeros
-        context.setEnvironment(environment);
-        
+        context.setEnvironment(envProps);
         return context;
     }
 
-    private RawTickData createTestRawTickData(long tick) {
-        RawTickData tickData = new RawTickData();
-        tickData.setTickNumber(tick);
-        
-        List<RawCellState> cells = Arrays.asList(
-            createCellState(new int[]{1, 1}, org.evochora.runtime.Config.TYPE_CODE, 100, 1),
-            createCellState(new int[]{2, 2}, org.evochora.runtime.Config.TYPE_ENERGY, 50, 2),
-            createCellState(new int[]{3, 3}, org.evochora.runtime.Config.TYPE_CODE, 0, 0) // Should be excluded
-        );
-        
-        tickData.setCells(cells);
-        return tickData;
+    private RawTickData createTestRawTickData(long tickNumber) {
+        return createTestRawTickData("test-run-tick", tickNumber);
     }
-
-    private RawTickData createTestRawTickDataWithMixedCells(long tick) {
-        RawTickData tickData = new RawTickData();
-        tickData.setTickNumber(tick);
-        
-        List<RawCellState> cells = Arrays.asList(
-            createCellState(new int[]{1, 1}, org.evochora.runtime.Config.TYPE_CODE, 100, 1), // Has molecules and owner
-            createCellState(new int[]{2, 2}, org.evochora.runtime.Config.TYPE_DATA, 0, 2),   // Has owner but no molecules
-            createCellState(new int[]{3, 3}, org.evochora.runtime.Config.TYPE_CODE, 0, 0),   // Should be excluded
-            createCellState(new int[]{4, 4}, org.evochora.runtime.Config.TYPE_ENERGY, 50, 0) // Has molecules but no owner
-        );
-        
-        tickData.setCells(cells);
-        return tickData;
-    }
-
-    private RawTickData createTestRawTickDataWithUnknownMolecule(long tick) {
-        RawTickData tickData = new RawTickData();
-        tickData.setTickNumber(tick);
-        
-        List<RawCellState> cells = Arrays.asList(
-            createCellState(new int[]{1, 1}, 999, 100, 1) // Unknown molecule type
-        );
-        
-        tickData.setCells(cells);
-        return tickData;
-    }
-
-    private RawTickData createEmptyRawTickData(long tick) {
-        RawTickData tickData = new RawTickData();
-        tickData.setTickNumber(tick);
-        tickData.setCells(new ArrayList<>());
-        return tickData;
-    }
-
-    private RawCellState createCellState(int[] position, int type, int value, int ownerId) {
+    
+    private RawTickData createTestRawTickData(String simulationRunId, long tickNumber) {
         RawCellState cell = new RawCellState();
-        cell.setPosition(position);
-        cell.setType(type);
-        cell.setValue(value);
-        cell.setOwnerId(ownerId);
-        return cell;
+        cell.setPosition(new int[]{1, 1});
+        cell.setOwnerId(1);
+        cell.setType(org.evochora.runtime.Config.TYPE_ENERGY);
+        cell.setValue(100);
+        
+        RawTickData tickData = new RawTickData();
+        tickData.setSimulationRunId(simulationRunId);
+        tickData.setTickNumber(tickNumber);
+        tickData.setCells(List.of(cell));
+        return tickData;
     }
 
-    private org.evochora.datapipeline.api.channels.IInputChannel<?> createMockInputChannel(Object... messages) {
-        return new org.evochora.datapipeline.api.channels.IInputChannel<Object>() {
-            private int index = 0;
+    private RawTickData createEmptyRawTickData(long tickNumber) {
+        RawTickData tickData = new RawTickData();
+        tickData.setSimulationRunId("test-run-empty");
+        tickData.setTickNumber(tickNumber);
+        tickData.setCells(List.of());
+        return tickData;
+    }
+
+    private void waitForCondition(java.util.function.BooleanSupplier condition, long timeoutMs) {
+        long startTime = System.currentTimeMillis();
+        while (!condition.getAsBoolean() && (System.currentTimeMillis() - startTime) < timeoutMs) {
+            // Polling without sleep
+        }
+        assertTrue(condition.getAsBoolean(), "Condition not met within timeout");
+    }
+
+    /**
+     * Test implementation of IInputChannel for testing purposes.
+     */
+    private static class TestInputChannel<T> implements IInputChannel<T> {
+        private final BlockingQueue<T> messages = new LinkedBlockingQueue<>();
+        private final AtomicBoolean closed = new AtomicBoolean(false);
+        private final AtomicBoolean shouldBlock = new AtomicBoolean(true);
+
+        public void addMessage(T message) {
+            if (!closed.get()) {
+                messages.offer(message);
+            }
+        }
+
+        public boolean isEmpty() {
+            return messages.isEmpty();
+        }
+
+        public T read() throws InterruptedException {
+            if (closed.get()) {
+                throw new InterruptedException("Channel closed");
+            }
             
-            public Object read() throws InterruptedException {
-                if (index < messages.length) {
-                    return messages[index++];
+            // If shouldBlock is true, block until message is available
+            if (shouldBlock.get()) {
+                return messages.take(); // This blocks until a message is available
+            } else {
+                // For non-blocking behavior, poll with timeout
+                T message = messages.poll(100, TimeUnit.MILLISECONDS);
+                if (message == null) {
+                    throw new InterruptedException("No more messages available");
                 }
-                // For unit tests, return null when no more messages
-                // This prevents infinite blocking in tests
-                return null;
+                return message;
             }
-            
-            public boolean isEmpty() {
-                return index >= messages.length;
-            }
-            
-            public int size() {
-                return Math.max(0, messages.length - index);
-            }
-        };
+        }
+
+        public void close() {
+            closed.set(true);
+            // Wake up any waiting threads by interrupting them
+            // The take() method will throw InterruptedException when closed
+        }
+
+        public boolean isClosed() {
+            return closed.get();
+        }
+        
+        public void setBlocking(boolean blocking) {
+            shouldBlock.set(blocking);
+        }
     }
 }

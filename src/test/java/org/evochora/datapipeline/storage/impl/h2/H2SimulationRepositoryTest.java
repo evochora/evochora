@@ -32,14 +32,17 @@ class H2SimulationRepositoryTest {
     
     @BeforeEach
     void setUp() {
+        // Set logger levels to WARN for services - only WARN and ERROR should be shown
+        System.setProperty("org.evochora.datapipeline.storage.impl.h2.H2SimulationRepository", "WARN");
+        
         // Create test configuration with unique in-memory H2 database for each test
         String uniqueDbName = "testdb_" + System.currentTimeMillis() + "_" + Thread.currentThread().getId();
-        testConfig = ConfigFactory.parseString("""
+        testConfig = ConfigFactory.parseString(String.format("""
             jdbcUrl: "jdbc:h2:mem:%s;DB_CLOSE_DELAY=-1"
             user: "sa"
             password: ""
             initializeSchema: true
-            """.formatted(uniqueDbName));
+            """, uniqueDbName));
         
         repository = new H2SimulationRepository(testConfig);
     }

@@ -79,7 +79,7 @@ public class SimpleVectorParameterTest {
             
         } catch (Exception e) {
             // REF syntax fails to compile - this documents the compilation bug
-            System.out.println("REF syntax compilation failed: " + e.getMessage());
+            // REF syntax compilation failed: " + e.getMessage()
             
             // This documents that REF syntax has issues with vector parameters
             // The error should indicate what's wrong with REF syntax

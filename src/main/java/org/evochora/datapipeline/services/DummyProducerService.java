@@ -49,10 +49,21 @@ public class DummyProducerService extends AbstractService {
                     Thread.sleep(executionDelay);
                 }
             }
+            
+            // After sending all messages, keep running until explicitly stopped
+            // This is the normal behavior for services - they don't stop themselves
+            while (currentState.get() != State.STOPPED) {
+                synchronized (pauseLock) {
+                    while (paused) {
+                        pauseLock.wait();
+                    }
+                }
+                // Small sleep to avoid busy waiting
+                Thread.sleep(100);
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-        } finally {
-            currentState.set(State.STOPPED);
         }
+        // Don't set state to STOPPED - let AbstractService handle that
     }
 }

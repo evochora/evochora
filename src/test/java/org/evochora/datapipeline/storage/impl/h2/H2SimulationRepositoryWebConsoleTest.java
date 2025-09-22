@@ -24,6 +24,9 @@ class H2SimulationRepositoryWebConsoleTest {
 
     @BeforeEach
     void setUp() {
+        // Set logger levels to WARN for services - only WARN and ERROR should be shown
+        System.setProperty("org.evochora.datapipeline.storage.impl.h2.H2SimulationRepository", "WARN");
+        
         // Create test configuration with Web Console enabled
         testConfig = ConfigFactory.parseString("""
             jdbcUrl: "jdbc:h2:mem:testdb_webconsole;DB_CLOSE_DELAY=-1"

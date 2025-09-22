@@ -17,6 +17,9 @@ public class MetricsCollectionTest {
 
     @BeforeEach
     void setUp() {
+        // Set logger levels to WARN for services - only WARN and ERROR should be shown
+        System.setProperty("org.evochora.datapipeline.core.ServiceManager", "WARN");
+        
         testConfig = ConfigFactory.parseString("""
             pipeline {
                 autoStart = false
@@ -35,7 +38,7 @@ public class MetricsCollectionTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        inputs = []
+                        inputs = {}
                         outputs = ["test-stream"]
                         options {
                             messageCount = 50
@@ -43,7 +46,9 @@ public class MetricsCollectionTest {
                     }
                     test-consumer {
                         className = "org.evochora.datapipeline.services.DummyConsumerService"
-                        inputs = ["test-stream"]
+                        inputs = {
+                            input1 = "test-stream"
+                        }
                         outputs = []
                     }
                 }
@@ -86,7 +91,7 @@ public class MetricsCollectionTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        inputs = []
+                        inputs = {}
                         outputs = ["test-stream"]
                         options {
                             messageCount = 10
@@ -132,7 +137,7 @@ public class MetricsCollectionTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        inputs = []
+                        inputs = {}
                         outputs = ["test-stream"]
                         options {
                             messageCount = 20

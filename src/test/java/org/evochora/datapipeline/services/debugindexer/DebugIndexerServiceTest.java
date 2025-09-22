@@ -48,6 +48,10 @@ class DebugIndexerServiceTest {
     void testServiceLifecycle() {
         // Test start
         debugIndexer.start();
+        // Wait for service to actually start (polling)
+        while (!debugIndexer.isRunning() && debugIndexer.getServiceStatus().state() != org.evochora.datapipeline.api.services.State.STOPPED) {
+            Thread.yield();
+        }
         assertTrue(debugIndexer.isRunning());
 
         // Test pause
@@ -56,6 +60,10 @@ class DebugIndexerServiceTest {
 
         // Test resume
         debugIndexer.resume();
+        // Wait for service to actually resume (polling)
+        while (!debugIndexer.isRunning() && debugIndexer.getServiceStatus().state() != org.evochora.datapipeline.api.services.State.STOPPED) {
+            Thread.yield();
+        }
         assertTrue(debugIndexer.isRunning());
 
         // Test stop

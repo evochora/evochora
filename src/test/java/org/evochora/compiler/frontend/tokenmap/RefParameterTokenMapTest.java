@@ -33,7 +33,7 @@ class RefParameterTokenMapTest extends CompilerTestBase {
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{100, 100}, true);
         Compiler compiler = new Compiler();
         ProgramArtifact artifact = compiler.compile(List.of(source.split("\n")), "ref_param_test.s", envProps);
-        System.out.println(source);
+        // Debug: " + source
         boolean foundParam = artifact.tokenMap().values().stream()
                 .anyMatch(tokenInfo -> "PARAM1".equals(tokenInfo.tokenText()));
 

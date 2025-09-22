@@ -20,6 +20,9 @@ public class ServiceManagerTest {
 
     @BeforeEach
     void setUp() {
+        // Set logger levels to WARN for services - only WARN and ERROR should be shown
+        System.setProperty("org.evochora.datapipeline.core.ServiceManager", "WARN");
+        
         // Create test configuration inline - no external dependencies
         String testConfig = """
             pipeline {
@@ -34,7 +37,7 @@ public class ServiceManagerTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        inputs = []
+                        inputs = {}
                         outputs = ["test-stream"]
                         options {
                             messageCount = 10
@@ -42,7 +45,9 @@ public class ServiceManagerTest {
                     }
                     test-consumer {
                         className = "org.evochora.datapipeline.services.DummyConsumerService"
-                        inputs = ["test-stream"]
+                        inputs = {
+                            input1 = "test-stream"
+                        }
                         outputs = []
                     }
                 }
@@ -72,14 +77,15 @@ public class ServiceManagerTest {
         DummyProducerService producer = (DummyProducerService) serviceManager.getServices().get("test-producer");
         DummyConsumerService consumer = (DummyConsumerService) serviceManager.getServices().get("test-consumer");
         
-        // Wait for producer to finish (it sends 100 messages then stops)
-        waitForCondition(() -> producer.getServiceStatus().state() == State.STOPPED, 1000, "Producer to finish");
-        
         // Wait for consumer to process all messages
         waitForCondition(() -> consumer.getReceivedMessageCount() >= 10, 1000, "Consumer to receive all messages");
         
-        // Stop all services
+        // Stop all services explicitly (since services don't stop themselves anymore)
         serviceManager.stopAll();
+        
+        // Verify services are stopped
+        assertEquals(State.STOPPED, producer.getServiceStatus().state(), "Producer should be stopped");
+        assertEquals(State.STOPPED, consumer.getServiceStatus().state(), "Consumer should be stopped");
         
         // Assert the final count
         assertEquals(10, consumer.getReceivedMessageCount(), "Consumer should have received all 10 messages");
@@ -113,11 +119,8 @@ public class ServiceManagerTest {
         serviceManager.resumeService("test-producer");
         assertEquals(State.RUNNING, producer.getServiceStatus().state(), "Producer state should be RUNNING after resume");
 
-        // Wait for producer to finish
-        waitForCondition(() -> producer.getServiceStatus().state() == State.STOPPED, 1000, "Producer to finish");
-        
-        // Wait for consumer to process all messages
-        waitForCondition(() -> consumer.getReceivedMessageCount() >= 10, 1000, "Consumer to receive all messages");
+        // Wait for producer to send all messages after resume
+        waitForCondition(() -> consumer.getReceivedMessageCount() >= 10, 1000, "Producer to send all messages after resume");
         
         // Stop all services
         serviceManager.stopAll();
@@ -143,7 +146,7 @@ public class ServiceManagerTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        inputs = []
+                        inputs = {}
                         outputs = ["test-stream"]
                         options {
                             messageCount = 10
@@ -186,7 +189,7 @@ public class ServiceManagerTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        inputs = []
+                        inputs = {}
                         outputs = ["test-stream"]
                         options {
                             messageCount = 10
@@ -227,7 +230,7 @@ public class ServiceManagerTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        inputs = []
+                        inputs = {}
                         outputs = ["test-stream"]
                         options {
                             messageCount = 10
@@ -235,7 +238,9 @@ public class ServiceManagerTest {
                     }
                     test-consumer {
                         className = "org.evochora.datapipeline.services.DummyConsumerService"
-                        inputs = ["test-stream"]
+                        inputs = {
+                            input1 = "test-stream"
+                        }
                         outputs = []
                     }
                 }
@@ -279,7 +284,7 @@ public class ServiceManagerTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        inputs = []
+                        inputs = {}
                         outputs = ["test-stream"]
                         options {
                             messageCount = 10

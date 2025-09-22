@@ -102,8 +102,8 @@ public class RefWithParameterBugTest {
 
         } catch (Exception e) {
             // This documents the bug: REF syntax fails when WITH syntax succeeds
-            System.out.println("BUG DOCUMENTED: REF syntax fails with: " + e.getMessage());
-            System.out.println("WITH syntax compiles successfully, but REF syntax fails");
+            // BUG DOCUMENTED: REF syntax fails with: " + e.getMessage()
+            // WITH syntax compiles successfully, but REF syntax fails
             // For now, we expect this to fail until the bug is fixed
             throw new AssertionError("REF syntax should compile successfully like WITH syntax, but failed with: " + e.getMessage());
         }

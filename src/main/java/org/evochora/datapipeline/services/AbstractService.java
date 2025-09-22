@@ -41,12 +41,16 @@ public abstract class AbstractService implements IService {
 
     @Override
     public void start() {
-        if (currentState.compareAndSet(State.STOPPED, State.RUNNING)) {
+        if (currentState.get() == State.STOPPED) {
             // Reset error counts for all channel bindings when service starts
             resetChannelBindingErrorCounts();
             
             // Start service in separate thread
-            Thread serviceThread = new Thread(this::run, this.getClass().getSimpleName().toLowerCase());
+            Thread serviceThread = new Thread(() -> {
+                // Set state to RUNNING when the service actually starts processing
+                currentState.set(State.RUNNING);
+                run();
+            }, this.getClass().getSimpleName().toLowerCase());
             serviceThread.start();
         }
     }

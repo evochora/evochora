@@ -79,7 +79,7 @@ class ServiceManagerTest {
 
         while (!condition.getAsBoolean()) {
             if (System.currentTimeMillis() - startTime > timeoutMs) {
-                System.out.println("Timeout waiting for: " + description);
+                // Timeout waiting for: " + description
                 return false;
             }
             try {

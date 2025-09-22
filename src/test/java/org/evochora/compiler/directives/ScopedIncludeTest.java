@@ -89,7 +89,7 @@ public class ScopedIncludeTest {
             EnvironmentProperties envProps = new EnvironmentProperties(new int[]{100, 100}, true);
             artifact = compiler.compile(Files.readAllLines(mainFile), mainFile.toAbsolutePath().toString(), envProps);
         } catch (Exception e) {
-            System.err.println("Compilation failed: " + e.getMessage());
+            // Compilation failed: " + e.getMessage()
             throw e;
         }
 

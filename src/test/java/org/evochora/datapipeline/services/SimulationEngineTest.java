@@ -58,6 +58,10 @@ public class SimulationEngineTest {
 
     @BeforeEach
     void setUp() {
+        // Set logger levels to WARN for services - only WARN and ERROR should be shown
+        System.setProperty("org.evochora.datapipeline.services.SimulationEngine", "WARN");
+        System.setProperty("org.evochora.datapipeline.core.ServiceManager", "WARN");
+        
         // Create test configuration with minimal organism
         testConfig = ConfigFactory.parseString("""
             environment {
@@ -202,8 +206,8 @@ public class SimulationEngineTest {
         ServiceStatus status = simulationEngine.getServiceStatus();
         assertEquals(State.RUNNING, status.state());
         
-        // Wait a bit for simulation to run and generate tick data
-        Thread.sleep(200);
+        // Wait for simulation to run and generate tick data using polling
+        waitForCondition(() -> tickDataChannel.getMessageCount() > 0 || simulationEngine.getServiceStatus().state() == State.PAUSED, 2000, "Simulation to generate tick data or pause");
         
         // Check if we received any RawTickData messages
         // Note: The simulation might pause at tick 5 due to pauseTicks = [5, 10]
