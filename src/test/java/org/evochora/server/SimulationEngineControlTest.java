@@ -1,21 +1,27 @@
 package org.evochora.server;
 
+import org.evochora.compiler.Compiler;
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.server.contracts.IQueueMessage;
 import org.evochora.server.contracts.raw.RawTickState;
+import org.evochora.server.engine.OrganismPlacement;
 import org.evochora.server.engine.SimulationEngine;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.queue.ITickMessageQueue;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 
+import org.evochora.runtime.isa.Instruction;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.ArrayList;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
@@ -29,6 +35,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SimulationEngineControlTest {
 
     private SimulationEngine sim;
+    private List<OrganismPlacement> organismPlacements;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        Instruction.init();
+        // Create a simple test organism to ensure the simulation engine can start
+        String nopProgram = "NOP";
+        List<String> sourceLines = List.of(nopProgram);
+        Compiler compiler = new Compiler();
+        ProgramArtifact artifact = compiler.compile(sourceLines, "nop.s", new EnvironmentProperties(new int[]{10, 10}, true));
+        organismPlacements = new ArrayList<>();
+        organismPlacements.add(OrganismPlacement.of(artifact, 1000, new int[]{5, 5}));
+    }
 
     @AfterEach
     void tearDown() {
@@ -106,7 +125,7 @@ class SimulationEngineControlTest {
     void simple_start_shutdown_test() throws Exception {
         ITickMessageQueue q = new InMemoryTickQueue(1000);
         sim = new SimulationEngine(q, new EnvironmentProperties(new int[]{10, 10}, true), 
-             new ArrayList<>(), new ArrayList<>());
+             organismPlacements, new ArrayList<>());
 
         sim.start();
 
@@ -135,13 +154,18 @@ class SimulationEngineControlTest {
     void start_pause_resume_shutdown_cycle_advances_ticks() throws Exception {
         ITickMessageQueue q = new InMemoryTickQueue(1000);
         sim = new SimulationEngine(q, new EnvironmentProperties(new int[]{10, 10}, true), 
-             new ArrayList<>(), new ArrayList<>());
+             organismPlacements, new ArrayList<>());
 
         sim.start();
 
         // 1. Wait for the simulation to initialize and produce the first tick.
         waitForTick(0, 5000);
-        IQueueMessage initialMessage = q.poll(5, TimeUnit.SECONDS);
+        
+        IQueueMessage initialMessage = null;
+        while(initialMessage == null || !(initialMessage instanceof RawTickState)) {
+            initialMessage = q.poll(5, TimeUnit.SECONDS);
+        }
+        
         assertThat(initialMessage).isNotNull();
         long initialTick = ((RawTickState) initialMessage).tickNumber();
         assertThat(initialTick).isGreaterThanOrEqualTo(0L);
@@ -176,7 +200,12 @@ class SimulationEngineControlTest {
 
         // 6. Resume and wait for the next message.
         sim.resume();
-        IQueueMessage nextMessage = q.poll(5, TimeUnit.SECONDS);
+        
+        IQueueMessage nextMessage = null;
+        while(nextMessage == null || !(nextMessage instanceof RawTickState)) {
+            nextMessage = q.poll(5, TimeUnit.SECONDS);
+        }
+        
         assertThat(nextMessage).isNotNull();
         assertThat(((RawTickState) nextMessage).tickNumber()).isGreaterThan(t3);
 
@@ -196,7 +225,7 @@ class SimulationEngineControlTest {
     void minimal_shutdown_test() throws Exception {
         ITickMessageQueue q = new InMemoryTickQueue(1000);
         sim = new SimulationEngine(q, new EnvironmentProperties(new int[]{10, 10}, true), 
-             new ArrayList<>(), new ArrayList<>());
+             organismPlacements, new ArrayList<>());
 
         sim.start();
 
@@ -223,7 +252,7 @@ class SimulationEngineControlTest {
     void immediate_shutdown_test() throws Exception {
         ITickMessageQueue q = new InMemoryTickQueue(1000);
         sim = new SimulationEngine(q, new EnvironmentProperties(new int[]{5, 5}, true), 
-             new ArrayList<>(), new ArrayList<>());
+             organismPlacements, new ArrayList<>());
 
         sim.start();
 

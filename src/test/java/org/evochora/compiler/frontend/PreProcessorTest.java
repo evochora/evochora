@@ -5,10 +5,12 @@ import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import org.evochora.runtime.isa.Instruction;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,6 +27,11 @@ public class PreProcessorTest {
 
     @TempDir
     Path tempDir;
+
+    @BeforeEach
+    void setUp() {
+        Instruction.init();
+    }
 
     /**
      * Verifies that the preprocessor correctly expands an `.INCLUDE` directive.
@@ -58,9 +65,6 @@ public class PreProcessorTest {
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
-
-        // Print tokens for debugging
-        expandedTokens.forEach(System.out::println);
 
         // We now expect 4 tokens: PUSH_CTX, NOP, POP_CTX, and the final END_OF_FILE.
         assertThat(expandedTokens).hasSize(4);

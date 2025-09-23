@@ -55,7 +55,9 @@ public class DataInstruction extends Instruction {
                 case "PUSH": {
                     if (operands.size() != 1) { organism.instructionFailed("Invalid operands for PUSH"); return; }
                     if (organism.getDataStack().size() >= Config.DS_MAX_DEPTH) { organism.instructionFailed("Stack Overflow"); return; }
-                    organism.getDataStack().push(operands.get(0).value());
+                    Object value = operands.get(0).value();
+                    if (value == null) { organism.instructionFailed("Null value for PUSH"); return; }
+                    organism.getDataStack().push(value);
                     break;
                 }
                 case "POP": {
@@ -69,13 +71,17 @@ public class DataInstruction extends Instruction {
                 case "PUSI": {
                     if (operands.size() != 1) { organism.instructionFailed("Invalid operands for PUSI"); return; }
                     if (organism.getDataStack().size() >= Config.DS_MAX_DEPTH) { organism.instructionFailed("Stack Overflow"); return; }
-                    organism.getDataStack().push(operands.get(0).value());
+                    Object value = operands.get(0).value();
+                    if (value == null) { organism.instructionFailed("Null value for PUSI"); return; }
+                    organism.getDataStack().push(value);
                     break;
                 }
                 case "PUSV": {
                     if (operands.size() != 1) { organism.instructionFailed("Invalid operands for PUSV"); return; }
                     if (organism.getDataStack().size() >= Config.DS_MAX_DEPTH) { organism.instructionFailed("Stack Overflow"); return; }
-                    organism.getDataStack().push(operands.get(0).value());
+                    Object value = operands.get(0).value();
+                    if (value == null) { organism.instructionFailed("Null value for PUSV"); return; }
+                    organism.getDataStack().push(value);
                     break;
                 }
                 default:

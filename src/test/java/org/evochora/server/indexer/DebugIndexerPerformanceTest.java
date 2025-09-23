@@ -59,6 +59,19 @@ class DebugIndexerPerformanceTest {
     void tearDown() {
         if (debugIndexer != null) {
             debugIndexer.shutdown();
+            // Ensure the indexer is fully stopped before closing the DB to avoid late WARN logs
+            int waited = 0;
+            int interval = 10;
+            int maxWait = 1000; // 1s is enough for a graceful stop here
+            while (debugIndexer.isRunning() && waited < maxWait) {
+                try {
+                    Thread.sleep(interval);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                waited += interval;
+            }
         }
         if (conn != null) {
             try {

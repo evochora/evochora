@@ -1,10 +1,16 @@
-import java.io.FileOutputStream;
-import java.time.Duration;
+// Show deprecation details for test sources to fix root causes
+tasks.withType<JavaCompile>().configureEach {
+    if (name == "compileTestJava") {
+        options.compilerArgs.add("-Xlint:deprecation")
+    }
+}
+
 
 plugins {
     java
     application
     jacoco
+    `java-test-fixtures`
 }
 
 group = "org.evochora"
@@ -18,6 +24,7 @@ dependencies {
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.junit.jupiter:junit-jupiter-engine:5.10.2")
+    testImplementation("ch.qos.logback:logback-classic:1.5.6")
     testImplementation("org.mockito:mockito-core:5.12.0")
     testImplementation("org.mockito:mockito-junit-jupiter:5.12.0")
     testImplementation("org.assertj:assertj-core:3.26.3")
@@ -34,6 +41,10 @@ dependencies {
     implementation("net.logstash.logback:logstash-logback-encoder:8.1")
     implementation("org.jline:jline:3.30.3")
     runtimeOnly("org.jline:jline-terminal-jansi:3.30.3")
+
+    // Test fixtures: dependencies needed to compile the JUnit extension
+    testFixturesImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
+    testFixturesImplementation("ch.qos.logback:logback-classic:1.5.6")
 
 }
 
@@ -106,6 +117,7 @@ tasks.test {
     }
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-XX:+EnableDynamicAgentLoading")
+    jvmArgs("-Xshare:off")
     finalizedBy(tasks.jacocoTestReport)
     testLogging {
         events("passed", "skipped", "failed")
@@ -124,6 +136,7 @@ tasks.register<Test>("unit") {
     }
     maxParallelForks = 1
     jvmArgs("-Duser.language=en", "-Duser.country=US")
+    jvmArgs("-Xshare:off")
     testLogging {
         events("passed", "skipped", "failed")
         showStandardStreams = false
@@ -138,6 +151,7 @@ tasks.register<Test>("integration") {
         includeTags("integration")
     }
     maxParallelForks = 1 // Integration tests often can't run in parallel
+    jvmArgs("-Xshare:off")
     testLogging {
         events("passed", "skipped", "failed")
         showStandardStreams = true
@@ -153,6 +167,7 @@ tasks.register<Test>("benchmark") {
     }
     maxParallelForks = 1 // Benchmarks should run sequentially for accurate measurements
     jvmArgs("-Duser.language=en", "-Duser.country=US", "-Xmx2g") // Increased heap size for benchmarks
+    jvmArgs("-Xshare:off")
     testLogging {
         events("passed", "skipped", "failed")
         showStandardStreams = true

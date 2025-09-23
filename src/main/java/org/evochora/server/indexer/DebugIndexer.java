@@ -74,6 +74,9 @@ public class DebugIndexer implements IControllable, Runnable {
     private boolean rawTicksTableEverExisted = false;
     private String rawDbPath;
     private String debugDbPath;
+    // Keep an anchor connection to the raw in-memory database alive to prevent it from
+    // being destroyed when all other connections temporarily close (e.g., during pause/resume)
+    private java.sql.Connection rawAnchorConnection;
 
     private final int batchSize; // Configurable batch size
     private final org.evochora.server.config.SimulationConfiguration.IndexerServiceConfig config; // Consolidated configuration
@@ -137,6 +140,12 @@ public class DebugIndexer implements IControllable, Runnable {
                 databaseManager.setupDebugDatabase();
                 databaseHealthy.set(true);
                 log.debug("DebugIndexer: database setup successful, starting processing thread");
+                // Open raw DB anchor connection early to keep the shared in-memory database alive
+                // across pauses/resumes of other services. This prevents the raw_ticks table from
+                // disappearing when all non-anchor connections are briefly closed.
+                if (rawAnchorConnection == null || rawAnchorConnection.isClosed()) {
+                    rawAnchorConnection = databaseManager.createOptimizedConnection(rawDbPath);
+                }
             } catch (Exception e) {
                 databaseHealthy.set(false);
                 log.warn("Failed to setup debug database: {} - starting with queuing enabled", e.getMessage(), e);
@@ -214,6 +223,11 @@ public class DebugIndexer implements IControllable, Runnable {
                 }
                 databaseManager.closeQuietly();
                 log.debug("Database cleanup completed during shutdown");
+                // Close raw anchor connection
+                if (rawAnchorConnection != null) {
+                    try { rawAnchorConnection.close(); } catch (Exception ignore) {}
+                    rawAnchorConnection = null;
+                }
             } catch (Exception e) {
                 log.warn("Error during shutdown database cleanup: {}", e.getMessage());
             }
@@ -758,6 +772,12 @@ public class DebugIndexer implements IControllable, Runnable {
      * <p>Database failures are logged as errors but do not stop the process.
      */
     private void writeSimulationMetadata() {
+        // Ensure debug DB schema exists (as in production setup)
+        try {
+            databaseManager.setupDebugDatabase();
+        } catch (Exception e) {
+            log.warn("Failed to ensure debug database schema before writing metadata: {}", e.getMessage());
+        }
         try (Connection conn = databaseManager.createOptimizedConnection(debugDbPath);
              PreparedStatement ps = conn.prepareStatement(
                 "INSERT OR REPLACE INTO simulation_metadata(key, value) VALUES (?, ?)")) {
@@ -803,6 +823,13 @@ public class DebugIndexer implements IControllable, Runnable {
         if (this.artifacts.isEmpty()) {
             log.debug("No program artifacts to write - this is normal for simulations without compiled programs");
             return;
+        }
+        
+        // Ensure debug DB schema exists (as in production setup)
+        try {
+            databaseManager.setupDebugDatabase();
+        } catch (Exception e) {
+            log.warn("Failed to ensure debug database schema before writing artifacts: {}", e.getMessage());
         }
         
         try (Connection conn = databaseManager.createOptimizedConnection(debugDbPath);

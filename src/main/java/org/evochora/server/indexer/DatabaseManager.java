@@ -74,19 +74,7 @@ public class DatabaseManager {
         return conn;
     }
 
-    /**
-     * Creates a database connection for the given path or URL.
-     * Handles both JDBC URLs and file paths with appropriate optimizations.
-     * 
-     * @param pathOrUrl The database path or JDBC URL
-     * @return A configured database connection
-     * @throws Exception if connection creation fails
-     * @deprecated Use createOptimizedConnection() instead for better performance
-     */
-    @Deprecated
-    public Connection createConnection(String pathOrUrl) throws Exception {
-        return createOptimizedConnection(pathOrUrl);
-    }
+    
     
     /**
      * Sets up the debug database with tables and performance optimizations.

@@ -157,15 +157,20 @@ public class ServiceManager {
         // 1. Instantiate Channels
         Config channelsConfig = pipelineConfig.getConfig("channels");
         for (String channelName : channelsConfig.root().keySet()) {
+            String className = null;
             try {
                 Config channelDefinition = channelsConfig.getConfig(channelName);
-                String className = channelDefinition.getString("className");
+                className = channelDefinition.getString("className");
                 Config channelOptions = channelDefinition.getConfig("options");
                 Constructor<?> constructor = Class.forName(className).getConstructor(Config.class);
                 Object channel = constructor.newInstance(channelOptions);
                 channels.put(channelName, channel);
+            } catch (ClassNotFoundException cnfe) {
+                log.error("Channel '{}' class '{}' not found; skipping channel", channelName, className);
+            } catch (NoSuchMethodException nsme) {
+                log.error("Channel '{}' class '{}' missing (Config) constructor; skipping channel", channelName, className);
             } catch (Exception e) {
-                throw new RuntimeException("Failed to instantiate channel: " + channelName, e);
+                log.error("Failed to instantiate channel '{}' (class '{}'): {}", channelName, className, e.getMessage());
             }
         }
 
@@ -175,9 +180,10 @@ public class ServiceManager {
         // 3. Instantiate Services
         Config servicesConfig = pipelineConfig.getConfig("services");
         for (String serviceName : servicesConfig.root().keySet()) {
+            String className = null;
             try {
                 Config serviceDefinition = servicesConfig.getConfig(serviceName);
-                String className = serviceDefinition.getString("className");
+                className = serviceDefinition.getString("className");
                 
                 // Create combined configuration: options + outputs + other service-level configs
                 Config serviceOptions = serviceDefinition.hasPath("options")
@@ -202,15 +208,20 @@ public class ServiceManager {
                         serviceOptions = serviceOptions.withValue("storageConfig", 
                             com.typesafe.config.ConfigFactory.empty().withValue(storageName, storageConfig.root()).root());
                     } else {
-                        throw new RuntimeException("Storage configuration not found: " + storageName);
+                        log.error("Service '{}' references unknown storage '{}'; skipping service", serviceName, storageName);
+                        continue; // Skip this service
                     }
                 }
                 
                 Constructor<?> constructor = Class.forName(className).getConstructor(Config.class);
                 IService service = (IService) constructor.newInstance(serviceOptions);
                 services.put(serviceName, service);
+            } catch (ClassNotFoundException cnfe) {
+                log.error("Service '{}' class '{}' not found; skipping service", serviceName, className);
+            } catch (NoSuchMethodException nsme) {
+                log.error("Service '{}' class '{}' missing (Config) constructor; skipping service", serviceName, className);
             } catch (Exception e) {
-                throw new RuntimeException("Failed to instantiate service: " + serviceName, e);
+                log.error("Failed to instantiate service '{}' (class '{}'): {}", serviceName, className, e.getMessage());
             }
         }
         
@@ -226,14 +237,19 @@ public class ServiceManager {
                     List<String> channelNames = getChannelNames(inputsConfig, portName);
                     for (String channelName : channelNames) {
                         Object channel = channels.get(channelName);
+                        if (channel == null) {
+                            log.error("Service '{}' input port '{}' references unknown channel '{}'; skipping binding", serviceName, portName, channelName);
+                            continue;
+                        }
                         if (channel instanceof org.evochora.datapipeline.api.channels.IInputChannel<?>) {
                             InputChannelBinding<?> binding = new InputChannelBinding<>(serviceName, portName, channelName,
                                     (org.evochora.datapipeline.api.channels.IInputChannel<?>) channel);
                             channelBindings.add(binding);
-                            service.addInputChannel(portName, binding);
+                            if (service != null) {
+                                service.addInputChannel(portName, binding);
+                            }
                         } else {
-                            throw new RuntimeException("Channel '" + channelName + "' configured for service '" +
-                                    serviceName + "' port '" + portName + "' is not an IInputChannel.");
+                            log.error("Channel '{}' configured for service '{}' port '{}' is not an IInputChannel; skipping binding", channelName, serviceName, portName);
                         }
                     }
                 }
@@ -246,14 +262,19 @@ public class ServiceManager {
                     List<String> channelNames = getChannelNames(outputsConfig, portName);
                     for (String channelName : channelNames) {
                         Object channel = channels.get(channelName);
+                        if (channel == null) {
+                            log.error("Service '{}' output port '{}' references unknown channel '{}'; skipping binding", serviceName, portName, channelName);
+                            continue;
+                        }
                         if (channel instanceof org.evochora.datapipeline.api.channels.IOutputChannel<?>) {
                             OutputChannelBinding<?> binding = new OutputChannelBinding<>(serviceName, portName, channelName,
                                     (org.evochora.datapipeline.api.channels.IOutputChannel<?>) channel);
                             channelBindings.add(binding);
-                            service.addOutputChannel(portName, binding);
+                            if (service != null) {
+                                service.addOutputChannel(portName, binding);
+                            }
                         } else {
-                            throw new RuntimeException("Channel '" + channelName + "' configured for service '" +
-                                    serviceName + "' port '" + portName + "' is not an IOutputChannel.");
+                            log.error("Channel '{}' configured for service '{}' port '{}' is not an IOutputChannel; skipping binding", channelName, serviceName, portName);
                         }
                     }
                 }

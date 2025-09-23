@@ -106,9 +106,7 @@ public class H2SimulationRepository implements IEnvironmentStateWriter {
         }
         this.webConsolePath = webConsoleConfig.hasPath("webPath") ? webConsoleConfig.getString("webPath") : "/console";
         
-        if (webConsoleEnabled && !webConsoleConfig.hasPath("webAdminPassword")) {
-            logger.warn("Web Console enabled but missing configuration: webAdminPassword. Console will be accessible without authentication.");
-        }
+        // No log if webAdminPassword is missing; console may be accessible without authentication by choice
         this.webConsoleAdminPassword = webConsoleConfig.hasPath("webAdminPassword") ? webConsoleConfig.getString("webAdminPassword") : null;
         
         if (webConsoleEnabled && !webConsoleConfig.hasPath("browser")) {
@@ -284,10 +282,38 @@ public class H2SimulationRepository implements IEnvironmentStateWriter {
             stmt.execute(sql);
         }
         
+        // Ensure missing position columns are added if table existed from a previous run with fewer dimensions
+        ensurePositionColumns();
+        
         // Create indexes for efficient querying
         createIndexes();
         
         logger.info("Environment state table created successfully");
+    }
+
+    /**
+     * Adds any missing pos_i columns if the table exists with fewer dimensions.
+     */
+    private void ensurePositionColumns() throws SQLException {
+        // Collect existing column names in upper case
+        java.util.Set<String> existing = new java.util.HashSet<>();
+        String query = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ENVIRONMENT_STATE'";
+        try (Statement s = connection.createStatement(); ResultSet rs = s.executeQuery(query)) {
+            while (rs.next()) {
+                existing.add(rs.getString(1));
+            }
+        }
+        // Add missing pos_i columns
+        for (int i = 0; i < dimensions; i++) {
+            String col = ("POS_" + i);
+            if (!existing.contains(col)) {
+                String alter = "ALTER TABLE environment_state ADD COLUMN IF NOT EXISTS pos_" + i + " INT NOT NULL";
+                try (Statement s = connection.createStatement()) {
+                    s.execute(alter);
+                    logger.debug("Added missing column {} to environment_state", col);
+                }
+            }
+        }
     }
     
     

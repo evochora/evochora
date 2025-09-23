@@ -7,6 +7,8 @@ import org.evochora.server.contracts.raw.RawOrganismState;
 import org.evochora.server.contracts.raw.RawTickState;
 import org.evochora.server.indexer.ArtifactValidator.ArtifactValidity;
 import org.junit.jupiter.api.BeforeEach;
+import org.evochora.junit.extensions.logging.ExpectLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 
@@ -110,6 +112,7 @@ class InstructionBuilderTest {
     }
 
     @Test
+    @ExpectLog(level = LogLevel.ERROR, loggerPattern = "org.evochora.server.indexer.InstructionBuilder", messagePattern = "EnvironmentProperties not available.*", occurrences = 1)
     void testBuildNextInstructionWithNullEnvProps() {
         // When envProps is null, the method should return a default instruction with error status
         PreparedTickState.NextInstruction instruction = builder.buildNextInstruction(

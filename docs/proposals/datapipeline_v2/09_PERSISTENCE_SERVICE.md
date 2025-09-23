@@ -63,7 +63,27 @@ The goal of this step is to define the data contracts using Protobuf and configu
 *   **Goal:** Remove the old Java-based data contracts.
 *   **Action:** Delete all original Java files from the package `org.evochora.datapipeline.api.contracts`. They are now obsolete.
 
-### Step 3: Create the Raw Storage Abstraction
+### Step 3: Configuration and Dependency Injection Strategy
+
+*   **Goal:** To define a flexible and reusable way for services to access storage backends without hard-coding dependencies. This pattern will apply to all storage types.
+
+#### 3.1. Central `storage` block in `evochora.conf`
+
+*   All storage provider instances (for both raw data and indexer databases) will be defined in a single, top-level `storage` block within the `pipeline` configuration.
+*   Each definition will have a unique name (e.g., `raw-filesystem-storage`, `indexer-h2-database`), and specify its `className` and `options`.
+
+#### 3.2. Role of the `ServiceManager`
+
+*   The `ServiceManager` will be responsible for pre-instantiating all providers defined in the central `storage` block upon startup.
+*   When creating a service (like `PersistenceService`), the `ServiceManager` will read a key from the service's `options` (e.g., `storageProvider = "raw-filesystem-storage"`).
+*   It will then look up the pre-instantiated provider by that name and inject it into the service's constructor.
+
+#### 3.3. Type Safety and Fail-Fast Behavior
+
+*   The service's constructor will declare the specific interface it expects (e.g., `IRawStorageProvider`).
+*   The `ServiceManager` will perform a type check before injection. If the configured provider does not implement the required interface, the `ServiceManager` **must** fail on startup with a clear, informative error message. This prevents runtime errors due to misconfiguration.
+
+### Step 4: Create the Raw Storage Abstraction
 
 *   **Goal:** Define a clear interface for writing raw simulation data, separating the logic from the storage medium.
 *   **Actions:**
@@ -75,7 +95,7 @@ The goal of this step is to define the data contracts using Protobuf and configu
         *   `void writeTicks(List<PipelineContracts.RawTickData> batch) throws IOException;`
         *   `void close() throws IOException;`
 
-#### 3.1. Implement the Filesystem Storage Provider
+#### 4.1. Implement the Filesystem Storage Provider
 
 *   **Goal:** Create the first implementation of the storage provider that writes to the local filesystem.
 *   **Action:** Create a class `FileSystemRawStorageProvider` in the `...storage.raw` package that implements the `IRawStorageProvider` interface.
@@ -85,7 +105,48 @@ The goal of this step is to define the data contracts using Protobuf and configu
     *   **`writeTicks(batch)`:** Must create a filename based on the tick range in the batch (e.g., `ticks_000000000-000000999.bin`). It must then serialize each message from the batch and write it to this single file.
     *   **Serialization Format:** Inside the binary files, each Protobuf message must be written in a "delimited" format, meaning it must be preceded by its length (as a 4-byte integer) to allow for easy streaming and parsing later.
 
-### Step 4: Implement the Persistence Service
+### Step 5: Error Handling and Reliability Strategy
+
+*   **Goal:** Define a robust error handling strategy that can distinguish between transient/data-related errors and persistent system errors.
+*   **Core Principle:** The pipeline should continue processing if a single batch fails (potential data corruption), but must stop if a systemic issue (like disk full) is detected.
+
+#### 5.1. Dead-Letter Queue (DLQ) for Failed Batches
+
+*   **Concept:** A "Dead-Letter Queue" will be implemented as a separate directory on the filesystem. When a batch of ticks cannot be written to the primary storage location, the service will attempt to write it to the DLQ for later manual inspection.
+*   **`IRawStorageProvider` Interface Update:** The `IRawStorageProvider` interface must be extended with a new method:
+    *   `void writeTicksToDLQ(List<PipelineContracts.RawTickData> batch) throws IOException;`
+*   **`FileSystemRawStorageProvider` Implementation Update:**
+    *   The `initialize()` method must also create a DLQ directory, e.g., `runs/{simulationRunId}/raw_data_dlq`.
+    *   The `writeTicksToDLQ()` method should write a failed batch to this directory, using the same file naming and serialization format as the primary `writeTicks()` method.
+
+#### 5.2. `PersistenceService` Error Handling Logic
+
+*   **Goal:** Implement the logic to handle write failures gracefully.
+*   **Implementation Requirements:**
+    *   When the `PersistenceService` attempts to flush a batch using `storageProvider.writeTicks()` and catches an `IOException`, it must **not** immediately stop.
+    *   Instead, it must log a `WARN`-level message indicating the primary write failure.
+    *   It must then immediately attempt to call `storageProvider.writeTicksToDLQ()` with the same failed batch.
+    *   **If the DLQ write succeeds:** The service should log a `WARN` message confirming the batch was moved to the DLQ and then **continue processing** the next batch from the channel as normal.
+    *   **If the DLQ write also fails:** This strongly indicates a systemic, non-recoverable error (e.g., disk full, permissions error). The service must log a concise `ERROR`-level message and **stop processing** (e.g., break its main loop and terminate).
+
+#### 5.3. Logging Requirements
+
+*   **Goal:** Ensure log messages are concise and actionable, without excessive noise.
+*   **Requirement:** For both `WARN` (DLQ) and `ERROR` (service failure) scenarios, the log message must be a single, clear line. It must **not** include a full Java stack trace.
+*   **Required Information in Log Message:**
+    *   The `simulationRunId`.
+    *   The tick range of the failed batch (e.g., "ticks 1000-1999").
+    *   A short, human-readable description of the error (e.g., the message from the caught `IOException`, like "Permission denied" or "No space left on device").
+
+### Step 6: Monitoring and Metrics
+
+*   **Goal:** Provide essential operational metrics for the `PersistenceService` by integrating with the existing `ServiceManager` status display.
+*   **Implementation Requirements:**
+    *   **Error Counting:** The `PersistenceService` must maintain an internal, thread-safe counter (e.g., an `AtomicInteger`) that is incremented every time a batch is successfully written to the Dead-Letter Queue (DLQ).
+    *   **Status Reporting:** The service must override the `getActivityInfo()` method from `AbstractService`. This method must return a formatted string that displays the current value of the DLQ counter, for example: `DLQ Batches: 3`.
+    *   **Throughput (Ticks per Second):** No specific implementation is needed for this metric inside the service. This will be automatically measured and displayed by the `ServiceManager` based on its monitoring of the service's input channel.
+
+### Step 7: Implement the Persistence Service
 
 *   **Goal:** Create the service responsible for consuming data from the channels and writing it to storage.
 *   **Action:** Create a new package `org.evochora.datapipeline.services.persistence` and inside it, the class `PersistenceService`.
@@ -94,27 +155,25 @@ The goal of this step is to define the data contracts using Protobuf and configu
 
 *   **Implementation Requirements:**
     *   The `PersistenceService` class must inherit from `AbstractService`.
-    *   Its constructor must accept a `Config` object and an `IRawStorageProvider` instance.
+    *   Its constructor must accept a `Config` object and an `IRawStorageProvider` instance (which will be injected by the `ServiceManager`).
     *   The `run()` method must first perform a blocking read on its `contextData` input channel to receive the `SimulationContext`.
     *   After receiving the context, it must use the `storageProvider` to initialize the storage and persist the context.
     *   It must then enter a loop to read `RawTickData` from the `tickData` input channel.
     *   A batching mechanism must be implemented. A batch is flushed to the `storageProvider` when its size reaches the configured `batchSize` or a `batchTimeoutMs` has passed since the last flush. The service should poll the channel (e.g., with a 100ms timeout) to ensure the timeout can be checked even if no new ticks arrive.
     *   Before terminating, a final flush of any remaining data in the batch must be performed.
 
-### Step 5: Refactor `SimulationEngine`
+### Step 8: Refactor `SimulationEngine`
 
 *   **Goal:** Adapt the `SimulationEngine` to produce data using the new Protobuf-generated classes.
 *   **Action:** Modify `SimulationEngine.java` to replace all instantiations of the old contract POJOs (e.g., `new RawTickData()`) with the builder pattern from the Protobuf-generated classes (e.g., `PipelineContracts.RawTickData.newBuilder()...build()`).
 
-### Step 6: Update Configuration
+### Step 9: Update Configuration
 
-*   **Goal:** Re-wire the pipeline in the main configuration file to use the new `PersistenceService`.
-*   **Action:** Modify `evochora.conf`:
-    *   Remove any old indexer services (`debug-indexer`, `environment-state-indexer`).
-    *   Add a new service definition for the `persistence-service`.
-    *   Configure its `className` to point to `...services.persistence.PersistenceService`.
-    *   Wire its `inputs` to the `raw-tick-data` and `context-data` channels.
-    *   Define its `options` like `batchSize` and `batchTimeoutMs`.
+*   **Goal:** Re-wire the pipeline in the main configuration file to use the new `PersistenceService` and the central storage definition.
+*   **Action:** Modify `evochora.conf` according to the new structure.
+    *   Define the `FileSystemRawStorageProvider` in the central `storage` block with a unique name (e.g., `raw-filesystem-storage`).
+    *   In the `persistence-service` definition, remove any nested storage configuration.
+    *   Add a key `storageProvider = "raw-filesystem-storage"` to the `options` of the `persistence-service`, referencing the provider defined in the central `storage` block.
     *   Ensure the `startupSequence` starts the `persistence-service` before the `simulation-engine`.
 
 ## 3. Testing Strategy
@@ -154,6 +213,9 @@ All tests must follow these core principles:
         *   Send a few messages (less than `batchSize`).
         *   Immediately stop the service.
         *   Verify that `writeTicks()` is called on the mock provider with the remaining messages as part of the shutdown sequence.
+    *   **Error Handling (DLQ Success):** A test must verify that if the mock storage provider's `writeTicks()` method throws an `IOException`, the service correctly calls the `writeTicksToDLQ()` method and continues running.
+    *   **Error Handling (DLQ Failure):** A test must verify that if both `writeTicks()` and `writeTicksToDLQ()` throw an `IOException`, the service stops its processing loop and terminates gracefully.
+    *   **Metrics Reporting:** A test must verify that after a successful DLQ write, the `getActivityInfo()` method returns the correct, updated string (e.g., "DLQ Batches: 1").
 
 ### 3.3. Integration Test
 
@@ -164,3 +226,8 @@ All tests must follow these core principles:
     *   After sending the data, shut down the service and wait for its thread to terminate.
     *   Verify that the expected files (`context.bin` and the correctly named `ticks_...bin` files) exist in the temporary directory.
     *   Verify the integrity of the data by reading the files, deserializing all Protobuf messages, and asserting that their content matches the data that was originally sent.
+*   **Additional Test Case (Error Handling):** An integration test should be added where filesystem permissions are manipulated to cause a write failure, verifying that the DLQ file is created correctly.
+
+### 10.1 `ServiceManager` Configuration Tests (New Requirement)
+*   **Goal:** Verify that the dependency injection and fail-fast logic for storage providers works correctly.
+*   **Test Case:** A test must be created that attempts to start a `ServiceManager` with a configuration where the `persistence-service` references a storage provider of the wrong type (e.g., the `H2SimulationRepository`). The test must assert that the `ServiceManager` fails to construct and throws an exception with a clear error message about the type mismatch.

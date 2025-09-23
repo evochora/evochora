@@ -37,9 +37,9 @@ class H2SimulationRepositoryTest {
         System.setProperty("org.evochora.datapipeline.storage.impl.h2.H2SimulationRepository", "WARN");
         
         // Create test configuration with unique in-memory H2 database for each test
-        String uniqueDbName = "testdb_" + System.currentTimeMillis() + "_" + Thread.currentThread().getId();
+        String uniqueDbName = "testdb_" + System.nanoTime() + "_" + java.lang.System.identityHashCode(new Object());
         testConfig = ConfigFactory.parseString(String.format("""
-            jdbcUrl: "jdbc:h2:mem:%s;DB_CLOSE_DELAY=-1"
+            jdbcUrl: "jdbc:h2:mem:%s;DB_CLOSE_DELAY=0"
             user: "sa"
             password: ""
             initializeSchema: true

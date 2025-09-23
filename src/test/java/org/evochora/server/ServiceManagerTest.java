@@ -6,6 +6,8 @@ import org.evochora.server.persistence.PersistenceService;
 import org.evochora.server.http.DebugServer;
 import org.evochora.server.queue.InMemoryTickQueue;
 import org.evochora.server.config.SimulationConfiguration;
+import org.evochora.junit.extensions.logging.AllowLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
@@ -41,17 +43,30 @@ class ServiceManagerTest {
         config.simulation.environment.toroidal = true;
         config.simulation.seed = 12345L;
 
+        // Add a minimal dummy organism to avoid WARN about empty simulation
+        SimulationConfiguration.OrganismConfig organism = new SimulationConfiguration.OrganismConfig();
+        organism.program = "assembly/examples/simple.s";
+        organism.initialEnergy = 1;
+        SimulationConfiguration.PlacementConfig placement = new SimulationConfiguration.PlacementConfig();
+        placement.strategy = "fixed";
+        placement.positions = java.util.List.of(new int[]{0, 0});
+        organism.placement = placement;
+        config.simulation.organisms = java.util.List.of(organism);
+
         config.simulation.energyStrategies = new java.util.ArrayList<>();
         
         // Initialize pipeline config
         config.pipeline = new SimulationConfiguration.PipelineConfig();
         config.pipeline.simulation = new SimulationConfiguration.SimulationServiceConfig();
+        // Avoid ProgramArtifact generation in tests to prevent persistence WARNs
+        config.pipeline.simulation.skipProgramArtefact = true;
         config.pipeline.persistence = new SimulationConfiguration.PersistenceServiceConfig();
         config.pipeline.indexer = new SimulationConfiguration.IndexerServiceConfig();
         config.pipeline.server = new SimulationConfiguration.ServerServiceConfig();
         
         // Set default values with in-memory databases for faster tests
-        config.pipeline.persistence.batchSize = 1000;
+        // Use batchSize=1 in tests to avoid pending JDBC batches during pause/shutdown
+        config.pipeline.persistence.batchSize = 1;
         config.pipeline.persistence.jdbcUrl = "jdbc:sqlite::memory:";
         config.pipeline.indexer.batchSize = 1000;
         config.pipeline.server.port = 0;
@@ -226,6 +241,7 @@ class ServiceManagerTest {
      * @throws InterruptedException if the thread is interrupted while waiting.
      */
     @Test
+    @AllowLog(level = LogLevel.ERROR, loggerPattern = "org.evochora.server.engine.SimulationEngine", messagePattern = "Simulation tick failed, terminating service.*")
     @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testResumeAllServices() throws InterruptedException {
@@ -283,6 +299,7 @@ class ServiceManagerTest {
      * @throws InterruptedException if the thread is interrupted while waiting.
      */
     @Test
+    @AllowLog(level = LogLevel.ERROR, loggerPattern = "org.evochora.server.persistence.PersistenceService", messagePattern = "Database or statement was already closed before WAL checkpoint.*")
     @Tag("integration")
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testPauseSpecificService() throws InterruptedException {
@@ -398,6 +415,7 @@ class ServiceManagerTest {
      * This is an integration test for error handling.
      */
     @Test
+    @AllowLog(level = LogLevel.WARN, loggerPattern = "org.evochora.server.ServiceManager", messagePattern = "Unknown service: unknown")
     @Tag("unit")
     void testUnknownServiceName() {
         // Test handling of unknown service names

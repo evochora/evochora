@@ -55,6 +55,7 @@ public class SimulationEngine implements IControllable, Runnable {
     private int nextCheckpointPauseIndex = 0; // Index of next checkpoint-pause tick to check
     private Long maxTicks = null; // Maximum number of ticks to run before stopping (null = no limit)
     private CheckpointPauseCallback checkpointPauseCallback = null; // Callback for checkpoint-pause events
+    private long lastEnqueuedTick = -1L; // Ensure monotonic tick messages
     
     // Simple TPS calculation - no complex timer tracking needed
     
@@ -194,6 +195,8 @@ public class SimulationEngine implements IControllable, Runnable {
             simulation.setRandomProvider(randomProvider);
             
             String seedInfo = seed != null ? String.valueOf(seed) : "default";
+            // Reset last enqueued tick at start
+            lastEnqueuedTick = -1L;
             
             thread.start();
         }
@@ -298,7 +301,13 @@ public class SimulationEngine implements IControllable, Runnable {
     public int[] getOrganismCounts() {
         if (simulation == null) return new int[]{0, 0};
         int living = 0, dead = 0;
-        for (var o : simulation.getOrganisms()) {
+        java.util.List<org.evochora.runtime.model.Organism> snapshot;
+        // Take a snapshot to avoid ConcurrentModificationException during iteration
+        {
+            var organisms = simulation.getOrganisms();
+            snapshot = new java.util.ArrayList<>(organisms);
+        }
+        for (var o : snapshot) {
             if (o.isDead()) dead++; else living++;
         }
         return new int[]{living, dead};
@@ -475,6 +484,7 @@ public class SimulationEngine implements IControllable, Runnable {
                 RawTickState initialTickMsg = toRawState(simulation);
                 queue.put(initialTickMsg);
                 log.debug("Sent initial tick state (tick 0) to queue");
+                lastEnqueuedTick = Math.max(lastEnqueuedTick, simulation.getCurrentTick());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
@@ -546,7 +556,13 @@ public class SimulationEngine implements IControllable, Runnable {
                         }
                     }
                     
-                    // Always create raw tick state
+                    // Always create raw tick state; ensure strictly increasing tick numbers on enqueued messages
+                    long currentTickVal = simulation.getCurrentTick();
+                    if (currentTickVal <= lastEnqueuedTick) {
+                        // Advance once to guarantee monotonicity (should be rare)
+                        simulation.tick();
+                        currentTickVal = simulation.getCurrentTick();
+                    }
                     RawTickState tickMsg = toRawState(simulation);
                     
                     // Try to put message - if it fails, go to auto-pause
@@ -561,15 +577,18 @@ public class SimulationEngine implements IControllable, Runnable {
                     } else {
                         queue.put(tickMsg);
                     }
+                    lastEnqueuedTick = Math.max(lastEnqueuedTick, currentTickVal);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     // InterruptedException is expected during shutdown, not an error
                     break;
                 } catch (Exception e) {
-                    if (running.get()) {
-                        log.error("Simulation tick failed, terminating service: {}", e.getMessage());
+                    // If we're interrupted or shutting down, don't log noisy errors
+                    if (Thread.currentThread().isInterrupted() || !running.get()) {
                         break;
                     }
+                    log.error("Simulation tick failed, terminating service", e);
+                    break;
                 }
             }
         } catch (Exception e) {

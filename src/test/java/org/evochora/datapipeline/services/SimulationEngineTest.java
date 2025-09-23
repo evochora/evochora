@@ -7,11 +7,9 @@ import org.evochora.datapipeline.api.contracts.SimulationContext;
 import org.evochora.datapipeline.api.channels.IOutputChannel;
 import org.evochora.datapipeline.api.services.ChannelBindingStatus;
 import org.evochora.datapipeline.api.services.Direction;
-import org.evochora.datapipeline.api.services.BindingState;
 import org.evochora.datapipeline.api.services.State;
 import org.evochora.datapipeline.api.services.ServiceStatus;
 import org.evochora.datapipeline.core.OutputChannelBinding;
-import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
@@ -37,7 +35,24 @@ public class SimulationEngineTest {
     private SimulationEngine simulationEngine;
     private TestOutputChannel<SimulationContext> contextChannel;
     private TestOutputChannel<RawTickData> tickDataChannel;
-    private List<ChannelBindingStatus> channelBindings;
+
+    private void setupEngineWithConfig(Config config) {
+        // Create test channels
+        contextChannel = new TestOutputChannel<>();
+        tickDataChannel = new TestOutputChannel<>();
+
+        // Create simulation engine with new channel configuration
+        Config outputsConfig = ConfigFactory.parseString("""
+            tickData: "raw-tick-channel"
+            contextData: "context-channel"
+            """);
+        Config configWithChannels = config.withValue("outputs", outputsConfig.root());
+        simulationEngine = new SimulationEngine(configWithChannels);
+
+        // Add output channels
+        simulationEngine.addOutputChannel("contextData", new OutputChannelBinding<>("test-service", "contextData", "context-channel", contextChannel));
+        simulationEngine.addOutputChannel("tickData", new OutputChannelBinding<>("test-service", "tickData", "raw-tick-channel", tickDataChannel));
+    }
 
     private boolean waitForCondition(java.util.function.BooleanSupplier condition, long timeoutMs, String description) {
         long startTime = System.currentTimeMillis();
@@ -80,27 +95,7 @@ public class SimulationEngineTest {
             pauseTicks = [0, 5, 10]
             """);
 
-        // Create test channels
-        contextChannel = new TestOutputChannel<>();
-        tickDataChannel = new TestOutputChannel<>();
-
-        // Create channel bindings
-        channelBindings = List.of(
-            new ChannelBindingStatus("context-channel", Direction.OUTPUT, BindingState.ACTIVE, 0.0),
-            new ChannelBindingStatus("raw-tick-channel", Direction.OUTPUT, BindingState.ACTIVE, 0.0)
-        );
-
-        // Create simulation engine with new channel configuration
-        Config outputsConfig = ConfigFactory.parseString("""
-            tickData: "raw-tick-channel"
-            contextData: "context-channel"
-            """);
-        Config configWithChannels = testConfig.withValue("outputs", outputsConfig.root());
-        simulationEngine = new SimulationEngine(configWithChannels);
-        
-        // Add output channels
-        simulationEngine.addOutputChannel("contextData", new OutputChannelBinding<>("test-service", "contextData", "context-channel", contextChannel));
-        simulationEngine.addOutputChannel("tickData", new OutputChannelBinding<>("test-service", "tickData", "raw-tick-channel", tickDataChannel));
+        setupEngineWithConfig(testConfig);
     }
 
     @Test
@@ -171,6 +166,25 @@ public class SimulationEngineTest {
 
     @Test
     void testPauseResume() throws InterruptedException {
+        // Custom config for this test to avoid race condition with auto-pause
+        Config customConfig = ConfigFactory.parseString("""
+            environment {
+                shape = [10, 10]
+                topology = "TORUS"
+            }
+            organisms = [{
+                program = "org/evochora/datapipeline/services/test_organism.s"
+                initialEnergy = 1000
+                placement {
+                    positions = [5, 5]
+                }
+            }]
+            energyStrategies = []
+            pauseTicks = [0] // Only pause at the beginning to avoid race conditions
+            """);
+
+        setupEngineWithConfig(customConfig);
+
         // Start service
         simulationEngine.start();
         waitForCondition(() -> simulationEngine.getServiceStatus().state() == State.PAUSED, 1000, "Service to start");
@@ -313,18 +327,8 @@ public class SimulationEngineTest {
             return messages.poll(timeoutMs, TimeUnit.MILLISECONDS);
         }
         
-        public List<T> readAllMessages() {
-            List<T> allMessages = new ArrayList<>();
-            messages.drainTo(allMessages);
-            return allMessages;
-        }
-        
         public int getMessageCount() {
             return messages.size();
-        }
-        
-        public boolean hasMessages() {
-            return !messages.isEmpty();
         }
     }
 }
