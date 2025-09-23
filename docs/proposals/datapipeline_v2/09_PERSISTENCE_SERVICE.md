@@ -116,3 +116,51 @@ The goal of this step is to define the data contracts using Protobuf and configu
     *   Wire its `inputs` to the `raw-tick-data` and `context-data` channels.
     *   Define its `options` like `batchSize` and `batchTimeoutMs`.
     *   Ensure the `startupSequence` starts the `persistence-service` before the `simulation-engine`.
+
+## 3. Testing Strategy
+
+All tests must follow these core principles:
+*   **Isolation:** Tests must be self-contained and not depend on external configuration files (e.g., `evochora.conf`). Dependencies like storage providers or channels should be mocked or created programmatically for the test.
+*   **No `Thread.sleep`:** Asynchronous operations must be tested using reliable mechanisms like polling with timeouts (e.g., using a library like Awaitility) to wait for specific conditions to be met.
+*   **Automatic Cleanup:** Tests must not leave any artifacts (e.g., files or directories) on the filesystem after they complete. Framework features like JUnit 5's `@TempDir` should be used for this purpose.
+
+### 3.1. `FileSystemRawStorageProvider` Tests
+
+*   **Goal:** Verify that the `FileSystemRawStorageProvider` correctly interacts with the filesystem in isolation.
+*   **Setup:** Each test method must use a temporary directory provided by the testing framework to ensure all created files and folders are automatically deleted.
+*   **Test Cases:**
+    *   **Initialization:** A test must verify that calling `initialize()` creates the expected directory structure (`runs/{simulationRunId}/raw_data`) within the temporary directory.
+    *   **Context Writing:** A test must verify that `writeContext()` creates a `context.bin` file in the correct location and that this file is not empty.
+    *   **Tick Writing:**
+        *   Verify that `writeTicks()` with a non-empty batch creates a binary file with the correct naming convention (e.g., `ticks_000000000-000000999.bin`).
+        *   Verify that the content of the created file is correct by reading the data back and deserializing it into the expected Protobuf messages, confirming that the length-delimited format was written correctly.
+        *   Verify that calling `writeTicks()` with an empty or null list results in no file being created.
+
+### 3.2. `PersistenceService` Unit Tests
+
+*   **Goal:** Verify the internal logic of the `PersistenceService` (batching, timeouts, channel interaction) without any actual filesystem interaction.
+*   **Setup:** The `IRawStorageProvider` dependency must be mocked (e.g., using Mockito). The input channels should be real `InMemoryChannel` instances that can be controlled by the test. The service must be run in a dedicated thread for each test, which is then gracefully shut down at the end.
+*   **Test Cases:**
+    *   **Context Handling:** Verify that after sending a `SimulationContext` message, the service calls the `initialize()` and `writeContext()` methods on the mock storage provider exactly once and with the correct data.
+    *   **Batching by Size:**
+        *   Send exactly `batchSize` number of `RawTickData` messages to the input channel.
+        *   Verify that the `writeTicks()` method on the mock storage provider is called exactly once.
+        *   Verify that the list of ticks passed to `writeTicks()` has a size of `batchSize`.
+    *   **Batching by Timeout:**
+        *   Send fewer than `batchSize` messages (e.g., one message).
+        *   Wait for a period longer than the configured `batchTimeoutMs` without sending more messages.
+        *   Verify that `writeTicks()` is called on the mock provider due to the timeout.
+    *   **Shutdown Flush:**
+        *   Send a few messages (less than `batchSize`).
+        *   Immediately stop the service.
+        *   Verify that `writeTicks()` is called on the mock provider with the remaining messages as part of the shutdown sequence.
+
+### 3.3. Integration Test
+
+*   **Goal:** Verify that the `PersistenceService` and `FileSystemRawStorageProvider` work correctly together.
+*   **Setup:** The test must use a real `FileSystemRawStorageProvider` configured with a temporary directory (`@TempDir`) and a real `PersistenceService`.
+*   **Test Case:**
+    *   Simulate a mini-pipeline run by sending one `SimulationContext` and a stream of `RawTickData` messages (e.g., enough for 2-3 batches) to the service's input channels.
+    *   After sending the data, shut down the service and wait for its thread to terminate.
+    *   Verify that the expected files (`context.bin` and the correctly named `ticks_...bin` files) exist in the temporary directory.
+    *   Verify the integrity of the data by reading the files, deserializing all Protobuf messages, and asserting that their content matches the data that was originally sent.
