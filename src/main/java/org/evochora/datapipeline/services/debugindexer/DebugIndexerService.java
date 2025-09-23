@@ -7,6 +7,7 @@ import org.evochora.datapipeline.api.channels.IInputChannel;
 import org.evochora.datapipeline.api.contracts.SimulationContext;
 import org.evochora.datapipeline.api.contracts.RawTickData;
 import org.evochora.datapipeline.api.services.State;
+import org.evochora.datapipeline.core.InputChannelBinding;
 import org.evochora.datapipeline.services.AbstractService;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.server.config.SimulationConfiguration;
@@ -121,18 +122,16 @@ public class DebugIndexerService extends AbstractService implements Runnable {
     /**
      * Adds an input channel to this service.
      * 
-     * @param name The channel name
-     * @param channel The input channel for SimulationContext and RawTickData messages
+     * @param portName The channel name
+     * @param binding The input channel for SimulationContext and RawTickData messages
      */
     @Override
     @SuppressWarnings("unchecked")
-    public void addInputChannel(String name, IInputChannel<?> channel) {
-        // Call parent method to store channel for dynamic status determination
-        super.addInputChannel(name, channel);
-        
-        // Store channel for this service's specific use
-        this.inputChannels.put(name, (IInputChannel<Object>) channel);
-        log.debug("Input channel '{}' added to DebugIndexerService: {}", name, channel.getClass().getSimpleName());
+    public void addInputChannel(String portName, InputChannelBinding<?> binding) {
+        // This service supports input channels, so we override the default behavior.
+        registerInputChannel(portName, binding);
+        this.inputChannels.put(portName, (IInputChannel<Object>) binding);
+        log.debug("Input channel '{}' added to DebugIndexerService for port '{}'", binding.getChannelName(), portName);
     }
     
     @Override

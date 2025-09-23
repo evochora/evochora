@@ -18,11 +18,12 @@ public class InputChannelBinding<T> extends AbstractChannelBinding<T> implements
      * Creates a new InputChannelBinding that wraps the specified input channel.
      * 
      * @param serviceName The name of the service this binding belongs to
+     * @param portName    The logical name of the port this binding is attached to
      * @param channelName The name of the channel this binding wraps
      * @param delegate The actual input channel being wrapped
      */
-    public InputChannelBinding(String serviceName, String channelName, IInputChannel<T> delegate) {
-        super(serviceName, channelName, Direction.INPUT, delegate);
+    public InputChannelBinding(String serviceName, String portName, String channelName, IInputChannel<T> delegate) {
+        super(serviceName, portName, channelName, Direction.INPUT, delegate);
         this.delegate = delegate;
     }
     

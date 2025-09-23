@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public abstract class AbstractChannelBinding<T> {
     
     protected final String serviceName;
+    protected final String portName;
     protected final String channelName;
     protected final Direction direction;
     protected final AtomicLong messageCount;
@@ -23,13 +24,15 @@ public abstract class AbstractChannelBinding<T> {
     /**
      * Creates a new AbstractChannelBinding with the specified parameters.
      * 
-     * @param serviceName The name of the service this binding belongs to
+     * @param serviceName The name of the a service this binding belongs to
+     * @param portName The logical name of the port this binding is attached to
      * @param channelName The name of the channel this binding wraps
      * @param direction The direction of the binding (INPUT or OUTPUT)
      * @param underlyingChannel The actual channel instance being wrapped
      */
-    protected AbstractChannelBinding(String serviceName, String channelName, Direction direction, Object underlyingChannel) {
+    protected AbstractChannelBinding(String serviceName, String portName, String channelName, Direction direction, Object underlyingChannel) {
         this.serviceName = serviceName;
+        this.portName = portName;
         this.channelName = channelName;
         this.direction = direction;
         this.messageCount = new AtomicLong(0);
@@ -44,6 +47,15 @@ public abstract class AbstractChannelBinding<T> {
      */
     public String getServiceName() {
         return serviceName;
+    }
+
+    /**
+     * Returns the logical port name this binding is associated with.
+     *
+     * @return The port name
+     */
+    public String getPortName() {
+        return portName;
     }
     
     /**
@@ -135,7 +147,7 @@ public abstract class AbstractChannelBinding<T> {
      */
     @Override
     public String toString() {
-        return String.format("%s[service=%s, channel=%s, direction=%s, count=%d]", 
-            this.getClass().getSimpleName(), serviceName, channelName, direction, messageCount.get());
+        return String.format("%s[service=%s, port=%s, channel=%s, direction=%s, count=%d]",
+            this.getClass().getSimpleName(), serviceName, portName, channelName, direction, messageCount.get());
     }
 }

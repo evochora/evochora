@@ -3,6 +3,7 @@ package org.evochora.datapipeline.services;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.channels.IOutputChannel;
 import org.evochora.datapipeline.api.services.State;
+import org.evochora.datapipeline.core.OutputChannelBinding;
 
 /**
  * A dummy producer service for testing purposes. It writes a configurable number of
@@ -11,7 +12,6 @@ import org.evochora.datapipeline.api.services.State;
 public class DummyProducerService extends AbstractService {
 
     private final int messageCount;
-    private IOutputChannel<Integer> outputChannel;
     private int executionDelay = 0;
 
     public DummyProducerService(Config options) {
@@ -23,17 +23,15 @@ public class DummyProducerService extends AbstractService {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
-    public void addOutputChannel(String name, IOutputChannel<?> channel) {
-        // Call parent method to store channel for dynamic status determination
-        super.addOutputChannel(name, channel);
-        
-        // Store channel for this service's specific use
-        this.outputChannel = (IOutputChannel<Integer>) channel;
+    public void addOutputChannel(String portName, OutputChannelBinding<?> binding) {
+        // This service supports output channels, so we override the default (which throws an exception)
+        // and register the channel.
+        registerOutputChannel(portName, binding);
     }
 
     @Override
     protected void run() {
+        IOutputChannel<Integer> outputChannel = getRequiredOutputChannel("messages");
         try {
             for (int i = 0; i < messageCount; i++) {
                 synchronized (pauseLock) {

@@ -10,6 +10,7 @@ import org.evochora.datapipeline.api.services.Direction;
 import org.evochora.datapipeline.api.services.BindingState;
 import org.evochora.datapipeline.api.services.State;
 import org.evochora.datapipeline.api.services.ServiceStatus;
+import org.evochora.datapipeline.core.OutputChannelBinding;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -76,7 +77,7 @@ public class SimulationEngineTest {
                 }
             }]
             energyStrategies = []
-            pauseTicks = [5, 10]
+            pauseTicks = [0, 5, 10]
             """);
 
         // Create test channels
@@ -98,8 +99,8 @@ public class SimulationEngineTest {
         simulationEngine = new SimulationEngine(configWithChannels);
         
         // Add output channels
-        simulationEngine.addOutputChannel("context-channel", contextChannel);
-        simulationEngine.addOutputChannel("raw-tick-channel", tickDataChannel);
+        simulationEngine.addOutputChannel("contextData", new OutputChannelBinding<>("test-service", "contextData", "context-channel", contextChannel));
+        simulationEngine.addOutputChannel("tickData", new OutputChannelBinding<>("test-service", "tickData", "raw-tick-channel", tickDataChannel));
     }
 
     @Test
@@ -200,7 +201,9 @@ public class SimulationEngineTest {
     void testRawTickDataWithPlacedMolecules() throws InterruptedException {
         // Start service
         simulationEngine.start();
-        waitForCondition(() -> simulationEngine.getServiceStatus().state() == State.RUNNING, 1000, "Service to start");
+        waitForCondition(() -> simulationEngine.getServiceStatus().state() == State.PAUSED, 1000, "Service to start");
+        simulationEngine.resume();
+        waitForCondition(() -> simulationEngine.getServiceStatus().state() == State.RUNNING, 1000, "Service to resume");
         
         // Verify service is running
         ServiceStatus status = simulationEngine.getServiceStatus();

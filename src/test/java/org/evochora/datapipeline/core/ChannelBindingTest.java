@@ -24,13 +24,14 @@ public class ChannelBindingTest {
     void setUp() {
         testChannel = new InMemoryChannel<>(com.typesafe.config.ConfigFactory.empty());
         
-        inputBinding = new InputChannelBinding<>("test-service", "test-channel", testChannel);
-        outputBinding = new OutputChannelBinding<>("test-service", "test-channel", testChannel);
+        inputBinding = new InputChannelBinding<>("test-service", "test-channel", "test-channel", testChannel);
+        outputBinding = new OutputChannelBinding<>("test-service", "test-channel", "test-channel", testChannel);
     }
 
     @Test
     void testInputChannelBindingBasicProperties() {
         assertEquals("test-service", inputBinding.getServiceName());
+        assertEquals("test-channel", inputBinding.getPortName());
         assertEquals("test-channel", inputBinding.getChannelName());
         assertEquals(Direction.INPUT, inputBinding.getDirection());
         assertEquals(testChannel, inputBinding.getUnderlyingChannel());
@@ -40,6 +41,7 @@ public class ChannelBindingTest {
     @Test
     void testOutputChannelBindingBasicProperties() {
         assertEquals("test-service", outputBinding.getServiceName());
+        assertEquals("test-channel", outputBinding.getPortName());
         assertEquals("test-channel", outputBinding.getChannelName());
         assertEquals(Direction.OUTPUT, outputBinding.getDirection());
         assertEquals(testChannel, outputBinding.getUnderlyingChannel());
@@ -99,12 +101,14 @@ public class ChannelBindingTest {
         String inputString = inputBinding.toString();
         assertTrue(inputString.contains("InputChannelBinding"));
         assertTrue(inputString.contains("service=test-service"));
+        assertTrue(inputString.contains("port=test-channel"));
         assertTrue(inputString.contains("channel=test-channel"));
         assertTrue(inputString.contains("direction=INPUT"));
         
         String outputString = outputBinding.toString();
         assertTrue(outputString.contains("OutputChannelBinding"));
         assertTrue(outputString.contains("service=test-service"));
+        assertTrue(outputString.contains("port=test-channel"));
         assertTrue(outputString.contains("channel=test-channel"));
         assertTrue(outputString.contains("direction=OUTPUT"));
     }

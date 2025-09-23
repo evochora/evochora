@@ -8,6 +8,7 @@ import org.evochora.datapipeline.api.contracts.SimulationContext;
 import org.evochora.datapipeline.api.contracts.EnvironmentProperties;
 import org.evochora.datapipeline.api.contracts.WorldTopology;
 import org.evochora.datapipeline.api.channels.IInputChannel;
+import org.evochora.datapipeline.core.InputChannelBinding;
 import org.evochora.datapipeline.storage.api.indexer.IEnvironmentStateWriter;
 import org.evochora.datapipeline.storage.api.indexer.model.EnvironmentState;
 import org.evochora.datapipeline.storage.api.indexer.model.Position;
@@ -28,6 +29,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
@@ -95,8 +97,8 @@ class EnvironmentStateIndexerServiceTest {
         };
         
         // Add channels to service
-        service.addInputChannel("raw-tick-data", mockTickDataChannel);
-        service.addInputChannel("context-data", mockContextChannel);
+        service.addInputChannel("tickData", new InputChannelBinding<>("test-service", "tickData", "raw-tick-data", mockTickDataChannel));
+        service.addInputChannel("contextData", new InputChannelBinding<>("test-service", "contextData", "context-data", mockContextChannel));
     }
     
     @AfterEach
@@ -143,10 +145,12 @@ class EnvironmentStateIndexerServiceTest {
     void shouldProcessSimulationContextAndInitializeStorage() throws Exception {
         // Given
         SimulationContext context = createTestSimulationContext("test-run-123", 2);
-        mockContextChannel.addMessage(context);
         
         // When - start service
         service.start();
+        
+        // After starting the service, add the message to the channel
+        mockContextChannel.addMessage(context);
         
         // Wait for processing (polling instead of sleep)
         waitForCondition(() -> service.isStorageInitialized(), 1000);
@@ -162,24 +166,26 @@ class EnvironmentStateIndexerServiceTest {
     }
 
     @Test
-    void shouldLogWarningForDuplicateSimulationContexts() throws Exception {
+    void shouldIgnoreDuplicateSimulationContexts() throws Exception {
         // Given
         SimulationContext context1 = createTestSimulationContext("test-run-1", 2);
         SimulationContext context2 = createTestSimulationContext("test-run-2", 2);
-        mockContextChannel.addMessage(context1);
-        mockContextChannel.addMessage(context2);
         
         // When - start service
         service.start();
         
-        // Wait for first context processing
-        waitForCondition(() -> service.isStorageInitialized(), 1000);
+        // After starting the service, add the messages to the channel
+        mockContextChannel.addMessage(context1);
+        mockContextChannel.addMessage(context2);
         
-        // Give more time for second context processing
+        // Then - should have processed only the first context
+        verify(mockStorageWriter, timeout(1000)).initialize(2, "test-run-1");
+        
+        // Let the service run for a bit to ensure the second context is not processed
+        // because the service switches to the tickData channel after initialization.
         Thread.sleep(200);
-        
-        // Then - should have processed first context and logged warning for second
-        verify(mockStorageWriter, times(1)).initialize(anyInt(), anyString());
+        verify(mockStorageWriter, never()).initialize(anyInt(), eq("test-run-2"));
+        verifyNoMoreInteractions(mockStorageWriter);
         
         // Cleanup - close channels to stop the service gracefully
         mockContextChannel.close();
@@ -193,21 +199,19 @@ class EnvironmentStateIndexerServiceTest {
         SimulationContext context = createTestSimulationContext("test-run-tick", 2);
         RawTickData tickData = createTestRawTickData(1L);
         
-        mockContextChannel.addMessage(context);
-        mockTickDataChannel.addMessage(tickData);
-        
         // When - start service
         service.start();
+        
+        // After starting the service, add the messages to the channel
+        mockContextChannel.addMessage(context);
+        mockTickDataChannel.addMessage(tickData);
         
         // Wait for context processing
         waitForCondition(() -> service.isStorageInitialized(), 1000);
         
-        // Wait for tick data processing - give more time
-        Thread.sleep(200);
-        
         // Then
-        verify(mockStorageWriter).initialize(2, "test-run-tick");
-        verify(mockStorageWriter).writeEnvironmentStates(any());
+        verify(mockStorageWriter, timeout(1000)).initialize(2, "test-run-tick");
+        verify(mockStorageWriter, timeout(1000)).writeEnvironmentStates(any());
         
         // Cleanup - close channels to stop the service gracefully
         mockContextChannel.close();
@@ -222,22 +226,20 @@ class EnvironmentStateIndexerServiceTest {
         RawTickData tickData1 = createTestRawTickData("test-run-batch", 1L);
         RawTickData tickData2 = createTestRawTickData("test-run-batch", 2L);
         
+        // When - start service
+        service.start();
+        
+        // After starting the service, add the messages to the channel
         mockContextChannel.addMessage(context);
         mockTickDataChannel.addMessage(tickData1);
         mockTickDataChannel.addMessage(tickData2);
         
-        // When - start service
-        service.start();
-        
         // Wait for context processing
         waitForCondition(() -> service.isStorageInitialized(), 1000);
         
-        // Wait for tick data processing - give more time
-        Thread.sleep(200);
-        
         // Then - should flush when batch size is reached
-        verify(mockStorageWriter).initialize(2, "test-run-batch");
-        verify(mockStorageWriter, atLeastOnce()).writeEnvironmentStates(any());
+        verify(mockStorageWriter, timeout(1000)).initialize(2, "test-run-batch");
+        verify(mockStorageWriter, timeout(1000).atLeastOnce()).writeEnvironmentStates(any());
         
         // Cleanup - close channels to stop the service gracefully
         mockContextChannel.close();
@@ -255,21 +257,20 @@ class EnvironmentStateIndexerServiceTest {
         SimulationContext context = createTestSimulationContext("test-run-error", 2);
         RawTickData tickData = createTestRawTickData("test-run-error", 1L);
         
-        mockContextChannel.addMessage(context);
-        mockTickDataChannel.addMessage(tickData);
-        
         // When - start service
         service.start();
+        
+        // After starting the service, add the messages to the channel
+        mockContextChannel.addMessage(context);
+        mockTickDataChannel.addMessage(tickData);
         
         // Wait for context processing
         waitForCondition(() -> service.isStorageInitialized(), 1000);
         
-        // Wait for tick data processing - give more time
-        Thread.sleep(200);
-        
+        // Wait for tick data processing to trigger the error
         // Then - should handle initialization errors gracefully
-        verify(mockStorageWriter).initialize(2, "test-run-error");
-        verify(mockStorageWriter).writeEnvironmentStates(any());
+        verify(mockStorageWriter, timeout(1000)).initialize(2, "test-run-error");
+        verify(mockStorageWriter, timeout(1000)).writeEnvironmentStates(any());
         
         // Cleanup - close channels to stop the service gracefully
         mockContextChannel.close();
@@ -279,23 +280,22 @@ class EnvironmentStateIndexerServiceTest {
 
     @Test
     void shouldHandleEmptyTickData() throws Exception {
-        // Given - expect the empty data error
-        logMonitor.expectError("CRITICAL: No environment states extracted from tick data - data may be empty or invalid");
-        
+        // Given
         SimulationContext context = createTestSimulationContext("test-run-empty", 2);
         RawTickData emptyTickData = createEmptyRawTickData(1L);
-        
-        mockContextChannel.addMessage(context);
-        mockTickDataChannel.addMessage(emptyTickData);
         
         // When - start service
         service.start();
         
+        // After starting the service, add the messages to the channel
+        mockContextChannel.addMessage(context);
+        mockTickDataChannel.addMessage(emptyTickData);
+        
         // Wait for context processing
         waitForCondition(() -> service.isStorageInitialized(), 1000);
         
-        // Wait for tick data processing - give more time
-        Thread.sleep(200);
+        // Wait until the service has processed the empty tick
+        waitForCondition(() -> "Last tick: 1".equals(service.getActivityInfo()), 1000);
         
         // Then
         verify(mockStorageWriter).initialize(2, "test-run-empty");
@@ -313,20 +313,18 @@ class EnvironmentStateIndexerServiceTest {
         SimulationContext context = createTestSimulationContext("test-run-extract", 2);
         RawTickData tickData = createTestRawTickData("test-run-extract", 1L);
         
-        mockContextChannel.addMessage(context);
-        mockTickDataChannel.addMessage(tickData);
-        
         // When - start service
         service.start();
+        
+        // After starting the service, add the messages to the channel
+        mockContextChannel.addMessage(context);
+        mockTickDataChannel.addMessage(tickData);
         
         // Wait for context processing
         waitForCondition(() -> service.isStorageInitialized(), 1000);
         
-        // Wait for tick data processing - give more time
-        Thread.sleep(200);
-        
         // Then - verify that states contain correct data
-        verify(mockStorageWriter).writeEnvironmentStates(argThat(states -> {
+        verify(mockStorageWriter, timeout(1000)).writeEnvironmentStates(argThat(states -> {
             return states.stream().anyMatch(state -> 
                 state.tick() == 1L && 
                 state.position().getCoordinate(0) == 1 && 
@@ -348,27 +346,29 @@ class EnvironmentStateIndexerServiceTest {
         SimulationContext context = createTestSimulationContext("test-run-pause", 2);
         RawTickData tickData = createTestRawTickData("test-run-pause", 1L);
         
-        mockContextChannel.addMessage(context);
-        mockTickDataChannel.addMessage(tickData);
-        
         // When - start service
         service.start();
+        
+        // After starting the service, add the messages to the channel
+        mockContextChannel.addMessage(context);
+        mockTickDataChannel.addMessage(tickData);
         
         // Wait for context processing
         waitForCondition(() -> service.isStorageInitialized(), 1000);
         
-        // Pause service
+        // Pause service and temporarily ignore warnings that might occur from scheduler shutdown
+        logMonitor.ignoreWarnings(true);
         service.pause();
-        // Note: isPaused() method doesn't exist, so we can't test pause state directly
+        logMonitor.ignoreWarnings(false);
+        
+        // Verify that no data is processed while paused
+        verify(mockStorageWriter, never()).writeEnvironmentStates(any());
         
         // Resume service
         service.resume();
         
-        // Wait for tick data processing - give more time
-        Thread.sleep(200);
-        
         // Then
-        verify(mockStorageWriter).writeEnvironmentStates(any());
+        verify(mockStorageWriter, timeout(1000)).writeEnvironmentStates(any());
         
         // Cleanup - close channels to stop the service gracefully
         mockContextChannel.close();
@@ -418,7 +418,13 @@ class EnvironmentStateIndexerServiceTest {
     private void waitForCondition(java.util.function.BooleanSupplier condition, long timeoutMs) {
         long startTime = System.currentTimeMillis();
         while (!condition.getAsBoolean() && (System.currentTimeMillis() - startTime) < timeoutMs) {
-            // Polling without sleep
+            try {
+                // Poll every 10ms to avoid busy-waiting and high CPU usage
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                fail("waitForCondition was interrupted");
+            }
         }
         assertTrue(condition.getAsBoolean(), "Condition not met within timeout");
     }

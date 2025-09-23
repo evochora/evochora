@@ -18,11 +18,12 @@ public class OutputChannelBinding<T> extends AbstractChannelBinding<T> implement
      * Creates a new OutputChannelBinding that wraps the specified output channel.
      * 
      * @param serviceName The name of the service this binding belongs to
+     * @param portName    The logical name of the port this binding is attached to
      * @param channelName The name of the channel this binding wraps
      * @param delegate The actual output channel being wrapped
      */
-    public OutputChannelBinding(String serviceName, String channelName, IOutputChannel<T> delegate) {
-        super(serviceName, channelName, Direction.OUTPUT, delegate);
+    public OutputChannelBinding(String serviceName, String portName, String channelName, IOutputChannel<T> delegate) {
+        super(serviceName, portName, channelName, Direction.OUTPUT, delegate);
         this.delegate = delegate;
     }
     

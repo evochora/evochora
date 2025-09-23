@@ -3,6 +3,7 @@ package org.evochora.datapipeline.services;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.channels.IOutputChannel;
 import org.evochora.datapipeline.api.contracts.RawTickData;
+import org.evochora.datapipeline.core.OutputChannelBinding;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,7 +19,6 @@ public class DummyService extends AbstractService {
 
     private static final Logger log = LoggerFactory.getLogger(DummyService.class);
 
-    private IOutputChannel<RawTickData> outputChannel;
     private int tickCount = 0;
     private final int maxTicks;
 
@@ -28,16 +28,13 @@ public class DummyService extends AbstractService {
 
     @Override
     @SuppressWarnings("unchecked")
-    public void addOutputChannel(String name, IOutputChannel<?> channel) {
-        // Call parent method to store channel for dynamic status determination
-        super.addOutputChannel(name, channel);
-        
-        // Store channel for this service's specific use
-        this.outputChannel = (IOutputChannel<RawTickData>) channel;
+    public void addOutputChannel(String portName, OutputChannelBinding<?> binding) {
+        registerOutputChannel(portName, binding);
     }
 
     @Override
     protected void run() {
+        IOutputChannel<RawTickData> outputChannel = getRequiredOutputChannel("tickData"); // Assuming port name is "tickData"
         log.debug("Placeholder DummyService is running.");
         
         try {
@@ -56,7 +53,7 @@ public class DummyService extends AbstractService {
                 }
                 
                 // Simulate tick processing
-                simulateTick();
+                simulateTick(outputChannel);
                 
                 // Small delay to prevent overwhelming the system
                 Thread.sleep(100);
@@ -72,7 +69,7 @@ public class DummyService extends AbstractService {
         }
     }
 
-    private void simulateTick() {
+    private void simulateTick(IOutputChannel<RawTickData> outputChannel) {
         tickCount++;
         
         // Create a placeholder RawTickData message

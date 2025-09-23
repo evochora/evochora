@@ -219,64 +219,41 @@ public class ServiceManager {
             Config serviceConfig = servicesConfig.getConfig(serviceName);
             IService service = services.get(serviceName);
 
-            // Check for inputs at service level (support both list and object format)
+            // Wire input ports
             if (serviceConfig.hasPath("inputs")) {
-                if (serviceConfig.getValue("inputs").valueType() == com.typesafe.config.ConfigValueType.LIST) {
-                    // Legacy format: inputs = ["channel1", "channel2"]
-                    for (String channelName : serviceConfig.getStringList("inputs")) {
+                Config inputsConfig = serviceConfig.getConfig("inputs");
+                for (String portName : inputsConfig.root().keySet()) {
+                    List<String> channelNames = getChannelNames(inputsConfig, portName);
+                    for (String channelName : channelNames) {
                         Object channel = channels.get(channelName);
-                        if (service instanceof AbstractService) {
-                            // Create input channel binding wrapper
-                            InputChannelBinding<?> binding = new InputChannelBinding<>(serviceName, channelName, 
-                                (org.evochora.datapipeline.api.channels.IInputChannel<?>) channel);
+                        if (channel instanceof org.evochora.datapipeline.api.channels.IInputChannel<?>) {
+                            InputChannelBinding<?> binding = new InputChannelBinding<>(serviceName, portName, channelName,
+                                    (org.evochora.datapipeline.api.channels.IInputChannel<?>) channel);
                             channelBindings.add(binding);
-                            ((AbstractService) service).addInputChannel(channelName, binding);
-                        }
-                    }
-                } else if (serviceConfig.getValue("inputs").valueType() == com.typesafe.config.ConfigValueType.OBJECT) {
-                    // New format: inputs { tickData: "channel1", contextData: "channel2" }
-                    Config inputsConfig = serviceConfig.getConfig("inputs");
-                    for (String channelKey : inputsConfig.root().keySet()) {
-                        String channelName = inputsConfig.getString(channelKey);
-                        Object channel = channels.get(channelName);
-                        if (service instanceof AbstractService) {
-                            // Create input channel binding wrapper
-                            InputChannelBinding<?> binding = new InputChannelBinding<>(serviceName, channelName, 
-                                (org.evochora.datapipeline.api.channels.IInputChannel<?>) channel);
-                            channelBindings.add(binding);
-                            ((AbstractService) service).addInputChannel(channelName, binding);
+                            service.addInputChannel(portName, binding);
+                        } else {
+                            throw new RuntimeException("Channel '" + channelName + "' configured for service '" +
+                                    serviceName + "' port '" + portName + "' is not an IInputChannel.");
                         }
                     }
                 }
             }
-            
 
+            // Wire output ports
             if (serviceConfig.hasPath("outputs")) {
-                // Support both old list format and new object format
-                if (serviceConfig.getValue("outputs").valueType() == com.typesafe.config.ConfigValueType.LIST) {
-                    // Legacy format: outputs = ["channel1", "channel2"]
-                    for (String channelName : serviceConfig.getStringList("outputs")) {
+                Config outputsConfig = serviceConfig.getConfig("outputs");
+                for (String portName : outputsConfig.root().keySet()) {
+                    List<String> channelNames = getChannelNames(outputsConfig, portName);
+                    for (String channelName : channelNames) {
                         Object channel = channels.get(channelName);
-                        if (service instanceof AbstractService) {
-                            // Create output channel binding wrapper
-                            OutputChannelBinding<?> binding = new OutputChannelBinding<>(serviceName, channelName, 
-                                (org.evochora.datapipeline.api.channels.IOutputChannel<?>) channel);
+                        if (channel instanceof org.evochora.datapipeline.api.channels.IOutputChannel<?>) {
+                            OutputChannelBinding<?> binding = new OutputChannelBinding<>(serviceName, portName, channelName,
+                                    (org.evochora.datapipeline.api.channels.IOutputChannel<?>) channel);
                             channelBindings.add(binding);
-                            ((AbstractService) service).addOutputChannel(channelName, binding);
-                        }
-                    }
-                } else {
-                    // New format: outputs { tickData: "channel1", contextData: "channel2" }
-                    Config outputsConfig = serviceConfig.getConfig("outputs");
-                    for (String outputType : outputsConfig.root().keySet()) {
-                        String channelName = outputsConfig.getString(outputType);
-                        Object channel = channels.get(channelName);
-                        if (service instanceof AbstractService) {
-                            // Create output channel binding wrapper
-                            OutputChannelBinding<?> binding = new OutputChannelBinding<>(serviceName, channelName, 
-                                (org.evochora.datapipeline.api.channels.IOutputChannel<?>) channel);
-                            channelBindings.add(binding);
-                            ((AbstractService) service).addOutputChannel(channelName, binding);
+                            service.addOutputChannel(portName, binding);
+                        } else {
+                            throw new RuntimeException("Channel '" + channelName + "' configured for service '" +
+                                    serviceName + "' port '" + portName + "' is not an IOutputChannel.");
                         }
                     }
                 }
@@ -285,6 +262,24 @@ public class ServiceManager {
         
         // 4. Start Metrics Collection
         startMetricsCollection(pipelineConfig);
+    }
+
+    /**
+     * Helper method to get a list of channel names from a configuration object.
+     * It supports both a single string and a list of strings for a given key.
+     *
+     * @param config The configuration object (e.g., inputs or outputs).
+     * @param key    The key representing the port name.
+     * @return A list of channel names.
+     */
+    private List<String> getChannelNames(Config config, String key) {
+        if (config.getValue(key).valueType() == com.typesafe.config.ConfigValueType.STRING) {
+            return List.of(config.getString(key));
+        } else if (config.getValue(key).valueType() == com.typesafe.config.ConfigValueType.LIST) {
+            return config.getStringList(key);
+        } else {
+            throw new RuntimeException("Configuration for '" + key + "' must be a string or a list of strings.");
+        }
     }
     
     /**

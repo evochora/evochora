@@ -5,7 +5,9 @@ import org.evochora.datapipeline.api.channels.IInputChannel;
 import org.evochora.datapipeline.api.contracts.RawTickData;
 import org.evochora.datapipeline.api.contracts.RawCellState;
 import org.evochora.datapipeline.api.contracts.SimulationContext;
+import org.evochora.datapipeline.api.services.State;
 import org.evochora.datapipeline.api.services.ServiceStatus;
+import org.evochora.datapipeline.core.InputChannelBinding;
 import org.evochora.datapipeline.storage.api.indexer.IEnvironmentStateWriter;
 import org.evochora.datapipeline.storage.api.indexer.model.EnvironmentState;
 import org.evochora.datapipeline.storage.api.indexer.model.Position;
@@ -16,10 +18,7 @@ import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -53,8 +52,10 @@ public class EnvironmentStateIndexerService extends org.evochora.datapipeline.se
     // Batch processing
     private final List<EnvironmentState> currentBatch = new ArrayList<>();
     private final Object batchLock = new Object();
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-    private final AtomicBoolean running = new AtomicBoolean(false);
+    private long lastFlushTime = System.currentTimeMillis();
+    
+    // Scheduler for batch timeout
+    private ScheduledExecutorService scheduler;
     
     // Storage
     private IEnvironmentStateWriter storageWriter;
@@ -63,11 +64,6 @@ public class EnvironmentStateIndexerService extends org.evochora.datapipeline.se
     private volatile long lastProcessedTick = -1;
     
     // Channel management
-    private final Map<String, IInputChannel<?>> inputChannels = new ConcurrentHashMap<>();
-    private String tickDataChannelName;
-    private String contextDataChannelName;
-    private IInputChannel<?> rawTickDataChannel;
-    private IInputChannel<?> contextChannel;
     
     /**
      * Creates a new EnvironmentStateIndexerService with the specified configuration.
@@ -100,187 +96,124 @@ public class EnvironmentStateIndexerService extends org.evochora.datapipeline.se
             throw new IllegalArgumentException("storage configuration is required");
         }
         
-        // Parse input channel mappings (similar to SimulationEngine outputs)
-        if (config.hasPath("inputs")) {
-            Config inputsConfig = config.getConfig("inputs");
-            this.tickDataChannelName = inputsConfig.getString("tickData");
-            this.contextDataChannelName = inputsConfig.getString("contextData");
-        } else {
-            throw new IllegalArgumentException("EnvironmentStateIndexerService requires 'inputs' configuration with 'tickData' and 'contextData' channel names");
-        }
-        
         this.serviceConfig = config; // The entire service configuration
 
-        log.info("EnvironmentStateIndexerService initialized - batchSize: {}, batchTimeoutMs: {}ms, tickDataChannel: {}, contextDataChannel: {}",
-            batchSize, batchTimeoutMs, tickDataChannelName, contextDataChannelName);
+        log.info("EnvironmentStateIndexerService initialized - batchSize: {}, batchTimeoutMs: {}ms",
+            batchSize, batchTimeoutMs);
     }
 
     @Override
-    public void addInputChannel(String channelKey, org.evochora.datapipeline.api.channels.IInputChannel<?> channel) {
-        log.info("Added input channel: {} (type: {})", channelKey, channel.getClass().getSimpleName());
-
-        // Call parent to add to channelBindings for status display
-        super.addInputChannel(channelKey, channel);
-
-        // Store channel for later use
-        inputChannels.put(channelKey, channel);
-
-        // Identify channel type based on the actual channel name (not the input key)
-        if (channelKey.equals(tickDataChannelName)) {
-            this.rawTickDataChannel = channel;
-            log.info("Identified channel {} as RawTickData channel", channelKey);
-        } else if (channelKey.equals(contextDataChannelName)) {
-            this.contextChannel = channel;
-            log.info("Identified channel {} as SimulationContext channel", channelKey);
-        } else {
-            log.warn("Unknown channel type for {} - expected '{}' or '{}'", 
-                channelKey, tickDataChannelName, contextDataChannelName);
-        }
+    @SuppressWarnings("unchecked")
+    public void addInputChannel(String portName, InputChannelBinding<?> binding) {
+        registerInputChannel(portName, binding);
     }
 
     @Override
     public void run() {
         log.info("EnvironmentStateIndexerService run() method started");
         try {
-            // 1. Context lesen und verarbeiten - so lange bis es funktioniert
+            IInputChannel<RawTickData> tickDataChannel = getRequiredInputChannel("tickData");
+            IInputChannel<SimulationContext> contextChannel = getRequiredInputChannel("contextData");
+
             log.info("Waiting for SimulationContext from contextChannel...");
-            log.info("run() method - running.get(): {}, storageInitialized: {}", running.get(), storageInitialized);
-            while (running.get() && !storageInitialized) {
-                // Check for pause
-                if (paused) {
-                    synchronized (pauseLock) {
-                        while (paused && running.get()) {
-                            try {
-                                pauseLock.wait();
-                            } catch (InterruptedException e) {
-                                Thread.currentThread().interrupt();
-                                return;
-                            }
-                        }
+            while (!storageInitialized && !Thread.currentThread().isInterrupted()) {
+                synchronized (pauseLock) {
+                    while (paused) {
+                        pauseLock.wait();
                     }
                 }
-                
-                log.debug("Reading from contextChannel...");
-                Object contextObj = contextChannel.read();
-                if (contextObj instanceof SimulationContext) {
-                    processSimulationContext((SimulationContext) contextObj);
-                } else {
-                    log.warn("Expected SimulationContext but got: {}", contextObj.getClass().getSimpleName());
+                try {
+                    SimulationContext context = contextChannel.read();
+                    if (context != null) {
+                        processSimulationContext(context);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.info("Interrupted while waiting for SimulationContext.");
+                    return; // Exit if interrupted
                 }
             }
             
-            // 2. Tick-Data verarbeiten - nur wenn Storage initialisiert ist
-            log.debug("Storage initialized, now processing tick data from rawTickDataChannel...");
-            while (running.get()) {
-                // Check for pause BEFORE reading from channel
-                if (paused) {
-                    synchronized (pauseLock) {
-                        while (paused && running.get()) {
-                            try {
-                                pauseLock.wait();
-                            } catch (InterruptedException e) {
-                                Thread.currentThread().interrupt();
-                                return;
-                            }
-                        }
+            log.debug("Storage initialized, now processing tick data...");
+            while (!Thread.currentThread().isInterrupted()) {
+                synchronized (pauseLock) {
+                    while (paused) {
+                        pauseLock.wait();
                     }
                 }
-                
-                // Only read if not paused and still running
-                if (!paused && running.get()) {
-                    log.debug("Reading from rawTickDataChannel...");
-                    Object tickDataObj = rawTickDataChannel.read();
-                    if (tickDataObj instanceof RawTickData) {
-                        processRawTickData((RawTickData) tickDataObj);
-                    } else {
-                        log.warn("Expected RawTickData but got: {}", tickDataObj.getClass().getSimpleName());
+                try {
+                    RawTickData tickData = tickDataChannel.read(); // This will block if channel is empty
+                    if (tickData != null) {
+                        processRawTickData(tickData);
                     }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.info("Interrupted while waiting for RawTickData.");
+                    return; // Exit if interrupted
                 }
-                // Kein Thread.sleep() - read() blockiert bereits!
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.info("EnvironmentStateIndexerService interrupted");
+            log.info("EnvironmentStateIndexerService processing thread interrupted.");
         } catch (Exception e) {
-            log.error("Error in EnvironmentStateIndexerService run loop", e);
-            // Ensure resources are cleaned up even on unexpected exceptions
-            try {
-                flushBatch();
-            } catch (Exception flushError) {
-                log.error("Failed to flush batch during exception cleanup", flushError);
-            }
+            log.error("Unhandled exception in EnvironmentStateIndexerService run loop", e);
         } finally {
-            // Ensure service is marked as stopped
-            running.set(false);
+            // Final flush before shutting down
+            log.info("Flushing final batch before shutdown...");
+            flushBatchBlocking();
+            log.info("EnvironmentStateIndexerService processing loop finished.");
         }
     }
 
     @Override
     public void start() {
-        log.info("Starting EnvironmentStateIndexerService");
-        
-        // Validate channels are available
-        if (contextChannel == null) {
-            log.error("Context channel not available - cannot determine environment dimensions");
-            return;
-        }
-        
-        if (rawTickDataChannel == null) {
-            log.error("Raw tick data channel not available - cannot process tick data");
-            return;
-        }
-
-        // Prevent double start
-        if (running.get()) {
-            log.warn("Service is already running - ignoring duplicate start() call");
-            return;
-        }
-
-        // Call parent start() to handle state and thread creation FIRST
+        // The start logic is now fully handled by the AbstractService
         super.start();
-        
-        // Set running flag to true after parent start() creates the thread
-        running.set(true);
-        
-        // Schedule periodic batch flushing AFTER service is started
-        scheduler.scheduleAtFixedRate(
-            this::flushBatch,
-            batchTimeoutMs,
-            batchTimeoutMs,
-            TimeUnit.MILLISECONDS
-        );
+        if (currentState.get() == State.RUNNING && (scheduler == null || scheduler.isShutdown())) {
+            log.info("Starting batch flush scheduler with timeout {}ms.", batchTimeoutMs);
+            scheduler = Executors.newSingleThreadScheduledExecutor();
+            scheduler.scheduleAtFixedRate(this::flushBatchByTimeout, batchTimeoutMs, batchTimeoutMs, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    @Override
+    public void pause() {
+        super.pause();
+        if (scheduler != null && !scheduler.isShutdown()) {
+            log.info("Shutting down batch flush scheduler due to service pause.");
+            scheduler.shutdownNow();
+        }
+    }
+
+    @Override
+    public void resume() {
+        super.resume();
+        if (currentState.get() == State.RUNNING && (scheduler == null || scheduler.isShutdown())) {
+            log.info("Resuming batch flush scheduler.");
+            scheduler = Executors.newSingleThreadScheduledExecutor();
+            scheduler.scheduleAtFixedRate(this::flushBatchByTimeout, batchTimeoutMs, batchTimeoutMs, TimeUnit.MILLISECONDS);
+        }
     }
 
     @Override
     public void stop() {
-        log.info("Stopping EnvironmentStateIndexerService");
-        
-        // Flush any remaining data
-        flushBatch();
-        
-        // Shutdown scheduler
-        scheduler.shutdown();
-        try {
-            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                scheduler.shutdownNow();
-            }
-        } catch (InterruptedException e) {
+        log.info("Stopping EnvironmentStateIndexerService...");
+        if (scheduler != null && !scheduler.isShutdown()) {
             scheduler.shutdownNow();
-            Thread.currentThread().interrupt();
+            log.info("Batch flush scheduler shut down.");
         }
+        super.stop(); // This will interrupt the thread, causing the run() loop to exit.
         
-        // Close storage writer
+        // Final flush is handled in the run() method's finally block.
+        // Close the storage writer after the thread has finished.
         if (storageWriter != null) {
             try {
                 storageWriter.close();
-                log.info("Storage writer closed successfully");
+                log.info("Storage writer closed successfully.");
             } catch (Exception e) {
                 log.error("Error closing storage writer", e);
             }
         }
-        
-        // Call parent stop() to handle state management and synchronization
-        super.stop();
     }
 
 
@@ -405,33 +338,17 @@ public class EnvironmentStateIndexerService extends org.evochora.datapipeline.se
      */
     private void processRawTickData(RawTickData tickData) {
         if (!storageInitialized) {
-            log.error("CRITICAL BUG: processRawTickData called before storage initialization! Data loss occurred!");
-            throw new IllegalStateException("Cannot process tick data before storage is initialized");
+            log.warn("Storage not initialized, skipping tick data processing for tick {}.", tickData.getTickNumber());
+            return;
         }
         
-        // Update last processed tick
         lastProcessedTick = tickData.getTickNumber();
-        
         List<EnvironmentState> states = extractEnvironmentStates(tickData);
         
-        if (states.isEmpty()) {
-            log.error("CRITICAL: No environment states extracted from tick data - data may be empty or invalid");
-        }
-        
-        if (!states.isEmpty()) {
-            boolean shouldFlush = false;
-            synchronized (batchLock) {
-                currentBatch.addAll(states);
-                
-                // Check if batch size reached
-                if (currentBatch.size() >= batchSize) {
-                    shouldFlush = true;
-                }
-            }
-            
-            // Flush outside of synchronized block to avoid deadlock
-            if (shouldFlush) {
-                flushBatch();
+        synchronized (batchLock) {
+            currentBatch.addAll(states);
+            if (currentBatch.size() >= batchSize) {
+                flushBatchBlocking();
             }
         }
     }
@@ -447,31 +364,23 @@ public class EnvironmentStateIndexerService extends org.evochora.datapipeline.se
         }
         
         for (RawCellState cell : tickData.getCells()) {
-            // Only process cells that have molecules OR are owned by organisms
-            // Exclude only cells where CODE=0 AND Owner=0
-            boolean shouldExclude = (cell.getType() == org.evochora.runtime.Config.TYPE_CODE && 
-                                    cell.getValue() == 0 && 
-                                    cell.getOwnerId() == 0);
-            
-            if (!shouldExclude) {
-                String moleculeType;
-                try {
-                    moleculeType = getMoleculeTypeName(cell.getType());
-                } catch (IllegalArgumentException e) {
-                    log.warn("Unknown molecule type at position {} in tick {} with owner {}: {}", 
-                        java.util.Arrays.toString(cell.getPosition()), tickData.getTickNumber(), cell.getOwnerId(), e.getMessage());
-                    moleculeType = "UNKNOWN";
-                }
-                
-                EnvironmentState state = new EnvironmentState(
-                    tickData.getTickNumber(),
-                    new Position(cell.getPosition()),
-                    moleculeType,
-                    cell.getValue(),
-                    cell.getOwnerId()
-                );
-                states.add(state);
+            String moleculeType;
+            try {
+                moleculeType = getMoleculeTypeName(cell.getType());
+            } catch (IllegalArgumentException e) {
+                log.warn("Unknown molecule type at position {} in tick {} with owner {}: {}", 
+                    java.util.Arrays.toString(cell.getPosition()), tickData.getTickNumber(), cell.getOwnerId(), e.getMessage());
+                moleculeType = "UNKNOWN";
             }
+            
+            EnvironmentState state = new EnvironmentState(
+                tickData.getTickNumber(),
+                new Position(cell.getPosition()),
+                moleculeType,
+                cell.getValue(),
+                cell.getOwnerId()
+            );
+            states.add(state);
         }
         
         return states;
@@ -495,24 +404,62 @@ public class EnvironmentStateIndexerService extends org.evochora.datapipeline.se
     }
     
     /**
-     * Flushes the current batch to storage.
+     * Flushes the current batch to storage if the timeout has been reached.
+     * This method is called by a scheduler.
      */
-    private void flushBatch() {
-        if (currentBatch.isEmpty()) {
-            return;
+    private void flushBatchByTimeout() {
+        try {
+            synchronized (batchLock) {
+                if (!currentBatch.isEmpty() && System.currentTimeMillis() - lastFlushTime > batchTimeoutMs) {
+                    log.debug("Flushing batch of {} states due to timeout.", currentBatch.size());
+                    flushBatchBlocking();
+                }
+            }
+        } catch (Exception e) {
+            // Prevent scheduler from dying on an unexpected error
+            log.error("Error during scheduled batch flush", e);
         }
-        
+    }
+    
+    /**
+     * Flushes the current batch to storage. This is a blocking operation.
+     */
+    private void flushBatchBlocking() {
         List<EnvironmentState> batchToFlush;
         synchronized (batchLock) {
+            if (currentBatch.isEmpty()) {
+                return;
+            }
             batchToFlush = new ArrayList<>(currentBatch);
             currentBatch.clear();
+            lastFlushTime = System.currentTimeMillis();
         }
         
-        try {
-            storageWriter.writeEnvironmentStates(batchToFlush);
-            log.debug("Flushed batch of {} environment states", batchToFlush.size());
-        } catch (Exception e) {
-            log.error("Failed to flush batch of {} environment states", batchToFlush.size(), e);
+        if (!batchToFlush.isEmpty()) {
+            writeToDatabase(batchToFlush);
         }
+    }
+
+    /**
+     * Writes a batch of environment states to the storage writer.
+     * This method contains the actual blocking database call.
+     * @param batch The list of states to write.
+     */
+    private void writeToDatabase(List<EnvironmentState> batch) {
+        try {
+            storageWriter.writeEnvironmentStates(batch);
+            log.debug("Flushed batch of {} environment states", batch.size());
+        } catch (Exception e) {
+            log.error("Failed to flush batch of {} environment states", batch.size(), e);
+        }
+    }
+    
+    private Thread findServiceThread() {
+        for (Thread t : Thread.getAllStackTraces().keySet()) {
+            if (t.getName().equals(this.getClass().getSimpleName().toLowerCase())) {
+                return t;
+            }
+        }
+        return null;
     }
 }

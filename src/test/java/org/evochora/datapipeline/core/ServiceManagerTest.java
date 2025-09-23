@@ -37,18 +37,19 @@ public class ServiceManagerTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        inputs = {}
-                        outputs = ["test-stream"]
+                        outputs {
+                            messages = "test-stream"
+                        }
                         options {
                             messageCount = 10
                         }
                     }
                     test-consumer {
                         className = "org.evochora.datapipeline.services.DummyConsumerService"
-                        inputs = {
-                            input1 = "test-stream"
+                        inputs {
+                            messages = "test-stream"
                         }
-                        outputs = []
+                        outputs = {}
                     }
                 }
             }
@@ -146,8 +147,9 @@ public class ServiceManagerTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        inputs = {}
-                        outputs = ["test-stream"]
+                        outputs {
+                            messages = "test-stream"
+                        }
                         options {
                             messageCount = 10
                         }
@@ -189,8 +191,9 @@ public class ServiceManagerTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        inputs = {}
-                        outputs = ["test-stream"]
+                        outputs {
+                            messages = "test-stream"
+                        }
                         options {
                             messageCount = 10
                         }
@@ -230,18 +233,19 @@ public class ServiceManagerTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        inputs = {}
-                        outputs = ["test-stream"]
+                        outputs {
+                            messages = "test-stream"
+                        }
                         options {
                             messageCount = 10
                         }
                     }
                     test-consumer {
                         className = "org.evochora.datapipeline.services.DummyConsumerService"
-                        inputs = {
-                            input1 = "test-stream"
+                        inputs {
+                            messages = "test-stream"
                         }
-                        outputs = []
+                        outputs = {}
                     }
                 }
             }
@@ -284,8 +288,9 @@ public class ServiceManagerTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        inputs = {}
-                        outputs = ["test-stream"]
+                        outputs {
+                            messages = "test-stream"
+                        }
                         options {
                             messageCount = 10
                         }

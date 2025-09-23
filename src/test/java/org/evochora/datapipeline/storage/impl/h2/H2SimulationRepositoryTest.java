@@ -15,6 +15,7 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.Arrays;
 import java.util.List;
+import java.util.ArrayList;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -128,7 +129,7 @@ class H2SimulationRepositoryTest {
         repository.writeEnvironmentStates(states);
         
         // Then
-        verifyDataInDatabase(states);
+        verifyDataInDatabase(states, 2);
     }
     
     @Test
@@ -147,13 +148,13 @@ class H2SimulationRepositoryTest {
         repository.writeEnvironmentStates(validStates);
         
         // Then - verify valid states are written
-        verifyDataInDatabase(validStates);
+        verifyDataInDatabase(validStates, 2);
         
         // When - try to write invalid states (should fail and rollback)
         assertThrows(IllegalArgumentException.class, () -> repository.writeEnvironmentStates(invalidStates));
         
         // Then - verify only valid states remain (atomic operation)
-        verifyDataInDatabase(validStates);
+        verifyDataInDatabase(validStates, 2);
     }
     
     @Test
@@ -169,7 +170,7 @@ class H2SimulationRepositoryTest {
         repository.writeEnvironmentStates(states);
         
         // Then
-        verifyDataInDatabase(states);
+        verifyDataInDatabase(states, 3);
     }
     
     @Test
@@ -187,32 +188,39 @@ class H2SimulationRepositoryTest {
     /**
      * Verifies that the data was correctly written to the database.
      */
-    private void verifyDataInDatabase(List<EnvironmentState> expectedStates) throws Exception {
+    private void verifyDataInDatabase(List<EnvironmentState> expectedStates, int dimensions) throws Exception {
         String jdbcUrl = testConfig.getString("jdbcUrl");
         try (Connection conn = DriverManager.getConnection(jdbcUrl, "sa", "");
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT * FROM environment_state ORDER BY tick, pos_0, pos_1")) {
+             Statement stmt = conn.createStatement()) {
             
-            int count = 0;
-            while (rs.next()) {
-                assertTrue(count < expectedStates.size(), "More rows in database than expected");
-                
-                EnvironmentState expected = expectedStates.get(count);
-                assertEquals(expected.tick(), rs.getLong("tick"));
-                assertEquals(expected.moleculeType(), rs.getString("molecule_type"));
-                assertEquals(expected.moleculeValue(), rs.getInt("molecule_value"));
-                assertEquals(expected.owner(), rs.getLong("owner"));
-                
-                // Verify position coordinates
-                int[] expectedPos = expected.position().coordinates();
-                for (int i = 0; i < expectedPos.length; i++) {
-                    assertEquals(expectedPos[i], rs.getInt("pos_" + i));
-                }
-                
-                count++;
+            StringBuilder orderBy = new StringBuilder("ORDER BY tick");
+            for (int i = 0; i < dimensions; i++) {
+                orderBy.append(", pos_").append(i);
             }
             
-            assertEquals(expectedStates.size(), count, "Number of rows in database doesn't match expected");
+            try (ResultSet rs = stmt.executeQuery("SELECT * FROM environment_state " + orderBy)) {
+                
+                int count = 0;
+                while (rs.next()) {
+                    assertTrue(count < expectedStates.size(), "More rows in database than expected");
+                    
+                    EnvironmentState expected = expectedStates.get(count);
+                    assertEquals(expected.tick(), rs.getLong("tick"));
+                    assertEquals(expected.moleculeType(), rs.getString("molecule_type"));
+                    assertEquals(expected.moleculeValue(), rs.getInt("molecule_value"));
+                    assertEquals(expected.owner(), rs.getLong("owner"));
+                    
+                    // Verify position coordinates
+                    int[] expectedPos = expected.position().coordinates();
+                    for (int i = 0; i < expectedPos.length; i++) {
+                        assertEquals(expectedPos[i], rs.getInt("pos_" + i));
+                    }
+                    
+                    count++;
+                }
+                
+                assertEquals(expectedStates.size(), count, "Number of rows in database doesn't match expected");
+            }
         }
     }
     
@@ -226,11 +234,11 @@ class H2SimulationRepositoryTest {
              ResultSet rs = stmt.executeQuery("SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ENVIRONMENT_STATE' ORDER BY ORDINAL_POSITION")) {
             
             // Expected columns: tick, molecule_type, molecule_value, owner, pos_0, pos_1, ..., pos_n
-            String[] expectedColumns = {"TICK", "MOLECULE_TYPE", "MOLECULE_VALUE", "OWNER"};
+            List<String> expectedColumnList = new ArrayList<>(List.of("TICK", "MOLECULE_TYPE", "MOLECULE_VALUE", "OWNER"));
             for (int i = 0; i < expectedDimensions; i++) {
-                expectedColumns = Arrays.copyOf(expectedColumns, expectedColumns.length + 1);
-                expectedColumns[expectedColumns.length - 1] = "POS_" + i;
+                expectedColumnList.add("POS_" + i);
             }
+            String[] expectedColumns = expectedColumnList.toArray(new String[0]);
             
             int columnIndex = 0;
             while (rs.next()) {

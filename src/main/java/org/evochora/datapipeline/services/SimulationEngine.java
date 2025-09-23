@@ -15,6 +15,7 @@ import org.evochora.datapipeline.api.services.State;
 import org.evochora.datapipeline.api.services.Direction;
 import org.evochora.datapipeline.api.services.BindingState;
 import org.evochora.datapipeline.api.channels.IOutputChannel;
+import org.evochora.datapipeline.core.OutputChannelBinding;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.IRandomProvider;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
@@ -69,7 +70,6 @@ public class SimulationEngine extends AbstractService {
     private int nextPauseTickIndex = 0;
     
     // Channel storage for message publishing
-    private final Map<String, IOutputChannel<?>> outputChannels = new HashMap<>();
     
     // Dedicated channel mappings for different message types
     private String tickDataChannel;
@@ -112,12 +112,9 @@ public class SimulationEngine extends AbstractService {
     }
 
     @Override
-    public void addOutputChannel(String channelName, IOutputChannel<?> channel) {
-        // Call parent method to store channel for dynamic status determination
-        super.addOutputChannel(channelName, channel);
-        
-        // Store channel for message publishing
-        outputChannels.put(channelName, channel);
+    public void addOutputChannel(String portName, OutputChannelBinding<?> binding) {
+        // This service supports output channels, so we override the default behavior.
+        registerOutputChannel(portName, binding);
     }
 
     @Override
@@ -127,6 +124,15 @@ public class SimulationEngine extends AbstractService {
                     organismConfigs.size(), energyStrategyConfigs.size(), 
                     pauseTicks != null ? Arrays.toString(pauseTicks) : "[]");
             log.debug("Starting simulation initialization...");
+
+            // Set initial state immediately. If a pause is scheduled at tick 0, the state will be PAUSED.
+            // Otherwise, it starts as RUNNING.
+            if (shouldPauseAtCurrentTick()) {
+                currentState.set(State.PAUSED);
+                logPauseTickInfo();
+            } else {
+                currentState.set(State.RUNNING);
+            }
             
             // Initialize random provider
             randomProvider = seed != null ? new SeededRandomProvider(seed) : new SeededRandomProvider(0L);
@@ -157,9 +163,6 @@ public class SimulationEngine extends AbstractService {
             publishSimulationContext(programArtifacts);
             
             log.debug("Simulation initialized successfully. Starting main loop...");
-            
-            // Set initial state to RUNNING - simulation starts immediately
-            currentState.set(State.RUNNING);
             
             // Publish initial tick data (tick 0) before starting the loop
             // Make sure currentTick is synchronized with simulation
@@ -546,9 +549,9 @@ public class SimulationEngine extends AbstractService {
         
         // Send SimulationContext to dedicated context channel
         try {
-            IOutputChannel<?> channel = outputChannels.get(contextDataChannel);
+            IOutputChannel<SimulationContext> channel = getRequiredOutputChannel("contextData");
             if (channel != null) {
-                ((IOutputChannel<SimulationContext>) channel).write(context);
+                channel.write(context);
                 log.debug("Published SimulationContext to channel: {} (artifacts: {})", contextDataChannel, apiArtifacts.size());
             } else {
                 log.warn("Context output channel not found: {}", contextDataChannel);
@@ -651,9 +654,9 @@ public class SimulationEngine extends AbstractService {
         
         // Send RawTickData to dedicated tick data channel
         try {
-            IOutputChannel<?> channel = outputChannels.get(tickDataChannel);
+            IOutputChannel<RawTickData> channel = getRequiredOutputChannel("tickData");
             if (channel != null) {
-                ((IOutputChannel<RawTickData>) channel).write(tickData);
+                channel.write(tickData);
                 log.debug("Published RawTickData to channel: {}", tickDataChannel);
             } else {
                 log.warn("Tick data output channel not found: {}", tickDataChannel);

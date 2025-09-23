@@ -42,6 +42,9 @@ public class H2SimulationRepository implements IEnvironmentStateWriter {
     private final String webConsoleAdminPassword;
     private final boolean webConsoleBrowser;
     
+    private final int checkpointFrequency;
+    private int batchCounter = 0;
+    
     private Connection connection;
     private PreparedStatement insertStatement;
     private int dimensions = 0; // Environment dimensions set during initialization
@@ -112,6 +115,12 @@ public class H2SimulationRepository implements IEnvironmentStateWriter {
             logger.debug("Web Console configuration missing: browser. Defaulting to false (no auto-open).");
         }
         this.webConsoleBrowser = webConsoleConfig.hasPath("browser") ? webConsoleConfig.getBoolean("browser") : false;
+        
+        // Performance tuning options
+        this.checkpointFrequency = config.hasPath("checkpointFrequency") ? config.getInt("checkpointFrequency") : 1;
+        if (checkpointFrequency <= 0) {
+            throw new IllegalArgumentException("checkpointFrequency must be positive.");
+        }
     }
     
     @Override
@@ -234,6 +243,15 @@ public class H2SimulationRepository implements IEnvironmentStateWriter {
                 connection.commit();
                 
                 logger.debug("Successfully inserted {} environment state records atomically", results.length);
+                
+                // Trigger a checkpoint based on the configured frequency
+                batchCounter++;
+                if (batchCounter % checkpointFrequency == 0) {
+                    try (Statement s = connection.createStatement()) {
+                        s.execute("CHECKPOINT SYNC");
+                        logger.debug("Forcing database checkpoint sync after {} batches.", checkpointFrequency);
+                    }
+                }
                 
             } catch (SQLException e) {
                 // Rollback the entire batch on any error
