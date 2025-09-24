@@ -5,7 +5,7 @@ package org.evochora.datapipeline.api.resources;
  * <p>
  * When a resource implements this interface, the ServiceManager will call
  * {@link #getWrappedResource(ResourceContext)} to get the object that should be
- * injected into the service, rather than injecting the resource itself. This allows
+ * injected into the resource binding, rather than injecting the resource itself. This allows
  * a single resource definition to provide different functionalities based on which
  * service and port it is connected to.
  */
