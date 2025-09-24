@@ -32,6 +32,10 @@ dependencies {
     testImplementation("org.mockito:mockito-core:5.12.0")
     testImplementation("org.mockito:mockito-junit-jupiter:5.12.0")
     testImplementation("org.assertj:assertj-core:3.26.3")
+    
+    // Explicitly declare test framework implementation dependencies for Gradle 9 compatibility
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     implementation("org.slf4j:slf4j-api:2.0.13")
     runtimeOnly("ch.qos.logback:logback-classic:1.5.6")
     implementation("org.xerial:sqlite-jdbc:3.46.0.0")
@@ -150,6 +154,9 @@ tasks.register<Test>("unit") {
         events("passed", "skipped", "failed")
         showStandardStreams = false
     }
+    // Explicitly configure classpath and test classes for Gradle 9 compatibility
+    classpath = sourceSets.test.get().runtimeClasspath
+    testClassesDirs = sourceSets.test.get().output.classesDirs
 }
 
 // Integration Tests - Medium speed, test service interactions
@@ -165,6 +172,9 @@ tasks.register<Test>("integration") {
         events("passed", "skipped", "failed")
         showStandardStreams = true
     }
+    // Explicitly configure classpath and test classes for Gradle 9 compatibility
+    classpath = sourceSets.test.get().runtimeClasspath
+    testClassesDirs = sourceSets.test.get().output.classesDirs
 }
 
 // Benchmark Tests - Performance tests, run only when explicitly requested
@@ -184,6 +194,9 @@ tasks.register<Test>("benchmark") {
     // Disable test caching to ensure benchmarks always run
     outputs.upToDateWhen { false }
     // Benchmarks are excluded from regular test runs and CI/CD
+    // Explicitly configure classpath and test classes for Gradle 9 compatibility
+    classpath = sourceSets.test.get().runtimeClasspath
+    testClassesDirs = sourceSets.test.get().output.classesDirs
 }
 
 tasks.jacocoTestReport {

@@ -13,7 +13,7 @@ public interface IResource {
     /**
      * The operational state of a resource for a specific usage context.
      */
-    enum ResourceState {
+    enum UsageState {
         /**
          * The resource is functioning normally for this usage type.
          */
@@ -35,7 +35,7 @@ public interface IResource {
      * be WAITING for input (empty) but ACTIVE for output (has space).
      *
      * @param usageType The usage type (e.g., "queue-in", "storage-readonly")
-     * @return The current ResourceState for this usage context
+     * @return The current UsageState for this usage context
      */
-    ResourceState getState(String usageType);
+    UsageState getUsageState(String usageType);
 }

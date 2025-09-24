@@ -9,7 +9,7 @@ package org.evochora.datapipeline.api.resources;
  * a single resource definition to provide different functionalities based on which
  * service and port it is connected to.
  */
-public interface IContextualResource extends IResource {
+public interface    IContextualResource extends IResource {
 
     /**
      * Returns the wrapped resource object that should be injected into a service.

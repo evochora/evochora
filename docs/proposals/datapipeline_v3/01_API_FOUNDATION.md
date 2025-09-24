@@ -40,8 +40,8 @@ src/main/java/org/evochora/datapipeline/api/
 #### `IResource`
 - **Purpose**: Base interface for all resources
 - **Required Methods**:
-  - `ResourceState getState(String usageType)`: Returns current resource state for specific usage context
-- **Required Inner Enum**: `ResourceState` with values ACTIVE, WAITING, FAILED
+  - `UsageState getUsageState(String usageType)`: Returns current resource state for specific usage context
+- **Required Inner Enum**: `UsageState` with values ACTIVE, WAITING, FAILED
 - **State Semantics**:
   - **ACTIVE**: Resource is functioning normally for this usage type
   - **WAITING**: Resource is temporarily busy/blocked (e.g., queue full/empty)
@@ -49,12 +49,13 @@ src/main/java/org/evochora/datapipeline/api/
 
 #### `ResourceContext`  
 - **Purpose**: Context information passed to contextual resources during dependency injection
-- **Created by**: ServiceManager during service instantiation
-- **Usage**: Enables resources to create specialized wrappers based on how they're being used
+- **Created by**: ServiceManager during service instantiation by parsing resource URI
+- **Usage**: Enables resources to create specialized wrappers based on how they're being used and configured
 - **Required Fields**:
   - `serviceName`: String identifying the service requesting the resource
   - `portName`: String identifying the logical port within the service
-  - `usageType`: Optional string describing how the resource is being used (e.g., "queue-in", "storage-readonly")
+  - `usageType`: String describing how the resource is being used (e.g., "queue-in", "storage-readonly")
+  - `parameters`: Map of URI parameters for fine-tuning resource behavior (e.g., window=30, batch=100)
 - **Implementation**: Should be a record for immutability
 
 #### `IContextualResource`
@@ -96,11 +97,11 @@ src/main/java/org/evochora/datapipeline/api/
 #### `ResourceBinding`
 - **Purpose**: Represents the connection between a service and a resource at a specific port
 - **Required Fields**:
-  - `portName`: The logical port name within the service
-  - `usageType`: How the resource is being used (passed from configuration)
+  - `context`: The complete ResourceContext used during dependency injection
   - `service`: Reference to the connected service
   - `resource`: Reference to the connected resource
-- **State Access**: Binding state is obtained dynamically via `resource.getState(usageType)`
+- **State Access**: Binding state is obtained dynamically via `resource.getUsageState(context.usageType())`
+- **Parameter Access**: URI parameters available via `context.parameters()`
 - **Implementation**: Should be a record containing only structural information (no behavioral methods)
 
 #### `ServiceStatus`

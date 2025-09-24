@@ -78,7 +78,7 @@ pipeline {
     simulation-engine {
       className = "org.evochora.datapipeline.services.SimulationEngine"
       resources {
-        tickOutput: "queue-out:tick-data-queue"
+        tickOutput: "queue-out:tick-data-queue?window=5"
       }
     }
     persistence-service-1 {
@@ -181,8 +181,8 @@ To enforce clean dependencies and maintainability:
 Services communicate exclusively through resources, never directly. The ServiceManager implements a sophisticated DI system:
 
 - **Central Resource Definition**: All resources defined in top-level `resources` configuration block
-- **Resource URI Pattern**: Services reference resources via URI-like strings (e.g., `"queue-in:tick-data"`)
-- **Contextual Resource Wrapping**: Resources can implement `IContextualResource` to return specialized wrappers based on usage context
+- **Resource URI Pattern**: Services reference resources via URI-like strings with optional parameters (e.g., `"queue-in:tick-data?window=30&batch=100"`)
+- **Contextual Resource Wrapping**: Resources can implement `IContextualResource` to return specialized wrappers based on usage context and URI parameters
 - **Automatic Monitoring**: Wrappers transparently collect metrics without service awareness
 - **Type Safety**: Services receive strongly-typed interfaces, not generic objects
 
@@ -299,7 +299,7 @@ All data-consuming services must be idempotent:
 **Status:** Implemented and functional
 - ✅ Core interfaces: IResource, IService, IMonitorable, IContextualResource, IWrappedResource
 - ✅ Status objects: ServiceStatus, ResourceBinding, OperationalError, ResourceContext
-- ✅ State enums: IService.State, IResource.ResourceState, ResourceBinding.State
+- ✅ State enums: IService.State, IResource.UsageState
 - ✅ Complete Javadoc documentation in English
 - ✅ Compilation verified
 
