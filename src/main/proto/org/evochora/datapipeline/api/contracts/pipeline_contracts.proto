@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package org.evochora.datapipeline.api.contracts;
+
+option java_package = "org.evochora.datapipeline.api.contracts";
+option java_outer_classname = "PipelineContracts";
+
+message DummyMessage {
+    int32 id = 1;
+    string content = 2;
+    int64 timestamp = 3;
+}

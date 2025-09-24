@@ -1,3 +1,5 @@
+import com.google.protobuf.gradle.*
+
 // Show deprecation details for test sources to fix root causes
 tasks.withType<JavaCompile>().configureEach {
     if (name == "compileTestJava") {
@@ -11,6 +13,7 @@ plugins {
     application
     jacoco
     `java-test-fixtures`
+    id("com.google.protobuf") version "0.9.4"
 }
 
 group = "org.evochora"
@@ -21,6 +24,7 @@ repositories {
 }
 
 dependencies {
+    implementation("com.google.protobuf:protobuf-java:3.25.3")
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.junit.jupiter:junit-jupiter-engine:5.10.2")
@@ -112,6 +116,10 @@ tasks.register<JavaExec>("compile") {
     }
 }
 
+tasks.withType<Copy> {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 tasks.test {
     useJUnitPlatform {
         excludeTags("benchmark") // Exclude benchmark tests from regular test runs
@@ -190,4 +198,20 @@ tasks.jacocoTestReport {
             }
         })
     )
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:3.25.3"
+    }
+    sourceSets {
+        main {
+            proto {
+                srcDir("src/main/proto")
+            }
+            java {
+                srcDirs("build/generated/source/proto/main/java")
+            }
+        }
+    }
 }
