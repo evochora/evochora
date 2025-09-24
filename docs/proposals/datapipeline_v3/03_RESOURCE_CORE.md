@@ -25,11 +25,31 @@ Upon completion:
 **File:** `src/main/java/org/evochora/datapipeline/resources/InMemoryBlockingQueue.java`
 
 **Required Interfaces:**
-- `IResource` (base interface with ResourceState support)
+- `IResource` (base interface with UsageState support)
 - `IContextualResource` (smart wrapper creation)
 - `IMonitorable` (global resource metrics)
 - `IInputResource<T>` (via wrappers)
 - `IOutputResource<T>` (via wrappers)
+
+### Coding Standards
+
+#### Documentation Requirements
+- **All public classes and interfaces**: Comprehensive Javadoc in English
+- **All public methods**: Javadoc with @param and @return documentation
+- **Inner classes**: Javadoc explaining purpose and usage
+- **Complex logic**: Inline comments explaining algorithm (especially throughput calculation)
+
+#### Naming Conventions
+- **Classes**: PascalCase (InMemoryBlockingQueue, QueueConsumerWrapper)
+- **Methods**: camelCase (getUsageState, getMetrics)
+- **Constants**: UPPER_SNAKE_CASE for any constants
+- **Generics**: Single letter T for type parameters
+
+#### Error Handling
+- **Checked exceptions**: Handle InterruptedException properly (restore interrupt status)
+- **Unchecked exceptions**: Use IllegalArgumentException for invalid parameters
+- **Error recording**: All exceptions should be recorded as OperationalError in getErrors()
+- **Null safety**: Validate all inputs, no null returns from public methods
 
 ### Wrapper Architecture
 
@@ -161,6 +181,13 @@ pipeline {
 - Minimize object allocation in wrapper methods (reuse timestamp collections)
 - Use atomic operations for counters (AtomicLong for message counts)
 - Efficient sliding window calculation for throughput
+
+#### Code Quality
+- **Thread safety**: All methods must be thread-safe without external synchronization
+- **Immutability**: Return defensive copies of mutable collections (e.g., in getErrors())
+- **Interface segregation**: Wrapper classes should be package-private inner classes
+- **Single responsibility**: Each wrapper handles only one usage type
+- **Configuration validation**: Validate all configuration parameters in constructor
 
 ## Testing Requirements
 
