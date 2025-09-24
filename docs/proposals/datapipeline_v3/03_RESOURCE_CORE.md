@@ -48,8 +48,15 @@ Upon completion:
 #### Error Handling
 - **Checked exceptions**: Handle InterruptedException properly (restore interrupt status)
 - **Unchecked exceptions**: Use IllegalArgumentException for invalid parameters
+- **Configuration errors**: Catch ConfigException and wrap in IllegalArgumentException with clear message
 - **Error recording**: All exceptions should be recorded as OperationalError in getErrors()
 - **Null safety**: Validate all inputs, no null returns from public methods
+
+#### Configuration Handling
+- **Use TypeSafe Config**: All configuration access via `com.typesafe.config.Config` methods
+- **Default values**: Use Config.getInt(key, defaultValue) pattern for robust defaults
+- **Validation**: Validate all configuration values in constructor
+- **Path checking**: Use hasPath() before accessing optional configuration
 
 ### Wrapper Architecture
 
@@ -115,11 +122,25 @@ Upon completion:
 
 ### Configuration Support
 
-**Constructor:** `InMemoryBlockingQueue(Config options)`
+**Constructor:** `InMemoryBlockingQueue(com.typesafe.config.Config options)`
 
 **Required configuration options:**
 - `capacity`: Integer (default: 1000, must be > 0 for memory safety)
 - `throughputWindowSeconds`: Integer (default: 5, time window for moving average calculation)
+
+**TypeSafe Config Usage:**
+```java
+public InMemoryBlockingQueue(Config options) {
+    this.capacity = options.getInt("capacity", 1000);
+    this.windowSeconds = options.getInt("throughputWindowSeconds", 5);
+    
+    if (capacity <= 0) {
+        throw new IllegalArgumentException("Capacity must be positive, got: " + capacity);
+    }
+    
+    this.queue = new ArrayBlockingQueue<>(capacity);
+}
+```
 
 **URI Parameter Support:**
 The InMemoryBlockingQueue supports the following URI parameters:
