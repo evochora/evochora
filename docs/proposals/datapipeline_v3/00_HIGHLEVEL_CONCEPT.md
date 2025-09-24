@@ -292,28 +292,76 @@ All data-consuming services must be idempotent:
 * **Backpressure**: Resources signal when they're overwhelmed to prevent memory exhaustion
 * **Resource Pooling**: Connection pools for databases and cloud services
 
-## 13. Implementation Phases
+## 13. Implementation Plan
 
-**Phase 1: Foundation**
-- Resource abstractions and Universal DI framework
-- ServiceManager with configuration loading
-- Basic monitoring and status reporting
-- InMemory resources for immediate testing
+### Phase 0: API Foundation ✅ COMPLETED
 
-**Phase 2: Core Pipeline**
+**Status:** Implemented and functional
+- ✅ Core interfaces: IResource, IService, IMonitorable, IContextualResource, IWrappedResource
+- ✅ Status objects: ServiceStatus, ResourceBinding, OperationalError, ResourceContext
+- ✅ State enums: IService.State, IResource.ResourceState, ResourceBinding.State
+- ✅ Complete Javadoc documentation in English
+- ✅ Compilation verified
+
+**Documentation:** See `01_API_FOUNDATION.md` for detailed interface specifications.
+
+### Phase 1: Rapid Development to Working System
+
+#### Phase 1.1: Protobuf Infrastructure
+- Configure Gradle for Protocol Buffers compilation
+- Create DummyMessage contract under `datapipeline.api.contracts`
+- Unit test for serialization/deserialization
+
+**Documentation:** See `02_PROTOBUF_SETUP.md` for detailed implementation guide.
+
+#### Phase 1.2: Core Resource Implementation
+- InMemoryBlockingQueue implementing IContextualResource, IMonitorable, IInputResource, IOutputResource
+- Smart wrapper creation based on usage type (queue-in vs queue-out)
+- Service-specific vs global metrics collection
+
+#### Phase 1.3: Service Foundation
+- AbstractService implementing IService with complete lifecycle management (start, stop, pause, resume)
+- Thread management and state transitions
+- Resource binding management
+
+#### Phase 1.4: Test Services
+- DummyProducerService implementing IService and IMonitorable
+- DummyConsumerService implementing IService and IMonitorable  
+- End-to-end integration test: Producer → Queue → Consumer
+
+#### Phase 1.5: Service Orchestration
+- ServiceManager with HOCON configuration loading
+- Universal Resource DI with contextual wrapping
+- Service lifecycle management and monitoring
+
+#### Phase 1.6: Command Line Interface
+- Interactive mode with human-readable logging
+- Headless mode with JSON logging for automation
+- Commands: start, stop, restart, status, pause, resume, compile
+- Strict error handling preventing accidental simulation termination
+
+### Result: Fully Functional Pipeline
+
+After these 6 steps, the system will be:
+- ✅ **Compilable and testable**
+- ✅ **Configurable via HOCON**
+- ✅ **Executable with real services**
+- ✅ **Monitorable with metrics**
+- ✅ **Controllable via CLI**
+
+### Phase 2: Real Services
 - SimulationEngine with Runtime integration
 - PersistenceService with Protobuf schemas
-- First specialized IndexerService (exact type to be determined during implementation)
-- Configuration precedence and CLI integration
+- First specialized IndexerService (exact type to be determined)
 
-**Phase 3: Production Resources**
+### Phase 3: Production Resources
 - Cloud storage resources (S3, GCS)
-- Database resources (PostgreSQL, Cassandra)
+- Database resources (PostgreSQL, Cassandra)  
 - Queue resources (SQS, Kafka)
 - Metrics export and observability
 
-**Phase 4: Analysis & Web API**
-- Complete family of specialized IndexerServices (types determined based on experience from earlier phases)
+### Phase 4: Analysis & Web API
+- Complete family of specialized IndexerServices (types determined based on experience)
 - Competing consumers scaling for high-throughput indexers
 - Batch processing capability (IndexerServices reading from archived storage)
 - HttpApiServer with REST endpoints

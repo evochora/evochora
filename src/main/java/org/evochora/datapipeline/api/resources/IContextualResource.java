@@ -12,10 +12,10 @@ package org.evochora.datapipeline.api.resources;
 public interface IContextualResource extends IResource {
 
     /**
-     * Returns the resource object that should be injected into a service.
+     * Returns the wrapped resource object that should be injected into a service.
      *
      * @param context The context describing how the resource is being used.
-     * @return The {@link IResource} object to be injected.
+     * @return The {@link IWrappedResource} object to be injected.
      */
-    IResource getInjectedObject(ResourceContext context);
+    IWrappedResource getWrappedResource(ResourceContext context);
 }

@@ -21,6 +21,7 @@ src/main/java/org/evochora/datapipeline/api/
 ├── resources/
 │   ├── IResource.java
 │   ├── IContextualResource.java  
+│   ├── IWrappedResource.java
 │   ├── ResourceContext.java
 │   ├── IInputResource.java
 │   ├── IOutputResource.java
@@ -61,7 +62,12 @@ src/main/java/org/evochora/datapipeline/api/
 - **Called by**: ServiceManager during dependency injection process
 - **Usage**: Allows resources to inspect how they're being used and return appropriate wrapper objects
 - **Required Methods**:
-  - `IResource getInjectedObject(ResourceContext context)`: Returns the actual resource object to inject into the service
+  - `IWrappedResource getWrappedResource(ResourceContext context)`: Returns the wrapped resource object to inject into the Resource  Binding
+- **Requirements**: Must extend `IResource`
+
+#### `IWrappedResource`
+- **Purpose**: Marker interface for wrapped resources
+- **Usage**: Identifies resources that are wrappers around other resources, created by IContextualResource
 - **Requirements**: Must extend `IResource`
 
 #### `IInputResource<T>`
