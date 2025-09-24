@@ -3,8 +3,6 @@ package org.evochora.runtime.model;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.server.contracts.raw.RawOrganismState;
-import org.evochora.server.contracts.raw.SerializableProcFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -96,39 +94,6 @@ public class Organism {
     private final int[] initialPosition;
     private final Random random;
     
-    // Cached fields for RawOrganismState creation (unchangeable fields)
-    private final int[] cachedInitialPosition;
-    private String cachedProgramId;
-    private Integer cachedParentId;
-    private long cachedBirthTick;
-    
-    // Lazy loading fields for RawOrganismState creation (changeable fields)
-    private List<Object> cachedDrs;
-    private List<Object> cachedPrs;
-    private List<Object> cachedFprs;
-    private List<Object> cachedLrs;
-    private Deque<Object> cachedDataStack;
-    private Deque<int[]> cachedLocationStack;
-    private Deque<SerializableProcFrame> cachedCallStack;
-    private int[] cachedIp;
-    private int[] cachedDv;
-    private List<int[]> cachedDps;
-    private int cachedActiveDpIndex;
-    private int cachedEr;
-    
-    // Change flags for efficient change detection
-    private boolean dataStackChanged = false;
-    private boolean locationStackChanged = false;
-    private boolean callStackChanged = false;
-    private boolean drsChanged = false;
-    private boolean prsChanged = false;
-    private boolean fprsChanged = false;
-    private boolean lrsChanged = false;
-    private boolean dpsChanged = false;
-    private boolean ipChanged = false;
-    private boolean dvChanged = false;
-    private boolean activeDpIndexChanged = false;
-    private boolean erChanged = false;
 
     /**
      * Constructs a new Organism. This constructor should only be called via the static factory {@link #create}.
@@ -181,25 +146,6 @@ public class Organism {
             this.random = new Random(id);
         }
         
-        // Initialize cached fields for RawOrganismState creation
-        this.cachedInitialPosition = Arrays.copyOf(startIp, startIp.length);
-        this.cachedProgramId = "";
-        this.cachedParentId = null;
-        this.cachedBirthTick = 0L;
-        
-        // Initialize lazy loading fields (will be populated on first access)
-        this.cachedDrs = null;
-        this.cachedPrs = null;
-        this.cachedFprs = null;
-        this.cachedLrs = null;
-        this.cachedDataStack = null;
-        this.cachedLocationStack = null;
-        this.cachedCallStack = null;
-        this.cachedIp = null;
-        this.cachedDv = null;
-        this.cachedDps = null;
-        this.cachedActiveDpIndex = -1; // -1 indicates not cached
-        this.cachedEr = -1; // -1 indicates not cached
     }
 
     /**
@@ -238,7 +184,6 @@ public class Organism {
         for (int i = 0; i < steps; i++) {
             this.ip = getNextInstructionPosition(this.ip, this.dvBeforeFetch, environment);
         }
-        this.ipChanged = true;
     }
 
     /**
@@ -407,7 +352,6 @@ public class Organism {
         if (index >= 0 && index < this.drs.size()) {
             if (value instanceof Integer || value instanceof int[]) {
                 this.drs.set(index, value);
-                this.drsChanged = true;
                 return true;
             }
             this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to DR " + index);
@@ -438,7 +382,6 @@ public class Organism {
      */
     public void setIp(int[] newIp) { 
         this.ip = newIp; 
-        this.ipChanged = true;
     }
 
     /**
@@ -451,7 +394,6 @@ public class Organism {
     public boolean setDp(int index, int[] newDp) {
         if (index >= 0 && index < this.dps.size()) {
             this.dps.set(index, newDp);
-            this.dpsChanged = true;
             return true;
         }
         this.instructionFailed("DP index out of bounds: " + index);
@@ -489,7 +431,6 @@ public class Organism {
     public boolean setActiveDpIndex(int index) {
         if (index >= 0 && index < this.dps.size()) {
             this.activeDpIndex = index;
-            this.activeDpIndexChanged = true;
             return true;
         }
         this.instructionFailed("Active DP index out of bounds: " + index);
@@ -531,7 +472,6 @@ public class Organism {
      */
     public void setDv(int[] newDv) { 
         this.dv = newDv; 
-        this.dvChanged = true;
     }
 
     /**
@@ -541,7 +481,6 @@ public class Organism {
      */
     public void addEr(int amount) { 
         this.er = Math.min(this.er + amount, Config.MAX_ORGANISM_ENERGY); 
-        this.erChanged = true;
     }
 
     /**
@@ -551,7 +490,6 @@ public class Organism {
      */
     public void takeEr(int amount) { 
         this.er -= amount; 
-        this.erChanged = true;
     }
 
     /**
@@ -570,7 +508,6 @@ public class Organism {
      */
     public void setParentId(Integer parentId) { 
         this.parentId = parentId;
-        this.cachedParentId = parentId;
     }
 
     /**
@@ -601,7 +538,6 @@ public class Organism {
      */
     public void setBirthTick(long birthTick) { 
         this.birthTick = birthTick;
-        this.cachedBirthTick = birthTick;
     }
     /** @return The program ID associated with this organism. */
     public String getProgramId() { return programId; }
@@ -610,7 +546,6 @@ public class Organism {
      */
     public void setProgramId(String programId) { 
         this.programId = programId;
-        this.cachedProgramId = programId;
     }
     /** @return A copy of the current Instruction Pointer (IP) coordinate. */
     public int[] getIp() { return Arrays.copyOf(ip, ip.length); }
@@ -644,11 +579,11 @@ public class Organism {
     public int[] getInitialPosition() { return Arrays.copyOf(this.initialPosition, this.initialPosition.length); }
     /** @return A reference to the Data Stack (DS). */
     public Deque<Object> getDataStack() { 
-        return new ChangeTrackingDeque<>(this.dataStack, () -> this.dataStackChanged = true);
+        return this.dataStack;
     }
     /** @return A reference to the Call Stack (CS). */
     public Deque<ProcFrame> getCallStack() { 
-        return new ChangeTrackingDeque<>(this.callStack, () -> this.callStackChanged = true);
+        return this.callStack;
     }
 
     /** @return A copy of the list of Procedure-local Registers (PRs). */
@@ -665,7 +600,6 @@ public class Organism {
         if (index >= 0 && index < this.prs.size()) {
             if (value instanceof Integer || value instanceof int[]) {
                 this.prs.set(index, value);
-                this.prsChanged = true;
                 return true;
             }
             this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to PR " + index);
@@ -702,7 +636,6 @@ public class Organism {
         for (int i = 0; i < snapshot.length; i++) {
             this.prs.set(i, snapshot[i]);
         }
-        this.prsChanged = true;
     }
 
     /** @return A copy of the list of Formal Parameter Registers (FPRs). */
@@ -719,7 +652,6 @@ public class Organism {
         if (index >= 0 && index < this.fprs.size()) {
             if (value instanceof Integer || value instanceof int[]) {
                 this.fprs.set(index, value);
-                this.fprsChanged = true;
                 return true;
             }
             instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to FPR " + index);
@@ -756,7 +688,6 @@ public class Organism {
         for (int i = 0; i < snapshot.length; i++) {
             this.fprs.set(i, snapshot[i]);
         }
-        this.fprsChanged = true;
     }
 
     /**
@@ -778,7 +709,6 @@ public class Organism {
     public boolean setLr(int index, int[] value) {
         if (index >= 0 && index < this.lrs.size()) {
             this.lrs.set(index, value);
-            this.lrsChanged = true;
             return true;
         }
         this.instructionFailed("LR index out of bounds: " + index);
@@ -805,7 +735,7 @@ public class Organism {
      * @return The location stack.
      */
     public Deque<int[]> getLocationStack() {
-        return new ChangeTrackingDeque<>(this.locationStack, () -> this.locationStackChanged = true);
+        return this.locationStack;
     }
 
     /**
@@ -847,170 +777,4 @@ public class Organism {
         return setDr(id, value);
     }
     
-    // Change detection methods for lazy loading (O(1) complexity)
-    private boolean hasDataRegistersChanged() {
-        return cachedDrs == null || drsChanged;
-    }
-    
-    private boolean hasProcRegistersChanged() {
-        return cachedPrs == null || prsChanged;
-    }
-    
-    private boolean hasFormalParamRegistersChanged() {
-        return cachedFprs == null || fprsChanged;
-    }
-    
-    private boolean hasLocationRegistersChanged() {
-        return cachedLrs == null || lrsChanged;
-    }
-    
-    private boolean hasDataStackChanged() {
-        return cachedDataStack == null || dataStackChanged;
-    }
-    
-    private boolean hasLocationStackChanged() {
-        return cachedLocationStack == null || locationStackChanged;
-    }
-    
-    private boolean hasCallStackChanged() {
-        return cachedCallStack == null || callStackChanged;
-    }
-    
-    private boolean hasIpChanged() {
-        return cachedIp == null || ipChanged;
-    }
-    
-    private boolean hasDvChanged() {
-        return cachedDv == null || dvChanged;
-    }
-    
-    private boolean hasDpsChanged() {
-        return cachedDps == null || dpsChanged;
-    }
-    
-    private boolean hasActiveDpIndexChanged() {
-        return cachedActiveDpIndex == -1 || activeDpIndexChanged;
-    }
-    
-    private boolean hasErChanged() {
-        return cachedEr == -1 || erChanged;
-    }
-    
-    /**
-     * Creates a RawOrganismState with lazy loading and cached fields for optimal performance.
-     * Only fields that have changed since the last call are copied.
-     *
-     * @return A new RawOrganismState with the current organism state.
-     */
-    public RawOrganismState createRawOrganismState() {
-        // Use cached fields for unchanging data (always fast)
-        int[] initialPos = cachedInitialPosition;
-        String programId = cachedProgramId;
-        Integer parentId = cachedParentId;
-        long birthTick = cachedBirthTick;
-        
-        // Lazy load changeable fields only if they have changed
-        List<Object> drs = hasDataRegistersChanged() ? new ArrayList<>(this.drs) : cachedDrs;
-        if (hasDataRegistersChanged()) {
-            cachedDrs = drs;
-            drsChanged = false;
-        }
-        
-        List<Object> prs = hasProcRegistersChanged() ? new ArrayList<>(this.prs) : cachedPrs;
-        if (hasProcRegistersChanged()) {
-            cachedPrs = prs;
-            prsChanged = false;
-        }
-        
-        List<Object> fprs = hasFormalParamRegistersChanged() ? new ArrayList<>(this.fprs) : cachedFprs;
-        if (hasFormalParamRegistersChanged()) {
-            cachedFprs = fprs;
-            fprsChanged = false;
-        }
-        
-        List<Object> lrs = hasLocationRegistersChanged() ? 
-            this.lrs.stream().map(lr -> Arrays.copyOf((int[])lr, ((int[])lr).length)).collect(Collectors.toList()) : cachedLrs;
-        if (hasLocationRegistersChanged()) {
-            cachedLrs = lrs;
-            lrsChanged = false;
-        }
-        
-        Deque<Object> dataStack = hasDataStackChanged() ? new ArrayDeque<>(this.dataStack) : cachedDataStack;
-        if (hasDataStackChanged()) {
-            cachedDataStack = dataStack;
-            dataStackChanged = false;
-        }
-        
-        Deque<int[]> locationStack = hasLocationStackChanged() ? new ArrayDeque<>(this.locationStack) : cachedLocationStack;
-        if (hasLocationStackChanged()) {
-            cachedLocationStack = locationStack;
-            locationStackChanged = false;
-        }
-        
-        Deque<SerializableProcFrame> callStack = hasCallStackChanged() ? 
-            this.callStack.stream().map(f -> new SerializableProcFrame(
-                    f.procName, f.absoluteReturnIp, f.savedPrs, f.savedFprs, f.fprBindings))
-                    .collect(Collectors.toCollection(ArrayDeque::new)) : cachedCallStack;
-        if (hasCallStackChanged()) {
-            cachedCallStack = callStack;
-            callStackChanged = false;
-        }
-        
-        int[] ip = hasIpChanged() ? Arrays.copyOf(this.ip, this.ip.length) : cachedIp;
-        if (hasIpChanged()) {
-            cachedIp = ip;
-            ipChanged = false;
-        }
-        
-        int[] dv = hasDvChanged() ? Arrays.copyOf(this.dv, this.dv.length) : cachedDv;
-        if (hasDvChanged()) {
-            cachedDv = dv;
-            dvChanged = false;
-        }
-        
-        List<int[]> dps = hasDpsChanged() ? 
-            this.dps.stream().map(dp -> Arrays.copyOf(dp, dp.length)).collect(Collectors.toList()) : cachedDps;
-        if (hasDpsChanged()) {
-            cachedDps = dps;
-            dpsChanged = false;
-        }
-        
-        int activeDpIndex = hasActiveDpIndexChanged() ? this.activeDpIndex : cachedActiveDpIndex;
-        if (hasActiveDpIndexChanged()) {
-            cachedActiveDpIndex = activeDpIndex;
-            activeDpIndexChanged = false;
-        }
-        
-        int er = hasErChanged() ? this.er : cachedEr;
-        if (hasErChanged()) {
-            cachedEr = er;
-            erChanged = false;
-        }
-        
-        return new RawOrganismState(
-                this.id,
-                parentId,
-                birthTick,
-                programId,
-                initialPos,
-                ip,
-                dv,
-                dps,
-                activeDpIndex,
-                er,
-                drs,
-                prs,
-                fprs,
-                lrs,
-                dataStack,
-                locationStack,
-                callStack,
-                this.isDead(),
-                this.isInstructionFailed(),
-                this.getFailureReason(),
-                this.shouldSkipIpAdvance(),
-                this.getIpBeforeFetch(),
-                this.getDvBeforeFetch()
-        );
-    }
 }

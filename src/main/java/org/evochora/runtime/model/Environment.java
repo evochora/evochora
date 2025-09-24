@@ -7,7 +7,6 @@ import java.util.Set;
 import java.util.List;
 import java.util.ArrayList;
 import org.evochora.runtime.Config;
-import org.evochora.server.contracts.raw.RawCellState;
 
 /**
  * Represents the simulation environment, managing the grid of molecules and their owners.
@@ -286,26 +285,4 @@ public class Environment implements IEnvironmentReader {
         }
     }
     
-    /**
-     * Gets all occupied cells for sparse serialization.
-     * Only available when sparse cell tracking is enabled.
-     * @return List of occupied cell states, or null if tracking is disabled.
-     */
-    public List<RawCellState> getOccupiedCells() {
-        if (!Config.ENABLE_SPARSE_CELL_TRACKING || occupiedCells == null) {
-            return null; // Fallback to full iteration
-        }
-        
-        List<RawCellState> cells = new ArrayList<>();
-        for (Coordinate coordinate : occupiedCells) {
-            int[] coord = coordinate.coords();
-            int index = getFlatIndex(coord);
-            if (index != -1) {
-                int value = this.grid[index];
-                int owner = this.ownerGrid[index];
-                cells.add(new RawCellState(coord, value, owner));
-            }
-        }
-        return cells;
-    }
 }

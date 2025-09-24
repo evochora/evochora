@@ -50,7 +50,7 @@ dependencies {
 
 // Definiert die Hauptklasse für den 'run'-Task
 application {
-    mainClass.set("org.evochora.datapipeline.core.CommandLineInterface")
+    mainClass.set("org.evochora.cli.TemporaryCommandLineInterface")
 }
 
 // Application Plugin erstellt bereits Fat JARs mit allen Dependencies
@@ -68,7 +68,7 @@ tasks.named<JavaExec>("run") {
 tasks.register<Jar>("cliJar") {
     archiveClassifier.set("cli")
     manifest {
-        attributes["Main-Class"] = "org.evochora.datapipeline.core.CommandLineInterface"
+        attributes["Main-Class"] = "org.evochora.cli.TemporaryCommandLineInterface"
     }
     
     // Add JVM arguments to suppress SLF4J warnings
@@ -86,11 +86,12 @@ tasks.register<Jar>("cliJar") {
     dependsOn(tasks.jar)
 }
 
-// Compile Task - Compile assembly file to ProgramArtifact JSON
+// Compile Task - Temporarily disabled after archiving datapipeline
 tasks.register<JavaExec>("compile") {
     group = "application"
-    description = "Compile assembly file to ProgramArtifact JSON"
-    mainClass.set("org.evochora.datapipeline.core.CommandLineInterface")
+    description = "Compile assembly file to ProgramArtifact JSON (temporarily disabled)"
+    // TODO: Re-implement compile functionality in new datapipeline
+    mainClass.set("org.evochora.cli.TemporaryCommandLineInterface")
     classpath = sourceSets.main.get().runtimeClasspath
     
     args("compile")
