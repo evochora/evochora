@@ -37,8 +37,14 @@ src/main/java/org/evochora/datapipeline/api/
 ### 1. Resource Interfaces
 
 #### `IResource`
-- **Purpose**: Marker interface for all resources
-- **Requirements**: Should be empty or contain minimal common functionality
+- **Purpose**: Base interface for all resources
+- **Required Methods**:
+  - `ResourceState getState(String usageType)`: Returns current resource state for specific usage context
+- **Required Inner Enum**: `ResourceState` with values ACTIVE, WAITING, FAILED
+- **State Semantics**:
+  - **ACTIVE**: Resource is functioning normally for this usage type
+  - **WAITING**: Resource is temporarily busy/blocked (e.g., queue full/empty)
+  - **FAILED**: Resource has an error for this usage type
 
 #### `ResourceContext`  
 - **Purpose**: Context information passed to contextual resources during dependency injection
@@ -82,19 +88,14 @@ src/main/java/org/evochora/datapipeline/api/
 ### 2. Service Interfaces
 
 #### `ResourceBinding`
-- **Purpose**: Information about a service's connection to a resource, optionally with monitoring capabilities
+- **Purpose**: Represents the connection between a service and a resource at a specific port
 - **Required Fields**:
-  - `portName`: The logical port name
-  - `resourceType`: Type/category of the resource
-  - `state`: Current binding state (see inner enum)
-  - `throughput`: Optional throughput metric (messages/second or similar)
-- **Required Inner Enum**: `State` with values ACTIVE, WAITING, FAILED
-- **State Semantics**:
-  - **ACTIVE**: Resource is functioning normally
-  - **WAITING**: Resource is temporarily busy/overloaded, service is waiting
-  - **FAILED**: Resource has an error, binding is not functional
-- **Optional**: Can implement `IMonitorable` for detailed per-binding metrics and error tracking
-- **Implementation**: Should be a record with inner enum
+  - `portName`: The logical port name within the service
+  - `usageType`: How the resource is being used (passed from configuration)
+  - `service`: Reference to the connected service
+  - `resource`: Reference to the connected resource
+- **State Access**: Binding state is obtained dynamically via `resource.getState(usageType)`
+- **Implementation**: Should be a record containing only structural information (no behavioral methods)
 
 #### `ServiceStatus`
 - **Purpose**: Complete status information for a service
