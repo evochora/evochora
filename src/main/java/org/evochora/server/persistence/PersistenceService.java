@@ -750,6 +750,12 @@ public final class PersistenceService implements IControllable, Runnable {
                         tickInsertStatement.setLong(1, rts.tickNumber());
                         tickInsertStatement.setBytes(2, jsonBytes);
                         tickInsertStatement.addBatch();
+                    } else if (em.contains("SQLITE_LOCKED_SHAREDCACHE") || em.contains("table is locked")) {
+                        // Backoff and retry once
+                        try { Thread.sleep(10); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                        tickInsertStatement.setLong(1, rts.tickNumber());
+                        tickInsertStatement.setBytes(2, jsonBytes);
+                        tickInsertStatement.addBatch();
                     } else {
                         throw ex;
                     }
@@ -760,9 +766,9 @@ public final class PersistenceService implements IControllable, Runnable {
                     int[] result;
                     try {
                         result = tickInsertStatement.executeBatch();
-                    } catch (SQLException sqlEx) {
+                } catch (SQLException sqlEx) {
                         String em = sqlEx.getMessage() != null ? sqlEx.getMessage() : "";
-                        if (em.contains("SQLITE_BUSY") || em.contains("database is locked")) {
+                    if (em.contains("SQLITE_BUSY") || em.contains("database is locked") || em.contains("SQLITE_LOCKED_SHAREDCACHE")) {
                             // Backoff and retry once
                             try { Thread.sleep(50); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                             result = tickInsertStatement.executeBatch();

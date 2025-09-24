@@ -351,9 +351,9 @@ public class PipelineFlowTest {
     @Test
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void testGracefulShutdown() throws Exception {
-        // 1. Create file-based database paths for this test
-        String testRawDbPath = "jdbc:sqlite:shutdown_test_raw.sqlite";
-        String testDebugDbPath = "jdbc:sqlite:shutdown_test_debug.sqlite";
+        // 1. Use shared in-memory SQLite databases for this test (no filesystem artifacts)
+        String testRawDbPath = "jdbc:sqlite:file:shutdown_test_raw?mode=memory&cache=shared&journal_mode=WAL&synchronous=NORMAL&busy_timeout=30000&read_uncommitted=true";
+        String testDebugDbPath = "jdbc:sqlite:file:shutdown_test_debug?mode=memory&cache=shared&journal_mode=WAL&synchronous=NORMAL&busy_timeout=30000&read_uncommitted=true";
         
         // 2. Create services with file-based databases and maxTicks = 100
         SimulationEngine shutdownTestEngine = new SimulationEngine(
@@ -373,15 +373,19 @@ public class PipelineFlowTest {
         shutdownTestIndexerConfig.batchSize = indexerBatchSize;
         DebugIndexer shutdownTestIndexer = new DebugIndexer(testRawDbPath, testDebugDbPath, shutdownTestIndexerConfig);
 
-        // 3. Start all services
+        // 3. Open anchor connections to keep in-memory DBs alive across service shutdown
+        Connection rawAnchor = DriverManager.getConnection(testRawDbPath);
+        Connection debugAnchor = DriverManager.getConnection(testDebugDbPath);
+
+        // 4. Start all services
         shutdownTestEngine.start();
         shutdownTestPersistence.start();
         shutdownTestIndexer.start();
 
-        // 4. Wait for simulation to complete (100 ticks)
+        // 5. Wait for simulation to complete (100 ticks)
         waitForCondition(() -> !shutdownTestEngine.isRunning(), 3000, "SimulationEngine to complete");
 
-        // 5. Wait for all ticks to be processed
+        // 6. Wait for all ticks to be processed
         waitForCondition(() -> {
             long lastPersistedTick = shutdownTestPersistence.getLastPersistedTick();
             return lastPersistedTick == 99; // 0-based indexing: 100 ticks = 0-99
@@ -392,26 +396,27 @@ public class PipelineFlowTest {
             return lastProcessedTick == 99; // 0-based indexing: 100 ticks = 0-99
         }, 2000, "DebugIndexer to process all 100 ticks");
 
-        // 6. Shutdown all services
+        // 7. Shutdown all services
         shutdownTestEngine.shutdown();
         shutdownTestPersistence.shutdown();
         shutdownTestIndexer.shutdown();
 
-        // 7. Wait for services to be stopped
+        // 8. Wait for services to be stopped
         waitForCondition(() -> !shutdownTestEngine.isRunning(), 3000, "SimulationEngine to stop");
         waitForCondition(() -> !shutdownTestPersistence.isRunning(), 3000, "PersistenceService to stop");
         waitForCondition(() -> !shutdownTestIndexer.isRunning(), 3000, "DebugIndexer to stop");
         
-        // 8. Verify all services are stopped
+        // 9. Verify all services are stopped
         assertFalse(shutdownTestEngine.isRunning(), "SimulationEngine should be stopped");
         assertFalse(shutdownTestPersistence.isRunning(), "PersistenceService should be stopped");
         assertFalse(shutdownTestIndexer.isRunning(), "DebugIndexer should be stopped");
 
-        // 9. Verify data integrity by directly accessing the databases
+        // 10. Verify data integrity by directly accessing the databases (anchors keep DBs alive)
         verifyDataIntegrityAfterShutdown(testRawDbPath, testDebugDbPath, 100);
 
-        // 10. Cleanup - remove test database files
-        cleanupTestDatabases(testRawDbPath, testDebugDbPath);
+        // 11. Close anchors (in-memory DBs will be destroyed once all connections are closed)
+        try { rawAnchor.close(); } catch (Exception ignore) {}
+        try { debugAnchor.close(); } catch (Exception ignore) {}
     }
 
     /**
