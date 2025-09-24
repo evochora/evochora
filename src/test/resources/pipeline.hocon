@@ -1,6 +1,6 @@
 # Test configuration for ServiceManager tests
 pipeline {
-  channels {
+  resources {
     test-stream {
       className = "org.evochora.datapipeline.channels.InMemoryChannel"
       options {
@@ -11,14 +11,18 @@ pipeline {
   services {
     test-producer {
       className = "org.evochora.datapipeline.services.DummyProducerService"
-      outputs = ["test-stream"]
+      resources {
+        messages = "test-stream"
+      }
       options {
         messageCount = 100
       }
     }
     test-consumer {
       className = "org.evochora.datapipeline.services.DummyConsumerService"
-      inputs = ["test-stream"]
+      resources {
+        messages = "test-stream"
+      }
       options {}
     }
   }

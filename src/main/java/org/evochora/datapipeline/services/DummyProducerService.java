@@ -3,7 +3,9 @@ package org.evochora.datapipeline.services;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.channels.IOutputChannel;
 import org.evochora.datapipeline.api.services.State;
-import org.evochora.datapipeline.core.OutputChannelBinding;
+
+import java.util.List;
+import java.util.Map;
 
 /**
  * A dummy producer service for testing purposes. It writes a configurable number of
@@ -12,26 +14,18 @@ import org.evochora.datapipeline.core.OutputChannelBinding;
 public class DummyProducerService extends AbstractService {
 
     private final int messageCount;
-    private int executionDelay = 0;
+    private final int executionDelay;
+    private final IOutputChannel<Integer> outputChannel;
 
-    public DummyProducerService(Config options) {
+    public DummyProducerService(Config options, Map<String, List<Object>> resources) {
+        super(options, resources);
         this.messageCount = options.hasPath("messageCount") ? options.getInt("messageCount") : 10;
-    }
-
-    public void setExecutionDelay(int millis) {
-        this.executionDelay = millis;
-    }
-
-    @Override
-    public void addOutputChannel(String portName, OutputChannelBinding<?> binding) {
-        // This service supports output channels, so we override the default (which throws an exception)
-        // and register the channel.
-        registerOutputChannel(portName, binding);
+        this.executionDelay = options.hasPath("executionDelay") ? options.getInt("executionDelay") : 0;
+        this.outputChannel = getRequiredResource("messages");
     }
 
     @Override
     protected void run() {
-        IOutputChannel<Integer> outputChannel = getRequiredOutputChannel("messages");
         try {
             for (int i = 0; i < messageCount; i++) {
                 synchronized (pauseLock) {

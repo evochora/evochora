@@ -27,7 +27,7 @@ public class MetricsCollectionTest {
                     enableMetrics = true
                     updateIntervalSeconds = 1
                 }
-                channels {
+                resources {
                     test-stream {
                         className = "org.evochora.datapipeline.channels.InMemoryChannel"
                         options {
@@ -38,7 +38,7 @@ public class MetricsCollectionTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        outputs {
+                        resources {
                             messages = "test-stream"
                         }
                         options {
@@ -47,10 +47,9 @@ public class MetricsCollectionTest {
                     }
                     test-consumer {
                         className = "org.evochora.datapipeline.services.DummyConsumerService"
-                        inputs {
+                        resources {
                             messages = "test-stream"
                         }
-                        outputs = {}
                     }
                 }
             }
@@ -81,7 +80,7 @@ public class MetricsCollectionTest {
                 metrics {
                     enableMetrics = false
                 }
-                channels {
+                resources {
                     test-stream {
                         className = "org.evochora.datapipeline.channels.InMemoryChannel"
                         options {
@@ -92,7 +91,7 @@ public class MetricsCollectionTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        outputs {
+                        resources {
                             messages = "test-stream"
                         }
                         options {
@@ -128,7 +127,7 @@ public class MetricsCollectionTest {
                     enableMetrics = true
                     updateIntervalSeconds = 2
                 }
-                channels {
+                resources {
                     test-stream {
                         className = "org.evochora.datapipeline.channels.InMemoryChannel"
                         options {
@@ -139,7 +138,7 @@ public class MetricsCollectionTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        outputs {
+                        resources {
                             messages = "test-stream"
                         }
                         options {

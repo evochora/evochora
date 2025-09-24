@@ -1,8 +1,5 @@
 package org.evochora.datapipeline.api.services;
 
-import org.evochora.datapipeline.core.InputChannelBinding;
-import org.evochora.datapipeline.core.OutputChannelBinding;
-
 /**
  * Defines the lifecycle and control interface for all services in the pipeline.
  */
@@ -38,20 +35,6 @@ public interface IService {
      *         service's state and its channel bindings.
      */
     ServiceStatus getServiceStatus();
-
-    /**
-     * Adds an input channel binding to a specific logical port of the service.
-     * @param portName The logical name of the input port (e.g., "tickData").
-     * @param binding The fully constructed, type-safe input channel binding.
-     */
-    void addInputChannel(String portName, InputChannelBinding<?> binding);
-
-    /**
-     * Adds an output channel binding to a specific logical port of the service.
-     * @param portName The logical name of the output port.
-     * @param binding The fully constructed, type-safe output channel binding.
-     */
-    void addOutputChannel(String portName, OutputChannelBinding<?> binding);
     
     /**
      * Gets activity information to display in the CLI status output.

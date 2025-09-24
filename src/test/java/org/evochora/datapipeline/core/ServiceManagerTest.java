@@ -26,7 +26,7 @@ public class ServiceManagerTest {
         // Create test configuration inline - no external dependencies
         String testConfig = """
             pipeline {
-                channels {
+                resources {
                     test-stream {
                         className = "org.evochora.datapipeline.channels.InMemoryChannel"
                         options {
@@ -37,7 +37,7 @@ public class ServiceManagerTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        outputs {
+                        resources {
                             messages = "test-stream"
                         }
                         options {
@@ -46,10 +46,9 @@ public class ServiceManagerTest {
                     }
                     test-consumer {
                         className = "org.evochora.datapipeline.services.DummyConsumerService"
-                        inputs {
+                        resources {
                             messages = "test-stream"
                         }
-                        outputs = {}
                     }
                 }
             }
@@ -61,8 +60,8 @@ public class ServiceManagerTest {
     void pipelineShouldBeConstructedCorrectly() {
         ServiceManager serviceManager = new ServiceManager(config);
 
-        assertEquals(1, serviceManager.getChannels().size(), "Should have 1 channel");
-        assertTrue(serviceManager.getChannels().get("test-stream") instanceof InMemoryChannel, "Channel should be InMemoryChannel");
+        assertEquals(1, serviceManager.getResources().size(), "Should have 1 resource");
+        assertTrue(serviceManager.getResources().get("test-stream") instanceof InMemoryChannel, "Resource should be InMemoryChannel");
 
         assertEquals(2, serviceManager.getServices().size(), "Should have 2 services");
         assertTrue(serviceManager.getServices().get("test-producer") instanceof DummyProducerService);
@@ -94,13 +93,41 @@ public class ServiceManagerTest {
 
     @Test
     void pauseAndResumeShouldControlFlow() throws InterruptedException {
-        ServiceManager serviceManager = new ServiceManager(config);
+        // Create configuration with execution delay
+        String testConfig = """
+            pipeline {
+                resources {
+                    test-stream {
+                        className = "org.evochora.datapipeline.channels.InMemoryChannel"
+                        options {
+                            capacity = 100
+                        }
+                    }
+                }
+                services {
+                    test-producer {
+                        className = "org.evochora.datapipeline.services.DummyProducerService"
+                        resources {
+                            messages = "test-stream"
+                        }
+                        options {
+                            messageCount = 10
+                            executionDelay = 1
+                        }
+                    }
+                    test-consumer {
+                        className = "org.evochora.datapipeline.services.DummyConsumerService"
+                        resources {
+                            messages = "test-stream"
+                        }
+                    }
+                }
+            }
+            """;
+        Config delayedConfig = ConfigFactory.parseString(testConfig);
+        ServiceManager serviceManager = new ServiceManager(delayedConfig);
         DummyConsumerService consumer = (DummyConsumerService) serviceManager.getServices().get("test-consumer");
         IService producer = serviceManager.getServices().get("test-producer");
-
-        // Add a sleep to the producer to make it pausable
-        DummyProducerService dummyProducer = (DummyProducerService) producer;
-        dummyProducer.setExecutionDelay(1);
 
         serviceManager.startAll();
         // Wait for producer to send messages
@@ -136,7 +163,7 @@ public class ServiceManagerTest {
             pipeline {
                 autoStart = true
                 startupSequence = ["test-producer"]
-                channels {
+                resources {
                     test-stream {
                         className = "org.evochora.datapipeline.channels.InMemoryChannel"
                         options {
@@ -147,7 +174,7 @@ public class ServiceManagerTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        outputs {
+                        resources {
                             messages = "test-stream"
                         }
                         options {
@@ -180,7 +207,7 @@ public class ServiceManagerTest {
         String testConfig = """
             pipeline {
                 autoStart = false
-                channels {
+                resources {
                     test-stream {
                         className = "org.evochora.datapipeline.channels.InMemoryChannel"
                         options {
@@ -191,7 +218,7 @@ public class ServiceManagerTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        outputs {
+                        resources {
                             messages = "test-stream"
                         }
                         options {
@@ -222,7 +249,7 @@ public class ServiceManagerTest {
             pipeline {
                 autoStart = false
                 startupSequence = ["test-consumer", "test-producer"]
-                channels {
+                resources {
                     test-stream {
                         className = "org.evochora.datapipeline.channels.InMemoryChannel"
                         options {
@@ -233,7 +260,7 @@ public class ServiceManagerTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        outputs {
+                        resources {
                             messages = "test-stream"
                         }
                         options {
@@ -242,10 +269,9 @@ public class ServiceManagerTest {
                     }
                     test-consumer {
                         className = "org.evochora.datapipeline.services.DummyConsumerService"
-                        inputs {
+                        resources {
                             messages = "test-stream"
                         }
-                        outputs = {}
                     }
                 }
             }
@@ -277,7 +303,7 @@ public class ServiceManagerTest {
             pipeline {
                 autoStart = false
                 startupSequence = ["test-producer"]
-                channels {
+                resources {
                     test-stream {
                         className = "org.evochora.datapipeline.channels.InMemoryChannel"
                         options {
@@ -288,7 +314,7 @@ public class ServiceManagerTest {
                 services {
                     test-producer {
                         className = "org.evochora.datapipeline.services.DummyProducerService"
-                        outputs {
+                        resources {
                             messages = "test-stream"
                         }
                         options {

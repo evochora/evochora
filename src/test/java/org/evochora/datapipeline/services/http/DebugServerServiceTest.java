@@ -1,9 +1,9 @@
 package org.evochora.datapipeline.services.http;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Tag;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -13,6 +13,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.util.Collections;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -94,7 +95,7 @@ public class DebugServerServiceTest {
             Config config = ConfigFactory.parseString(configString);
             
             // Test der Web-Service-Funktionalität
-            DebugServerService service = new DebugServerService(config);
+            DebugServerService service = new DebugServerService(config, Collections.emptyMap());
             service.run();
             try {
                 // Wait for the service to start
@@ -137,7 +138,7 @@ public class DebugServerServiceTest {
             """;
         
         Config config = ConfigFactory.parseString(configString);
-        DebugServerService service = new DebugServerService(config);
+        DebugServerService service = new DebugServerService(config, Collections.emptyMap());
         
         // Test that configuration is read correctly
         assertThat(service.getPort()).isEqualTo(-1); // Not started yet
@@ -161,7 +162,7 @@ public class DebugServerServiceTest {
             """;
         
         Config jdbcConfigObj = ConfigFactory.parseString(jdbcConfig);
-        DebugServerService jdbcService = new DebugServerService(jdbcConfigObj);
+        DebugServerService jdbcService = new DebugServerService(jdbcConfigObj, Collections.emptyMap());
         assertThat(jdbcService.getPort()).isEqualTo(-1); // Not started yet
         
         // Test with specific file path
@@ -173,7 +174,7 @@ public class DebugServerServiceTest {
             """;
         
         Config fileConfigObj = ConfigFactory.parseString(fileConfig);
-        DebugServerService fileService = new DebugServerService(fileConfigObj);
+        DebugServerService fileService = new DebugServerService(fileConfigObj, Collections.emptyMap());
         assertThat(fileService.getPort()).isEqualTo(-1); // Not started yet
         
         // Test with directory path
@@ -185,7 +186,7 @@ public class DebugServerServiceTest {
             """;
         
         Config dirConfigObj = ConfigFactory.parseString(dirConfig);
-        DebugServerService dirService = new DebugServerService(dirConfigObj);
+        DebugServerService dirService = new DebugServerService(dirConfigObj, Collections.emptyMap());
         assertThat(dirService.getPort()).isEqualTo(-1); // Not started yet
     }
 }

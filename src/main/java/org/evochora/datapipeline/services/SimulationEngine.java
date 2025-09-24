@@ -2,26 +2,22 @@ package org.evochora.datapipeline.services;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.PlacedMolecule;
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.datapipeline.api.channels.IOutputChannel;
+import org.evochora.datapipeline.api.contracts.EnvironmentProperties;
 import org.evochora.datapipeline.api.contracts.RawTickData;
 import org.evochora.datapipeline.api.contracts.SimulationContext;
-import org.evochora.datapipeline.api.contracts.EnvironmentProperties;
 import org.evochora.datapipeline.api.contracts.WorldTopology;
-import org.evochora.datapipeline.api.services.ChannelBindingStatus;
 import org.evochora.datapipeline.api.services.ServiceStatus;
 import org.evochora.datapipeline.api.services.State;
-import org.evochora.datapipeline.api.services.Direction;
-import org.evochora.datapipeline.api.services.BindingState;
-import org.evochora.datapipeline.api.channels.IOutputChannel;
-import org.evochora.datapipeline.core.OutputChannelBinding;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.IRandomProvider;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.model.Environment;
-import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.worldgen.IEnergyDistributionCreator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,7 +51,6 @@ public class SimulationEngine extends AbstractService {
     private static final Logger log = LoggerFactory.getLogger(SimulationEngine.class);
 
     // Configuration
-    private final Config options;
     private final Long seed;
     private final EnvironmentProperties environmentProperties;
     private final List<OrganismConfig> organismConfigs;
@@ -68,60 +63,49 @@ public class SimulationEngine extends AbstractService {
     private String simulationRunId;
     private final AtomicLong currentTick = new AtomicLong(0);
     private int nextPauseTickIndex = 0;
-    
-    // Channel storage for message publishing
-    
-    // Dedicated channel mappings for different message types
-    private String tickDataChannel;
-    private String contextDataChannel;
+
+    // Channels
+    private final IOutputChannel<RawTickData> tickDataOutput;
+    private final IOutputChannel<SimulationContext> contextDataOutput;
+
 
     /**
      * Creates a new SimulationEngine with the specified configuration.
      *
      * @param options The HOCON configuration options for this service
+     * @param resources The map of injected resources
      */
-    public SimulationEngine(Config options) {
-        this.options = options;
+    public SimulationEngine(Config options, Map<String, List<Object>> resources) {
+        super(options, resources);
         
         // Parse configuration
         this.seed = options.hasPath("seed") ? options.getLong("seed") : null;
         this.environmentProperties = parseEnvironmentProperties(options.getConfig("environment"));
-        this.organismConfigs = options.hasPath("organisms") ? 
+        this.organismConfigs = options.hasPath("organisms") ?
             parseOrganismConfigs(options.getConfigList("organisms")) : new ArrayList<>();
-        this.energyStrategyConfigs = options.hasPath("energyStrategies") ? 
+        this.energyStrategyConfigs = options.hasPath("energyStrategies") ?
             parseEnergyStrategyConfigs(options.getConfigList("energyStrategies")) : new ArrayList<>();
-        this.pauseTicks = options.hasPath("pauseTicks") ? 
+        this.pauseTicks = options.hasPath("pauseTicks") ?
             options.getIntList("pauseTicks").stream().mapToInt(i -> i).toArray() : null;
         
         if (pauseTicks != null) {
             Arrays.sort(pauseTicks); // Ensure ticks are in ascending order
         }
         
-        // Parse dedicated channel mappings
-        if (options.hasPath("outputs")) {
-            Config outputsConfig = options.getConfig("outputs");
-            this.tickDataChannel = outputsConfig.getString("tickData");
-            this.contextDataChannel = outputsConfig.getString("contextData");
-        } else {
-            throw new IllegalArgumentException("SimulationEngine requires 'outputs' configuration with 'tickData' and 'contextData' channel names");
-        }
+        // Get channels from resources
+        this.tickDataOutput = getRequiredResource("tickData");
+        this.contextDataOutput = getRequiredResource("contextData");
         
-        log.debug("SimulationEngine initialized with {} organisms, {} energy strategies, {} pause ticks", 
-            organismConfigs.size(), energyStrategyConfigs.size(), 
+        log.debug("SimulationEngine initialized with {} organisms, {} energy strategies, {} pause ticks",
+            organismConfigs.size(), energyStrategyConfigs.size(),
             pauseTicks != null ? pauseTicks.length : 0);
-    }
-
-    @Override
-    public void addOutputChannel(String portName, OutputChannelBinding<?> binding) {
-        // This service supports output channels, so we override the default behavior.
-        registerOutputChannel(portName, binding);
     }
 
     @Override
     public void run() {
         try {
-            log.info("Started service: SimulationEngine - {} organisms, {} energy strategies, pause ticks: {}", 
-                    organismConfigs.size(), energyStrategyConfigs.size(), 
+            log.info("Started service: SimulationEngine - {} organisms, {} energy strategies, pause ticks: {}",
+                    organismConfigs.size(), energyStrategyConfigs.size(),
                     pauseTicks != null ? Arrays.toString(pauseTicks) : "[]");
             log.debug("Starting simulation initialization...");
 
@@ -138,9 +122,9 @@ public class SimulationEngine extends AbstractService {
             randomProvider = seed != null ? new SeededRandomProvider(seed) : new SeededRandomProvider(0L);
             
             // Create simulation environment
-            org.evochora.runtime.model.EnvironmentProperties runtimeEnvProps = 
+            org.evochora.runtime.model.EnvironmentProperties runtimeEnvProps =
                 new org.evochora.runtime.model.EnvironmentProperties(
-                    environmentProperties.getWorldShape(), 
+                    environmentProperties.getWorldShape(),
                     environmentProperties.getTopology() == WorldTopology.TORUS
                 );
             Environment environment = new Environment(runtimeEnvProps);
@@ -307,9 +291,9 @@ public class SimulationEngine extends AbstractService {
         
         // Compile
         org.evochora.compiler.Compiler compiler = new org.evochora.compiler.Compiler();
-        org.evochora.runtime.model.EnvironmentProperties runtimeEnvProps = 
+        org.evochora.runtime.model.EnvironmentProperties runtimeEnvProps =
             new org.evochora.runtime.model.EnvironmentProperties(
-                environmentProperties.getWorldShape(), 
+                environmentProperties.getWorldShape(),
                 environmentProperties.getTopology() == WorldTopology.TORUS
             );
         ProgramArtifact result = compiler.compile(sourceLines, programFile.getAbsolutePath(), runtimeEnvProps);
@@ -436,7 +420,7 @@ public class SimulationEngine extends AbstractService {
         // Convert compiler ProgramArtifacts to API ProgramArtifacts (OPTIMIZED - direct compatibility!)
         List<org.evochora.datapipeline.api.contracts.ProgramArtifact> apiArtifacts = new ArrayList<>();
         for (ProgramArtifact artifact : programArtifacts) {
-            org.evochora.datapipeline.api.contracts.ProgramArtifact apiArtifact = 
+            org.evochora.datapipeline.api.contracts.ProgramArtifact apiArtifact =
                 new org.evochora.datapipeline.api.contracts.ProgramArtifact();
             
             // Direct field assignment - NO CONVERSION NEEDED!
@@ -451,9 +435,9 @@ public class SimulationEngine extends AbstractService {
             for (Map.Entry<int[], PlacedMolecule> entry : artifact.initialWorldObjects().entrySet()) {
                 PlacedMolecule molecule = entry.getValue();
                 // Use type() and value() directly - they are already correctly extracted by the compiler
-                org.evochora.datapipeline.api.contracts.SerializablePlacedMolecule serializableMolecule = 
+                org.evochora.datapipeline.api.contracts.SerializablePlacedMolecule serializableMolecule =
                     new org.evochora.datapipeline.api.contracts.SerializablePlacedMolecule(
-                        molecule.type(), 
+                        molecule.type(),
                         molecule.value()
                     );
                 serializableMolecules.put(entry.getKey(), serializableMolecule);
@@ -463,10 +447,10 @@ public class SimulationEngine extends AbstractService {
             // Convert SourceInfo to SerializableSourceInfo (minimal conversion)
             Map<Integer, org.evochora.datapipeline.api.contracts.SerializableSourceInfo> serializableSourceMap = new HashMap<>();
             for (Map.Entry<Integer, SourceInfo> entry : artifact.sourceMap().entrySet()) {
-                org.evochora.datapipeline.api.contracts.SerializableSourceInfo serializableSourceInfo = 
+                org.evochora.datapipeline.api.contracts.SerializableSourceInfo serializableSourceInfo =
                     new org.evochora.datapipeline.api.contracts.SerializableSourceInfo(
-                        entry.getValue().fileName(), 
-                        entry.getValue().lineNumber(), 
+                        entry.getValue().fileName(),
+                        entry.getValue().lineNumber(),
                         entry.getValue().columnNumber()
                     );
                 serializableSourceMap.put(entry.getKey(), serializableSourceInfo);
@@ -496,11 +480,11 @@ public class SimulationEngine extends AbstractService {
                     org.evochora.compiler.api.SourceInfo sourceInfo = entry.getKey();
                     org.evochora.compiler.api.TokenInfo tokenInfo = entry.getValue();
                     
-                    org.evochora.datapipeline.api.contracts.SerializableSourceInfo serializableSourceInfo = 
+                    org.evochora.datapipeline.api.contracts.SerializableSourceInfo serializableSourceInfo =
                         new org.evochora.datapipeline.api.contracts.SerializableSourceInfo(
                             sourceInfo.fileName(), sourceInfo.lineNumber(), sourceInfo.columnNumber());
                     
-                    org.evochora.datapipeline.api.contracts.SerializableTokenInfo serializableTokenInfo = 
+                    org.evochora.datapipeline.api.contracts.SerializableTokenInfo serializableTokenInfo =
                         new org.evochora.datapipeline.api.contracts.SerializableTokenInfo(
                             tokenInfo.tokenText(), tokenInfo.tokenType().toString(), tokenInfo.scope());
                     
@@ -549,18 +533,17 @@ public class SimulationEngine extends AbstractService {
         
         // Send SimulationContext to dedicated context channel
         try {
-            IOutputChannel<SimulationContext> channel = getRequiredOutputChannel("contextData");
-            if (channel != null) {
-                channel.write(context);
-                log.debug("Published SimulationContext to channel: {} (artifacts: {})", contextDataChannel, apiArtifacts.size());
+            if (contextDataOutput != null) {
+                contextDataOutput.write(context);
+                log.debug("Published SimulationContext (artifacts: {})", apiArtifacts.size());
             } else {
-                log.warn("Context output channel not found: {}", contextDataChannel);
+                log.warn("Context output channel not found");
             }
         } catch (InterruptedException e) {
             // Normal shutdown - queue is full or service is stopping
             Thread.currentThread().interrupt();
         } catch (Exception e) {
-            log.error("Failed to publish SimulationContext to channel: {}", contextDataChannel, e);
+            log.error("Failed to publish SimulationContext", e);
         }
     }
     
@@ -626,7 +609,7 @@ public class SimulationEngine extends AbstractService {
                 remainingTicks.append(pauseTicks[i]);
             }
             
-            log.info("Pausing simulation at tick {} (remaining pause ticks: {})", 
+            log.info("Pausing simulation at tick {} (remaining pause ticks: {})",
                 currentTickValue, remainingTicks.toString());
         } else {
             // This was the last pause tick
@@ -654,18 +637,17 @@ public class SimulationEngine extends AbstractService {
         
         // Send RawTickData to dedicated tick data channel
         try {
-            IOutputChannel<RawTickData> channel = getRequiredOutputChannel("tickData");
-            if (channel != null) {
-                channel.write(tickData);
-                log.debug("Published RawTickData to channel: {}", tickDataChannel);
+            if (tickDataOutput != null) {
+                tickDataOutput.write(tickData);
+                log.debug("Published RawTickData");
             } else {
-                log.warn("Tick data output channel not found: {}", tickDataChannel);
+                log.warn("Tick data output channel not found");
             }
         } catch (InterruptedException e) {
             // Normal shutdown - queue is full or service is stopping
             Thread.currentThread().interrupt();
         } catch (Exception e) {
-            log.error("Failed to publish RawTickData to channel: {}", tickDataChannel, e);
+            log.error("Failed to publish RawTickData", e);
         }
     }
     
@@ -684,7 +666,7 @@ public class SimulationEngine extends AbstractService {
             if (occupiedCells != null) {
                 // Convert from server.contracts to datapipeline.api.contracts
                 for (org.evochora.server.contracts.raw.RawCellState serverCell : occupiedCells) {
-                    org.evochora.datapipeline.api.contracts.RawCellState apiCell = 
+                    org.evochora.datapipeline.api.contracts.RawCellState apiCell =
                         new org.evochora.datapipeline.api.contracts.RawCellState();
                     apiCell.setPosition(serverCell.pos());
                     // Extract value and type from molecule value using configurable bit layout
@@ -730,7 +712,7 @@ public class SimulationEngine extends AbstractService {
             
             // Only include non-empty cells (empty cells are implicitly CODE:0, owner:0)
             if (molecule.toInt() != 0 || ownerId != 0) {
-                org.evochora.datapipeline.api.contracts.RawCellState cell = 
+                org.evochora.datapipeline.api.contracts.RawCellState cell =
                     new org.evochora.datapipeline.api.contracts.RawCellState();
                 cell.setPosition(coord.clone());
                 // Extract value and type from molecule value using configurable bit layout
@@ -773,7 +755,7 @@ public class SimulationEngine extends AbstractService {
             for (Organism organism : simulation.getOrganisms()) {
                 if (organism.isDead()) continue; // Skip dead organisms for performance (identical to old implementation)
                 
-                org.evochora.datapipeline.api.contracts.RawOrganismState organismState = 
+                org.evochora.datapipeline.api.contracts.RawOrganismState organismState =
                     new org.evochora.datapipeline.api.contracts.RawOrganismState();
                 
                 // Convert organism data to API format
@@ -806,7 +788,7 @@ public class SimulationEngine extends AbstractService {
                 
                 // Convert error state if organism has failed
                 if (organism.isInstructionFailed()) {
-                    org.evochora.datapipeline.api.contracts.OrganismErrorState errorState = 
+                    org.evochora.datapipeline.api.contracts.OrganismErrorState errorState =
                         new org.evochora.datapipeline.api.contracts.OrganismErrorState();
                     errorState.setReason(organism.getFailureReason());
                     errorState.setCallStackAtFailure(convertCallStack(organism.getCallStack()));
@@ -840,7 +822,7 @@ public class SimulationEngine extends AbstractService {
     private List<org.evochora.datapipeline.api.contracts.StackValue> convertDataStack(Deque<Object> dataStack) {
         List<org.evochora.datapipeline.api.contracts.StackValue> result = new ArrayList<>();
         for (Object obj : dataStack) {
-            org.evochora.datapipeline.api.contracts.StackValue stackValue = 
+            org.evochora.datapipeline.api.contracts.StackValue stackValue =
                 new org.evochora.datapipeline.api.contracts.StackValue();
             
             if (obj instanceof Integer) {
@@ -875,7 +857,7 @@ public class SimulationEngine extends AbstractService {
     private List<org.evochora.datapipeline.api.contracts.SerializableProcFrame> convertCallStack(Deque<Organism.ProcFrame> callStack) {
         List<org.evochora.datapipeline.api.contracts.SerializableProcFrame> result = new ArrayList<>();
         for (Organism.ProcFrame frame : callStack) {
-            org.evochora.datapipeline.api.contracts.SerializableProcFrame serializableFrame = 
+            org.evochora.datapipeline.api.contracts.SerializableProcFrame serializableFrame =
                 new org.evochora.datapipeline.api.contracts.SerializableProcFrame();
             
             // Convert ProcFrame data

@@ -1,28 +1,28 @@
 package org.evochora.datapipeline.services.http;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.typesafe.config.Config;
 import io.javalin.Javalin;
 import io.javalin.http.HttpStatus;
 import io.javalin.http.staticfiles.Location;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.evochora.datapipeline.services.AbstractService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.typesafe.config.Config;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.Files;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
-import java.util.Comparator;
-
-import org.evochora.datapipeline.services.AbstractService;
-import org.evochora.datapipeline.api.services.State;
 
 /**
  * DataPipeline Service wrapper for the DebugServer HTTP functionality.
@@ -62,8 +62,10 @@ public class DebugServerService extends AbstractService {
      * Creates a new DebugServerService with the specified configuration.
      * 
      * @param options The configuration options from evochora.conf
+     * @param resources The map of injected resources (unused by this service)
      */
-    public DebugServerService(Config options) {
+    public DebugServerService(Config options, Map<String, List<Object>> resources) {
+        super(options, resources);
         // Read from options sub-config
         Config serviceOptions = options.hasPath("options") ? options.getConfig("options") : options;
         

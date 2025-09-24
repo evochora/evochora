@@ -4,8 +4,9 @@ import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.channels.IInputChannel;
 import org.evochora.datapipeline.api.channels.IMonitorableChannel;
 import org.evochora.datapipeline.api.services.State;
-import org.evochora.datapipeline.core.InputChannelBinding;
 
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -16,24 +17,20 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class DummyConsumerService extends AbstractService {
 
     private final AtomicInteger receivedMessageCount = new AtomicInteger(0);
+    private final IInputChannel<?> inputChannel;
 
-    public DummyConsumerService(Config options) {
-        // No options needed for this dummy service
-    }
-
-    @Override
-    public void addInputChannel(String portName, InputChannelBinding<?> binding) {
-        registerInputChannel(portName, binding);
+    public DummyConsumerService(Config options, Map<String, List<Object>> resources) {
+        super(options, resources);
+        this.inputChannel = getRequiredResource("messages");
     }
 
     @Override
     protected void run() {
-        IInputChannel<?> inputChannel = getRequiredInputChannel("messages");
         try {
             while (currentState.get() == State.RUNNING && !Thread.currentThread().isInterrupted()) {
                 // Reading is blocking but will be interrupted by stopAll()
                 // Accept any type of message (generic)
-                Object message = inputChannel.read();
+                inputChannel.read();
                 receivedMessageCount.incrementAndGet();
             }
         } catch (InterruptedException e) {

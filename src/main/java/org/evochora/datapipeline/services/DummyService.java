@@ -3,9 +3,11 @@ package org.evochora.datapipeline.services;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.channels.IOutputChannel;
 import org.evochora.datapipeline.api.contracts.RawTickData;
-import org.evochora.datapipeline.core.OutputChannelBinding;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.List;
+import java.util.Map;
 
 /**
  * A placeholder implementation of the DummyService service.
@@ -21,20 +23,16 @@ public class DummyService extends AbstractService {
 
     private int tickCount = 0;
     private final int maxTicks;
+    private final IOutputChannel<RawTickData> outputChannel;
 
-    public DummyService(Config options) {
+    public DummyService(Config options, Map<String, List<Object>> resources) {
+        super(options, resources);
         this.maxTicks = options.hasPath("maxTicks") ? options.getInt("maxTicks") : 1000;
-    }
-
-    @Override
-    @SuppressWarnings("unchecked")
-    public void addOutputChannel(String portName, OutputChannelBinding<?> binding) {
-        registerOutputChannel(portName, binding);
+        this.outputChannel = getRequiredResource("tickData");
     }
 
     @Override
     protected void run() {
-        IOutputChannel<RawTickData> outputChannel = getRequiredOutputChannel("tickData"); // Assuming port name is "tickData"
         log.debug("Placeholder DummyService is running.");
         
         try {

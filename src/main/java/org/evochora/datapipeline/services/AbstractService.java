@@ -1,10 +1,10 @@
 package org.evochora.datapipeline.services;
 
+import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.channels.IInputChannel;
+import org.evochora.datapipeline.api.channels.IMonitorableChannel;
 import org.evochora.datapipeline.api.channels.IOutputChannel;
 import org.evochora.datapipeline.api.services.*;
-import org.evochora.datapipeline.core.InputChannelBinding;
-import org.evochora.datapipeline.core.OutputChannelBinding;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
@@ -28,8 +27,19 @@ public abstract class AbstractService implements IService {
     protected final Object pauseLock = new Object();
     protected volatile boolean paused = false;
     protected Thread serviceThread;
-    private final Map<String, List<InputChannelBinding<?>>> inputBindings = new ConcurrentHashMap<>();
-    private final Map<String, List<OutputChannelBinding<?>>> outputBindings = new ConcurrentHashMap<>();
+    protected final Config options;
+    protected final Map<String, List<Object>> resources;
+
+    /**
+     * Constructs an AbstractService with its dependencies.
+     *
+     * @param options   The service-specific configuration.
+     * @param resources A map of all injected resource objects, keyed by port name.
+     */
+    public AbstractService(Config options, Map<String, List<Object>> resources) {
+        this.options = options;
+        this.resources = resources;
+    }
 
     /**
      * Resets error counts for all channel bindings when the service starts.
@@ -89,47 +99,30 @@ public abstract class AbstractService implements IService {
 
     @Override
     public ServiceStatus getServiceStatus() {
-        // Create dynamic channel binding statuses
-        List<ChannelBindingStatus> dynamicBindings = new ArrayList<>();
-        inputBindings.values().stream()
-                .flatMap(List::stream)
-                .forEach(binding -> {
-                    BindingState state = determineBindingState(binding.getUnderlyingChannel(), Direction.INPUT);
-                    dynamicBindings.add(new ChannelBindingStatus(
-                            binding.getChannelName(),
-                            Direction.INPUT,
-                            state,
-                            0.0 // Note: This value is now determined by the ServiceManager's metrics collector
+        List<org.evochora.datapipeline.api.services.ChannelBindingStatus> channelBindingStatuses = new java.util.ArrayList<>();
+        resources.forEach((portName, resourceList) -> {
+            resourceList.forEach(resource -> {
+                if (resource instanceof org.evochora.datapipeline.api.channels.IInputChannel) {
+                    channelBindingStatuses.add(new org.evochora.datapipeline.api.services.ChannelBindingStatus(
+                        portName,
+                        org.evochora.datapipeline.api.services.Direction.INPUT,
+                        determineBindingState(resource, org.evochora.datapipeline.api.services.Direction.INPUT),
+                        0.0
                     ));
-                });
-        outputBindings.values().stream()
-                .flatMap(List::stream)
-                .forEach(binding -> {
-                    BindingState state = determineBindingState(binding.getUnderlyingChannel(), Direction.OUTPUT);
-                    dynamicBindings.add(new ChannelBindingStatus(
-                            binding.getChannelName(),
-                            Direction.OUTPUT,
-                            state,
-                            0.0 // Note: This value is now determined by the ServiceManager's metrics collector
+                } else if (resource instanceof org.evochora.datapipeline.api.channels.IOutputChannel) {
+                    channelBindingStatuses.add(new org.evochora.datapipeline.api.services.ChannelBindingStatus(
+                        portName,
+                        org.evochora.datapipeline.api.services.Direction.OUTPUT,
+                        determineBindingState(resource, org.evochora.datapipeline.api.services.Direction.OUTPUT),
+                        0.0
                     ));
-                });
-        return new ServiceStatus(currentState.get(), dynamicBindings);
+                }
+            });
+        });
+        return new ServiceStatus(currentState.get(), channelBindingStatuses);
     }
-    
 
-    @Override
-    public String getActivityInfo() {
-        // Default implementation - subclasses can override
-        return "";
-    }
-    
-    /**
-     * Determines the binding state based on real-time channel metrics.
-     * 
-     * @param binding The channel binding to analyze
-     * @return The current binding state (ACTIVE or WAITING)
-     */
-    private BindingState determineBindingState(Object underlyingChannel, Direction direction) {
+    private org.evochora.datapipeline.api.services.BindingState determineBindingState(Object underlyingChannel, org.evochora.datapipeline.api.services.Direction direction) {
         if (underlyingChannel instanceof org.evochora.datapipeline.api.channels.IMonitorableChannel) {
             org.evochora.datapipeline.api.channels.IMonitorableChannel monitorableChannel =
                     (org.evochora.datapipeline.api.channels.IMonitorableChannel) underlyingChannel;
@@ -137,18 +130,21 @@ public abstract class AbstractService implements IService {
             long backlogSize = monitorableChannel.getBacklogSize();
             long capacity = monitorableChannel.getCapacity();
             
-            if (direction == Direction.INPUT) {
-                // INPUT: WAITING if getBacklogSize() == 0, otherwise ACTIVE
-                return backlogSize == 0 ? BindingState.WAITING : BindingState.ACTIVE;
+            if (direction == org.evochora.datapipeline.api.services.Direction.INPUT) {
+                return backlogSize == 0 ? org.evochora.datapipeline.api.services.BindingState.WAITING : org.evochora.datapipeline.api.services.BindingState.ACTIVE;
             } else {
-                // OUTPUT: WAITING if getCapacity() >= 0 and getBacklogSize() >= getCapacity(), otherwise ACTIVE
                 boolean isFull = (capacity >= 0 && backlogSize >= capacity);
-                return isFull ? BindingState.WAITING : BindingState.ACTIVE;
+                return isFull ? org.evochora.datapipeline.api.services.BindingState.WAITING : org.evochora.datapipeline.api.services.BindingState.ACTIVE;
             }
         } else {
-            // If not monitorable, default to ACTIVE
-            return BindingState.ACTIVE;
+            return org.evochora.datapipeline.api.services.BindingState.ACTIVE;
         }
+    }
+
+    @Override
+    public String getActivityInfo() {
+        // Default implementation - subclasses can override
+        return "";
     }
 
     /**
@@ -157,111 +153,39 @@ public abstract class AbstractService implements IService {
      */
     protected abstract void run();
 
-    @Override
-    public void addInputChannel(String portName, InputChannelBinding<?> binding) {
-        throw new UnsupportedOperationException(
-                String.format("Service '%s' does not support input channels.", this.getClass().getSimpleName()));
-    }
-
-    @Override
-    public void addOutputChannel(String portName, OutputChannelBinding<?> binding) {
-        throw new UnsupportedOperationException(
-                String.format("Service '%s' does not support output channels.", this.getClass().getSimpleName()));
-    }
-
     /**
-     * Registers an input channel binding with the service. Concrete service implementations
-     * that support inputs should override {@link #addInputChannel(String, InputChannelBinding)}
-     * and call this method to store the binding.
+     * Gets a single, required resource for a specific port.
+     * This is a convenience method for services that expect exactly one resource on a given port.
      *
      * @param portName The logical port name.
-     * @param binding The input channel binding.
+     * @param <T>      The expected type of the resource.
+     * @return The resource instance.
+     * @throws IllegalStateException if no resource or more than one resource is configured for the port.
      */
-    protected void registerInputChannel(String portName, InputChannelBinding<?> binding) {
-        inputBindings.computeIfAbsent(portName, k -> new ArrayList<>()).add(binding);
-    }
-
-    /**
-     * Registers an output channel binding with the service. Concrete service implementations
-     * that support outputs should override {@link #addOutputChannel(String, OutputChannelBinding)}
-     * and call this method to store the binding.
-     *
-     * @param portName The logical port name.
-     * @param binding The output channel binding.
-     */
-    protected void registerOutputChannel(String portName, OutputChannelBinding<?> binding) {
-        outputBindings.computeIfAbsent(portName, k -> new ArrayList<>()).add(binding);
-    }
-
-    /**
-     * Gets a single, required input channel for a specific port.
-     * This is a convenience method for services that expect exactly one channel on a given port.
-     *
-     * @param portName The logical port name.
-     * @param <T> The expected message type of the channel.
-     * @return The {@link IInputChannel} instance.
-     * @throws IllegalStateException if no channel or more than one channel is configured for the port.
-     */
-    @SuppressWarnings("unchecked") // Cast is safe due to configuration-time checks and generic constraints.
-    protected <T> IInputChannel<T> getRequiredInputChannel(String portName) {
-        List<InputChannelBinding<?>> bindings = inputBindings.get(portName);
-        if (bindings == null || bindings.isEmpty()) {
-            throw new IllegalStateException("Required input port '" + portName + "' has no configured channel.");
+    @SuppressWarnings("unchecked")
+    protected <T> T getRequiredResource(String portName) {
+        List<Object> resolved = resources.get(portName);
+        if (resolved == null || resolved.isEmpty()) {
+            throw new IllegalStateException("Required resource port '" + portName + "' has no configured resource.");
         }
-        if (bindings.size() > 1) {
-            throw new IllegalStateException("Required input port '" + portName + "' expects a single channel, but " + bindings.size() + " were configured.");
+        if (resolved.size() > 1) {
+            throw new IllegalStateException("Required resource port '" + portName + "' expects a single resource, but " + resolved.size() + " were configured.");
         }
-        return (IInputChannel<T>) bindings.get(0);
+        return (T) resolved.get(0);
     }
 
     /**
-     * Gets all input channels for a specific port.
-     * This method is for services that can handle multiple channels on a single logical port.
+     * Gets all resources for a specific port.
+     * This is a convenience method for services that can handle multiple resources on a single logical port.
      *
      * @param portName The logical port name.
-     * @param <T> The expected message type of the channels.
-     * @return A stream of {@link IInputChannel} instances. Returns an empty stream if the port is not configured.
+     * @param <T>      The expected type of the resources.
+     * @return A stream of resource instances. Returns an empty stream if the port is not configured.
      */
-    @SuppressWarnings("unchecked") // Cast is safe due to configuration-time checks and generic constraints.
-    protected <T> Stream<IInputChannel<T>> getInputChannels(String portName) {
-        return inputBindings.getOrDefault(portName, Collections.emptyList())
+    @SuppressWarnings("unchecked")
+    protected <T> Stream<T> getResources(String portName) {
+        return resources.getOrDefault(portName, Collections.emptyList())
                 .stream()
-                .map(binding -> (IInputChannel<T>) binding);
-    }
-
-    /**
-     * Gets a single, required output channel for a specific port.
-     * This is a convenience method for services that expect exactly one channel on a given port.
-     *
-     * @param portName The logical port name.
-     * @param <T> The expected message type of the channel.
-     * @return The {@link IOutputChannel} instance.
-     * @throws IllegalStateException if no channel or more than one channel is configured for the port.
-     */
-    @SuppressWarnings("unchecked") // Cast is safe due to configuration-time checks and generic constraints.
-    protected <T> IOutputChannel<T> getRequiredOutputChannel(String portName) {
-        List<OutputChannelBinding<?>> bindings = outputBindings.get(portName);
-        if (bindings == null || bindings.isEmpty()) {
-            throw new IllegalStateException("Required output port '" + portName + "' has no configured channel.");
-        }
-        if (bindings.size() > 1) {
-            throw new IllegalStateException("Required output port '" + portName + "' expects a single channel, but " + bindings.size() + " were configured.");
-        }
-        return (IOutputChannel<T>) bindings.get(0);
-    }
-
-    /**
-     * Gets all output channels for a specific port.
-     * This method is for services that can handle multiple channels on a single logical port.
-     *
-     * @param portName The logical port name.
-     * @param <T> The expected message type of the channels.
-     * @return A stream of {@link IOutputChannel} instances. Returns an empty stream if the port is not configured.
-     */
-    @SuppressWarnings("unchecked") // Cast is safe due to configuration-time checks and generic constraints.
-    protected <T> Stream<IOutputChannel<T>> getOutputChannels(String portName) {
-        return outputBindings.getOrDefault(portName, Collections.emptyList())
-                .stream()
-                .map(binding -> (IOutputChannel<T>) binding);
+                .map(resource -> (T) resource);
     }
 }

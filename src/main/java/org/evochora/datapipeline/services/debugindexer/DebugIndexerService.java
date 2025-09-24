@@ -4,10 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.typesafe.config.Config;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.datapipeline.api.channels.IInputChannel;
-import org.evochora.datapipeline.api.contracts.SimulationContext;
 import org.evochora.datapipeline.api.contracts.RawTickData;
+import org.evochora.datapipeline.api.contracts.SimulationContext;
 import org.evochora.datapipeline.api.services.State;
-import org.evochora.datapipeline.core.InputChannelBinding;
 import org.evochora.datapipeline.services.AbstractService;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.server.config.SimulationConfiguration;
@@ -23,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 /**
  * Debug indexer service that reads from pipeline channels and writes to debug SQLite database.
@@ -49,7 +49,7 @@ public class DebugIndexerService extends AbstractService implements Runnable {
     private final SimulationConfiguration.MemoryOptimizationConfig memoryOptimizationConfig;
     
     // Input channels - accepts both SimulationContext and RawTickData
-    private final Map<String, IInputChannel<Object>> inputChannels = new HashMap<>();
+    private final List<IInputChannel<Object>> inputChannels;
     
     // Processing components
     private final ObjectMapper objectMapper;
@@ -74,8 +74,10 @@ public class DebugIndexerService extends AbstractService implements Runnable {
      * Creates a new DebugIndexerService with the specified configuration.
      * 
      * @param options Configuration options from the pipeline config
+     * @param resources The map of injected resources
      */
-    public DebugIndexerService(Config options) {
+    public DebugIndexerService(Config options, Map<String, List<Object>> resources) {
+        super(options, resources);
         // Read from options sub-config
         Config serviceOptions = options.hasPath("options") ? options.getConfig("options") : options;
         
@@ -114,24 +116,14 @@ public class DebugIndexerService extends AbstractService implements Runnable {
             internalStateBuilder, 
             this.memoryOptimizationConfig
         );
+
+        this.inputChannels = resources.values().stream()
+            .flatMap(List::stream)
+            .map(r -> (IInputChannel<Object>) r)
+            .collect(Collectors.toList());
         
         log.debug("DebugIndexerService initialized - debugDbPath: {}, batchSize: {}, enabled: {}", 
                 debugDbPath, batchSize, enabled);
-    }
-    
-    /**
-     * Adds an input channel to this service.
-     * 
-     * @param portName The channel name
-     * @param binding The input channel for SimulationContext and RawTickData messages
-     */
-    @Override
-    @SuppressWarnings("unchecked")
-    public void addInputChannel(String portName, InputChannelBinding<?> binding) {
-        // This service supports input channels, so we override the default behavior.
-        registerInputChannel(portName, binding);
-        this.inputChannels.put(portName, (IInputChannel<Object>) binding);
-        log.debug("Input channel '{}' added to DebugIndexerService for port '{}'", binding.getChannelName(), portName);
     }
     
     @Override
@@ -155,8 +147,7 @@ public class DebugIndexerService extends AbstractService implements Runnable {
             throw new IllegalStateException("No input channels configured for DebugIndexerService");
         }
         
-        log.debug("DebugIndexerService: {} input channels available: {}", 
-                inputChannels.size(), inputChannels.keySet());
+        log.debug("DebugIndexerService: {} input channels available", inputChannels.size());
         
         // Ensure database connection
         if (!databaseManager.ensureConnection()) {
@@ -180,8 +171,8 @@ public class DebugIndexerService extends AbstractService implements Runnable {
         
         log.info("Started service: DebugIndexerService - debugDbPath: {}, batchSize: {}", 
                 debugDbPath, batchSize);
-        log.debug("DebugIndexerService started with {} input channels: {} (running: {})", 
-                inputChannels.size(), inputChannels.keySet(), running.get());
+        log.debug("DebugIndexerService started with {} input channels (running: {})",
+                inputChannels.size(), running.get());
     }
     
     protected void pauseService() throws Exception {
@@ -350,16 +341,16 @@ public class DebugIndexerService extends AbstractService implements Runnable {
                         
                         boolean messageRead = false;
                         // Try to read from all input channels
-                        for (Map.Entry<String, IInputChannel<Object>> entry : inputChannels.entrySet()) {
+                        for (IInputChannel<Object> channel : inputChannels) {
                             try {
-                                Object message = entry.getValue().read();
+                                Object message = channel.read();
                                 if (message != null) {
                                     currentBatch.add(message);
                                     messageRead = true;
                                     break; // Only read one message per iteration
                                 }
                             } catch (InterruptedException e) {
-                                log.debug("Interrupted during message read from channel {}, stopping", entry.getKey());
+                                log.debug("Interrupted during message read from channel, stopping");
                                 Thread.currentThread().interrupt();
                                 break;
                             }

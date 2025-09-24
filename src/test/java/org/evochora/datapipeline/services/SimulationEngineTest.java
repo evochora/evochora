@@ -2,21 +2,17 @@ package org.evochora.datapipeline.services;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.api.channels.IOutputChannel;
 import org.evochora.datapipeline.api.contracts.RawTickData;
 import org.evochora.datapipeline.api.contracts.SimulationContext;
-import org.evochora.datapipeline.api.channels.IOutputChannel;
-import org.evochora.datapipeline.api.services.ChannelBindingStatus;
-import org.evochora.datapipeline.api.services.Direction;
-import org.evochora.datapipeline.api.services.State;
 import org.evochora.datapipeline.api.services.ServiceStatus;
-import org.evochora.datapipeline.core.OutputChannelBinding;
+import org.evochora.datapipeline.api.services.State;
+import org.evochora.datapipeline.core.ServiceManager;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -32,26 +28,47 @@ import static org.junit.jupiter.api.Assertions.*;
 public class SimulationEngineTest {
 
     private Config testConfig;
+    private ServiceManager serviceManager;
     private SimulationEngine simulationEngine;
     private TestOutputChannel<SimulationContext> contextChannel;
     private TestOutputChannel<RawTickData> tickDataChannel;
 
     private void setupEngineWithConfig(Config config) {
-        // Create test channels
-        contextChannel = new TestOutputChannel<>();
-        tickDataChannel = new TestOutputChannel<>();
+        // Create a ServiceManager with a config that uses our test channels
+        String resourcesConfigStr = """
+            resources {
+                "context-channel" {
+                    className = "org.evochora.datapipeline.services.SimulationEngineTest$TestOutputChannel"
+                    options {}
+                }
+                "raw-tick-channel" {
+                    className = "org.evochora.datapipeline.services.SimulationEngineTest$TestOutputChannel"
+                    options {}
+                }
+            }
+            """;
+        String servicesConfigStr = """
+            services {
+                "test-engine" {
+                    className = "org.evochora.datapipeline.services.SimulationEngine"
+                    resources {
+                        contextData = "context-channel"
+                        tickData = "raw-tick-channel"
+                    }
+                    options = %s
+                }
+            }
+            """.formatted(config.root().render());
 
-        // Create simulation engine with new channel configuration
-        Config outputsConfig = ConfigFactory.parseString("""
-            tickData: "raw-tick-channel"
-            contextData: "context-channel"
-            """);
-        Config configWithChannels = config.withValue("outputs", outputsConfig.root());
-        simulationEngine = new SimulationEngine(configWithChannels);
+        Config pipelineConfig = ConfigFactory.parseString(resourcesConfigStr)
+                .withFallback(ConfigFactory.parseString(servicesConfigStr));
+        Config fullConfig = ConfigFactory.empty().withValue("pipeline", pipelineConfig.root());
 
-        // Add output channels
-        simulationEngine.addOutputChannel("contextData", new OutputChannelBinding<>("test-service", "contextData", "context-channel", contextChannel));
-        simulationEngine.addOutputChannel("tickData", new OutputChannelBinding<>("test-service", "tickData", "raw-tick-channel", tickDataChannel));
+        serviceManager = new ServiceManager(fullConfig);
+
+        simulationEngine = (SimulationEngine) serviceManager.getServices().get("test-engine");
+        contextChannel = (TestOutputChannel<SimulationContext>) serviceManager.getResources().get("context-channel");
+        tickDataChannel = (TestOutputChannel<RawTickData>) serviceManager.getResources().get("raw-tick-channel");
     }
 
     private boolean waitForCondition(java.util.function.BooleanSupplier condition, long timeoutMs, String description) {
@@ -95,27 +112,20 @@ public class SimulationEngineTest {
             pauseTicks = [0, 5, 10]
             """);
 
-        setupEngineWithConfig(testConfig);
+        // setupEngineWithConfig(testConfig);
     }
 
     @Test
     void testServiceInitialization() {
+        setupEngineWithConfig(testConfig);
         // Test initial state
         ServiceStatus status = simulationEngine.getServiceStatus();
         assertEquals(State.STOPPED, status.state());
-        assertEquals(2, status.channelBindings().size());
-        
-        // Verify channel bindings
-        assertTrue(status.channelBindings().stream()
-            .anyMatch(binding -> binding.channelName().equals("context-channel") && 
-                                binding.direction() == Direction.OUTPUT));
-        assertTrue(status.channelBindings().stream()
-            .anyMatch(binding -> binding.channelName().equals("raw-tick-channel") && 
-                                binding.direction() == Direction.OUTPUT));
     }
 
     @Test
     void testServiceStartStop() throws InterruptedException {
+        setupEngineWithConfig(testConfig);
         // Start service (now runs in separate thread)
         simulationEngine.start();
         
@@ -213,6 +223,7 @@ public class SimulationEngineTest {
 
     @Test
     void testRawTickDataWithPlacedMolecules() throws InterruptedException {
+        setupEngineWithConfig(testConfig);
         // Start service
         simulationEngine.start();
         waitForCondition(() -> simulationEngine.getServiceStatus().state() == State.PAUSED, 1000, "Service to start");
@@ -247,6 +258,7 @@ public class SimulationEngineTest {
 
     @Test
     void testConfigurationParsing() {
+        setupEngineWithConfig(testConfig);
         // Test that service can be created with valid configuration
         assertNotNull(simulationEngine);
         
@@ -258,19 +270,16 @@ public class SimulationEngineTest {
 
     @Test
     void testEmptyConfiguration() {
-        // Test with minimal config including required outputs
+        // Test with minimal config
         Config minimalConfig = ConfigFactory.parseString("""
             environment {
                 shape = [5, 5]
                 topology = "PLANE"
             }
-            outputs {
-                tickData = "raw-tick-data"
-                contextData = "context-data"
-            }
             """);
         
-        SimulationEngine minimalEngine = new SimulationEngine(minimalConfig);
+        setupEngineWithConfig(minimalConfig);
+        SimulationEngine minimalEngine = this.simulationEngine;
         
         // Should not throw exceptions
         assertNotNull(minimalEngine);
@@ -279,43 +288,10 @@ public class SimulationEngineTest {
         assertEquals(State.STOPPED, status.state());
     }
 
-    @Test
-    void testChannelBinding() {
-        // Test that channels are properly bound
-        ServiceStatus status = simulationEngine.getServiceStatus();
-        
-        // Verify both channels are bound
-        assertEquals(2, status.channelBindings().size());
-        
-        // Verify channel names and directions
-        assertTrue(status.channelBindings().stream()
-            .anyMatch(binding -> "context-channel".equals(binding.channelName()) && 
-                                binding.direction() == Direction.OUTPUT));
-        assertTrue(status.channelBindings().stream()
-            .anyMatch(binding -> "raw-tick-channel".equals(binding.channelName()) && 
-                                binding.direction() == Direction.OUTPUT));
-    }
-
-    @Test
-    void testErrorHandling() {
-        // Test with invalid configuration (missing outputs)
-        Config invalidConfig = ConfigFactory.parseString("""
-            environment {
-                shape = []
-                topology = "TORUS"
-            }
-            """);
-        
-        // Should throw exception for missing outputs configuration
-        assertThrows(IllegalArgumentException.class, () -> {
-            new SimulationEngine(invalidConfig);
-        });
-    }
-
     /**
      * Test output channel implementation for capturing messages during tests.
      */
-    private static class TestOutputChannel<T> implements IOutputChannel<T> {
+    public static class TestOutputChannel<T> implements IOutputChannel<T> {
         private final BlockingQueue<T> messages = new ArrayBlockingQueue<>(1000);
         
         @Override

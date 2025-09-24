@@ -2,12 +2,10 @@ package org.evochora.datapipeline.services.debugindexer;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.channels.InMemoryChannel;
-import org.evochora.datapipeline.core.InputChannelBinding;
+import org.evochora.datapipeline.core.ServiceManager;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -19,24 +17,44 @@ import static org.junit.jupiter.api.Assertions.*;
 class DebugIndexerServiceTest {
 
     private DebugIndexerService debugIndexer;
+    private ServiceManager serviceManager;
 
     @BeforeEach
     void setUp() {
         // Create a simple configuration
         Config config = ConfigFactory.parseString("""
-            debugDbPath = "test-debug.sqlite"
-            batchSize = 10
-            enabled = true
-            database {
-              synchronous = "NORMAL"
-              cacheSize = 1000
-            }
-            memoryOptimization {
-              enabled = true
+            pipeline {
+                resources {
+                    test-input {
+                        className = "org.evochora.datapipeline.channels.InMemoryChannel"
+                        options {}
+                    }
+                }
+                services {
+                    test-indexer {
+                        className = "org.evochora.datapipeline.services.debugindexer.DebugIndexerService"
+                        resources {
+                            input = "test-input"
+                        }
+                        options {
+                            debugDbPath = "test-debug.sqlite"
+                            batchSize = 10
+                            enabled = true
+                            database {
+                              synchronous = "NORMAL"
+                              cacheSize = 1000
+                            }
+                            memoryOptimization {
+                              enabled = true
+                            }
+                        }
+                    }
+                }
             }
             """);
 
-        debugIndexer = new DebugIndexerService(config);
+        serviceManager = new ServiceManager(config);
+        debugIndexer = (DebugIndexerService) serviceManager.getServices().get("test-indexer");
     }
 
     @Test
@@ -48,11 +66,7 @@ class DebugIndexerServiceTest {
     }
 
     @Test
-    @Disabled("Disabling test for now as the service is undergoing refactoring and will be replaced.")
     void testServiceLifecycle() {
-        // Add a dummy channel to satisfy the startup check
-        debugIndexer.addInputChannel("test-input", new InputChannelBinding<>("test", "test-input", "test-channel", new InMemoryChannel<>(ConfigFactory.empty())));
-        
         // Test start
         debugIndexer.start();
         // Wait for service to actually start (polling)
