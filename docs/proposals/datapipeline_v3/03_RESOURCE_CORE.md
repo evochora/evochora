@@ -28,8 +28,8 @@ Upon completion:
 - `IResource` (base interface with UsageState support)
 - `IContextualResource` (smart wrapper creation)
 - `IMonitorable` (global resource metrics)
-- `IInputQueueResource<T>` (via wrappers)
-- `IOutputQueueResource<T>` (via wrappers)
+- `IInputQueueResource<T>` (direct implementation)
+- `IOutputQueueResource<T>` (direct implementation)
 
 ### Coding Standards
 
@@ -62,27 +62,31 @@ Upon completion:
 
 #### IContextualResource.getWrappedResource() Implementation
 **Required behavior:**
-- `usageType = "queue-in"`: Return new `QueueConsumerWrapper` instance
-- `usageType = "queue-out"`: Return new `QueueProducerWrapper` instance  
+- `usageType = "queue-in"`: Return new `MonitoredQueueConsumer` instance
+- `usageType = "queue-out"`: Return new `MonitoredQueueProducer` instance
 - Other usageTypes: Throw IllegalArgumentException
 
-#### QueueConsumerWrapper (Inner Class)
-**Location:** Inner class of InMemoryBlockingQueue
-**Purpose:** Service-specific wrapper for consuming from queue
-**Interfaces:** Must implement `IInputQueueResource<T>`, `IWrappedResource`, `IMonitorable`
-**Responsibilities:**
-- Delegate receive() calls to parent queue with configurable timeouts
-- Track service-specific metrics: messages consumed, throughput
-- Handle queue-empty scenarios in getUsageState()
+### Reusable Wrapper Classes
 
-#### QueueProducerWrapper (Inner Class)
-**Location:** Inner class of InMemoryBlockingQueue  
-**Purpose:** Service-specific wrapper for producing to queue
-**Interfaces:** Must implement `IOutputQueueResource<T>`, `IWrappedResource`, `IMonitorable`
+The monitoring and service-specific logic is encapsulated in reusable, public wrapper classes.
+
+#### MonitoredQueueConsumer
+**File:** `src/main/java/org/evochora/datapipeline/resources/queues/wrappers/MonitoredQueueConsumer.java`
+**Purpose:** Generic, reusable wrapper for monitoring consumption from any queue that implements `IInputQueueResource`.
+**Interfaces:** `IInputQueueResource<T>`, `IWrappedResource`, `IMonitorable`
 **Responsibilities:**
-- Delegate send() calls to parent queue with configurable timeouts
-- Track service-specific metrics: messages sent, throughput
-- Handle queue-full scenarios in getUsageState()
+- Delegate `receive()` calls to the underlying queue resource.
+- Track service-specific metrics: messages consumed, throughput.
+- Filter and provide consumer-specific errors and health status from the delegate.
+
+#### MonitoredQueueProducer
+**File:** `src/main/java/org/evochora/datapipeline/resources/queues/wrappers/MonitoredQueueProducer.java`
+**Purpose:** Generic, reusable wrapper for monitoring production to any queue that implements `IOutputQueueResource`.
+**Interfaces:** `IOutputQueueResource<T>`, `IWrappedResource`, `IMonitorable`
+**Responsibilities:**
+- Delegate `send()` calls to the underlying queue resource.
+- Track service-specific metrics: messages sent, throughput.
+- Filter and provide producer-specific errors and health status from the delegate.
 
 ### Resource State Logic
 
@@ -206,7 +210,7 @@ pipeline {
 #### Code Quality
 - **Thread safety**: All methods must be thread-safe without external synchronization
 - **Immutability**: Return defensive copies of mutable collections (e.g., in getErrors())
-- **Interface segregation**: Wrapper classes should be package-private inner classes
+- **Interface segregation**: Wrapper classes are public and reusable, promoting loose coupling.
 - **Single responsibility**: Each wrapper handles only one usage type
 - **Configuration validation**: Validate all configuration parameters in constructor
 
