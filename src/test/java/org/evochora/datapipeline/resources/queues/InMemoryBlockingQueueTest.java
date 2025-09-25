@@ -155,6 +155,36 @@ public class InMemoryBlockingQueueTest {
         assertEquals(2, queue.getMetrics().get("current_size"));
     }
 
+    @Test
+    void testOfferAll() {
+        // Create a new producer for this test to ensure metric isolation
+        ResourceContext isolatedContext = new ResourceContext("isolated-service", "out", "queue-out", Collections.emptyMap());
+        IOutputQueueResource<String> isolatedProducer = (IOutputQueueResource<String>) queue.getWrappedResource(isolatedContext);
+        assertTrue(isolatedProducer instanceof MonitoredQueueProducer);
+        MonitoredQueueProducer<String> monitoredProducer = (MonitoredQueueProducer<String>) isolatedProducer;
+
+        List<String> items = List.of("batch1", "batch2", "batch3", "batch4", "batch5");
+        // Offer 5 items, all should fit
+        int count1 = monitoredProducer.offerAll(items);
+        assertEquals(5, count1);
+        assertEquals(5, queue.getMetrics().get("current_size"));
+        assertEquals(5L, monitoredProducer.getMetrics().get("messages_sent"));
+
+        // Offer 5 more items, all should fit
+        int count2 = monitoredProducer.offerAll(items);
+        assertEquals(5, count2);
+        assertEquals(10, queue.getMetrics().get("current_size"));
+        assertEquals(10L, monitoredProducer.getMetrics().get("messages_sent"));
+
+        // Offer more items, none should fit as queue is full
+        int count3 = monitoredProducer.offerAll(List.of("extra1", "extra2"));
+        assertEquals(0, count3);
+        assertEquals(10, queue.getMetrics().get("current_size"));
+
+        // Verify metrics haven't changed
+        assertEquals(10L, monitoredProducer.getMetrics().get("messages_sent"));
+    }
+
     // Service-Specific Metrics
     @Test
     void testServiceSpecificMetrics() throws InterruptedException {

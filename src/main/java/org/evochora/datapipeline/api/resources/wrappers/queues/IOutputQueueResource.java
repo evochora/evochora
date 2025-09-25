@@ -53,4 +53,17 @@ public interface IOutputQueueResource<T> extends IResource {
      * @throws InterruptedException if interrupted while waiting
      */
     void putAll(Collection<T> elements) throws InterruptedException;
+
+    /**
+     * Inserts the specified elements into this queue if it is possible to do so
+     * immediately without violating capacity restrictions, returning the number
+     * of elements successfully added. When using a capacity-restricted queue,
+     * this method is generally preferable to {@link #putAll(Collection)},
+     * which may block for an non-blocking time if the queue is full.
+     *
+     * @param elements the collection of elements to add
+     * @return the number of elements added to the queue
+     * @throws NullPointerException if the specified collection or any of its elements are null
+     */
+    int offerAll(Collection<T> elements);
 }

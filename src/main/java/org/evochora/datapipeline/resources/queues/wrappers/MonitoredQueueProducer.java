@@ -51,6 +51,20 @@ public class MonitoredQueueProducer<T> implements IOutputQueueResource<T>, IWrap
 
     /**
      * {@inheritDoc}
+     * This implementation increments the sent messages counter by the number of elements
+     * that were successfully offered to the queue.
+     */
+    @Override
+    public int offerAll(Collection<T> elements) {
+        int count = delegate.offerAll(elements);
+        if (count > 0) {
+            messagesSent.addAndGet(count);
+        }
+        return count;
+    }
+
+    /**
+     * {@inheritDoc}
      * This implementation increments the sent messages counter if the element is successfully offered.
      */
     @Override

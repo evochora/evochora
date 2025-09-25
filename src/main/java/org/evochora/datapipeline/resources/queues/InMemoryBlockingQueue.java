@@ -70,6 +70,31 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
      * {@inheritDoc}
      */
     @Override
+    public int offerAll(Collection<T> elements) {
+        if (elements == null) {
+            throw new NullPointerException("elements collection cannot be null");
+        }
+        int count = 0;
+        for (T element : elements) {
+            if (element == null) {
+                throw new NullPointerException("collection cannot contain null elements");
+            }
+            // Directly use the underlying non-blocking queue's offer method.
+            if (this.queue.offer(new TimestampedObject<>(element))) {
+                timestamps.put(System.nanoTime(), Instant.now());
+                count++;
+            } else {
+                // Queue is full, stop trying to add more.
+                break;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public UsageState getUsageState(String usageType) {
         switch (usageType) {
             case "queue-in":

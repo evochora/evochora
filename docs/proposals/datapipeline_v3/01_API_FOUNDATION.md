@@ -90,6 +90,7 @@ src/main/java/org/evochora/datapipeline/api/
   - `void put(T element) throws InterruptedException`: Blocking insertion.
   - `boolean offer(T element, long timeout, TimeUnit unit)`: Timeout-based insertion.
   - `void putAll(Collection<T> elements) throws InterruptedException`: Batch insertion.
+  - `int offerAll(Collection<T> elements)`: Non-blocking batch insertion.
 
 #### `IMonitorable`
 - **Purpose**: Common interface for components that can provide monitoring metrics
