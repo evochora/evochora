@@ -2,10 +2,12 @@ package org.evochora.datapipeline.resources.queues;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.resources.wrappers.queues.IInputQueueResource;
-import org.evochora.datapipeline.api.resources.wrappers.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.wrappers.queues.IInputQueueResource;
+import org.evochora.datapipeline.api.resources.wrappers.queues.IOutputQueueResource;
+import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueConsumer;
+import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueProducer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -49,10 +51,10 @@ public class InMemoryBlockingQueueTest {
     @Test
     void testContextualWrapping() {
         ResourceContext producerContext = new ResourceContext("test-service", "out", "queue-out", Collections.emptyMap());
-        assertTrue(queue.getWrappedResource(producerContext) instanceof InMemoryBlockingQueue.QueueProducerWrapper);
+        assertTrue(queue.getWrappedResource(producerContext) instanceof MonitoredQueueProducer);
 
         ResourceContext consumerContext = new ResourceContext("test-service", "in", "queue-in", Collections.emptyMap());
-        assertTrue(queue.getWrappedResource(consumerContext) instanceof InMemoryBlockingQueue.QueueConsumerWrapper);
+        assertTrue(queue.getWrappedResource(consumerContext) instanceof MonitoredQueueConsumer);
 
         assertThrows(IllegalArgumentException.class, () -> {
             ResourceContext invalidContext = new ResourceContext("test-service", "invalid", "invalid-type", Collections.emptyMap());
@@ -79,10 +81,10 @@ public class InMemoryBlockingQueueTest {
         producer.send("message2");
         consumer.receive();
 
-        Map<String, Number> producerMetrics = ((InMemoryBlockingQueue.QueueProducerWrapper) producer).getMetrics();
+        Map<String, Number> producerMetrics = ((MonitoredQueueProducer<String>) producer).getMetrics();
         assertEquals(2L, producerMetrics.get("messages_sent"));
 
-        Map<String, Number> consumerMetrics = ((InMemoryBlockingQueue.QueueConsumerWrapper) consumer).getMetrics();
+        Map<String, Number> consumerMetrics = ((MonitoredQueueConsumer<String>) consumer).getMetrics();
         assertEquals(1L, consumerMetrics.get("messages_consumed"));
     }
 
@@ -131,10 +133,10 @@ public class InMemoryBlockingQueueTest {
         executor.shutdown();
         assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
 
-        Map<String, Number> producerMetrics = ((InMemoryBlockingQueue.QueueProducerWrapper) producer).getMetrics();
+        Map<String, Number> producerMetrics = ((MonitoredQueueProducer<String>) producer).getMetrics();
         assertEquals(5L, producerMetrics.get("messages_sent"));
 
-        Map<String, Number> consumerMetrics = ((InMemoryBlockingQueue.QueueConsumerWrapper) consumer).getMetrics();
+        Map<String, Number> consumerMetrics = ((MonitoredQueueConsumer<String>) consumer).getMetrics();
         assertEquals(5L, consumerMetrics.get("messages_consumed"));
 
         assertEquals(0, queue.getMetrics().get("current_size"));

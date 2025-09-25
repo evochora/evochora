@@ -3,6 +3,9 @@ package org.evochora.datapipeline.resources.queues;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigException;
+import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.resources.IContextualResource;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
@@ -10,6 +13,8 @@ import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IOutputQueueResource;
+import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueConsumer;
+import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueProducer;
 
 import java.time.Instant;
 import java.util.Collections;
@@ -19,10 +24,9 @@ import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
+import java.util.function.Predicate;
 
-public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorable {
+public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorable, IInputQueueResource<T>, IOutputQueueResource<T> {
 
     private final ArrayBlockingQueue<TimestampedObject<T>> queue;
     private final int capacity;
@@ -63,14 +67,11 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
 
     @Override
     public IWrappedResource getWrappedResource(ResourceContext context) {
-        switch (context.usageType()) {
-            case "queue-in":
-                return new QueueConsumerWrapper(context);
-            case "queue-out":
-                return new QueueProducerWrapper(context);
-            default:
-                throw new IllegalArgumentException("Unsupported usage type for InMemoryBlockingQueue: " + context.usageType());
-        }
+        return switch (context.usageType()) {
+            case "queue-in" -> new MonitoredQueueConsumer<>(this, context);
+            case "queue-out" -> new MonitoredQueueProducer<>(this, context);
+            default -> throw new IllegalArgumentException("Unsupported usage type: " + context.usageType());
+        };
     }
 
     @Override
@@ -82,7 +83,7 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         );
     }
 
-    private double calculateThroughput(int window) {
+    public double calculateThroughput(int window) {
         Instant windowStart = Instant.now().minusSeconds(window);
         long count = timestamps.values().stream().filter(t -> t.isAfter(windowStart)).count();
         return (double) count / window;
@@ -103,6 +104,60 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         return true;
     }
 
+    public void addError(OperationalError error) {
+        errors.add(error);
+    }
+
+    public void clearErrors(Predicate<OperationalError> filter) {
+        errors.removeIf(filter);
+    }
+
+    public int getThroughputWindowSeconds() {
+        return throughputWindowSeconds;
+    }
+
+    @Override
+    public boolean send(T item) {
+        try {
+            return send(item, 1, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            addError(new OperationalError(Instant.now(), "SEND_INTERRUPTED", "Send operation was interrupted", e.toString()));
+            return false;
+        }
+    }
+
+    @Override
+    public boolean send(T item, long timeout, TimeUnit unit) throws InterruptedException {
+        TimestampedObject<T> tsObject = new TimestampedObject<>(item);
+        boolean success = queue.offer(tsObject, timeout, unit);
+        if (success) {
+            timestamps.put(System.nanoTime(), tsObject.timestamp);
+        }
+        return success;
+    }
+
+    @Override
+    public Optional<T> receive() {
+        try {
+            return receive(1, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            addError(new OperationalError(Instant.now(), "RECEIVE_INTERRUPTED", "Receive operation was interrupted", e.toString()));
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public Optional<T> receive(long timeout, TimeUnit unit) throws InterruptedException {
+        TimestampedObject<T> tsObject = queue.poll(timeout, unit);
+        if (tsObject != null) {
+            timestamps.put(System.nanoTime(), tsObject.timestamp);
+            return Optional.of(tsObject.object);
+        }
+        return Optional.empty();
+    }
+
     private static class TimestampedObject<T> {
         final T object;
         final Instant timestamp;
@@ -110,132 +165,6 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         TimestampedObject(T object) {
             this.object = object;
             this.timestamp = Instant.now();
-        }
-    }
-
-    public class QueueProducerWrapper implements IOutputQueueResource<T>, IWrappedResource, IMonitorable {
-        private final ResourceContext context;
-        private final AtomicLong messagesSent = new AtomicLong(0);
-        private final int window;
-
-        public QueueProducerWrapper(ResourceContext context) {
-            this.context = context;
-            this.window = Integer.parseInt(context.parameters().getOrDefault("window", String.valueOf(throughputWindowSeconds)));
-        }
-
-        @Override
-        public boolean send(T item) {
-            try {
-                return send(item, 1, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                errors.add(new OperationalError(Instant.now(), "SEND_INTERRUPTED", "Send operation was interrupted", e.toString()));
-                return false;
-            }
-        }
-        
-        @Override
-        public boolean send(T item, long timeout, TimeUnit unit) throws InterruptedException {
-            TimestampedObject<T> tsObject = new TimestampedObject<>(item);
-            boolean success = queue.offer(tsObject, timeout, unit);
-            if (success) {
-                messagesSent.incrementAndGet();
-                timestamps.put(System.nanoTime(), tsObject.timestamp);
-            }
-            return success;
-        }
-
-        @Override
-        public Map<String, Number> getMetrics() {
-            return Map.of(
-                    "messages_sent", messagesSent.get(),
-                    "throughput_per_sec", calculateThroughput(this.window)
-            );
-        }
-
-        @Override
-        public List<OperationalError> getErrors() {
-            return InMemoryBlockingQueue.this.getErrors().stream()
-                    .filter(e -> e.message().contains("SEND"))
-                    .collect(Collectors.toList());
-        }
-
-        @Override
-        public void clearErrors() {
-            errors.removeIf(e -> e.message().contains("SEND"));
-        }
-
-        @Override
-        public boolean isHealthy() {
-            return InMemoryBlockingQueue.this.isHealthy();
-        }
-
-        @Override
-        public UsageState getUsageState(String usageType) {
-            return InMemoryBlockingQueue.this.getUsageState(context.usageType());
-        }
-    }
-
-    public class QueueConsumerWrapper implements IInputQueueResource<T>, IWrappedResource, IMonitorable {
-        private final ResourceContext context;
-        private final AtomicLong messagesConsumed = new AtomicLong(0);
-        private final int window;
-
-        public QueueConsumerWrapper(ResourceContext context) {
-            this.context = context;
-            this.window = Integer.parseInt(context.parameters().getOrDefault("window", String.valueOf(throughputWindowSeconds)));
-        }
-
-        @Override
-        public Optional<T> receive() {
-            try {
-                return receive(1, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                errors.add(new OperationalError(Instant.now(), "RECEIVE_INTERRUPTED", "Receive operation was interrupted", e.toString()));
-                return Optional.empty();
-            }
-        }
-        
-        @Override
-        public Optional<T> receive(long timeout, TimeUnit unit) throws InterruptedException {
-            TimestampedObject<T> tsObject = queue.poll(timeout, unit);
-            if (tsObject != null) {
-                messagesConsumed.incrementAndGet();
-                timestamps.put(System.nanoTime(), tsObject.timestamp);
-                return Optional.of(tsObject.object);
-            }
-            return Optional.empty();
-        }
-
-        @Override
-        public Map<String, Number> getMetrics() {
-            return Map.of(
-                    "messages_consumed", messagesConsumed.get(),
-                    "throughput_per_sec", calculateThroughput(this.window)
-            );
-        }
-
-        @Override
-        public List<OperationalError> getErrors() {
-            return InMemoryBlockingQueue.this.getErrors().stream()
-                .filter(e -> e.message().contains("RECEIVE"))
-                .collect(Collectors.toList());
-        }
-
-        @Override
-        public void clearErrors() {
-            errors.removeIf(e -> e.message().contains("RECEIVE"));
-        }
-
-        @Override
-        public boolean isHealthy() {
-            return InMemoryBlockingQueue.this.isHealthy();
-        }
-
-        @Override
-        public UsageState getUsageState(String usageType) {
-            return InMemoryBlockingQueue.this.getUsageState(context.usageType());
         }
     }
 }
