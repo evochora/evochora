@@ -49,6 +49,10 @@ public class MonitoredQueueProducer<T> implements IOutputQueueResource<T>, IWrap
         }
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation increments the sent messages counter if the element is successfully offered.
+     */
     @Override
     public boolean offer(T element) {
         boolean success = delegate.offer(element);
@@ -58,12 +62,20 @@ public class MonitoredQueueProducer<T> implements IOutputQueueResource<T>, IWrap
         return success;
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation increments the sent messages counter after the element is successfully put.
+     */
     @Override
     public void put(T element) throws InterruptedException {
         delegate.put(element);
         messagesSent.incrementAndGet();
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation increments the sent messages counter if the element is successfully offered.
+     */
     @Override
     public boolean offer(T element, long timeout, TimeUnit unit) throws InterruptedException {
         boolean success = delegate.offer(element, timeout, unit);
@@ -73,14 +85,22 @@ public class MonitoredQueueProducer<T> implements IOutputQueueResource<T>, IWrap
         return success;
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation increments the sent messages counter by the number of elements in the collection
+     * after they are all successfully put. Note: If this operation is interrupted, the count may not be
+     * perfectly accurate, as the underlying operation is not atomic.
+     */
     @Override
     public void putAll(Collection<T> elements) throws InterruptedException {
-        // This is not perfectly accurate if the operation is interrupted,
-        // but it's the best we can do without changing the delegate's interface.
         delegate.putAll(elements);
         messagesSent.addAndGet(elements.size());
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation provides metrics specific to this producer context.
+     */
     @Override
     public Map<String, Number> getMetrics() {
         return Map.of(
@@ -89,6 +109,10 @@ public class MonitoredQueueProducer<T> implements IOutputQueueResource<T>, IWrap
         );
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation filters errors from the underlying resource to show only those relevant to production.
+     */
     @Override
     public List<OperationalError> getErrors() {
         // This filtering is a temporary solution. A more robust error tagging system should be implemented.
@@ -100,6 +124,10 @@ public class MonitoredQueueProducer<T> implements IOutputQueueResource<T>, IWrap
                 .collect(Collectors.toList());
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation clears errors from the underlying resource that are relevant to production.
+     */
     @Override
     public void clearErrors() {
         queue.clearErrors(error -> {
@@ -108,11 +136,17 @@ public class MonitoredQueueProducer<T> implements IOutputQueueResource<T>, IWrap
         });
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean isHealthy() {
         return queue.isHealthy();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public UsageState getUsageState(String usageType) {
         return queue.getUsageState(context.usageType());

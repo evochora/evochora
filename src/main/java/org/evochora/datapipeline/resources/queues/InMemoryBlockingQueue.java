@@ -66,6 +66,9 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public UsageState getUsageState(String usageType) {
         switch (usageType) {
@@ -78,6 +81,9 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public IWrappedResource getWrappedResource(ResourceContext context) {
         return switch (context.usageType()) {
@@ -87,6 +93,9 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         };
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public Map<String, Number> getMetrics() {
         return Map.of(
@@ -109,16 +118,25 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         return (double) count / window;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public List<OperationalError> getErrors() {
         return Collections.unmodifiableList(errors);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void clearErrors() {
         errors.clear();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean isHealthy() {
         return true;
@@ -153,6 +171,10 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         return throughputWindowSeconds;
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation retrieves an element and records its timestamp for throughput calculation.
+     */
     @Override
     public Optional<T> poll() {
         TimestampedObject<T> tsObject = queue.poll();
@@ -163,6 +185,10 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         return Optional.empty();
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation retrieves an element and records its timestamp for throughput calculation.
+     */
     @Override
     public T take() throws InterruptedException {
         TimestampedObject<T> tsObject = queue.take();
@@ -170,6 +196,10 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         return tsObject.object;
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation retrieves an element and records its timestamp for throughput calculation.
+     */
     @Override
     public Optional<T> poll(long timeout, TimeUnit unit) throws InterruptedException {
         TimestampedObject<T> tsObject = queue.poll(timeout, unit);
@@ -180,6 +210,11 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         return Optional.empty();
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation drains elements and records a single timestamp for the entire batch operation
+     * for throughput calculation.
+     */
     @Override
     public int drainTo(Collection<? super T> collection, int maxElements) {
         ArrayList<TimestampedObject<T>> drainedObjects = new ArrayList<>();
@@ -188,39 +223,54 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
             Instant now = Instant.now();
             for (TimestampedObject<T> tsObject : drainedObjects) {
                 collection.add(tsObject.object);
+                // Record a timestamp for each drained object to contribute to throughput metrics.
                 timestamps.put(System.nanoTime(), now);
             }
         }
         return count;
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation simulates a timeout for the drain operation, as the underlying
+     * {@link ArrayBlockingQueue#drainTo} does not support it. It may not be perfectly accurate
+     * under high contention.
+     */
     @Override
     public int drainTo(Collection<? super T> collection, int maxElements, long timeout, TimeUnit unit) throws InterruptedException {
-        // Note: BlockingQueue.drainTo does not support timeout. We simulate it here.
-        // This is a simplified simulation. For a robust solution, a more complex mechanism would be needed.
         long nanos = unit.toNanos(timeout);
         long deadline = System.nanoTime() + nanos;
         int count = 0;
         while (count < maxElements) {
+            // First, attempt a non-blocking drain to get any immediately available elements.
             int drained = drainTo(collection, maxElements - count);
             count += drained;
+
+            // If we have drained all we need or the deadline has passed, exit.
             if (count == maxElements || System.nanoTime() >= deadline) {
                 break;
             }
-            // If nothing was drained, wait for a short period.
+
+            // If nothing was drained in the first attempt, it means the queue was empty.
+            // Wait for a new element to arrive using a blocking poll with the remaining timeout.
             if (drained == 0) {
                 Optional<T> item = poll(deadline - System.nanoTime(), TimeUnit.NANOSECONDS);
                 if (item.isPresent()) {
                     collection.add(item.get());
                     count++;
                 } else {
-                    break; // Timeout elapsed
+                    // Timeout elapsed while waiting for an element, so we're done.
+                    break;
                 }
             }
         }
         return count;
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation adds an element and records its timestamp for throughput calculation.
+     */
     @Override
     public boolean offer(T element) {
         boolean success = queue.offer(new TimestampedObject<>(element));
@@ -230,12 +280,20 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         return success;
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation adds an element and records its timestamp for throughput calculation.
+     */
     @Override
     public void put(T element) throws InterruptedException {
         queue.put(new TimestampedObject<>(element));
         timestamps.put(System.nanoTime(), Instant.now());
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation adds an element and records its timestamp for throughput calculation.
+     */
     @Override
     public boolean offer(T element, long timeout, TimeUnit unit) throws InterruptedException {
         boolean success = queue.offer(new TimestampedObject<>(element), timeout, unit);
@@ -245,6 +303,11 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         return success;
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation iterates through the collection and calls {@link #put(Object)} for each element,
+     * ensuring each addition is timestamped for accurate throughput metrics.
+     */
     @Override
     public void putAll(Collection<T> elements) throws InterruptedException {
         for (T element : elements) {

@@ -50,6 +50,10 @@ public class MonitoredQueueConsumer<T> implements IInputQueueResource<T>, IWrapp
         }
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation increments the consumed messages counter if an element is successfully retrieved.
+     */
     @Override
     public Optional<T> poll() {
         Optional<T> result = delegate.poll();
@@ -59,6 +63,10 @@ public class MonitoredQueueConsumer<T> implements IInputQueueResource<T>, IWrapp
         return result;
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation increments the consumed messages counter after an element is successfully retrieved.
+     */
     @Override
     public T take() throws InterruptedException {
         T result = delegate.take();
@@ -66,6 +74,10 @@ public class MonitoredQueueConsumer<T> implements IInputQueueResource<T>, IWrapp
         return result;
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation increments the consumed messages counter if an element is successfully retrieved.
+     */
     @Override
     public Optional<T> poll(long timeout, TimeUnit unit) throws InterruptedException {
         Optional<T> result = delegate.poll(timeout, unit);
@@ -75,6 +87,10 @@ public class MonitoredQueueConsumer<T> implements IInputQueueResource<T>, IWrapp
         return result;
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation increments the consumed messages counter by the number of elements successfully drained.
+     */
     @Override
     public int drainTo(Collection<? super T> collection, int maxElements) {
         int count = delegate.drainTo(collection, maxElements);
@@ -84,6 +100,10 @@ public class MonitoredQueueConsumer<T> implements IInputQueueResource<T>, IWrapp
         return count;
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation increments the consumed messages counter by the number of elements successfully drained.
+     */
     @Override
     public int drainTo(Collection<? super T> collection, int maxElements, long timeout, TimeUnit unit) throws InterruptedException {
         int count = delegate.drainTo(collection, maxElements, timeout, unit);
@@ -93,6 +113,10 @@ public class MonitoredQueueConsumer<T> implements IInputQueueResource<T>, IWrapp
         return count;
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation provides metrics specific to this consumer context.
+     */
     @Override
     public Map<String, Number> getMetrics() {
         return Map.of(
@@ -101,6 +125,10 @@ public class MonitoredQueueConsumer<T> implements IInputQueueResource<T>, IWrapp
         );
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation filters errors from the underlying resource to show only those relevant to consumption.
+     */
     @Override
     public List<OperationalError> getErrors() {
         // This filtering is a temporary solution. A more robust error tagging system should be implemented.
@@ -112,6 +140,10 @@ public class MonitoredQueueConsumer<T> implements IInputQueueResource<T>, IWrapp
                 .collect(Collectors.toList());
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation clears errors from the underlying resource that are relevant to consumption.
+     */
     @Override
     public void clearErrors() {
         queue.clearErrors(error -> {
@@ -120,11 +152,17 @@ public class MonitoredQueueConsumer<T> implements IInputQueueResource<T>, IWrapp
         });
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean isHealthy() {
         return queue.isHealthy();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public UsageState getUsageState(String usageType) {
         return queue.getUsageState(context.usageType());
