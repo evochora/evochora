@@ -23,10 +23,12 @@ src/main/java/org/evochora/datapipeline/api/
 │   ├── IContextualResource.java  
 │   ├── IWrappedResource.java
 │   ├── ResourceContext.java
-│   ├── IInputResource.java
-│   ├── IOutputResource.java
 │   ├── IMonitorable.java
-│   └── OperationalError.java
+│   ├── OperationalError.java
+│   └── wrappers/
+│       └── queues/
+│           ├── IInputQueueResource.java
+│           └── IOutputQueueResource.java
 └── services/
     ├── IService.java
     ├── ServiceStatus.java
@@ -71,17 +73,19 @@ src/main/java/org/evochora/datapipeline/api/
 - **Usage**: Identifies resources that are wrappers around other resources, created by IContextualResource
 - **Requirements**: Must extend `IResource`
 
-#### `IInputResource<T>`
-- **Purpose**: Interface for resources that can provide data input capabilities
+#### `IInputQueueResource<T>` (in wrappers.queues package)
+- **Purpose**: Interface for queue-based resources that can provide data input capabilities
 - **Type Parameter**: T represents the type of data this resource can provide
 - **Required Methods**: 
-  - Methods for consuming/reading data (exact method signatures left to implementer)
+  - `Optional<T> receive()`: Non-blocking receive
+  - `Optional<T> receive(long timeout, TimeUnit unit)`: Timeout-based receive
 
-#### `IOutputResource<T>`
-- **Purpose**: Interface for resources that can accept data output
+#### `IOutputQueueResource<T>` (in wrappers.queues package)
+- **Purpose**: Interface for queue-based resources that can accept data output
 - **Type Parameter**: T represents the type of data this resource can accept  
 - **Required Methods**:
-  - Methods for producing/writing data (exact method signatures left to implementer)
+  - `boolean send(T item)`: Non-blocking send
+  - `boolean send(T item, long timeout, TimeUnit unit)`: Timeout-based send
 
 #### `IMonitorable`
 - **Purpose**: Common interface for components that can provide monitoring metrics

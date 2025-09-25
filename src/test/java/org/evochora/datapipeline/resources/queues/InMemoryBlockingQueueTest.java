@@ -1,9 +1,9 @@
-package org.evochora.datapipeline.resources;
+package org.evochora.datapipeline.resources.queues;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.resources.IInputResource;
-import org.evochora.datapipeline.api.resources.IOutputResource;
+import org.evochora.datapipeline.api.resources.wrappers.queues.IInputQueueResource;
+import org.evochora.datapipeline.api.resources.wrappers.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,10 +34,10 @@ public class InMemoryBlockingQueueTest {
     @Test
     void testBasicSendAndReceive() {
         ResourceContext producerContext = new ResourceContext("test-service", "out", "queue-out", Collections.emptyMap());
-        IOutputResource<String> producer = (IOutputResource<String>) queue.getWrappedResource(producerContext);
+        IOutputQueueResource<String> producer = (IOutputQueueResource<String>) queue.getWrappedResource(producerContext);
 
         ResourceContext consumerContext = new ResourceContext("test-service", "in", "queue-in", Collections.emptyMap());
-        IInputResource<String> consumer = (IInputResource<String>) queue.getWrappedResource(consumerContext);
+        IInputQueueResource<String> consumer = (IInputQueueResource<String>) queue.getWrappedResource(consumerContext);
 
         assertTrue(producer.send("test-message"));
         Optional<String> received = consumer.receive();
@@ -70,10 +70,10 @@ public class InMemoryBlockingQueueTest {
     @Test
     void testServiceSpecificMetrics() {
         ResourceContext producerContext = new ResourceContext("test-service-a", "out", "queue-out", Collections.emptyMap());
-        IOutputResource<String> producer = (IOutputResource<String>) queue.getWrappedResource(producerContext);
+        IOutputQueueResource<String> producer = (IOutputQueueResource<String>) queue.getWrappedResource(producerContext);
 
         ResourceContext consumerContext = new ResourceContext("test-service-b", "in", "queue-in", Collections.emptyMap());
-        IInputResource<String> consumer = (IInputResource<String>) queue.getWrappedResource(consumerContext);
+        IInputQueueResource<String> consumer = (IInputQueueResource<String>) queue.getWrappedResource(consumerContext);
 
         producer.send("message1");
         producer.send("message2");
@@ -92,7 +92,7 @@ public class InMemoryBlockingQueueTest {
         assertEquals(IResource.UsageState.ACTIVE, queue.getUsageState("queue-out"));
 
         ResourceContext producerContext = new ResourceContext("test-service", "out", "queue-out", Collections.emptyMap());
-        IOutputResource<String> producer = (IOutputResource<String>) queue.getWrappedResource(producerContext);
+        IOutputQueueResource<String> producer = (IOutputQueueResource<String>) queue.getWrappedResource(producerContext);
         producer.send("message");
 
         assertEquals(IResource.UsageState.ACTIVE, queue.getUsageState("queue-in"));
@@ -108,10 +108,10 @@ public class InMemoryBlockingQueueTest {
     void testThreadSafety() throws InterruptedException {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         ResourceContext producerContext = new ResourceContext("producer-service", "out", "queue-out", Collections.emptyMap());
-        IOutputResource<String> producer = (IOutputResource<String>) queue.getWrappedResource(producerContext);
+        IOutputQueueResource<String> producer = (IOutputQueueResource<String>) queue.getWrappedResource(producerContext);
 
         ResourceContext consumerContext = new ResourceContext("consumer-service", "in", "queue-in", Collections.emptyMap());
-        IInputResource<String> consumer = (IInputResource<String>) queue.getWrappedResource(consumerContext);
+        IInputQueueResource<String> consumer = (IInputQueueResource<String>) queue.getWrappedResource(consumerContext);
 
         Runnable producerTask = () -> {
             for (int i = 0; i < 5; i++) {

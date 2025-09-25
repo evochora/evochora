@@ -22,14 +22,14 @@ Upon completion:
 
 ### Core Resource: InMemoryBlockingQueue
 
-**File:** `src/main/java/org/evochora/datapipeline/resources/InMemoryBlockingQueue.java`
+**File:** `src/main/java/org/evochora/datapipeline/resources/queues/InMemoryBlockingQueue.java`
 
 **Required Interfaces:**
 - `IResource` (base interface with UsageState support)
 - `IContextualResource` (smart wrapper creation)
 - `IMonitorable` (global resource metrics)
-- `IInputResource<T>` (via wrappers)
-- `IOutputResource<T>` (via wrappers)
+- `IInputQueueResource<T>` (via wrappers)
+- `IOutputQueueResource<T>` (via wrappers)
 
 ### Coding Standards
 
@@ -69,18 +69,18 @@ Upon completion:
 #### QueueConsumerWrapper (Inner Class)
 **Location:** Inner class of InMemoryBlockingQueue
 **Purpose:** Service-specific wrapper for consuming from queue
-**Interfaces:** Must implement `IInputResource<T>`, `IWrappedResource`, `IMonitorable`
+**Interfaces:** Must implement `IInputQueueResource<T>`, `IWrappedResource`, `IMonitorable`
 **Responsibilities:**
-- Delegate receive() calls to parent queue's take() method
+- Delegate receive() calls to parent queue with configurable timeouts
 - Track service-specific metrics: messages consumed, throughput
 - Handle queue-empty scenarios in getUsageState()
 
 #### QueueProducerWrapper (Inner Class)
 **Location:** Inner class of InMemoryBlockingQueue  
 **Purpose:** Service-specific wrapper for producing to queue
-**Interfaces:** Must implement `IOutputResource<T>`, `IWrappedResource`, `IMonitorable`
+**Interfaces:** Must implement `IOutputQueueResource<T>`, `IWrappedResource`, `IMonitorable`
 **Responsibilities:**
-- Delegate send() calls to parent queue's put() method
+- Delegate send() calls to parent queue with configurable timeouts
 - Track service-specific metrics: messages sent, throughput
 - Handle queue-full scenarios in getUsageState()
 

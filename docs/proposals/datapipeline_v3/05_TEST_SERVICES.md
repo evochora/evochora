@@ -52,7 +52,7 @@ import org.evochora.datapipeline.api.contracts.PipelineContracts.DummyMessage;
 - `throughputWindowSeconds`: Integer (default: 5) - Time window for throughput calculation
 
 **Resource Requirements:**
-- Must have exactly one output resource at port "output" of type IOutputResource<DummyMessage>
+- Must have exactly one output resource at port "output" of type IOutputQueueResource<DummyMessage>
 - DummyMessage refers to the Protobuf-generated class from Phase 1.1
 
 **Service Logic:**
@@ -97,7 +97,7 @@ import org.evochora.datapipeline.api.contracts.PipelineContracts.DummyMessage;
 - `throughputWindowSeconds`: Integer (default: 5) - Time window for throughput calculation
 
 **Resource Requirements:**
-- Must have exactly one input resource at port "input" of type IInputResource<DummyMessage>
+- Must have exactly one input resource at port "input" of type IInputQueueResource<DummyMessage>
 - DummyMessage refers to the Protobuf-generated class from Phase 1.1
 
 **Service Logic:**

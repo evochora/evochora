@@ -1,15 +1,15 @@
-package org.evochora.datapipeline.resources;
+package org.evochora.datapipeline.resources.queues;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.resources.IContextualResource;
 import org.evochora.datapipeline.api.resources.IMonitorable;
-import org.evochora.datapipeline.api.resources.IInputResource;
-import org.evochora.datapipeline.api.resources.IOutputResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.wrappers.queues.IInputQueueResource;
+import org.evochora.datapipeline.api.resources.wrappers.queues.IOutputQueueResource;
 
 import java.time.Instant;
 import java.util.Collections;
@@ -113,7 +113,7 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         }
     }
 
-    public class QueueProducerWrapper implements IOutputResource<T>, IWrappedResource, IMonitorable {
+    public class QueueProducerWrapper implements IOutputQueueResource<T>, IWrappedResource, IMonitorable {
         private final ResourceContext context;
         private final AtomicLong messagesSent = new AtomicLong(0);
         private final int window;
@@ -126,18 +126,23 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         @Override
         public boolean send(T item) {
             try {
-                TimestampedObject<T> tsObject = new TimestampedObject<>(item);
-                boolean success = queue.offer(tsObject, 1, TimeUnit.SECONDS);
-                if (success) {
-                    messagesSent.incrementAndGet();
-                    timestamps.put(System.nanoTime(), tsObject.timestamp);
-                }
-                return success;
+                return send(item, 1, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 errors.add(new OperationalError(Instant.now(), "SEND_INTERRUPTED", "Send operation was interrupted", e.toString()));
                 return false;
             }
+        }
+        
+        @Override
+        public boolean send(T item, long timeout, TimeUnit unit) throws InterruptedException {
+            TimestampedObject<T> tsObject = new TimestampedObject<>(item);
+            boolean success = queue.offer(tsObject, timeout, unit);
+            if (success) {
+                messagesSent.incrementAndGet();
+                timestamps.put(System.nanoTime(), tsObject.timestamp);
+            }
+            return success;
         }
 
         @Override
@@ -171,7 +176,7 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         }
     }
 
-    public class QueueConsumerWrapper implements IInputResource<T>, IWrappedResource, IMonitorable {
+    public class QueueConsumerWrapper implements IInputQueueResource<T>, IWrappedResource, IMonitorable {
         private final ResourceContext context;
         private final AtomicLong messagesConsumed = new AtomicLong(0);
         private final int window;
@@ -184,17 +189,23 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
         @Override
         public Optional<T> receive() {
             try {
-                TimestampedObject<T> tsObject = queue.poll(1, TimeUnit.SECONDS);
-                if (tsObject != null) {
-                    messagesConsumed.incrementAndGet();
-                    return Optional.of(tsObject.object);
-                }
-                return Optional.empty();
+                return receive(1, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 errors.add(new OperationalError(Instant.now(), "RECEIVE_INTERRUPTED", "Receive operation was interrupted", e.toString()));
                 return Optional.empty();
             }
+        }
+        
+        @Override
+        public Optional<T> receive(long timeout, TimeUnit unit) throws InterruptedException {
+            TimestampedObject<T> tsObject = queue.poll(timeout, unit);
+            if (tsObject != null) {
+                messagesConsumed.incrementAndGet();
+                timestamps.put(System.nanoTime(), tsObject.timestamp);
+                return Optional.of(tsObject.object);
+            }
+            return Optional.empty();
         }
 
         @Override
