@@ -225,17 +225,23 @@ protected final Logger log = LoggerFactory.getLogger(this.getClass());
 
 **Logging Examples:**
 ```java
-// ✅ GOOD - Lifecycle events
-log.info("SimulationEngine started with {} organisms", count);
-log.info("Auto-paused at tick {} due to pauseTicks configuration", tickNumber);
+// ✅ GOOD - Lifecycle events (include service name)
+log.info("{} started with {} organisms", this.getClass().getSimpleName(), count);
+log.info("{} auto-paused at tick {} due to pauseTicks configuration", this.getClass().getSimpleName(), tickNumber);
 
-// ✅ GOOD - User actions  
-log.info("Service paused by user command");
+// ✅ GOOD - User actions (include service name)
+log.info("{} paused by user command", this.getClass().getSimpleName());
+log.info("{} stopped by user command", this.getClass().getSimpleName());
 
 // ❌ BAD - High frequency
 log.info("Processing tick {}", tickNumber); // Every tick!
 log.info("Sent message to queue"); // Every message!
 ```
+
+**Service Name Pattern:**
+- All lifecycle logs must include `this.getClass().getSimpleName()` as first parameter
+- Enables CLI to clearly identify which service produced each log message
+- Essential for multi-service pipeline debugging and monitoring
 
 ### Configuration Support
 

@@ -333,6 +333,8 @@ All data-consuming services must be idempotent:
 - DummyConsumerService implementing IService and IMonitorable  
 - End-to-end integration test: Producer → Queue → Consumer
 
+**Documentation:** See `05_TEST_SERVICES.md` for detailed implementation guide.
+
 #### Phase 1.5: Service Orchestration
 - ServiceManager with HOCON configuration loading
 - Universal Resource DI with contextual wrapping

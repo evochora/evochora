@@ -38,13 +38,12 @@ public abstract class AbstractService implements IService {
     @Override
     public void start() {
         if (currentState.compareAndSet(State.STOPPED, State.RUNNING)) {
-            log.info("Starting service...");
             serviceThread = new Thread(this::runService);
             serviceThread.setName(this.getClass().getSimpleName());
             serviceThread.start();
-            log.info("Service started.");
+            log.info("{} started", this.getClass().getSimpleName());
         } else {
-            log.warn("Service is already running or in an unstartable state: {}. Start command ignored.", getCurrentState());
+            log.warn("{} is already running or in an unstartable state: {}. Start command ignored.", this.getClass().getSimpleName(), getCurrentState());
         }
     }
 
@@ -53,7 +52,6 @@ public abstract class AbstractService implements IService {
         State state = getCurrentState();
         if (state == State.RUNNING || state == State.PAUSED) {
             if (currentState.compareAndSet(state, State.STOPPED)) {
-                log.info("Stopping service...");
                 if (state == State.PAUSED) {
                     synchronized (pauseLock) {
                         pauseLock.notifyAll();
@@ -65,34 +63,34 @@ public abstract class AbstractService implements IService {
                         serviceThread.join(5000); // 5-second timeout
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
-                        log.warn("Interrupted while waiting for service thread to stop.");
+                        log.warn("{} interrupted while waiting for service thread to stop", this.getClass().getSimpleName());
                     }
                 }
-                log.info("Service stopped.");
+                log.info("{} stopped", this.getClass().getSimpleName());
             }
         } else {
-            log.warn("Service is not running or paused. Stop command ignored.");
+            log.warn("{} is not running or paused. Stop command ignored", this.getClass().getSimpleName());
         }
     }
 
     @Override
     public void pause() {
         if (currentState.compareAndSet(State.RUNNING, State.PAUSED)) {
-            log.info("Pausing service.");
+            log.info("{} paused", this.getClass().getSimpleName());
         } else {
-            log.warn("Service is not in a pausable state (e.g. stopped or already paused). Pause command ignored.");
+            log.warn("{} is not in a pausable state (e.g. stopped or already paused). Pause command ignored", this.getClass().getSimpleName());
         }
     }
 
     @Override
     public void resume() {
         if (currentState.compareAndSet(State.PAUSED, State.RUNNING)) {
-            log.info("Resuming service.");
+            log.info("{} resumed", this.getClass().getSimpleName());
             synchronized (pauseLock) {
                 pauseLock.notifyAll();
             }
         } else {
-            log.warn("Service is not paused. Resume command ignored.");
+            log.warn("{} is not paused. Resume command ignored", this.getClass().getSimpleName());
         }
     }
 
@@ -100,7 +98,6 @@ public abstract class AbstractService implements IService {
      * Stops and then starts the service.
      */
     public void restart() {
-        log.info("Restarting service...");
         stop();
         try {
             if (serviceThread != null && serviceThread.isAlive()) {
@@ -108,7 +105,7 @@ public abstract class AbstractService implements IService {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.error("Interrupted while waiting for service to stop before restarting.", e);
+            log.error("{} interrupted while waiting for service to stop before restarting", this.getClass().getSimpleName(), e);
             // Restore STOPPED state if interruption occurs
             currentState.set(State.STOPPED);
             return;
