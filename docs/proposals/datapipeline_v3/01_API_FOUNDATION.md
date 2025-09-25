@@ -74,18 +74,22 @@ src/main/java/org/evochora/datapipeline/api/
 - **Requirements**: Must extend `IResource`
 
 #### `IInputQueueResource<T>` (in wrappers.queues package)
-- **Purpose**: Interface for queue-based resources that can provide data input capabilities
-- **Type Parameter**: T represents the type of data this resource can provide
-- **Required Methods**: 
-  - `Optional<T> receive()`: Non-blocking receive
-  - `Optional<T> receive(long timeout, TimeUnit unit)`: Timeout-based receive
+- **Purpose**: A rich interface for queue-based resources that provide data, analogous to `java.util.concurrent.BlockingQueue`.
+- **Type Parameter**: T represents the type of data this resource can provide.
+- **Key Methods**:
+  - `Optional<T> poll()`: Non-blocking retrieval.
+  - `T take() throws InterruptedException`: Blocking retrieval.
+  - `Optional<T> poll(long timeout, TimeUnit unit)`: Timeout-based retrieval.
+  - `int drainTo(Collection<? super T> collection, int maxElements)`: Batch retrieval.
 
 #### `IOutputQueueResource<T>` (in wrappers.queues package)
-- **Purpose**: Interface for queue-based resources that can accept data output
-- **Type Parameter**: T represents the type of data this resource can accept  
-- **Required Methods**:
-  - `boolean send(T item)`: Non-blocking send
-  - `boolean send(T item, long timeout, TimeUnit unit)`: Timeout-based send
+- **Purpose**: A rich interface for queue-based resources that accept data, analogous to `java.util.concurrent.BlockingQueue`.
+- **Type Parameter**: T represents the type of data this resource can accept.
+- **Key Methods**:
+  - `boolean offer(T element)`: Non-blocking insertion.
+  - `void put(T element) throws InterruptedException`: Blocking insertion.
+  - `boolean offer(T element, long timeout, TimeUnit unit)`: Timeout-based insertion.
+  - `void putAll(Collection<T> elements) throws InterruptedException`: Batch insertion.
 
 #### `IMonitorable`
 - **Purpose**: Common interface for components that can provide monitoring metrics

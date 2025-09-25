@@ -2,34 +2,55 @@ package org.evochora.datapipeline.api.resources.wrappers.queues;
 
 import org.evochora.datapipeline.api.resources.IResource;
 
+import java.util.Collection;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Interface for queue-based resources that can accept data output.
- * <p>
- * This interface is specifically designed for message queue resources and provides
- * both non-blocking and timeout-based send operations.
+ * This interface is designed to be a close analog to {@link java.util.concurrent.BlockingQueue},
+ * offering a variety of methods for adding elements with different blocking behaviors.
  *
  * @param <T> The type of data this resource can accept.
  */
 public interface IOutputQueueResource<T> extends IResource {
-    
+
     /**
-     * Attempts to send a single item to the queue without blocking.
+     * Inserts the specified element into this queue if it is possible to do so immediately without violating
+     * capacity restrictions, returning {@code true} upon success and {@code false} if no space is currently
+     * available. This is a non-blocking operation.
      *
-     * @param item The item to send
-     * @return true if the item was sent successfully, false if the queue is full
+     * @param element the element to add
+     * @return {@code true} if the element was added to this queue, else {@code false}
      */
-    boolean send(T item);
-    
+    boolean offer(T element);
+
     /**
-     * Attempts to send a single item to the queue, waiting up to the specified timeout.
+     * Inserts the specified element into this queue, waiting if necessary for space to become available.
+     * This is a blocking operation.
      *
-     * @param item    The item to send
-     * @param timeout The maximum time to wait
-     * @param unit    The time unit of the timeout argument
-     * @return true if the item was sent successfully, false if the queue is still full after the timeout
-     * @throws InterruptedException if the current thread is interrupted while waiting
+     * @param element the element to add
+     * @throws InterruptedException if interrupted while waiting
      */
-    boolean send(T item, long timeout, TimeUnit unit) throws InterruptedException;
+    void put(T element) throws InterruptedException;
+
+    /**
+     * Inserts the specified element into this queue, waiting up to the specified wait time if necessary
+     * for space to become available.
+     *
+     * @param element the element to add
+     * @param timeout how long to wait before giving up, in units of {@code unit}
+     * @param unit a {@code TimeUnit} determining how to interpret the timeout parameter
+     * @return {@code true} if successful, or {@code false} if the specified waiting time elapses before space is available
+     * @throws InterruptedException if interrupted while waiting
+     */
+    boolean offer(T element, long timeout, TimeUnit unit) throws InterruptedException;
+
+    /**
+     * Inserts all elements from the specified collection into this queue, waiting if necessary for space to become available.
+     * This is a blocking operation.
+     *
+     * @param elements the collection of elements to add
+     * @throws InterruptedException if interrupted while waiting
+     */
+    void putAll(Collection<T> elements) throws InterruptedException;
 }

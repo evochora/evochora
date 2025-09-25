@@ -315,8 +315,8 @@ All data-consuming services must be idempotent:
 **Documentation:** See `02_PROTOBUF_SETUP.md` for detailed implementation guide.
 
 #### Phase 1.2: Core Resource Implementation
-- InMemoryBlockingQueue implementing IContextualResource, IMonitorable, IInputResource, IOutputResource
-- Smart wrapper creation based on usage type (queue-in vs queue-out)
+- InMemoryBlockingQueue implementing IContextualResource, IMonitorable, IInputQueueResource, IOutputQueueResource
+- Smart wrapper creation based on usage type (queue-in vs queue-out) using rich, reusable wrappers (`MonitoredQueueConsumer`, `MonitoredQueueProducer`)
 - Service-specific vs global metrics collection
 
 **Documentation:** See `03_RESOURCE_CORE.md` for detailed implementation guide.
