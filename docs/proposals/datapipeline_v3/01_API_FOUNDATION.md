@@ -128,7 +128,6 @@ src/main/java/org/evochora/datapipeline/api/
   - `void pause()`: Pause the service (must be resumable)
   - `void resume()`: Resume a paused service
   - `State getCurrentState()`: Get current service state (see inner enum)
-  - `ServiceStatus getServiceStatus()`: Get current status with resource bindings
 - **Required Inner Enum**: `State` with values STOPPED, RUNNING, PAUSED, ERROR
 - **State Semantics**:
   - **STOPPED**: Service is completely shut down, restart required for reactivation

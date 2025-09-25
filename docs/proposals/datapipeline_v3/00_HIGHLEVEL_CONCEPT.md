@@ -319,10 +319,14 @@ All data-consuming services must be idempotent:
 - Smart wrapper creation based on usage type (queue-in vs queue-out)
 - Service-specific vs global metrics collection
 
+**Documentation:** See `03_RESOURCE_CORE.md` for detailed implementation guide.
+
 #### Phase 1.3: Service Foundation
 - AbstractService implementing IService with complete lifecycle management (start, stop, pause, resume)
 - Thread management and state transitions
 - Resource binding management
+
+**Documentation:** See `04_SERVICE_FOUNDATION.md` for detailed implementation guide.
 
 #### Phase 1.4: Test Services
 - DummyProducerService implementing IService and IMonitorable

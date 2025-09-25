@@ -62,10 +62,4 @@ public interface IService {
      */
     State getCurrentState();
 
-    /**
-     * Returns the detailed status of the service, including its resource bindings.
-     *
-     * @return The current {@link ServiceStatus}.
-     */
-    ServiceStatus getServiceStatus();
 }
