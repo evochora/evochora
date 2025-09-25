@@ -7,7 +7,7 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IInputQueueResource;
 import org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue;
 
-import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -15,6 +15,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
+/**
+ * A wrapper for an {@link IInputQueueResource} that adds monitoring capabilities.
+ * This class tracks the number of messages consumed and calculates throughput for a specific
+ * service context, while delegating the actual queue operations to the underlying resource.
+ *
+ * @param <T> The type of elements consumed from the queue.
+ */
 public class MonitoredQueueConsumer<T> implements IInputQueueResource<T>, IWrappedResource, IMonitorable {
 
     private final IInputQueueResource<T> delegate;
@@ -23,6 +30,14 @@ public class MonitoredQueueConsumer<T> implements IInputQueueResource<T>, IWrapp
     private final int window;
     private final InMemoryBlockingQueue<T> queue;
 
+    /**
+     * Constructs a new MonitoredQueueConsumer.
+     *
+     * @param delegate The underlying queue resource to wrap.
+     * @param context  The resource context for this specific consumer, used for configuration and monitoring.
+     * @throws IllegalArgumentException if the delegate is not an instance of {@link InMemoryBlockingQueue},
+     *                                  as this implementation currently relies on its specific monitoring features.
+     */
     public MonitoredQueueConsumer(IInputQueueResource<T> delegate, ResourceContext context) {
         this.delegate = delegate;
         this.context = context;
@@ -35,26 +50,73 @@ public class MonitoredQueueConsumer<T> implements IInputQueueResource<T>, IWrapp
         }
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation increments the consumed messages counter if an element is successfully retrieved.
+     */
     @Override
-    public Optional<T> receive() {
-        try {
-            return receive(1, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            queue.addError(new OperationalError(Instant.now(), "RECEIVE_INTERRUPTED", "Receive operation was interrupted", e.toString()));
-            return Optional.empty();
-        }
-    }
-
-    @Override
-    public Optional<T> receive(long timeout, TimeUnit unit) throws InterruptedException {
-        Optional<T> result = delegate.receive(timeout, unit);
+    public Optional<T> poll() {
+        Optional<T> result = delegate.poll();
         if (result.isPresent()) {
             messagesConsumed.incrementAndGet();
         }
         return result;
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation increments the consumed messages counter after an element is successfully retrieved.
+     */
+    @Override
+    public T take() throws InterruptedException {
+        T result = delegate.take();
+        messagesConsumed.incrementAndGet();
+        return result;
+    }
+
+    /**
+     * {@inheritDoc}
+     * This implementation increments the consumed messages counter if an element is successfully retrieved.
+     */
+    @Override
+    public Optional<T> poll(long timeout, TimeUnit unit) throws InterruptedException {
+        Optional<T> result = delegate.poll(timeout, unit);
+        if (result.isPresent()) {
+            messagesConsumed.incrementAndGet();
+        }
+        return result;
+    }
+
+    /**
+     * {@inheritDoc}
+     * This implementation increments the consumed messages counter by the number of elements successfully drained.
+     */
+    @Override
+    public int drainTo(Collection<? super T> collection, int maxElements) {
+        int count = delegate.drainTo(collection, maxElements);
+        if (count > 0) {
+            messagesConsumed.addAndGet(count);
+        }
+        return count;
+    }
+
+    /**
+     * {@inheritDoc}
+     * This implementation increments the consumed messages counter by the number of elements successfully drained.
+     */
+    @Override
+    public int drainTo(Collection<? super T> collection, int maxElements, long timeout, TimeUnit unit) throws InterruptedException {
+        int count = delegate.drainTo(collection, maxElements, timeout, unit);
+        if (count > 0) {
+            messagesConsumed.addAndGet(count);
+        }
+        return count;
+    }
+
+    /**
+     * {@inheritDoc}
+     * This implementation provides metrics specific to this consumer context.
+     */
     @Override
     public Map<String, Number> getMetrics() {
         return Map.of(
@@ -63,23 +125,44 @@ public class MonitoredQueueConsumer<T> implements IInputQueueResource<T>, IWrapp
         );
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation filters errors from the underlying resource to show only those relevant to consumption.
+     */
     @Override
     public List<OperationalError> getErrors() {
+        // This filtering is a temporary solution. A more robust error tagging system should be implemented.
         return queue.getErrors().stream()
-                .filter(e -> e.message().contains("RECEIVE"))
+                .filter(e -> {
+                    String msg = e.message().toUpperCase();
+                    return msg.contains("RECEIVE") || msg.contains("POLL") || msg.contains("TAKE");
+                })
                 .collect(Collectors.toList());
     }
 
+    /**
+     * {@inheritDoc}
+     * This implementation clears errors from the underlying resource that are relevant to consumption.
+     */
     @Override
     public void clearErrors() {
-        queue.clearErrors(error -> error.message().contains("RECEIVE"));
+        queue.clearErrors(error -> {
+            String msg = error.message().toUpperCase();
+            return msg.contains("RECEIVE") || msg.contains("POLL") || msg.contains("TAKE");
+        });
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean isHealthy() {
         return queue.isHealthy();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public UsageState getUsageState(String usageType) {
         return queue.getUsageState(context.usageType());

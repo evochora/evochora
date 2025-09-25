@@ -28,8 +28,8 @@ Upon completion:
 - `IResource` (base interface with UsageState support)
 - `IContextualResource` (smart wrapper creation)
 - `IMonitorable` (global resource metrics)
-- `IInputQueueResource<T>` (direct implementation)
-- `IOutputQueueResource<T>` (direct implementation)
+- `IInputQueueResource<T>`
+- `IOutputQueueResource<T>`
 
 ### Coding Standards
 
@@ -75,8 +75,8 @@ The monitoring and service-specific logic is encapsulated in reusable, public wr
 **Purpose:** Generic, reusable wrapper for monitoring consumption from any queue that implements `IInputQueueResource`.
 **Interfaces:** `IInputQueueResource<T>`, `IWrappedResource`, `IMonitorable`
 **Responsibilities:**
-- Delegate `receive()` calls to the underlying queue resource.
-- Track service-specific metrics: messages consumed, throughput.
+- Delegate all `IInputQueueResource` calls (`poll`, `take`, `drainTo`, etc.) to the underlying queue resource.
+- Track service-specific metrics: messages consumed (including batch counts), throughput.
 - Filter and provide consumer-specific errors and health status from the delegate.
 
 #### MonitoredQueueProducer
@@ -84,16 +84,16 @@ The monitoring and service-specific logic is encapsulated in reusable, public wr
 **Purpose:** Generic, reusable wrapper for monitoring production to any queue that implements `IOutputQueueResource`.
 **Interfaces:** `IOutputQueueResource<T>`, `IWrappedResource`, `IMonitorable`
 **Responsibilities:**
-- Delegate `send()` calls to the underlying queue resource.
-- Track service-specific metrics: messages sent, throughput.
+- Delegate all `IOutputQueueResource` calls (`offer`, `put`, `putAll`, etc.) to the underlying queue resource.
+- Track service-specific metrics: messages sent (including batch counts), throughput.
 - Filter and provide producer-specific errors and health status from the delegate.
 
 ### Resource State Logic
 
 **IResource.getUsageState(usageType) implementation:**
-- `"queue-in"`: WAITING if queue is empty, ACTIVE if has data, FAILED if queue error
-- `"queue-out"`: WAITING if queue is at capacity, ACTIVE if has space, FAILED if queue error
-- Unknown usageType: Throw IllegalArgumentException with clear error message
+- `"queue-in"`: `WAITING` if the queue is empty, `ACTIVE` otherwise.
+- `"queue-out"`: `WAITING` if the queue is at capacity, `ACTIVE` otherwise.
+- Unknown usageType: Throw `IllegalArgumentException` with clear error message.
 
 ### Monitoring Requirements
 
@@ -228,6 +228,18 @@ pipeline {
 5. **State Calculation**: Correct ACTIVE/WAITING/FAILED states based on queue state
 6. **Error Handling**: Proper error recording and reporting
 7. **Thread Safety**: Concurrent access verification
+
+**Required test cases:**
+1. **Basic Blocking Operations**: `put()` and `take()` functionality.
+2. **Non-Blocking Operations**: `offer()` and `poll()` functionality, including failure on full/empty.
+3. **Timeout Operations**: `offer(timeout)` and `poll(timeout)` behavior.
+4. **Batch Operations**: `putAll()` and `drainTo()` correctness and metric tracking.
+5. **Contextual Wrapping**: Different wrappers for queue-in vs queue-out.
+6. **Service-Specific Metrics**: Separate metric tracking per wrapper, especially for batch operations.
+7. **Global Resource Metrics**: Resource-level aggregated metrics.
+8. **State Calculation**: Correct `ACTIVE`/`WAITING` states based on queue state.
+9. **Error Handling**: Proper error recording and reporting.
+10. **Thread Safety**: Concurrent access verification using multiple threads.
 
 **Test tag:** All tests should be tagged `@Tag("unit")`
 
