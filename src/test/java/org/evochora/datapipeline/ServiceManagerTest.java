@@ -2,6 +2,7 @@ package org.evochora.datapipeline;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.api.services.ServiceStatus;
 import org.evochora.junit.extensions.logging.AllowLog;
@@ -181,5 +182,19 @@ public class ServiceManagerTest {
     @ExpectLog(level = LogLevel.INFO, messagePattern = "ServiceManager initialized with 1 resources and 2 services\\.")
     void testInitializationLogging() {
         new ServiceManager(createTestConfig(false));
+    }
+
+    @Test
+    void testResourceNamesAreCorrectlyAssigned() {
+        ServiceManager serviceManager = new ServiceManager(createTestConfig(false));
+        ServiceStatus producerStatus = serviceManager.getServiceStatus("producer");
+        assertFalse(producerStatus.resourceBindings().isEmpty());
+        IResource producerResource = producerStatus.resourceBindings().get(0).resource();
+        assertEquals("test-queue", producerResource.getResourceName());
+
+        ServiceStatus consumerStatus = serviceManager.getServiceStatus("consumer");
+        assertFalse(consumerStatus.resourceBindings().isEmpty());
+        IResource consumerResource = consumerStatus.resourceBindings().get(0).resource();
+        assertEquals("test-queue", consumerResource.getResourceName());
     }
 }

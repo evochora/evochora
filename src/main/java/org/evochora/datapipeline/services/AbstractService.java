@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public abstract class AbstractService implements IService {
 
     protected final Logger log = LoggerFactory.getLogger(this.getClass());
+    protected final String serviceName;
     protected final Config options;
     protected final Map<String, List<IResource>> resources;
     private final AtomicReference<State> currentState = new AtomicReference<>(State.STOPPED);
@@ -27,10 +28,12 @@ public abstract class AbstractService implements IService {
     /**
      * Constructs an AbstractService with its configuration and resources.
      *
+     * @param name      The name of the service instance.
      * @param options   The configuration for this service.
      * @param resources A map of resource ports to lists of resources.
      */
-    protected AbstractService(Config options, Map<String, List<IResource>> resources) {
+    protected AbstractService(String name, Config options, Map<String, List<IResource>> resources) {
+        this.serviceName = name;
         this.options = options;
         this.resources = resources;
     }

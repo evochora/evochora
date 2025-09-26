@@ -43,6 +43,7 @@ src/main/java/org/evochora/datapipeline/api/
 - **Purpose**: Base interface for all resources
 - **Required Methods**:
   - `UsageState getUsageState(String usageType)`: Returns current resource state for specific usage context
+  - `String getResourceName()`: Returns the unique name of this resource instance.
 - **Required Inner Enum**: `UsageState` with values ACTIVE, WAITING, FAILED
 - **State Semantics**:
   - **ACTIVE**: Resource is functioning normally for this usage type
@@ -144,7 +145,7 @@ src/main/java/org/evochora/datapipeline/api/
   - **PAUSED**: Service is temporarily halted but can resume from current state
   - **ERROR**: Service encountered a fatal error and stopped
 - **Optional Monitoring**: Services can optionally implement `IMonitorable` for detailed monitoring (metrics, errors, health)
-- **Constructor Requirement**: All implementing services must have exactly one constructor with signature: `(Config options, Map<String, List<IResource>> resources)`
+- **Constructor Requirement**: All implementing services must have exactly one constructor with signature: `(String name, Config options, Map<String, List<IResource>> resources)`
 
 ## Implementation Guidelines
 

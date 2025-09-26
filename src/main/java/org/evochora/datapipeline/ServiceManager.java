@@ -106,8 +106,8 @@ public class ServiceManager implements IMonitorable {
                 }
 
                 IService service = (IService) Class.forName(className)
-                        .getConstructor(Config.class, Map.class)
-                        .newInstance(options, injectableResources);
+                        .getConstructor(String.class, Config.class, Map.class)
+                        .newInstance(serviceName, options, injectableResources);
                 services.put(serviceName, service);
 
                 List<ResourceBinding> finalBindings = pendingBindings.stream()

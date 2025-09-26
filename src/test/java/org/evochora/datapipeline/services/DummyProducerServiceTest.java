@@ -33,7 +33,7 @@ public class DummyProducerServiceTest {
     @Test
     void testConfiguration() {
         Config config = ConfigFactory.parseString("intervalMs=500, messagePrefix=\"Test\", maxMessages=100");
-        DummyProducerService service = new DummyProducerService(config, resources);
+        DummyProducerService service = new DummyProducerService("test-producer", config, resources);
 
         // Use reflection to check private fields or test behavior dependent on them
         // For this example, we'll assume the service's behavior reflects its config
@@ -43,7 +43,7 @@ public class DummyProducerServiceTest {
     @Test
     void testMessageSending() throws InterruptedException {
         Config config = ConfigFactory.parseString("intervalMs=10, maxMessages=3, messagePrefix=\"Test\"");
-        DummyProducerService service = new DummyProducerService(config, resources);
+        DummyProducerService service = new DummyProducerService("test-producer", config, resources);
 
         service.start();
 
@@ -66,7 +66,7 @@ public class DummyProducerServiceTest {
     @Test
     void testLifecycle() throws InterruptedException {
         Config config = ConfigFactory.empty();
-        DummyProducerService service = new DummyProducerService(config, resources);
+        DummyProducerService service = new DummyProducerService("test-producer", config, resources);
 
         assertEquals(IService.State.STOPPED, service.getCurrentState());
         service.start();
@@ -84,7 +84,7 @@ public class DummyProducerServiceTest {
     @Test
     void testMetrics() throws InterruptedException {
         Config config = ConfigFactory.parseString("maxMessages=5, intervalMs=10");
-        DummyProducerService service = new DummyProducerService(config, resources);
+        DummyProducerService service = new DummyProducerService("test-producer", config, resources);
 
         service.start();
 
@@ -102,7 +102,7 @@ public class DummyProducerServiceTest {
     @Test
     void testMaxMessages() throws InterruptedException {
         Config config = ConfigFactory.parseString("maxMessages=2, intervalMs=1");
-        DummyProducerService service = new DummyProducerService(config, resources);
+        DummyProducerService service = new DummyProducerService("test-producer", config, resources);
         service.start();
         Thread.sleep(100); // Let service run and stop itself
         verify(mockOutputQueue, times(2)).put(any(DummyMessage.class));

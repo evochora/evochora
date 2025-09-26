@@ -5,6 +5,7 @@ import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IOutputQueueResource;
+import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue;
 
 import java.util.Collection;
@@ -21,7 +22,7 @@ import java.util.stream.Collectors;
  *
  * @param <T> The type of elements sent to the queue.
  */
-public class MonitoredQueueProducer<T> implements IOutputQueueResource<T>, IWrappedResource, IMonitorable {
+public class MonitoredQueueProducer<T> extends AbstractResource implements IOutputQueueResource<T>, IWrappedResource, IMonitorable {
 
     private final IOutputQueueResource<T> delegate;
     private final ResourceContext context;
@@ -38,6 +39,7 @@ public class MonitoredQueueProducer<T> implements IOutputQueueResource<T>, IWrap
      *                                  as this implementation currently relies on its specific monitoring features.
      */
     public MonitoredQueueProducer(IOutputQueueResource<T> delegate, ResourceContext context) {
+        super(((AbstractResource) delegate).getResourceName(), ((AbstractResource) delegate).getOptions());
         this.delegate = delegate;
         this.context = context;
         // This is a temporary workaround until a more generic monitoring mechanism is in place.

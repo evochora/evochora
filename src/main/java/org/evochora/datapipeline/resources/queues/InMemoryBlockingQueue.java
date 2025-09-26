@@ -3,6 +3,9 @@ package org.evochora.datapipeline.resources.queues;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigException;
+import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.resources.IContextualResource;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
@@ -10,6 +13,7 @@ import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IOutputQueueResource;
+import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueConsumer;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueProducer;
 
@@ -33,9 +37,8 @@ import java.util.function.Predicate;
  *
  * @param <T> The type of elements held in this queue.
  */
-public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorable, IInputQueueResource<T>, IOutputQueueResource<T> {
+public class InMemoryBlockingQueue<T> extends AbstractResource implements IContextualResource, IMonitorable, IInputQueueResource<T>, IOutputQueueResource<T> {
 
-    private final String name;
     private final ArrayBlockingQueue<TimestampedObject<T>> queue;
     private final int capacity;
     private final int throughputWindowSeconds;
@@ -50,7 +53,7 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
      * @throws IllegalArgumentException if the configuration is invalid (e.g., non-positive capacity).
      */
     public InMemoryBlockingQueue(String name, Config options) {
-        this.name = name;
+        super(name, options);
         Config defaults = ConfigFactory.parseMap(Map.of(
                 "capacity", 1000,
                 "throughputWindowSeconds", 5

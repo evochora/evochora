@@ -270,7 +270,8 @@ private void instantiateResources(Config pipelineConfig) {
             ? resourceDefinition.getConfig("options") 
             : ConfigFactory.empty(); // No options configured
         
-        // Instantiate resource using reflection
+        // Instantiate resource using reflection with constructor (String name, Config options).
+        // It is recommended that concrete resources extend the new AbstractResource base class.
         // Store in resources map
     }
 }
@@ -296,7 +297,7 @@ private void instantiateServices(Config pipelineConfig) {
         // Resolve resource dependencies
         Map<String, List<IResource>> serviceResources = resolveServiceResources(serviceDefinition, serviceName);
         
-        // Instantiate service with DI
+        // Instantiate service with DI using constructor (String name, Config options, Map<String, List<IResource>> resources)
         // Store in services map
     }
 }

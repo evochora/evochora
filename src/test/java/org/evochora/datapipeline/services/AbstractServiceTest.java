@@ -38,8 +38,8 @@ public class AbstractServiceTest {
         private final AtomicBoolean wasInterrupted = new AtomicBoolean(false);
         volatile boolean isRunning = false;
 
-        protected TestService(Config options, Map<String, List<IResource>> resources) {
-            super(options, resources);
+        protected TestService(String name, Config options, Map<String, List<IResource>> resources) {
+            super(name, options, resources);
         }
 
         @Override
@@ -71,7 +71,7 @@ public class AbstractServiceTest {
 
     @Test
     void serviceStartsAndStopsCorrectly() throws InterruptedException {
-        TestService service = new TestService(config, resources);
+        TestService service = new TestService("test-service", config, resources);
         assertEquals(IService.State.STOPPED, service.getCurrentState());
 
         service.start();
@@ -89,7 +89,7 @@ public class AbstractServiceTest {
 
     @Test
     void servicePausesAndResumesCorrectly() throws InterruptedException {
-        TestService service = new TestService(config, resources);
+        TestService service = new TestService("test-service", config, resources);
         service.start();
         Thread.sleep(100); // Wait for start
         assertEquals(IService.State.RUNNING, service.getCurrentState());
@@ -108,7 +108,7 @@ public class AbstractServiceTest {
 
     @Test
     void restartMethodWorksCorrectly() throws InterruptedException {
-        TestService service = new TestService(config, resources);
+        TestService service = new TestService("test-service", config, resources);
         service.start();
         Thread.sleep(100);
         assertEquals(IService.State.RUNNING, service.getCurrentState());
@@ -126,7 +126,7 @@ public class AbstractServiceTest {
     void getRequiredResourceReturnsCorrectResource() {
         IResource mockResource = mock(IResource.class);
         resources.put("testPort", Collections.singletonList(mockResource));
-        TestService service = new TestService(config, resources);
+        TestService service = new TestService("test-service", config, resources);
 
         IResource retrieved = service.getRequiredResource("testPort", IResource.class);
         assertSame(mockResource, retrieved);
@@ -134,7 +134,7 @@ public class AbstractServiceTest {
 
     @Test
     void getRequiredResourceThrowsWhenPortNotConfigured() {
-        TestService service = new TestService(config, resources);
+        TestService service = new TestService("test-service", config, resources);
         assertThrows(IllegalStateException.class, () -> {
             service.getRequiredResource("nonExistent", IResource.class);
         });
@@ -143,7 +143,7 @@ public class AbstractServiceTest {
     @Test
     void getRequiredResourceThrowsWhenNoResources() {
         resources.put("emptyPort", Collections.emptyList());
-        TestService service = new TestService(config, resources);
+        TestService service = new TestService("test-service", config, resources);
         assertThrows(IllegalStateException.class, () -> {
             service.getRequiredResource("emptyPort", IResource.class);
         });
@@ -152,7 +152,7 @@ public class AbstractServiceTest {
     @Test
     void getRequiredResourceThrowsWhenMultipleResources() {
         resources.put("multiPort", List.of(mock(IResource.class), mock(IResource.class)));
-        TestService service = new TestService(config, resources);
+        TestService service = new TestService("test-service", config, resources);
         assertThrows(IllegalStateException.class, () -> {
             service.getRequiredResource("multiPort", IResource.class);
         });
@@ -161,7 +161,7 @@ public class AbstractServiceTest {
     @Test
     void getRequiredResourceThrowsWhenWrongType() {
         resources.put("wrongTypePort", Collections.singletonList(mock(IResource.class)));
-        TestService service = new TestService(config, resources);
+        TestService service = new TestService("test-service", config, resources);
         assertThrows(IllegalStateException.class, () -> {
             service.getRequiredResource("wrongTypePort", TestResource.class);
         });

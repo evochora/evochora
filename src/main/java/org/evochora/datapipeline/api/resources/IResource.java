@@ -38,4 +38,11 @@ public interface IResource {
      * @return The current UsageState for this usage context
      */
     UsageState getUsageState(String usageType);
+
+    /**
+     * Returns the unique name of this resource instance as defined in the configuration.
+     *
+     * @return The resource name.
+     */
+    String getResourceName();
 }
