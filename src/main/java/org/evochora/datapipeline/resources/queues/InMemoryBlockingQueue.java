@@ -35,6 +35,7 @@ import java.util.function.Predicate;
  */
 public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorable, IInputQueueResource<T>, IOutputQueueResource<T> {
 
+    private final String name;
     private final ArrayBlockingQueue<TimestampedObject<T>> queue;
     private final int capacity;
     private final int throughputWindowSeconds;
@@ -42,12 +43,14 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
     private final ConcurrentHashMap<Long, Instant> timestamps = new ConcurrentHashMap<>();
 
     /**
-     * Constructs an InMemoryBlockingQueue with the specified configuration.
+     * Constructs an InMemoryBlockingQueue with the specified name and configuration.
      *
+     * @param name    The name of the resource.
      * @param options The TypeSafe Config object containing queue options like "capacity" and "throughputWindowSeconds".
      * @throws IllegalArgumentException if the configuration is invalid (e.g., non-positive capacity).
      */
-    public InMemoryBlockingQueue(Config options) {
+    public InMemoryBlockingQueue(String name, Config options) {
+        this.name = name;
         Config defaults = ConfigFactory.parseMap(Map.of(
                 "capacity", 1000,
                 "throughputWindowSeconds", 5
@@ -58,11 +61,11 @@ public class InMemoryBlockingQueue<T> implements IContextualResource, IMonitorab
             this.capacity = finalConfig.getInt("capacity");
             this.throughputWindowSeconds = finalConfig.getInt("throughputWindowSeconds");
             if (capacity <= 0) {
-                throw new IllegalArgumentException("Capacity must be positive.");
+                throw new IllegalArgumentException("Capacity must be positive for resource '" + name + "'.");
             }
             this.queue = new ArrayBlockingQueue<>(capacity);
         } catch (ConfigException e) {
-            throw new IllegalArgumentException("Invalid configuration for InMemoryBlockingQueue", e);
+            throw new IllegalArgumentException("Invalid configuration for InMemoryBlockingQueue '" + name + "'", e);
         }
     }
 

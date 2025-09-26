@@ -13,13 +13,15 @@ import java.util.Map;
  *
  * @param serviceName The name of the service requesting the resource.
  * @param portName    The logical port within the service that this resource will be connected to.
- * @param usageType   A string describing the intended use of the resource (e.g., "queue-in").
- * @param parameters  URI parameters for fine-tuning resource behavior (e.g., window=30, batch=100).
+ * @param usageType    A string describing the intended use of the resource (e.g., "queue-in").
+ * @param resourceName The name of the resource being connected to.
+ * @param parameters   URI parameters for fine-tuning resource behavior (e.g., window=30, batch=100).
  */
 public record ResourceContext(
     String serviceName,
     String portName,
     String usageType,
+    String resourceName,
     Map<String, String> parameters
 ) {
 }

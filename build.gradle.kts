@@ -32,6 +32,7 @@ dependencies {
     testImplementation("org.mockito:mockito-core:5.12.0")
     testImplementation("org.mockito:mockito-junit-jupiter:5.12.0")
     testImplementation("org.assertj:assertj-core:3.26.3")
+    testImplementation("org.awaitility:awaitility:4.2.1")
     
     // Explicitly declare test framework implementation dependencies for Gradle 9 compatibility
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")

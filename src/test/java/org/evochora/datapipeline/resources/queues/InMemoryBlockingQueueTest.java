@@ -41,12 +41,12 @@ public class InMemoryBlockingQueueTest {
     @BeforeEach
     void setUp() {
         Config config = ConfigFactory.parseMap(Map.of("capacity", 10));
-        queue = new InMemoryBlockingQueue<>(config);
+        queue = new InMemoryBlockingQueue<>("test-queue", config);
 
-        ResourceContext producerContext = new ResourceContext("test-service", "out", "queue-out", Collections.emptyMap());
+        ResourceContext producerContext = new ResourceContext("test-service", "out", "queue-out", "test-queue", Collections.emptyMap());
         producer = (IOutputQueueResource<String>) queue.getWrappedResource(producerContext);
 
-        ResourceContext consumerContext = new ResourceContext("test-service", "in", "queue-in", Collections.emptyMap());
+        ResourceContext consumerContext = new ResourceContext("test-service", "in", "queue-in", "test-queue", Collections.emptyMap());
         consumer = (IInputQueueResource<String>) queue.getWrappedResource(consumerContext);
     }
 
@@ -55,7 +55,7 @@ public class InMemoryBlockingQueueTest {
         assertTrue(producer instanceof MonitoredQueueProducer);
         assertTrue(consumer instanceof MonitoredQueueConsumer);
         assertThrows(IllegalArgumentException.class, () -> {
-            ResourceContext invalidContext = new ResourceContext("test-service", "invalid", "invalid-type", Collections.emptyMap());
+            ResourceContext invalidContext = new ResourceContext("test-service", "invalid", "invalid-type", "test-queue", Collections.emptyMap());
             queue.getWrappedResource(invalidContext);
         });
     }
@@ -67,14 +67,12 @@ public class InMemoryBlockingQueueTest {
         assertEquals(0, metrics.get("current_size"));
     }
 
-    // Basic Blocking Operations
     @Test
     void testPutAndTake() throws InterruptedException {
         producer.put("test-message");
         assertEquals("test-message", consumer.take());
     }
 
-    // Non-Blocking Operations
     @Test
     void testOfferAndPoll() {
         assertTrue(producer.offer("test-message"));
@@ -96,14 +94,12 @@ public class InMemoryBlockingQueueTest {
         assertTrue(consumer.poll().isEmpty());
     }
 
-    // Timeout Operations
     @Test
     @Timeout(2)
     void testOfferWithTimeoutSucceeds() throws InterruptedException {
         for (int i = 0; i < 10; i++) {
             producer.offer("message" + i);
         }
-        // This will block, so run in a separate thread
         ExecutorService executor = Executors.newSingleThreadExecutor();
         AtomicBoolean offerSuccess = new AtomicBoolean(false);
         CountDownLatch latch = new CountDownLatch(1);
@@ -117,8 +113,8 @@ public class InMemoryBlockingQueueTest {
             }
         });
 
-        Thread.sleep(100); // give the producer time to block
-        consumer.take(); // make space
+        Thread.sleep(100);
+        consumer.take();
         latch.await(1, TimeUnit.SECONDS);
         assertTrue(offerSuccess.get());
         executor.shutdown();
@@ -130,7 +126,6 @@ public class InMemoryBlockingQueueTest {
         assertTrue(result.isEmpty());
     }
 
-    // Batch Operations
     @Test
     void testPutAllAndDrainTo() throws InterruptedException {
         List<String> items = List.of("batch1", "batch2", "batch3");
@@ -157,35 +152,28 @@ public class InMemoryBlockingQueueTest {
 
     @Test
     void testOfferAll() {
-        // Create a new producer for this test to ensure metric isolation
-        ResourceContext isolatedContext = new ResourceContext("isolated-service", "out", "queue-out", Collections.emptyMap());
+        ResourceContext isolatedContext = new ResourceContext("isolated-service", "out", "queue-out", "test-queue", Collections.emptyMap());
         IOutputQueueResource<String> isolatedProducer = (IOutputQueueResource<String>) queue.getWrappedResource(isolatedContext);
         assertTrue(isolatedProducer instanceof MonitoredQueueProducer);
         MonitoredQueueProducer<String> monitoredProducer = (MonitoredQueueProducer<String>) isolatedProducer;
 
         List<String> items = List.of("batch1", "batch2", "batch3", "batch4", "batch5");
-        // Offer 5 items, all should fit
         int count1 = monitoredProducer.offerAll(items);
         assertEquals(5, count1);
         assertEquals(5, queue.getMetrics().get("current_size"));
         assertEquals(5L, monitoredProducer.getMetrics().get("messages_sent"));
 
-        // Offer 5 more items, all should fit
         int count2 = monitoredProducer.offerAll(items);
         assertEquals(5, count2);
         assertEquals(10, queue.getMetrics().get("current_size"));
         assertEquals(10L, monitoredProducer.getMetrics().get("messages_sent"));
 
-        // Offer more items, none should fit as queue is full
         int count3 = monitoredProducer.offerAll(List.of("extra1", "extra2"));
         assertEquals(0, count3);
         assertEquals(10, queue.getMetrics().get("current_size"));
-
-        // Verify metrics haven't changed
         assertEquals(10L, monitoredProducer.getMetrics().get("messages_sent"));
     }
 
-    // Service-Specific Metrics
     @Test
     void testServiceSpecificMetrics() throws InterruptedException {
         producer.put("message1");
@@ -203,7 +191,6 @@ public class InMemoryBlockingQueueTest {
         assertEquals(4L, consumerMetrics.get("messages_consumed"));
     }
 
-    // Usage State
     @Test
     void testUsageState() {
         assertEquals(IResource.UsageState.WAITING, queue.getUsageState("queue-in"));
@@ -220,7 +207,6 @@ public class InMemoryBlockingQueueTest {
         assertEquals(IResource.UsageState.WAITING, queue.getUsageState("queue-out"));
     }
 
-    // Thread Safety
     @Test
     void testThreadSafety() throws InterruptedException {
         ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -246,12 +232,9 @@ public class InMemoryBlockingQueueTest {
         executor.submit(producerTask);
         executor.submit(consumerTask);
 
-        // This is a simplified test. A more robust test would use more tasks and latches.
-        // For now, we assume if the producer can finish, the consumer will eventually consume.
         executor.shutdown();
         assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
 
-        // Wait for consumer to finish processing after producer is done
         Thread.sleep(100);
 
         Map<String, Number> producerMetrics = ((MonitoredQueueProducer<String>) producer).getMetrics();

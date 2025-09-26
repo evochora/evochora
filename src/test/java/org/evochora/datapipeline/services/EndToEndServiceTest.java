@@ -25,7 +25,7 @@ public class EndToEndServiceTest {
         Config producerConfig = ConfigFactory.parseString("maxMessages=20, intervalMs=10, messagePrefix=\"E2E\"");
         Config consumerConfig = ConfigFactory.parseString("maxMessages=20, processingDelayMs=5");
 
-        InMemoryBlockingQueue<DummyMessage> queue = new InMemoryBlockingQueue<>(ConfigFactory.parseString("capacity=10"));
+        InMemoryBlockingQueue<DummyMessage> queue = new InMemoryBlockingQueue<>("e2e-queue", ConfigFactory.parseString("capacity=10"));
 
         Map<String, List<IResource>> producerResources = new HashMap<>();
         producerResources.put("output", Collections.singletonList(queue));
@@ -58,7 +58,7 @@ public class EndToEndServiceTest {
         Config producerConfig = ConfigFactory.parseString("intervalMs=10, messagePrefix=\"PauseTest\"");
         Config consumerConfig = ConfigFactory.empty();
 
-        InMemoryBlockingQueue<DummyMessage> queue = new InMemoryBlockingQueue<>(ConfigFactory.parseString("capacity=100"));
+        InMemoryBlockingQueue<DummyMessage> queue = new InMemoryBlockingQueue<>("pause-queue", ConfigFactory.parseString("capacity=100"));
 
         Map<String, List<IResource>> producerResources = new HashMap<>();
         producerResources.put("output", Collections.singletonList(queue));
