@@ -326,6 +326,28 @@ private ResourceContext parseResourceUri(String uri, String serviceName, String 
 6. **Status Monitoring**: Service and resource status reporting works correctly
 7. **Error Handling**: Configuration errors, missing resources, and service failures are handled gracefully
 8. **Thread Safety**: Concurrent access to ServiceManager methods works correctly
+9. **Logging Verification**: Expected logs are produced and unexpected logs are handled correctly
+
+**Logging Test Annotations:**
+```java
+// Allow specific logs during test execution
+@AllowLogs({ 
+    @AllowLog(level = LogLevel.WARN, message = "Service 'test-service' is already running"),
+    @AllowLog(level = LogLevel.ERROR, message = "Failed to instantiate resource: test-resource")
+})
+
+// Expect specific logs to occur
+@ExpectLog(level = LogLevel.INFO, message = "ServiceManager initialized with 2 resources and 1 services")
+@ExpectLog(level = LogLevel.INFO, message = "Instantiated resource 'test-queue' of type InMemoryBlockingQueue")
+@ExpectLog(level = LogLevel.INFO, message = "Instantiated service 'producer' of type DummyProducerService")
+
+// Test methods should verify logging behavior
+@Test
+void testServiceInstantiationWithExpectedLogs() {
+    // Test implementation
+    // Logs will be automatically verified by annotations
+}
+```
 
 ### Integration Test
 
@@ -339,6 +361,8 @@ private ResourceContext parseResourceUri(String uri, String serviceName, String 
 5. Test individual service lifecycle control
 6. Verify status monitoring shows correct states and metrics
 7. Test graceful shutdown
+8. **Message Flow Test**: Verify protobuf `DummyMessage` objects flow correctly from producer through queue to consumer
+9. **Message Integrity Test**: Ensure messages maintain object reference consistency during in-memory transport
 
 **Test Requirements:**
 - Use programmatic TypeSafe Config creation (not external config files)
@@ -346,6 +370,30 @@ private ResourceContext parseResourceUri(String uri, String serviceName, String 
 - Verify proper resource wrapper creation and monitoring
 - Test with various configuration scenarios
 - All tests tagged `@Tag("integration")`
+
+**Data Flow Verification:**
+- **DummyProducerService** generates protobuf-based `DummyMessage` objects
+- **InMemoryBlockingQueue** transports messages from producer to consumer (in-memory, no serialization)
+- **DummyConsumerService** receives and processes the `DummyMessage` objects
+- Verify end-to-end message flow: Producer → Queue → Consumer
+- Test message integrity and object reference consistency
+
+**Integration Test Logging:**
+```java
+// Allow expected logs during integration test
+@AllowLogs({
+    @AllowLog(level = LogLevel.INFO, message = "DummyProducerService started"),
+    @AllowLog(level = LogLevel.INFO, message = "DummyConsumerService started"),
+    @AllowLog(level = LogLevel.INFO, message = "DummyProducerService stopped"),
+    @AllowLog(level = LogLevel.INFO, message = "DummyConsumerService stopped")
+})
+
+// Expect specific system logs
+@ExpectLog(level = LogLevel.INFO, message = "ServiceManager initialized with 1 resources and 2 services")
+@ExpectLog(level = LogLevel.INFO, message = "Instantiated resource 'test-queue' of type InMemoryBlockingQueue")
+@ExpectLog(level = LogLevel.INFO, message = "Instantiated service 'producer' of type DummyProducerService")
+@ExpectLog(level = LogLevel.INFO, message = "Instantiated service 'consumer' of type DummyConsumerService")
+```
 
 ### Configuration Test Examples
 
