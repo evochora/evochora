@@ -125,6 +125,10 @@ tasks.withType<Copy> {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
+tasks.withType<JavaCompile> {
+    options.compilerArgs.addAll(listOf("-Xlint:unchecked", "-Xlint:deprecation"))
+}
+
 tasks.test {
     useJUnitPlatform {
         excludeTags("benchmark") // Exclude benchmark tests from regular test runs

@@ -44,6 +44,7 @@ public class DummyProducerService extends AbstractService implements IMonitorabl
     private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
     private final ConcurrentLinkedDeque<Long> messageTimestamps = new ConcurrentLinkedDeque<>();
 
+    @SuppressWarnings("unchecked")
     public DummyProducerService(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.intervalMs = options.hasPath("intervalMs") ? options.getLong("intervalMs") : 1000L;

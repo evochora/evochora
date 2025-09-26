@@ -175,7 +175,7 @@ public abstract class AbstractService implements IService {
      * @throws IllegalStateException if the port is not configured, has no resources,
      *                               has more than one resource, or if the resource is of the wrong type.
      */
-    protected <T> T getRequiredResource(String portName, Class<T> expectedType) {
+    protected <T extends IResource> T getRequiredResource(String portName, Class<T> expectedType) {
         List<IResource> resourceList = resources.get(portName);
         if (resourceList == null) {
             throw new IllegalStateException("Resource port '" + portName + "' is not configured.");

@@ -43,6 +43,7 @@ public class DummyConsumerService extends AbstractService implements IMonitorabl
     private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
     private final ConcurrentLinkedDeque<Long> messageTimestamps = new ConcurrentLinkedDeque<>();
 
+    @SuppressWarnings("unchecked")
     public DummyConsumerService(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.processingDelayMs = options.hasPath("processingDelayMs") ? options.getLong("processingDelayMs") : 0L;

@@ -23,6 +23,7 @@ public class DummyConsumerServiceTest {
     private IInputQueueResource<DummyMessage> mockInputQueue;
     private Map<String, List<IResource>> resources;
 
+    @SuppressWarnings("unchecked")
     @BeforeEach
     void setUp() {
         mockInputQueue = mock(IInputQueueResource.class);

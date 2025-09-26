@@ -23,6 +23,7 @@ public class DummyProducerServiceTest {
     private IOutputQueueResource<DummyMessage> mockOutputQueue;
     private Map<String, List<IResource>> resources;
 
+    @SuppressWarnings("unchecked")
     @BeforeEach
     void setUp() {
         mockOutputQueue = mock(IOutputQueueResource.class);
