@@ -5,6 +5,7 @@ import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IInputQueueResource;
+import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue;
 
 import java.util.Collection;
@@ -22,7 +23,7 @@ import java.util.stream.Collectors;
  *
  * @param <T> The type of elements consumed from the queue.
  */
-public class MonitoredQueueConsumer<T> implements IInputQueueResource<T>, IWrappedResource, IMonitorable {
+public class MonitoredQueueConsumer<T> extends AbstractResource implements IInputQueueResource<T>, IWrappedResource, IMonitorable {
 
     private final IInputQueueResource<T> delegate;
     private final ResourceContext context;
@@ -39,6 +40,7 @@ public class MonitoredQueueConsumer<T> implements IInputQueueResource<T>, IWrapp
      *                                  as this implementation currently relies on its specific monitoring features.
      */
     public MonitoredQueueConsumer(IInputQueueResource<T> delegate, ResourceContext context) {
+        super(((AbstractResource) delegate).getResourceName(), ((AbstractResource) delegate).getOptions());
         this.delegate = delegate;
         this.context = context;
         // This is a temporary workaround until a more generic monitoring mechanism is in place.

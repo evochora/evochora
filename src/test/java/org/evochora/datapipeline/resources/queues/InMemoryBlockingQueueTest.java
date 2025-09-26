@@ -245,4 +245,18 @@ public class InMemoryBlockingQueueTest {
 
         assertEquals(0, queue.getMetrics().get("current_size"));
     }
+
+    @Test
+    void testResourceNameIsInherited() {
+        // Test base resource
+        assertEquals("test-queue", queue.getResourceName());
+
+        // Test wrapped producer
+        IResource wrappedProducer = (IResource) producer;
+        assertEquals("test-queue", wrappedProducer.getResourceName());
+
+        // Test wrapped consumer
+        IResource wrappedConsumer = (IResource) consumer;
+        assertEquals("test-queue", wrappedConsumer.getResourceName());
+    }
 }

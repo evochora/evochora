@@ -29,11 +29,11 @@ public class EndToEndServiceTest {
 
         Map<String, List<IResource>> producerResources = new HashMap<>();
         producerResources.put("output", Collections.singletonList(queue));
-        DummyProducerService producer = new DummyProducerService(producerConfig, producerResources);
+        DummyProducerService producer = new DummyProducerService("test-producer", producerConfig, producerResources);
 
         Map<String, List<IResource>> consumerResources = new HashMap<>();
         consumerResources.put("input", Collections.singletonList(queue));
-        DummyConsumerService consumer = new DummyConsumerService(consumerConfig, consumerResources);
+        DummyConsumerService consumer = new DummyConsumerService("test-consumer", consumerConfig, consumerResources);
 
         consumer.start();
         producer.start();
@@ -62,11 +62,11 @@ public class EndToEndServiceTest {
 
         Map<String, List<IResource>> producerResources = new HashMap<>();
         producerResources.put("output", Collections.singletonList(queue));
-        DummyProducerService producer = new DummyProducerService(producerConfig, producerResources);
+        DummyProducerService producer = new DummyProducerService("test-producer", producerConfig, producerResources);
 
         Map<String, List<IResource>> consumerResources = new HashMap<>();
         consumerResources.put("input", Collections.singletonList(queue));
-        DummyConsumerService consumer = new DummyConsumerService(consumerConfig, consumerResources);
+        DummyConsumerService consumer = new DummyConsumerService("test-consumer", consumerConfig, consumerResources);
 
         consumer.start();
         producer.start();

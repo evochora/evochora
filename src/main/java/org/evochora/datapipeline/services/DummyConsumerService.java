@@ -43,8 +43,8 @@ public class DummyConsumerService extends AbstractService implements IMonitorabl
     private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
     private final ConcurrentLinkedDeque<Long> messageTimestamps = new ConcurrentLinkedDeque<>();
 
-    public DummyConsumerService(Config options, Map<String, List<IResource>> resources) {
-        super(options, resources);
+    public DummyConsumerService(String name, Config options, Map<String, List<IResource>> resources) {
+        super(name, options, resources);
         this.processingDelayMs = options.hasPath("processingDelayMs") ? options.getLong("processingDelayMs") : 0L;
         this.logReceivedMessages = options.hasPath("logReceivedMessages") && options.getBoolean("logReceivedMessages");
         this.maxMessages = options.hasPath("maxMessages") ? options.getLong("maxMessages") : -1L;

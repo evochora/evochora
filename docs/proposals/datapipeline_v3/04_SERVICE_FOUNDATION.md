@@ -34,8 +34,8 @@ public abstract class AbstractService implements IService {
 
 **Required Constructor:**
 ```java
-protected AbstractService(com.typesafe.config.Config options, Map<String, List<IResource>> resources) {
-    // Store configuration and resources for subclass access
+protected AbstractService(String name, com.typesafe.config.Config options, Map<String, List<IResource>> resources) {
+    // Store name, configuration and resources for subclass access
     // Validate required configuration parameters
     // Initialize lifecycle management fields
 }
@@ -70,7 +70,7 @@ protected AbstractService(com.typesafe.config.Config options, Map<String, List<I
 - `stop()` should interrupt thread and wait for completion (with timeout)
 
 #### Resource Management
-**Constructor:** `AbstractService(Config options, Map<String, List<IResource>> resources)`
+**Constructor:** `AbstractService(String name, Config options, Map<String, List<IResource>> resources)`
 
 **Resource Utilities:**
 ```java
@@ -120,6 +120,7 @@ protected <T> T getRequiredResource(String portName, Class<T> expectedType)
 protected <T> List<T> getResources(String portName, Class<T> expectedType) 
 protected boolean hasResource(String portName)
 protected void checkPause() throws InterruptedException
+protected final String serviceName     // Access to the service's instance name
 protected final Config options         // Access to service configuration
 protected final Map<String, List<IResource>> resources // Access to injected resources
 ```

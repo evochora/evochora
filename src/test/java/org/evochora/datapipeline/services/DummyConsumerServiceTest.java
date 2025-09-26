@@ -33,14 +33,14 @@ public class DummyConsumerServiceTest {
     @Test
     void testConfiguration() {
         Config config = ConfigFactory.parseString("processingDelayMs=100, logReceivedMessages=true, maxMessages=50");
-        DummyConsumerService service = new DummyConsumerService(config, resources);
+        DummyConsumerService service = new DummyConsumerService("test-consumer", config, resources);
         assertNotNull(service);
     }
 
     @Test
     void testMessageReceiving() throws InterruptedException {
         Config config = ConfigFactory.parseString("maxMessages=2");
-        DummyConsumerService service = new DummyConsumerService(config, resources);
+        DummyConsumerService service = new DummyConsumerService("test-consumer", config, resources);
 
         when(mockInputQueue.take())
                 .thenReturn(DummyMessage.newBuilder().setContent("Msg1").build())
@@ -62,7 +62,7 @@ public class DummyConsumerServiceTest {
     @Test
     void testLifecycle() throws InterruptedException {
         Config config = ConfigFactory.parseString("maxMessages=-1");
-        DummyConsumerService service = new DummyConsumerService(config, resources);
+        DummyConsumerService service = new DummyConsumerService("test-consumer", config, resources);
 
         // Make the mock block in a way that's interruptible
         doAnswer(invocation -> {
@@ -87,7 +87,7 @@ public class DummyConsumerServiceTest {
     @Test
     void testMetrics() throws InterruptedException {
         Config config = ConfigFactory.parseString("maxMessages=3");
-        DummyConsumerService service = new DummyConsumerService(config, resources);
+        DummyConsumerService service = new DummyConsumerService("test-consumer", config, resources);
 
         when(mockInputQueue.take())
                 .thenReturn(DummyMessage.getDefaultInstance())
@@ -110,7 +110,7 @@ public class DummyConsumerServiceTest {
     @Test
     void testMaxMessages() throws InterruptedException {
         Config config = ConfigFactory.parseString("maxMessages=2");
-        DummyConsumerService service = new DummyConsumerService(config, resources);
+        DummyConsumerService service = new DummyConsumerService("test-consumer", config, resources);
         when(mockInputQueue.take()).thenReturn(DummyMessage.getDefaultInstance());
         service.start();
         Thread.sleep(100); // Let service run and stop itself
