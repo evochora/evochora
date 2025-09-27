@@ -22,13 +22,9 @@ import static org.hamcrest.Matchers.*;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @ExtendWith(LogWatchExtension.class)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-// Allow lifecycle warnings globally for this test class, as state transitions are expected to be noisy.
-@AllowLog(level = LogLevel.WARN, messagePattern = "Could not perform action on service.*")
-@AllowLog(level = LogLevel.WARN, messagePattern = "Invalid state transition for request.*")
-@AllowLog(level = LogLevel.WARN, messagePattern = "Not found handler triggered.*")
 class NodeIntegrationTest {
 
-    private static final String TEST_CONFIG_FILE = "evochora-test.conf";
+    private static final String TEST_CONFIG_FILE = "org/evochora/node/evochora-test.conf";
     private static final int TEST_PORT = 8081;
     private static final String BASE_PATH = "/pipeline/api";
 
@@ -74,6 +70,7 @@ class NodeIntegrationTest {
 
     @Test
     @Order(1)
+    @AllowLog(level = LogLevel.WARN, messagePattern = "Could not perform action on service.*")
     @DisplayName("GET /status - should initially return STOPPED status with two services")
     void getStatus_initially_returnsStopped() {
         given()
@@ -87,6 +84,7 @@ class NodeIntegrationTest {
 
     @Test
     @Order(2)
+    @AllowLog(level = LogLevel.WARN, messagePattern = "Could not perform action on service.*")
     @DisplayName("POST /start and /stop - should correctly change the pipeline state")
     void postStartAndStop_changesState() {
         // Start all services
@@ -104,6 +102,7 @@ class NodeIntegrationTest {
 
     @Test
     @Order(3)
+    @AllowLog(level = LogLevel.WARN, messagePattern = "Could not perform action on service.*")
     @DisplayName("POST /service/{name}/start - should start one service and result in DEGRADED status")
     void postStartSingleService_resultsInDegradedStatus() {
         // Start only the consumer
@@ -123,6 +122,8 @@ class NodeIntegrationTest {
 
     @Test
     @Order(4)
+    @AllowLog(level = LogLevel.WARN, messagePattern = "Could not perform action on service.*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = "Not found handler triggered.*")
     @DisplayName("GET /service/{name}/status - should return 404 for a non-existent service")
     void getStatusForNonExistentService_returns404() {
         given()
@@ -136,6 +137,8 @@ class NodeIntegrationTest {
 
     @Test
     @Order(5)
+    @AllowLog(level = LogLevel.WARN, messagePattern = "Could not perform action on service.*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = "Invalid state transition for request.*")
     @DisplayName("POST /service/{name}/start - should return 409 when starting an already running service")
     void postStartOnRunningService_returns409() {
         // Start the service

@@ -4,7 +4,7 @@
 
 This phase transitions the Data Pipeline V3 from a transient, CLI-bound application into a robust, long-running server architecture. A standalone **Node process** will host the core pipeline logic (`ServiceManager`) and expose an HTTP API for control. This decouples the core functionality from external clients, enabling persistent operation, automation, and future scalability.
 
-The primary deliverables for this phase are the `Node` process, a generic `HttpServerProcess`, and the initial `PipelineController`.
+The primary deliverables for this phase are the `Node` process, a generic `HttpServerProcess`, and the initial `PipelineController`. This specification includes detailed guidance on implementation and testing to ensure a high-quality, successful result.
 
 ## 2. Success Criteria
 
@@ -16,7 +16,7 @@ Upon completion:
 5.  The `PipelineController` exposes all specified REST endpoints, providing full control over the pipeline lifecycle via HTTP.
 6.  The `Node` provides a simple, type-safe dependency injection mechanism (Service Registry) for core services like `ServiceManager`.
 7.  The entire architecture is modular and testable, with a clean separation of concerns between the `Node`, background processes, and controllers.
-8.  All specified coding standards, logging, error handling, and testing requirements are met.
+8.  All specified coding standards, logging, error handling, and testing requirements are met, leading to a stable and reliable implementation with comprehensive test coverage.
 
 ## 3. Configuration Structure (`evochora.conf`)
 
@@ -109,7 +109,7 @@ org.evochora
 #### 5.1.1. `ServiceRegistry.java`
 A simple service locator class that holds instances of core, application-wide services.
 * **Functionality:** A type-safe wrapper around a `Map<Class<?>, Object>`.
-* **Methods:** `register(Class<?> type, Object instance)`, `<T> T get(Class<T> type)`.
+* **Methods:** `register(Class<?> type, Object instance)`, `<T> T get(Class<T> type)`. Throws an exception if a service is requested but not found.
 
 #### 5.1.2. `Node.java`
 The main class and entry point for the application.
@@ -241,12 +241,19 @@ The DTOs are the public contract of the API. They must be accurate JSON represen
 
 ## 9. Testing Requirements
 
-### 9.1. Unit Tests (`@Tag("unit")`)
-* **`ConfigLoader`**: Test precedence hierarchy (ENV > CLI > FILE > DEFAULTS) and environment variable mapping.
-* **`Node`**: Test dynamic loading and initialization of processes. Use mock `IProcess` implementations.
-* **`HttpServerProcess`**: Test route parsing and controller registration logic. Use mock `IController` implementations.
-* **`PipelineController`**: Test each handler method individually. Mock the `ServiceManager` to verify that the correct methods are called and test the mapping logic from domain objects to DTOs.
+### 9.1. Test Configuration
+* A single, clean test configuration file should be created at `src/test/resources/reference.conf`. This file will be automatically loaded by the `ConfigLoader` in the test environment. It should contain a functional `pipeline` block with dummy services and a `node` block pointing to a test port to avoid conflicts.
 
-### 9.2. Integration Tests (`@Tag("integration")`)
-* **Full Node Test:** Write an integration test that starts a complete `Node` with a real `HttpServerProcess` and `PipelineController`, using a dedicated test `evochora.conf`.
-* **End-to-End API Test:** Use an HTTP client library (e.g., REST Assured) to send requests to the running test node. Verify the HTTP status codes and JSON responses for all `PipelineController` endpoints, including error cases. This test must use a real, running `ServiceManager` configured with `DummyConsumerService` and `DummyProducerService`.
+### 9.2. Unit Tests (`@Tag("unit")`)
+* **`ConfigLoader`**: Test precedence hierarchy (ENV > CLI > FILE > DEFAULTS) and environment variable mapping.
+* **`Node`**: Test dynamic loading and initialization of processes. Use mock `IProcess` implementations to verify that `start()` and `stop()` are called correctly.
+* **`HttpServerProcess`**: A unit test for this class is not required, as its logic is too tightly coupled to the web server framework and is better tested via integration tests.
+* **`PipelineController`**: Test each handler method individually. **Mock the `ServiceManager`** to verify that the correct methods are called and to test the mapping logic from domain objects to DTOs. Do not use a real server.
+
+### 9.3. Integration Tests (`@Tag("integration")`)
+* **Test Strategy:** A single, comprehensive integration test class, `NodeIntegrationTest.java`, will be created to test the entire node from the outside.
+* **Lifecycle Management:** The test class must be annotated with `@TestInstance(Lifecycle.PER_CLASS)`.
+    * A `@BeforeAll` method must start the `Node` process in a separate thread. It must wait until the server is responsive (e.g., by polling the `/pipeline/api/status` endpoint) before proceeding.
+    * A `@AfterAll` method must stop the `Node` process to release the network port and other resources.
+* **HTTP Client:** Use the **REST Assured** library to make HTTP requests and assertions. Configure its `baseURI` and `port` in the `@BeforeAll` method.
+* **Test Cases:** Write individual `@Test` methods for each `PipelineController` endpoint. Verify the HTTP status codes and the structure/content of the JSON responses for both success and error cases (e.g., test `GET /service/nonexistent/status` to verify the `404` response). This test must use a real, running `ServiceManager` as configured in the test `reference.conf`.

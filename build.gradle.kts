@@ -28,11 +28,13 @@ dependencies {
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.junit.jupiter:junit-jupiter-engine:5.10.2")
+    testImplementation("ch.qos.logback:logback-classic:1.5.6")
     testImplementation("org.mockito:mockito-core:5.12.0")
     testImplementation("org.mockito:mockito-junit-jupiter:5.12.0")
     testImplementation("org.assertj:assertj-core:3.26.3")
     testImplementation("org.awaitility:awaitility:4.2.1")
     testImplementation("io.rest-assured:rest-assured:5.4.0") // For API integration testing
+    
     
     // Explicitly declare test framework implementation dependencies for Gradle 9 compatibility
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
@@ -48,8 +50,8 @@ dependencies {
     implementation("io.javalin:javalin:6.1.3")
     implementation("com.typesafe:config:1.4.3")
     implementation("net.logstash.logback:logstash-logback-encoder:8.1")
-    implementation("org.jline:jline:3.25.1")
-    implementation("org.jline:jline-terminal-jansi:3.25.1")
+    implementation("org.jline:jline:3.30.3")
+    runtimeOnly("org.jline:jline-terminal-jansi:3.30.3")
 
     // Test fixtures: dependencies needed to compile the JUnit extension
     testFixturesImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
@@ -59,7 +61,7 @@ dependencies {
 
 // Definiert die Hauptklasse für den 'run'-Task
 application {
-    mainClass.set("org.evochora.node.Node")
+    mainClass.set("org.evochora.cli.TemporaryCommandLineInterface")
 }
 
 // Application Plugin erstellt bereits Fat JARs mit allen Dependencies
@@ -77,7 +79,7 @@ tasks.named<JavaExec>("run") {
 tasks.register<Jar>("cliJar") {
     archiveClassifier.set("cli")
     manifest {
-        attributes["Main-Class"] = "org.evochora.datapipeline.cli.CommandLineInterface"
+        attributes["Main-Class"] = "org.evochora.cli.TemporaryCommandLineInterface"
     }
     
     // Add JVM arguments to suppress SLF4J warnings
@@ -123,10 +125,6 @@ tasks.register<JavaExec>("compile") {
 
 tasks.withType<Copy> {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-
-tasks.withType<JavaCompile> {
-    options.compilerArgs.addAll(listOf("-Xlint:unchecked", "-Xlint:deprecation"))
 }
 
 tasks.test {

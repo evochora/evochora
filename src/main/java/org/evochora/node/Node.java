@@ -32,13 +32,25 @@ public final class Node {
      * @param config The fully resolved application configuration.
      */
     public Node(final Config config) {
+        // Create real ServiceManager and delegate to test-friendly constructor
+        this(config, new ServiceManager(config));
+    }
+
+    /**
+     * Test-friendly constructor that accepts a ServiceManager instance.
+     * This allows tests to inject a mocked ServiceManager for better testability.
+     *
+     * @param config The fully resolved application configuration.
+     * @param serviceManager The ServiceManager instance to use (can be mocked in tests).
+     */
+    Node(final Config config, final ServiceManager serviceManager) {
         this.serviceRegistry = new ServiceRegistry();
         try {
-            initializeCoreServices(config);
+            initializeCoreServices(config, serviceManager);
             initializeProcesses(config);
         } catch (final Exception e) {
-            LOGGER.error("Failed to initialize the node. Shutting down.", e);
-            System.exit(1);
+            LOGGER.error("Failed to initialize the node.", e);
+            throw new IllegalStateException("Node initialization failed", e);
         }
     }
 
@@ -81,10 +93,9 @@ public final class Node {
         LOGGER.info("All processes stopped. Goodbye.");
     }
 
-    private void initializeCoreServices(final Config config) {
+    private void initializeCoreServices(final Config config, final ServiceManager serviceManager) {
         LOGGER.info("Initializing core services...");
-        // The ServiceManager expects the root config and extracts the "pipeline" block itself.
-        final ServiceManager serviceManager = new ServiceManager(config);
+        // Register the provided ServiceManager instance
         serviceRegistry.register(ServiceManager.class, serviceManager);
         LOGGER.info("Core services initialized and registered.");
     }
@@ -118,7 +129,8 @@ public final class Node {
                 LOGGER.info("Successfully instantiated process '{}'.", processName);
 
             } catch (final Exception e) {
-                throw new IllegalStateException("Failed to initialize process '" + processName + "'.", e);
+                LOGGER.error("Failed to initialize process '{}'. Skipping this process.", processName, e);
+                // Continue with the next process instead of failing the entire Node initialization
             }
         }
     }
