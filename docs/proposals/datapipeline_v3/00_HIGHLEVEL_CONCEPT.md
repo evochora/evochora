@@ -340,15 +340,30 @@ All data-consuming services must be idempotent:
 - Universal Resource DI with contextual wrapping
 - Service lifecycle management and monitoring
 
+**Documentation:** See `06_SERVICE_ORCHESTRATION.md` for detailed implementation guide.
+
 #### Phase 1.6: Command Line Interface
 - Interactive mode with human-readable logging
 - Headless mode with JSON logging for automation
 - Commands: start, stop, restart, status, pause, resume, compile
 - Strict error handling preventing accidental simulation termination
 
+**Documentation:** See `07_CLI.md` for detailed implementation guide.
+
+#### Phase 1.7: Node Architecture
+- Standalone Node process hosting the core pipeline logic
+- HTTP API for control and automation
+- Decoupled infrastructure layer with modular processes
+- Generic HttpServerProcess with dynamic route configuration
+- PipelineController providing REST endpoints for pipeline lifecycle
+- Service Registry for dependency injection
+- Persistent operation independent of CLI clients
+
+**Documentation:** See `08_NODE.md` for detailed implementation guide.
+
 ### Result: Fully Functional Pipeline
 
-After these 6 steps, the system will be:
+After these 7 steps, the system will be:
 - ✅ **Compilable and testable**
 - ✅ **Configurable via HOCON**
 - ✅ **Executable with real services**
