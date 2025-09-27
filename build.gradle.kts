@@ -28,7 +28,6 @@ dependencies {
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.junit.jupiter:junit-jupiter-engine:5.10.2")
-    testImplementation("ch.qos.logback:logback-classic:1.5.6")
     testImplementation("org.mockito:mockito-core:5.12.0")
     testImplementation("org.mockito:mockito-junit-jupiter:5.12.0")
     testImplementation("org.assertj:assertj-core:3.26.3")
@@ -38,7 +37,7 @@ dependencies {
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     implementation("org.slf4j:slf4j-api:2.0.13")
-    runtimeOnly("ch.qos.logback:logback-classic:1.5.6")
+    implementation("ch.qos.logback:logback-classic:1.5.6")
     implementation("org.xerial:sqlite-jdbc:3.46.0.0")
     implementation("com.h2database:h2:2.2.224")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.1")
@@ -48,8 +47,8 @@ dependencies {
     implementation("io.javalin:javalin:6.1.3")
     implementation("com.typesafe:config:1.4.3")
     implementation("net.logstash.logback:logstash-logback-encoder:8.1")
-    implementation("org.jline:jline:3.30.3")
-    runtimeOnly("org.jline:jline-terminal-jansi:3.30.3")
+    implementation("org.jline:jline:3.25.1")
+    implementation("org.jline:jline-terminal-jansi:3.25.1")
 
     // Test fixtures: dependencies needed to compile the JUnit extension
     testFixturesImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
@@ -59,7 +58,7 @@ dependencies {
 
 // Definiert die Hauptklasse für den 'run'-Task
 application {
-    mainClass.set("org.evochora.cli.TemporaryCommandLineInterface")
+    mainClass.set("org.evochora.datapipeline.cli.CommandLineInterface")
 }
 
 // Application Plugin erstellt bereits Fat JARs mit allen Dependencies
