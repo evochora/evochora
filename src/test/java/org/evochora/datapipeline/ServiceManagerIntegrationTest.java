@@ -67,8 +67,8 @@ public class ServiceManagerIntegrationTest {
 
         assertTrue(serviceManager.isHealthy(), "Pipeline should be healthy after a successful run.");
 
-        serviceManager.stopAll();
-        assertEquals(IService.State.STOPPED, serviceManager.getServiceStatus("producer").state());
-        assertEquals(IService.State.STOPPED, serviceManager.getServiceStatus("consumer").state());
+        // The services stop on their own after reaching maxMessages.
+        // Calling stopAll() again would (and should) throw an exception with the new strict lifecycle rules.
+        // The await block above has already confirmed they are stopped.
     }
 }

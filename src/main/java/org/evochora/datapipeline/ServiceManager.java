@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -141,38 +142,39 @@ public class ServiceManager implements IMonitorable {
 
     private record PendingBinding(ResourceContext context, IResource baseResource) {}
 
+    private void applyToAllServices(Consumer<String> action, List<String> serviceNames) {
+        for (String serviceName : serviceNames) {
+            try {
+                action.accept(serviceName);
+            } catch (IllegalStateException e) {
+                log.warn("Could not perform action on service '{}': {}", serviceName, e.getMessage());
+            }
+        }
+    }
+
     public void startAll() {
         log.info("Starting all services...");
-        if (startupSequence.isEmpty()) {
-            services.keySet().forEach(this::startService);
-        } else {
-            startupSequence.forEach(this::startService);
-            services.keySet().stream()
-                    .filter(serviceName -> !startupSequence.contains(serviceName))
-                    .forEach(this::startService);
-        }
+        List<String> toStart = new ArrayList<>(startupSequence);
+        services.keySet().stream().filter(s -> !toStart.contains(s)).forEach(toStart::add);
+        applyToAllServices(this::startService, toStart);
     }
 
     public void stopAll() {
         log.info("Stopping all services...");
-        List<String> shutdownSequence = new ArrayList<>(
-            startupSequence.isEmpty() ? new ArrayList<>(services.keySet()) : startupSequence
-        );
-        Collections.reverse(shutdownSequence);
-        shutdownSequence.forEach(this::stopService);
-        services.keySet().stream()
-                .filter(serviceName -> !shutdownSequence.contains(serviceName))
-                .forEach(this::stopService);
+        List<String> toStop = new ArrayList<>(startupSequence);
+        Collections.reverse(toStop);
+        services.keySet().stream().filter(s -> !toStop.contains(s)).forEach(toStop::add);
+        applyToAllServices(this::stopService, toStop);
     }
 
     public void pauseAll() {
         log.info("Pausing all services...");
-        services.keySet().forEach(this::pauseService);
+        applyToAllServices(this::pauseService, new ArrayList<>(services.keySet()));
     }
 
     public void resumeAll() {
         log.info("Resuming all services...");
-        services.keySet().forEach(this::resumeService);
+        applyToAllServices(this::resumeService, new ArrayList<>(services.keySet()));
     }
 
     public void restartAll() {
@@ -199,7 +201,11 @@ public class ServiceManager implements IMonitorable {
 
     public void restartService(String serviceName) {
         log.info("Restarting service '{}'...", serviceName);
-        stopService(serviceName);
+        try {
+            stopService(serviceName);
+        } catch (IllegalStateException e) {
+            log.warn("Service '{}' could not be stopped before restart (perhaps it was already stopped): {}", serviceName, e.getMessage());
+        }
         startService(serviceName);
     }
 

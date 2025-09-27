@@ -39,19 +39,18 @@ public abstract class AbstractService implements IService {
     }
 
     @Override
-    public void start() {
-        if (currentState.compareAndSet(State.STOPPED, State.RUNNING)) {
-            serviceThread = new Thread(this::runService);
-            serviceThread.setName(this.getClass().getSimpleName());
-            serviceThread.start();
-            log.info("{} started", this.getClass().getSimpleName());
-        } else {
-            log.warn("{} is already running or in an unstartable state: {}. Start command ignored.", this.getClass().getSimpleName(), getCurrentState());
+    public final void start() {
+        if (!currentState.compareAndSet(State.STOPPED, State.RUNNING)) {
+            throw new IllegalStateException(String.format("Cannot start service '%s' as it is already in state %s", serviceName, getCurrentState()));
         }
+        serviceThread = new Thread(this::runService);
+        serviceThread.setName(this.getClass().getSimpleName());
+        serviceThread.start();
+        log.info("{} started", this.getClass().getSimpleName());
     }
 
     @Override
-    public void stop() {
+    public final void stop() {
         State state = getCurrentState();
         if (state == State.RUNNING || state == State.PAUSED) {
             if (currentState.compareAndSet(state, State.STOPPED)) {
@@ -72,28 +71,26 @@ public abstract class AbstractService implements IService {
                 log.info("{} stopped", this.getClass().getSimpleName());
             }
         } else {
-            log.warn("{} is not running or paused. Stop command ignored", this.getClass().getSimpleName());
+            throw new IllegalStateException(String.format("Cannot stop service '%s' as it is in state %s", serviceName, state));
         }
     }
 
     @Override
-    public void pause() {
-        if (currentState.compareAndSet(State.RUNNING, State.PAUSED)) {
-            log.info("{} paused", this.getClass().getSimpleName());
-        } else {
-            log.warn("{} is not in a pausable state (e.g. stopped or already paused). Pause command ignored", this.getClass().getSimpleName());
+    public final void pause() {
+        if (!currentState.compareAndSet(State.RUNNING, State.PAUSED)) {
+            throw new IllegalStateException(String.format("Cannot pause service '%s' as it is in state %s", serviceName, getCurrentState()));
         }
+        log.info("{} paused", this.getClass().getSimpleName());
     }
 
     @Override
-    public void resume() {
-        if (currentState.compareAndSet(State.PAUSED, State.RUNNING)) {
-            log.info("{} resumed", this.getClass().getSimpleName());
-            synchronized (pauseLock) {
-                pauseLock.notifyAll();
-            }
-        } else {
-            log.warn("{} is not paused. Resume command ignored", this.getClass().getSimpleName());
+    public final void resume() {
+        if (!currentState.compareAndSet(State.PAUSED, State.RUNNING)) {
+            throw new IllegalStateException(String.format("Cannot resume service '%s' as it is in state %s", serviceName, getCurrentState()));
+        }
+        log.info("{} resumed", this.getClass().getSimpleName());
+        synchronized (pauseLock) {
+            pauseLock.notifyAll();
         }
     }
 
