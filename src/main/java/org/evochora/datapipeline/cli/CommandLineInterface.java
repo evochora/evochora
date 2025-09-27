@@ -41,6 +41,8 @@ import java.util.concurrent.Callable;
         })
 public class CommandLineInterface implements Callable<Integer> {
 
+    private static final Logger log = LoggerFactory.getLogger(CommandLineInterface.class);
+
     @Option(names = {"-c", "--config"}, description = "Path to the configuration file.")
     private File configFile;
 
@@ -50,6 +52,7 @@ public class CommandLineInterface implements Callable<Integer> {
     private Config config;
     private ServiceManager serviceManager;
     private boolean loggingConfigured = false;
+    private File loadedConfigFile;
 
     @picocli.CommandLine.Spec
     CommandLine.Model.CommandSpec spec;
@@ -57,6 +60,7 @@ public class CommandLineInterface implements Callable<Integer> {
     @Override
     public Integer call() throws IOException {
         loadConfig();
+        System.out.println("Using config: " + (loadedConfigFile != null ? loadedConfigFile.getAbsolutePath() : "defaults"));
         configureLogging();
         if (interactive) {
             runInteractiveShell();
@@ -163,11 +167,37 @@ public class CommandLineInterface implements Callable<Integer> {
     }
 
     private void loadConfig() {
-        if (config != null) return;
+        if (config != null) {
+            return; // Already loaded
+        }
 
-        Config defaultConfig = ConfigFactory.parseString("logging.level=WARN");
-        Config fileConfig = configFile != null ? ConfigFactory.parseFile(configFile) : ConfigFactory.load("evochora.conf");
+        // 1. Load the default configuration from 'reference.conf' in the JAR file.
+        // This is the lowest priority level.
+        Config referenceConfig = ConfigFactory.load();
 
+        // 2. Determine the user config file to load: either the one specified via --config
+        // or default to 'evochora.conf' in the current directory.
+        File userConfigFile = configFile; // 'configFile' is the field set by Picocli
+        if (userConfigFile == null) {
+            userConfigFile = new File("evochora.conf").getAbsoluteFile();
+        }
+
+        // 3. Load the user config file if it exists.
+        Config fileConfig;
+        if (userConfigFile.exists()) {
+            log.info("Loading configuration from {}", userConfigFile.getAbsolutePath());
+            fileConfig = ConfigFactory.parseFile(userConfigFile);
+            loadedConfigFile = userConfigFile;
+        } else {
+            // Issue a warning if an explicit file was not found.
+            if (configFile != null) {
+                log.warn("Configuration file not found at {}", configFile.getAbsolutePath());
+            }
+            fileConfig = ConfigFactory.empty();
+            loadedConfigFile = null;
+        }
+
+        // 4. Parse environment variables (this logic was already correct).
         final String prefix = "EVOCHORA_";
         Map<String, Object> mappedEnv = new java.util.HashMap<>();
         for (Map.Entry<String, String> entry : System.getenv().entrySet()) {
@@ -181,8 +211,11 @@ public class CommandLineInterface implements Callable<Integer> {
         }
         Config envConfig = ConfigFactory.parseMap(mappedEnv);
 
-        config = envConfig.withFallback(fileConfig).withFallback(defaultConfig).resolve();
+        // 5. Combine all configurations in the correct order and resolve variables.
+        // Priority: Environment variables > User config file > reference.conf
+        config = envConfig.withFallback(fileConfig).withFallback(referenceConfig).resolve();
     }
+
 
     public ServiceManager getServiceManager() {
         if (serviceManager == null) {

@@ -76,7 +76,7 @@ tasks.named<JavaExec>("run") {
 tasks.register<Jar>("cliJar") {
     archiveClassifier.set("cli")
     manifest {
-        attributes["Main-Class"] = "org.evochora.cli.TemporaryCommandLineInterface"
+        attributes["Main-Class"] = "org.evochora.datapipeline.cli.CommandLineInterface"
     }
     
     // Add JVM arguments to suppress SLF4J warnings
