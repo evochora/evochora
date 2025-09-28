@@ -1,4 +1,4 @@
-package org.evochora.node.http.api.pipeline;
+package org.evochora.node.processes.http.api.pipeline;
 
 import com.typesafe.config.Config;
 import io.javalin.Javalin;
@@ -6,9 +6,9 @@ import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 import org.evochora.datapipeline.ServiceManager;
 import org.evochora.datapipeline.api.services.ServiceStatus;
-import org.evochora.node.http.AbstractController;
-import org.evochora.node.http.api.pipeline.dto.PipelineStatusDto;
-import org.evochora.node.http.api.pipeline.dto.ServiceStatusDto;
+import org.evochora.node.processes.http.AbstractController;
+import org.evochora.node.processes.http.api.pipeline.dto.PipelineStatusDto;
+import org.evochora.node.processes.http.api.pipeline.dto.ServiceStatusDto;
 import org.evochora.node.spi.ServiceRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

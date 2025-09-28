@@ -1,4 +1,4 @@
-package org.evochora.node.http;
+package org.evochora.node.processes.http;
 
 import com.typesafe.config.Config;
 import org.evochora.node.spi.IController;

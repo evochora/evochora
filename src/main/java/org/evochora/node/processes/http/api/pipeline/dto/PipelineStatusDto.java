@@ -1,4 +1,4 @@
-package org.evochora.node.http.api.pipeline.dto;
+package org.evochora.node.processes.http.api.pipeline.dto;
 
 import java.util.List;
 

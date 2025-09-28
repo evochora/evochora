@@ -55,7 +55,7 @@ node {
             api {
               # ACTION: Serves a controller at "/pipeline/api"
               $controller {
-                className = "org.evochora.node.http.api.pipeline.PipelineController"
+                className = "org.evochora.node.processes.http.pipeline.api.PipelineController"
                 options {}
               }
             }
@@ -183,7 +183,7 @@ public abstract class AbstractController implements IController {
 
 ### 5.4. `PipelineController` Implementation
 
-**File:** `org.evochora.node.http.api.pipeline.PipelineController.java`
+**File:** `org.evochora.node.processes.http.pipeline.api.PipelineController.java`
 * **Implementation:** Extends `AbstractController`.
 * **Constructor:** Calls `super(registry, options)` and retrieves the `ServiceManager` from the registry: `this.serviceManager = registry.get(ServiceManager.class);`.
 * **`registerRoutes` method:**
