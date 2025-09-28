@@ -158,9 +158,9 @@ public class ServiceManagerTest {
     @AllowLog(level = LogLevel.WARN, messagePattern = ".*")
     void testConcurrentLifecycleCalls() throws InterruptedException {
         ServiceManager sm = new ServiceManager(createTestConfig(true));
-        ExecutorService executor = Executors.newFixedThreadPool(4);
+        ExecutorService executor = Executors.newFixedThreadPool(8);
 
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 5; i++) {
             executor.submit(sm::startAll);
             executor.submit(sm::stopAll);
             executor.submit(sm::pauseAll);

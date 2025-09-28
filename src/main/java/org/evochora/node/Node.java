@@ -25,6 +25,7 @@ public final class Node {
 
     private final ServiceRegistry serviceRegistry;
     private final Map<String, IProcess> managedProcesses = new HashMap<>();
+    private Thread shutdownHook;
 
     /**
      * Constructs the Node, initializing all core services and processes.
@@ -72,7 +73,8 @@ public final class Node {
             });
         }
 
-        Runtime.getRuntime().addShutdownHook(new Thread(this::stop));
+        shutdownHook = new Thread(this::stop);
+        Runtime.getRuntime().addShutdownHook(shutdownHook);
         LOGGER.info("Node started successfully. Running until interrupted.");
     }
 
@@ -81,6 +83,17 @@ public final class Node {
      */
     public void stop() {
         LOGGER.info("Shutdown sequence initiated...");
+        
+        // Remove shutdown hook to prevent double execution
+        if (shutdownHook != null) {
+            try {
+                Runtime.getRuntime().removeShutdownHook(shutdownHook);
+            } catch (final IllegalStateException e) {
+                // Shutdown hook is already running or JVM is shutting down
+                LOGGER.debug("Could not remove shutdown hook: {}", e.getMessage());
+            }
+        }
+        
         managedProcesses.forEach((name, process) -> {
             try {
                 LOGGER.info("Stopping process '{}'...", name);

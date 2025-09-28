@@ -9,6 +9,7 @@ import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.node.spi.IProcess;
 import org.evochora.node.spi.ServiceRegistry;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -33,6 +34,7 @@ class NodeTest {
     private ServiceManager serviceManager;
 
     private Config testConfig;
+    private Node testNode; // Track the current node for cleanup
 
     @BeforeEach
     void setUp() {
@@ -53,14 +55,23 @@ class NodeTest {
             """);
     }
 
+    @AfterEach
+    void tearDown() {
+        // Ensure any test node is properly stopped to prevent cross-test interference
+        if (testNode != null) {
+            testNode.stop();
+            testNode = null;
+        }
+    }
+
     @Test
     @DisplayName("Should parse configuration and instantiate processes via reflection")
     void constructor_shouldParseConfigurationAndInstantiateProcesses() {
         // Act
-        Node node = new Node(testConfig, serviceManager);
+        testNode = new Node(testConfig, serviceManager);
         
         // Assert - Verify that the node was created successfully
-        assertThat(node).isNotNull();
+        assertThat(testNode).isNotNull();
         
         // The actual process instantiation happens in the constructor,
         // so we verify the node was created without exceptions
@@ -71,10 +82,10 @@ class NodeTest {
     @DisplayName("Should start all configured processes")
     void start_shouldStartAllConfiguredProcesses() {
         // Arrange
-        Node node = new Node(testConfig, serviceManager);
+        testNode = new Node(testConfig, serviceManager);
         
         // Act
-        node.start();
+        testNode.start();
 
         // Assert - Verify that start() was called on each process
         // Note: Since we can't easily verify the reflection-instantiated processes,
@@ -86,11 +97,11 @@ class NodeTest {
     @DisplayName("Should stop all configured processes")
     void stop_shouldStopAllConfiguredProcesses() {
         // Arrange
-        Node node = new Node(testConfig, serviceManager);
-        node.start();
-
+        testNode = new Node(testConfig, serviceManager);
+        testNode.start();
+        
         // Act
-        node.stop();
+        testNode.stop();
 
         // Assert - Verify that stop() was called on each process
         // Note: Since we can't easily verify the reflection-instantiated processes,
@@ -113,12 +124,12 @@ class NodeTest {
             """);
 
         // Act & Assert - Should not throw exception
-        Node nodeWithNoProcesses = new Node(emptyConfig, serviceManager);
-        assertThat(nodeWithNoProcesses).isNotNull();
+        testNode = new Node(emptyConfig, serviceManager);
+        assertThat(testNode).isNotNull();
         
         // Should handle start/stop gracefully
-        nodeWithNoProcesses.start();
-        nodeWithNoProcesses.stop();
+        testNode.start();
+        testNode.stop();
     }
 
     @Test
@@ -140,10 +151,10 @@ class NodeTest {
             """);
 
         // Act - Should not throw exception, but skip the invalid process
-        Node nodeWithInvalidProcess = new Node(invalidConfig, serviceManager);
+        testNode = new Node(invalidConfig, serviceManager);
         
         // Assert - Node should be created successfully, but the invalid process should be skipped
-        assertThat(nodeWithInvalidProcess).isNotNull();
+        assertThat(testNode).isNotNull();
     }
 
     @Test
@@ -165,10 +176,10 @@ class NodeTest {
             """);
 
         // Act - Should not throw exception, but skip the invalid process
-        Node nodeWithInvalidProcess = new Node(invalidConfig, serviceManager);
+        testNode = new Node(invalidConfig, serviceManager);
         
         // Assert - Node should be created successfully, but the invalid process should be skipped
-        assertThat(nodeWithInvalidProcess).isNotNull();
+        assertThat(testNode).isNotNull();
     }
 
     @Test
@@ -190,10 +201,10 @@ class NodeTest {
             """);
 
         // Act - Should not throw exception, but skip the failing process
-        Node node = new Node(failingConfig, serviceManager);
+        testNode = new Node(failingConfig, serviceManager);
         
         // Assert - Node should be created successfully, but the failing process should be skipped
-        assertThat(node).isNotNull();
+        assertThat(testNode).isNotNull();
     }
 
     @Test
@@ -214,13 +225,13 @@ class NodeTest {
             }
             """);
 
-        Node nodeWithFailingStart = new Node(failingStartConfig, serviceManager);
+        testNode = new Node(failingStartConfig, serviceManager);
 
         // Act - Should not throw exception, but log error for failing process
-        nodeWithFailingStart.start();
+        testNode.start();
         
         // Assert - Node should handle the failing process gracefully
-        assertThat(nodeWithFailingStart).isNotNull();
+        assertThat(testNode).isNotNull();
     }
 
     @Test
@@ -241,14 +252,14 @@ class NodeTest {
             }
             """);
 
-        Node nodeWithFailingStop = new Node(failingStopConfig, serviceManager);
-        nodeWithFailingStop.start(); // Start successfully
+        testNode = new Node(failingStopConfig, serviceManager);
+        testNode.start(); // Start successfully
 
         // Act - Should not throw exception, but log error for failing process
-        nodeWithFailingStop.stop();
+        testNode.stop();
         
         // Assert - Node should handle the failing process gracefully
-        assertThat(nodeWithFailingStop).isNotNull();
+        assertThat(testNode).isNotNull();
     }
 
     @Test
@@ -273,10 +284,10 @@ class NodeTest {
             """);
 
         // Act - Should not throw exception, but skip the invalid process
-        Node nodeWithMixedProcesses = new Node(mixedConfig, serviceManager);
+        testNode = new Node(mixedConfig, serviceManager);
         
         // Assert - Node should be created successfully, but the invalid process should be skipped
-        assertThat(nodeWithMixedProcesses).isNotNull();
+        assertThat(testNode).isNotNull();
     }
 
     // Fake IProcess implementations for testing

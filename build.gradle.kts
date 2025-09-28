@@ -61,7 +61,7 @@ dependencies {
 
 // Definiert die Hauptklasse für den 'run'-Task
 application {
-    mainClass.set("org.evochora.cli.TemporaryCommandLineInterface")
+    mainClass.set("org.evochora.node.Node")
 }
 
 // Application Plugin erstellt bereits Fat JARs mit allen Dependencies
@@ -79,7 +79,7 @@ tasks.named<JavaExec>("run") {
 tasks.register<Jar>("cliJar") {
     archiveClassifier.set("cli")
     manifest {
-        attributes["Main-Class"] = "org.evochora.cli.TemporaryCommandLineInterface"
+        attributes["Main-Class"] = "org.evochora.node.Node"
     }
     
     // Add JVM arguments to suppress SLF4J warnings

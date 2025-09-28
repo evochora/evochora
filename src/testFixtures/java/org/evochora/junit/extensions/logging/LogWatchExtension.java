@@ -4,7 +4,9 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.turbo.TurboFilter;
 import ch.qos.logback.core.spi.FilterReply;
+import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.AfterEachCallback;
+import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.TestExecutionExceptionHandler;
@@ -17,12 +19,12 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Pattern;
 
-public class LogWatchExtension implements BeforeEachCallback, AfterEachCallback, TestExecutionExceptionHandler {
+public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback, AfterAllCallback, AfterEachCallback, TestExecutionExceptionHandler {
 
     private static final String STORE_NAMESPACE = "org.evochora.junit.extensions.logging.LogWatchExtension";
 
     @Override
-    public void beforeEach(ExtensionContext context) {
+    public void beforeAll(ExtensionContext context) {
         ExtensionContext.Store store = context.getStore(ExtensionContext.Namespace.create(STORE_NAMESPACE));
         ValidationRules rules = resolveRules(context);
         LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
@@ -34,8 +36,31 @@ public class LogWatchExtension implements BeforeEachCallback, AfterEachCallback,
     }
 
     @Override
+    public void beforeEach(ExtensionContext context) {
+        // Don't create a new filter - just update the existing one with method-level rules
+        ExtensionContext.Store store = context.getStore(ExtensionContext.Namespace.create(STORE_NAMESPACE));
+        TestScopedTurboFilter filter = store.get("filter", TestScopedTurboFilter.class);
+        if (filter != null) {
+            ValidationRules methodRules = resolveRules(context);
+            filter.updateRules(methodRules);
+        }
+    }
+
+    @Override
     public void handleTestExecutionException(ExtensionContext context, Throwable throwable) throws Throwable {
         throw throwable;
+    }
+
+    @Override
+    public void afterAll(ExtensionContext context) {
+        ExtensionContext.Store store = context.getStore(ExtensionContext.Namespace.create(STORE_NAMESPACE));
+        TestScopedTurboFilter filter = store.remove("filter", TestScopedTurboFilter.class);
+
+        if (filter != null) {
+            LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
+            lc.getTurboFilterList().remove(filter);
+            filter.stop();
+        }
     }
 
     @Override
@@ -166,10 +191,14 @@ public class LogWatchExtension implements BeforeEachCallback, AfterEachCallback,
 
     private static class TestScopedTurboFilter extends TurboFilter {
         private final List<CapturedEvent> events = new CopyOnWriteArrayList<>();
-        private final ValidationRules rules;
+        private volatile ValidationRules rules;
 
         TestScopedTurboFilter(ValidationRules rules) {
             this.rules = rules;
+        }
+
+        void updateRules(ValidationRules newRules) {
+            this.rules = newRules;
         }
 
         @Override
