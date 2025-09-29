@@ -361,9 +361,19 @@ All data-consuming services must be idempotent:
 
 **Documentation:** See `08_NODE.md` for detailed implementation guide.
 
+#### Phase 1.8: Professional CLI
+- Replace transient CLI with professional Picocli-based interface
+- Move configuration loading and logging initialization from Node to CLI
+- Support for detached mode with PID file management
+- Node control commands (run, stop) with HTTP API integration
+- Maintain exact functionality of current Node.main() behavior
+- Clean separation between CLI entry point and server library
+
+**Documentation:** See `09_NODECLI.md` for detailed implementation guide.
+
 ### Result: Fully Functional Pipeline
 
-After these 7 steps, the system will be:
+After these 8 steps, the system will be:
 - ✅ **Compilable and testable**
 - ✅ **Configurable via HOCON**
 - ✅ **Executable with real services**
