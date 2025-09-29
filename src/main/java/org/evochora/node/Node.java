@@ -1,11 +1,8 @@
 package org.evochora.node;
 
 import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigObject;
 import org.evochora.datapipeline.ServiceManager;
-import org.evochora.node.config.ConfigLoader;
-import org.evochora.node.config.LoggingConfigurator;
 import org.evochora.node.spi.IProcess;
 import org.evochora.node.spi.ServiceRegistry;
 import org.slf4j.Logger;
@@ -21,7 +18,6 @@ import java.util.Map;
  */
 public final class Node {
     private static final Logger LOGGER = LoggerFactory.getLogger(Node.class);
-    private static final String CONFIG_FILE_NAME = "evochora.conf";
     private static final String NODE_CONFIG_PATH = "node";
     private static final String PROCESSES_CONFIG_PATH = "processes";
 
@@ -36,6 +32,8 @@ public final class Node {
      */
     public Node(final Config config) {
         this.serviceRegistry = new ServiceRegistry();
+        // Register this Node instance so controllers or other components can access it.
+        this.serviceRegistry.register(Node.class, this);
         try {
             initializeCoreServices(config);
             initializeProcesses(config);
@@ -164,99 +162,4 @@ public final class Node {
         }
     }
 
-    /**
-     * The main entry point of the application.
-     *
-     * @param args Command line arguments (currently not used).
-     */
-    public static void main(final String[] args) {
-        try {
-            // Set logging format property BEFORE any logging operations
-            // This must be done before any LoggerFactory calls
-            final java.io.File configFile = new java.io.File(CONFIG_FILE_NAME);
-            final Config config;
-            if (configFile.exists()) {
-                config = ConfigFactory.parseFile(configFile).withFallback(ConfigFactory.load());
-            } else {
-                config = ConfigFactory.load();
-            }
-            
-            if (config.hasPath("logging.format")) {
-                final String format = config.getString("logging.format");
-                if ("PLAIN".equalsIgnoreCase(format)) {
-                    System.setProperty("evochora.logging.format", "STDOUT_PLAIN");
-                } else {
-                    System.setProperty("evochora.logging.format", "STDOUT");
-                }
-            }
-            
-            // Force Logback to reload configuration after setting the property
-            reconfigureLogback();
-            
-            // Configure logging levels from evochora.conf
-            LoggingConfigurator.configure(config);
-            
-            // Show welcome message if configured (as first output after config evaluation)
-            if (config.hasPath("node.show-welcome-message") && config.getBoolean("node.show-welcome-message")) {
-                showWelcomeMessage();
-            }
-            
-            // Log which configuration file is being used (immediately after welcome message)
-            final java.io.File configFileForLog = new java.io.File(CONFIG_FILE_NAME);
-            if (configFileForLog.exists()) {
-                LOGGER.info("Using configuration file: {}", configFileForLog.getAbsolutePath());
-            } else {
-                LOGGER.info("Using default configuration from classpath (file not found: {})", configFileForLog.getAbsolutePath());
-            }
-            
-            // Now create the Node - this will trigger Logback initialization
-            final Node node = new Node(config);
-            
-            node.start();
-        } catch (final Exception e) {
-            // Use System.err for error logging since we can't rely on Logback yet
-            System.err.println("A fatal error occurred during node startup: " + e.getMessage());
-            e.printStackTrace();
-            System.exit(1);
-        }
-    }
-    
-    private static void reconfigureLogback() {
-        try {
-            ch.qos.logback.classic.LoggerContext context = 
-                (ch.qos.logback.classic.LoggerContext) org.slf4j.LoggerFactory.getILoggerFactory();
-            
-            ch.qos.logback.classic.joran.JoranConfigurator configurator = 
-                new ch.qos.logback.classic.joran.JoranConfigurator();
-            configurator.setContext(context);
-            
-            // Reset the context
-            context.reset();
-            
-            // Load the logback configuration from classpath
-            java.net.URL configUrl = Node.class.getClassLoader().getResource("logback.xml");
-            if (configUrl != null) {
-                configurator.doConfigure(configUrl);
-            }
-        } catch (Exception e) {
-            System.err.println("Failed to reconfigure Logback: " + e.getMessage());
-        }
-    }
-    
-    /**
-     * Displays the ASCII art welcome message for Evochora.
-     */
-    private static void showWelcomeMessage() {
-        System.out.println();
-        System.out.println("Welcome to...");
-        System.out.println("  ________      ______   _____ _    _  ____  _____            ");
-        System.out.println(" |  ____\\ \\    / / __ \\ / ____| |  | |/ __ \\|  __ \\     /\\    ");
-        System.out.println(" | |__   \\ \\  / / |  | | |    | |__| | |  | | |__) |   /  \\   ");
-        System.out.println(" |  __|   \\ \\/ /| |  | | |    |  __  | |  | |  _  /   / /\\ \\  ");
-        System.out.println(" | |____   \\  / | |__| | |____| |  | | |__| | | \\ \\  / ____ \\ ");
-        System.out.println(" |______|   \\/   \\____/ \\_____|_|  |_|\\____/|_|  \\_\\/_/    \\_\\");
-        System.out.println();
-        System.out.println("            Advanced Evolution Simulation Platform");
-        System.out.println();
-    }
 }

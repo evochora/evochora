@@ -1,4 +1,4 @@
-package org.evochora.datapipeline.cli.commands;
+package org.evochora.cli.commands;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;

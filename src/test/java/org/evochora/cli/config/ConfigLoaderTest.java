@@ -1,4 +1,4 @@
-package org.evochora.node.config;
+package org.evochora.cli.config;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
@@ -48,7 +48,7 @@ class ConfigLoaderTest {
     @DisplayName("Should load configuration file with defaults when no overrides present")
     void load_shouldLoadConfigFileWithDefaults() {
         // Act
-        Config config = ConfigLoader.load("org/evochora/node/config/test-config.conf");
+        Config config = ConfigLoader.load("org/evochora/cli/config/test-config.conf");
 
         // Assert
         assertNotNull(config);
@@ -67,7 +67,7 @@ class ConfigLoaderTest {
         ConfigFactory.invalidateCaches();
 
         // Act
-        Config config = ConfigLoader.load("org/evochora/node/config/test-config.conf");
+        Config config = ConfigLoader.load("org/evochora/cli/config/test-config.conf");
 
         // Assert - System property should override file config
         assertEquals("system-value", config.getString("test.value"));
@@ -84,7 +84,7 @@ class ConfigLoaderTest {
         ConfigFactory.invalidateCaches();
 
         // Act
-        Config config = ConfigLoader.load("org/evochora/node/config/test-config.conf");
+        Config config = ConfigLoader.load("org/evochora/cli/config/test-config.conf");
 
         // Assert
         assertEquals("system-nested", config.getString("test.nested.setting"));
@@ -109,7 +109,7 @@ class ConfigLoaderTest {
     @DisplayName("Should handle empty configuration file")
     void load_shouldHandleEmptyConfigFile() {
         // Act
-        Config config = ConfigLoader.load("org/evochora/node/config/empty-config");
+        Config config = ConfigLoader.load("org/evochora/cli/config/empty-config");
 
         // Assert
         assertNotNull(config);
@@ -128,7 +128,7 @@ class ConfigLoaderTest {
         // File already has: test.value = "file-value", test.priority = "file-priority"
 
         // Act
-        Config config = ConfigLoader.load("org/evochora/node/config/test-config.conf");
+        Config config = ConfigLoader.load("org/evochora/cli/config/test-config.conf");
 
         // Assert - Verify priority order: System > File > Defaults
         assertEquals("system-priority", config.getString("test.priority")); // System wins
@@ -145,7 +145,7 @@ class ConfigLoaderTest {
         ConfigFactory.invalidateCaches();
 
         // Act
-        Config config = ConfigLoader.load("org/evochora/node/config/references-config.conf");
+        Config config = ConfigLoader.load("org/evochora/cli/config/references-config.conf");
 
         // Assert
         assertEquals("base-suffix", config.getString("test.referenced-value"));

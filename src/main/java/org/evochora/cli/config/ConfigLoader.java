@@ -1,4 +1,4 @@
-package org.evochora.node.config;
+package org.evochora.cli.config;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;

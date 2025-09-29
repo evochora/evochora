@@ -5,7 +5,7 @@ import io.restassured.RestAssured;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
-import org.evochora.node.config.ConfigLoader;
+import org.evochora.cli.config.ConfigLoader;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 

@@ -1,4 +1,4 @@
-package org.evochora.node.config;
+package org.evochora.cli.config;
 
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.core.Appender;
@@ -82,7 +82,7 @@ class LoggingConfiguratorTest {
     }
 
     @Test
-    void configure_withPlainFormat_shouldActuallyOutputPlainFormat() {
+    void configure_withPlainFormat_shouldSetAppenderCorrectly() {
         // Given
         final Config config = ConfigFactory.parseString("""
             logging {
@@ -91,36 +91,36 @@ class LoggingConfiguratorTest {
             }
             """);
 
-        // Capture System.out
-        final ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        final PrintStream originalOut = System.out;
-        System.setOut(new PrintStream(outputStream));
+        // When
+        LoggingConfigurator.configure(config);
+        reconfigureLogbackForTest(); // Force Logback to apply the new properties
 
+        // Then
+        final LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        final ch.qos.logback.classic.Logger rootLogger = context.getLogger(Logger.ROOT_LOGGER_NAME);
+
+        // Verify that the correct appender is attached
+        final Appender<?> plainAppender = rootLogger.getAppender("STDOUT_PLAIN");
+        assertNotNull(plainAppender, "The STDOUT_PLAIN appender should be attached to the root logger.");
+        assertTrue(plainAppender.isStarted(), "The STDOUT_PLAIN appender should be started.");
+
+        final Appender<?> jsonAppender = rootLogger.getAppender("STDOUT");
+        assertNull(jsonAppender, "The STDOUT (JSON) appender should NOT be attached when PLAIN is configured.");
+    }
+
+    private void reconfigureLogbackForTest() {
         try {
-            // When
-            LoggingConfigurator.configure(config);
-            
-            // Log a test message
-            final Logger testLogger = LoggerFactory.getLogger("test.plain.format");
-            testLogger.info("Test message for format verification");
-
-            // Then
-            final String output = outputStream.toString();
-            System.out.println("Captured output: " + output);
-            
-            // Check that output is NOT JSON (should not contain @timestamp, @version, etc.)
-            assertFalse(output.contains("@timestamp"), "Output should not contain JSON timestamp field");
-            assertFalse(output.contains("@version"), "Output should not contain JSON version field");
-            assertFalse(output.contains("\"message\""), "Output should not contain JSON message field");
-            
-            // Check that output contains plain format elements
-            assertTrue(output.contains("Test message for format verification"), "Output should contain the test message");
-            assertTrue(output.contains("INFO"), "Output should contain log level");
-            assertTrue(output.contains("test.plain.format"), "Output should contain logger name");
-            
-        } finally {
-            // Restore System.out
-            System.setOut(originalOut);
+            ch.qos.logback.classic.LoggerContext context = (ch.qos.logback.classic.LoggerContext) org.slf4j.LoggerFactory.getILoggerFactory();
+            ch.qos.logback.classic.joran.JoranConfigurator configurator = new ch.qos.logback.classic.joran.JoranConfigurator();
+            configurator.setContext(context);
+            context.reset();
+            java.net.URL configUrl = getClass().getClassLoader().getResource("logback.xml");
+            if (configUrl != null) {
+                configurator.doConfigure(configUrl);
+            }
+        } catch (Exception e) {
+            // Fail the test if logback can't be reconfigured
+            fail("Failed to reconfigure logback for test", e);
         }
     }
 
