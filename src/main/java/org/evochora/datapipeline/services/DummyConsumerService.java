@@ -1,8 +1,8 @@
 package org.evochora.datapipeline.services;
 
 import com.typesafe.config.Config;
-import org.evochora.datapipeline.api.contracts.PipelineContracts;
-import org.evochora.datapipeline.api.contracts.PipelineContracts.DummyMessage;
+import org.evochora.datapipeline.api.contracts.SystemContracts;
+import org.evochora.datapipeline.api.contracts.SystemContracts.DummyMessage;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
@@ -232,7 +232,7 @@ public class DummyConsumerService extends AbstractService implements IMonitorabl
                 if (stackTraceLines.size() >= 10) break; // Limit stack trace size
             }
 
-            PipelineContracts.DeadLetterMessage dlqMessage = PipelineContracts.DeadLetterMessage.newBuilder()
+            SystemContracts.DeadLetterMessage dlqMessage = SystemContracts.DeadLetterMessage.newBuilder()
                     .setOriginalMessage(message.toByteString())
                     .setMessageType(message.getClass().getName())
                     .setFirstFailureTimeMs(retryInfo.firstAttempt.toEpochMilli())

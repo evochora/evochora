@@ -1,10 +1,11 @@
 package org.evochora.runtime.worldgen;
 
 import org.evochora.runtime.Config;
+import org.evochora.runtime.isa.IEnergyDistributionCreator;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import java.util.Random;
-import org.evochora.runtime.internal.services.IRandomProvider;
+import org.evochora.runtime.spi.IRandomProvider;
 
 /**
  * A solar radiation-based energy distribution strategy. It randomly spawns
@@ -102,5 +103,16 @@ public class SolarRadiationCreator implements IEnergyDistributionCreator {
                 }
             }
         }
+    }
+
+    @Override
+    public byte[] saveState() {
+        // SolarRadiationCreator is stateless - no state to serialize
+        return new byte[0];
+    }
+
+    @Override
+    public void loadState(byte[] state) {
+        // SolarRadiationCreator is stateless - nothing to restore
     }
 }

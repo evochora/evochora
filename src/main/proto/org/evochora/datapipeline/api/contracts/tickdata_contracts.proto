@@ -1,0 +1,250 @@
+syntax = "proto3";
+
+package org.evochora.datapipeline.api.contracts;
+
+import "org/evochora/datapipeline/api/contracts/metadata_contracts.proto";
+
+option java_multiple_files = true;
+option java_package = "org.evochora.datapipeline.api.contracts";
+
+// ============================================================================
+// Tick Data (sent every sampled tick)
+// ============================================================================
+
+// Represents the complete state of the simulation at a specific tick.
+// This message is sent every N ticks (where N is the sampling interval).
+// It contains everything needed to checkpoint and resume the simulation.
+message TickData {
+  // Unique identifier matching SimulationMetadata.simulation_run_id
+  // Used to correlate tick data with metadata
+  string simulation_run_id = 1;
+
+  // The current tick number (0-indexed)
+  // Source: SimulationEngine's tick counter
+  int64 tick_number = 2;
+
+  // System timestamp when this tick was captured (milliseconds since epoch)
+  // Created via: System.currentTimeMillis()
+  int64 capture_time_ms = 3;
+
+  // All organisms alive at this tick (includes dead organisms if they died this tick)
+  // Created by: iterating over all organisms and converting to OrganismState messages
+  repeated OrganismState organisms = 4;
+
+  // All non-empty cells in the environment (sparse representation)
+  // Only includes cells where type!=0 OR value!=0 OR owner!=0
+  // Created by: iterating environment cells and filtering empty cells
+  repeated CellState cells = 5;
+
+  // Complete RNG state for checkpoint/resume
+  // Created via: IRandomProvider.saveState()
+  // For Well19937c: serialized int[] v array (624 ints) + index (1 int)
+  bytes rng_state = 6;
+
+  // State of all energy distribution strategies (for checkpoint/resume)
+  // Created by: calling ISerializable.saveState() on each active strategy
+  // Example: GeyserCreator serializes geyser locations
+  repeated StrategyState strategy_states = 7;
+}
+
+// Represents the serialized state of an energy distribution strategy
+message StrategyState {
+  // Fully qualified class name of the strategy
+  // Example: "org.evochora.runtime.worldgen.GeyserCreator"
+  string strategy_type = 1;
+
+  // Strategy-specific serialized state
+  // Created via: ISerializable.saveState() implementation
+  // Stateless strategies (e.g., SolarRadiationCreator) return empty bytes
+  // Stateful strategies (e.g., GeyserCreator) serialize their configuration
+  bytes state_blob = 2;
+}
+
+// ============================================================================
+// Organism State
+// ============================================================================
+
+// Represents the complete state of an organism at a specific tick.
+// Maps to org.evochora.runtime.model.Organism class.
+// All fields are directly accessible via Organism getter methods.
+message OrganismState {
+  // Unique identifier for this organism within the simulation
+  // Source: Organism.getId()
+  int32 organism_id = 1;
+
+  // ID of the parent organism (if this organism was created via replication)
+  // Source: Organism.getParentId()
+  // Set to absent if the organism was created at initialization
+  optional int32 parent_id = 2;
+
+  // Tick number when this organism was born
+  // Source: Organism.getBirthTick()
+  int64 birth_tick = 3;
+
+  // Identifier of the compiled program this organism is executing
+  // Source: Organism.getProgramId()
+  // Corresponds to ProgramArtifact.program_id in metadata
+  string program_id = 4;
+
+  // Current energy level of the organism
+  // Source: Organism.getEnergy()
+  // Organism dies when energy reaches 0
+  int32 energy = 5;
+
+  // ===== Instruction Pointer and Movement =====
+
+  // Current instruction pointer (relative coordinates in program space)
+  // Source: Organism.getIp()
+  // This is where the organism is currently executing in its program
+  Vector ip = 6;
+
+  // Position where the organism started executing
+  // Source: Organism.getInitialPosition()
+  // Used to calculate absolute positions from relative coordinates
+  Vector initial_position = 7;
+
+  // Direction vector for IP movement
+  // Source: Organism.getDv()
+  // Determines how the IP advances after each instruction
+  Vector dv = 8;
+
+  // Data pointer locations (relative coordinates)
+  // Source: Organism.getDataPointers()
+  // Organisms can have multiple data pointers for memory access
+  repeated Vector data_pointers = 9;
+
+  // Index of the currently active data pointer
+  // Source: Organism.getActiveDpIndex()
+  // Determines which data_pointers entry is used for data operations
+  int32 active_dp_index = 10;
+
+  // ===== Registers =====
+
+  // Data registers (DRs) - general purpose scalar/vector registers
+  // Source: Organism.getDataRegisters()
+  // Used for arithmetic and data manipulation
+  repeated RegisterValue data_registers = 11;
+
+  // Procedure registers (PRs) - used for procedure-local variables
+  // Source: Organism.getProcedureRegisters()
+  // Saved/restored during procedure calls
+  repeated RegisterValue procedure_registers = 12;
+
+  // Formal parameter registers (FPRs) - used for procedure parameters
+  // Source: Organism.getFormalParamRegisters()
+  // Mapped to actual parameters during procedure calls
+  repeated RegisterValue formal_param_registers = 13;
+
+  // Location registers (LRs) - store coordinate vectors
+  // Source: Organism.getLocationRegisters()
+  // Used for spatial operations and addressing
+  repeated Vector location_registers = 14;
+
+  // ===== Stacks =====
+
+  // Data stack for temporary scalar/vector values
+  // Source: Organism.getDataStack()
+  repeated RegisterValue data_stack = 15;
+
+  // Location stack for temporary coordinate vectors
+  // Source: Organism.getLocationStack()
+  repeated Vector location_stack = 16;
+
+  // Call stack for procedure invocations
+  // Source: Organism.getCallStack()
+  // Each frame stores return address and saved register state
+  repeated ProcFrame call_stack = 17;
+
+  // ===== Status =====
+
+  // Whether the organism is dead
+  // Source: Organism.isDead()
+  // Dead organisms may be included in tick data if they died during the tick
+  bool is_dead = 18;
+
+  // Whether the last instruction execution failed
+  // Source: Organism.isInstructionFailed()
+  bool instruction_failed = 19;
+
+  // Human-readable reason for instruction failure
+  // Source: Organism.getFailureReason()
+  // Only present if instruction_failed is true
+  optional string failure_reason = 20;
+
+  // Call stack at the time of failure (for debugging)
+  // Source: Organism.getFailureCallStack()
+  // Only present if instruction_failed is true
+  repeated ProcFrame failure_call_stack = 21;
+}
+
+// Represents a procedure call frame on the call stack.
+// Maps to org.evochora.runtime.model.ProcFrame class.
+// Captures the state needed to return from a procedure call.
+message ProcFrame {
+  // Name of the procedure being called
+  // Source: ProcFrame.getProcName()
+  string proc_name = 1;
+
+  // Absolute return address (where to resume after procedure returns)
+  // Source: ProcFrame.getAbsoluteReturnIp()
+  // Stored as absolute coordinates, not relative to program
+  Vector absolute_return_ip = 2;
+
+  // Saved procedure registers (PRs) from caller's context
+  // Source: ProcFrame.getSavedPrs()
+  // Restored when procedure returns
+  repeated RegisterValue saved_prs = 3;
+
+  // Saved formal parameter registers (FPRs) from caller's context
+  // Source: ProcFrame.getSavedFprs()
+  // Restored when procedure returns
+  repeated RegisterValue saved_fprs = 4;
+
+  // Mapping from formal parameter index to actual parameter value
+  // Source: ProcFrame.getFprBindings()
+  // Key: FPR index, Value: actual parameter value
+  map<int32, int32> fpr_bindings = 5;
+}
+
+// Represents a register value that can be either scalar or vector.
+// This polymorphic type is used for data registers, procedure registers,
+// formal parameter registers, and stack values.
+message RegisterValue {
+  oneof value {
+    // Scalar integer value
+    // Source: RegisterValue containing a scalar int
+    int32 scalar = 1;
+
+    // Vector (coordinate) value
+    // Source: RegisterValue containing a vector
+    Vector vector = 2;
+  }
+}
+
+// ============================================================================
+// Cell State
+// ============================================================================
+
+// Represents a single cell in the environment grid.
+// Maps to org.evochora.runtime.model.Molecule class.
+// Only non-empty cells are included (sparse representation).
+message CellState {
+  // Absolute coordinate of the cell in the environment
+  // Source: Cell position in environment grid
+  Vector coordinate = 1;
+
+  // Type of molecule in this cell
+  // Source: Molecule.getType()
+  // Common types: CODE (instructions), DATA, ENERGY
+  int32 molecule_type = 2;
+
+  // Value of the molecule
+  // Source: Molecule.getValue()
+  // For CODE: encoded instruction, for DATA/ENERGY: numeric value
+  int32 molecule_value = 3;
+
+  // ID of the organism that owns this cell (0 if unowned)
+  // Source: Molecule.getOwnerId()
+  // Used to track which organism's program occupies this cell
+  int32 owner_id = 4;
+}

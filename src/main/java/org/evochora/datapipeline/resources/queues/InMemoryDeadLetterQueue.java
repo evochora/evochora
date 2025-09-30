@@ -2,7 +2,7 @@ package org.evochora.datapipeline.resources.queues;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.contracts.PipelineContracts;
+import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.resources.AbstractResource;
 
@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDeadLetterQueueResource<T> {
 
-    private final InMemoryBlockingQueue<PipelineContracts.DeadLetterMessage> delegate;
+    private final InMemoryBlockingQueue<SystemContracts.DeadLetterMessage> delegate;
     private final String primaryQueueName;
     private final long capacityLimit;
     private final AtomicLong droppedMessageCount = new AtomicLong(0);
@@ -85,7 +85,7 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
     }
 
     @Override
-    public int offerAll(Collection<PipelineContracts.DeadLetterMessage> elements) {
+    public int offerAll(Collection<SystemContracts.DeadLetterMessage> elements) {
         // Check if we're approaching capacity
         int offered = delegate.offerAll(elements);
         int dropped = elements.size() - offered;
@@ -100,7 +100,7 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
     }
 
     @Override
-    public boolean offer(PipelineContracts.DeadLetterMessage element) {
+    public boolean offer(SystemContracts.DeadLetterMessage element) {
         boolean success = delegate.offer(element);
         if (!success) {
             droppedMessageCount.incrementAndGet();
@@ -113,7 +113,7 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
     }
 
     @Override
-    public void put(PipelineContracts.DeadLetterMessage element) throws InterruptedException {
+    public void put(SystemContracts.DeadLetterMessage element) throws InterruptedException {
         // For DLQs, we use offer with timeout instead of blocking indefinitely
         // to prevent cascading failures
         boolean success = delegate.offer(element, 5, TimeUnit.SECONDS);
@@ -126,7 +126,7 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
     }
 
     @Override
-    public boolean offer(PipelineContracts.DeadLetterMessage element, long timeout, TimeUnit unit) throws InterruptedException {
+    public boolean offer(SystemContracts.DeadLetterMessage element, long timeout, TimeUnit unit) throws InterruptedException {
         boolean success = delegate.offer(element, timeout, unit);
         if (!success) {
             droppedMessageCount.incrementAndGet();
@@ -138,10 +138,10 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
     }
 
     @Override
-    public void putAll(Collection<PipelineContracts.DeadLetterMessage> elements) throws InterruptedException {
+    public void putAll(Collection<SystemContracts.DeadLetterMessage> elements) throws InterruptedException {
         // Attempt to put all elements with a reasonable timeout per element
         int dropped = 0;
-        for (PipelineContracts.DeadLetterMessage element : elements) {
+        for (SystemContracts.DeadLetterMessage element : elements) {
             boolean success = delegate.offer(element, 1, TimeUnit.SECONDS);
             if (!success) {
                 dropped++;

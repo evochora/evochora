@@ -1,16 +1,34 @@
 package org.evochora.runtime.internal.services;
 
+import org.evochora.runtime.spi.IRandomProvider;
+import org.apache.commons.math3.random.Well19937c;
+import org.apache.commons.math3.random.RandomAdaptor;
+
+import java.lang.reflect.Field;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Random;
 
 /**
- * Default implementation of {@link IRandomProvider} backed by {@link Random}.
+ * Default implementation of {@link IRandomProvider} backed by Apache Commons Math {@link Well19937c}.
+ * <p>
+ * Uses reflection to access Well19937c's internal state (v array and index) for perfect checkpoint
+ * serialization. This ensures 100% reproducibility across checkpoints, which is critical for
+ * long-running evolutionary simulations. Well19937c is an industry-standard, scientifically-validated
+ * RNG with excellent statistical properties and a period of 2^19937-1.
+ * </p>
+ * <p>
  * Supports deterministic derivation of child providers using a stable hashing scheme.
+ * </p>
  */
 public final class SeededRandomProvider implements IRandomProvider {
 
     private final long seed;
-    private final Random rng;
+    private final Well19937c rng;
+
+    // Cached reflection fields for fast serialization (initialized once, used every tick)
+    private final Field vField;
+    private final Field indexField;
 
     /**
      * Creates a new seeded random provider.
@@ -18,7 +36,17 @@ public final class SeededRandomProvider implements IRandomProvider {
      */
     public SeededRandomProvider(long seed) {
         this.seed = seed;
-        this.rng = new Random(seed);
+        this.rng = new Well19937c(seed);
+
+        // Initialize reflection fields once for fast repeated access
+        try {
+            this.vField = rng.getClass().getSuperclass().getDeclaredField("v");
+            this.indexField = rng.getClass().getSuperclass().getDeclaredField("index");
+            this.vField.setAccessible(true);
+            this.indexField.setAccessible(true);
+        } catch (NoSuchFieldException e) {
+            throw new RuntimeException("Failed to initialize RNG reflection fields", e);
+        }
     }
 
     /**
@@ -28,7 +56,17 @@ public final class SeededRandomProvider implements IRandomProvider {
      */
     private SeededRandomProvider(long seed, boolean alreadyHashed) {
         this.seed = seed;
-        this.rng = new Random(seed);
+        this.rng = new Well19937c(seed);
+
+        // Initialize reflection fields once for fast repeated access
+        try {
+            this.vField = rng.getClass().getSuperclass().getDeclaredField("v");
+            this.indexField = rng.getClass().getSuperclass().getDeclaredField("index");
+            this.vField.setAccessible(true);
+            this.indexField.setAccessible(true);
+        } catch (NoSuchFieldException e) {
+            throw new RuntimeException("Failed to initialize RNG reflection fields", e);
+        }
     }
 
     @Override
@@ -43,7 +81,8 @@ public final class SeededRandomProvider implements IRandomProvider {
 
     @Override
     public Random asJavaRandom() {
-        return rng;
+        // Wrap the Well19937c in a Random-compatible adapter
+        return new RandomAdaptor(rng);
     }
 
     @Override
@@ -79,6 +118,48 @@ public final class SeededRandomProvider implements IRandomProvider {
         z = (z ^ (z >>> 33)) * 0xff51afd7ed558ccdL;
         z = (z ^ (z >>> 33)) * 0xc4ceb9fe1a85ec53L;
         return z ^ (z >>> 33);
+    }
+
+    @Override
+    public byte[] saveState() {
+        try {
+            // Access protected fields using cached Field objects (fast)
+            int[] v = (int[]) vField.get(rng);
+            int index = indexField.getInt(rng);
+
+            // Serialize: 4 bytes for index + (v.length * 4) bytes for state array
+            ByteBuffer buffer = ByteBuffer.allocate(4 + (v.length * 4));
+            buffer.putInt(index);
+            for (int value : v) {
+                buffer.putInt(value);
+            }
+            return buffer.array();
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException("Failed to serialize RNG state", e);
+        }
+    }
+
+    @Override
+    public void loadState(byte[] state) {
+        if (state == null) {
+            throw new IllegalArgumentException("RNG state cannot be null");
+        }
+        try {
+            ByteBuffer buffer = ByteBuffer.wrap(state);
+            int index = buffer.getInt();
+
+            // Read the state array
+            int[] v = (int[]) vField.get(rng);
+            for (int i = 0; i < v.length; i++) {
+                v[i] = buffer.getInt();
+            }
+
+            // Set both index and state array using cached Field objects (fast)
+            indexField.setInt(rng, index);
+            vField.set(rng, v);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException("Failed to deserialize RNG state", e);
+        }
     }
 }
 

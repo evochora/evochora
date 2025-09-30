@@ -1,14 +1,16 @@
 package org.evochora.runtime.worldgen;
 
 import org.evochora.runtime.Config;
+import org.evochora.runtime.isa.IEnergyDistributionCreator;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
-import org.evochora.runtime.internal.services.IRandomProvider;
+import org.evochora.runtime.spi.IRandomProvider;
 
 /**
  * A geyser-based energy distribution strategy. It creates geysers that erupt
@@ -131,6 +133,56 @@ public class GeyserCreator implements IEnergyDistributionCreator {
             geyserLocations.add(coord);
             // Mark the source itself as indestructible to avoid conflicts
             environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, -1), coord);
+        }
+    }
+
+    @Override
+    public byte[] saveState() {
+        if (geyserLocations == null || geyserLocations.isEmpty()) {
+            return new byte[0]; // Not initialized yet
+        }
+
+        // Calculate buffer size: count(4) + dimension(4) + (count * dimension * 4)
+        int dimension = geyserLocations.get(0).length;
+        int bufferSize = 4 + 4 + (geyserLocations.size() * dimension * 4);
+        ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
+
+        // Write count and dimension
+        buffer.putInt(geyserLocations.size());
+        buffer.putInt(dimension);
+
+        // Write all coordinates
+        for (int[] coord : geyserLocations) {
+            for (int c : coord) {
+                buffer.putInt(c);
+            }
+        }
+
+        return buffer.array();
+    }
+
+    @Override
+    public void loadState(byte[] state) {
+        if (state == null) {
+            throw new IllegalArgumentException("GeyserCreator state cannot be null");
+        }
+
+        if (state.length == 0) {
+            geyserLocations = null;
+            return;
+        }
+
+        ByteBuffer buffer = ByteBuffer.wrap(state);
+        int count = buffer.getInt();
+        int dimension = buffer.getInt();
+
+        geyserLocations = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            int[] coord = new int[dimension];
+            for (int d = 0; d < dimension; d++) {
+                coord[d] = buffer.getInt();
+            }
+            geyserLocations.add(coord);
         }
     }
 }

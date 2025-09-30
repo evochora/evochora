@@ -5,7 +5,7 @@ import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.internal.services.IRandomProvider;
+import org.evochora.runtime.spi.IRandomProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

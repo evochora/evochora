@@ -3,7 +3,9 @@ package org.evochora.runtime.worldgen;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import org.evochora.runtime.internal.services.IRandomProvider;
+
+import org.evochora.runtime.isa.IEnergyDistributionCreator;
+import org.evochora.runtime.spi.IRandomProvider;
 
 /**
  * A factory for creating energy distribution strategies.

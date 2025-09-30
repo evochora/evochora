@@ -1,0 +1,358 @@
+syntax = "proto3";
+
+package org.evochora.datapipeline.api.contracts;
+
+option java_multiple_files = true;
+option java_package = "org.evochora.datapipeline.api.contracts";
+
+// ============================================================================
+// Simulation Metadata (sent once at start)
+// ============================================================================
+
+// Contains all initialization data for a simulation run.
+// This message is sent once at simulation start, before any TickData.
+// It provides complete context for understanding and replaying the simulation.
+message SimulationMetadata {
+  // Unique identifier for this simulation run
+  // Created via: UUID.randomUUID().toString() or similar
+  // Used to correlate metadata with tick data
+  string simulation_run_id = 1;
+
+  // Timestamp when the simulation started (milliseconds since epoch)
+  // Created via: System.currentTimeMillis()
+  int64 start_time_ms = 2;
+
+  // Initial seed for the random number generator
+  // Source: evochora.conf "simulation.seed" or generated randomly
+  // Used to initialize IRandomProvider (Well19937c)
+  int64 initial_seed = 3;
+
+  // Environment configuration (world size, topology, etc.)
+  // Source: EnvironmentProperties from runtime initialization
+  EnvironmentConfig environment = 4;
+
+  // Energy distribution strategy configuration
+  // Source: IEnergyDistributionCreator implementation class and config
+  // Example: GeyserCreator with geyser locations
+  EnergyStrategyConfig energy_strategy = 6;
+
+  // All compiled programs used in this simulation
+  // Source: Output from Compiler.compile() for each program
+  // Includes machine code, source maps, and debugging metadata
+  repeated ProgramArtifact programs = 5;
+
+  // Initial organism placements at simulation start
+  // Source: evochora.conf "simulation.initialOrganisms" section
+  // Specifies which organisms to create and where to place them
+  repeated InitialOrganismSetup initial_organisms = 9;
+
+  // User-provided metadata (arbitrary key-value pairs)
+  // Source: evochora.conf "simulation.metadata" section
+  // Used for experiment tracking and custom annotations
+  map<string, string> user_metadata = 7;
+
+  // Complete resolved configuration as JSON
+  // Source: TypesafeConfig.root().render(ConfigRenderOptions.concise())
+  // Includes all config values (defaults + overrides) for self-contained replay
+  string resolved_config_json = 8;
+}
+
+// Configuration for the simulation environment (world grid).
+// Maps to org.evochora.runtime.model.EnvironmentProperties class.
+message EnvironmentConfig {
+  // Number of spatial dimensions (e.g., 2 for 2D, 3 for 3D)
+  // Source: EnvironmentProperties.getDimensions()
+  int32 dimensions = 1;
+
+  // Size of the environment in each dimension
+  // Source: EnvironmentProperties.getShape()
+  // Example: [100, 100] for a 100×100 2D grid
+  repeated int32 shape = 2;
+
+  // Whether each dimension wraps around (true) or has boundaries (false)
+  // Source: EnvironmentProperties.getToroidal()
+  // Same length as shape array
+  repeated bool toroidal = 3;
+
+  // Maximum energy an organism can have
+  // Source: evochora.conf "simulation.maxOrganismEnergy"
+  // Organisms cannot exceed this energy level
+  int32 max_organism_energy = 4;
+}
+
+// Configuration for energy distribution strategy.
+// Describes which strategy is used and its parameters.
+message EnergyStrategyConfig {
+  // Fully qualified class name of the strategy implementation
+  // Source: IEnergyDistributionCreator.getClass().getName()
+  // Example: "org.evochora.runtime.worldgen.GeyserCreator"
+  string strategy_type = 1;
+
+  // Strategy-specific configuration as JSON
+  // Source: Strategy's configuration object serialized to JSON
+  // Example: {"geyserCount": 5, "energyPerTick": 10}
+  string config_json = 2;
+}
+
+// Describes an organism to create at simulation initialization.
+message InitialOrganismSetup {
+  // Unique ID to assign to this organism
+  // Source: evochora.conf "simulation.initialOrganisms[N].id"
+  int32 organism_id = 1;
+
+  // ID of the program this organism should execute
+  // Source: evochora.conf "simulation.initialOrganisms[N].programId"
+  // Must match a ProgramArtifact.program_id in the programs list
+  string program_id = 2;
+
+  // Initial position in the environment
+  // Source: evochora.conf "simulation.initialOrganisms[N].position"
+  Vector position = 3;
+
+  // Starting energy level
+  // Source: evochora.conf "simulation.initialOrganisms[N].energy"
+  // Must be ≤ EnvironmentConfig.max_organism_energy
+  int32 initial_energy = 4;
+}
+
+// ============================================================================
+// Program Artifact
+// ============================================================================
+
+// Represents the complete output of compiling an Evochora source program.
+// Maps to org.evochora.compiler.api.ProgramArtifact record.
+// Contains everything needed to execute the program and provide debugging support.
+message ProgramArtifact {
+  // Unique identifier for this program
+  // Source: ProgramArtifact.programId()
+  // Used to reference this program in InitialOrganismSetup and OrganismState
+  string program_id = 1;
+
+  // Source code organized by filename
+  // Source: ProgramArtifact.sources()
+  // Key: filename, Value: lines of source code
+  // Used by debugger to display source code
+  map<string, SourceLines> sources = 2;
+
+  // Compiled machine code laid out in relative coordinates
+  // Source: ProgramArtifact.machineCodeLayout()
+  // Maps relative coordinates to encoded instruction values
+  // This is the actual executable code placed in the environment
+  repeated InstructionMapping machine_code_layout = 3;
+
+  // Initial molecules to place in the world (e.g., DATA, ENERGY)
+  // Source: ProgramArtifact.initialWorldObjects()
+  // Includes data constants and other non-code molecules from source
+  repeated PlacedMoleculeMapping initial_world_objects = 4;
+
+  // Debugging map from instruction addresses to source locations
+  // Source: ProgramArtifact.sourceMap()
+  // Allows debugger to highlight source code based on IP
+  repeated SourceMapEntry source_map = 5;
+
+  // Call site bindings for procedure calls
+  // Source: ProgramArtifact.callSiteBindings()
+  // Maps CALL instruction addresses to their target coordinates
+  // Used by runtime to resolve procedure calls
+  repeated CallSiteBinding call_site_bindings = 6;
+
+  // Fast lookup from coordinate string to linear address
+  // Source: ProgramArtifact.relativeCoordToLinearAddress()
+  // Key: coordinate as string (e.g., "[10,20]"), Value: linear address
+  // Used for address calculations during execution
+  map<string, int32> relative_coord_to_linear_address = 7;
+
+  // Reverse mapping from linear address to coordinates
+  // Source: ProgramArtifact.linearAddressToCoord()
+  // Used to convert linear addresses back to coordinates
+  repeated LinearAddressToCoord linear_address_to_coord = 8;
+
+  // Human-readable labels for addresses
+  // Source: ProgramArtifact.labelAddressToName()
+  // Maps addresses of labels to their names from source code
+  // Used by debugger to display label names
+  repeated LabelMapping label_address_to_name = 9;
+
+  // Register aliases defined in source code
+  // Source: ProgramArtifact.registerAliasMap()
+  // Key: alias name (e.g., "%MY_REG"), Value: physical register index
+  // Used by debugger to display register names
+  map<string, int32> register_alias_map = 10;
+
+  // Parameter names for each procedure
+  // Source: ProgramArtifact.procNameToParamNames()
+  // Key: procedure name, Value: list of parameter names
+  // Used by debugger to display parameter names
+  map<string, ParameterNames> proc_name_to_param_names = 11;
+
+  // Token classification for syntax highlighting
+  // Source: ProgramArtifact.tokenMap()
+  // Maps source locations to token information (type, scope, etc.)
+  // Used by web client for syntax highlighting
+  repeated TokenMapEntry token_map = 12;
+
+  // Efficient token lookup by file/line/column
+  // Source: ProgramArtifact.tokenLookup()
+  // Nested structure for fast lookup: filename → line → column → tokens
+  // Used by web client for hover information
+  repeated FileTokenLookup token_lookup = 13;
+}
+
+// Container for source code lines of a file.
+message SourceLines {
+  // Lines of source code (0-indexed)
+  repeated string lines = 1;
+}
+
+// Maps a coordinate to an encoded instruction value.
+// Protobuf-compatible representation of Map<int[], Integer>.
+message InstructionMapping {
+  // Relative coordinate in program space
+  Vector position = 1;
+
+  // Encoded instruction value
+  // This is the integer representation of the compiled instruction
+  int32 instruction = 2;
+}
+
+// Maps a coordinate to a molecule to place in the world.
+// Protobuf-compatible representation of Map<int[], PlacedMolecule>.
+message PlacedMoleculeMapping {
+  // Relative coordinate in program space
+  Vector position = 1;
+
+  // Molecule to place at this position
+  PlacedMolecule molecule = 2;
+}
+
+// Represents a molecule to be placed in the environment.
+// Maps to org.evochora.compiler.api.PlacedMolecule record.
+message PlacedMolecule {
+  // Molecule type (e.g., CODE, DATA, ENERGY)
+  int32 type = 1;
+
+  // Molecule value (meaning depends on type)
+  int32 value = 2;
+}
+
+// Maps a linear address to source code location.
+// Protobuf-compatible representation of Map.Entry<Integer, SourceInfo>.
+message SourceMapEntry {
+  // Linear address of instruction
+  int32 linear_address = 1;
+
+  // Corresponding source code location
+  SourceInfo source_info = 2;
+}
+
+// Identifies a location in source code.
+// Maps to org.evochora.compiler.api.SourceInfo record.
+message SourceInfo {
+  // Source filename
+  string file_name = 1;
+
+  // Line number (1-indexed)
+  int32 line_number = 2;
+
+  // Column number (1-indexed)
+  int32 column_number = 3;
+}
+
+// Maps a CALL instruction to its target procedure coordinates.
+// Protobuf-compatible representation of Map.Entry<Integer, int[]>.
+message CallSiteBinding {
+  // Linear address of CALL instruction
+  int32 linear_address = 1;
+
+  // Target coordinate of procedure being called
+  Vector target_coord = 2;
+}
+
+// Maps a linear address back to coordinates.
+// Protobuf-compatible representation of Map.Entry<Integer, int[]>.
+message LinearAddressToCoord {
+  // Linear address
+  int32 linear_address = 1;
+
+  // Corresponding relative coordinate
+  Vector coord = 2;
+}
+
+// Maps an address to a label name from source code.
+// Protobuf-compatible representation of Map.Entry<Integer, String>.
+message LabelMapping {
+  // Linear address where label is defined
+  int32 linear_address = 1;
+
+  // Human-readable label name from source
+  string label_name = 2;
+}
+
+// Container for procedure parameter names.
+message ParameterNames {
+  // Ordered list of parameter names
+  repeated string names = 1;
+}
+
+// Maps a source location to token classification.
+// Protobuf-compatible representation of Map.Entry<SourceInfo, TokenInfo>.
+message TokenMapEntry {
+  // Source code location of the token
+  SourceInfo source_info = 1;
+
+  // Classification information for the token
+  TokenInfo token_info = 2;
+}
+
+// Token classification for syntax highlighting and hover info.
+message TokenInfo {
+  // The actual text of the token
+  string token_text = 1;
+
+  // Token type (e.g., "keyword", "identifier", "literal")
+  string token_type = 2;
+
+  // Scope information (e.g., "global", "procedure", "local")
+  string scope = 3;
+}
+
+// Top-level token lookup structure for a file.
+// Protobuf-compatible representation of Map.Entry<String, Map<...>>.
+message FileTokenLookup {
+  // Source filename
+  string file_name = 1;
+
+  // Token lookup organized by line numbers
+  repeated LineTokenLookup lines = 2;
+}
+
+// Token lookup for a specific line in a file.
+// Protobuf-compatible representation of Map.Entry<Integer, Map<...>>.
+message LineTokenLookup {
+  // Line number (1-indexed)
+  int32 line_number = 1;
+
+  // Token lookup organized by column numbers
+  repeated ColumnTokenLookup columns = 2;
+}
+
+// Token lookup for a specific column in a line.
+// Protobuf-compatible representation of Map.Entry<Integer, List<TokenInfo>>.
+message ColumnTokenLookup {
+  // Column number (1-indexed)
+  int32 column_number = 1;
+
+  // All tokens at this position (may be multiple for overlapping ranges)
+  repeated TokenInfo tokens = 2;
+}
+
+// ============================================================================
+// Shared Types
+// ============================================================================
+
+// Represents an N-dimensional coordinate or vector.
+// Used for positions, directions, and register values.
+message Vector {
+  // Components of the vector (e.g., [x, y] for 2D, [x, y, z] for 3D)
+  repeated int32 components = 1;
+}

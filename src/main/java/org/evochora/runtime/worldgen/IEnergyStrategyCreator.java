@@ -1,7 +1,9 @@
 package org.evochora.runtime.worldgen;
 
 import java.util.Map;
-import org.evochora.runtime.internal.services.IRandomProvider;
+
+import org.evochora.runtime.isa.IEnergyDistributionCreator;
+import org.evochora.runtime.spi.IRandomProvider;
 
 /**
  * A functional interface for creating energy distribution strategies.

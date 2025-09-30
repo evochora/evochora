@@ -1,4 +1,4 @@
-package org.evochora.runtime.internal.services;
+package org.evochora.runtime.spi;
 
 import java.util.Random;
 
@@ -6,8 +6,11 @@ import java.util.Random;
  * Provides deterministic randomness scoped to a Simulation.
  * Implementations should be pure with respect to the provided seed and
  * support derivation of child providers for independent sub-streams.
+ * <p>
+ * Implements {@link ISerializable} to support simulation checkpointing and resume.
+ * </p>
  */
-public interface IRandomProvider {
+public interface IRandomProvider extends ISerializable {
 
     /**
      * Returns a random integer in the range [0, bound).

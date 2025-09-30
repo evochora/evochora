@@ -1,6 +1,6 @@
 package org.evochora.datapipeline.api.resources.wrappers.queues;
 
-import org.evochora.datapipeline.api.contracts.PipelineContracts;
+import org.evochora.datapipeline.api.contracts.SystemContracts;
 
 /**
  * Marker interface for queue resources that serve as Dead Letter Queues (DLQs).
@@ -27,7 +27,7 @@ import org.evochora.datapipeline.api.contracts.PipelineContracts;
  *
  * @param <T> The type of original message elements this DLQ handles (used for type safety in service code).
  */
-public interface IDeadLetterQueueResource<T> extends IOutputQueueResource<PipelineContracts.DeadLetterMessage> {
+public interface IDeadLetterQueueResource<T> extends IOutputQueueResource<SystemContracts.DeadLetterMessage> {
 
     /**
      * Gets the name of the primary queue that this DLQ serves.

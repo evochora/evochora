@@ -3,6 +3,7 @@ package org.evochora.runtime.model;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.spi.IRandomProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -139,7 +140,7 @@ public class Organism {
         this.ipBeforeFetch = Arrays.copyOf(startIp, startIp.length);
         this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length);
         this.initialPosition = Arrays.copyOf(startIp, startIp.length);
-        org.evochora.runtime.internal.services.IRandomProvider baseProvider = simulation.getRandomProvider();
+        IRandomProvider baseProvider = simulation.getRandomProvider();
         if (baseProvider != null) {
             this.random = baseProvider.deriveFor("organism", id).asJavaRandom();
         } else {

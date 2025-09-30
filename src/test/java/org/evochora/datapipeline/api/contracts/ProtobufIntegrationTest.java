@@ -12,7 +12,7 @@ public class ProtobufIntegrationTest {
     @Test
     void testSerializationDeserialization() throws InvalidProtocolBufferException {
         long timestamp = System.currentTimeMillis();
-        PipelineContracts.DummyMessage originalMessage = PipelineContracts.DummyMessage.newBuilder()
+        SystemContracts.DummyMessage originalMessage = SystemContracts.DummyMessage.newBuilder()
                 .setId(123)
                 .setContent("Test content")
                 .setTimestamp(timestamp)
@@ -20,7 +20,7 @@ public class ProtobufIntegrationTest {
 
         byte[] serializedMessage = originalMessage.toByteArray();
 
-        PipelineContracts.DummyMessage deserializedMessage = PipelineContracts.DummyMessage.parseFrom(serializedMessage);
+        SystemContracts.DummyMessage deserializedMessage = SystemContracts.DummyMessage.parseFrom(serializedMessage);
 
         assertEquals(originalMessage.getId(), deserializedMessage.getId());
         assertEquals(originalMessage.getContent(), deserializedMessage.getContent());

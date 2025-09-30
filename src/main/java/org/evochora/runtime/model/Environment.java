@@ -4,9 +4,9 @@ package org.evochora.runtime.model;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.List;
-import java.util.ArrayList;
+
 import org.evochora.runtime.Config;
+import org.evochora.runtime.isa.IEnvironmentReader;
 
 /**
  * Represents the simulation environment, managing the grid of molecules and their owners.

@@ -1,9 +1,7 @@
 package org.evochora.runtime.services;
 
-import org.evochora.runtime.model.IEnvironmentReader;
+import org.evochora.runtime.isa.IEnvironmentReader;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.InstructionSignature;
-import org.evochora.runtime.isa.InstructionArgumentType;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.BeforeAll;
@@ -11,7 +9,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 
 import java.util.Arrays;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

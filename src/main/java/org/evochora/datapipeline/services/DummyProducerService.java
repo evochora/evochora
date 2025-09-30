@@ -1,7 +1,7 @@
 package org.evochora.datapipeline.services;
 
 import com.typesafe.config.Config;
-import org.evochora.datapipeline.api.contracts.PipelineContracts.DummyMessage;
+import org.evochora.datapipeline.api.contracts.SystemContracts.DummyMessage;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.OperationalError;

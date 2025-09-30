@@ -53,6 +53,9 @@ dependencies {
     implementation("org.jline:jline:3.30.3")
     runtimeOnly("org.jline:jline-terminal-jansi:3.30.3")
 
+    // Apache Commons Math for scientifically-validated RNG with state serialization
+    implementation("org.apache.commons:commons-math3:3.6.1")
+
     // Test fixtures: dependencies needed to compile the JUnit extension
     testFixturesImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
     testFixturesImplementation("ch.qos.logback:logback-classic:1.5.6")

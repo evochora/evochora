@@ -1,4 +1,6 @@
-package org.evochora.runtime.model;
+package org.evochora.runtime.isa;
+
+import org.evochora.runtime.model.Molecule;
 
 /**
  * Interface for reading molecules from different environment implementations.
