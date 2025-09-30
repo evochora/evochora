@@ -18,17 +18,21 @@ import java.util.concurrent.Callable;
     name = "evochora",
     mixinStandardHelpOptions = true,
     version = "Evochora 1.0",
-    description = "Evochora Node and Development CLI.",
+    description = "Evochora - Advanced Evolution Simulation Platform",
     subcommands = {
         NodeCommand.class,
-        CompileCommand.class
+        CompileCommand.class,
+        CommandLine.HelpCommand.class
     }
 )
 public class CommandLineInterface implements Callable<Integer> {
 
     private static final String CONFIG_FILE_NAME = "evochora.conf";
 
-    @Option(names = {"--config.file"}, description = "Path to the configuration file.")
+    @Option(
+        names = {"-c", "--config"},
+        description = "Path to custom configuration file (default: evochora.conf)"
+    )
     private File configFile;
 
     private Config config;
@@ -36,12 +40,15 @@ public class CommandLineInterface implements Callable<Integer> {
 
     @Override
     public Integer call() {
-        // If no subcommand is specified, Picocli will automatically show the help message.
+        // If no subcommand is specified, show the help message.
+        CommandLine.usage(this, System.out);
         return 0;
     }
 
     public static void main(final String[] args) {
-        final int exitCode = new CommandLine(new CommandLineInterface()).execute(args);
+        final CommandLine commandLine = new CommandLine(new CommandLineInterface());
+        commandLine.setCommandName("evochora");
+        final int exitCode = commandLine.execute(args);
         System.exit(exitCode);
     }
 

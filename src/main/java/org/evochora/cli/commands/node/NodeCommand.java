@@ -6,10 +6,9 @@ import picocli.CommandLine.ParentCommand;
 
 @Command(
     name = "node",
-    description = "Manages the Evochora Node.",
+    description = "Manages the Evochora Node server",
     subcommands = {
-        NodeRunCommand.class,
-        NodeStopCommand.class
+        NodeRunCommand.class
     }
 )
 public class NodeCommand {

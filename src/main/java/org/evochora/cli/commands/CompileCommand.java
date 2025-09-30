@@ -18,13 +18,23 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
 
-@Command(name = "compile", description = "Compiles an assembly file to a ProgramArtifact JSON.")
+@Command(
+    name = "compile",
+    description = "Compiles an assembly source file to a ProgramArtifact JSON"
+)
 public class CompileCommand implements Callable<Integer> {
 
-    @Option(names = {"-f", "--file"}, required = true, description = "The path to the assembly file.")
+    @Option(
+        names = {"-f", "--file"},
+        required = true,
+        description = "Path to the assembly source file to compile"
+    )
     private File file;
 
-    @Option(names = {"-e", "--env"}, description = "The environment properties, e.g., '100x100:toroidal'.")
+    @Option(
+        names = {"-e", "--env"},
+        description = "Environment properties in format 'WIDTHxHEIGHT:topology' (e.g., '100x100:toroidal'). Default: 100x100:toroidal"
+    )
     private String env;
 
     @CommandLine.Spec
