@@ -11,12 +11,16 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.management.ManagementFactory;
 import java.util.concurrent.Callable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Command(
     name = "run",
     description = "Starts the Evochora Node."
 )
 public class NodeRunCommand implements Callable<Integer> {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(NodeRunCommand.class);
 
     @ParentCommand
     private NodeCommand parent;
@@ -31,17 +35,23 @@ public class NodeRunCommand implements Callable<Integer> {
         final Config config = parent.getParent().getConfig();
 
         if (detach) {
-            System.out.println("Starting node in detached mode...");
+            LOGGER.info("Starting node in detached mode...");
             createPidFile();
         } else {
-            System.out.println("Starting node in foreground...");
+            LOGGER.info("Starting node in foreground...");
         }
 
         final Node node = new Node(config);
         node.start();
 
-        // In a real foreground process, this thread would block until the node is stopped.
-        // The node.start() method as implemented will block, so this is sufficient.
+        // Keep the main thread alive to prevent the application from exiting.
+        // The shutdown hook in the Node class will handle termination.
+        try {
+            Thread.currentThread().join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOGGER.info("Node stopped gracefully.");
+        }
 
         return 0;
     }
@@ -55,6 +65,6 @@ public class NodeRunCommand implements Callable<Integer> {
         }
 
         pidFile.deleteOnExit();
-        System.out.println("PID file created at " + pidFile.getAbsolutePath());
+        LOGGER.info("PID file created at {}", pidFile.getAbsolutePath());
     }
 }
