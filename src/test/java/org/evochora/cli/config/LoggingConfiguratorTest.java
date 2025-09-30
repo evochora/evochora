@@ -57,11 +57,9 @@ class LoggingConfiguratorTest {
         final ch.qos.logback.classic.Logger rootLogger = context.getLogger(Logger.ROOT_LOGGER_NAME);
         
         // Debug: Print all appenders
-        System.out.println("Root logger appenders:");
         final java.util.Iterator<Appender<ch.qos.logback.classic.spi.ILoggingEvent>> iterator = rootLogger.iteratorForAppenders();
         while (iterator.hasNext()) {
             final Appender<?> appender = iterator.next();
-            System.out.println("  - " + appender.getName() + " (" + appender.getClass().getSimpleName() + ")");
         }
         
         // Check if STDOUT_PLAIN appender exists

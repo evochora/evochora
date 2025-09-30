@@ -66,14 +66,11 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
     @Override
     public void afterEach(ExtensionContext context) {
         ExtensionContext.Store store = context.getStore(ExtensionContext.Namespace.create(STORE_NAMESPACE));
-        TestScopedTurboFilter filter = store.remove("filter", TestScopedTurboFilter.class);
+        TestScopedTurboFilter filter = store.get("filter", TestScopedTurboFilter.class);
 
         if (filter != null) {
-            LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
-            lc.getTurboFilterList().remove(filter);
-            filter.stop();
-
-            ValidationRules rules = store.get("rules", ValidationRules.class);
+            // Resolve rules for the current test method (not class-level rules)
+            ValidationRules rules = resolveRules(context);
             List<CapturedEvent> events = filter.getCapturedEvents();
 
             List<String> unexpected = findUnexpected(events, rules);
@@ -91,6 +88,9 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
                 }
                 throw new AssertionError(sb.toString());
             }
+
+            // Clear events for next test but keep filter active
+            filter.clearEvents();
         }
     }
 
@@ -215,6 +215,10 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
 
         List<CapturedEvent> getCapturedEvents() {
             return new ArrayList<>(events);
+        }
+
+        void clearEvents() {
+            events.clear();
         }
 
         private String formatMessage(String format, Object[] params) {
