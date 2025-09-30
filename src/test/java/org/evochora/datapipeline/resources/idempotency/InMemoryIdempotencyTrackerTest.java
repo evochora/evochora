@@ -1,4 +1,4 @@
-package org.evochora.datapipeline.services.idempotency;
+package org.evochora.datapipeline.resources.idempotency;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
@@ -161,7 +161,7 @@ public class InMemoryIdempotencyTrackerTest {
     @Test
     void testAutomaticCleanup_triggersAfterThreshold() {
         InMemoryIdempotencyTracker<Integer> autoCleanupTracker =
-                new InMemoryIdempotencyTracker<>(Duration.ofMillis(1), 10);
+                new InMemoryIdempotencyTracker<>(Duration.ofMillis(1), 10, 60);
 
         // Add more than cleanup threshold
         for (int i = 0; i < 15; i++) {

@@ -1,4 +1,4 @@
-package org.evochora.datapipeline.api.services;
+package org.evochora.datapipeline.api.resources;
 
 /**
  * Interface for tracking processed messages to ensure idempotent message processing.
@@ -17,7 +17,7 @@ package org.evochora.datapipeline.api.services;
  *
  * @param <K> The type of the idempotency key (typically String, Long, or UUID).
  */
-public interface IIdempotencyTracker<K> {
+public interface IIdempotencyTracker<K> extends IResource {
 
     /**
      * Checks if a message with the given key has already been processed.

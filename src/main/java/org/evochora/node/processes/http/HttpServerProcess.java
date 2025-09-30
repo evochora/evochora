@@ -6,6 +6,7 @@ import com.typesafe.config.ConfigObject;
 import com.typesafe.config.ConfigValue;
 import com.typesafe.config.ConfigValueType;
 import io.javalin.Javalin;
+import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.evochora.node.spi.IController;
 import org.evochora.node.processes.AbstractProcess;
 import org.evochora.node.spi.ServiceRegistry;
@@ -63,13 +64,28 @@ public class HttpServerProcess extends AbstractProcess {
                     LOGGER.debug("Request: {} {} (completed in {} ms)", ctx.method(), ctx.path(), ms);
                 }
             });
-            
-            // Configure custom thread pool with process name
-            config.jetty.server(server -> {
-                org.eclipse.jetty.util.thread.QueuedThreadPool threadPool = new org.eclipse.jetty.util.thread.QueuedThreadPool();
-                threadPool.setName(processName + "Pool");
-                server.setThreadPool(threadPool);
-            });
+
+            // Configure custom thread pool with named threads for better monitoring
+            final int minThreads = options.hasPath("network.threadPool.minThreads")
+                ? options.getInt("network.threadPool.minThreads")
+                : 8;
+            final int maxThreads = options.hasPath("network.threadPool.maxThreads")
+                ? options.getInt("network.threadPool.maxThreads")
+                : 200;
+            final int idleTimeout = options.hasPath("network.threadPool.idleTimeoutMs")
+                ? options.getInt("network.threadPool.idleTimeoutMs")
+                : 60000;
+
+            final QueuedThreadPool threadPool = new QueuedThreadPool(
+                maxThreads,
+                minThreads,
+                idleTimeout
+            );
+            threadPool.setName(processName + "-http");
+            config.jetty.threadPool = threadPool;
+
+            LOGGER.debug("Configured thread pool '{}' with {} min threads, {} max threads, {} ms idle timeout",
+                threadPool.getName(), minThreads, maxThreads, idleTimeout);
 
             // Configure static file routes from the parsed definitions
             for (final RouteDefinition def : routeDefinitions) {

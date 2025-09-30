@@ -3,14 +3,17 @@ package org.evochora.datapipeline.services;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.PipelineContracts.DummyMessage;
+import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.api.services.IService;
+import org.evochora.datapipeline.resources.idempotency.InMemoryIdempotencyTracker;
 import org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue;
 import org.evochora.datapipeline.resources.queues.InMemoryDeadLetterQueue;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -29,6 +32,7 @@ public class EndToEndServiceTest {
 
         InMemoryBlockingQueue<DummyMessage> queue = new InMemoryBlockingQueue<>("e2e-queue", ConfigFactory.parseString("capacity=10"));
         IDeadLetterQueueResource<DummyMessage> dlq = new InMemoryDeadLetterQueue<>("e2e-dlq", ConfigFactory.parseString("capacity=100"));
+        IIdempotencyTracker<Integer> idempotencyTracker = new InMemoryIdempotencyTracker<>(Duration.ofHours(1));
 
         Map<String, List<IResource>> producerResources = new HashMap<>();
         producerResources.put("output", Collections.singletonList(queue));
@@ -37,6 +41,7 @@ public class EndToEndServiceTest {
         Map<String, List<IResource>> consumerResources = new HashMap<>();
         consumerResources.put("input", Collections.singletonList(queue));
         consumerResources.put("dlq", Collections.singletonList(dlq));
+        consumerResources.put("idempotencyTracker", Collections.singletonList(idempotencyTracker));
         DummyConsumerService consumer = new DummyConsumerService("test-consumer", consumerConfig, consumerResources);
 
         consumer.start();
@@ -64,6 +69,7 @@ public class EndToEndServiceTest {
 
         InMemoryBlockingQueue<DummyMessage> queue = new InMemoryBlockingQueue<>("pause-queue", ConfigFactory.parseString("capacity=100"));
         IDeadLetterQueueResource<DummyMessage> dlq = new InMemoryDeadLetterQueue<>("pause-dlq", ConfigFactory.parseString("capacity=100"));
+        IIdempotencyTracker<Integer> idempotencyTracker = new InMemoryIdempotencyTracker<>(Duration.ofHours(1));
 
         Map<String, List<IResource>> producerResources = new HashMap<>();
         producerResources.put("output", Collections.singletonList(queue));
@@ -72,6 +78,7 @@ public class EndToEndServiceTest {
         Map<String, List<IResource>> consumerResources = new HashMap<>();
         consumerResources.put("input", Collections.singletonList(queue));
         consumerResources.put("dlq", Collections.singletonList(dlq));
+        consumerResources.put("idempotencyTracker", Collections.singletonList(idempotencyTracker));
         DummyConsumerService consumer = new DummyConsumerService("test-consumer", consumerConfig, consumerResources);
 
         consumer.start();

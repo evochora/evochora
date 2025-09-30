@@ -30,11 +30,27 @@ public class ServiceManagerTest {
         String maxMessages = longRunning ? "-1" : "10";
         return ConfigFactory.parseString(String.format("""
             pipeline {
+              autoStart = false
               startupSequence = ["consumer", "producer"]
               resources {
                 "test-queue" {
                   className = "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue"
                   options { capacity = 100 }
+                }
+                "consumer-dlq" {
+                  className = "org.evochora.datapipeline.resources.queues.InMemoryDeadLetterQueue"
+                  options {
+                    capacity = 50
+                    primaryQueueName = "test-queue"
+                  }
+                }
+                "consumer-idempotency-tracker" {
+                  className = "org.evochora.datapipeline.resources.idempotency.InMemoryIdempotencyTracker"
+                  options {
+                    ttlSeconds = 3600
+                    cleanupThresholdMessages = 100
+                    cleanupIntervalSeconds = 60
+                  }
                 }
               }
               services {
@@ -45,7 +61,11 @@ public class ServiceManagerTest {
                 }
                 consumer {
                   className = "org.evochora.datapipeline.services.DummyConsumerService"
-                  resources { input = "queue-in:test-queue" }
+                  resources {
+                    input = "queue-in:test-queue"
+                    idempotencyTracker = "tracker:consumer-idempotency-tracker"
+                    dlq = "queue-out:consumer-dlq"
+                  }
                   options { maxMessages = %s }
                 }
               }
@@ -58,7 +78,7 @@ public class ServiceManagerTest {
         ServiceManager serviceManager = new ServiceManager(createTestConfig(false));
         assertNotNull(serviceManager);
         assertEquals(2, serviceManager.getAllServiceStatus().size());
-        assertEquals(1, serviceManager.getMetrics().get("resources_total"));
+        assertEquals(3, serviceManager.getMetrics().get("resources_total")); // queue + dlq + idempotency tracker
         assertTrue(serviceManager.getAllServiceStatus().containsKey("producer"));
         assertTrue(serviceManager.getAllServiceStatus().containsKey("consumer"));
     }
@@ -188,7 +208,8 @@ public class ServiceManagerTest {
     @ExpectLog(level = LogLevel.INFO, messagePattern = "Instantiated resource 'test-queue' of type .*")
     @ExpectLog(level = LogLevel.INFO, messagePattern = "Instantiated service 'producer' of type .*")
     @ExpectLog(level = LogLevel.INFO, messagePattern = "Instantiated service 'consumer' of type .*")
-    @ExpectLog(level = LogLevel.INFO, messagePattern = "ServiceManager initialized with 1 resources and 2 services\\.")
+    @ExpectLog(level = LogLevel.INFO, messagePattern = "ServiceManager initialized with 3 resources and 2 services\\.")
+    @ExpectLog(level = LogLevel.INFO, messagePattern = "Auto-start is disabled\\. Services must be started manually via API\\.")
     void testInitializationLogging() {
         new ServiceManager(createTestConfig(false));
     }

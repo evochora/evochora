@@ -39,6 +39,20 @@ public class ServiceManager implements IMonitorable {
         }
 
         log.info("ServiceManager initialized with {} resources and {} services.", resources.size(), services.size());
+
+        // Auto-start services if configured
+        boolean autoStart = pipelineConfig.hasPath("autoStart")
+                ? pipelineConfig.getBoolean("autoStart")
+                : true; // default to true for production readiness
+
+        if (autoStart && !this.startupSequence.isEmpty()) {
+            log.info("Auto-starting services according to startup sequence...");
+            startAll();
+        } else if (!autoStart) {
+            log.info("Auto-start is disabled. Services must be started manually via API.");
+        } else {
+            log.info("No startup sequence defined. Services must be started manually via API.");
+        }
     }
 
     private Config loadPipelineConfig(Config rootConfig) {

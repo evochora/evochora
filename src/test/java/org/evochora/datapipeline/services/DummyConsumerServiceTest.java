@@ -3,13 +3,16 @@ package org.evochora.datapipeline.services;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.PipelineContracts.DummyMessage;
+import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.services.IService;
+import org.evochora.datapipeline.resources.idempotency.InMemoryIdempotencyTracker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -22,6 +25,7 @@ public class DummyConsumerServiceTest {
 
     private IInputQueueResource<DummyMessage> mockInputQueue;
     private IDeadLetterQueueResource<DummyMessage> mockDLQ;
+    private IIdempotencyTracker<Integer> idempotencyTracker;
     private Map<String, List<IResource>> resources;
 
     @SuppressWarnings("unchecked")
@@ -31,9 +35,13 @@ public class DummyConsumerServiceTest {
         mockDLQ = mock(IDeadLetterQueueResource.class);
         when(mockDLQ.offer(any())).thenReturn(true); // DLQ accepts messages
 
+        // Use real idempotency tracker for behavior testing
+        idempotencyTracker = new InMemoryIdempotencyTracker<>(Duration.ofHours(1));
+
         resources = new HashMap<>();
         resources.put("input", Collections.singletonList(mockInputQueue));
         resources.put("dlq", Collections.singletonList(mockDLQ)); // Add DLQ to avoid warning
+        resources.put("idempotencyTracker", Collections.singletonList(idempotencyTracker));
     }
 
     @Test

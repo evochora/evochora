@@ -6,10 +6,9 @@ import org.evochora.datapipeline.api.contracts.PipelineContracts.DummyMessage;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IInputQueueResource;
-import org.evochora.datapipeline.api.services.IIdempotencyTracker;
-import org.evochora.datapipeline.services.idempotency.InMemoryIdempotencyTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,13 +32,13 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li><b>logReceivedMessages</b>: Whether to log received messages at DEBUG level (default: false).</li>
  *   <li><b>maxMessages</b>: Maximum messages to process, -1 for unlimited (default: -1).</li>
  *   <li><b>throughputWindowSeconds</b>: Time window in seconds for throughput calculation (default: 5).</li>
- *   <li><b>idempotencyTtlSeconds</b>: Time to track processed message IDs in seconds (default: 3600).</li>
  *   <li><b>maxRetries</b>: Maximum processing attempts before sending to DLQ (default: 3).</li>
  * </ul>
  *
  * <h3>Resources:</h3>
  * <ul>
  *   <li><b>input</b>: IInputQueueResource&lt;DummyMessage&gt; - Required input queue</li>
+ *   <li><b>idempotencyTracker</b>: IIdempotencyTracker&lt;Integer&gt; - Required idempotency tracker</li>
  *   <li><b>dlq</b>: IDeadLetterQueueResource&lt;DummyMessage&gt; - Optional dead letter queue</li>
  * </ul>
  */
@@ -72,12 +71,9 @@ public class DummyConsumerService extends AbstractService implements IMonitorabl
         this.throughputWindowSeconds = options.hasPath("throughputWindowSeconds") ? options.getInt("throughputWindowSeconds") : 5;
         this.maxRetries = options.hasPath("maxRetries") ? options.getInt("maxRetries") : 3;
 
-        // Initialize idempotency tracker
-        long idempotencyTtlSeconds = options.hasPath("idempotencyTtlSeconds") ? options.getLong("idempotencyTtlSeconds") : 3600L;
-        this.idempotencyTracker = new InMemoryIdempotencyTracker<>(Duration.ofSeconds(idempotencyTtlSeconds));
-
-        // Get required and optional resources
+        // Get required resources
         this.inputQueue = getRequiredResource("input", IInputQueueResource.class);
+        this.idempotencyTracker = getRequiredResource("idempotencyTracker", IIdempotencyTracker.class);
 
         // Get optional DLQ resource using try-catch pattern
         IDeadLetterQueueResource<DummyMessage> dlq = null;

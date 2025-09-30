@@ -24,11 +24,27 @@ public class ServiceManagerIntegrationTest {
     private Config createIntegrationTestConfig() {
         return ConfigFactory.parseString("""
             pipeline {
+              autoStart = false
               startupSequence = ["consumer", "producer"]
               resources {
                 "message-queue" {
                   className = "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue"
                   options { capacity = 100 }
+                }
+                "consumer-dlq" {
+                  className = "org.evochora.datapipeline.resources.queues.InMemoryDeadLetterQueue"
+                  options {
+                    capacity = 50
+                    primaryQueueName = "message-queue"
+                  }
+                }
+                "consumer-idempotency-tracker" {
+                  className = "org.evochora.datapipeline.resources.idempotency.InMemoryIdempotencyTracker"
+                  options {
+                    ttlSeconds = 3600
+                    cleanupThresholdMessages = 100
+                    cleanupIntervalSeconds = 60
+                  }
                 }
               }
               services {
@@ -39,7 +55,11 @@ public class ServiceManagerIntegrationTest {
                 }
                 consumer {
                   className = "org.evochora.datapipeline.services.DummyConsumerService"
-                  resources { input = "queue-in:message-queue" }
+                  resources {
+                    input = "queue-in:message-queue"
+                    idempotencyTracker = "tracker:consumer-idempotency-tracker"
+                    dlq = "queue-out:consumer-dlq"
+                  }
                   options { processingDelayMs = 5, maxMessages = 50 }
                 }
               }
