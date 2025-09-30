@@ -59,10 +59,18 @@ public class CommandLineInterface implements Callable<Integer> {
 
         // Configuration loading
         final File confFile = (this.configFile != null) ? this.configFile : new File(CONFIG_FILE_NAME);
-        if (confFile.exists()) {
-            this.config = ConfigFactory.parseFile(confFile).withFallback(ConfigFactory.load());
-        } else {
-            this.config = ConfigFactory.load();
+        try {
+            if (confFile.exists()) {
+                this.config = ConfigFactory.parseFile(confFile).withFallback(ConfigFactory.load());
+            } else {
+                this.config = ConfigFactory.load();
+            }
+        } catch (com.typesafe.config.ConfigException e) {
+            // Log config error and exit gracefully
+            final Logger errorLogger = LoggerFactory.getLogger(CommandLineInterface.class);
+            errorLogger.error("Failed to load configuration from {}: {}", confFile.getAbsolutePath(), e.getMessage());
+            System.exit(1);
+            return; // Unreachable, but satisfies compiler
         }
 
         // Logging setup
