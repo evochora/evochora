@@ -99,15 +99,23 @@ public final class LoggingConfigurator {
 
     /**
      * Configures the default log level for all loggers.
+     * Skips configuration in test environment to preserve logback-test.xml settings.
      */
     private static void configureDefaultLevel(final Config loggingConfig, final LoggerContext context) {
+        // Skip default level configuration if logback-test.xml exists (test environment)
+        // This allows test-specific logging configuration to take precedence
+        if (LoggingConfigurator.class.getClassLoader().getResource("logback-test.xml") != null) {
+            LOGGER.debug("Skipping default level configuration (test environment detected via logback-test.xml).");
+            return;
+        }
+
         if (loggingConfig.hasPath(DEFAULT_LEVEL_KEY)) {
             final String levelStr = loggingConfig.getString(DEFAULT_LEVEL_KEY);
             final Level level = Level.toLevel(levelStr, Level.WARN);
-            
+
             final Logger rootLogger = context.getLogger(Logger.ROOT_LOGGER_NAME);
             rootLogger.setLevel(level);
-            
+
             LOGGER.debug("Configured default log level: {}", level);
         }
     }

@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
+@AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
 public class ServiceManagerTest {
 
     private Config createTestConfig(boolean longRunning) {

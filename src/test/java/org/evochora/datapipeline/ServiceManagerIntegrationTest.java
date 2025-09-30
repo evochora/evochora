@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
+@AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
 public class ServiceManagerIntegrationTest {
 
     private Config createIntegrationTestConfig() {
