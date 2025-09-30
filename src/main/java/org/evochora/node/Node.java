@@ -149,8 +149,8 @@ public final class Node {
                     throw new IllegalArgumentException("Class " + className + " does not implement IProcess.");
                 }
 
-                final Constructor<?> constructor = processClass.getConstructor(ServiceRegistry.class, Config.class);
-                final IProcess processInstance = (IProcess) constructor.newInstance(serviceRegistry, options);
+                final Constructor<?> constructor = processClass.getConstructor(String.class, ServiceRegistry.class, Config.class);
+                final IProcess processInstance = (IProcess) constructor.newInstance(processName, serviceRegistry, options);
 
                 managedProcesses.put(processName, processInstance);
                 LOGGER.debug("Successfully instantiated process '{}'.", processName);

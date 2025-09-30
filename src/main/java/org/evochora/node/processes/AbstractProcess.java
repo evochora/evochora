@@ -13,15 +13,27 @@ public abstract class AbstractProcess implements IProcess {
 
     protected final ServiceRegistry registry;
     protected final Config options;
+    protected final String processName;
 
     /**
      * Constructs a new AbstractProcess.
      *
+     * @param processName The name of this process instance from the configuration.
      * @param registry The central service registry for accessing shared services.
      * @param options  The HOCON configuration specific to this process instance.
      */
-    public AbstractProcess(final ServiceRegistry registry, final Config options) {
+    public AbstractProcess(final String processName, final ServiceRegistry registry, final Config options) {
+        this.processName = processName;
         this.registry = registry;
         this.options = options;
+    }
+
+    /**
+     * Gets the name of this process instance.
+     *
+     * @return The process name.
+     */
+    public String getProcessName() {
+        return processName;
     }
 }

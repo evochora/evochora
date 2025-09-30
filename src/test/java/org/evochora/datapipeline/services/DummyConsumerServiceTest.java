@@ -4,11 +4,11 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.PipelineContracts.DummyMessage;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.wrappers.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.services.IService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.stubbing.OngoingStubbing;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -21,14 +21,19 @@ import static org.mockito.Mockito.*;
 public class DummyConsumerServiceTest {
 
     private IInputQueueResource<DummyMessage> mockInputQueue;
+    private IDeadLetterQueueResource<DummyMessage> mockDLQ;
     private Map<String, List<IResource>> resources;
 
     @SuppressWarnings("unchecked")
     @BeforeEach
     void setUp() {
         mockInputQueue = mock(IInputQueueResource.class);
+        mockDLQ = mock(IDeadLetterQueueResource.class);
+        when(mockDLQ.offer(any())).thenReturn(true); // DLQ accepts messages
+
         resources = new HashMap<>();
         resources.put("input", Collections.singletonList(mockInputQueue));
+        resources.put("dlq", Collections.singletonList(mockDLQ)); // Add DLQ to avoid warning
     }
 
     @Test
@@ -43,9 +48,10 @@ public class DummyConsumerServiceTest {
         Config config = ConfigFactory.parseString("maxMessages=2");
         DummyConsumerService service = new DummyConsumerService("test-consumer", config, resources);
 
+        // Use unique IDs for idempotency tracking
         when(mockInputQueue.take())
-                .thenReturn(DummyMessage.newBuilder().setContent("Msg1").build())
-                .thenReturn(DummyMessage.newBuilder().setContent("Msg2").build());
+                .thenReturn(DummyMessage.newBuilder().setId(1).setContent("Msg1").build())
+                .thenReturn(DummyMessage.newBuilder().setId(2).setContent("Msg2").build());
 
         service.start();
 
@@ -58,6 +64,7 @@ public class DummyConsumerServiceTest {
         verify(mockInputQueue, times(2)).take();
         Map<String, Number> metrics = service.getMetrics();
         assertEquals(2L, metrics.get("messages_received").longValue());
+        assertEquals(0L, metrics.get("messages_duplicate").longValue()); // No duplicates
     }
 
     @Test
@@ -90,10 +97,11 @@ public class DummyConsumerServiceTest {
         Config config = ConfigFactory.parseString("maxMessages=3");
         DummyConsumerService service = new DummyConsumerService("test-consumer", config, resources);
 
+        // Use unique IDs to avoid idempotency filtering
         when(mockInputQueue.take())
-                .thenReturn(DummyMessage.getDefaultInstance())
-                .thenReturn(DummyMessage.getDefaultInstance())
-                .thenReturn(DummyMessage.getDefaultInstance());
+                .thenReturn(DummyMessage.newBuilder().setId(10).build())
+                .thenReturn(DummyMessage.newBuilder().setId(11).build())
+                .thenReturn(DummyMessage.newBuilder().setId(12).build());
 
         service.start();
 
@@ -106,16 +114,48 @@ public class DummyConsumerServiceTest {
         Map<String, Number> metrics = service.getMetrics();
         assertEquals(3L, metrics.get("messages_received").longValue());
         assertTrue(metrics.get("throughput_per_sec").doubleValue() >= 0);
+        // Verify new metrics exist
+        assertNotNull(metrics.get("messages_duplicate"));
+        assertNotNull(metrics.get("idempotency_tracker_size"));
     }
 
     @Test
     void testMaxMessages() throws InterruptedException {
         Config config = ConfigFactory.parseString("maxMessages=2");
         DummyConsumerService service = new DummyConsumerService("test-consumer", config, resources);
-        when(mockInputQueue.take()).thenReturn(DummyMessage.getDefaultInstance());
+        // Use unique IDs so messages aren't filtered as duplicates
+        when(mockInputQueue.take())
+                .thenReturn(DummyMessage.newBuilder().setId(20).build())
+                .thenReturn(DummyMessage.newBuilder().setId(21).build());
         service.start();
         Thread.sleep(100); // Let service run and stop itself
         verify(mockInputQueue, times(2)).take();
         assertEquals(IService.State.STOPPED, service.getCurrentState());
+    }
+
+    @Test
+    void testIdempotency_duplicatesAreFiltered() throws InterruptedException {
+        Config config = ConfigFactory.parseString("maxMessages=3");
+        DummyConsumerService service = new DummyConsumerService("test-consumer", config, resources);
+
+        // Send same ID twice - second one should be filtered
+        when(mockInputQueue.take())
+                .thenReturn(DummyMessage.newBuilder().setId(100).setContent("First").build())
+                .thenReturn(DummyMessage.newBuilder().setId(101).setContent("Second").build())
+                .thenReturn(DummyMessage.newBuilder().setId(100).setContent("Duplicate of first").build()) // Duplicate!
+                .thenReturn(DummyMessage.newBuilder().setId(102).setContent("Third").build());
+
+        service.start();
+
+        long deadline = System.currentTimeMillis() + 1000;
+        while (service.getCurrentState() != IService.State.STOPPED && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+
+        Map<String, Number> metrics = service.getMetrics();
+        assertEquals(4L, metrics.get("messages_received").longValue()); // All 4 received from queue
+        assertEquals(1L, metrics.get("messages_duplicate").longValue()); // One was duplicate
+        // Idempotency tracker should have 3 unique IDs (100, 101, 102)
+        assertEquals(3L, metrics.get("idempotency_tracker_size").longValue());
     }
 }

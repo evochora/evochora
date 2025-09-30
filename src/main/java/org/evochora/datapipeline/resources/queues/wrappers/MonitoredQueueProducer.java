@@ -1,19 +1,22 @@
 package org.evochora.datapipeline.resources.queues.wrappers;
 
 import org.evochora.datapipeline.api.resources.IMonitorable;
+import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IOutputQueueResource;
 import org.evochora.datapipeline.resources.AbstractResource;
-import org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue;
 
+import java.time.Instant;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
 
 /**
  * A wrapper for an {@link IOutputQueueResource} that adds monitoring capabilities.
@@ -27,28 +30,67 @@ public class MonitoredQueueProducer<T> extends AbstractResource implements IOutp
     private final IOutputQueueResource<T> delegate;
     private final ResourceContext context;
     private final AtomicLong messagesSent = new AtomicLong(0);
-    private final int window;
-    private final InMemoryBlockingQueue<T> queue;
+    private final int windowSeconds;
+    private final ConcurrentHashMap<Long, Instant> productionTimestamps = new ConcurrentHashMap<>();
+    private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
 
     /**
      * Constructs a new MonitoredQueueProducer.
+     * This wrapper is now fully abstracted and works with any {@link IOutputQueueResource} implementation,
+     * supporting both in-process and cloud deployment modes.
      *
      * @param delegate The underlying queue resource to wrap.
      * @param context  The resource context for this specific producer, used for configuration and monitoring.
-     * @throws IllegalArgumentException if the delegate is not an instance of {@link InMemoryBlockingQueue},
-     *                                  as this implementation currently relies on its specific monitoring features.
      */
     public MonitoredQueueProducer(IOutputQueueResource<T> delegate, ResourceContext context) {
         super(((AbstractResource) delegate).getResourceName(), ((AbstractResource) delegate).getOptions());
         this.delegate = delegate;
         this.context = context;
-        // This is a temporary workaround until a more generic monitoring mechanism is in place.
-        if (delegate instanceof InMemoryBlockingQueue) {
-            this.queue = (InMemoryBlockingQueue<T>) delegate;
-            this.window = Integer.parseInt(context.parameters().getOrDefault("window", String.valueOf(this.queue.getThroughputWindowSeconds())));
-        } else {
-            throw new IllegalArgumentException("MonitoredQueueProducer currently only supports InMemoryBlockingQueue");
+        this.windowSeconds = Integer.parseInt(context.parameters().getOrDefault("window", "5"));
+    }
+
+    /**
+     * Records a production event for throughput calculation.
+     */
+    private void recordProduction() {
+        messagesSent.incrementAndGet();
+        productionTimestamps.put(System.nanoTime(), Instant.now());
+        cleanupOldTimestamps();
+    }
+
+    /**
+     * Records multiple production events for throughput calculation.
+     */
+    private void recordProductions(int count) {
+        messagesSent.addAndGet(count);
+        Instant now = Instant.now();
+        for (int i = 0; i < count; i++) {
+            productionTimestamps.put(System.nanoTime() + i, now);
         }
+        cleanupOldTimestamps();
+    }
+
+    /**
+     * Removes timestamps older than the monitoring window to prevent unbounded memory growth.
+     */
+    private void cleanupOldTimestamps() {
+        if (productionTimestamps.size() > 10000) {
+            Instant cutoff = Instant.now().minusSeconds(windowSeconds * 2);
+            productionTimestamps.entrySet().removeIf(entry -> entry.getValue().isBefore(cutoff));
+        }
+    }
+
+    /**
+     * Calculates the throughput (messages per second) based on messages sent within the configured window.
+     *
+     * @return The throughput in messages per second.
+     */
+    private double calculateThroughput() {
+        Instant windowStart = Instant.now().minusSeconds(windowSeconds);
+        long count = productionTimestamps.values().stream()
+                .filter(t -> t.isAfter(windowStart))
+                .count();
+        return (double) count / windowSeconds;
     }
 
     /**
@@ -58,11 +100,16 @@ public class MonitoredQueueProducer<T> extends AbstractResource implements IOutp
      */
     @Override
     public int offerAll(Collection<T> elements) {
-        int count = delegate.offerAll(elements);
-        if (count > 0) {
-            messagesSent.addAndGet(count);
+        try {
+            int count = delegate.offerAll(elements);
+            if (count > 0) {
+                recordProductions(count);
+            }
+            return count;
+        } catch (Exception e) {
+            errors.add(new OperationalError(Instant.now(), "OFFER_ALL_ERROR", "Error offering elements to queue", e.getMessage()));
+            throw e;
         }
-        return count;
     }
 
     /**
@@ -71,11 +118,16 @@ public class MonitoredQueueProducer<T> extends AbstractResource implements IOutp
      */
     @Override
     public boolean offer(T element) {
-        boolean success = delegate.offer(element);
-        if (success) {
-            messagesSent.incrementAndGet();
+        try {
+            boolean success = delegate.offer(element);
+            if (success) {
+                recordProduction();
+            }
+            return success;
+        } catch (Exception e) {
+            errors.add(new OperationalError(Instant.now(), "OFFER_ERROR", "Error offering element to queue", e.getMessage()));
+            throw e;
         }
-        return success;
     }
 
     /**
@@ -84,8 +136,15 @@ public class MonitoredQueueProducer<T> extends AbstractResource implements IOutp
      */
     @Override
     public void put(T element) throws InterruptedException {
-        delegate.put(element);
-        messagesSent.incrementAndGet();
+        try {
+            delegate.put(element);
+            recordProduction();
+        } catch (InterruptedException e) {
+            throw e;
+        } catch (Exception e) {
+            errors.add(new OperationalError(Instant.now(), "PUT_ERROR", "Error putting element to queue", e.getMessage()));
+            throw e;
+        }
     }
 
     /**
@@ -94,77 +153,99 @@ public class MonitoredQueueProducer<T> extends AbstractResource implements IOutp
      */
     @Override
     public boolean offer(T element, long timeout, TimeUnit unit) throws InterruptedException {
-        boolean success = delegate.offer(element, timeout, unit);
-        if (success) {
-            messagesSent.incrementAndGet();
+        try {
+            boolean success = delegate.offer(element, timeout, unit);
+            if (success) {
+                recordProduction();
+            }
+            return success;
+        } catch (InterruptedException e) {
+            throw e;
+        } catch (Exception e) {
+            errors.add(new OperationalError(Instant.now(), "OFFER_TIMEOUT_ERROR", "Error offering element to queue with timeout", e.getMessage()));
+            throw e;
         }
-        return success;
     }
 
     /**
      * {@inheritDoc}
      * This implementation increments the sent messages counter by the number of elements in the collection
-     * after they are all successfully put. Note: If this operation is interrupted, the count may not be
-     * perfectly accurate, as the underlying operation is not atomic.
+     * after they are all successfully put.
      */
     @Override
     public void putAll(Collection<T> elements) throws InterruptedException {
-        delegate.putAll(elements);
-        messagesSent.addAndGet(elements.size());
+        try {
+            delegate.putAll(elements);
+            recordProductions(elements.size());
+        } catch (InterruptedException e) {
+            throw e;
+        } catch (Exception e) {
+            errors.add(new OperationalError(Instant.now(), "PUT_ALL_ERROR", "Error putting elements to queue", e.getMessage()));
+            throw e;
+        }
     }
 
     /**
      * {@inheritDoc}
-     * This implementation provides metrics specific to this producer context.
+     * This implementation provides metrics specific to this producer context, calculated independently
+     * of the underlying resource.
      */
     @Override
     public Map<String, Number> getMetrics() {
         return Map.of(
                 "messages_sent", messagesSent.get(),
-                "throughput_per_sec", queue.calculateThroughput(this.window)
+                "throughput_per_sec", calculateThroughput()
         );
     }
 
     /**
      * {@inheritDoc}
-     * This implementation filters errors from the underlying resource to show only those relevant to production.
+     * This implementation returns errors tracked by this wrapper, providing proper isolation
+     * from the underlying resource's error tracking.
      */
     @Override
     public List<OperationalError> getErrors() {
-        // This filtering is a temporary solution. A more robust error tagging system should be implemented.
-        return queue.getErrors().stream()
-                .filter(e -> {
-                    String msg = e.message().toUpperCase();
-                    return msg.contains("SEND") || msg.contains("OFFER") || msg.contains("PUT");
-                })
-                .collect(Collectors.toList());
+        return Collections.unmodifiableList(List.copyOf(errors));
     }
 
     /**
      * {@inheritDoc}
-     * This implementation clears errors from the underlying resource that are relevant to production.
+     * This implementation clears only the errors tracked by this wrapper.
      */
     @Override
     public void clearErrors() {
-        queue.clearErrors(error -> {
-            String msg = error.message().toUpperCase();
-            return msg.contains("SEND") || msg.contains("OFFER") || msg.contains("PUT");
-        });
+        errors.clear();
     }
 
     /**
      * {@inheritDoc}
+     * This implementation checks health based on the error rate in this wrapper.
+     * If the delegate implements {@link IMonitorable}, we also consider its health status.
      */
     @Override
     public boolean isHealthy() {
-        return queue.isHealthy();
+        // Consider unhealthy if we have many recent errors
+        if (errors.size() > 100) {
+            return false;
+        }
+
+        // If delegate is monitorable, also check its health
+        if (delegate instanceof IMonitorable) {
+            return ((IMonitorable) delegate).isHealthy();
+        }
+
+        return true;
     }
 
     /**
      * {@inheritDoc}
+     * This implementation delegates to the underlying resource if it implements IResource.
      */
     @Override
-    public UsageState getUsageState(String usageType) {
-        return queue.getUsageState(context.usageType());
+    public IResource.UsageState getUsageState(String usageType) {
+        if (delegate instanceof IResource) {
+            return ((IResource) delegate).getUsageState(usageType);
+        }
+        return IResource.UsageState.ACTIVE;
     }
 }

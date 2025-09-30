@@ -37,11 +37,12 @@ public class HttpServerProcess extends AbstractProcess {
     /**
      * Constructs a new HttpServerProcess.
      *
+     * @param processName The name of this process instance from the configuration.
      * @param registry The central service registry.
      * @param options  The configuration for this process, including network settings and routes.
      */
-    public HttpServerProcess(final ServiceRegistry registry, final Config options) {
-        super(registry, options);
+    public HttpServerProcess(final String processName, final ServiceRegistry registry, final Config options) {
+        super(processName, registry, options);
         parseRoutes();
     }
 
@@ -61,6 +62,13 @@ public class HttpServerProcess extends AbstractProcess {
                 if (LOGGER.isDebugEnabled()) {
                     LOGGER.debug("Request: {} {} (completed in {} ms)", ctx.method(), ctx.path(), ms);
                 }
+            });
+            
+            // Configure custom thread pool with process name
+            config.jetty.server(server -> {
+                org.eclipse.jetty.util.thread.QueuedThreadPool threadPool = new org.eclipse.jetty.util.thread.QueuedThreadPool();
+                threadPool.setName(processName + "Pool");
+                server.setThreadPool(threadPool);
             });
 
             // Configure static file routes from the parsed definitions

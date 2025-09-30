@@ -4,8 +4,10 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.PipelineContracts.DummyMessage;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.wrappers.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue;
+import org.evochora.datapipeline.resources.queues.InMemoryDeadLetterQueue;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -26,6 +28,7 @@ public class EndToEndServiceTest {
         Config consumerConfig = ConfigFactory.parseString("maxMessages=20, processingDelayMs=5");
 
         InMemoryBlockingQueue<DummyMessage> queue = new InMemoryBlockingQueue<>("e2e-queue", ConfigFactory.parseString("capacity=10"));
+        IDeadLetterQueueResource<DummyMessage> dlq = new InMemoryDeadLetterQueue<>("e2e-dlq", ConfigFactory.parseString("capacity=100"));
 
         Map<String, List<IResource>> producerResources = new HashMap<>();
         producerResources.put("output", Collections.singletonList(queue));
@@ -33,6 +36,7 @@ public class EndToEndServiceTest {
 
         Map<String, List<IResource>> consumerResources = new HashMap<>();
         consumerResources.put("input", Collections.singletonList(queue));
+        consumerResources.put("dlq", Collections.singletonList(dlq));
         DummyConsumerService consumer = new DummyConsumerService("test-consumer", consumerConfig, consumerResources);
 
         consumer.start();
@@ -59,6 +63,7 @@ public class EndToEndServiceTest {
         Config consumerConfig = ConfigFactory.empty();
 
         InMemoryBlockingQueue<DummyMessage> queue = new InMemoryBlockingQueue<>("pause-queue", ConfigFactory.parseString("capacity=100"));
+        IDeadLetterQueueResource<DummyMessage> dlq = new InMemoryDeadLetterQueue<>("pause-dlq", ConfigFactory.parseString("capacity=100"));
 
         Map<String, List<IResource>> producerResources = new HashMap<>();
         producerResources.put("output", Collections.singletonList(queue));
@@ -66,6 +71,7 @@ public class EndToEndServiceTest {
 
         Map<String, List<IResource>> consumerResources = new HashMap<>();
         consumerResources.put("input", Collections.singletonList(queue));
+        consumerResources.put("dlq", Collections.singletonList(dlq));
         DummyConsumerService consumer = new DummyConsumerService("test-consumer", consumerConfig, consumerResources);
 
         consumer.start();

@@ -1,20 +1,23 @@
 package org.evochora.datapipeline.resources.queues.wrappers;
 
 import org.evochora.datapipeline.api.resources.IMonitorable;
+import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IInputQueueResource;
 import org.evochora.datapipeline.resources.AbstractResource;
-import org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue;
 
+import java.time.Instant;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
 
 /**
  * A wrapper for an {@link IInputQueueResource} that adds monitoring capabilities.
@@ -28,27 +31,54 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
     private final IInputQueueResource<T> delegate;
     private final ResourceContext context;
     private final AtomicLong messagesConsumed = new AtomicLong(0);
-    private final int window;
-    private final InMemoryBlockingQueue<T> queue;
+    private final int windowSeconds;
+    private final ConcurrentHashMap<Long, Instant> consumptionTimestamps = new ConcurrentHashMap<>();
+    private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
 
     /**
      * Constructs a new MonitoredQueueConsumer.
+     * This wrapper is now fully abstracted and works with any {@link IInputQueueResource} implementation,
+     * supporting both in-process and cloud deployment modes.
      *
      * @param delegate The underlying queue resource to wrap.
      * @param context  The resource context for this specific consumer, used for configuration and monitoring.
-     * @throws IllegalArgumentException if the delegate is not an instance of {@link InMemoryBlockingQueue},
-     *                                  as this implementation currently relies on its specific monitoring features.
      */
     public MonitoredQueueConsumer(IInputQueueResource<T> delegate, ResourceContext context) {
         super(((AbstractResource) delegate).getResourceName(), ((AbstractResource) delegate).getOptions());
         this.delegate = delegate;
         this.context = context;
-        // This is a temporary workaround until a more generic monitoring mechanism is in place.
-        if (delegate instanceof InMemoryBlockingQueue) {
-            this.queue = (InMemoryBlockingQueue<T>) delegate;
-            this.window = Integer.parseInt(context.parameters().getOrDefault("window", String.valueOf(this.queue.getThroughputWindowSeconds())));
-        } else {
-            throw new IllegalArgumentException("MonitoredQueueConsumer currently only supports InMemoryBlockingQueue");
+        this.windowSeconds = Integer.parseInt(context.parameters().getOrDefault("window", "5"));
+    }
+
+    /**
+     * Records a consumption event for throughput calculation.
+     */
+    private void recordConsumption() {
+        messagesConsumed.incrementAndGet();
+        consumptionTimestamps.put(System.nanoTime(), Instant.now());
+        // Clean up old timestamps to prevent memory leaks
+        cleanupOldTimestamps();
+    }
+
+    /**
+     * Records multiple consumption events for throughput calculation.
+     */
+    private void recordConsumptions(int count) {
+        messagesConsumed.addAndGet(count);
+        Instant now = Instant.now();
+        for (int i = 0; i < count; i++) {
+            consumptionTimestamps.put(System.nanoTime() + i, now);
+        }
+        cleanupOldTimestamps();
+    }
+
+    /**
+     * Removes timestamps older than the monitoring window to prevent unbounded memory growth.
+     */
+    private void cleanupOldTimestamps() {
+        if (consumptionTimestamps.size() > 10000) {
+            Instant cutoff = Instant.now().minusSeconds(windowSeconds * 2);
+            consumptionTimestamps.entrySet().removeIf(entry -> entry.getValue().isBefore(cutoff));
         }
     }
 
@@ -58,11 +88,16 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
      */
     @Override
     public Optional<T> poll() {
-        Optional<T> result = delegate.poll();
-        if (result.isPresent()) {
-            messagesConsumed.incrementAndGet();
+        try {
+            Optional<T> result = delegate.poll();
+            if (result.isPresent()) {
+                recordConsumption();
+            }
+            return result;
+        } catch (Exception e) {
+            errors.add(new OperationalError(Instant.now(), "POLL_ERROR", "Error polling from queue", e.getMessage()));
+            throw e;
         }
-        return result;
     }
 
     /**
@@ -71,9 +106,16 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
      */
     @Override
     public T take() throws InterruptedException {
-        T result = delegate.take();
-        messagesConsumed.incrementAndGet();
-        return result;
+        try {
+            T result = delegate.take();
+            recordConsumption();
+            return result;
+        } catch (InterruptedException e) {
+            throw e;
+        } catch (Exception e) {
+            errors.add(new OperationalError(Instant.now(), "TAKE_ERROR", "Error taking from queue", e.getMessage()));
+            throw e;
+        }
     }
 
     /**
@@ -82,11 +124,18 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
      */
     @Override
     public Optional<T> poll(long timeout, TimeUnit unit) throws InterruptedException {
-        Optional<T> result = delegate.poll(timeout, unit);
-        if (result.isPresent()) {
-            messagesConsumed.incrementAndGet();
+        try {
+            Optional<T> result = delegate.poll(timeout, unit);
+            if (result.isPresent()) {
+                recordConsumption();
+            }
+            return result;
+        } catch (InterruptedException e) {
+            throw e;
+        } catch (Exception e) {
+            errors.add(new OperationalError(Instant.now(), "POLL_TIMEOUT_ERROR", "Error polling from queue with timeout", e.getMessage()));
+            throw e;
         }
-        return result;
     }
 
     /**
@@ -95,11 +144,16 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
      */
     @Override
     public int drainTo(Collection<? super T> collection, int maxElements) {
-        int count = delegate.drainTo(collection, maxElements);
-        if (count > 0) {
-            messagesConsumed.addAndGet(count);
+        try {
+            int count = delegate.drainTo(collection, maxElements);
+            if (count > 0) {
+                recordConsumptions(count);
+            }
+            return count;
+        } catch (Exception e) {
+            errors.add(new OperationalError(Instant.now(), "DRAIN_ERROR", "Error draining from queue", e.getMessage()));
+            throw e;
         }
-        return count;
     }
 
     /**
@@ -108,65 +162,95 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
      */
     @Override
     public int drainTo(Collection<? super T> collection, int maxElements, long timeout, TimeUnit unit) throws InterruptedException {
-        int count = delegate.drainTo(collection, maxElements, timeout, unit);
-        if (count > 0) {
-            messagesConsumed.addAndGet(count);
+        try {
+            int count = delegate.drainTo(collection, maxElements, timeout, unit);
+            if (count > 0) {
+                recordConsumptions(count);
+            }
+            return count;
+        } catch (InterruptedException e) {
+            throw e;
+        } catch (Exception e) {
+            errors.add(new OperationalError(Instant.now(), "DRAIN_TIMEOUT_ERROR", "Error draining from queue with timeout", e.getMessage()));
+            throw e;
         }
-        return count;
+    }
+
+    /**
+     * Calculates the throughput (messages per second) based on messages consumed within the configured window.
+     *
+     * @return The throughput in messages per second.
+     */
+    private double calculateThroughput() {
+        Instant windowStart = Instant.now().minusSeconds(windowSeconds);
+        long count = consumptionTimestamps.values().stream()
+                .filter(t -> t.isAfter(windowStart))
+                .count();
+        return (double) count / windowSeconds;
     }
 
     /**
      * {@inheritDoc}
-     * This implementation provides metrics specific to this consumer context.
+     * This implementation provides metrics specific to this consumer context, calculated independently
+     * of the underlying resource.
      */
     @Override
     public Map<String, Number> getMetrics() {
         return Map.of(
                 "messages_consumed", messagesConsumed.get(),
-                "throughput_per_sec", queue.calculateThroughput(this.window)
+                "throughput_per_sec", calculateThroughput()
         );
     }
 
     /**
      * {@inheritDoc}
-     * This implementation filters errors from the underlying resource to show only those relevant to consumption.
+     * This implementation returns errors tracked by this wrapper, providing proper isolation
+     * from the underlying resource's error tracking.
      */
     @Override
     public List<OperationalError> getErrors() {
-        // This filtering is a temporary solution. A more robust error tagging system should be implemented.
-        return queue.getErrors().stream()
-                .filter(e -> {
-                    String msg = e.message().toUpperCase();
-                    return msg.contains("RECEIVE") || msg.contains("POLL") || msg.contains("TAKE");
-                })
-                .collect(Collectors.toList());
+        return Collections.unmodifiableList(List.copyOf(errors));
     }
 
     /**
      * {@inheritDoc}
-     * This implementation clears errors from the underlying resource that are relevant to consumption.
+     * This implementation clears only the errors tracked by this wrapper.
      */
     @Override
     public void clearErrors() {
-        queue.clearErrors(error -> {
-            String msg = error.message().toUpperCase();
-            return msg.contains("RECEIVE") || msg.contains("POLL") || msg.contains("TAKE");
-        });
+        errors.clear();
     }
 
     /**
      * {@inheritDoc}
+     * This implementation checks health based on the error rate in this wrapper.
+     * If the delegate implements {@link IMonitorable}, we also consider its health status.
      */
     @Override
     public boolean isHealthy() {
-        return queue.isHealthy();
+        // Consider unhealthy if we have many recent errors
+        if (errors.size() > 100) {
+            return false;
+        }
+
+        // If delegate is monitorable, also check its health
+        if (delegate instanceof IMonitorable) {
+            return ((IMonitorable) delegate).isHealthy();
+        }
+
+        return true;
     }
 
     /**
      * {@inheritDoc}
+     * This implementation delegates to the underlying resource if it implements IResource.
      */
     @Override
-    public UsageState getUsageState(String usageType) {
-        return queue.getUsageState(context.usageType());
+    public IResource.UsageState getUsageState(String usageType) {
+        if (delegate instanceof IResource) {
+            return ((IResource) delegate).getUsageState(usageType);
+        }
+        // Default to ACTIVE if delegate doesn't support usage state
+        return IResource.UsageState.ACTIVE;
     }
 }

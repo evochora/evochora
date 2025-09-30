@@ -100,7 +100,8 @@ public class DummyProducerService extends AbstractService implements IMonitorabl
 
     @Override
     public List<OperationalError> getErrors() {
-        return new ArrayList<>(errors);
+        // Return an immutable copy to ensure thread safety
+        return Collections.unmodifiableList(List.copyOf(errors));
     }
 
     @Override

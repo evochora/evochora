@@ -10,3 +10,39 @@ message DummyMessage {
     string content = 2;
     int64 timestamp = 3;
 }
+
+/**
+ * A message that has failed processing and is being sent to a Dead Letter Queue.
+ * This message wraps the original message with failure metadata for debugging and reprocessing.
+ */
+message DeadLetterMessage {
+    // The serialized original message that failed processing
+    bytes original_message = 1;
+
+    // The type name of the original message for deserialization
+    string message_type = 2;
+
+    // Unix timestamp (milliseconds) of the first processing failure
+    int64 first_failure_time_ms = 3;
+
+    // Unix timestamp (milliseconds) of the most recent processing failure
+    int64 last_failure_time_ms = 4;
+
+    // Number of times processing was attempted before giving up
+    int32 retry_count = 5;
+
+    // Description of why the message failed processing
+    string failure_reason = 6;
+
+    // Name of the service where the failure occurred
+    string source_service = 7;
+
+    // Name of the queue where the message originated
+    string source_queue = 8;
+
+    // Stack trace lines from the failure (optional, for debugging)
+    repeated string stack_trace_lines = 9;
+
+    // Additional metadata about the failure (key-value pairs)
+    map<string, string> metadata = 10;
+}

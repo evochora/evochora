@@ -299,7 +299,7 @@ class NodeTest {
         private boolean started = false;
         private boolean stopped = false;
 
-        public TestProcess(org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
+        public TestProcess(String processName, org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
             // Valid constructor
         }
 
@@ -321,7 +321,7 @@ class NodeTest {
         private boolean started = false;
         private boolean stopped = false;
 
-        public TestProcess2(org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
+        public TestProcess2(String processName, org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
             // Valid constructor
         }
 
@@ -340,7 +340,7 @@ class NodeTest {
      * A class that doesn't implement IProcess (for negative testing)
      */
     private static class InvalidProcess {
-        public InvalidProcess(org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
+        public InvalidProcess(String processName, org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
             // Valid constructor but doesn't implement IProcess
         }
     }
@@ -349,7 +349,7 @@ class NodeTest {
      * A process that throws exception in constructor
      */
     private static class FailingProcess implements IProcess {
-        public FailingProcess(org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
+        public FailingProcess(String processName, org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
             throw new RuntimeException("Constructor failed");
         }
 
@@ -368,7 +368,7 @@ class NodeTest {
      * A process that throws exception in start method
      */
     private static class FailingStartProcess implements IProcess {
-        public FailingStartProcess(org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
+        public FailingStartProcess(String processName, org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
             // Valid constructor
         }
 
@@ -389,7 +389,7 @@ class NodeTest {
     private static class FailingStopProcess implements IProcess {
         private boolean started = false;
 
-        public FailingStopProcess(org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
+        public FailingStopProcess(String processName, org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
             // Valid constructor
         }
 
