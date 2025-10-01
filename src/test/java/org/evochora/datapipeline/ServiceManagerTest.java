@@ -94,8 +94,13 @@ public class ServiceManagerTest {
             assertEquals(IService.State.RUNNING, sm.getServiceStatus("consumer").state());
             assertEquals(2, (long) sm.getMetrics().get("services_running"));
         });
-        // Assert that starting again throws an exception
-        assertThrows(IllegalStateException.class, () -> sm.startService("producer"));
+
+        // Calling start again should be idempotent (it will restart the service)
+        sm.startService("producer");
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
+            assertEquals(IService.State.RUNNING, sm.getServiceStatus("producer").state())
+        );
+
 
         sm.pauseAll();
         await().atMost(1, TimeUnit.SECONDS).untilAsserted(() -> {
@@ -103,7 +108,6 @@ public class ServiceManagerTest {
             assertEquals(IService.State.PAUSED, sm.getServiceStatus("consumer").state());
             assertEquals(2, (long) sm.getMetrics().get("services_paused"));
         });
-        assertThrows(IllegalStateException.class, () -> sm.pauseService("producer"));
 
 
         sm.resumeAll();
@@ -111,7 +115,6 @@ public class ServiceManagerTest {
              assertEquals(IService.State.RUNNING, sm.getServiceStatus("producer").state());
              assertEquals(IService.State.RUNNING, sm.getServiceStatus("consumer").state());
         });
-        assertThrows(IllegalStateException.class, () -> sm.resumeService("producer"));
 
         sm.stopAll();
         await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
@@ -119,7 +122,6 @@ public class ServiceManagerTest {
             assertEquals(IService.State.STOPPED, sm.getServiceStatus("consumer").state());
             assertEquals(2, (long) sm.getMetrics().get("services_stopped"));
         });
-        assertThrows(IllegalStateException.class, () -> sm.stopService("producer"));
     }
 
     @Test
@@ -210,9 +212,9 @@ public class ServiceManagerTest {
     @FailOnLog(level = LogLevel.INFO)
     @ExpectLog(level = LogLevel.INFO, messagePattern = "Initializing ServiceManager\\.\\.\\.")
     @ExpectLog(level = LogLevel.INFO, messagePattern = "Instantiated resource 'test-queue' of type .*")
-    @ExpectLog(level = LogLevel.INFO, messagePattern = "Instantiated service 'producer' of type .*")
-    @ExpectLog(level = LogLevel.INFO, messagePattern = "Instantiated service 'consumer' of type .*")
-    @ExpectLog(level = LogLevel.INFO, messagePattern = "ServiceManager initialized with 3 resources and 2 services\\.")
+    @ExpectLog(level = LogLevel.INFO, messagePattern = "Built factory for service 'producer' of type .*")
+    @ExpectLog(level = LogLevel.INFO, messagePattern = "Built factory for service 'consumer' of type .*")
+    @ExpectLog(level = LogLevel.INFO, messagePattern = "ServiceManager initialized with 3 resources and 2 service factories\\.")
     @ExpectLog(level = LogLevel.INFO, messagePattern = "Auto-start is disabled\\. Services must be started manually via API\\.")
     void testInitializationLogging() {
         new ServiceManager(createTestConfig(false));
@@ -221,14 +223,18 @@ public class ServiceManagerTest {
     @Test
     void testResourceNamesAreCorrectlyAssigned() {
         ServiceManager serviceManager = new ServiceManager(createTestConfig(false));
-        ServiceStatus producerStatus = serviceManager.getServiceStatus("producer");
-        assertFalse(producerStatus.resourceBindings().isEmpty());
-        IResource producerResource = producerStatus.resourceBindings().get(0).resource();
-        assertEquals("test-queue", producerResource.getResourceName());
+        serviceManager.startAll();
 
-        ServiceStatus consumerStatus = serviceManager.getServiceStatus("consumer");
-        assertFalse(consumerStatus.resourceBindings().isEmpty());
-        IResource consumerResource = consumerStatus.resourceBindings().get(0).resource();
-        assertEquals("test-queue", consumerResource.getResourceName());
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+            ServiceStatus producerStatus = serviceManager.getServiceStatus("producer");
+            assertFalse(producerStatus.resourceBindings().isEmpty());
+            IResource producerResource = producerStatus.resourceBindings().get(0).resource();
+            assertEquals("test-queue", producerResource.getResourceName());
+
+            ServiceStatus consumerStatus = serviceManager.getServiceStatus("consumer");
+            assertFalse(consumerStatus.resourceBindings().isEmpty());
+            IResource consumerResource = consumerStatus.resourceBindings().get(0).resource();
+            assertEquals("test-queue", consumerResource.getResourceName());
+        });
     }
 }

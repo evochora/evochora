@@ -134,22 +134,24 @@ class NodeIntegrationTest {
 
     @Test
     @Order(5)
-    @AllowLog(level = LogLevel.WARN, messagePattern = "Invalid state transition for request.*")
-    @DisplayName("POST /service/{name}/start - should return 409 when starting an already running service")
-    void postStartOnRunningService_returns409() {
+    @DisplayName("POST /service/{name}/start - should restart an already running service")
+    void postStartOnRunningService_restartsService() {
         // Start the service
         given().post(BASE_PATH + "/service/test-consumer/start").then().statusCode(202);
         await().atMost(5, TimeUnit.SECONDS).untilAsserted(() ->
             given().get(BASE_PATH + "/service/test-consumer/status").then().body("state", equalTo("RUNNING"))
         );
 
-        // Try to start it again
+        // Try to start it again, which should be accepted and trigger a restart
         given()
             .when()
                 .post(BASE_PATH + "/service/test-consumer/start")
             .then()
-                .statusCode(409) // Conflict
-                .body("error", equalTo("Conflict"))
-                .body("message", containsString("Cannot start service 'test-consumer' as it is already in state RUNNING"));
+                .statusCode(202); // Accepted
+
+        // Verify it's still running after the restart
+        await().atMost(5, TimeUnit.SECONDS).untilAsserted(() ->
+            given().get(BASE_PATH + "/service/test-consumer/status").then().body("state", equalTo("RUNNING"))
+        );
     }
 }
