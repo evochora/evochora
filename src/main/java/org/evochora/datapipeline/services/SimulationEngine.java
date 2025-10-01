@@ -75,6 +75,9 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         List<? extends Config> organismConfigs = options.getConfigList("organisms");
         if (organismConfigs.isEmpty()) throw new IllegalArgumentException("At least one organism must be configured.");
 
+        // Initialize instruction set before compiling programs
+        org.evochora.runtime.isa.Instruction.init();
+
         Map<String, ProgramArtifact> compiledPrograms = new HashMap<>();
         Compiler compiler = new Compiler();
 
@@ -124,7 +127,16 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
             return;
         }
 
-        log.info("Simulation loop started. Capturing data every {} ticks.", samplingInterval);
+        // Build informative startup log message
+        EnvironmentProperties envProps = simulation.getEnvironment().getProperties();
+        String worldDims = String.join("×", Arrays.stream(envProps.getWorldShape()).mapToObj(String::valueOf).toArray(String[]::new));
+        String topology = envProps.isToroidal() ? "TORUS" : "BOUNDED";
+        String strategyNames = energyStrategies.stream()
+                .map(s -> s.strategy().getClass().getSimpleName())
+                .collect(java.util.stream.Collectors.joining(", "));
+
+        log.info("SimulationEngine started: world=[{}, {}], organisms={}, energyStrategies={} ({}), seed={}, samplingInterval={}",
+                worldDims, topology, simulation.getOrganisms().size(), energyStrategies.size(), strategyNames, seed, samplingInterval);
         while (getCurrentState() == State.RUNNING || getCurrentState() == State.PAUSED) {
             checkPause();
             if (shouldAutoPause(currentTick.get())) {
@@ -135,6 +147,18 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
 
             simulation.tick();
             long tick = currentTick.incrementAndGet();
+
+            // Apply energy distribution strategies after the tick
+            if (!energyStrategies.isEmpty()) {
+                for (StrategyWithConfig strategyWithConfig : energyStrategies) {
+                    try {
+                        strategyWithConfig.strategy().distributeEnergy(simulation.getEnvironment(), tick);
+                    } catch (Exception ex) {
+                        log.warn("Energy strategy '{}' execution failed: {}",
+                                strategyWithConfig.strategy().getClass().getSimpleName(), ex.getMessage());
+                    }
+                }
+            }
 
             if (tick % samplingInterval == 0) {
                 try {
@@ -181,11 +205,11 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         return configs.stream().map(config -> {
             try {
                 IEnergyDistributionCreator strategy = (IEnergyDistributionCreator) Class.forName(config.getString("className"))
-                        .getConstructor(Config.class, IRandomProvider.class, EnvironmentProperties.class)
-                        .newInstance(config.getConfig("options"), random, envProps);
+                        .getConstructor(IRandomProvider.class, com.typesafe.config.Config.class)
+                        .newInstance(random, config.getConfig("options"));
                 return new StrategyWithConfig(strategy, config.getConfig("options"));
             } catch (ReflectiveOperationException e) {
-                throw new IllegalArgumentException("Failed to instantiate energy strategy", e);
+                throw new IllegalArgumentException("Failed to instantiate energy strategy: " + config.getString("className"), e);
             }
         }).toList();
     }
@@ -205,21 +229,14 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         for (int i = 0; i < envProps.getWorldShape().length; i++) {
             envConfigBuilder.addToroidal(envProps.isToroidal());
         }
-        if (options.hasPath("maxOrganismEnergy")) {
-            envConfigBuilder.setMaxOrganismEnergy(options.getInt("maxOrganismEnergy"));
-        }
         builder.setEnvironment(envConfigBuilder.build());
 
-        if (!energyStrategies.isEmpty()) {
-            if (energyStrategies.size() > 1) {
-                log.warn("Multiple energy strategies are configured, but only the first one will be recorded in the simulation metadata due to contract limitations.");
-            }
-            StrategyWithConfig firstStrategy = energyStrategies.get(0);
+        energyStrategies.forEach(strategyWithConfig -> {
             EnergyStrategyConfig.Builder strategyBuilder = EnergyStrategyConfig.newBuilder();
-            strategyBuilder.setStrategyType(firstStrategy.strategy().getClass().getName());
-            strategyBuilder.setConfigJson(firstStrategy.config().root().render(ConfigRenderOptions.concise()));
-            builder.setEnergyStrategy(strategyBuilder.build());
-        }
+            strategyBuilder.setStrategyType(strategyWithConfig.strategy().getClass().getName());
+            strategyBuilder.setConfigJson(strategyWithConfig.config().root().render(ConfigRenderOptions.concise()));
+            builder.addEnergyStrategies(strategyBuilder.build());
+        });
 
         simulation.getProgramArtifacts().values().forEach(artifact -> builder.addPrograms(convertProgramArtifact(artifact)));
 
@@ -291,18 +308,31 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
 
     private List<CellState> extractCellStates(Environment env) {
         List<CellState> cells = new ArrayList<>();
-        for (int[] coord : iterateCoordinates(env.getProperties().getWorldShape())) {
-            Molecule molecule = env.getMolecule(coord);
-            if (!molecule.isEmpty()) {
-                cells.add(CellState.newBuilder()
-                        .setCoordinate(convertVector(coord))
-                        .setMoleculeType(molecule.type())
-                        .setMoleculeValue(molecule.value())
-                        .setOwnerId(env.getOwnerId(coord))
-                        .build());
+        Vector.Builder vectorBuilder = Vector.newBuilder();
+
+        env.forEachOccupiedCell((coord, moleculeInt, ownerId) -> {
+            vectorBuilder.clear();
+            for (int c : coord) {
+                vectorBuilder.addComponents(c);
             }
-        }
+
+            cells.add(CellState.newBuilder()
+                    .setCoordinate(vectorBuilder.build())
+                    .setMoleculeType(moleculeInt & org.evochora.runtime.Config.TYPE_MASK)
+                    .setMoleculeValue(extractSignedValue(moleculeInt))
+                    .setOwnerId(ownerId)
+                    .build());
+        });
+
         return cells;
+    }
+
+    private static int extractSignedValue(int moleculeInt) {
+        int rawValue = moleculeInt & org.evochora.runtime.Config.VALUE_MASK;
+        if ((rawValue & (1 << (org.evochora.runtime.Config.VALUE_BITS - 1))) != 0) {
+            rawValue |= ~((1 << org.evochora.runtime.Config.VALUE_BITS) - 1);
+        }
+        return rawValue;
     }
 
     private static org.evochora.datapipeline.api.contracts.ProgramArtifact convertProgramArtifact(ProgramArtifact artifact) {

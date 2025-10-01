@@ -31,30 +31,30 @@ message SimulationMetadata {
   // Source: EnvironmentProperties from runtime initialization
   EnvironmentConfig environment = 4;
 
-  // Energy distribution strategy configuration
-  // Source: IEnergyDistributionCreator implementation class and config
-  // Example: GeyserCreator with geyser locations
-  EnergyStrategyConfig energy_strategy = 6;
+  // Energy distribution strategy configurations
+  // Source: All IEnergyDistributionCreator instances from evochora.conf "simulation.energyStrategies"
+  // Multiple strategies can be active simultaneously (e.g., GeyserCreator + SolarRadiationCreator)
+  repeated EnergyStrategyConfig energy_strategies = 5;
 
   // All compiled programs used in this simulation
   // Source: Output from Compiler.compile() for each program
   // Includes machine code, source maps, and debugging metadata
-  repeated ProgramArtifact programs = 5;
+  repeated ProgramArtifact programs = 6;
 
   // Initial organism placements at simulation start
   // Source: evochora.conf "simulation.initialOrganisms" section
   // Specifies which organisms to create and where to place them
-  repeated InitialOrganismSetup initial_organisms = 9;
+  repeated InitialOrganismSetup initial_organisms = 7;
 
   // User-provided metadata (arbitrary key-value pairs)
   // Source: evochora.conf "simulation.metadata" section
   // Used for experiment tracking and custom annotations
-  map<string, string> user_metadata = 7;
+  map<string, string> user_metadata = 8;
 
   // Complete resolved configuration as JSON
   // Source: TypesafeConfig.root().render(ConfigRenderOptions.concise())
   // Includes all config values (defaults + overrides) for self-contained replay
-  string resolved_config_json = 8;
+  string resolved_config_json = 9;
 }
 
 // Configuration for the simulation environment (world grid).
@@ -73,11 +73,6 @@ message EnvironmentConfig {
   // Source: EnvironmentProperties.getToroidal()
   // Same length as shape array
   repeated bool toroidal = 3;
-
-  // Maximum energy an organism can have
-  // Source: evochora.conf "simulation.maxOrganismEnergy"
-  // Organisms cannot exceed this energy level
-  int32 max_organism_energy = 4;
 }
 
 // Configuration for energy distribution strategy.
@@ -111,7 +106,7 @@ message InitialOrganismSetup {
 
   // Starting energy level
   // Source: evochora.conf "simulation.initialOrganisms[N].energy"
-  // Must be ≤ EnvironmentConfig.max_organism_energy
+  // Must be ≤ org.evochora.runtime.Config.MAX_ORGANISM_ENERGY (32767)
   int32 initial_energy = 4;
 }
 

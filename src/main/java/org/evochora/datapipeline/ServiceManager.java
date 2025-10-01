@@ -82,8 +82,7 @@ public class ServiceManager implements IMonitorable {
                 resources.put(resourceName, resource);
                 log.info("Instantiated resource '{}' of type {}", resourceName, className);
             } catch (Exception e) {
-                log.error("Failed to instantiate resource: {}", resourceName, e);
-                throw new RuntimeException("Failed to instantiate resource: " + resourceName, e);
+                log.error("Failed to instantiate resource '{}': {}. Skipping this resource.", resourceName, e.getMessage(), e);
             }
         }
     }
@@ -132,8 +131,7 @@ public class ServiceManager implements IMonitorable {
 
                 log.info("Instantiated service '{}' of type {}", serviceName, className);
             } catch (Exception e) {
-                log.error("Failed to instantiate service: {}", serviceName, e);
-                throw new RuntimeException("Failed to instantiate service: " + serviceName, e);
+                log.error("Failed to instantiate service '{}': {}. Skipping this service.", serviceName, e.getMessage(), e);
             }
         }
     }
@@ -160,7 +158,7 @@ public class ServiceManager implements IMonitorable {
         for (String serviceName : serviceNames) {
             try {
                 action.accept(serviceName);
-            } catch (IllegalStateException e) {
+            } catch (IllegalStateException | IllegalArgumentException e) {
                 log.warn("Could not perform action on service '{}': {}", serviceName, e.getMessage());
             }
         }

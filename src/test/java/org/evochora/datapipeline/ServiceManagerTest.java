@@ -157,7 +157,7 @@ public class ServiceManagerTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.ERROR, messagePattern = "Failed to instantiate service: test")
+    @AllowLog(level = LogLevel.ERROR, messagePattern = "Failed to instantiate service '.*': .* Skipping this service\\.")
     void testErrorHandling() {
         Config badResourceConfig = ConfigFactory.parseString("""
              pipeline.services.test {
@@ -165,14 +165,18 @@ public class ServiceManagerTest {
                resources.input = "queue-in:non-existent-queue"
              }
         """);
-        assertThrows(RuntimeException.class, () -> new ServiceManager(badResourceConfig));
+        // Graceful error handling: ServiceManager initializes but service 'test' is skipped
+        ServiceManager sm1 = new ServiceManager(badResourceConfig);
+        assertThrows(IllegalArgumentException.class, () -> sm1.getServiceStatus("test"));
 
         Config badClassConfig = ConfigFactory.parseString("""
             pipeline.services.test {
               className = "com.example.NonExistent"
             }
         """);
-        assertThrows(RuntimeException.class, () -> new ServiceManager(badClassConfig));
+        // Graceful error handling: ServiceManager initializes but service 'test' is skipped
+        ServiceManager sm2 = new ServiceManager(badClassConfig);
+        assertThrows(IllegalArgumentException.class, () -> sm2.getServiceStatus("test"));
     }
 
     @Test

@@ -360,13 +360,24 @@ public SimulationEngine(String name, Config options, Map<String, List<IResource>
 
 #### Start Phase (start() method)
 
-1. **Send Metadata**
-   - Send SimulationMetadata message to metadataOutput
-   - This happens exactly once at start
+**Override start() to send metadata before beginning simulation loop:**
 
-2. **Begin Simulation Loop**
-   - Start simulation tick loop in service thread
-   - Respect samplingInterval for data capture
+```java
+@Override
+public void start() {
+    // Send metadata message once before starting simulation loop
+    metadataOutput.put(buildMetadataMessage());
+
+    // Call super to start the service thread (which calls run())
+    super.start();
+}
+```
+
+**Why override start():**
+- Metadata must be sent exactly once before any tick data
+- The run() method may be called multiple times (pause/resume)
+- start() is called once when service transitions to RUNNING state
+- Ensures metadata is always available before tick data arrives
 
 #### Run Phase (run() method)
 
@@ -423,7 +434,7 @@ private OrganismState extractOrganismState(Organism organism) {
     }
     builder.setBirthTick(organism.getBirthTick());
     builder.setProgramId(organism.getProgramId());
-    builder.setEnergy(organism.getEnergy());
+    builder.setEnergy(organism.getEr());  // Note: method is getEr(), not getEnergy()
 
     // Instruction pointer and movement
     builder.setIp(convertVector(organism.getIp()));
@@ -527,7 +538,7 @@ private org.evochora.datapipeline.api.contracts.ProgramArtifact convertProgramAr
         builder.addMachineCodeLayout(mapping.build());
     }
 
-    // Convert initial world objects
+    // Convert initial world objects (Map<int[], PlacedMolecule> → repeated PlacedMoleculeMapping)
     for (Map.Entry<int[], PlacedMolecule> entry : artifact.initialWorldObjects().entrySet()) {
         PlacedMoleculeMapping.Builder mapping = PlacedMoleculeMapping.newBuilder();
         mapping.setPosition(convertVector(entry.getKey()));
@@ -541,8 +552,109 @@ private org.evochora.datapipeline.api.contracts.ProgramArtifact convertProgramAr
         builder.addInitialWorldObjects(mapping.build());
     }
 
-    // Convert all other fields similarly...
-    // Follow patterns in proto file comments for field-by-field conversion
+    // Convert source map (Map<Integer, SourceInfo> → repeated SourceMapEntry)
+    for (Map.Entry<Integer, SourceInfo> entry : artifact.sourceMap().entrySet()) {
+        SourceMapEntry.Builder sourceMapEntry = SourceMapEntry.newBuilder();
+        sourceMapEntry.setLinearAddress(entry.getKey());
+
+        org.evochora.datapipeline.api.contracts.SourceInfo.Builder sourceInfoBuilder =
+            org.evochora.datapipeline.api.contracts.SourceInfo.newBuilder();
+        sourceInfoBuilder.setFileName(entry.getValue().fileName());
+        sourceInfoBuilder.setLineNumber(entry.getValue().lineNumber());
+        sourceInfoBuilder.setColumnNumber(entry.getValue().columnNumber());
+        sourceMapEntry.setSourceInfo(sourceInfoBuilder.build());
+
+        builder.addSourceMap(sourceMapEntry.build());
+    }
+
+    // Convert call site bindings (Map<Integer, int[]> → repeated CallSiteBinding)
+    for (Map.Entry<Integer, int[]> entry : artifact.callSiteBindings().entrySet()) {
+        CallSiteBinding.Builder bindingBuilder = CallSiteBinding.newBuilder();
+        bindingBuilder.setLinearAddress(entry.getKey());
+        bindingBuilder.setTargetCoord(convertVector(entry.getValue()));
+        builder.addCallSiteBindings(bindingBuilder.build());
+    }
+
+    // Convert relative coord to linear address (direct map)
+    builder.putAllRelativeCoordToLinearAddress(artifact.relativeCoordToLinearAddress());
+
+    // Convert linear address to coord (Map<Integer, int[]> → repeated LinearAddressToCoord)
+    for (Map.Entry<Integer, int[]> entry : artifact.linearAddressToCoord().entrySet()) {
+        LinearAddressToCoord.Builder addrBuilder = LinearAddressToCoord.newBuilder();
+        addrBuilder.setLinearAddress(entry.getKey());
+        addrBuilder.setCoord(convertVector(entry.getValue()));
+        builder.addLinearAddressToCoord(addrBuilder.build());
+    }
+
+    // Convert label mappings (Map<Integer, String> → repeated LabelMapping)
+    for (Map.Entry<Integer, String> entry : artifact.labelAddressToName().entrySet()) {
+        LabelMapping.Builder labelBuilder = LabelMapping.newBuilder();
+        labelBuilder.setLinearAddress(entry.getKey());
+        labelBuilder.setLabelName(entry.getValue());
+        builder.addLabelAddressToName(labelBuilder.build());
+    }
+
+    // Convert register alias map (direct map)
+    builder.putAllRegisterAliasMap(artifact.registerAliasMap());
+
+    // Convert procedure parameter names (Map<String, List<String>> → map with ParameterNames)
+    for (Map.Entry<String, List<String>> entry : artifact.procNameToParamNames().entrySet()) {
+        ParameterNames.Builder paramsBuilder = ParameterNames.newBuilder();
+        paramsBuilder.addAllNames(entry.getValue());
+        builder.putProcNameToParamNames(entry.getKey(), paramsBuilder.build());
+    }
+
+    // Convert token map (Map<SourceInfo, TokenInfo> → repeated TokenMapEntry)
+    for (Map.Entry<SourceInfo, TokenInfo> entry : artifact.tokenMap().entrySet()) {
+        TokenMapEntry.Builder tokenMapEntry = TokenMapEntry.newBuilder();
+
+        org.evochora.datapipeline.api.contracts.SourceInfo.Builder sourceInfoBuilder =
+            org.evochora.datapipeline.api.contracts.SourceInfo.newBuilder();
+        sourceInfoBuilder.setFileName(entry.getKey().fileName());
+        sourceInfoBuilder.setLineNumber(entry.getKey().lineNumber());
+        sourceInfoBuilder.setColumnNumber(entry.getKey().columnNumber());
+        tokenMapEntry.setSourceInfo(sourceInfoBuilder.build());
+
+        org.evochora.datapipeline.api.contracts.TokenInfo.Builder tokenInfoBuilder =
+            org.evochora.datapipeline.api.contracts.TokenInfo.newBuilder();
+        tokenInfoBuilder.setTokenText(entry.getValue().tokenText());
+        tokenInfoBuilder.setTokenType(entry.getValue().tokenType());
+        tokenInfoBuilder.setScope(entry.getValue().scope());
+        tokenMapEntry.setTokenInfo(tokenInfoBuilder.build());
+
+        builder.addTokenMap(tokenMapEntry.build());
+    }
+
+    // Convert token lookup (nested Map → repeated FileTokenLookup)
+    for (Map.Entry<String, Map<Integer, Map<Integer, List<TokenInfo>>>> fileEntry : artifact.tokenLookup().entrySet()) {
+        FileTokenLookup.Builder fileBuilder = FileTokenLookup.newBuilder();
+        fileBuilder.setFileName(fileEntry.getKey());
+
+        for (Map.Entry<Integer, Map<Integer, List<TokenInfo>>> lineEntry : fileEntry.getValue().entrySet()) {
+            LineTokenLookup.Builder lineBuilder = LineTokenLookup.newBuilder();
+            lineBuilder.setLineNumber(lineEntry.getKey());
+
+            for (Map.Entry<Integer, List<TokenInfo>> columnEntry : lineEntry.getValue().entrySet()) {
+                ColumnTokenLookup.Builder columnBuilder = ColumnTokenLookup.newBuilder();
+                columnBuilder.setColumnNumber(columnEntry.getKey());
+
+                for (TokenInfo token : columnEntry.getValue()) {
+                    org.evochora.datapipeline.api.contracts.TokenInfo.Builder tokenInfoBuilder =
+                        org.evochora.datapipeline.api.contracts.TokenInfo.newBuilder();
+                    tokenInfoBuilder.setTokenText(token.tokenText());
+                    tokenInfoBuilder.setTokenType(token.tokenType());
+                    tokenInfoBuilder.setScope(token.scope());
+                    columnBuilder.addTokens(tokenInfoBuilder.build());
+                }
+
+                lineBuilder.addColumns(columnBuilder.build());
+            }
+
+            fileBuilder.addLines(lineBuilder.build());
+        }
+
+        builder.addTokenLookup(fileBuilder.build());
+    }
 
     return builder.build();
 }

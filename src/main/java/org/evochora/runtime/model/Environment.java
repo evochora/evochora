@@ -270,12 +270,12 @@ public class Environment implements IEnvironmentReader {
     private void updateOccupiedCells(int... coord) {
         int index = getFlatIndex(coord);
         if (index == -1) return;
-        
+
         int value = this.grid[index];
         int owner = this.ownerGrid[index];
-        
+
         Coordinate coordinate = new Coordinate(coord);
-        
+
         if (value != 0 || owner != 0) {
             // Cell is occupied - add to tracking
             occupiedCells.add(coordinate);
@@ -284,5 +284,30 @@ public class Environment implements IEnvironmentReader {
             occupiedCells.remove(coordinate);
         }
     }
-    
+
+    /**
+     * Functional interface for sparse cell iteration.
+     */
+    @FunctionalInterface
+    public interface OccupiedCellConsumer {
+        void accept(int[] coordinate, int moleculeInt, int ownerId);
+    }
+
+    /**
+     * Iterates all occupied cells with zero intermediate allocations.
+     * Only iterates occupied cells: O(occupied) vs O(total_cells).
+     *
+     * @param consumer Callback invoked for each occupied cell
+     */
+    public void forEachOccupiedCell(OccupiedCellConsumer consumer) {
+        if (occupiedCells == null) return;
+
+        for (Coordinate coord : occupiedCells) {
+            int index = getFlatIndex(coord.coords());
+            if (index != -1) {
+                consumer.accept(coord.coords(), grid[index], ownerGrid[index]);
+            }
+        }
+    }
+
 }
