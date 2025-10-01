@@ -32,7 +32,7 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
     private final ResourceContext context;
     private final AtomicLong messagesConsumed = new AtomicLong(0);
     private final int windowSeconds;
-    private final ConcurrentHashMap<Long, Instant> consumptionTimestamps = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, AtomicLong> perSecondCounters = new ConcurrentHashMap<>();
     private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
 
     /**
@@ -47,38 +47,41 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
         super(((AbstractResource) delegate).getResourceName(), ((AbstractResource) delegate).getOptions());
         this.delegate = delegate;
         this.context = context;
-        this.windowSeconds = Integer.parseInt(context.parameters().getOrDefault("window", "5"));
+        this.windowSeconds = Integer.parseInt(context.parameters().getOrDefault("throughputWindowSeconds", "5"));
     }
 
     /**
-     * Records a consumption event for throughput calculation.
+     * Records a consumption event for throughput calculation using sliding window counters.
+     * This is an O(1) operation that just increments a counter for the current second.
      */
     private void recordConsumption() {
         messagesConsumed.incrementAndGet();
-        consumptionTimestamps.put(System.nanoTime(), Instant.now());
-        // Clean up old timestamps to prevent memory leaks
-        cleanupOldTimestamps();
+        long currentSecond = Instant.now().getEpochSecond();
+        perSecondCounters.computeIfAbsent(currentSecond, k -> new AtomicLong(0)).incrementAndGet();
+        cleanupOldCounters(currentSecond);
     }
 
     /**
      * Records multiple consumption events for throughput calculation.
+     * This is an O(1) operation that adds to the counter for the current second.
      */
     private void recordConsumptions(int count) {
         messagesConsumed.addAndGet(count);
-        Instant now = Instant.now();
-        for (int i = 0; i < count; i++) {
-            consumptionTimestamps.put(System.nanoTime() + i, now);
-        }
-        cleanupOldTimestamps();
+        long currentSecond = Instant.now().getEpochSecond();
+        perSecondCounters.computeIfAbsent(currentSecond, k -> new AtomicLong(0)).addAndGet(count);
+        cleanupOldCounters(currentSecond);
     }
 
     /**
-     * Removes timestamps older than the monitoring window to prevent unbounded memory growth.
+     * Removes counter buckets older than the monitoring window to prevent unbounded memory growth.
+     * Only removes counters if we have more buckets than needed (window + buffer).
      */
-    private void cleanupOldTimestamps() {
-        if (consumptionTimestamps.size() > 10000) {
-            Instant cutoff = Instant.now().minusSeconds(windowSeconds * 2);
-            consumptionTimestamps.entrySet().removeIf(entry -> entry.getValue().isBefore(cutoff));
+    private void cleanupOldCounters(long currentSecond) {
+        // Keep windowSeconds + 5 extra seconds as buffer
+        int maxBuckets = windowSeconds + 5;
+        if (perSecondCounters.size() > maxBuckets) {
+            long cutoffSecond = currentSecond - windowSeconds - 1;
+            perSecondCounters.keySet().removeIf(second -> second < cutoffSecond);
         }
     }
 
@@ -177,16 +180,25 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
     }
 
     /**
-     * Calculates the throughput (messages per second) based on messages consumed within the configured window.
+     * Calculates the throughput (messages per second) based on per-second counters within the configured window.
+     * This is an O(windowSeconds) operation, typically O(5-10).
      *
      * @return The throughput in messages per second.
      */
     private double calculateThroughput() {
-        Instant windowStart = Instant.now().minusSeconds(windowSeconds);
-        long count = consumptionTimestamps.values().stream()
-                .filter(t -> t.isAfter(windowStart))
-                .count();
-        return (double) count / windowSeconds;
+        long currentSecond = Instant.now().getEpochSecond();
+        long totalMessages = 0;
+
+        // Sum counters from the last windowSeconds
+        for (int i = 0; i < windowSeconds; i++) {
+            long second = currentSecond - i;
+            AtomicLong counter = perSecondCounters.get(second);
+            if (counter != null) {
+                totalMessages += counter.get();
+            }
+        }
+
+        return (double) totalMessages / windowSeconds;
     }
 
     /**

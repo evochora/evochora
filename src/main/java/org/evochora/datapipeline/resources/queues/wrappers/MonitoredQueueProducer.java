@@ -31,7 +31,7 @@ public class MonitoredQueueProducer<T> extends AbstractResource implements IOutp
     private final ResourceContext context;
     private final AtomicLong messagesSent = new AtomicLong(0);
     private final int windowSeconds;
-    private final ConcurrentHashMap<Long, Instant> productionTimestamps = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, AtomicLong> perSecondCounters = new ConcurrentHashMap<>();
     private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
 
     /**
@@ -50,47 +50,60 @@ public class MonitoredQueueProducer<T> extends AbstractResource implements IOutp
     }
 
     /**
-     * Records a production event for throughput calculation.
+     * Records a production event for throughput calculation using sliding window counters.
+     * This is an O(1) operation that just increments a counter for the current second.
      */
     private void recordProduction() {
         messagesSent.incrementAndGet();
-        productionTimestamps.put(System.nanoTime(), Instant.now());
-        cleanupOldTimestamps();
+        long currentSecond = Instant.now().getEpochSecond();
+        perSecondCounters.computeIfAbsent(currentSecond, k -> new AtomicLong(0)).incrementAndGet();
+        cleanupOldCounters(currentSecond);
     }
 
     /**
      * Records multiple production events for throughput calculation.
+     * This is an O(1) operation that adds to the counter for the current second.
      */
     private void recordProductions(int count) {
         messagesSent.addAndGet(count);
-        Instant now = Instant.now();
-        for (int i = 0; i < count; i++) {
-            productionTimestamps.put(System.nanoTime() + i, now);
-        }
-        cleanupOldTimestamps();
+        long currentSecond = Instant.now().getEpochSecond();
+        perSecondCounters.computeIfAbsent(currentSecond, k -> new AtomicLong(0)).addAndGet(count);
+        cleanupOldCounters(currentSecond);
     }
 
     /**
-     * Removes timestamps older than the monitoring window to prevent unbounded memory growth.
+     * Removes counter buckets older than the monitoring window to prevent unbounded memory growth.
+     * Only removes counters if we have more buckets than needed (window + buffer).
      */
-    private void cleanupOldTimestamps() {
-        if (productionTimestamps.size() > 10000) {
-            Instant cutoff = Instant.now().minusSeconds(windowSeconds * 2);
-            productionTimestamps.entrySet().removeIf(entry -> entry.getValue().isBefore(cutoff));
+    private void cleanupOldCounters(long currentSecond) {
+        // Keep windowSeconds + 5 extra seconds as buffer
+        int maxBuckets = windowSeconds + 5;
+        if (perSecondCounters.size() > maxBuckets) {
+            long cutoffSecond = currentSecond - windowSeconds - 1;
+            perSecondCounters.keySet().removeIf(second -> second < cutoffSecond);
         }
     }
 
     /**
-     * Calculates the throughput (messages per second) based on messages sent within the configured window.
+     * Calculates the throughput (messages per second) based on per-second counters within the configured window.
+     * This is an O(windowSeconds) operation, typically O(5-10).
      *
      * @return The throughput in messages per second.
      */
     private double calculateThroughput() {
-        Instant windowStart = Instant.now().minusSeconds(windowSeconds);
-        long count = productionTimestamps.values().stream()
-                .filter(t -> t.isAfter(windowStart))
-                .count();
-        return (double) count / windowSeconds;
+        long currentSecond = Instant.now().getEpochSecond();
+        long totalMessages = 0;
+
+        // Sum counters from the last windowSeconds
+        for (int i = 0; i < windowSeconds; i++) {
+            long second = currentSecond - i;
+            AtomicLong counter = perSecondCounters.get(second);
+            if (counter != null) {
+                totalMessages += counter.get();
+            }
+        }
+
+        return (double) totalMessages / windowSeconds;
     }
 
     /**

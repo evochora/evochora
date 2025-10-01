@@ -109,6 +109,20 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         this.simulation.setRandomProvider(this.randomProvider);
         this.simulation.setProgramArtifacts(compiledPrograms);
 
+        // Validate organism placement coordinates match world dimensions
+        int worldDimensions = envProps.getWorldShape().length;
+        for (Config orgConfig : organismConfigs) {
+            List<Integer> positions = orgConfig.getIntList("placement.positions");
+            if (positions.size() != worldDimensions) {
+                String worldShape = Arrays.toString(envProps.getWorldShape());
+                throw new IllegalArgumentException(
+                    "Organism placement coordinate mismatch: World has " + worldDimensions +
+                    " dimensions " + worldShape + " but organism placement has " + positions.size() +
+                    " coordinates " + positions + ". Update organism placement to match world dimensions."
+                );
+            }
+        }
+
         for (Config orgConfig : organismConfigs) {
             ProgramArtifact artifact = compiledPrograms.get(orgConfig.getString("program"));
             Organism org = Organism.create(simulation,

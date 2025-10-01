@@ -253,6 +253,86 @@ public class ServiceManager implements IMonitorable {
                 // Step 5: Clean up temporary map
                 activeWrappedResources.remove(name);
             }
+        } catch (OutOfMemoryError e) {
+            // Clean up maps in case of a startup failure.
+            runningServices.remove(name);
+            serviceResourceBindings.remove(name);
+            activeWrappedResources.remove(name);
+
+            // Provide friendly, actionable error message with memory calculation
+            String errorMsg = "Failed to start service '" + name + "': Insufficient memory.";
+
+            // Try to calculate memory requirements for simulation-engine
+            if (name.equals("simulation-engine") && pipelineConfig.hasPath("services.simulation-engine.options.environment.shape")) {
+                try {
+                    List<Integer> shape = pipelineConfig.getIntList("services.simulation-engine.options.environment.shape");
+                    long totalCells = shape.stream().mapToLong(Integer::longValue).reduce(1L, (a, b) -> a * b);
+                    long estimatedMemoryGB = ((totalCells * 8) / (1024 * 1024 * 1024)) + 4; // 8 bytes per cell + 4GB overhead
+                    errorMsg += " World size " + shape + " requires ~" + estimatedMemoryGB + " GB. Increase heap with -Xmx" + estimatedMemoryGB + "g or reduce world size.";
+                } catch (Exception ex) {
+                    errorMsg += " Increase heap size with -Xmx16g or reduce world size in configuration.";
+                }
+            } else {
+                errorMsg += " Increase heap size with -Xmx16g";
+            }
+
+            log.error(errorMsg);
+            // Don't throw - just log and return. Service remains in stopped state.
+            return;
+        } catch (RuntimeException e) {
+            // Clean up maps in case of a startup failure.
+            runningServices.remove(name);
+            serviceResourceBindings.remove(name);
+            activeWrappedResources.remove(name);
+
+            // Unwrap reflection exceptions to find root cause
+            Throwable cause = e;
+            while (cause.getCause() != null && cause.getCause() != cause) {
+                cause = cause.getCause();
+            }
+
+            // Check if this is an OutOfMemoryError wrapped in RuntimeException (from reflection)
+            if (cause instanceof OutOfMemoryError && name.equals("simulation-engine") && pipelineConfig.hasPath("services.simulation-engine.options.environment.shape")) {
+                try {
+                    List<Integer> shape = pipelineConfig.getIntList("services.simulation-engine.options.environment.shape");
+                    long totalCells = shape.stream().mapToLong(Integer::longValue).reduce(1L, (a, b) -> a * b);
+                    long estimatedMemoryGB = ((totalCells * 8) / (1024 * 1024 * 1024)) + 4; // 8 bytes per cell + 4GB overhead
+                    String errorMsg = "Failed to start service '" + name + "': Insufficient memory. World size " + shape +
+                        " requires ~" + estimatedMemoryGB + " GB. Increase heap with -Xmx" + estimatedMemoryGB + "g or reduce world size.";
+                    log.error(errorMsg);
+                    return;
+                } catch (Exception ex) {
+                    log.error("Failed to start service '{}': Insufficient memory. Increase heap size with -Xmx16g or reduce world size.", name);
+                    return;
+                }
+            }
+
+            // Check if this is a configuration error (IllegalArgumentException or NegativeArraySizeException)
+            if (cause instanceof IllegalArgumentException) {
+                String errorMsg = "Configuration error for service '" + name + "': " + cause.getMessage();
+                log.error(errorMsg);
+                // Don't throw - just log and return. Service remains in stopped state.
+                return;
+            }
+
+            if (cause instanceof NegativeArraySizeException && name.equals("simulation-engine") && pipelineConfig.hasPath("services.simulation-engine.options.environment.shape")) {
+                try {
+                    List<Integer> shape = pipelineConfig.getIntList("services.simulation-engine.options.environment.shape");
+                    long totalCells = shape.stream().mapToLong(Integer::longValue).reduce(1L, (a, b) -> a * b);
+                    String errorMsg = "Configuration error for service '" + name + "': World size " + shape +
+                        " is too large (" + String.format("%,d", totalCells) + " cells). Java arrays are limited to " +
+                        String.format("%,d", Integer.MAX_VALUE) + " elements. Reduce world dimensions.";
+                    log.error(errorMsg);
+                    return;
+                } catch (Exception ex) {
+                    log.error("Configuration error for service '{}': World dimensions cause integer overflow. Reduce world size.", name);
+                    return;
+                }
+            }
+
+            // Re-throw other runtime exceptions
+            log.error("Failed to create and start a new instance for service '{}'.", name, e);
+            throw e;
         } catch (Exception e) {
             log.error("Failed to create and start a new instance for service '{}'.", name, e);
             // Clean up maps in case of a startup failure.
