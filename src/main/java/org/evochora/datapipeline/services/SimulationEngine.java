@@ -2,6 +2,7 @@ package org.evochora.datapipeline.services;
 
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
+import com.typesafe.config.ConfigRenderOptions;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ProgramArtifact;
@@ -47,6 +48,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     private final Simulation simulation;
     private final IRandomProvider randomProvider;
     private final List<IEnergyDistributionCreator> energyStrategies;
+    private final long seed;
     private final AtomicLong currentTick = new AtomicLong(0);
     private final AtomicLong messagesSent = new AtomicLong(0);
     private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
@@ -64,7 +66,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         if (this.samplingInterval < 1) throw new IllegalArgumentException("samplingInterval must be >= 1");
 
         this.pauseTicks = options.hasPath("pauseTicks") ? options.getLongList("pauseTicks") : Collections.emptyList();
-        long seed = options.hasPath("seed") ? options.getLong("seed") : System.currentTimeMillis();
+        this.seed = options.hasPath("seed") ? options.getLong("seed") : System.currentTimeMillis();
 
         List<? extends Config> organismConfigs = options.getConfigList("organisms");
         if (organismConfigs.isEmpty()) throw new IllegalArgumentException("At least one organism must be configured.");
@@ -109,7 +111,13 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     @Override
     protected void run() throws InterruptedException {
         log.info("Simulation loop started. Capturing data every {} ticks.", samplingInterval);
-        metadataOutput.put(buildMetadataMessage());
+        try {
+            metadataOutput.put(buildMetadataMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Interrupted while sending metadata", e);
+            return;
+        }
 
         while (getCurrentState() == State.RUNNING || getCurrentState() == State.PAUSED) {
             checkPause();
@@ -178,7 +186,54 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     private SimulationMetadata buildMetadataMessage() {
         SimulationMetadata.Builder builder = SimulationMetadata.newBuilder();
         builder.setSimulationRunId(this.runId);
+        builder.setStartTimeMs(System.currentTimeMillis());
+        builder.setInitialSeed(this.seed);
+
+        EnvironmentProperties envProps = this.simulation.getEnvironment().getProperties();
+        EnvironmentConfig.Builder envConfigBuilder = EnvironmentConfig.newBuilder();
+        envConfigBuilder.setDimensions(envProps.getWorldShape().length);
+        for (int dim : envProps.getWorldShape()) {
+            envConfigBuilder.addShape(dim);
+        }
+        for (int i = 0; i < envProps.getWorldShape().length; i++) {
+            envConfigBuilder.addToroidal(envProps.isToroidal());
+        }
+        if (options.hasPath("maxOrganismEnergy")) {
+            envConfigBuilder.setMaxOrganismEnergy(options.getInt("maxOrganismEnergy"));
+        }
+        builder.setEnvironment(envConfigBuilder.build());
+
+        if (!energyStrategies.isEmpty()) {
+            IEnergyDistributionCreator strategy = energyStrategies.get(0);
+            EnergyStrategyConfig.Builder strategyBuilder = EnergyStrategyConfig.newBuilder();
+            strategyBuilder.setStrategyType(strategy.getClass().getName());
+            builder.setEnergyStrategy(strategyBuilder.build());
+        }
+
         simulation.getProgramArtifacts().values().forEach(artifact -> builder.addPrograms(convertProgramArtifact(artifact)));
+
+        options.getConfigList("organisms").forEach(orgConfig -> {
+            InitialOrganismSetup.Builder orgSetupBuilder = InitialOrganismSetup.newBuilder();
+            ProgramArtifact artifact = simulation.getProgramArtifacts().get(orgConfig.getString("program"));
+            if (artifact != null) {
+                orgSetupBuilder.setProgramId(artifact.programId());
+            }
+            if (orgConfig.hasPath("id")) {
+                orgSetupBuilder.setOrganismId(orgConfig.getInt("id"));
+            }
+            orgSetupBuilder.setPosition(convertVector(orgConfig.getIntList("placement.positions").stream().mapToInt(i->i).toArray()));
+            orgSetupBuilder.setInitialEnergy(orgConfig.getInt("initialEnergy"));
+            builder.addInitialOrganisms(orgSetupBuilder.build());
+        });
+
+        if (options.hasPath("metadata")) {
+            options.getConfig("metadata").entrySet().forEach(entry -> {
+                builder.putUserMetadata(entry.getKey(), entry.getValue().unwrapped().toString());
+            });
+        }
+
+        builder.setResolvedConfigJson(options.root().render(ConfigRenderOptions.concise()));
+
         return builder.build();
     }
 
@@ -240,12 +295,89 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     }
 
     private static org.evochora.datapipeline.api.contracts.ProgramArtifact convertProgramArtifact(ProgramArtifact artifact) {
-        org.evochora.datapipeline.api.contracts.ProgramArtifact.Builder builder = org.evochora.datapipeline.api.contracts.ProgramArtifact.newBuilder();
+        org.evochora.datapipeline.api.contracts.ProgramArtifact.Builder builder =
+                org.evochora.datapipeline.api.contracts.ProgramArtifact.newBuilder();
+
         builder.setProgramId(artifact.programId());
-        artifact.sources().forEach((fileName, lines) -> builder.putSources(fileName, SourceLines.newBuilder().addAllLines(lines).build()));
-        artifact.procNameToParamNames().forEach((procName, params) -> builder.putProcNameToParamNames(procName, ParameterNames.newBuilder().addAllNames(params).build()));
-        // Other conversions from ProgramArtifact to protobuf would go here, if they existed in the protobuf definition.
+        artifact.sources().forEach((fileName, lines) ->
+                builder.putSources(fileName, SourceLines.newBuilder().addAllLines(lines).build()));
+
+        artifact.machineCodeLayout().forEach((pos, instruction) ->
+                builder.addMachineCodeLayout(InstructionMapping.newBuilder()
+                        .setPosition(convertVector(pos))
+                        .setInstruction(instruction)));
+
+        artifact.initialWorldObjects().forEach((pos, molecule) ->
+                builder.addInitialWorldObjects(PlacedMoleculeMapping.newBuilder()
+                        .setPosition(convertVector(pos))
+                        .setMolecule(org.evochora.datapipeline.api.contracts.PlacedMolecule.newBuilder()
+                                .setType(molecule.type())
+                                .setValue(molecule.value()))));
+
+        artifact.sourceMap().forEach((address, sourceInfo) ->
+                builder.addSourceMap(SourceMapEntry.newBuilder()
+                        .setLinearAddress(address)
+                        .setSourceInfo(convertSourceInfo(sourceInfo))));
+
+        artifact.callSiteBindings().forEach((address, target) ->
+                builder.addCallSiteBindings(CallSiteBinding.newBuilder()
+                        .setLinearAddress(address)
+                        .setTargetCoord(convertVector(target))));
+
+        builder.putAllRelativeCoordToLinearAddress(artifact.relativeCoordToLinearAddress());
+
+        artifact.linearAddressToCoord().forEach((address, coord) ->
+                builder.addLinearAddressToCoord(LinearAddressToCoord.newBuilder()
+                        .setLinearAddress(address)
+                        .setCoord(convertVector(coord))));
+
+        artifact.labelAddressToName().forEach((address, name) ->
+                builder.addLabelAddressToName(LabelMapping.newBuilder()
+                        .setLinearAddress(address)
+                        .setLabelName(name)));
+
+        builder.putAllRegisterAliasMap(artifact.registerAliasMap());
+
+        artifact.procNameToParamNames().forEach((procName, params) ->
+                builder.putProcNameToParamNames(procName, ParameterNames.newBuilder().addAllNames(params).build()));
+
+        artifact.tokenMap().forEach((sourceInfo, tokenInfo) ->
+                builder.addTokenMap(TokenMapEntry.newBuilder()
+                        .setSourceInfo(convertSourceInfo(sourceInfo))
+                        .setTokenInfo(convertTokenInfo(tokenInfo))));
+
+        artifact.tokenLookup().forEach((fileName, lineMap) ->
+                builder.addTokenLookup(FileTokenLookup.newBuilder()
+                        .setFileName(fileName)
+                        .addAllLines(lineMap.entrySet().stream().map(lineEntry ->
+                                LineTokenLookup.newBuilder()
+                                        .setLineNumber(lineEntry.getKey())
+                                        .addAllColumns(lineEntry.getValue().entrySet().stream().map(colEntry ->
+                                                ColumnTokenLookup.newBuilder()
+                                                        .setColumnNumber(colEntry.getKey())
+                                                        .addAllTokens(colEntry.getValue().stream().map(SimulationEngine::convertTokenInfo).toList())
+                                                        .build()
+                                        ).toList())
+                                        .build()
+                        ).toList())));
+
         return builder.build();
+    }
+
+    private static SourceInfo convertSourceInfo(org.evochora.compiler.api.SourceInfo sourceInfo) {
+        return SourceInfo.newBuilder()
+                .setFileName(sourceInfo.fileName())
+                .setLineNumber(sourceInfo.lineNumber())
+                .setColumnNumber(sourceInfo.columnNumber())
+                .build();
+    }
+
+    private static TokenInfo convertTokenInfo(org.evochora.compiler.api.TokenInfo tokenInfo) {
+        return TokenInfo.newBuilder()
+                .setTokenText(tokenInfo.tokenText())
+                .setTokenType(tokenInfo.tokenType().name())
+                .setScope(tokenInfo.scope())
+                .build();
     }
 
     private static Vector convertVector(int[] components) {
@@ -262,11 +394,25 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     }
 
     private static org.evochora.datapipeline.api.contracts.ProcFrame convertProcFrame(ProcFrame frame) {
-        return org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
-                .setProcName(frame.procName)
-                .setAbsoluteReturnIp(convertVector(frame.absoluteReturnIp))
-                .putAllFprBindings(frame.fprBindings)
-                .build();
+        org.evochora.datapipeline.api.contracts.ProcFrame.Builder builder =
+                org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
+                        .setProcName(frame.procName)
+                        .setAbsoluteReturnIp(convertVector(frame.absoluteReturnIp))
+                        .putAllFprBindings(frame.fprBindings);
+
+        if (frame.savedPrs != null) {
+            for (Object rv : frame.savedPrs) {
+                builder.addSavedPrs(convertRegisterValue(rv));
+            }
+        }
+
+        if (frame.savedFprs != null) {
+            for (Object rv : frame.savedFprs) {
+                builder.addSavedFprs(convertRegisterValue(rv));
+            }
+        }
+
+        return builder.build();
     }
 
     private static Iterable<int[]> iterateCoordinates(final int[] shape) {
