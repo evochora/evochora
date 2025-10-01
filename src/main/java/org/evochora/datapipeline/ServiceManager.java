@@ -28,6 +28,8 @@ public class ServiceManager implements IMonitorable {
     private final Map<String, List<ResourceBinding>> serviceResourceBindings = new ConcurrentHashMap<>();
     private final List<String> startupSequence;
     private final Map<String, List<PendingBinding>> pendingBindingsMap = new ConcurrentHashMap<>();
+    // Stores the wrapped resources currently being created for a service (used to coordinate between factory and bindings)
+    private final Map<String, Map<String, List<IResource>>> activeWrappedResources = new ConcurrentHashMap<>();
 
 
     public ServiceManager(Config rootConfig) {
@@ -104,7 +106,6 @@ public class ServiceManager implements IMonitorable {
                 String className = serviceDefinition.getString("className");
                 Config options = serviceDefinition.hasPath("options") ? serviceDefinition.getConfig("options") : ConfigFactory.empty();
 
-                Map<String, List<IResource>> injectableResources = new HashMap<>();
                 List<PendingBinding> pendingBindings = new ArrayList<>();
                 if (serviceDefinition.hasPath("resources")) {
                     Config resourcesConfig = serviceDefinition.getConfig("resources");
@@ -116,10 +117,6 @@ public class ServiceManager implements IMonitorable {
                         if (baseResource == null) {
                             throw new IllegalArgumentException(String.format("Service '%s' references unknown resource '%s' for port '%s'", serviceName, context.resourceName(), portName));
                         }
-                        IResource resourceToInject = (baseResource instanceof IContextualResource)
-                                ? ((IContextualResource) baseResource).getWrappedResource(context)
-                                : baseResource;
-                        injectableResources.computeIfAbsent(portName, k -> new ArrayList<>()).add(resourceToInject);
                         pendingBindings.add(new PendingBinding(context, baseResource));
                     }
                 }
@@ -130,6 +127,11 @@ public class ServiceManager implements IMonitorable {
 
                 IServiceFactory factory = () -> {
                     try {
+                        // Use wrapped resources from activeWrappedResources (populated by startService)
+                        Map<String, List<IResource>> injectableResources = activeWrappedResources.get(serviceName);
+                        if (injectableResources == null) {
+                            throw new IllegalStateException("No wrapped resources prepared for service: " + serviceName);
+                        }
                         return (IService) constructor.newInstance(serviceName, options, injectableResources);
                     } catch (Exception e) {
                         throw new RuntimeException("Failed to create an instance of service '" + serviceName + "'", e);
@@ -217,22 +219,46 @@ public class ServiceManager implements IMonitorable {
 
         try {
             log.info("Creating a new instance for service '{}'.", name);
-            IService newServiceInstance = factory.create();
 
+            // Step 1: Create wrapped resources ONCE and store them for both injection and bindings
             List<PendingBinding> pendingBindings = pendingBindingsMap.getOrDefault(name, Collections.emptyList());
-            List<ResourceBinding> finalBindings = pendingBindings.stream()
-                    .map(pb -> new ResourceBinding(pb.context(), newServiceInstance, pb.baseResource()))
-                    .collect(Collectors.toList());
-            serviceResourceBindings.put(name, Collections.unmodifiableList(finalBindings));
+            Map<String, List<IResource>> wrappedResourcesMap = new HashMap<>();
+            Map<ResourceContext, IResource> contextToWrappedResource = new HashMap<>();
 
-            runningServices.put(name, newServiceInstance);
-            newServiceInstance.start();
-            log.info("Service '{}' started successfully with a new instance.", name);
+            for (PendingBinding pb : pendingBindings) {
+                IResource wrappedResource = (pb.baseResource() instanceof IContextualResource)
+                        ? ((IContextualResource) pb.baseResource()).getWrappedResource(pb.context())
+                        : pb.baseResource();
+                wrappedResourcesMap.computeIfAbsent(pb.context().portName(), k -> new ArrayList<>()).add(wrappedResource);
+                contextToWrappedResource.put(pb.context(), wrappedResource);
+            }
+
+            // Step 2: Store wrapped resources for factory to use
+            activeWrappedResources.put(name, wrappedResourcesMap);
+
+            try {
+                // Step 3: Create service instance (factory will use wrapped resources from activeWrappedResources)
+                IService newServiceInstance = factory.create();
+
+                // Step 4: Create ResourceBindings using the SAME wrapped resource instances
+                List<ResourceBinding> finalBindings = pendingBindings.stream()
+                        .map(pb -> new ResourceBinding(pb.context(), newServiceInstance, contextToWrappedResource.get(pb.context())))
+                        .collect(Collectors.toList());
+                serviceResourceBindings.put(name, Collections.unmodifiableList(finalBindings));
+
+                runningServices.put(name, newServiceInstance);
+                newServiceInstance.start();
+                log.info("Service '{}' started successfully with a new instance.", name);
+            } finally {
+                // Step 5: Clean up temporary map
+                activeWrappedResources.remove(name);
+            }
         } catch (Exception e) {
             log.error("Failed to create and start a new instance for service '{}'.", name, e);
             // Clean up maps in case of a startup failure.
             runningServices.remove(name);
             serviceResourceBindings.remove(name);
+            activeWrappedResources.remove(name);
         }
     }
 
