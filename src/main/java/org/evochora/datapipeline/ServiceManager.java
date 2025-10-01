@@ -204,12 +204,10 @@ public class ServiceManager implements IMonitorable {
     }
 
     public void startService(String name) {
+        // VALIDATION: Check if the service is already running.
         if (runningServices.containsKey(name)) {
-            IService oldService = runningServices.get(name);
-            if (oldService.getCurrentState() != IService.State.STOPPED) {
-                log.info("Stopping the existing instance of service '{}' before starting a new one.", name);
-                stopService(name);
-            }
+            // Throw an exception to enforce explicit commands for destructive actions.
+            throw new IllegalStateException("Service '" + name + "' is already running. Use restartService() for an explicit restart.");
         }
 
         IServiceFactory factory = serviceFactories.get(name);
@@ -232,17 +230,17 @@ public class ServiceManager implements IMonitorable {
             log.info("Service '{}' started successfully with a new instance.", name);
         } catch (Exception e) {
             log.error("Failed to create and start a new instance for service '{}'.", name, e);
+            // Clean up maps in case of a startup failure.
             runningServices.remove(name);
             serviceResourceBindings.remove(name);
         }
     }
 
     public void stopService(String name) {
-        IService service = runningServices.get(name);
+        IService service = runningServices.remove(name);
         if (service != null) {
-            service.stop();
-            runningServices.remove(name);
             serviceResourceBindings.remove(name);
+            stopAndAwait(service, name);
         } else {
             log.warn("Attempted to stop service '{}', but it was not found among running services.", name);
         }
@@ -260,6 +258,30 @@ public class ServiceManager implements IMonitorable {
         log.info("Restarting service '{}'...", serviceName);
         stopService(serviceName);
         startService(serviceName);
+    }
+
+    private void stopAndAwait(IService service, String serviceName) {
+        log.info("Stopping service '{}'...", serviceName);
+        service.stop();
+
+        try {
+            // Wait for up to 5 seconds for the service to stop.
+            for (int i = 0; i < 100; i++) {
+                if (service.getCurrentState() == IService.State.STOPPED) {
+                    log.info("Service '{}' has stopped.", serviceName);
+                    return; // Exit successfully
+                }
+                Thread.sleep(50);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("Interrupted while waiting for service '{}' to stop.", serviceName);
+        }
+
+        // If the loop finishes without the service stopping, log a warning.
+        if (service.getCurrentState() != IService.State.STOPPED) {
+            log.warn("Service '{}' did not stop within the allocated time.", serviceName);
+        }
     }
 
     private IService getRunningServiceOrFail(String serviceName) {

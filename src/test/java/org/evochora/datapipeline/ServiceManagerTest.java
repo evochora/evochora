@@ -95,12 +95,8 @@ public class ServiceManagerTest {
             assertEquals(2, (long) sm.getMetrics().get("services_running"));
         });
 
-        // Calling start again should be idempotent (it will restart the service)
-        sm.startService("producer");
-        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
-            assertEquals(IService.State.RUNNING, sm.getServiceStatus("producer").state())
-        );
-
+        // Assert that starting again throws an exception
+        assertThrows(IllegalStateException.class, () -> sm.startService("producer"));
 
         sm.pauseAll();
         await().atMost(1, TimeUnit.SECONDS).untilAsserted(() -> {
@@ -108,6 +104,7 @@ public class ServiceManagerTest {
             assertEquals(IService.State.PAUSED, sm.getServiceStatus("consumer").state());
             assertEquals(2, (long) sm.getMetrics().get("services_paused"));
         });
+        assertThrows(IllegalStateException.class, () -> sm.pauseService("producer"));
 
 
         sm.resumeAll();
@@ -115,6 +112,7 @@ public class ServiceManagerTest {
              assertEquals(IService.State.RUNNING, sm.getServiceStatus("producer").state());
              assertEquals(IService.State.RUNNING, sm.getServiceStatus("consumer").state());
         });
+        assertThrows(IllegalStateException.class, () -> sm.resumeService("producer"));
 
         sm.stopAll();
         await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
@@ -122,6 +120,8 @@ public class ServiceManagerTest {
             assertEquals(IService.State.STOPPED, sm.getServiceStatus("consumer").state());
             assertEquals(2, (long) sm.getMetrics().get("services_stopped"));
         });
+        // Stopping an already stopped service should be a no-op, not throw an exception.
+        sm.stopService("producer");
     }
 
     @Test
