@@ -150,6 +150,6 @@ class NodeIntegrationTest {
             .then()
                 .statusCode(409) // Conflict
                 .body("error", equalTo("Conflict"))
-                .body("message", containsString("Cannot start service 'test-consumer' as it is already in state RUNNING"));
+                .body("message", containsString("Service 'test-consumer' is already running. Use restartService() for an explicit restart."));
     }
 }

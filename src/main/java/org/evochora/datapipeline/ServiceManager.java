@@ -4,11 +4,13 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.resources.*;
 import org.evochora.datapipeline.api.services.IService;
+import org.evochora.datapipeline.api.services.IServiceFactory;
 import org.evochora.datapipeline.api.services.ResourceBinding;
 import org.evochora.datapipeline.api.services.ServiceStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Constructor;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -20,17 +22,20 @@ public class ServiceManager implements IMonitorable {
     private static final Logger log = LoggerFactory.getLogger(ServiceManager.class);
 
     private final Config pipelineConfig;
-    private final Map<String, IService> services = new ConcurrentHashMap<>();
+    private final Map<String, IServiceFactory> serviceFactories = new ConcurrentHashMap<>();
+    private final Map<String, IService> runningServices = new ConcurrentHashMap<>();
     private final Map<String, IResource> resources = new ConcurrentHashMap<>();
     private final Map<String, List<ResourceBinding>> serviceResourceBindings = new ConcurrentHashMap<>();
     private final List<String> startupSequence;
+    private final Map<String, List<PendingBinding>> pendingBindingsMap = new ConcurrentHashMap<>();
+
 
     public ServiceManager(Config rootConfig) {
         this.pipelineConfig = loadPipelineConfig(rootConfig);
         log.info("Initializing ServiceManager...");
 
         instantiateResources(this.pipelineConfig);
-        instantiateServices(this.pipelineConfig);
+        buildServiceFactories(this.pipelineConfig);
 
         if (pipelineConfig.hasPath("startupSequence")) {
             this.startupSequence = pipelineConfig.getStringList("startupSequence");
@@ -38,7 +43,7 @@ public class ServiceManager implements IMonitorable {
             this.startupSequence = Collections.emptyList();
         }
 
-        log.info("ServiceManager initialized with {} resources and {} services.", resources.size(), services.size());
+        log.info("ServiceManager initialized with {} resources and {} service factories.", resources.size(), serviceFactories.size());
 
         // Auto-start services if configured
         boolean autoStart = pipelineConfig.hasPath("autoStart")
@@ -87,7 +92,7 @@ public class ServiceManager implements IMonitorable {
         }
     }
 
-    private void instantiateServices(Config config) {
+    private void buildServiceFactories(Config config) {
         if (!config.hasPath("services")) {
             log.debug("No services configured.");
             return;
@@ -118,20 +123,23 @@ public class ServiceManager implements IMonitorable {
                         pendingBindings.add(new PendingBinding(context, baseResource));
                     }
                 }
+                pendingBindingsMap.put(serviceName, pendingBindings);
 
-                IService service = (IService) Class.forName(className)
-                        .getConstructor(String.class, Config.class, Map.class)
-                        .newInstance(serviceName, options, injectableResources);
-                services.put(serviceName, service);
+                Constructor<?> constructor = Class.forName(className)
+                        .getConstructor(String.class, Config.class, Map.class);
 
-                List<ResourceBinding> finalBindings = pendingBindings.stream()
-                        .map(pb -> new ResourceBinding(pb.context(), service, pb.baseResource()))
-                        .collect(Collectors.toList());
-                serviceResourceBindings.put(serviceName, Collections.unmodifiableList(finalBindings));
+                IServiceFactory factory = () -> {
+                    try {
+                        return (IService) constructor.newInstance(serviceName, options, injectableResources);
+                    } catch (Exception e) {
+                        throw new RuntimeException("Failed to create an instance of service '" + serviceName + "'", e);
+                    }
+                };
+                serviceFactories.put(serviceName, factory);
 
-                log.info("Instantiated service '{}' of type {}", serviceName, className);
+                log.info("Built factory for service '{}' of type {}", serviceName, className);
             } catch (Exception e) {
-                log.error("Failed to instantiate service '{}': {}. Skipping this service.", serviceName, e.getMessage(), e);
+                log.error("Failed to build factory for service '{}': {}. Skipping this service.", serviceName, e.getMessage(), e);
             }
         }
     }
@@ -167,7 +175,7 @@ public class ServiceManager implements IMonitorable {
     public void startAll() {
         log.info("Starting all services...");
         List<String> toStart = new ArrayList<>(startupSequence);
-        services.keySet().stream().filter(s -> !toStart.contains(s)).forEach(toStart::add);
+        serviceFactories.keySet().stream().filter(s -> !toStart.contains(s)).forEach(toStart::add);
         applyToAllServices(this::startService, toStart);
     }
 
@@ -175,18 +183,18 @@ public class ServiceManager implements IMonitorable {
         log.info("Stopping all services...");
         List<String> toStop = new ArrayList<>(startupSequence);
         Collections.reverse(toStop);
-        services.keySet().stream().filter(s -> !toStop.contains(s)).forEach(toStop::add);
+        runningServices.keySet().stream().filter(s -> !toStop.contains(s)).forEach(toStop::add);
         applyToAllServices(this::stopService, toStop);
     }
 
     public void pauseAll() {
         log.info("Pausing all services...");
-        applyToAllServices(this::pauseService, new ArrayList<>(services.keySet()));
+        applyToAllServices(this::pauseService, new ArrayList<>(runningServices.keySet()));
     }
 
     public void resumeAll() {
         log.info("Resuming all services...");
-        applyToAllServices(this::resumeService, new ArrayList<>(services.keySet()));
+        applyToAllServices(this::resumeService, new ArrayList<>(runningServices.keySet()));
     }
 
     public void restartAll() {
@@ -195,50 +203,111 @@ public class ServiceManager implements IMonitorable {
         startAll();
     }
 
-    public void startService(String serviceName) {
-        getServiceOrFail(serviceName).start();
+    public void startService(String name) {
+        // VALIDATION: Check if the service is already running.
+        if (runningServices.containsKey(name)) {
+            // Throw an exception to enforce explicit commands for destructive actions.
+            throw new IllegalStateException("Service '" + name + "' is already running. Use restartService() for an explicit restart.");
+        }
+
+        IServiceFactory factory = serviceFactories.get(name);
+        if (factory == null) {
+            throw new IllegalArgumentException("Service '" + name + "' is not defined.");
+        }
+
+        try {
+            log.info("Creating a new instance for service '{}'.", name);
+            IService newServiceInstance = factory.create();
+
+            List<PendingBinding> pendingBindings = pendingBindingsMap.getOrDefault(name, Collections.emptyList());
+            List<ResourceBinding> finalBindings = pendingBindings.stream()
+                    .map(pb -> new ResourceBinding(pb.context(), newServiceInstance, pb.baseResource()))
+                    .collect(Collectors.toList());
+            serviceResourceBindings.put(name, Collections.unmodifiableList(finalBindings));
+
+            runningServices.put(name, newServiceInstance);
+            newServiceInstance.start();
+            log.info("Service '{}' started successfully with a new instance.", name);
+        } catch (Exception e) {
+            log.error("Failed to create and start a new instance for service '{}'.", name, e);
+            // Clean up maps in case of a startup failure.
+            runningServices.remove(name);
+            serviceResourceBindings.remove(name);
+        }
     }
 
-    public void stopService(String serviceName) {
-        getServiceOrFail(serviceName).stop();
+    public void stopService(String name) {
+        IService service = runningServices.remove(name);
+        if (service != null) {
+            serviceResourceBindings.remove(name);
+            stopAndAwait(service, name);
+        } else {
+            log.warn("Attempted to stop service '{}', but it was not found among running services.", name);
+        }
     }
 
     public void pauseService(String serviceName) {
-        getServiceOrFail(serviceName).pause();
+        getRunningServiceOrFail(serviceName).pause();
     }
 
     public void resumeService(String serviceName) {
-        getServiceOrFail(serviceName).resume();
+        getRunningServiceOrFail(serviceName).resume();
     }
 
     public void restartService(String serviceName) {
         log.info("Restarting service '{}'...", serviceName);
-        try {
-            stopService(serviceName);
-        } catch (IllegalStateException e) {
-            log.warn("Service '{}' could not be stopped before restart (perhaps it was already stopped): {}", serviceName, e.getMessage());
-        }
+        stopService(serviceName);
         startService(serviceName);
     }
 
-    private IService getServiceOrFail(String serviceName) {
-        IService service = services.get(serviceName);
+    private void stopAndAwait(IService service, String serviceName) {
+        log.info("Stopping service '{}'...", serviceName);
+        service.stop();
+
+        try {
+            // Wait for up to 5 seconds for the service to stop.
+            for (int i = 0; i < 100; i++) {
+                if (service.getCurrentState() == IService.State.STOPPED) {
+                    log.info("Service '{}' has stopped.", serviceName);
+                    return; // Exit successfully
+                }
+                Thread.sleep(50);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("Interrupted while waiting for service '{}' to stop.", serviceName);
+        }
+
+        // If the loop finishes without the service stopping, log a warning.
+        if (service.getCurrentState() != IService.State.STOPPED) {
+            log.warn("Service '{}' did not stop within the allocated time.", serviceName);
+        }
+    }
+
+    private IService getRunningServiceOrFail(String serviceName) {
+        IService service = runningServices.get(serviceName);
         if (service == null) {
-            throw new IllegalArgumentException("Service not found: " + serviceName);
+            throw new IllegalArgumentException("Service not found or not running: " + serviceName);
         }
         return service;
+    }
+
+    public Collection<IService> getAllServices() {
+        return Collections.unmodifiableCollection(runningServices.values());
     }
 
     @Override
     public Map<String, Number> getMetrics() {
         Map<String, Number> metrics = new HashMap<>();
-        Map<IService.State, Long> serviceStates = services.values().stream()
+        Map<IService.State, Long> serviceStates = runningServices.values().stream()
                 .collect(Collectors.groupingBy(IService::getCurrentState, Collectors.counting()));
 
-        metrics.put("services_total", services.size());
+        long stoppedCount = serviceFactories.size() - runningServices.size();
+
+        metrics.put("services_total", (long) serviceFactories.size());
         metrics.put("services_running", serviceStates.getOrDefault(IService.State.RUNNING, 0L));
         metrics.put("services_paused", serviceStates.getOrDefault(IService.State.PAUSED, 0L));
-        metrics.put("services_stopped", serviceStates.getOrDefault(IService.State.STOPPED, 0L));
+        metrics.put("services_stopped", serviceStates.getOrDefault(IService.State.STOPPED, 0L) + stoppedCount);
         metrics.put("services_error", serviceStates.getOrDefault(IService.State.ERROR, 0L));
 
         Map<IResource.UsageState, Long> resourceStates = serviceResourceBindings.values().stream()
@@ -256,7 +325,7 @@ public class ServiceManager implements IMonitorable {
 
     @Override
     public List<OperationalError> getErrors() {
-        return services.values().stream()
+        return runningServices.values().stream()
                 .filter(s -> s instanceof IMonitorable)
                 .flatMap(s -> ((IMonitorable) s).getErrors().stream())
                 .collect(Collectors.toList());
@@ -264,7 +333,7 @@ public class ServiceManager implements IMonitorable {
 
     @Override
     public void clearErrors() {
-        services.values().stream()
+        runningServices.values().stream()
                 .filter(s -> s instanceof IMonitorable)
                 .forEach(s -> ((IMonitorable) s).clearErrors());
         log.info("Cleared errors for all monitorable services.");
@@ -272,7 +341,7 @@ public class ServiceManager implements IMonitorable {
 
     @Override
     public boolean isHealthy() {
-        boolean servicesOk = services.values().stream().noneMatch(s -> s.getCurrentState() == IService.State.ERROR);
+        boolean servicesOk = runningServices.values().stream().noneMatch(s -> s.getCurrentState() == IService.State.ERROR);
         boolean resourcesOk = serviceResourceBindings.values().stream()
                 .flatMap(List::stream)
                 .noneMatch(b -> b.resource().getUsageState(b.context().usageType()) == IResource.UsageState.FAILED);
@@ -280,7 +349,7 @@ public class ServiceManager implements IMonitorable {
     }
 
     public Map<String, List<OperationalError>> getServiceErrors() {
-        return services.entrySet().stream()
+        return runningServices.entrySet().stream()
                 .filter(e -> e.getValue() instanceof IMonitorable)
                 .map(e -> new AbstractMap.SimpleEntry<>(e.getKey(), ((IMonitorable) e.getValue()).getErrors()))
                 .filter(e -> e.getValue() != null && !e.getValue().isEmpty())
@@ -288,7 +357,7 @@ public class ServiceManager implements IMonitorable {
     }
 
     public List<OperationalError> getServiceErrors(String serviceName) {
-        IService service = getServiceOrFail(serviceName);
+        IService service = getRunningServiceOrFail(serviceName);
         if (service instanceof IMonitorable) {
             return ((IMonitorable) service).getErrors();
         }
@@ -296,14 +365,21 @@ public class ServiceManager implements IMonitorable {
     }
 
     public Map<String, ServiceStatus> getAllServiceStatus() {
-        return services.keySet().stream()
+        return serviceFactories.keySet().stream()
                 .collect(Collectors.toMap(Function.identity(), this::getServiceStatus, (v1, v2) -> v1, LinkedHashMap::new));
     }
 
     public ServiceStatus getServiceStatus(String serviceName) {
-        IService service = getServiceOrFail(serviceName);
-        List<ResourceBinding> resourceBindings = serviceResourceBindings.getOrDefault(serviceName, Collections.emptyList());
+        if (!serviceFactories.containsKey(serviceName)) {
+            throw new IllegalArgumentException("Service not found: " + serviceName);
+        }
 
+        IService service = runningServices.get(serviceName);
+        if (service == null) {
+            return new ServiceStatus(IService.State.STOPPED, Collections.emptyMap(), Collections.emptyList(), Collections.emptyList());
+        }
+
+        List<ResourceBinding> resourceBindings = serviceResourceBindings.getOrDefault(serviceName, Collections.emptyList());
         Map<String, Number> serviceMetrics = (service instanceof IMonitorable) ? ((IMonitorable) service).getMetrics() : Collections.emptyMap();
         List<OperationalError> errors = (service instanceof IMonitorable) ? ((IMonitorable) service).getErrors() : Collections.emptyList();
 
