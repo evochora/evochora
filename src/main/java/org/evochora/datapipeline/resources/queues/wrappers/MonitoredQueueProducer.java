@@ -46,7 +46,7 @@ public class MonitoredQueueProducer<T> extends AbstractResource implements IOutp
         super(((AbstractResource) delegate).getResourceName(), ((AbstractResource) delegate).getOptions());
         this.delegate = delegate;
         this.context = context;
-        this.windowSeconds = Integer.parseInt(context.parameters().getOrDefault("window", "5"));
+        this.windowSeconds = Integer.parseInt(context.parameters().getOrDefault("throughputWindowSeconds", "5"));
     }
 
     /**

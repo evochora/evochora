@@ -43,6 +43,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     private final IOutputQueueResource<TickData> tickDataOutput;
     private final IOutputQueueResource<SimulationMetadata> metadataOutput;
     private final int samplingInterval;
+    private final int throughputWindowSeconds;
     private final List<Long> pauseTicks;
     private final String runId;
     private final Simulation simulation;
@@ -69,6 +70,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         this.samplingInterval = options.hasPath("samplingInterval") ? options.getInt("samplingInterval") : 1;
         if (this.samplingInterval < 1) throw new IllegalArgumentException("samplingInterval must be >= 1");
 
+        this.throughputWindowSeconds = options.hasPath("throughputWindowSeconds") ? options.getInt("throughputWindowSeconds") : 1;
         this.pauseTicks = options.hasPath("pauseTicks") ? options.getLongList("pauseTicks") : Collections.emptyList();
         this.seed = options.hasPath("seed") ? options.getLong("seed") : System.currentTimeMillis();
 
@@ -177,7 +179,8 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     public Map<String, Number> getMetrics() {
         Map<String, Number> metrics = new HashMap<>();
         long now = System.currentTimeMillis();
-        if (now - lastMetricTime > 1000) {
+        long windowMs = throughputWindowSeconds * 1000L;
+        if (now - lastMetricTime > windowMs) {
             ticksPerSecond = (double) (currentTick.get() - lastTickCount) * 1000.0 / (now - lastMetricTime);
             lastMetricTime = now;
             lastTickCount = currentTick.get();
