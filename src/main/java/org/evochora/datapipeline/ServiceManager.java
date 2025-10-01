@@ -369,6 +369,10 @@ public class ServiceManager implements IMonitorable {
                 .collect(Collectors.toMap(Function.identity(), this::getServiceStatus, (v1, v2) -> v1, LinkedHashMap::new));
     }
 
+    public Map<String, IResource> getAllResourceStatus() {
+        return Collections.unmodifiableMap(resources);
+    }
+
     public ServiceStatus getServiceStatus(String serviceName) {
         if (!serviceFactories.containsKey(serviceName)) {
             throw new IllegalArgumentException("Service not found: " + serviceName);

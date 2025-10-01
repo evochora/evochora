@@ -8,6 +8,7 @@ import org.evochora.datapipeline.ServiceManager;
 import org.evochora.datapipeline.api.services.ServiceStatus;
 import org.evochora.node.processes.http.AbstractController;
 import org.evochora.node.processes.http.api.pipeline.dto.PipelineStatusDto;
+import org.evochora.node.processes.http.api.pipeline.dto.ResourceStatusDto;
 import org.evochora.node.processes.http.api.pipeline.dto.ServiceStatusDto;
 import org.evochora.node.spi.ServiceRegistry;
 import org.slf4j.Logger;
@@ -83,8 +84,13 @@ public class PipelineController extends AbstractController {
         final List<ServiceStatusDto> serviceStatuses = serviceManager.getAllServiceStatus().entrySet().stream()
             .map(entry -> ServiceStatusDto.from(entry.getKey(), entry.getValue()))
             .collect(Collectors.toList());
+
+        final List<ResourceStatusDto> resourceStatuses = serviceManager.getAllResourceStatus().entrySet().stream()
+            .map(entry -> ResourceStatusDto.from(entry.getKey(), entry.getValue()))
+            .collect(Collectors.toList());
+
         final String overallStatus = determineOverallStatus(serviceStatuses);
-        ctx.status(HttpStatus.OK).json(new PipelineStatusDto(nodeId, overallStatus, serviceStatuses));
+        ctx.status(HttpStatus.OK).json(new PipelineStatusDto(nodeId, overallStatus, serviceStatuses, resourceStatuses));
     }
 
     void getServiceStatus(final Context ctx) {

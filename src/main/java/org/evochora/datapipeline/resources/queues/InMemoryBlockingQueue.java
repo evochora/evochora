@@ -14,6 +14,7 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IOutputQueueResource;
 import org.evochora.datapipeline.resources.AbstractResource;
+import org.evochora.datapipeline.resources.queues.wrappers.DirectOutputQueueWrapper;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueConsumer;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueProducer;
 
@@ -42,6 +43,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     private final ArrayBlockingQueue<TimestampedObject<T>> queue;
     private final int capacity;
     private final int throughputWindowSeconds;
+    private final boolean disableTimestamps;
     private final List<OperationalError> errors = Collections.synchronizedList(new java.util.ArrayList<>());
     private final ConcurrentHashMap<Long, Instant> timestamps = new ConcurrentHashMap<>();
 
@@ -63,6 +65,8 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
         try {
             this.capacity = finalConfig.getInt("capacity");
             this.throughputWindowSeconds = finalConfig.getInt("throughputWindowSeconds");
+            this.disableTimestamps = finalConfig.hasPath("disableTimestamps")
+                    && finalConfig.getBoolean("disableTimestamps");
             if (capacity <= 0) {
                 throw new IllegalArgumentException("Capacity must be positive for resource '" + name + "'.");
             }
@@ -114,12 +118,20 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
 
     /**
      * {@inheritDoc}
+     * If useDirectWrapper=true in options, returns DirectOutputQueueWrapper for queue-out to bypass monitoring overhead.
      */
     @Override
     public IWrappedResource getWrappedResource(ResourceContext context) {
         return switch (context.usageType()) {
             case "queue-in" -> new MonitoredQueueConsumer<>(this, context);
-            case "queue-out" -> new MonitoredQueueProducer<>(this, context);
+            case "queue-out" -> {
+                // Check if we should use direct wrapper to bypass monitoring
+                boolean useDirectWrapper = getOptions().hasPath("useDirectWrapper")
+                    && getOptions().getBoolean("useDirectWrapper");
+                yield useDirectWrapper
+                    ? new DirectOutputQueueWrapper<>(this)
+                    : new MonitoredQueueProducer<>(this, context);
+            }
             default -> throw new IllegalArgumentException("Unsupported usage type: " + context.usageType());
         };
     }
@@ -210,7 +222,9 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     public Optional<T> poll() {
         TimestampedObject<T> tsObject = queue.poll();
         if (tsObject != null) {
-            timestamps.put(System.nanoTime(), tsObject.timestamp);
+            if (!disableTimestamps && tsObject.timestamp != null) {
+                timestamps.put(System.nanoTime(), tsObject.timestamp);
+            }
             return Optional.of(tsObject.object);
         }
         return Optional.empty();
@@ -223,7 +237,9 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     @Override
     public T take() throws InterruptedException {
         TimestampedObject<T> tsObject = queue.take();
-        timestamps.put(System.nanoTime(), tsObject.timestamp);
+        if (!disableTimestamps && tsObject.timestamp != null) {
+            timestamps.put(System.nanoTime(), tsObject.timestamp);
+        }
         return tsObject.object;
     }
 
@@ -235,7 +251,9 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     public Optional<T> poll(long timeout, TimeUnit unit) throws InterruptedException {
         TimestampedObject<T> tsObject = queue.poll(timeout, unit);
         if (tsObject != null) {
-            timestamps.put(System.nanoTime(), tsObject.timestamp);
+            if (!disableTimestamps && tsObject.timestamp != null) {
+                timestamps.put(System.nanoTime(), tsObject.timestamp);
+            }
             return Optional.of(tsObject.object);
         }
         return Optional.empty();
@@ -250,12 +268,19 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     public int drainTo(Collection<? super T> collection, int maxElements) {
         ArrayList<TimestampedObject<T>> drainedObjects = new ArrayList<>();
         int count = queue.drainTo(drainedObjects, maxElements);
-        if (count > 0) {
+        if (count > 0 && !disableTimestamps) {
             Instant now = Instant.now();
             for (TimestampedObject<T> tsObject : drainedObjects) {
                 collection.add(tsObject.object);
                 // Record a timestamp for each drained object to contribute to throughput metrics.
-                timestamps.put(System.nanoTime(), now);
+                if (tsObject.timestamp != null) {
+                    timestamps.put(System.nanoTime(), now);
+                }
+            }
+        } else if (count > 0) {
+            // Just extract objects without timestamp tracking
+            for (TimestampedObject<T> tsObject : drainedObjects) {
+                collection.add(tsObject.object);
             }
         }
         return count;
@@ -317,8 +342,10 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
      */
     @Override
     public void put(T element) throws InterruptedException {
-        queue.put(new TimestampedObject<>(element));
-        timestamps.put(System.nanoTime(), Instant.now());
+        queue.put(new TimestampedObject<>(element, disableTimestamps));
+        if (!disableTimestamps) {
+            timestamps.put(System.nanoTime(), Instant.now());
+        }
     }
 
     /**
@@ -358,6 +385,11 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
         TimestampedObject(T object) {
             this.object = object;
             this.timestamp = Instant.now();
+        }
+
+        TimestampedObject(T object, boolean skipTimestamp) {
+            this.object = object;
+            this.timestamp = skipTimestamp ? null : Instant.now();
         }
     }
 }

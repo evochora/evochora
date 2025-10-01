@@ -81,7 +81,7 @@ public class HttpServerProcess extends AbstractProcess {
                 minThreads,
                 idleTimeout
             );
-            threadPool.setName(processName + "-http");
+            threadPool.setName(processName);
             config.jetty.threadPool = threadPool;
 
             LOGGER.debug("Configured thread pool '{}' with {} min threads, {} max threads, {} ms idle timeout",

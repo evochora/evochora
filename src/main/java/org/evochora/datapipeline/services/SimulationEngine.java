@@ -40,6 +40,9 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class SimulationEngine extends AbstractService implements IMonitorable {
+    // Pre-built empty message to isolate queue overhead from builder overhead
+    private static final TickData EMPTY_TICK_DATA = TickData.newBuilder().build();
+
     private final IOutputQueueResource<TickData> tickDataOutput;
     private final IOutputQueueResource<SimulationMetadata> metadataOutput;
     private final int samplingInterval;
@@ -185,9 +188,13 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
             lastMetricTime = now;
             lastTickCount = currentTick.get();
         }
+
+        // Take snapshot to avoid ConcurrentModificationException when simulation thread modifies list
+        List<Organism> organismsSnapshot = new ArrayList<>(simulation.getOrganisms());
+
         metrics.put("current_tick", currentTick.get());
-        metrics.put("organisms_alive", simulation.getOrganisms().stream().filter(o -> !o.isDead()).count());
-        metrics.put("organisms_total", (long) simulation.getOrganisms().size());
+        metrics.put("organisms_alive", organismsSnapshot.stream().filter(o -> !o.isDead()).count());
+        metrics.put("organisms_total", (long) organismsSnapshot.size());
         metrics.put("messages_sent", messagesSent.get());
         metrics.put("sampling_interval", samplingInterval);
         metrics.put("ticks_per_second", ticksPerSecond);
@@ -285,46 +292,78 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
 
     private OrganismState extractOrganismState(Organism o) {
         OrganismState.Builder builder = OrganismState.newBuilder();
+        Vector.Builder vectorBuilder = Vector.newBuilder();
+        org.evochora.datapipeline.api.contracts.RegisterValue.Builder registerBuilder =
+                org.evochora.datapipeline.api.contracts.RegisterValue.newBuilder();
+
         builder.setOrganismId(o.getId());
         if (o.getParentId() != null) builder.setParentId(o.getParentId());
         builder.setBirthTick(o.getBirthTick());
         builder.setProgramId(o.getProgramId());
         builder.setEnergy(o.getEr());
-        builder.setIp(convertVector(o.getIp()));
-        builder.setInitialPosition(convertVector(o.getInitialPosition()));
-        builder.setDv(convertVector(o.getDv()));
-        o.getDps().forEach(dp -> builder.addDataPointers(convertVector(dp)));
+
+        builder.setIp(convertVectorReuse(o.getIp(), vectorBuilder));
+        builder.setInitialPosition(convertVectorReuse(o.getInitialPosition(), vectorBuilder));
+        builder.setDv(convertVectorReuse(o.getDv(), vectorBuilder));
+
+        for (int[] dp : o.getDps()) {
+            builder.addDataPointers(convertVectorReuse(dp, vectorBuilder));
+        }
         builder.setActiveDpIndex(o.getActiveDpIndex());
-        o.getDrs().forEach(rv -> builder.addDataRegisters(convertRegisterValue(rv)));
-        o.getPrs().forEach(rv -> builder.addProcedureRegisters(convertRegisterValue(rv)));
-        o.getFprs().forEach(rv -> builder.addFormalParamRegisters(convertRegisterValue(rv)));
-        o.getLrs().forEach(loc -> builder.addLocationRegisters(convertVector((int[]) loc)));
-        o.getDataStack().forEach(rv -> builder.addDataStack(convertRegisterValue(rv)));
-        o.getLocationStack().forEach(loc -> builder.addLocationStack(convertVector(loc)));
-        o.getCallStack().forEach(frame -> builder.addCallStack(convertProcFrame(frame)));
+
+        for (Object rv : o.getDrs()) {
+            builder.addDataRegisters(convertRegisterValueReuse(rv, registerBuilder, vectorBuilder));
+        }
+        for (Object rv : o.getPrs()) {
+            builder.addProcedureRegisters(convertRegisterValueReuse(rv, registerBuilder, vectorBuilder));
+        }
+        for (Object rv : o.getFprs()) {
+            builder.addFormalParamRegisters(convertRegisterValueReuse(rv, registerBuilder, vectorBuilder));
+        }
+        for (Object loc : o.getLrs()) {
+            builder.addLocationRegisters(convertVectorReuse((int[]) loc, vectorBuilder));
+        }
+        for (Object rv : o.getDataStack()) {
+            builder.addDataStack(convertRegisterValueReuse(rv, registerBuilder, vectorBuilder));
+        }
+        for (int[] loc : o.getLocationStack()) {
+            builder.addLocationStack(convertVectorReuse(loc, vectorBuilder));
+        }
+        for (ProcFrame frame : o.getCallStack()) {
+            builder.addCallStack(convertProcFrameReuse(frame, vectorBuilder, registerBuilder));
+        }
+
         builder.setIsDead(o.isDead());
         builder.setInstructionFailed(o.isInstructionFailed());
         if (o.getFailureReason() != null) builder.setFailureReason(o.getFailureReason());
-        if (o.getFailureCallStack() != null) o.getFailureCallStack().forEach(frame -> builder.addFailureCallStack(convertProcFrame(frame)));
+        if (o.getFailureCallStack() != null) {
+            for (ProcFrame frame : o.getFailureCallStack()) {
+                builder.addFailureCallStack(convertProcFrameReuse(frame, vectorBuilder, registerBuilder));
+            }
+        }
         return builder.build();
     }
 
     private List<CellState> extractCellStates(Environment env) {
         List<CellState> cells = new ArrayList<>();
         Vector.Builder vectorBuilder = Vector.newBuilder();
+        CellState.Builder cellBuilder = CellState.newBuilder();
 
         env.forEachOccupiedCell((coord, moleculeInt, ownerId) -> {
+            // Reuse vector builder
             vectorBuilder.clear();
             for (int c : coord) {
                 vectorBuilder.addComponents(c);
             }
 
-            cells.add(CellState.newBuilder()
-                    .setCoordinate(vectorBuilder.build())
+            // Reuse cell builder
+            cellBuilder.clear();
+            cellBuilder.setCoordinate(vectorBuilder.build())
                     .setMoleculeType(moleculeInt & org.evochora.runtime.Config.TYPE_MASK)
                     .setMoleculeValue(extractSignedValue(moleculeInt))
-                    .setOwnerId(ownerId)
-                    .build());
+                    .setOwnerId(ownerId);
+
+            cells.add(cellBuilder.build());
         });
 
         return cells;
@@ -453,6 +492,50 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         if (frame.savedFprs != null) {
             for (Object rv : frame.savedFprs) {
                 builder.addSavedFprs(convertRegisterValue(rv));
+            }
+        }
+
+        return builder.build();
+    }
+
+    private static Vector convertVectorReuse(int[] components, Vector.Builder builder) {
+        builder.clear();
+        if (components != null) {
+            for (int c : components) {
+                builder.addComponents(c);
+            }
+        }
+        return builder.build();
+    }
+
+    private static org.evochora.datapipeline.api.contracts.RegisterValue convertRegisterValueReuse(
+            Object rv, org.evochora.datapipeline.api.contracts.RegisterValue.Builder registerBuilder, Vector.Builder vectorBuilder) {
+        registerBuilder.clear();
+        if (rv instanceof Integer) {
+            registerBuilder.setScalar((Integer) rv);
+        } else if (rv instanceof int[]) {
+            registerBuilder.setVector(convertVectorReuse((int[]) rv, vectorBuilder));
+        }
+        return registerBuilder.build();
+    }
+
+    private static org.evochora.datapipeline.api.contracts.ProcFrame convertProcFrameReuse(
+            ProcFrame frame, Vector.Builder vectorBuilder, org.evochora.datapipeline.api.contracts.RegisterValue.Builder registerBuilder) {
+        org.evochora.datapipeline.api.contracts.ProcFrame.Builder builder =
+                org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
+                        .setProcName(frame.procName)
+                        .setAbsoluteReturnIp(convertVectorReuse(frame.absoluteReturnIp, vectorBuilder))
+                        .putAllFprBindings(frame.fprBindings);
+
+        if (frame.savedPrs != null) {
+            for (Object rv : frame.savedPrs) {
+                builder.addSavedPrs(convertRegisterValueReuse(rv, registerBuilder, vectorBuilder));
+            }
+        }
+
+        if (frame.savedFprs != null) {
+            for (Object rv : frame.savedFprs) {
+                builder.addSavedFprs(convertRegisterValueReuse(rv, registerBuilder, vectorBuilder));
             }
         }
 
