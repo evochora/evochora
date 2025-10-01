@@ -295,7 +295,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         builder.setTickNumber(tick);
         builder.setCaptureTimeMs(System.currentTimeMillis());
         simulation.getOrganisms().stream().filter(o -> !o.isDead()).forEach(o -> builder.addOrganisms(extractOrganismState(o)));
-        builder.addAllCells(extractCellStates(simulation.getEnvironment()));
+        extractCellStates(simulation.getEnvironment(), builder);
         builder.setRngState(ByteString.copyFrom(randomProvider.saveState()));
         energyStrategies.forEach(s -> builder.addStrategyStates(StrategyState.newBuilder()
                 .setStrategyType(s.strategy().getClass().getName())
@@ -358,29 +358,23 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         return builder.build();
     }
 
-    private List<CellState> extractCellStates(Environment env) {
-        List<CellState> cells = new ArrayList<>();
+    private void extractCellStates(Environment env, TickData.Builder tickBuilder) {
         Vector.Builder vectorBuilder = Vector.newBuilder();
-        CellState.Builder cellBuilder = CellState.newBuilder();
 
         env.forEachOccupiedCell((coord, moleculeInt, ownerId) -> {
-            // Reuse vector builder
+            // Build coordinate vector
             vectorBuilder.clear();
             for (int c : coord) {
                 vectorBuilder.addComponents(c);
             }
 
-            // Reuse cell builder
-            cellBuilder.clear();
-            cellBuilder.setCoordinate(vectorBuilder.build())
+            // Build cell state directly on the tick builder
+            tickBuilder.addCellsBuilder()
+                    .setCoordinate(vectorBuilder.build())
                     .setMoleculeType(moleculeInt & org.evochora.runtime.Config.TYPE_MASK)
                     .setMoleculeValue(extractSignedValue(moleculeInt))
                     .setOwnerId(ownerId);
-
-            cells.add(cellBuilder.build());
         });
-
-        return cells;
     }
 
     private static int extractSignedValue(int moleculeInt) {
