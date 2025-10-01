@@ -91,21 +91,21 @@ public class EndToEndServiceTest {
 
         Thread.sleep(50);
 
-        long messagesSentWhilePaused = producer.getMetrics().get("messages_sent").longValue();
-        long messagesReceivedWhilePaused = consumer.getMetrics().get("messages_received").longValue();
+        long messagesSentWhilePaused = ((Number) producer.getMetrics().get("messages_sent")).longValue();
+        long messagesReceivedWhilePaused = ((Number) consumer.getMetrics().get("messages_received")).longValue();
 
         Thread.sleep(100);
 
-        assertEquals(messagesSentWhilePaused, producer.getMetrics().get("messages_sent").longValue());
-        assertEquals(messagesReceivedWhilePaused, consumer.getMetrics().get("messages_received").longValue());
+        assertEquals(messagesSentWhilePaused, ((Number) producer.getMetrics().get("messages_sent")).longValue());
+        assertEquals(messagesReceivedWhilePaused, ((Number) consumer.getMetrics().get("messages_received")).longValue());
 
         producer.resume();
         consumer.resume();
 
         Thread.sleep(100);
 
-        assertTrue(producer.getMetrics().get("messages_sent").longValue() > messagesSentWhilePaused);
-        assertTrue(consumer.getMetrics().get("messages_received").longValue() > messagesReceivedWhilePaused);
+        assertTrue(((Number) producer.getMetrics().get("messages_sent")).longValue() > messagesSentWhilePaused);
+        assertTrue(((Number) consumer.getMetrics().get("messages_received")).longValue() > messagesReceivedWhilePaused);
 
         producer.stop();
         consumer.stop();

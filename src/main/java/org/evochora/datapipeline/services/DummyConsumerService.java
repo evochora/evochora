@@ -22,8 +22,8 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * A dummy consumer service that receives Protobuf messages from an input queue with
- * idempotency guarantees and dead letter queue support.
+ * A generic dummy consumer service that receives messages from an input queue with
+ * optional idempotency guarantees and dead letter queue support.
  * It serves as a test service and a reference implementation for production-ready message processing.
  *
  * <h3>Configuration Options:</h3>
@@ -37,17 +37,19 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <h3>Resources:</h3>
  * <ul>
- *   <li><b>input</b>: IInputQueueResource&lt;DummyMessage&gt; - Required input queue</li>
- *   <li><b>idempotencyTracker</b>: IIdempotencyTracker&lt;Integer&gt; - Required idempotency tracker</li>
- *   <li><b>dlq</b>: IDeadLetterQueueResource&lt;DummyMessage&gt; - Optional dead letter queue</li>
+ *   <li><b>input</b>: IInputQueueResource&lt;T&gt; - Required input queue</li>
+ *   <li><b>idempotencyTracker</b>: IIdempotencyTracker&lt;Integer&gt; - Optional idempotency tracker</li>
+ *   <li><b>dlq</b>: IDeadLetterQueueResource&lt;T&gt; - Optional dead letter queue</li>
  * </ul>
+ *
+ * @param <T> The type of messages consumed from the input queue
  */
-public class DummyConsumerService extends AbstractService implements IMonitorable {
+public class DummyConsumerService<T> extends AbstractService implements IMonitorable {
 
     private static final Logger logger = LoggerFactory.getLogger(DummyConsumerService.class);
 
-    private final IInputQueueResource<DummyMessage> inputQueue;
-    private final IDeadLetterQueueResource<DummyMessage> deadLetterQueue;
+    private final IInputQueueResource<T> inputQueue;
+    private final IDeadLetterQueueResource<T> deadLetterQueue;
     private final long processingDelayMs;
     private final boolean logReceivedMessages;
     private final long maxMessages;
@@ -73,10 +75,19 @@ public class DummyConsumerService extends AbstractService implements IMonitorabl
 
         // Get required resources
         this.inputQueue = getRequiredResource("input", IInputQueueResource.class);
-        this.idempotencyTracker = getRequiredResource("idempotencyTracker", IIdempotencyTracker.class);
+
+        // Get optional idempotency tracker
+        IIdempotencyTracker<Integer> tracker = null;
+        try {
+            tracker = getRequiredResource("idempotencyTracker", IIdempotencyTracker.class);
+            logger.info("Idempotency tracker configured for service '{}'", name);
+        } catch (IllegalStateException e) {
+            logger.info("No idempotency tracker configured for service '{}' - duplicate detection disabled", name);
+        }
+        this.idempotencyTracker = tracker;
 
         // Get optional DLQ resource using try-catch pattern
-        IDeadLetterQueueResource<DummyMessage> dlq = null;
+        IDeadLetterQueueResource<T> dlq = null;
         try {
             dlq = getRequiredResource("dlq", IDeadLetterQueueResource.class);
             String dlqName = dlq instanceof org.evochora.datapipeline.resources.AbstractResource
@@ -115,7 +126,7 @@ public class DummyConsumerService extends AbstractService implements IMonitorabl
         while (!Thread.currentThread().isInterrupted() && (maxMessages == -1 || messageCounter < maxMessages)) {
             checkPause();
 
-            DummyMessage message = null;
+            T message = null;
             try {
                 message = inputQueue.take();
                 if (message == null) {
@@ -123,10 +134,10 @@ public class DummyConsumerService extends AbstractService implements IMonitorabl
                 }
 
                 messagesReceived.incrementAndGet();
-                int messageId = message.getId();
+                int messageId = extractMessageId(message);
 
-                // Check for duplicate (idempotency)
-                if (!idempotencyTracker.checkAndMarkProcessed(messageId)) {
+                // Check for duplicate (idempotency) if tracker is configured
+                if (idempotencyTracker != null && !idempotencyTracker.checkAndMarkProcessed(messageId)) {
                     messagesDuplicate.incrementAndGet();
                     logger.debug("Skipping duplicate message with ID: {}", messageId);
                     continue;
@@ -153,16 +164,31 @@ public class DummyConsumerService extends AbstractService implements IMonitorabl
     }
 
     /**
+     * Extracts a unique message ID for tracking purposes.
+     * For DummyMessage, uses getId(). For other types, uses hashCode().
+     */
+    private int extractMessageId(T message) {
+        if (message instanceof DummyMessage) {
+            return ((DummyMessage) message).getId();
+        }
+        return message.hashCode();
+    }
+
+    /**
      * Processes a message. Override this method to implement actual business logic.
      *
      * @param message The message to process.
      * @throws Exception if processing fails.
      */
-    protected void processMessage(DummyMessage message) throws Exception {
+    protected void processMessage(T message) throws Exception {
         messageTimestamps.add(System.currentTimeMillis());
 
         if (logReceivedMessages) {
-            logger.debug("Processing message ID={}: {}", message.getId(), message.getContent());
+            int messageId = extractMessageId(message);
+            String content = (message instanceof DummyMessage)
+                    ? ((DummyMessage) message).getContent()
+                    : message.getClass().getSimpleName();
+            logger.debug("Processing message ID={}: {}", messageId, content);
         }
 
         if (processingDelayMs > 0) {
@@ -179,7 +205,7 @@ public class DummyConsumerService extends AbstractService implements IMonitorabl
      * @param message The message that failed processing (may be null if error occurred before message retrieval).
      * @param error   The exception that occurred.
      */
-    private void handleProcessingError(DummyMessage message, Exception error) {
+    private void handleProcessingError(T message, Exception error) {
         OperationalError opError = new OperationalError(Instant.now(), "PROCESSING_ERROR",
                 "Error processing message", error.getMessage());
         errors.add(opError);
@@ -189,7 +215,7 @@ public class DummyConsumerService extends AbstractService implements IMonitorabl
             return;
         }
 
-        int messageId = message.getId();
+        int messageId = extractMessageId(message);
         logger.warn("Failed to process message ID={}: {}", messageId, error.getMessage());
 
         // Track retry attempts
@@ -200,8 +226,10 @@ public class DummyConsumerService extends AbstractService implements IMonitorabl
             // Exceeded retry limit - send to DLQ
             sendToDeadLetterQueue(message, retryInfo, error);
             retryTracker.remove(messageId);
-            // Remove from idempotency tracker to allow potential reprocessing from DLQ
-            idempotencyTracker.remove(messageId);
+            // Remove from idempotency tracker if configured
+            if (idempotencyTracker != null) {
+                idempotencyTracker.remove(messageId);
+            }
         } else {
             // Will retry on next poll
             messagesRetried.incrementAndGet();
@@ -212,15 +240,16 @@ public class DummyConsumerService extends AbstractService implements IMonitorabl
 
     /**
      * Sends a failed message to the Dead Letter Queue.
+     * Only supports protobuf Message types for DLQ serialization.
      *
      * @param message   The message that failed processing.
      * @param retryInfo Retry tracking information.
      * @param error     The exception that caused the failure.
      */
-    private void sendToDeadLetterQueue(DummyMessage message, RetryInfo retryInfo, Exception error) {
+    private void sendToDeadLetterQueue(T message, RetryInfo retryInfo, Exception error) {
         if (deadLetterQueue == null) {
-            logger.error("Message ID={} exceeded retry limit but no DLQ configured. Message will be lost: {}",
-                    message.getId(), message.getContent());
+            int messageId = extractMessageId(message);
+            logger.error("Message ID={} exceeded retry limit but no DLQ configured. Message will be lost.", messageId);
             return;
         }
 
@@ -232,8 +261,21 @@ public class DummyConsumerService extends AbstractService implements IMonitorabl
                 if (stackTraceLines.size() >= 10) break; // Limit stack trace size
             }
 
+            int messageId = extractMessageId(message);
+
+            // Check if message is a protobuf Message for serialization
+            com.google.protobuf.ByteString originalBytes;
+            if (message instanceof com.google.protobuf.Message) {
+                originalBytes = ((com.google.protobuf.Message) message).toByteString();
+            } else {
+                // For non-protobuf messages, use empty bytes
+                originalBytes = com.google.protobuf.ByteString.EMPTY;
+                logger.warn("Message type {} is not a protobuf Message - DLQ will contain empty originalMessage",
+                        message.getClass().getName());
+            }
+
             SystemContracts.DeadLetterMessage dlqMessage = SystemContracts.DeadLetterMessage.newBuilder()
-                    .setOriginalMessage(message.toByteString())
+                    .setOriginalMessage(originalBytes)
                     .setMessageType(message.getClass().getName())
                     .setFirstFailureTimeMs(retryInfo.firstAttempt.toEpochMilli())
                     .setLastFailureTimeMs(retryInfo.lastAttempt.toEpochMilli())
@@ -248,12 +290,12 @@ public class DummyConsumerService extends AbstractService implements IMonitorabl
 
             deadLetterQueue.offer(dlqMessage);
             messagesSentToDLQ.incrementAndGet();
-            logger.warn("Message ID={} sent to Dead Letter Queue after {} attempts",
-                    message.getId(), retryInfo.attemptCount);
+            logger.warn("Message ID={} sent to Dead Letter Queue after {} attempts", messageId, retryInfo.attemptCount);
 
         } catch (Exception dlqError) {
+            int messageId = extractMessageId(message);
             logger.error("CRITICAL: Failed to send message ID={} to Dead Letter Queue: {}. Message may be lost!",
-                    message.getId(), dlqError.getMessage(), dlqError);
+                    messageId, dlqError.getMessage(), dlqError);
         }
     }
 
@@ -265,7 +307,7 @@ public class DummyConsumerService extends AbstractService implements IMonitorabl
         metrics.put("messages_retried", messagesRetried.get());
         metrics.put("messages_sent_to_dlq", messagesSentToDLQ.get());
         metrics.put("messages_in_retry", retryTracker.size());
-        metrics.put("idempotency_tracker_size", idempotencyTracker.size());
+        metrics.put("idempotency_tracker_size", idempotencyTracker != null ? idempotencyTracker.size() : 0);
         metrics.put("throughput_per_sec", calculateThroughput());
         return metrics;
     }
