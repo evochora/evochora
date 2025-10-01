@@ -47,8 +47,9 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     private final String runId;
     private final Simulation simulation;
     private final IRandomProvider randomProvider;
-    private final List<IEnergyDistributionCreator> energyStrategies;
+    private final List<StrategyWithConfig> energyStrategies;
     private final long seed;
+    private final long startTimeMs;
     private final AtomicLong currentTick = new AtomicLong(0);
     private final AtomicLong messagesSent = new AtomicLong(0);
     private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
@@ -56,8 +57,11 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     private long lastTickCount = 0;
     private double ticksPerSecond = 0.0;
 
+    private record StrategyWithConfig(IEnergyDistributionCreator strategy, Config config) {}
+
     public SimulationEngine(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
+        this.startTimeMs = System.currentTimeMillis();
 
         this.tickDataOutput = getRequiredResource("tickData", IOutputQueueResource.class);
         this.metadataOutput = getRequiredResource("metadataOutput", IOutputQueueResource.class);
@@ -110,15 +114,17 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
 
     @Override
     protected void run() throws InterruptedException {
-        log.info("Simulation loop started. Capturing data every {} ticks.", samplingInterval);
         try {
             metadataOutput.put(buildMetadataMessage());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.error("Interrupted while sending metadata", e);
+            log.error("Interrupted while sending metadata, service will not start.", e);
+            // We were interrupted before the loop even started, so we exit.
+            // The service state will be handled by the AbstractService's runService method.
             return;
         }
 
+        log.info("Simulation loop started. Capturing data every {} ticks.", samplingInterval);
         while (getCurrentState() == State.RUNNING || getCurrentState() == State.PAUSED) {
             checkPause();
             if (shouldAutoPause(currentTick.get())) {
@@ -171,12 +177,13 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
 
     private boolean shouldAutoPause(long tick) { return pauseTicks.contains(tick); }
 
-    private List<IEnergyDistributionCreator> initializeEnergyStrategies(List<? extends Config> configs, IRandomProvider random, EnvironmentProperties envProps) {
+    private List<StrategyWithConfig> initializeEnergyStrategies(List<? extends Config> configs, IRandomProvider random, EnvironmentProperties envProps) {
         return configs.stream().map(config -> {
             try {
-                return (IEnergyDistributionCreator) Class.forName(config.getString("className"))
+                IEnergyDistributionCreator strategy = (IEnergyDistributionCreator) Class.forName(config.getString("className"))
                         .getConstructor(Config.class, IRandomProvider.class, EnvironmentProperties.class)
                         .newInstance(config.getConfig("options"), random, envProps);
+                return new StrategyWithConfig(strategy, config.getConfig("options"));
             } catch (ReflectiveOperationException e) {
                 throw new IllegalArgumentException("Failed to instantiate energy strategy", e);
             }
@@ -186,7 +193,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     private SimulationMetadata buildMetadataMessage() {
         SimulationMetadata.Builder builder = SimulationMetadata.newBuilder();
         builder.setSimulationRunId(this.runId);
-        builder.setStartTimeMs(System.currentTimeMillis());
+        builder.setStartTimeMs(this.startTimeMs);
         builder.setInitialSeed(this.seed);
 
         EnvironmentProperties envProps = this.simulation.getEnvironment().getProperties();
@@ -204,9 +211,13 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         builder.setEnvironment(envConfigBuilder.build());
 
         if (!energyStrategies.isEmpty()) {
-            IEnergyDistributionCreator strategy = energyStrategies.get(0);
+            if (energyStrategies.size() > 1) {
+                log.warn("Multiple energy strategies are configured, but only the first one will be recorded in the simulation metadata due to contract limitations.");
+            }
+            StrategyWithConfig firstStrategy = energyStrategies.get(0);
             EnergyStrategyConfig.Builder strategyBuilder = EnergyStrategyConfig.newBuilder();
-            strategyBuilder.setStrategyType(strategy.getClass().getName());
+            strategyBuilder.setStrategyType(firstStrategy.strategy().getClass().getName());
+            strategyBuilder.setConfigJson(firstStrategy.config().root().render(ConfigRenderOptions.concise()));
             builder.setEnergyStrategy(strategyBuilder.build());
         }
 
@@ -246,8 +257,8 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         builder.addAllCells(extractCellStates(simulation.getEnvironment()));
         builder.setRngState(ByteString.copyFrom(randomProvider.saveState()));
         energyStrategies.forEach(s -> builder.addStrategyStates(StrategyState.newBuilder()
-                .setStrategyType(s.getClass().getName())
-                .setStateBlob(ByteString.copyFrom(s.saveState()))
+                .setStrategyType(s.strategy().getClass().getName())
+                .setStateBlob(ByteString.copyFrom(s.strategy().saveState()))
                 .build()));
         return builder.build();
     }
