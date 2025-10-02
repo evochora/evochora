@@ -360,6 +360,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
 
     private void extractCellStates(Environment env, TickData.Builder tickBuilder) {
         Vector.Builder vectorBuilder = Vector.newBuilder();
+        CellState.Builder cellBuilder = CellState.newBuilder();
 
         env.forEachOccupiedCell((coord, moleculeInt, ownerId) -> {
             // Build coordinate vector
@@ -368,12 +369,14 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
                 vectorBuilder.addComponents(c);
             }
 
-            // Build cell state directly on the tick builder
-            tickBuilder.addCellsBuilder()
-                    .setCoordinate(vectorBuilder.build())
+            // Reuse cell builder
+            cellBuilder.clear();
+            cellBuilder.setCoordinate(vectorBuilder.build())
                     .setMoleculeType(moleculeInt & org.evochora.runtime.Config.TYPE_MASK)
                     .setMoleculeValue(extractSignedValue(moleculeInt))
                     .setOwnerId(ownerId);
+
+            tickBuilder.addCells(cellBuilder.build());
         });
     }
 
