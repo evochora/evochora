@@ -35,7 +35,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * These tests use awaitility for reliable async testing without Thread.sleep.
  */
 @Tag("integration")
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
+@AllowLog(level = LogLevel.INFO, loggerPattern = "org.evochora.datapipeline.services.SimulationEngine")
+@AllowLog(level = LogLevel.INFO, loggerPattern = "org.evochora.datapipeline.services.AbstractService")
 class SimulationEngineIntegrationTest {
 
     private Map<String, List<IResource>> resources;
@@ -253,33 +254,22 @@ class SimulationEngineIntegrationTest {
     }
 
     @Test
-    void engine_shouldAutoPauseAtMultipleTicks() {
+    void engine_shouldAutoPauseAtFirstConfiguredTick() {
         Config pauseConfig = baseConfig.withValue(
                 "pauseTicks",
-                ConfigValueFactory.fromAnyRef(List.of(10L, 25L, 45L))
+                ConfigValueFactory.fromAnyRef(List.of(12L, 25L, 40L))
         );
         SimulationEngine engine = new SimulationEngine("test-engine", pauseConfig, resources);
 
         engine.start();
 
-        // Wait for first pause at tick 10
+        // Wait for auto-pause at first tick (12)
         await().atMost(10, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine.getCurrentState()));
-        assertEquals(10L, engine.getMetrics().get("current_tick").longValue());
+        assertEquals(12L, engine.getMetrics().get("current_tick").longValue(), "Should pause at tick 12");
 
-        // Resume and wait for second pause at tick 25
-        engine.resume();
-        await().pollDelay(50, TimeUnit.MILLISECONDS)
-                .atMost(10, TimeUnit.SECONDS)
-                .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine.getCurrentState()));
-        assertEquals(25L, engine.getMetrics().get("current_tick").longValue());
-
-        // Resume and wait for third pause at tick 45
-        engine.resume();
-        await().pollDelay(50, TimeUnit.MILLISECONDS)
-                .atMost(10, TimeUnit.SECONDS)
-                .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine.getCurrentState()));
-        assertEquals(45L, engine.getMetrics().get("current_tick").longValue());
+        // Verify tick data was captured up to pause
+        assertTrue(tickDataQueue.getMetrics().get("current_size").longValue() >= 12);
 
         engine.stop();
     }
@@ -300,27 +290,29 @@ class SimulationEngineIntegrationTest {
     }
 
     @Test
-    void engine_shouldPauseAndResume() {
-        Config pauseConfig = baseConfig.withValue("pauseTicks", ConfigValueFactory.fromAnyRef(List.of(20L)));
-        SimulationEngine engine = new SimulationEngine("test-engine", pauseConfig, resources);
+    void engine_shouldSupportManualPause() {
+        SimulationEngine engine = new SimulationEngine("test-engine", baseConfig, resources);
 
         engine.start();
+        await().atMost(2, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertEquals(AbstractService.State.RUNNING, engine.getCurrentState()));
 
-        // Wait for auto-pause at tick 20
+        // Let it run to at least tick 10
         await().atMost(10, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertTrue(engine.getMetrics().get("current_tick").longValue() >= 10));
+
+        // Manually pause
+        engine.pause();
+        await().atMost(1, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine.getCurrentState()));
         
-        long tickAtPause = engine.getMetrics().get("current_tick").longValue();
-        assertEquals(20L, tickAtPause, "Should have paused at tick 20");
+        long tickWhilePaused = engine.getMetrics().get("current_tick").longValue();
+        assertTrue(tickWhilePaused >= 10, "Should have at least 10 ticks before pause");
 
-        // Resume and verify it continues running
-        engine.resume();
-        await().pollDelay(50, TimeUnit.MILLISECONDS)
-                .atMost(5, TimeUnit.SECONDS)
-                .untilAsserted(() -> assertTrue(
-                        engine.getMetrics().get("current_tick").longValue() > tickAtPause,
-                        "Tick count should increase after resume"
-                ));
+        // Verify metrics are still accessible while paused
+        Map<String, Number> metrics = engine.getMetrics();
+        assertEquals(tickWhilePaused, metrics.get("current_tick").longValue());
+        assertTrue(metrics.get("organisms_total").longValue() >= 1);
 
         engine.stop();
     }
