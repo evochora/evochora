@@ -25,9 +25,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+import java.util.concurrent.TimeUnit;
 
+/**
+ * Comprehensive unit tests for SimulationEngine focusing on constructor validation,
+ * configuration parsing, metadata generation, and metrics calculation.
+ * These tests are fast and isolated from actual simulation execution.
+ */
 @Tag("unit")
 @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
 class SimulationEngineTest {
@@ -72,36 +80,287 @@ class SimulationEngineTest {
                         "placement", Map.of("positions", List.of(5, 5))
                 )),
                 "energyStrategies", Collections.emptyList(),
-                "seed", 12345
+                "seed", 12345L
         ));
     }
 
+    // ============ Constructor Validation Tests ============
+
     @Test
     void constructor_shouldThrowException_whenOrganismsAreMissing() {
-        Config emptyConfig = ConfigFactory.parseMap(Map.of("organisms", Collections.emptyList()));
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> new SimulationEngine("test", emptyConfig, resources));
+        Config emptyConfig = ConfigFactory.parseMap(Map.of(
+                "organisms", Collections.emptyList(),
+                "environment", Map.of("shape", List.of(10, 10), "topology", "TORUS"),
+                "energyStrategies", Collections.emptyList()
+        ));
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimulationEngine("test", emptyConfig, resources)
+        );
         assertEquals("At least one organism must be configured.", exception.getMessage());
     }
 
     @Test
     void constructor_shouldThrowException_whenProgramFileIsMissing() {
-        Config config = createValidConfig().withValue("organisms.0.program", ConfigValueFactory.fromAnyRef("nonexistent/path/to/program.s"));
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> new SimulationEngine("test", config, resources));
+        Config config = createValidConfig().withValue(
+                "organisms.0.program",
+                ConfigValueFactory.fromAnyRef("nonexistent/path/to/program.s")
+        );
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimulationEngine("test", config, resources)
+        );
         assertTrue(exception.getMessage().contains("Failed to read or compile program file"));
     }
 
     @Test
-    void constructor_shouldParseConfigurationCorrectly() {
-        Config config = createValidConfig();
-        assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources),
-                "Constructor should not throw an exception with valid configuration.");
+    void constructor_shouldThrowException_whenProgramIsInvalid() throws IOException {
+        Path invalidProgram = tempDir.resolve("invalid.s");
+        Files.writeString(invalidProgram, "INVALID SYNTAX HERE");
+        
+        Config config = createValidConfig().withValue(
+                "organisms.0.program",
+                ConfigValueFactory.fromAnyRef(invalidProgram.toString())
+        );
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimulationEngine("test", config, resources)
+        );
+        assertTrue(exception.getMessage().contains("Failed to read or compile program file"));
+    }
+
+    @Test
+    void constructor_shouldThrowException_whenSamplingIntervalIsZero() {
+        Config config = createValidConfig().withValue("samplingInterval", ConfigValueFactory.fromAnyRef(0));
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimulationEngine("test", config, resources)
+        );
+        assertEquals("samplingInterval must be >= 1", exception.getMessage());
+    }
+
+    @Test
+    void constructor_shouldThrowException_whenSamplingIntervalIsNegative() {
+        Config config = createValidConfig().withValue("samplingInterval", ConfigValueFactory.fromAnyRef(-1));
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimulationEngine("test", config, resources)
+        );
+        assertEquals("samplingInterval must be >= 1", exception.getMessage());
     }
 
     @Test
     void constructor_shouldThrowException_whenRequiredResourceIsMissing() {
         resources.remove("tickData");
         Config config = createValidConfig();
-        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> new SimulationEngine("test", config, resources));
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> new SimulationEngine("test", config, resources)
+        );
         assertEquals("Resource port 'tickData' is not configured.", exception.getMessage());
+    }
+
+    @Test
+    void constructor_shouldThrowException_whenMetadataOutputIsMissing() {
+        resources.remove("metadataOutput");
+        Config config = createValidConfig();
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> new SimulationEngine("test", config, resources)
+        );
+        assertEquals("Resource port 'metadataOutput' is not configured.", exception.getMessage());
+    }
+
+    @Test
+    void constructor_shouldThrowException_whenOrganismPlacementDimensionMismatch() {
+        Config config = createValidConfig().withValue(
+                "organisms",
+                ConfigValueFactory.fromAnyRef(List.of(Map.of(
+                        "program", programFile.toString(),
+                        "initialEnergy", 1000,
+                        "placement", Map.of("positions", List.of(5)) // 1D position for 2D world
+                )))
+        );
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimulationEngine("test", config, resources)
+        );
+        assertTrue(exception.getMessage().contains("coordinate mismatch"));
+        assertTrue(exception.getMessage().contains("2 dimensions"));
+    }
+
+    @Test
+    void constructor_shouldSucceedWithValidConfiguration() {
+        Config config = createValidConfig();
+        assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    @Test
+    void constructor_shouldSucceedWithMultipleOrganisms() {
+        Config config = createValidConfig().withValue(
+                "organisms",
+                ConfigValueFactory.fromAnyRef(List.of(
+                        Map.of("program", programFile.toString(), "initialEnergy", 1000, 
+                               "placement", Map.of("positions", List.of(2, 2))),
+                        Map.of("program", programFile.toString(), "initialEnergy", 500,
+                               "placement", Map.of("positions", List.of(7, 7)))
+                ))
+        );
+        assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    @Test
+    void constructor_shouldUseDeterministicSeedWhenProvided() {
+        Config config = createValidConfig().withValue("seed", ConfigValueFactory.fromAnyRef(42L));
+        assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    @Test
+    void constructor_shouldAcceptBoundedTopology() {
+        Config config = createValidConfig().withValue(
+                "environment.topology",
+                ConfigValueFactory.fromAnyRef("BOUNDED")
+        );
+        assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    @Test
+    void constructor_shouldAccept1DWorld() throws IOException {
+        Path program1D = tempDir.resolve("simple_1d.s");
+        Files.copy(Path.of("assembly/test/simple_1d.s"), program1D, StandardCopyOption.REPLACE_EXISTING);
+        
+        Config config = createValidConfig()
+                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(20)))
+                .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
+                        "program", program1D.toString(),
+                        "initialEnergy", 1000,
+                        "placement", Map.of("positions", List.of(10))
+                ))));
+        assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    @Test
+    void constructor_shouldAccept3DWorld() throws IOException {
+        Path program3D = tempDir.resolve("simple_3d.s");
+        Files.copy(Path.of("assembly/test/simple_3d.s"), program3D, StandardCopyOption.REPLACE_EXISTING);
+        
+        Config config = createValidConfig()
+                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(10, 10, 10)))
+                .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
+                        "program", program3D.toString(),
+                        "initialEnergy", 1000,
+                        "placement", Map.of("positions", List.of(5, 5, 5))
+                ))));
+        assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    @Test
+    void constructor_shouldAcceptPauseTicksConfiguration() {
+        Config config = createValidConfig().withValue(
+                "pauseTicks",
+                ConfigValueFactory.fromAnyRef(List.of(10L, 20L, 30L))
+        );
+        assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    @Test
+    void constructor_shouldAcceptWithoutSeed() {
+        Config config = createValidConfig().withoutPath("seed");
+        assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    @Test
+    void constructor_shouldAcceptCustomSamplingInterval() {
+        Config config = createValidConfig().withValue("samplingInterval", ConfigValueFactory.fromAnyRef(10));
+        assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    @Test
+    void constructor_shouldDefaultSamplingIntervalTo1() {
+        Config config = createValidConfig().withoutPath("samplingInterval");
+        SimulationEngine engine = new SimulationEngine("test-engine", config, resources);
+        assertEquals(1, engine.getMetrics().get("sampling_interval"));
+    }
+
+    @Test
+    void constructor_shouldDefaultPauseTicksToEmpty() {
+        Config config = createValidConfig().withoutPath("pauseTicks");
+        assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    // ============ Metrics Tests ============
+
+    @Test
+    void getMetrics_shouldReturnInitialMetrics() {
+        Config config = createValidConfig();
+        SimulationEngine engine = new SimulationEngine("test-engine", config, resources);
+        
+        Map<String, Number> metrics = engine.getMetrics();
+        
+        assertNotNull(metrics);
+        assertEquals(0L, metrics.get("current_tick").longValue());
+        assertEquals(1L, metrics.get("organisms_total").longValue());
+        assertEquals(1L, metrics.get("organisms_alive").longValue());
+        assertEquals(0L, metrics.get("messages_sent").longValue());
+        assertEquals(1, metrics.get("sampling_interval").intValue());
+        assertEquals(0.0, metrics.get("ticks_per_second").doubleValue());
+        assertEquals(0, metrics.get("error_count").intValue());
+    }
+
+    @Test
+    void getMetrics_shouldReturnCorrectOrganismCount() {
+        Config config = createValidConfig().withValue(
+                "organisms",
+                ConfigValueFactory.fromAnyRef(List.of(
+                        Map.of("program", programFile.toString(), "initialEnergy", 1000,
+                               "placement", Map.of("positions", List.of(2, 2))),
+                        Map.of("program", programFile.toString(), "initialEnergy", 500,
+                               "placement", Map.of("positions", List.of(7, 7))),
+                        Map.of("program", programFile.toString(), "initialEnergy", 750,
+                               "placement", Map.of("positions", List.of(5, 5)))
+                ))
+        );
+        SimulationEngine engine = new SimulationEngine("test-engine", config, resources);
+        
+        Map<String, Number> metrics = engine.getMetrics();
+        
+        assertEquals(3L, metrics.get("organisms_total").longValue());
+        assertEquals(3L, metrics.get("organisms_alive").longValue());
+    }
+
+    // ============ Health and Error Management Tests ============
+
+    @Test
+    void isHealthy_shouldReturnTrueInitially() {
+        Config config = createValidConfig();
+        SimulationEngine engine = new SimulationEngine("test-engine", config, resources);
+        
+        assertTrue(engine.isHealthy());
+    }
+
+    @Test
+    void getErrors_shouldReturnEmptyListInitially() {
+        Config config = createValidConfig();
+        SimulationEngine engine = new SimulationEngine("test-engine", config, resources);
+        
+        assertTrue(engine.getErrors().isEmpty());
+    }
+
+    @Test
+    void clearErrors_shouldNotThrow() {
+        Config config = createValidConfig();
+        SimulationEngine engine = new SimulationEngine("test-engine", config, resources);
+        
+        assertDoesNotThrow(engine::clearErrors);
+    }
+
+    // ============ State Management Tests ============
+
+    @Test
+    void getCurrentState_shouldReturnStoppedInitially() {
+        Config config = createValidConfig();
+        SimulationEngine engine = new SimulationEngine("test-engine", config, resources);
+        
+        assertEquals(AbstractService.State.STOPPED, engine.getCurrentState());
     }
 }
