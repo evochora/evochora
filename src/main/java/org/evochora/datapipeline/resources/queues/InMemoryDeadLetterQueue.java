@@ -3,10 +3,14 @@ package org.evochora.datapipeline.resources.queues;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
+import org.evochora.datapipeline.api.resources.IMonitorable;
+import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.wrappers.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.resources.AbstractResource;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -29,12 +33,15 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * @param <T> The type of the original message contained in the DeadLetterMessage.
  */
-public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDeadLetterQueueResource<T> {
+public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDeadLetterQueueResource<T>, IMonitorable {
 
     private final InMemoryBlockingQueue<SystemContracts.DeadLetterMessage> delegate;
     private final String primaryQueueName;
     private final long capacityLimit;
     private final AtomicLong droppedMessageCount = new AtomicLong(0);
+
+    // Metrics - zero overhead counter for monitoring
+    private final AtomicLong totalReceived = new AtomicLong(0);
 
     /**
      * Constructs an InMemoryDeadLetterQueue with the specified name and configuration.
@@ -89,6 +96,9 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
         // Check if we're approaching capacity
         int offered = delegate.offerAll(elements);
         int dropped = elements.size() - offered;
+        if (offered > 0) {
+            totalReceived.addAndGet(offered);
+        }
         if (dropped > 0) {
             droppedMessageCount.addAndGet(dropped);
             // Log a warning - in a real system, this should trigger alerts
@@ -102,7 +112,9 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
     @Override
     public boolean offer(SystemContracts.DeadLetterMessage element) {
         boolean success = delegate.offer(element);
-        if (!success) {
+        if (success) {
+            totalReceived.incrementAndGet();
+        } else {
             droppedMessageCount.incrementAndGet();
             System.err.println("WARNING: Dead Letter Queue '" + getResourceName() +
                     "' dropped a message due to capacity limits. " +
@@ -117,7 +129,9 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
         // For DLQs, we use offer with timeout instead of blocking indefinitely
         // to prevent cascading failures
         boolean success = delegate.offer(element, 5, TimeUnit.SECONDS);
-        if (!success) {
+        if (success) {
+            totalReceived.incrementAndGet();
+        } else {
             droppedMessageCount.incrementAndGet();
             throw new IllegalStateException("Failed to add message to Dead Letter Queue '" +
                     getResourceName() + "' within timeout. Queue may be full. " +
@@ -128,7 +142,9 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
     @Override
     public boolean offer(SystemContracts.DeadLetterMessage element, long timeout, TimeUnit unit) throws InterruptedException {
         boolean success = delegate.offer(element, timeout, unit);
-        if (!success) {
+        if (success) {
+            totalReceived.incrementAndGet();
+        } else {
             droppedMessageCount.incrementAndGet();
             System.err.println("WARNING: Dead Letter Queue '" + getResourceName() +
                     "' failed to accept message within timeout. " +
@@ -141,11 +157,17 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
     public void putAll(Collection<SystemContracts.DeadLetterMessage> elements) throws InterruptedException {
         // Attempt to put all elements with a reasonable timeout per element
         int dropped = 0;
+        int accepted = 0;
         for (SystemContracts.DeadLetterMessage element : elements) {
             boolean success = delegate.offer(element, 1, TimeUnit.SECONDS);
-            if (!success) {
+            if (success) {
+                accepted++;
+            } else {
                 dropped++;
             }
+        }
+        if (accepted > 0) {
+            totalReceived.addAndGet(accepted);
         }
         if (dropped > 0) {
             droppedMessageCount.addAndGet(dropped);
@@ -155,16 +177,61 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
     }
 
     /**
-     * Gets additional metrics specific to the DLQ, including dropped message count.
-     *
-     * @return A map of metric names to values.
+     * {@inheritDoc}
+     * Returns metrics for monitoring the Dead Letter Queue.
+     * All metrics are calculated with O(1) operations for negligible performance impact.
      */
-    public Map<String, Number> getDLQMetrics() {
+    @Override
+    public Map<String, Number> getMetrics() {
         return Map.of(
-                "dropped_messages", droppedMessageCount.get(),
-                "capacity_limit", capacityLimit,
-                "current_size", delegate.getMetrics().get("current_size")
+                "total_messages_received", totalReceived.get(),
+                "dropped_messages", droppedMessageCount.get()
         );
+    }
+
+    /**
+     * {@inheritDoc}
+     * Delegates error tracking to the underlying queue implementation.
+     */
+    @Override
+    public List<OperationalError> getErrors() {
+        if (delegate instanceof IMonitorable) {
+            return ((IMonitorable) delegate).getErrors();
+        }
+        return Collections.emptyList();
+    }
+
+    /**
+     * {@inheritDoc}
+     * Delegates error clearing to the underlying queue implementation.
+     */
+    @Override
+    public void clearErrors() {
+        if (delegate instanceof IMonitorable) {
+            ((IMonitorable) delegate).clearErrors();
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     * DLQ is considered unhealthy if drop rate is high or delegate is unhealthy.
+     */
+    @Override
+    public boolean isHealthy() {
+        long received = totalReceived.get();
+        long dropped = droppedMessageCount.get();
+
+        // Consider unhealthy if more than 10% of messages are dropped
+        if (received > 0 && dropped > received * 0.1) {
+            return false;
+        }
+
+        // Check delegate health if available
+        if (delegate instanceof IMonitorable) {
+            return ((IMonitorable) delegate).isHealthy();
+        }
+
+        return true;
     }
 
     @Override

@@ -3,10 +3,14 @@ package org.evochora.datapipeline.resources.idempotency;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
+import org.evochora.datapipeline.api.resources.IMonitorable;
+import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.resources.AbstractResource;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -53,7 +57,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * @param <K> The type of the idempotency key.
  */
-public class InMemoryIdempotencyTracker<K> extends AbstractResource implements IIdempotencyTracker<K> {
+public class InMemoryIdempotencyTracker<K> extends AbstractResource implements IIdempotencyTracker<K>, IMonitorable {
 
     // Dual-index structure for high-performance idempotency tracking
     private final ConcurrentHashMap<K, Long> keyToTimestamp;  // Key → epoch millis (precise expiration)
@@ -65,6 +69,10 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
     private final long cleanupIntervalSeconds;
     private final AtomicLong operationsSinceLastCleanup;
     private final AtomicReference<Instant> lastCleanupTime;
+
+    // Metrics - zero overhead counters for monitoring
+    private final AtomicLong totalChecks = new AtomicLong(0);
+    private final AtomicLong totalDuplicates = new AtomicLong(0);
 
     /**
      * Constructs an InMemoryIdempotencyTracker from configuration.
@@ -140,6 +148,7 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
 
     @Override
     public boolean isProcessed(K key) {
+        totalChecks.incrementAndGet();
         maybeCleanup();
         Long timestamp = keyToTimestamp.get(key);
         if (timestamp == null) {
@@ -162,6 +171,7 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
 
     @Override
     public boolean checkAndMarkProcessed(K key) {
+        totalChecks.incrementAndGet();
         maybeCleanup();
         long nowMillis = Instant.now().toEpochMilli();
         long bucketKey = nowMillis / bucketGranularityMillis;
@@ -193,6 +203,7 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
         }
 
         // Key exists and hasn't expired - this is a duplicate
+        totalDuplicates.incrementAndGet();
         return false;
     }
 
@@ -293,13 +304,45 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
     }
 
     /**
-     * Gets statistics about the idempotency tracker for monitoring.
-     *
-     * @return A formatted string with tracker statistics.
+     * {@inheritDoc}
+     * Returns metrics for monitoring the idempotency tracker.
+     * All metrics are calculated with O(1) operations for negligible performance impact.
      */
-    public String getStats() {
-        return String.format("InMemoryIdempotencyTracker{size=%d, ttl=%s, buckets=%d, operations_since_cleanup=%d}",
-                size(), getTtl(), bucketToKeys.size(), operationsSinceLastCleanup.get());
+    @Override
+    public Map<String, Number> getMetrics() {
+        return Map.of(
+                "total_checks", totalChecks.get(),
+                "total_duplicates_detected", totalDuplicates.get(),
+                "tracked_keys", size()
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     * Idempotency trackers do not track operational errors.
+     */
+    @Override
+    public List<OperationalError> getErrors() {
+        return Collections.emptyList();
+    }
+
+    /**
+     * {@inheritDoc}
+     * No-op since idempotency trackers do not track errors.
+     */
+    @Override
+    public void clearErrors() {
+        // No errors to clear
+    }
+
+    /**
+     * {@inheritDoc}
+     * Idempotency tracker is considered healthy if it hasn't grown excessively large.
+     */
+    @Override
+    public boolean isHealthy() {
+        // Consider unhealthy if we have more than 10M keys (potential memory issue)
+        return size() < 10_000_000;
     }
 
     @Override
