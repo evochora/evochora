@@ -36,10 +36,17 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p><strong>Configuration Options:</strong>
  * <ul>
- *   <li><b>ttlSeconds</b>: Time to track each ID in seconds (default: 3600)</li>
- *   <li><b>cleanupThresholdMessages</b>: Cleanup after N operations (default: 100)</li>
+ *   <li><b>ttlSeconds</b>: Time to track each ID in seconds (default: 60)</li>
+ *   <li><b>cleanupThresholdMessages</b>: Cleanup after N operations (default: 10000)</li>
  *   <li><b>cleanupIntervalSeconds</b>: OR cleanup every N seconds (default: 60)</li>
  * </ul>
+ * </p>
+ *
+ * <p><strong>Performance Tuning:</strong>
+ * Bucket granularity is calculated automatically as TTL/10, creating ~10 time buckets
+ * for efficient cleanup. With bucket-based cleanup running at O(buckets) instead of O(keys),
+ * the cleanup operation is negligible even at high throughput, so cleanup thresholds
+ * optimize for reduced overhead rather than memory usage.
  * </p>
  *
  * <p>For distributed deployments, use a Redis-based or DynamoDB-based implementation.</p>
@@ -48,8 +55,12 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class InMemoryIdempotencyTracker<K> extends AbstractResource implements IIdempotencyTracker<K> {
 
-    private final ConcurrentHashMap<K, Instant> processedKeys;
-    private final Duration ttl;
+    // Dual-index structure for high-performance idempotency tracking
+    private final ConcurrentHashMap<K, Long> keyToTimestamp;  // Key → epoch millis (precise expiration)
+    private final ConcurrentHashMap<Long, ConcurrentHashMap.KeySetView<K, Boolean>> bucketToKeys;  // Bucket → keys (efficient cleanup)
+
+    private final long ttlMillis;
+    private final long bucketGranularityMillis;
     private final long cleanupThreshold;
     private final long cleanupIntervalSeconds;
     private final AtomicLong operationsSinceLastCleanup;
@@ -67,26 +78,36 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
 
         // Set defaults
         Config defaults = ConfigFactory.parseMap(Map.of(
-            "ttlSeconds", 3600,
-            "cleanupThresholdMessages", 100,
+            "ttlSeconds", 60,  // Default 1 minute (was 1 hour) - sufficient for retries
+            "cleanupThresholdMessages", 10000,  // Cleanup every ~10 seconds at 1k TPS
             "cleanupIntervalSeconds", 60
         ));
         Config config = options.withFallback(defaults);
 
         // Parse configuration
         long ttlSeconds = config.getLong("ttlSeconds");
-        this.ttl = Duration.ofSeconds(ttlSeconds);
+
+        this.ttlMillis = ttlSeconds * 1000;
+
+        // Calculate adaptive bucket granularity based on TTL:
+        // - Use TTL/10 to have ~10 buckets across the TTL window (optimal balance)
+        // - Minimum 10ms (avoid excessive bucket proliferation for very short TTLs)
+        // - Maximum 60 seconds (efficient for production use cases)
+        this.bucketGranularityMillis = Math.max(10, Math.min(60_000, ttlMillis / 10));
+
         this.cleanupThreshold = config.getLong("cleanupThresholdMessages");
         this.cleanupIntervalSeconds = config.getLong("cleanupIntervalSeconds");
 
-        // Initialize state
-        this.processedKeys = new ConcurrentHashMap<>();
+        // Initialize dual-index structure
+        this.keyToTimestamp = new ConcurrentHashMap<>();
+        this.bucketToKeys = new ConcurrentHashMap<>();
         this.operationsSinceLastCleanup = new AtomicLong(0);
         this.lastCleanupTime = new AtomicReference<>(Instant.now());
     }
 
     /**
      * Legacy constructor for tests. Constructs an InMemoryIdempotencyTracker with the specified TTL.
+     * Bucket granularity is automatically calculated based on TTL for optimal cleanup performance.
      *
      * @param ttl The time-to-live for processed keys.
      */
@@ -96,6 +117,7 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
 
     /**
      * Legacy constructor for tests. Constructs an InMemoryIdempotencyTracker with specified parameters.
+     * Bucket granularity is automatically calculated based on TTL for optimal cleanup performance.
      *
      * @param ttl               The time-to-live for processed keys.
      * @param cleanupThreshold  The number of operations between automatic cleanup runs.
@@ -103,8 +125,13 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
      */
     public InMemoryIdempotencyTracker(Duration ttl, long cleanupThreshold, long cleanupIntervalSeconds) {
         super("test-tracker", ConfigFactory.empty());
-        this.processedKeys = new ConcurrentHashMap<>();
-        this.ttl = ttl;
+        this.keyToTimestamp = new ConcurrentHashMap<>();
+        this.bucketToKeys = new ConcurrentHashMap<>();
+        this.ttlMillis = ttl.toMillis();
+
+        // Calculate adaptive bucket granularity (same formula as production constructor)
+        this.bucketGranularityMillis = Math.max(10, Math.min(60_000, ttlMillis / 10));
+
         this.cleanupThreshold = cleanupThreshold;
         this.cleanupIntervalSeconds = cleanupIntervalSeconds;
         this.operationsSinceLastCleanup = new AtomicLong(0);
@@ -114,13 +141,20 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
     @Override
     public boolean isProcessed(K key) {
         maybeCleanup();
-        Instant processedTime = processedKeys.get(key);
-        if (processedTime == null) {
+        Long timestamp = keyToTimestamp.get(key);
+        if (timestamp == null) {
             return false;
         }
         // Check if the entry has expired
-        if (Instant.now().isAfter(processedTime.plus(ttl))) {
-            processedKeys.remove(key);
+        long nowMillis = Instant.now().toEpochMilli();
+        if (nowMillis - timestamp > ttlMillis) {
+            // Expired - remove from both indexes
+            keyToTimestamp.remove(key);
+            long bucketKey = timestamp / bucketGranularityMillis;
+            ConcurrentHashMap.KeySetView<K, Boolean> bucket = bucketToKeys.get(bucketKey);
+            if (bucket != null) {
+                bucket.remove(key);
+            }
             return false;
         }
         return true;
@@ -129,20 +163,32 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
     @Override
     public boolean checkAndMarkProcessed(K key) {
         maybeCleanup();
-        Instant now = Instant.now();
+        long nowMillis = Instant.now().toEpochMilli();
+        long bucketKey = nowMillis / bucketGranularityMillis;
 
         // putIfAbsent returns null if the key wasn't present, or the existing value if it was
-        Instant existing = processedKeys.putIfAbsent(key, now);
+        Long existingTimestamp = keyToTimestamp.putIfAbsent(key, nowMillis);
 
-        if (existing == null) {
-            // Key was not present, we've marked it as processed
+        if (existingTimestamp == null) {
+            // Key was not present - add to bucket and mark as processed
+            bucketToKeys.computeIfAbsent(bucketKey, k -> ConcurrentHashMap.newKeySet()).add(key);
             return true;
         }
 
         // Key exists - check if it has expired
-        if (now.isAfter(existing.plus(ttl))) {
-            // Entry has expired, update it and treat as newly processed
-            processedKeys.put(key, now);
+        if (nowMillis - existingTimestamp > ttlMillis) {
+            // Entry has expired - update timestamp
+            keyToTimestamp.put(key, nowMillis);
+
+            // Remove from old bucket (best effort - old bucket might be cleaned already)
+            long oldBucketKey = existingTimestamp / bucketGranularityMillis;
+            ConcurrentHashMap.KeySetView<K, Boolean> oldBucket = bucketToKeys.get(oldBucketKey);
+            if (oldBucket != null) {
+                oldBucket.remove(key);
+            }
+
+            // Add to new bucket
+            bucketToKeys.computeIfAbsent(bucketKey, k -> ConcurrentHashMap.newKeySet()).add(key);
             return true;
         }
 
@@ -153,30 +199,60 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
     @Override
     public void markProcessed(K key) {
         maybeCleanup();
-        processedKeys.put(key, Instant.now());
+        long nowMillis = Instant.now().toEpochMilli();
+        long bucketKey = nowMillis / bucketGranularityMillis;
+
+        keyToTimestamp.put(key, nowMillis);
+        bucketToKeys.computeIfAbsent(bucketKey, k -> ConcurrentHashMap.newKeySet()).add(key);
     }
 
     @Override
     public boolean remove(K key) {
-        return processedKeys.remove(key) != null;
+        Long timestamp = keyToTimestamp.remove(key);
+        if (timestamp != null) {
+            // Remove from bucket index
+            long bucketKey = timestamp / bucketGranularityMillis;
+            ConcurrentHashMap.KeySetView<K, Boolean> bucket = bucketToKeys.get(bucketKey);
+            if (bucket != null) {
+                bucket.remove(key);
+            }
+            return true;
+        }
+        return false;
     }
 
     @Override
     public void clear() {
-        processedKeys.clear();
+        keyToTimestamp.clear();
+        bucketToKeys.clear();
         operationsSinceLastCleanup.set(0);
         lastCleanupTime.set(Instant.now());
     }
 
     @Override
     public long size() {
-        return processedKeys.size();
+        return keyToTimestamp.size();
     }
 
     @Override
     public synchronized void cleanup() {
-        Instant cutoff = Instant.now().minus(ttl);
-        processedKeys.entrySet().removeIf(entry -> entry.getValue().isBefore(cutoff));
+        long nowMillis = Instant.now().toEpochMilli();
+        long cutoffMillis = nowMillis - ttlMillis;
+        long cutoffBucket = cutoffMillis / bucketGranularityMillis;
+
+        // Remove all buckets older than cutoff - O(buckets) not O(keys)!
+        bucketToKeys.keySet().removeIf(bucketKey -> {
+            if (bucketKey < cutoffBucket) {
+                // Remove all keys in this bucket from primary index
+                ConcurrentHashMap.KeySetView<K, Boolean> keys = bucketToKeys.remove(bucketKey);
+                if (keys != null) {
+                    keys.forEach(keyToTimestamp::remove);
+                }
+                return true;
+            }
+            return false;
+        });
+
         operationsSinceLastCleanup.set(0);
         lastCleanupTime.set(Instant.now());
     }
@@ -213,7 +289,7 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
      * @return The TTL duration.
      */
     public Duration getTtl() {
-        return ttl;
+        return Duration.ofMillis(ttlMillis);
     }
 
     /**
@@ -222,8 +298,8 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
      * @return A formatted string with tracker statistics.
      */
     public String getStats() {
-        return String.format("InMemoryIdempotencyTracker{size=%d, ttl=%s, operations_since_cleanup=%d}",
-                size(), ttl, operationsSinceLastCleanup.get());
+        return String.format("InMemoryIdempotencyTracker{size=%d, ttl=%s, buckets=%d, operations_since_cleanup=%d}",
+                size(), getTtl(), bucketToKeys.size(), operationsSinceLastCleanup.get());
     }
 
     @Override
