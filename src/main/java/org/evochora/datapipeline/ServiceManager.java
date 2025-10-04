@@ -148,9 +148,21 @@ public class ServiceManager implements IMonitorable {
 
     private ResourceContext parseResourceUri(String uri, String serviceName, String portName) {
         String[] mainParts = uri.split(":", 2);
-        if (mainParts.length != 2) throw new IllegalArgumentException("Invalid resource URI: " + uri);
-        String usageType = mainParts[0];
-        String[] resourceAndParams = mainParts[1].split("\\?", 2);
+
+        String usageType;
+        String resourceAndParamsStr;
+
+        if (mainParts.length == 2) {
+            // Format: "usageType:resourceName?params"
+            usageType = mainParts[0];
+            resourceAndParamsStr = mainParts[1];
+        } else {
+            // Format: "resourceName?params" (non-contextual resource)
+            usageType = null;
+            resourceAndParamsStr = uri;
+        }
+
+        String[] resourceAndParams = resourceAndParamsStr.split("\\?", 2);
         String resourceName = resourceAndParams[0];
         Map<String, String> params = new HashMap<>();
         if (resourceAndParams.length > 1) {

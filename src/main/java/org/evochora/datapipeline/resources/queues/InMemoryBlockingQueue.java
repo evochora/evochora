@@ -104,12 +104,20 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
      */
     @Override
     public UsageState getUsageState(String usageType) {
+        if (usageType == null) {
+            throw new IllegalArgumentException(String.format(
+                "Queue resource '%s' requires a non-null usageType", getResourceName()
+            ));
+        }
+
         return switch (usageType) {
             case "queue-in", "queue-in-direct" ->
                 queue.isEmpty() ? UsageState.WAITING : UsageState.ACTIVE;
             case "queue-out", "queue-out-direct" ->
                 queue.remainingCapacity() == 0 ? UsageState.WAITING : UsageState.ACTIVE;
-            default -> throw new IllegalArgumentException("Unknown usageType: " + usageType);
+            default -> throw new IllegalArgumentException(String.format(
+                "Unknown usageType '%s' for queue resource '%s'", usageType, getResourceName()
+            ));
         };
     }
 
@@ -120,12 +128,25 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
      */
     @Override
     public IWrappedResource getWrappedResource(ResourceContext context) {
+        if (context.usageType() == null) {
+            throw new IllegalArgumentException(String.format(
+                "Queue resource '%s' requires a usageType in the binding URI. " +
+                "Expected format: 'usageType:%s' where usageType is one of: " +
+                "queue-in, queue-in-direct, queue-out, queue-out-direct",
+                getResourceName(), getResourceName()
+            ));
+        }
+
         return switch (context.usageType()) {
             case "queue-in" -> new MonitoredQueueConsumer<>(this, context);
             case "queue-in-direct" -> new DirectInputQueueWrapper<>(this);
             case "queue-out" -> new MonitoredQueueProducer<>(this, context);
             case "queue-out-direct" -> new DirectOutputQueueWrapper<>(this);
-            default -> throw new IllegalArgumentException("Unsupported usage type: " + context.usageType());
+            default -> throw new IllegalArgumentException(String.format(
+                "Unsupported usage type '%s' for queue resource '%s'. " +
+                "Supported types: queue-in, queue-in-direct, queue-out, queue-out-direct",
+                context.usageType(), getResourceName()
+            ));
         };
     }
 
