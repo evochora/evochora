@@ -1,6 +1,5 @@
 package org.evochora.datapipeline.services;
 
-import com.google.protobuf.MessageLite;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
@@ -71,6 +70,7 @@ public class DummyWriterService extends AbstractService implements IMonitorable 
             }
 
             writeCount++;
+            // Sleep between write operations - Thread.sleep respects interruption
             Thread.sleep(intervalMs);
         }
     }

@@ -24,7 +24,6 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -134,8 +133,9 @@ public class FileSystemStorageResource extends AbstractResource
                 .filter(path -> path.startsWith(prefix))
                 .collect(Collectors.toList());
         } catch (IOException e) {
-            log.error("Error listing keys with prefix '{}'", prefix, e);
-            return Collections.emptyList();
+            // Fail fast instead of returning empty list (indistinguishable from "no files")
+            // This prevents indexers from thinking they're done when disk is actually failing
+            throw new RuntimeException("Failed to list keys with prefix: " + prefix, e);
         }
     }
 
@@ -188,6 +188,37 @@ public class FileSystemStorageResource extends AbstractResource
     private void validateKey(String key) {
         if (key == null || key.isEmpty()) {
             throw new IllegalArgumentException("Key cannot be null or empty");
+        }
+
+        // Prevent path traversal attacks
+        if (key.contains("..")) {
+            throw new IllegalArgumentException("Key cannot contain '..' (path traversal attempt): " + key);
+        }
+
+        // Prevent absolute paths
+        if (key.startsWith("/") || key.startsWith("\\")) {
+            throw new IllegalArgumentException("Key cannot be an absolute path: " + key);
+        }
+
+        // Check for Windows drive letter (C:, D:, etc.)
+        if (key.length() >= 2 && key.charAt(1) == ':') {
+            throw new IllegalArgumentException("Key cannot contain Windows drive letter: " + key);
+        }
+
+        // Prevent Windows-invalid characters
+        String invalidChars = "<>\"?*|";
+        for (char c : invalidChars.toCharArray()) {
+            if (key.indexOf(c) >= 0) {
+                throw new IllegalArgumentException("Key contains invalid character '" + c + "': " + key);
+            }
+        }
+
+        // Prevent control characters (0x00-0x1F)
+        for (char c : key.toCharArray()) {
+            if (c < 0x20) {
+                throw new IllegalArgumentException("Key contains control character (0x" +
+                    Integer.toHexString(c) + "): " + key);
+            }
         }
     }
 

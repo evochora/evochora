@@ -7,8 +7,11 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.IStorageReadResource;
 import org.evochora.datapipeline.api.resources.storage.MessageReader;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mockito;
 
 import java.io.IOException;
@@ -23,6 +26,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+@Tag("unit")
+@ExtendWith(LogWatchExtension.class)
 class MonitoredStorageReaderTest {
 
     private IStorageReadResource mockDelegate;

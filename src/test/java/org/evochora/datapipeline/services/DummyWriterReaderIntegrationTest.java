@@ -21,11 +21,6 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.evochora.junit.extensions.logging.LogWatchExtension;
-import org.evochora.junit.extensions.logging.AllowLog;
-import org.evochora.junit.extensions.logging.LogLevel;
-
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
 class DummyWriterReaderIntegrationTest {

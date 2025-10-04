@@ -77,6 +77,7 @@ public class DummyReaderService extends AbstractService implements IMonitorable 
                 }
             }
 
+            // Sleep between read operations - Thread.sleep respects interruption
             Thread.sleep(intervalMs);
         }
     }

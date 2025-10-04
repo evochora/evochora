@@ -35,6 +35,8 @@ public interface MessageReader<T extends MessageLite> extends AutoCloseable, Ite
      * of file has been reached. Parsing happens lazily in next().
      *
      * @return true if more messages available, false at end of file
+     * @throws RuntimeException wrapping IOException if reading/parsing fails (e.g., corrupted file)
+     * @throws IllegalStateException if reader is already closed
      */
     @Override
     boolean hasNext();

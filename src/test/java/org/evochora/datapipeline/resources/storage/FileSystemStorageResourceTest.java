@@ -6,8 +6,11 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.resources.storage.MessageReader;
 import org.evochora.datapipeline.api.resources.storage.MessageWriter;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
@@ -25,6 +28,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@Tag("unit")
+@ExtendWith(LogWatchExtension.class)
 class FileSystemStorageResourceTest {
 
     @TempDir
