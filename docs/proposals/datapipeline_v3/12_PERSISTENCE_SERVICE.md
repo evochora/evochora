@@ -424,13 +424,13 @@ public class PersistenceService extends AbstractService implements IMonitorable 
         for (TickData tick : batch) {
             String idempotencyKey = tick.getSimulationRunId() + ":" + tick.getTickNumber();
 
-            if (idempotencyTracker.contains(idempotencyKey)) {
+            if (idempotencyTracker.isProcessed(idempotencyKey)) {
                 log.error("DUPLICATE TICK DETECTED: {} - This indicates a bug!", idempotencyKey);
                 duplicateTicksDetected.incrementAndGet();
                 continue; // Skip duplicate
             }
 
-            idempotencyTracker.mark(idempotencyKey);
+            idempotencyTracker.markProcessed(idempotencyKey);
             deduped.add(tick);
         }
 
@@ -500,24 +500,53 @@ public class PersistenceService extends AbstractService implements IMonitorable 
         }
 
         try {
-            FailedBatch failedBatch = FailedBatch.newBuilder()
-                .setSimulationRunId(batch.get(0).getSimulationRunId())
-                .setStartTick(batch.get(0).getTickNumber())
-                .setEndTick(batch.get(batch.size() - 1).getTickNumber())
-                .setTickCount(batch.size())
-                .setStorageKey(batch.get(0).getSimulationRunId() + "/batch_" +
-                    String.format("%019d_%019d.pb", batch.get(0).getTickNumber(),
-                    batch.get(batch.size() - 1).getTickNumber()))
-                .setErrorMessage(errorMessage)
-                .setFailureTimestampMs(System.currentTimeMillis())
-                .setRetryAttempts(retryAttempts)
-                .setServiceName(getName())
-                .setExceptionType(exception != null ? exception.getClass().getName() : "Unknown")
-                .addAllTicks(batch)
+            // Serialize batch to bytes
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            for (TickData tick : batch) {
+                tick.writeDelimitedTo(bos);
+            }
+
+            // Extract batch metadata
+            String simulationRunId = batch.get(0).getSimulationRunId();
+            long startTick = batch.get(0).getTickNumber();
+            long endTick = batch.get(batch.size() - 1).getTickNumber();
+            String storageKey = String.format("%s/batch_%019d_%019d.pb", simulationRunId, startTick, endTick);
+
+            // Build stack trace
+            List<String> stackTraceLines = new ArrayList<>();
+            if (exception != null) {
+                for (StackTraceElement element : exception.getStackTrace()) {
+                    stackTraceLines.add(element.toString());
+                    if (stackTraceLines.size() >= 10) break; // Limit stack trace size
+                }
+            }
+
+            // Get source queue name
+            String sourceQueue = "unknown";
+            if (inputQueue instanceof org.evochora.datapipeline.resources.AbstractResource) {
+                sourceQueue = ((org.evochora.datapipeline.resources.AbstractResource) inputQueue).getResourceName();
+            }
+
+            DeadLetterMessage dlqMessage = DeadLetterMessage.newBuilder()
+                .setOriginalMessage(ByteString.copyFrom(bos.toByteArray()))
+                .setMessageType("List<TickData>")
+                .setFirstFailureTimeMs(System.currentTimeMillis())
+                .setLastFailureTimeMs(System.currentTimeMillis())
+                .setRetryCount(retryAttempts)
+                .setFailureReason(errorMessage)
+                .setSourceService(getName())
+                .setSourceQueue(sourceQueue)
+                .addAllStackTraceLines(stackTraceLines)
+                .putMetadata("simulationRunId", simulationRunId)
+                .putMetadata("startTick", String.valueOf(startTick))
+                .putMetadata("endTick", String.valueOf(endTick))
+                .putMetadata("tickCount", String.valueOf(batch.size()))
+                .putMetadata("storageKey", storageKey)
+                .putMetadata("exceptionType", exception != null ? exception.getClass().getName() : "Unknown")
                 .build();
 
-            if (dlq.offer(failedBatch)) {
-                log.info("Sent failed batch to DLQ: {} ticks", batch.size());
+            if (dlq.offer(dlqMessage)) {
+                log.info("Sent failed batch to DLQ: {} ticks ({}:{})", batch.size(), simulationRunId, startTick);
             } else {
                 log.error("DLQ is full, failed batch lost: {} ticks", batch.size());
             }
@@ -745,8 +774,8 @@ class PersistenceServiceTest {
 
     private IInputQueueResource<TickData> mockQueue;
     private IStorageWriteResource mockStorage;
-    private IOutputQueueResource<FailedBatch> mockDLQ;
-    private IIdempotencyTracker mockTracker;
+    private IOutputQueueResource<DeadLetterMessage> mockDLQ;
+    private IIdempotencyTracker<String> mockTracker;
     private PersistenceService service;
 
     @BeforeEach

@@ -425,17 +425,30 @@ After these 8 steps, the system will be:
 - Usage types: `storage-read` and `storage-write` (direct variants deferred)
 
 #### Phase 2.3: PersistenceService
-**Status:** Specification pending
-- Consumes TickData batches from queue (using drainTo for efficient batching)
+**Status:** Specification complete, ready for implementation
+- Consumes TickData batches from queue (using drainTo with configurable size and timeout)
 - Writes batches to storage using MessageWriter (streaming, atomic)
 - Supports competing consumers (multiple instances for throughput)
 - Generates batch filenames with zero-padded tick ranges
-- Persists SimulationMetadata at simulation start
-- Tracks metrics: batches written, bytes persisted, throughput
+- Optional idempotency tracking for bug detection (tick-level deduplication)
+- Retry logic with exponential backoff for transient failures
+- Failed batches sent to DLQ using existing DeadLetterMessage (no new protobuf definitions)
+- Graceful shutdown writes partial batches without data loss
+- Tracks metrics: batches written, ticks written, bytes written, batches failed, duplicate ticks detected
+
+**Documentation:** See `12_PERSISTENCE_SERVICE.md` for detailed implementation specification.
+
+**Key Design Decisions:**
+- Uses existing `DeadLetterMessage` from `system_contracts.proto` for DLQ (maintains clean architecture by avoiding infrastructure→domain dependencies)
+- Failed batch data serialized to bytes and stored in `original_message` field, metadata in `metadata` map
+- Validates batch consistency (first and last tick must have same simulationRunId)
+- Idempotency tracking optional: for bug detection only (should always be zero duplicates)
+- Default configuration: 1000 ticks per batch, 5s timeout, 3 retries with 1s initial backoff
 
 **Dependencies:**
 - Requires Phase 2.2 (Storage Resource) implementation complete
 - Uses Phase 2.0 contracts (TickData, SimulationMetadata)
+- Uses existing DeadLetterMessage from system_contracts.proto
 - Integrates with Phase 2.1 output (SimulationEngine queue outputs)
 
 #### Phase 2.4: Indexer Services
