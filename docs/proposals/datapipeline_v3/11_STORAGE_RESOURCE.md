@@ -1278,6 +1278,96 @@ All three indexers list the same files. Each checks the shared database before p
 
 ### Test Requirements
 
+#### General Testing Guidelines
+
+All tests for this implementation MUST follow these strict guidelines:
+
+**1. Log Assertion with LogWatch:**
+- **MANDATORY:** All tests MUST use `LogWatch` to explicitly allow or expect logs
+- Tests will **FAIL** if any log is generated that was not explicitly allowed or expected
+- **DO NOT** broadly allow all logs - only allow/expect logs that the test actually provokes
+- This ensures tests fail if unexpected behavior (errors, warnings) occurs
+- Example: If a test writes a batch file, it MUST expect the corresponding INFO log
+
+```java
+@Test
+void testWriteBatch() {
+    LogWatch logWatch = LogWatch.builder()
+        .forLogger("org.evochora.datapipeline.resources.storage")
+        .expectMessage(Level.INFO, "Writing batch to key: sim_123/batch_0_999.pb")
+        .build();
+
+    // Test code that generates exactly this log
+
+    logWatch.assertExpected(); // Fails if log not generated OR if unexpected logs appear
+}
+```
+
+**2. State Polling with Awaitility:**
+- **MANDATORY:** Use `awaitility` (already in dependencies) for waiting/polling
+- **NEVER** use `Thread.sleep()` - it makes tests slow and brittle
+- Example: Wait for file to exist, queue to drain, metrics to update
+
+```java
+@Test
+void testAsyncWrite() {
+    service.startAsync();
+
+    // CORRECT: Poll until condition is met
+    await().atMost(5, SECONDS)
+        .pollInterval(100, MILLISECONDS)
+        .until(() -> storage.exists("sim_123/batch_0_999.pb"));
+
+    // WRONG: Never do this!
+    // Thread.sleep(1000);
+}
+```
+
+**3. Test Tagging (Unit vs Integration):**
+
+All tests MUST be tagged with exactly one tag:
+
+```java
+@Tag("unit")
+class FileSystemStorageResourceTest { }
+
+@Tag("integration")
+class DummyWriterReaderIntegrationTest { }
+```
+
+**Criteria:**
+
+| Aspect | Unit Test | Integration Test |
+|--------|-----------|------------------|
+| **Dependencies** | No external resources (files, network, database) OR isolated temp resources | Requires external resources or multiple components |
+| **Speed** | < 100ms per test | May take seconds |
+| **Scope** | Single class/component | Multiple components working together |
+| **Example** | `FileSystemStorageResourceTest` (uses temp dir, isolated) | `DummyWriterReaderIntegrationTest` (ServiceManager, multiple services) |
+
+**Rule of thumb:** If the test starts ServiceManager or requires coordination between services, it's integration. If it tests a single class in isolation, it's unit.
+
+**4. Artifact Cleanup:**
+- **MANDATORY:** All tests that create files, directories, or other artifacts MUST clean up
+- Use JUnit 5 `@TempDir` for temporary directories (auto-cleanup)
+- If manual cleanup needed, use `@AfterEach` or try-with-resources
+
+```java
+@Test
+void testWriteToStorage(@TempDir Path tempDir) {
+    FileSystemStorageResource storage = new FileSystemStorageResource(
+        "test-storage",
+        ConfigFactory.parseMap(Map.of("rootPath", tempDir.toString()))
+    );
+
+    // Test code - tempDir automatically cleaned up after test
+}
+```
+
+**5. Test Isolation:**
+- Each test MUST be independent - no shared state between tests
+- Tests MUST pass when run individually AND when run as a suite
+- Use `@BeforeEach` to initialize fresh resources for each test
+
 #### Unit Tests
 
 **FileSystemStorageResourceTest.java:**
