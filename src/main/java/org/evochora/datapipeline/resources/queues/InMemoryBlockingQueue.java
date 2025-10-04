@@ -11,6 +11,7 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.resources.AbstractResource;
+import org.evochora.datapipeline.resources.queues.wrappers.DirectInputQueueWrapper;
 import org.evochora.datapipeline.resources.queues.wrappers.DirectOutputQueueWrapper;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueConsumer;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueProducer;
@@ -103,32 +104,27 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
      */
     @Override
     public UsageState getUsageState(String usageType) {
-        switch (usageType) {
-            case "queue-in":
-                return queue.isEmpty() ? UsageState.WAITING : UsageState.ACTIVE;
-            case "queue-out":
-                return queue.remainingCapacity() == 0 ? UsageState.WAITING : UsageState.ACTIVE;
-            default:
-                throw new IllegalArgumentException("Unknown usageType: " + usageType);
-        }
+        return switch (usageType) {
+            case "queue-in", "queue-in-direct" ->
+                queue.isEmpty() ? UsageState.WAITING : UsageState.ACTIVE;
+            case "queue-out", "queue-out-direct" ->
+                queue.remainingCapacity() == 0 ? UsageState.WAITING : UsageState.ACTIVE;
+            default -> throw new IllegalArgumentException("Unknown usageType: " + usageType);
+        };
     }
 
     /**
      * {@inheritDoc}
-     * If useDirectWrapper=true in options, returns DirectOutputQueueWrapper for queue-out to bypass monitoring overhead.
+     * Supports usage types: queue-in, queue-in-direct, queue-out, queue-out-direct.
+     * Direct variants bypass monitoring for zero overhead.
      */
     @Override
     public IWrappedResource getWrappedResource(ResourceContext context) {
         return switch (context.usageType()) {
             case "queue-in" -> new MonitoredQueueConsumer<>(this, context);
-            case "queue-out" -> {
-                // Check if we should use direct wrapper to bypass monitoring
-                boolean useDirectWrapper = getOptions().hasPath("useDirectWrapper")
-                    && getOptions().getBoolean("useDirectWrapper");
-                yield useDirectWrapper
-                    ? new DirectOutputQueueWrapper<>(this)
-                    : new MonitoredQueueProducer<>(this, context);
-            }
+            case "queue-in-direct" -> new DirectInputQueueWrapper<>(this);
+            case "queue-out" -> new MonitoredQueueProducer<>(this, context);
+            case "queue-out-direct" -> new DirectOutputQueueWrapper<>(this);
             default -> throw new IllegalArgumentException("Unsupported usage type: " + context.usageType());
         };
     }
