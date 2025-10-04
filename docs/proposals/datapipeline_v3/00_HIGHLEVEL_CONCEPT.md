@@ -380,10 +380,77 @@ After these 8 steps, the system will be:
 - ✅ **Monitorable with metrics**
 - ✅ **Controllable via CLI**
 
-### Phase 2: Real Services
-- SimulationEngine with Runtime integration
-- PersistenceService with Protobuf schemas
-- First specialized IndexerService (exact type to be determined)
+### Phase 2: Production Services & Storage
+
+#### Phase 2.0: Protobuf Data Contracts ✅ COMPLETED
+**Status:** Implemented and functional
+- ✅ `metadata_contracts.proto`: SimulationMetadata with complete run configuration
+- ✅ `tickdata_contracts.proto`: TickData with complete simulation state capture
+- ✅ Complete field documentation (where each field comes from, how to create)
+- ✅ Checkpoint capability fields (RNG state, strategy states, all organism/cell data)
+- ✅ Compilation verified with Gradle protobuf plugin
+
+**Note:** These contracts define the data structures used by SimulationEngine for data extraction and by future PersistenceService/Indexers for storage and analysis.
+
+#### Phase 2.1: SimulationEngine ✅ COMPLETED
+**Status:** Implemented and functional
+- ✅ Extracts complete simulation state using Runtime's public API only
+- ✅ Generates Protobuf messages (SimulationMetadata, TickData)
+- ✅ Supports configurable sampling intervals (N=1 for every tick, N>1 for sampling)
+- ✅ Implements auto-pause functionality at configured tick numbers
+- ✅ Captures complete checkpoint data for future resume capability
+- ✅ Outputs to queue resources (tickData, metadataOutput)
+- ✅ Performance optimized: Cell serialization with hybrid approach (~350ns per cell)
+- ✅ IdempotencyTracker and DeadLetterQueue resources integrated
+
+**Documentation:** See `10_SIMULATIONENGINE.md` for detailed implementation specification.
+
+#### Phase 2.2: Storage Resource Abstraction
+**Status:** Specification complete, ready for implementation
+- Storage capability interfaces (IStorageReadResource, IStorageWriteResource)
+- Streaming interfaces (MessageWriter, MessageReader) with Protobuf-aware design
+- FileSystemStorageResource with atomic writes (temp file + fsync + rename)
+- MonitoredStorageWriter and MonitoredStorageReader wrappers with metrics
+- DummyWriterService and DummyReaderService for testing
+- Hierarchical key structure supporting simulation runs and batches
+- Length-prefixed Protobuf format for efficient streaming read/write
+
+**Documentation:** See `11_STORAGE_RESOURCE.md` for detailed implementation specification.
+
+**Key Design Decisions:**
+- Protobuf-aware storage (services work with MessageLite objects, storage handles serialization)
+- Atomic writes ensure indexers never see partial files
+- Hybrid metrics (buckets + 10% sampling) for 1.2% overhead, ~10% accuracy
+- Batch filenames: `batch_[19-digit-start]_[19-digit-end].pb` for lexicographic = chronological sort
+- Usage types: `storage-read` and `storage-write` (direct variants deferred)
+
+#### Phase 2.3: PersistenceService
+**Status:** Specification pending
+- Consumes TickData batches from queue (using drainTo for efficient batching)
+- Writes batches to storage using MessageWriter (streaming, atomic)
+- Supports competing consumers (multiple instances for throughput)
+- Generates batch filenames with zero-padded tick ranges
+- Persists SimulationMetadata at simulation start
+- Tracks metrics: batches written, bytes persisted, throughput
+
+**Dependencies:**
+- Requires Phase 2.2 (Storage Resource) implementation complete
+- Uses Phase 2.0 contracts (TickData, SimulationMetadata)
+- Integrates with Phase 2.1 output (SimulationEngine queue outputs)
+
+#### Phase 2.4: Indexer Services
+**Status:** Specification pending
+- Family of specialized indexers reading batches from storage
+- Each indexer focuses on specific data aspects (environment, organisms, metadata, etc.)
+- Database-coordinated competing consumers (check "batch already indexed?" before processing)
+- Uses MessageReader for streaming batch processing (O(1) memory)
+- Can run concurrently with persistence or batch process after completion
+- Exact indexer specializations to be determined based on analysis requirements
+
+**Dependencies:**
+- Requires Phase 2.2 (Storage Resource) implementation complete
+- Uses Phase 2.0 contracts (TickData, SimulationMetadata)
+- Requires database resources (initially SQLite, later PostgreSQL)
 
 ### Phase 3: Production Resources
 - Cloud storage resources (S3, GCS)
