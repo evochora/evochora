@@ -6,7 +6,7 @@ import com.typesafe.config.ConfigValueFactory;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.wrappers.queues.IOutputQueueResource;
+import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.runtime.isa.Instruction;
@@ -29,7 +29,6 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Comprehensive unit tests for SimulationEngine focusing on constructor validation,

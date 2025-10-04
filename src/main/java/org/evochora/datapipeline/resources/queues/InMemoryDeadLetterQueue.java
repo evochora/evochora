@@ -5,7 +5,7 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.OperationalError;
-import org.evochora.datapipeline.api.resources.wrappers.queues.IDeadLetterQueueResource;
+import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.resources.AbstractResource;
 
 import java.util.Collection;

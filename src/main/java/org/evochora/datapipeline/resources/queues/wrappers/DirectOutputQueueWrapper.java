@@ -2,7 +2,7 @@ package org.evochora.datapipeline.resources.queues.wrappers;
 
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
-import org.evochora.datapipeline.api.resources.wrappers.queues.IOutputQueueResource;
+import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 
 import java.util.Collection;
 import java.util.concurrent.TimeUnit;

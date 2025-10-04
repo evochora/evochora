@@ -1,4 +1,4 @@
-package org.evochora.datapipeline.api.resources.wrappers.queues;
+package org.evochora.datapipeline.api.resources.queues;
 
 import org.evochora.datapipeline.api.resources.IResource;
 

@@ -7,12 +7,11 @@ import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
-import org.evochora.datapipeline.api.resources.wrappers.queues.IDeadLetterQueueResource;
-import org.evochora.datapipeline.api.resources.wrappers.queues.IInputQueueResource;
+import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
+import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;

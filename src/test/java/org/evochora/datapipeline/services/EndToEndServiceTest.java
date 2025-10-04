@@ -5,7 +5,7 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.SystemContracts.DummyMessage;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.wrappers.queues.IDeadLetterQueueResource;
+import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.resources.idempotency.InMemoryIdempotencyTracker;
 import org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue;
