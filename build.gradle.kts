@@ -25,6 +25,7 @@ repositories {
 
 dependencies {
     implementation("com.google.protobuf:protobuf-java:3.25.3")
+    implementation("it.unimi.dsi:fastutil:8.5.12") // High-performance primitive collections
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.junit.jupiter:junit-jupiter-engine:5.10.2")
