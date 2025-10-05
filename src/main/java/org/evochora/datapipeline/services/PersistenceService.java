@@ -1,0 +1,342 @@
+package org.evochora.datapipeline.services;
+
+import com.google.protobuf.ByteString;
+import com.typesafe.config.Config;
+import org.evochora.datapipeline.api.contracts.SystemContracts;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
+import org.evochora.datapipeline.api.resources.IMonitorable;
+import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
+import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
+import org.evochora.datapipeline.api.resources.storage.IStorageWriteResource;
+import org.evochora.datapipeline.api.resources.storage.MessageWriter;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * Service that drains TickData batches from queues and persists them to storage.
+ * <p>
+ * PersistenceService provides reliable batch persistence with:
+ * <ul>
+ *   <li>Configurable batch size and timeout for flexible throughput/latency trade-offs</li>
+ *   <li>Optional idempotency tracking to detect duplicate ticks (bug detection)</li>
+ *   <li>Retry logic with exponential backoff for transient failures</li>
+ *   <li>Dead letter queue support for unrecoverable failures</li>
+ *   <li>Graceful shutdown that persists partial batches without data loss</li>
+ * </ul>
+ * <p>
+ * Multiple instances can run concurrently as competing consumers on the same queue.
+ * All instances should share the same idempotencyTracker and dlq resources.
+ * <p>
+ * <strong>Thread Safety:</strong> Each instance runs in its own thread. No synchronization
+ * needed between instances - queue handles distribution, idempotency tracker is thread-safe.
+ */
+public class PersistenceService extends AbstractService implements IMonitorable {
+
+    // Required resources
+    private final IInputQueueResource<TickData> inputQueue;
+    private final IStorageWriteResource storage;
+
+    // Optional resources
+    private final IOutputQueueResource<SystemContracts.DeadLetterMessage> dlq;
+    private final IIdempotencyTracker<String> idempotencyTracker;
+
+    // Configuration
+    private final int maxBatchSize;
+    private final int batchTimeoutSeconds;
+    private final int maxRetries;
+    private final int retryBackoffMs;
+
+    // Metrics
+    private final AtomicLong batchesWritten = new AtomicLong(0);
+    private final AtomicLong ticksWritten = new AtomicLong(0);
+    private final AtomicLong bytesWritten = new AtomicLong(0);
+    private final AtomicLong batchesFailed = new AtomicLong(0);
+    private final AtomicLong duplicateTicksDetected = new AtomicLong(0);
+    private final AtomicInteger currentBatchSize = new AtomicInteger(0);
+
+    public PersistenceService(String name, Config options, Map<String, List<IResource>> resources) {
+        super(name, options, resources);
+
+        // Required resources
+        this.inputQueue = getRequiredResource("input", IInputQueueResource.class);
+        this.storage = getRequiredResource("storage", IStorageWriteResource.class);
+
+        // Optional resources
+        this.dlq = getOptionalResource("dlq", IOutputQueueResource.class).orElse(null);
+        this.idempotencyTracker = getOptionalResource("idempotencyTracker", IIdempotencyTracker.class).orElse(null);
+
+        // Configuration with defaults
+        this.maxBatchSize = options.hasPath("maxBatchSize") ? options.getInt("maxBatchSize") : 1000;
+        this.batchTimeoutSeconds = options.hasPath("batchTimeoutSeconds") ? options.getInt("batchTimeoutSeconds") : 5;
+        this.maxRetries = options.hasPath("maxRetries") ? options.getInt("maxRetries") : 3;
+        this.retryBackoffMs = options.hasPath("retryBackoffMs") ? options.getInt("retryBackoffMs") : 1000;
+
+        // Validation
+        if (maxBatchSize <= 0) {
+            throw new IllegalArgumentException("maxBatchSize must be positive");
+        }
+        if (batchTimeoutSeconds <= 0) {
+            throw new IllegalArgumentException("batchTimeoutSeconds must be positive");
+        }
+        if (maxRetries < 0) {
+            throw new IllegalArgumentException("maxRetries cannot be negative");
+        }
+        if (retryBackoffMs < 0) {
+            throw new IllegalArgumentException("retryBackoffMs cannot be negative");
+        }
+
+        log.info("PersistenceService initialized: maxBatchSize={}, batchTimeout={}s, maxRetries={}, idempotency={}",
+            maxBatchSize, batchTimeoutSeconds, maxRetries, idempotencyTracker != null ? "enabled" : "disabled");
+    }
+
+    @Override
+    protected void run() throws InterruptedException {
+        while (!Thread.currentThread().isInterrupted()) {
+            checkPause();
+
+            List<TickData> batch = new ArrayList<>();
+
+            try {
+                // Drain batch from queue with timeout
+                int count = inputQueue.drainTo(batch, maxBatchSize, batchTimeoutSeconds, TimeUnit.SECONDS);
+
+                if (count == 0) {
+                    continue; // No data available, loop again
+                }
+
+                currentBatchSize.set(count);
+                log.debug("Drained {} ticks from queue", count);
+
+                // Process and persist batch
+                processBatch(batch);
+
+            } catch (InterruptedException e) {
+                // Shutdown signal received during drain
+                if (!batch.isEmpty()) {
+                    log.info("Shutdown requested, writing partial batch of {} ticks", batch.size());
+                    try {
+                        processBatch(batch);
+                    } catch (Exception ex) {
+                        log.error("Failed to write partial batch during shutdown", ex);
+                    }
+                }
+                throw e; // Re-throw to signal clean shutdown
+            }
+        }
+    }
+
+    private void processBatch(List<TickData> batch) {
+        if (batch.isEmpty()) {
+            return;
+        }
+
+        // Validate batch consistency (first and last tick must have same simulationRunId)
+        String firstSimRunId = batch.get(0).getSimulationRunId();
+        String lastSimRunId = batch.get(batch.size() - 1).getSimulationRunId();
+
+        if (!firstSimRunId.equals(lastSimRunId)) {
+            log.error("Batch consistency violation: first tick simulationRunId='{}', last tick simulationRunId='{}'",
+                firstSimRunId, lastSimRunId);
+            sendToDLQ(batch, "Batch contains mixed simulationRunIds", 0,
+                new IllegalStateException("Mixed simulationRunIds"));
+            batchesFailed.incrementAndGet();
+            return;
+        }
+
+        // Optional: Check for duplicate ticks (bug detection)
+        List<TickData> dedupedBatch = batch;
+        if (idempotencyTracker != null) {
+            dedupedBatch = deduplicateBatch(batch);
+            if (dedupedBatch.isEmpty()) {
+                log.warn("Entire batch was duplicates, skipping");
+                return;
+            }
+        }
+
+        // Generate storage key
+        String simulationRunId = dedupedBatch.get(0).getSimulationRunId();
+        long startTick = dedupedBatch.get(0).getTickNumber();
+        long endTick = dedupedBatch.get(dedupedBatch.size() - 1).getTickNumber();
+        String filename = String.format("batch_%019d_%019d.pb", startTick, endTick);
+        String key = simulationRunId + "/" + filename;
+
+        // Write batch with retry logic
+        writeBatchWithRetry(key, dedupedBatch);
+    }
+
+    private List<TickData> deduplicateBatch(List<TickData> batch) {
+        List<TickData> deduped = new ArrayList<>(batch.size());
+
+        for (TickData tick : batch) {
+            String idempotencyKey = tick.getSimulationRunId() + ":" + tick.getTickNumber();
+
+            if (idempotencyTracker.isProcessed(idempotencyKey)) {
+                log.error("DUPLICATE TICK DETECTED: {} - This indicates a bug!", idempotencyKey);
+                duplicateTicksDetected.incrementAndGet();
+                continue; // Skip duplicate
+            }
+
+            idempotencyTracker.markProcessed(idempotencyKey);
+            deduped.add(tick);
+        }
+
+        return deduped;
+    }
+
+    private void writeBatchWithRetry(String key, List<TickData> batch) {
+        int attempt = 0;
+        int backoff = retryBackoffMs;
+        Exception lastException = null;
+
+        while (attempt <= maxRetries) {
+            try {
+                writeBatch(key, batch);
+
+                // Success
+                batchesWritten.incrementAndGet();
+                ticksWritten.addAndGet(batch.size());
+                log.debug("Successfully wrote batch {} with {} ticks", key, batch.size());
+                return;
+
+            } catch (IOException e) {
+                lastException = e;
+                attempt++;
+
+                if (attempt <= maxRetries) {
+                    log.warn("Failed to write batch {} (attempt {}/{}): {}, retrying in {}ms",
+                        key, attempt, maxRetries, e.getMessage(), backoff);
+
+                    try {
+                        Thread.sleep(backoff);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        log.info("Interrupted during retry backoff, aborting retries");
+                        break;
+                    }
+
+                    backoff *= 2; // Exponential backoff
+                } else {
+                    log.error("Failed to write batch {} after {} retries: {}", key, maxRetries, e.getMessage());
+                }
+            }
+        }
+
+        // All retries exhausted
+        sendToDLQ(batch, lastException.getMessage(), attempt - 1, lastException);
+        batchesFailed.incrementAndGet();
+    }
+
+    private void writeBatch(String key, List<TickData> batch) throws IOException {
+        long bytesInBatch = 0;
+
+        try (MessageWriter writer = storage.openWriter(key)) {
+            for (TickData tick : batch) {
+                writer.writeMessage(tick);
+                bytesInBatch += tick.getSerializedSize();
+            }
+        }
+
+        bytesWritten.addAndGet(bytesInBatch);
+    }
+
+    private void sendToDLQ(List<TickData> batch, String errorMessage, int retryAttempts, Exception exception) {
+        if (dlq == null) {
+            log.error("Failed batch has no DLQ configured, data will be lost: {} ticks", batch.size());
+            return;
+        }
+
+        try {
+            // Serialize batch to bytes
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            for (TickData tick : batch) {
+                tick.writeDelimitedTo(bos);
+            }
+
+            // Extract batch metadata
+            String simulationRunId = batch.get(0).getSimulationRunId();
+            long startTick = batch.get(0).getTickNumber();
+            long endTick = batch.get(batch.size() - 1).getTickNumber();
+            String storageKey = String.format("%s/batch_%019d_%019d.pb", simulationRunId, startTick, endTick);
+
+            // Build stack trace
+            List<String> stackTraceLines = new ArrayList<>();
+            if (exception != null) {
+                for (StackTraceElement element : exception.getStackTrace()) {
+                    stackTraceLines.add(element.toString());
+                    if (stackTraceLines.size() >= 10) break; // Limit stack trace size
+                }
+            }
+
+            // Get source queue name
+            String sourceQueue = "unknown";
+            if (inputQueue instanceof org.evochora.datapipeline.resources.AbstractResource) {
+                sourceQueue = ((org.evochora.datapipeline.resources.AbstractResource) inputQueue).getResourceName();
+            }
+
+            SystemContracts.DeadLetterMessage dlqMessage = SystemContracts.DeadLetterMessage.newBuilder()
+                .setOriginalMessage(ByteString.copyFrom(bos.toByteArray()))
+                .setMessageType("List<TickData>")
+                .setFirstFailureTimeMs(System.currentTimeMillis())
+                .setLastFailureTimeMs(System.currentTimeMillis())
+                .setRetryCount(retryAttempts)
+                .setFailureReason(errorMessage)
+                .setSourceService(serviceName)
+                .setSourceQueue(sourceQueue)
+                .addAllStackTraceLines(stackTraceLines)
+                .putMetadata("simulationRunId", simulationRunId)
+                .putMetadata("startTick", String.valueOf(startTick))
+                .putMetadata("endTick", String.valueOf(endTick))
+                .putMetadata("tickCount", String.valueOf(batch.size()))
+                .putMetadata("storageKey", storageKey)
+                .putMetadata("exceptionType", exception != null ? exception.getClass().getName() : "Unknown")
+                .build();
+
+            if (dlq.offer(dlqMessage)) {
+                log.info("Sent failed batch to DLQ: {} ticks ({}:{})", batch.size(), simulationRunId, startTick);
+            } else {
+                log.error("DLQ is full, failed batch lost: {} ticks", batch.size());
+            }
+
+        } catch (Exception e) {
+            log.error("Failed to send batch to DLQ", e);
+        }
+    }
+
+    @Override
+    public Map<String, Number> getMetrics() {
+        return Map.of(
+            "batches_written", batchesWritten.get(),
+            "ticks_written", ticksWritten.get(),
+            "bytes_written", bytesWritten.get(),
+            "batches_failed", batchesFailed.get(),
+            "duplicate_ticks_detected", duplicateTicksDetected.get(),
+            "current_batch_size", currentBatchSize.get()
+        );
+    }
+
+    @Override
+    public boolean isHealthy() {
+        return true;
+    }
+
+    @Override
+    public List<OperationalError> getErrors() {
+        return Collections.emptyList();
+    }
+
+    @Override
+    public void clearErrors() {
+        // No-op
+    }
+}

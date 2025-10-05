@@ -212,6 +212,30 @@ public abstract class AbstractService implements IService {
     }
 
     /**
+     * Gets a single optional resource for a given port, ensuring it matches the expected type.
+     *
+     * @param portName     The name of the resource port.
+     * @param expectedType The class of the expected resource type.
+     * @param <T>          The expected type of the resource.
+     * @return An Optional containing the single resource instance, or empty if not configured.
+     * @throws IllegalStateException if the port has more than one resource or if the resource is of the wrong type.
+     */
+    protected <T extends IResource> java.util.Optional<T> getOptionalResource(String portName, Class<T> expectedType) {
+        List<IResource> resourceList = resources.get(portName);
+        if (resourceList == null || resourceList.isEmpty()) {
+            return java.util.Optional.empty();
+        }
+        if (resourceList.size() > 1) {
+            throw new IllegalStateException("Resource port '" + portName + "' has " + resourceList.size() + " resources, but exactly one is required for optional resources.");
+        }
+        IResource resource = resourceList.get(0);
+        if (!expectedType.isInstance(resource)) {
+            throw new IllegalStateException("Resource at port '" + portName + "' is of type " + resource.getClass().getName() + ", but expected type is " + expectedType.getName());
+        }
+        return java.util.Optional.of(expectedType.cast(resource));
+    }
+
+    /**
      * Checks if a resource port has at least one resource configured.
      *
      * @param portName The name of the resource port.
