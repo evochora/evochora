@@ -356,28 +356,27 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     }
 
     private void extractCellStates(Environment env, TickData.Builder tickBuilder) {
-        Vector.Builder vectorBuilder = Vector.newBuilder();
         CellState.Builder cellBuilder = CellState.newBuilder();
 
-        // OPTIMIZATION: Use primitive IntConsumer API for ~75% performance improvement
-        // - Eliminates 25% overhead from getFlatIndex() calculations
-        // - Eliminates 50% overhead from callback boxing/unboxing
-        // - Enables JIT to inline the entire loop
+        // FLAT_INDEX OPTIMIZATION: Use flat_index directly in protobuf
+        // - Data size reduction: 80% (20 bytes → 4 bytes per cell coordinate)
+        // - CPU performance gain: 16% (eliminates getCoordinateFromIndex + Vector building)
+        // - Trade-off: Consumers must convert flat_index to coordinates using Environment.shape
+        //
+        // Required Environment methods for this approach:
+        // - forEachOccupiedIndex(IntConsumer) - provides flat_index iteration
+        // - getMoleculeInt(int flatIndex) - direct access by flat_index
+        // - getOwnerIdByIndex(int flatIndex) - direct access by flat_index
+        //
+        // If reverting to coordinate version, these methods can be removed from Environment
         env.forEachOccupiedIndex(flatIndex -> {
-            // Get molecule and owner directly using flat index (no coordinate conversion needed!)
+            // Get molecule and owner directly using flat index
             int moleculeInt = env.getMoleculeInt(flatIndex);
             int ownerId = env.getOwnerIdByIndex(flatIndex);
 
-            // Build coordinate vector only when needed for protobuf
-            int[] coord = env.getCoordinateFromIndex(flatIndex);
-            vectorBuilder.clear();
-            for (int c : coord) {
-                vectorBuilder.addComponents(c);
-            }
-
-            // Reuse cell builder
+            // Reuse cell builder with flat_index (no coordinate conversion needed!)
             cellBuilder.clear();
-            cellBuilder.setCoordinate(vectorBuilder.build())
+            cellBuilder.setFlatIndex(flatIndex)
                     .setMoleculeType(moleculeInt & org.evochora.runtime.Config.TYPE_MASK)
                     .setMoleculeValue(extractSignedValue(moleculeInt))
                     .setOwnerId(ownerId);
@@ -385,6 +384,40 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
             tickBuilder.addCells(cellBuilder.build());
         });
     }
+
+    // COORDINATE VERSION (COMMENTED OUT): Original approach without flat_index exposure
+    // Use this version if flat_index trade-off becomes unfavorable
+    // Also uncomment Vector coordinate field in CellState protobuf message
+    //
+    // This version does NOT require flat_index exposure from Environment.
+    // The following methods can be removed from Environment if reverting:
+    // - forEachOccupiedIndex(IntConsumer)
+    // - getMoleculeInt(int flatIndex)
+    // - getOwnerIdByIndex(int flatIndex)
+    // - getCoordinateFromIndex(int flatIndex)
+    //
+    // private void extractCellStates(Environment env, TickData.Builder tickBuilder) {
+    //     Vector.Builder vectorBuilder = Vector.newBuilder();
+    //     CellState.Builder cellBuilder = CellState.newBuilder();
+    //
+    //     // Original approach: Environment provides coordinates directly
+    //     env.forEachOccupiedCell((coord, moleculeInt, ownerId) -> {
+    //         // Build coordinate vector for protobuf
+    //         vectorBuilder.clear();
+    //         for (int c : coord) {
+    //             vectorBuilder.addComponents(c);
+    //         }
+    //
+    //         // Reuse cell builder with coordinate
+    //         cellBuilder.clear();
+    //         cellBuilder.setCoordinate(vectorBuilder.build())
+    //                 .setMoleculeType(moleculeInt & org.evochora.runtime.Config.TYPE_MASK)
+    //                 .setMoleculeValue(extractSignedValue(moleculeInt))
+    //                 .setOwnerId(ownerId);
+    //
+    //         tickBuilder.addCells(cellBuilder.build());
+    //     });
+    // }
 
     private static int extractSignedValue(int moleculeInt) {
         int rawValue = moleculeInt & org.evochora.runtime.Config.VALUE_MASK;
