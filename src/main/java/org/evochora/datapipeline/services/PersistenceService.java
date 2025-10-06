@@ -59,6 +59,7 @@ public class PersistenceService extends AbstractService implements IMonitorable 
     private final int batchTimeoutSeconds;
     private final int maxRetries;
     private final int retryBackoffMs;
+    private final int shutdownBatchTimeoutSeconds;
 
     // Metrics
     private final AtomicLong batchesWritten = new AtomicLong(0);
@@ -87,6 +88,7 @@ public class PersistenceService extends AbstractService implements IMonitorable 
         this.batchTimeoutSeconds = options.hasPath("batchTimeoutSeconds") ? options.getInt("batchTimeoutSeconds") : 5;
         this.maxRetries = options.hasPath("maxRetries") ? options.getInt("maxRetries") : 3;
         this.retryBackoffMs = options.hasPath("retryBackoffMs") ? options.getInt("retryBackoffMs") : 1000;
+        this.shutdownBatchTimeoutSeconds = options.hasPath("shutdownBatchTimeoutSeconds") ? options.getInt("shutdownBatchTimeoutSeconds") : 15;
 
         // Validation
         if (maxBatchSize <= 0) {
@@ -101,9 +103,12 @@ public class PersistenceService extends AbstractService implements IMonitorable 
         if (retryBackoffMs < 0) {
             throw new IllegalArgumentException("retryBackoffMs cannot be negative");
         }
+        if (shutdownBatchTimeoutSeconds <= 0) {
+            throw new IllegalArgumentException("shutdownBatchTimeoutSeconds must be positive");
+        }
 
-        log.info("PersistenceService initialized: maxBatchSize={}, batchTimeout={}s, maxRetries={}, idempotency={}",
-            maxBatchSize, batchTimeoutSeconds, maxRetries, idempotencyTracker != null ? "enabled" : "disabled");
+        log.info("PersistenceService initialized: maxBatchSize={}, batchTimeout={}s, maxRetries={}, shutdownBatchTimeout={}s, idempotency={}",
+            maxBatchSize, batchTimeoutSeconds, maxRetries, shutdownBatchTimeoutSeconds, idempotencyTracker != null ? "enabled" : "disabled");
     }
 
     @Override
@@ -137,12 +142,9 @@ public class PersistenceService extends AbstractService implements IMonitorable 
             } catch (InterruptedException e) {
                 // Shutdown signal received during drain
                 if (!batch.isEmpty()) {
-                    log.info("Shutdown requested, writing partial batch of {} ticks", batch.size());
-                    try {
-                        processBatch(batch);
-                    } catch (Exception ex) {
-                        log.error("Failed to write partial batch during shutdown", ex);
-                    }
+                    log.info("Shutdown requested, completing batch of {} ticks with {}s timeout",
+                        batch.size(), shutdownBatchTimeoutSeconds);
+                    completeShutdownBatchWithTimeout(batch);
                 }
                 throw e; // Re-throw to signal clean shutdown
             }
@@ -365,6 +367,64 @@ public class PersistenceService extends AbstractService implements IMonitorable 
                 "Failed to send batch to dead letter queue",
                 String.format("Batch size: %d ticks, Exception: %s", batch.size(), e.getMessage())
             ));
+        }
+    }
+
+    /**
+     * Completes shutdown batch write with a bounded timeout to prevent hanging shutdown.
+     * <p>
+     * This method temporarily clears the interrupt flag to allow the batch write to complete,
+     * then restores it afterward. If the write exceeds the timeout, the batch may be lost
+     * but the .tmp file will remain as evidence.
+     * <p>
+     * This bounded approach is critical for spot instances where shutdown must complete
+     * within 2 minutes or the instance is forcefully terminated.
+     *
+     * @param batch the batch of ticks to persist during shutdown
+     */
+    private void completeShutdownBatchWithTimeout(List<TickData> batch) {
+        // Clear interrupt flag temporarily to allow write to complete
+        boolean wasInterrupted = Thread.interrupted();
+
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+        java.util.concurrent.Future<?> future = executor.submit(() -> {
+            try {
+                processBatch(batch);
+                log.info("Successfully completed shutdown batch of {} ticks", batch.size());
+            } catch (Exception ex) {
+                log.error("Failed to complete shutdown batch of {} ticks", batch.size(), ex);
+            }
+        });
+
+        try {
+            future.get(shutdownBatchTimeoutSeconds, TimeUnit.SECONDS);
+        } catch (java.util.concurrent.TimeoutException e) {
+            log.warn("Shutdown batch write exceeded {}s timeout, {} ticks may be lost (tmp file remains)",
+                shutdownBatchTimeoutSeconds, batch.size());
+            future.cancel(true);
+            errors.add(new OperationalError(
+                Instant.now(),
+                "SHUTDOWN_BATCH_TIMEOUT",
+                "Shutdown batch write exceeded timeout",
+                String.format("Timeout: %ds, Batch size: %d ticks", shutdownBatchTimeoutSeconds, batch.size())
+            ));
+        } catch (java.util.concurrent.ExecutionException e) {
+            log.error("Error during shutdown batch completion", e.getCause());
+            errors.add(new OperationalError(
+                Instant.now(),
+                "SHUTDOWN_BATCH_ERROR",
+                "Error during shutdown batch write",
+                String.format("Batch size: %d ticks, Exception: %s", batch.size(), e.getCause().getMessage())
+            ));
+        } catch (InterruptedException e) {
+            log.warn("Interrupted while waiting for shutdown batch completion");
+            future.cancel(true);
+        } finally {
+            executor.shutdownNow();
+            // Restore interrupt flag
+            if (wasInterrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 
