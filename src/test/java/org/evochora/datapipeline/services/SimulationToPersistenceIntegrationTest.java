@@ -387,27 +387,47 @@ class SimulationToPersistenceIntegrationTest {
     private List<TickData> readAllPersistedTicks() {
         List<TickData> allTicks = new ArrayList<>();
         try {
-            // Find all .pb batch files
+            // Find all .pb batch files (handle race conditions during file walking)
             List<Path> batchFiles = Files.walk(tempStorageDir)
-                .filter(path -> path.toString().endsWith(".pb") && Files.isRegularFile(path))
+                .filter(path -> {
+                    try {
+                        // Only include .pb files that exist and are regular files
+                        // (ignore .pb.tmp and handle race conditions during rename/delete)
+                        return path.toString().endsWith(".pb") && Files.exists(path) && Files.isRegularFile(path);
+                    } catch (Exception e) {
+                        // File may have been deleted/renamed between walk and exists check
+                        return false;
+                    }
+                })
                 .collect(Collectors.toList());
 
             // Read and deserialize each batch file
             for (Path batchFile : batchFiles) {
-                try (java.io.InputStream is = new java.io.BufferedInputStream(Files.newInputStream(batchFile))) {
-                    // Read all delimited TickData messages from the file
-                    while (is.available() > 0) {
-                        TickData tick = TickData.parseDelimitedFrom(is);
-                        if (tick == null) {
-                            break; // End of file
-                        }
-                        allTicks.add(tick);
+                try {
+                    // Double-check file still exists before opening
+                    if (!Files.exists(batchFile)) {
+                        continue; // File was deleted/renamed after collection
                     }
+                    
+                    try (java.io.InputStream is = new java.io.BufferedInputStream(Files.newInputStream(batchFile))) {
+                        // Read all delimited TickData messages from the file
+                        while (is.available() > 0) {
+                            TickData tick = TickData.parseDelimitedFrom(is);
+                            if (tick == null) {
+                                break; // End of file
+                            }
+                            allTicks.add(tick);
+                        }
+                    }
+                } catch (java.nio.file.NoSuchFileException e) {
+                    // File was deleted/renamed between exists check and read - this is OK in concurrent scenarios
+                    // Just skip this file and continue
                 } catch (IOException e) {
                     throw new RuntimeException("Failed to read batch file: " + batchFile, e);
                 }
             }
-        } catch (IOException e) {
+        } catch (java.io.UncheckedIOException | IOException e) {
+            // Handle race conditions where files are being written/renamed during walk
             throw new RuntimeException("Failed to walk storage directory", e);
         }
         return allTicks;
