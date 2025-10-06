@@ -75,28 +75,27 @@ public class DummyConsumerService<T> extends AbstractService implements IMonitor
         // Get required resources
         this.inputQueue = getRequiredResource("input", IInputQueueResource.class);
 
-        // Get optional idempotency tracker
-        IIdempotencyTracker<Integer> tracker = null;
-        try {
-            tracker = getRequiredResource("idempotencyTracker", IIdempotencyTracker.class);
-            logger.info("Idempotency tracker configured for service '{}'", name);
-        } catch (IllegalStateException e) {
-            logger.info("No idempotency tracker configured for service '{}' - duplicate detection disabled", name);
-        }
-        this.idempotencyTracker = tracker;
+        // Get optional resources
+        this.idempotencyTracker = getOptionalResource("idempotencyTracker", IIdempotencyTracker.class)
+                .map(tracker -> {
+                    logger.info("Idempotency tracker configured for service '{}'", name);
+                    return tracker;
+                })
+                .orElseGet(() -> {
+                    logger.info("No idempotency tracker configured for service '{}' - duplicate detection disabled", name);
+                    return null;
+                });
 
-        // Get optional DLQ resource using try-catch pattern
-        IDeadLetterQueueResource<T> dlq = null;
-        try {
-            dlq = getRequiredResource("dlq", IDeadLetterQueueResource.class);
-            String dlqName = dlq instanceof org.evochora.datapipeline.resources.AbstractResource
-                    ? ((org.evochora.datapipeline.resources.AbstractResource) dlq).getResourceName()
-                    : "unknown";
-            logger.info("Dead Letter Queue configured for service '{}': {}", name, dlqName);
-        } catch (IllegalStateException e) {
-            logger.warn("No Dead Letter Queue configured for service '{}' - failed messages will be logged only", name);
-        }
-        this.deadLetterQueue = dlq;
+        this.deadLetterQueue = getOptionalResource("dlq", IDeadLetterQueueResource.class)
+                .map(dlq -> {
+                    String dlqName = dlq.getResourceName();
+                    logger.info("Dead Letter Queue configured for service '{}': {}", name, dlqName);
+                    return dlq;
+                })
+                .orElseGet(() -> {
+                    logger.warn("No Dead Letter Queue configured for service '{}' - failed messages will be logged only", name);
+                    return null;
+                });
     }
 
     /**
@@ -281,9 +280,7 @@ public class DummyConsumerService<T> extends AbstractService implements IMonitor
                     .setRetryCount(retryInfo.attemptCount)
                     .setFailureReason(error.getClass().getName() + ": " + error.getMessage())
                     .setSourceService(serviceName)
-                    .setSourceQueue(inputQueue instanceof org.evochora.datapipeline.resources.AbstractResource
-                            ? ((org.evochora.datapipeline.resources.AbstractResource) inputQueue).getResourceName()
-                            : "unknown")
+                    .setSourceQueue(inputQueue.getResourceName())
                     .addAllStackTraceLines(stackTraceLines)
                     .build();
 
@@ -295,6 +292,12 @@ public class DummyConsumerService<T> extends AbstractService implements IMonitor
             int messageId = extractMessageId(message);
             logger.error("CRITICAL: Failed to send message ID={} to Dead Letter Queue: {}. Message may be lost!",
                     messageId, dlqError.getMessage(), dlqError);
+            errors.add(new OperationalError(
+                Instant.now(),
+                "DLQ_SEND_FAILED",
+                "Failed to send message to Dead Letter Queue",
+                String.format("Message ID=%d, Error: %s", messageId, dlqError.getMessage())
+            ));
         }
     }
 

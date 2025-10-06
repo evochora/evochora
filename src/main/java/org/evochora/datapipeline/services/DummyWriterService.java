@@ -7,11 +7,15 @@ import org.evochora.datapipeline.api.resources.storage.IStorageWriteResource;
 import org.evochora.datapipeline.api.resources.storage.MessageWriter;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.services.IService.State;
 
 import java.io.IOException;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class DummyWriterService extends AbstractService implements IMonitorable {
@@ -24,7 +28,11 @@ public class DummyWriterService extends AbstractService implements IMonitorable 
     private final AtomicLong totalMessagesWritten = new AtomicLong(0);
     private final AtomicLong totalBytesWritten = new AtomicLong(0);
     private final AtomicLong writeOperations = new AtomicLong(0);
+    private final AtomicLong writeFailed = new AtomicLong(0);
     private long currentTick = 0;
+
+    // Error tracking
+    private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
 
     public DummyWriterService(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
@@ -67,6 +75,13 @@ public class DummyWriterService extends AbstractService implements IMonitorable 
 
             } catch (IOException e) {
                 log.error("Failed to write batch {}", key, e);
+                writeFailed.incrementAndGet();
+                errors.add(new OperationalError(
+                    Instant.now(),
+                    "WRITE_FAILED",
+                    "Failed to write batch to storage",
+                    String.format("Key: %s, Error: %s", key, e.getMessage())
+                ));
             }
 
             writeCount++;
@@ -88,22 +103,23 @@ public class DummyWriterService extends AbstractService implements IMonitorable 
         return Map.of(
             "messages_written", totalMessagesWritten.get(),
             "bytes_written", totalBytesWritten.get(),
-            "write_operations", writeOperations.get()
+            "write_operations", writeOperations.get(),
+            "writes_failed", writeFailed.get()
         );
     }
 
     @Override
     public boolean isHealthy() {
-        return true;
+        return getCurrentState() != State.ERROR;
     }
 
     @Override
     public List<OperationalError> getErrors() {
-        return Collections.emptyList();
+        return new ArrayList<>(errors);
     }
 
     @Override
     public void clearErrors() {
-        // No-op
+        errors.clear();
     }
 }

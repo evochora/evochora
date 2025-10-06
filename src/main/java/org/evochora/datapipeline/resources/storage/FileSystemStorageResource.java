@@ -46,18 +46,92 @@ public class FileSystemStorageResource extends AbstractResource
             throw new IllegalArgumentException("rootDirectory is required for FileSystemStorageResource");
         }
         String rootPath = options.getString("rootDirectory");
-        this.rootDirectory = new File(rootPath);
+
+        // Expand environment variables and system properties
+        String expandedPath = expandPath(rootPath);
+        if (!rootPath.equals(expandedPath)) {
+            log.debug("Expanded rootDirectory: '{}' -> '{}'", rootPath, expandedPath);
+        }
+
+        this.rootDirectory = new File(expandedPath);
         if (!this.rootDirectory.isAbsolute()) {
-            throw new IllegalArgumentException("rootDirectory must be an absolute path");
+            throw new IllegalArgumentException("rootDirectory must be an absolute path (after variable expansion): " + expandedPath);
         }
         if (!this.rootDirectory.exists()) {
             if (!this.rootDirectory.mkdirs()) {
-                throw new IllegalArgumentException("Failed to create rootDirectory: " + rootPath);
+                throw new IllegalArgumentException("Failed to create rootDirectory: " + expandedPath);
             }
         }
         if (!this.rootDirectory.isDirectory()) {
-            throw new IllegalArgumentException("rootDirectory is not a directory: " + rootPath);
+            throw new IllegalArgumentException("rootDirectory is not a directory: " + expandedPath);
         }
+    }
+
+    /**
+     * Expands environment variables and Java system properties in a path string.
+     * Supports syntax: ${VAR} for both environment variables and system properties.
+     * System properties are checked first, then environment variables.
+     *
+     * @param path the path potentially containing variables like ${HOME} or ${user.home}
+     * @return the path with all variables expanded
+     * @throws IllegalArgumentException if a variable is referenced but not defined
+     */
+    private static String expandPath(String path) {
+        if (path == null || !path.contains("${")) {
+            return path;
+        }
+
+        StringBuilder result = new StringBuilder();
+        int pos = 0;
+
+        while (pos < path.length()) {
+            int startVar = path.indexOf("${", pos);
+            if (startVar == -1) {
+                // No more variables, append rest of string
+                result.append(path.substring(pos));
+                break;
+            }
+
+            // Append text before variable
+            result.append(path.substring(pos, startVar));
+
+            int endVar = path.indexOf("}", startVar + 2);
+            if (endVar == -1) {
+                throw new IllegalArgumentException("Unclosed variable in path: " + path);
+            }
+
+            String varName = path.substring(startVar + 2, endVar);
+            String value = resolveVariable(varName);
+
+            if (value == null) {
+                throw new IllegalArgumentException(
+                    "Undefined variable '${" + varName + "}' in path: " + path +
+                    ". Check that environment variable or system property exists."
+                );
+            }
+
+            result.append(value);
+            pos = endVar + 1;
+        }
+
+        return result.toString();
+    }
+
+    /**
+     * Resolves a variable name to its value, checking system properties first, then environment variables.
+     *
+     * @param varName the variable name (without ${} delimiters)
+     * @return the resolved value, or null if not found
+     */
+    private static String resolveVariable(String varName) {
+        // Check system properties first (e.g., user.home, java.io.tmpdir)
+        String value = System.getProperty(varName);
+        if (value != null) {
+            return value;
+        }
+
+        // Check environment variables (e.g., HOME, USERPROFILE)
+        return System.getenv(varName);
     }
 
     @Override

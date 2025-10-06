@@ -66,15 +66,15 @@ class SimulationEngineIntegrationTest {
         resources.put("tickData", Collections.singletonList(tickDataQueue));
         resources.put("metadataOutput", Collections.singletonList(metadataQueue));
 
-        Path sourceProgram = Path.of("assembly/examples/simple.s");
+        Path sourceProgram = Path.of("src/test/resources/org/evochora/datapipeline/services/simple.s");
         programFile = tempDir.resolve("simple.s");
         Files.copy(sourceProgram, programFile, StandardCopyOption.REPLACE_EXISTING);
         
         programFile1D = tempDir.resolve("simple_1d.s");
-        Files.copy(Path.of("assembly/test/simple_1d.s"), programFile1D, StandardCopyOption.REPLACE_EXISTING);
+        Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_1d.s"), programFile1D, StandardCopyOption.REPLACE_EXISTING);
         
         programFile3D = tempDir.resolve("simple_3d.s");
-        Files.copy(Path.of("assembly/test/simple_3d.s"), programFile3D, StandardCopyOption.REPLACE_EXISTING);
+        Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_3d.s"), programFile3D, StandardCopyOption.REPLACE_EXISTING);
 
         baseConfig = ConfigFactory.parseMap(Map.of(
                 "samplingInterval", 1,

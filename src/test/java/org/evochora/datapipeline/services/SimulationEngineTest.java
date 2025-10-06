@@ -61,7 +61,7 @@ class SimulationEngineTest {
         resources.put("tickData", Collections.singletonList(mockTickDataOutput));
         resources.put("metadataOutput", Collections.singletonList(mockMetadataOutput));
 
-        Path sourceProgram = Path.of("assembly/examples/simple.s");
+        Path sourceProgram = Path.of("src/test/resources/org/evochora/datapipeline/services/simple.s");
         programFile = tempDir.resolve("simple.s");
         Files.copy(sourceProgram, programFile, StandardCopyOption.REPLACE_EXISTING);
     }
@@ -226,7 +226,7 @@ class SimulationEngineTest {
     @Test
     void constructor_shouldAccept1DWorld() throws IOException {
         Path program1D = tempDir.resolve("simple_1d.s");
-        Files.copy(Path.of("assembly/test/simple_1d.s"), program1D, StandardCopyOption.REPLACE_EXISTING);
+        Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_1d.s"), program1D, StandardCopyOption.REPLACE_EXISTING);
         
         Config config = createValidConfig()
                 .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(20)))
@@ -241,7 +241,7 @@ class SimulationEngineTest {
     @Test
     void constructor_shouldAccept3DWorld() throws IOException {
         Path program3D = tempDir.resolve("simple_3d.s");
-        Files.copy(Path.of("assembly/test/simple_3d.s"), program3D, StandardCopyOption.REPLACE_EXISTING);
+        Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_3d.s"), program3D, StandardCopyOption.REPLACE_EXISTING);
         
         Config config = createValidConfig()
                 .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(10, 10, 10)))

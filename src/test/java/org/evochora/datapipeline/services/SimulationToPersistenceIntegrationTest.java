@@ -5,11 +5,13 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.ServiceManager;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.services.IService.State;
 import org.evochora.datapipeline.resources.idempotency.InMemoryIdempotencyTracker;
 import org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue;
 import org.evochora.datapipeline.resources.queues.InMemoryDeadLetterQueue;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.junit.extensions.logging.AllowLog;
+import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.AfterEach;
@@ -23,7 +25,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
@@ -33,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests the complete pipeline: SimulationEngine → Queue → PersistenceService → Storage.
  */
 @Tag("integration")
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
+@AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|PersistenceService|ServiceManager|FileSystemStorageResource|InMemoryIdempotencyTracker).*")
 class SimulationToPersistenceIntegrationTest {
 
     @TempDir
@@ -53,23 +61,11 @@ class SimulationToPersistenceIntegrationTest {
     void setUp() throws IOException {
         tempStorageDir = tempDir.resolve("storage");
         Files.createDirectories(tempStorageDir);
-        
-        // Create a simple assembly program for testing
-        programFile = tempDir.resolve("test_program.asm");
-        String assemblyCode = """
-            .module test_module
-            .reg r0, r1, r2
-            .proc main
-                mov r0, #1
-                mov r1, #2
-                add r2, r0, r1
-                ret
-            .endproc
-            """;
-        Files.writeString(programFile, assemblyCode);
-        
-        // Compile the program
-        compileAssemblyProgram(programFile);
+
+        // Copy an existing valid assembly program for testing
+        Path sourceProgram = Path.of("src/test/resources/org/evochora/datapipeline/services/simple.s");
+        programFile = tempDir.resolve("simple.s");
+        Files.copy(sourceProgram, programFile, StandardCopyOption.REPLACE_EXISTING);
     }
 
     @AfterEach
@@ -80,7 +76,7 @@ class SimulationToPersistenceIntegrationTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
+    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|PersistenceService|ServiceManager|FileSystemStorageResource).*")
     void testEndToEndPersistence() {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
@@ -100,42 +96,52 @@ class SimulationToPersistenceIntegrationTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
+    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|PersistenceService|ServiceManager|FileSystemStorageResource|InMemoryIdempotencyTracker).*")
     void testMultiplePersistenceInstances() {
         Config config = createMultiInstanceConfig();
         serviceManager = new ServiceManager(config);
-        
-        // Start all services
+
+        // Start all services (includes 2 persistence instances with shared idempotency tracker)
         serviceManager.startAll();
-        
+
         // Wait for batches to be written
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> countBatchFiles(tempStorageDir) > 0);
-        
-        // Verify that batch files were created (indicating successful persistence)
-        assertTrue(countBatchFiles(tempStorageDir) > 0);
+
+        // Verify no duplicate ticks were written (idempotency working)
+        List<TickData> allTicks = readAllPersistedTicks();
+        assertTrue(allTicks.size() > 0, "No ticks found in persisted batch files");
+
+        // Verify each tick appears exactly once
+        Set<Long> tickNumbers = new HashSet<>();
+        for (TickData tick : allTicks) {
+            boolean isNew = tickNumbers.add(tick.getTickNumber());
+            assertTrue(isNew, "Duplicate tick number found with competing consumers: " + tick.getTickNumber());
+        }
     }
 
     @Test
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = ".*")
+    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|PersistenceService|ServiceManager).*")
+    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*PersistenceService.*",
+               messagePattern = "Failed to write batch .* after .* retries:.*", occurrences = -1)
     void testDLQFunctionality() {
         // Create config with invalid storage directory to trigger failures
         Config config = createDLQTestConfig();
         serviceManager = new ServiceManager(config);
-        
+
         // Start all services
         serviceManager.startAll();
-        
+
         // Wait for some time to allow failures to occur
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> countBatchFiles(tempStorageDir) >= 0); // This will always be true, but gives time for failures
-        
+
         // Note: DLQ verification would require access to the resource, which is not directly available
         // in the current ServiceManager API. This test verifies that the system handles failures gracefully.
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
+    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|PersistenceService|ServiceManager|FileSystemStorageResource).*")
     void testGracefulShutdown() {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
@@ -149,14 +155,11 @@ class SimulationToPersistenceIntegrationTest {
         
         // Stop persistence service while simulation is still running
         serviceManager.stopService("persistence-1");
-        
-        // Wait a bit more for simulation to continue
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        
+
+        // Wait for persistence service to actually stop
+        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
+            .until(() -> serviceManager.getServiceStatus("persistence-1").state() == State.STOPPED);
+
         // Restart persistence service
         serviceManager.startService("persistence-1");
         
@@ -180,6 +183,10 @@ class SimulationToPersistenceIntegrationTest {
                         "className", "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue",
                         "options", Map.of("capacity", 1000)
                     ),
+                    "metadata-queue", Map.of(
+                        "className", "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue",
+                        "options", Map.of("capacity", 100)
+                    ),
                     "persistence-dlq", Map.of(
                         "className", "org.evochora.datapipeline.resources.queues.InMemoryDeadLetterQueue",
                         "options", Map.of("capacity", 100)
@@ -196,14 +203,23 @@ class SimulationToPersistenceIntegrationTest {
                 "services", Map.of(
                     "simulation-engine", Map.of(
                         "className", "org.evochora.datapipeline.services.SimulationEngine",
-                        "resources", Map.of("tickData", "queue-out:raw-tick-data"),
+                        "resources", Map.of(
+                            "tickData", "queue-out:raw-tick-data",
+                            "metadataOutput", "queue-out:metadata-queue"
+                        ),
                         "options", Map.of(
-                            "programFile", programFile.toString(),
                             "maxTicks", 100,
                             "samplingInterval", 10,
-                            "worldWidth", 10,
-                            "worldHeight", 10,
-                            "numOrganisms", 5
+                            "environment", Map.of(
+                                "shape", List.of(10, 10),
+                                "topology", "TORUS"
+                            ),
+                            "organisms", List.of(Map.of(
+                                "program", programFile.toString(),
+                                "initialEnergy", 10000,
+                                "placement", Map.of("positions", List.of(5, 5))
+                            )),
+                            "energyStrategies", Collections.emptyList()
                         )
                     ),
                     "persistence-1", Map.of(
@@ -229,7 +245,7 @@ class SimulationToPersistenceIntegrationTest {
 
     private Config createMultiInstanceConfig() {
         Config baseConfig = createIntegrationConfig();
-        return baseConfig.withValue("pipeline.services.persistence-2", 
+        return baseConfig.withValue("pipeline.services.persistence-2",
             ConfigFactory.parseMap(Map.of(
                 "className", "org.evochora.datapipeline.services.PersistenceService",
                 "resources", Map.of(
@@ -245,8 +261,8 @@ class SimulationToPersistenceIntegrationTest {
                     "retryBackoffMs", 100
                 )
             )).root()
-        ).withValue("pipeline.startupSequence", 
-            ConfigFactory.parseString("[\"simulation-engine\", \"persistence-1\", \"persistence-2\"]").root()
+        ).withValue("pipeline.startupSequence",
+            ConfigFactory.parseString("pipeline.startupSequence=[\"simulation-engine\", \"persistence-1\", \"persistence-2\"]").getValue("pipeline.startupSequence")
         );
     }
 
@@ -263,6 +279,10 @@ class SimulationToPersistenceIntegrationTest {
                         "className", "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue",
                         "options", Map.of("capacity", 1000)
                     ),
+                    "metadata-queue", Map.of(
+                        "className", "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue",
+                        "options", Map.of("capacity", 100)
+                    ),
                     "persistence-dlq", Map.of(
                         "className", "org.evochora.datapipeline.resources.queues.InMemoryDeadLetterQueue",
                         "options", Map.of("capacity", 100)
@@ -271,14 +291,23 @@ class SimulationToPersistenceIntegrationTest {
                 "services", Map.of(
                     "simulation-engine", Map.of(
                         "className", "org.evochora.datapipeline.services.SimulationEngine",
-                        "resources", Map.of("tickData", "queue-out:raw-tick-data"),
+                        "resources", Map.of(
+                            "tickData", "queue-out:raw-tick-data",
+                            "metadataOutput", "queue-out:metadata-queue"
+                        ),
                         "options", Map.of(
-                            "programFile", programFile.toString(),
                             "maxTicks", 50,
                             "samplingInterval", 5,
-                            "worldWidth", 10,
-                            "worldHeight", 10,
-                            "numOrganisms", 3
+                            "environment", Map.of(
+                                "shape", List.of(10, 10),
+                                "topology", "TORUS"
+                            ),
+                            "organisms", List.of(Map.of(
+                                "program", programFile.toString(),
+                                "initialEnergy", 10000,
+                                "placement", Map.of("positions", List.of(5, 5))
+                            )),
+                            "energyStrategies", Collections.emptyList()
                         )
                     ),
                     "persistence-1", Map.of(
@@ -301,45 +330,86 @@ class SimulationToPersistenceIntegrationTest {
         ));
     }
 
-    private void compileAssemblyProgram(Path programFile) throws IOException {
-        // This is a simplified compilation - in a real test, you'd use the actual compiler
-        // For now, we'll just create a placeholder compiled file
-        Path compiledFile = programFile.resolveSibling(programFile.getFileName().toString().replace(".asm", ".json"));
-        String compiledContent = """
-            {
-                "machineCodeLayout": [],
-                "labels": {},
-                "registers": {},
-                "procedures": {},
-                "metadata": {
-                    "version": "1.0",
-                    "compiledAt": "2024-01-01T00:00:00Z"
-                }
-            }
-            """;
-        Files.writeString(compiledFile, compiledContent);
-    }
-
     private int countBatchFiles(Path storageDir) {
         try {
             return (int) Files.walk(storageDir)
-                .filter(path -> path.toString().endsWith(".pb"))
+                .filter(path -> {
+                    try {
+                        // Only count .pb files that exist (ignore .pb.tmp and handle race conditions)
+                        return path.toString().endsWith(".pb") && Files.exists(path);
+                    } catch (Exception e) {
+                        // File may have been deleted/renamed between walk and exists check
+                        return false;
+                    }
+                })
                 .count();
-        } catch (IOException e) {
+        } catch (java.io.UncheckedIOException | IOException e) {
+            // Handle race conditions where files are being written/renamed during walk
             return 0;
         }
     }
 
     private void verifyAllTicksPersisted() {
-        // This is a simplified verification - in a real test, you'd:
-        // 1. Read all batch files from storage
-        // 2. Deserialize TickData messages
-        // 3. Verify tick sequence is complete and no duplicates exist
-        // 4. Verify all ticks have the same simulationRunId
-        
-        int batchCount = countBatchFiles(tempStorageDir);
-        assertTrue(batchCount > 0, "No batch files found in storage");
-        
-        // Additional verification could be added here to read and validate the actual tick data
+        // Read all batch files from storage and deserialize TickData messages
+        List<TickData> allTicks = readAllPersistedTicks();
+
+        assertTrue(allTicks.size() > 0, "No ticks found in persisted batch files");
+
+        // Verify all ticks have the same simulationRunId
+        String firstRunId = allTicks.get(0).getSimulationRunId();
+        for (TickData tick : allTicks) {
+            assertEquals(firstRunId, tick.getSimulationRunId(),
+                "All ticks should have the same simulationRunId");
+        }
+
+        // Verify no duplicate tick numbers
+        Set<Long> tickNumbers = new HashSet<>();
+        for (TickData tick : allTicks) {
+            boolean isNew = tickNumbers.add(tick.getTickNumber());
+            assertTrue(isNew, "Duplicate tick number found: " + tick.getTickNumber());
+        }
+
+        // Verify tick sequence is complete (all ticks between min and max exist)
+        List<Long> sortedTicks = allTicks.stream()
+            .map(TickData::getTickNumber)
+            .sorted()
+            .collect(Collectors.toList());
+
+        // With samplingInterval=10, we expect ticks: 0, 10, 20, ..., up to maxTicks
+        long minTick = sortedTicks.get(0);
+        long maxTick = sortedTicks.get(sortedTicks.size() - 1);
+        int expectedCount = (int)((maxTick - minTick) / 10) + 1;
+
+        assertEquals(expectedCount, sortedTicks.size(),
+            String.format("Expected %d ticks from %d to %d with interval 10", expectedCount, minTick, maxTick));
+    }
+
+    private List<TickData> readAllPersistedTicks() {
+        List<TickData> allTicks = new ArrayList<>();
+        try {
+            // Find all .pb batch files
+            List<Path> batchFiles = Files.walk(tempStorageDir)
+                .filter(path -> path.toString().endsWith(".pb") && Files.isRegularFile(path))
+                .collect(Collectors.toList());
+
+            // Read and deserialize each batch file
+            for (Path batchFile : batchFiles) {
+                try (java.io.InputStream is = new java.io.BufferedInputStream(Files.newInputStream(batchFile))) {
+                    // Read all delimited TickData messages from the file
+                    while (is.available() > 0) {
+                        TickData tick = TickData.parseDelimitedFrom(is);
+                        if (tick == null) {
+                            break; // End of file
+                        }
+                        allTicks.add(tick);
+                    }
+                } catch (IOException e) {
+                    throw new RuntimeException("Failed to read batch file: " + batchFile, e);
+                }
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to walk storage directory", e);
+        }
+        return allTicks;
     }
 }

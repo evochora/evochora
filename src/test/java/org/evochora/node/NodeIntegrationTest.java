@@ -64,7 +64,8 @@ class NodeIntegrationTest {
     void resetServicesToStopped() {
         // This ensures each test starts from a clean, predictable state.
         given().post(BASE_PATH + "/stop").then().statusCode(202);
-        await().atMost(5, TimeUnit.SECONDS).untilAsserted(() ->
+        // Reduced timeout from 5s to 2s since services usually stop quickly
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
             given().get(BASE_PATH + "/status").then().body("status", equalTo("STOPPED"))
         );
     }

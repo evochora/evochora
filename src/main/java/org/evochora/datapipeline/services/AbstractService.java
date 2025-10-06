@@ -46,6 +46,14 @@ public abstract class AbstractService implements IService {
         serviceThread = new Thread(this::runService);
         serviceThread.setName(this.getClass().getSimpleName());
         serviceThread.start();
+        logStarted();
+    }
+
+    /**
+     * Template method for logging service startup. Services can override this to provide
+     * detailed startup information. Default implementation logs a simple message.
+     */
+    protected void logStarted() {
         log.info("{} started", this.getClass().getSimpleName());
     }
 

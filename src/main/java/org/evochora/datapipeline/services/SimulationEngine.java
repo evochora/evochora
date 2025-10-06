@@ -132,18 +132,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     }
 
     @Override
-    protected void run() throws InterruptedException {
-        try {
-            metadataOutput.put(buildMetadataMessage());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.error("Interrupted while sending metadata, service will not start.", e);
-            // We were interrupted before the loop even started, so we exit.
-            // The service state will be handled by the AbstractService's runService method.
-            return;
-        }
-
-        // Build informative startup log message
+    protected void logStarted() {
         EnvironmentProperties envProps = simulation.getEnvironment().getProperties();
         String worldDims = String.join("×", Arrays.stream(envProps.getWorldShape()).mapToObj(String::valueOf).toArray(String[]::new));
         String topology = envProps.isToroidal() ? "TORUS" : "BOUNDED";
@@ -153,6 +142,26 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
 
         log.info("SimulationEngine started: world=[{}, {}], organisms={}, energyStrategies={} ({}), seed={}, samplingInterval={}",
                 worldDims, topology, simulation.getOrganisms().size(), energyStrategies.size(), strategyNames, seed, samplingInterval);
+    }
+
+    @Override
+    protected void run() throws InterruptedException {
+        try {
+            metadataOutput.put(buildMetadataMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Interrupted while sending metadata, service will not start.", e);
+            errors.add(new OperationalError(
+                Instant.now(),
+                "METADATA_SEND_INTERRUPTED",
+                "Interrupted while sending initial metadata",
+                e.getMessage()
+            ));
+            // We were interrupted before the loop even started, so we exit.
+            // The service state will be handled by the AbstractService's runService method.
+            return;
+        }
+
         while (getCurrentState() == State.RUNNING || getCurrentState() == State.PAUSED) {
             checkPause();
             if (shouldAutoPause(currentTick.get())) {

@@ -187,9 +187,9 @@ public class ServiceManager implements IMonitorable {
     }
 
     public void startAll() {
-        log.info("Starting all services...");
+        log.info("Starting services in startup sequence...");
         List<String> toStart = new ArrayList<>(startupSequence);
-        serviceFactories.keySet().stream().filter(s -> !toStart.contains(s)).forEach(toStart::add);
+        //serviceFactories.keySet().stream().filter(s -> !toStart.contains(s)).forEach(toStart::add);
         applyToAllServices(this::startService, toStart);
     }
 
@@ -198,7 +198,11 @@ public class ServiceManager implements IMonitorable {
         List<String> toStop = new ArrayList<>(startupSequence);
         Collections.reverse(toStop);
         runningServices.keySet().stream().filter(s -> !toStop.contains(s)).forEach(toStop::add);
-        applyToAllServices(this::stopService, toStop);
+        // Filter to only stop services that are actually running
+        List<String> actuallyRunning = toStop.stream()
+                .filter(runningServices::containsKey)
+                .collect(Collectors.toList());
+        applyToAllServices(this::stopService, actuallyRunning);
     }
 
     public void pauseAll() {
@@ -260,7 +264,6 @@ public class ServiceManager implements IMonitorable {
 
                 runningServices.put(name, newServiceInstance);
                 newServiceInstance.start();
-                log.info("Service '{}' started successfully with a new instance.", name);
             } finally {
                 // Step 5: Clean up temporary map
                 activeWrappedResources.remove(name);

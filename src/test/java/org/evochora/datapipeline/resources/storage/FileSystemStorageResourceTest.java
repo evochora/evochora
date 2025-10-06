@@ -200,4 +200,112 @@ class FileSystemStorageResourceTest {
         assertTrue(file.getParentFile().exists());
         assertEquals("c", file.getParentFile().getName());
     }
+
+    // Variable expansion tests
+
+    @Test
+    void testVariableExpansion_SystemProperty() {
+        String javaTmpDir = System.getProperty("java.io.tmpdir");
+        assertNotNull(javaTmpDir, "java.io.tmpdir system property should be defined");
+
+        Map<String, String> configMap = Map.of("rootDirectory", "${java.io.tmpdir}/evochora-test-sysprop");
+        Config config = ConfigFactory.parseMap(configMap);
+
+        FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
+        assertNotNull(storage);
+    }
+
+    @Test
+    void testVariableExpansion_EnvironmentVariable() {
+        // Set a custom environment-like variable via system properties for testing
+        System.setProperty("TEST_EVOCHORA_DIR", System.getProperty("java.io.tmpdir") + "/evochora-test-env");
+
+        try {
+            Map<String, String> configMap = Map.of("rootDirectory", "${TEST_EVOCHORA_DIR}");
+            Config config = ConfigFactory.parseMap(configMap);
+
+            FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
+            assertNotNull(storage);
+        } finally {
+            System.clearProperty("TEST_EVOCHORA_DIR");
+        }
+    }
+
+    @Test
+    void testVariableExpansion_MultipleVariables() {
+        String javaTmpDir = System.getProperty("java.io.tmpdir");
+        System.setProperty("test.project", "evochora-multi-var-test");
+
+        try {
+            Map<String, String> configMap = Map.of("rootDirectory", "${java.io.tmpdir}/${test.project}/data");
+            Config config = ConfigFactory.parseMap(configMap);
+
+            FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
+            assertNotNull(storage);
+        } finally {
+            System.clearProperty("test.project");
+        }
+    }
+
+    @Test
+    void testVariableExpansion_UndefinedVariable() {
+        Map<String, String> configMap = Map.of("rootDirectory", "${THIS_VARIABLE_DOES_NOT_EXIST}/data");
+        Config config = ConfigFactory.parseMap(configMap);
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+            new FileSystemStorageResource("test-storage", config);
+        });
+        assertTrue(exception.getMessage().contains("Undefined variable"));
+        assertTrue(exception.getMessage().contains("THIS_VARIABLE_DOES_NOT_EXIST"));
+    }
+
+    @Test
+    void testVariableExpansion_UnclosedVariable() {
+        Map<String, String> configMap = Map.of("rootDirectory", "${user.home/data");
+        Config config = ConfigFactory.parseMap(configMap);
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+            new FileSystemStorageResource("test-storage", config);
+        });
+        assertTrue(exception.getMessage().contains("Unclosed variable"));
+    }
+
+    @Test
+    void testVariableExpansion_MustBeAbsoluteAfterExpansion() {
+        System.setProperty("test.relative", "relative/path");
+
+        try {
+            Map<String, String> configMap = Map.of("rootDirectory", "${test.relative}/data");
+            Config config = ConfigFactory.parseMap(configMap);
+
+            IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+                new FileSystemStorageResource("test-storage", config);
+            });
+            assertTrue(exception.getMessage().contains("must be an absolute path"));
+        } finally {
+            System.clearProperty("test.relative");
+        }
+    }
+
+    @Test
+    void testVariableExpansion_NoVariables() {
+        // Test that paths without variables still work
+        Map<String, String> configMap = Map.of("rootDirectory", tempDir.toAbsolutePath().toString());
+        Config config = ConfigFactory.parseMap(configMap);
+
+        FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
+        assertNotNull(storage);
+    }
+
+    @Test
+    void testVariableExpansion_JavaTempDir() {
+        String javaTmpDir = System.getProperty("java.io.tmpdir");
+        assertNotNull(javaTmpDir, "java.io.tmpdir should be defined");
+
+        Map<String, String> configMap = Map.of("rootDirectory", "${java.io.tmpdir}/evochora-test");
+        Config config = ConfigFactory.parseMap(configMap);
+
+        FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
+        assertNotNull(storage);
+    }
 }
