@@ -70,7 +70,7 @@ class PipelineControllerTest {
         @DisplayName("getPipelineStatus should return overall pipeline status")
         void getPipelineStatus_shouldReturnPipelineStatus() {
             // Arrange
-            final ServiceStatus consumerStatus = new ServiceStatus(IService.State.RUNNING, Collections.emptyMap(), Collections.emptyList(), Collections.emptyList());
+            final ServiceStatus consumerStatus = new ServiceStatus(IService.State.RUNNING, true, Collections.emptyMap(), Collections.emptyList(), Collections.emptyList());
             final Map<String, ServiceStatus> statuses = Map.of("consumer", consumerStatus);
             when(serviceManager.getAllServiceStatus()).thenReturn(statuses);
 
@@ -92,7 +92,7 @@ class PipelineControllerTest {
         @DisplayName("getServiceStatus should return status for a specific service")
         void getServiceStatus_shouldReturnCorrectStatus() {
             // Arrange
-            final ServiceStatus testStatus = new ServiceStatus(IService.State.STOPPED, Map.of("metric", 1), Collections.emptyList(), Collections.emptyList());
+            final ServiceStatus testStatus = new ServiceStatus(IService.State.STOPPED, true, Map.of("metric", 1), Collections.emptyList(), Collections.emptyList());
             when(serviceManager.getServiceStatus("test-service")).thenReturn(testStatus);
             when(ctx.pathParam("serviceName")).thenReturn("test-service");
 

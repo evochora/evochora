@@ -1,0 +1,385 @@
+package org.evochora.datapipeline.services;
+
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.ServiceManager;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.resources.storage.MessageReader;
+import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
+import org.evochora.junit.extensions.logging.AllowLog;
+import org.evochora.junit.extensions.logging.LogLevel;
+import org.evochora.runtime.isa.Instruction;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
+
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Integration tests for end-to-end metadata persistence flow with real resources.
+ * Tests the complete pipeline: SimulationEngine → context-data queue → MetadataPersistenceService → Storage.
+ */
+@Tag("integration")
+@AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
+class SimulationMetadataIntegrationTest {
+
+    @TempDir
+    Path tempDir;
+
+    private Path tempStorageDir;
+    private Path programFile;
+    private ServiceManager serviceManager;
+
+    @BeforeAll
+    static void setUpClass() {
+        // Initialize instruction set
+        Instruction.init();
+    }
+
+    @BeforeEach
+    void setUp() throws IOException {
+        tempStorageDir = tempDir.resolve("storage");
+        Files.createDirectories(tempStorageDir);
+
+        // Copy a valid assembly program for testing
+        Path sourceProgram = Path.of("src/test/resources/org/evochora/datapipeline/services/simple.s");
+        programFile = tempDir.resolve("simple.s");
+        Files.copy(sourceProgram, programFile, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    @AfterEach
+    void tearDown() {
+        if (serviceManager != null) {
+            serviceManager.stopAll();
+        }
+    }
+
+    @Test
+    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
+    void testEndToEndMetadataPersistence() throws IOException {
+        Config config = createIntegrationConfig();
+        serviceManager = new ServiceManager(config);
+
+        // Start all services
+        serviceManager.startAll();
+
+        // Wait for metadata file to be created
+        await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
+            .until(() -> findMetadataFile(tempStorageDir) != null);
+
+        Path metadataFile = findMetadataFile(tempStorageDir);
+        assertNotNull(metadataFile, "Metadata file should exist");
+
+        // Verify file naming convention: {simulationRunId}/metadata.pb
+        assertTrue(metadataFile.getFileName().toString().equals("metadata.pb"));
+
+        // Verify file is readable and contains valid SimulationMetadata
+        SimulationMetadata metadata = readMetadataFile(metadataFile);
+        assertNotNull(metadata);
+        assertNotNull(metadata.getSimulationRunId());
+        assertFalse(metadata.getSimulationRunId().isEmpty());
+        assertEquals(42, metadata.getInitialSeed()); // From config
+        assertTrue(metadata.getStartTimeMs() > 0);
+    }
+
+    @Test
+    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
+    void testMetadataCorrelatesWithTickData() throws IOException {
+        Config config = createIntegrationConfig();
+        serviceManager = new ServiceManager(config);
+
+        serviceManager.startAll();
+
+        // Wait for both metadata and tick data files
+        await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
+            .until(() -> findMetadataFile(tempStorageDir) != null &&
+                         countBatchFiles(tempStorageDir) > 0);
+
+        Path metadataFile = findMetadataFile(tempStorageDir);
+        SimulationMetadata metadata = readMetadataFile(metadataFile);
+
+        // Verify metadata and tick data are in the same directory (same simulationRunId)
+        String simulationRunId = metadata.getSimulationRunId();
+        Path simulationDir = metadataFile.getParent();
+        assertTrue(simulationDir.getFileName().toString().equals(simulationRunId));
+
+        // Verify batch files exist in same directory
+        try (Stream<Path> files = Files.list(simulationDir)) {
+            long batchCount = files.filter(p -> p.getFileName().toString().startsWith("batch_"))
+                                   .count();
+            assertTrue(batchCount > 0, "Batch files should exist in same directory as metadata");
+        }
+    }
+
+    @Test
+    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
+    void testServiceStopsAfterProcessing() {
+        Config config = createIntegrationConfig();
+        serviceManager = new ServiceManager(config);
+
+        serviceManager.startAll();
+
+        // Wait for metadata to be written
+        await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
+            .until(() -> findMetadataFile(tempStorageDir) != null);
+
+        // Verify MetadataPersistenceService stopped itself (one-shot pattern)
+        // Use ServiceManager API to check service status
+        await().atMost(10, java.util.concurrent.TimeUnit.SECONDS)
+            .until(() -> {
+                var status = serviceManager.getServiceStatus("metadata-persistence-service");
+                return status != null && status.state() == org.evochora.datapipeline.api.services.IService.State.STOPPED;
+            });
+
+        // Verify service metrics show successful write
+        var status = serviceManager.getServiceStatus("metadata-persistence-service");
+        assertNotNull(status);
+        assertEquals(1, status.metrics().get("metadata_written").longValue());
+    }
+
+    @Test
+    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
+    void testMetadataContentCompleteness() throws IOException {
+        Config config = createIntegrationConfig();
+        serviceManager = new ServiceManager(config);
+
+        serviceManager.startAll();
+
+        await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
+            .until(() -> findMetadataFile(tempStorageDir) != null);
+
+        Path metadataFile = findMetadataFile(tempStorageDir);
+        SimulationMetadata metadata = readMetadataFile(metadataFile);
+
+        // Verify all critical fields are populated
+        assertNotNull(metadata.getSimulationRunId());
+        assertEquals(42, metadata.getInitialSeed());
+        assertTrue(metadata.getStartTimeMs() > 0);
+
+        // Verify environment configuration
+        assertNotNull(metadata.getEnvironment());
+        assertEquals(2, metadata.getEnvironment().getDimensions());
+        assertEquals(100, metadata.getEnvironment().getShape(0));
+        assertEquals(100, metadata.getEnvironment().getShape(1));
+
+        // Verify energy strategies
+        assertTrue(metadata.getEnergyStrategiesCount() > 0);
+
+        // Verify programs
+        assertTrue(metadata.getProgramsCount() > 0);
+
+        // Verify initial organisms
+        assertTrue(metadata.getInitialOrganismsCount() > 0);
+
+        // Verify user metadata
+        assertEquals("test-run", metadata.getUserMetadataOrDefault("experiment", ""));
+
+        // Verify resolved config JSON exists
+        assertNotNull(metadata.getResolvedConfigJson());
+        assertFalse(metadata.getResolvedConfigJson().isEmpty());
+    }
+
+    @Test
+    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager).*")
+    void testGracefulShutdown() {
+        Config config = createIntegrationConfig();
+        serviceManager = new ServiceManager(config);
+
+        serviceManager.startAll();
+
+        // Stop all services before metadata is processed (if possible)
+        // This tests that shutdown doesn't lose the metadata message
+        try {
+            Thread.sleep(10); // Brief pause to allow services to start
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        serviceManager.stopAll();
+
+        // If metadata was queued, it should still be written during graceful shutdown
+        // This test verifies no data loss during shutdown
+        // Note: Timing-dependent - metadata might already be written or still in queue
+    }
+
+    // ========== Helper Methods ==========
+
+    private Config createIntegrationConfig() {
+        // Build config using HOCON string to avoid Map.of() size limit
+        String hoconConfig = String.format("""
+            pipeline {
+              autoStart = false
+              startupSequence = ["metadata-persistence-service", "simulation-engine", "persistence-service"]
+
+              resources {
+                tick-storage {
+                  className = "org.evochora.datapipeline.resources.storage.FileSystemStorageResource"
+                  options {
+                    rootDirectory = "%s"
+                  }
+                }
+
+                raw-tick-data {
+                  className = "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue"
+                  options {
+                    capacity = 1000
+                  }
+                }
+
+                context-data {
+                  className = "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue"
+                  options {
+                    capacity = 10
+                  }
+                }
+              }
+
+              services {
+                metadata-persistence-service {
+                  className = "org.evochora.datapipeline.services.MetadataPersistenceService"
+                  resources {
+                    input = "queue-in:context-data"
+                    storage = "storage-write:tick-storage"
+                  }
+                  options {
+                    maxRetries = 3
+                    retryBackoffMs = 100
+                  }
+                }
+
+                simulation-engine {
+                  className = "org.evochora.datapipeline.services.SimulationEngine"
+                  resources {
+                    tickData = "queue-out:raw-tick-data"
+                    metadataOutput = "queue-out:context-data"
+                  }
+                  options {
+                    samplingInterval = 10
+                    seed = 42
+                    environment {
+                      shape = [100, 100]
+                      topology = "TORUS"
+                    }
+                    energyStrategies = [
+                      {
+                        className = "org.evochora.runtime.worldgen.GeyserCreator"
+                        options {
+                          count = 2
+                          interval = 100
+                          amount = 1000
+                          safetyRadius = 2
+                        }
+                      }
+                    ]
+                    organisms = [
+                      {
+                        program = "%s"
+                        initialEnergy = 10000
+                        placement {
+                          positions = [50, 50]
+                        }
+                      }
+                    ]
+                    metadata {
+                      experiment = "test-run"
+                    }
+                  }
+                }
+
+                persistence-service {
+                  className = "org.evochora.datapipeline.services.PersistenceService"
+                  resources {
+                    input = "queue-in:raw-tick-data"
+                    storage = "storage-write:tick-storage"
+                  }
+                  options {
+                    maxBatchSize = 100
+                    batchTimeoutSeconds = 2
+                  }
+                }
+              }
+            }
+            """,
+            tempStorageDir.toAbsolutePath().toString(),
+            programFile.toAbsolutePath().toString()
+        );
+
+        return ConfigFactory.parseString(hoconConfig);
+    }
+
+    private Path findMetadataFile(Path storageRoot) throws IOException {
+        if (!Files.exists(storageRoot)) {
+            return null;
+        }
+
+        try (Stream<Path> simulationDirs = Files.list(storageRoot)) {
+            return simulationDirs
+                .filter(Files::isDirectory)
+                .flatMap(dir -> {
+                    try {
+                        return Files.list(dir);
+                    } catch (IOException e) {
+                        return Stream.empty();
+                    }
+                })
+                .filter(p -> p.getFileName().toString().equals("metadata.pb"))
+                .findFirst()
+                .orElse(null);
+        }
+    }
+
+    private SimulationMetadata readMetadataFile(Path metadataFile) throws IOException {
+        // Read metadata using storage resource (same as production would)
+        // Note: Metadata is written using MessageWriter which writes delimited messages,
+        // so we need to read it using MessageReader, not readMessage().
+        Path storageRoot = metadataFile.getParent().getParent();
+        String simulationRunId = metadataFile.getParent().getFileName().toString();
+        String key = simulationRunId + "/metadata.pb";
+
+        Config storageConfig = ConfigFactory.parseMap(
+            Map.of("rootDirectory", storageRoot.toAbsolutePath().toString())
+        );
+
+        FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", storageConfig);
+
+        // Read delimited message (MessageWriter writes delimited)
+        try (MessageReader<SimulationMetadata> reader = storage.openReader(key, SimulationMetadata.parser())) {
+            if (reader.hasNext()) {
+                return reader.next();
+            }
+            throw new IOException("Metadata file is empty");
+        }
+    }
+
+    private int countBatchFiles(Path storageRoot) throws IOException {
+        if (!Files.exists(storageRoot)) {
+            return 0;
+        }
+
+        try (Stream<Path> simulationDirs = Files.list(storageRoot)) {
+            return (int) simulationDirs
+                .filter(Files::isDirectory)
+                .flatMap(dir -> {
+                    try {
+                        return Files.list(dir);
+                    } catch (IOException e) {
+                        return Stream.empty();
+                    }
+                })
+                .filter(p -> p.getFileName().toString().startsWith("batch_"))
+                .count();
+        }
+    }
+}

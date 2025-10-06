@@ -102,20 +102,23 @@ class NodeIntegrationTest {
 
     @Test
     @Order(3)
-    @DisplayName("POST /service/{name}/start - should start one service and result in DEGRADED status")
-    void postStartSingleService_resultsInDegradedStatus() {
+    @DisplayName("POST /service/{name}/start - should start one service and result in RUNNING status")
+    void postStartSingleService_resultsInRunningStatus() {
         // Start only the consumer
         given().post(BASE_PATH + "/service/test-consumer/start").then().statusCode(202);
 
-        // Verify the status
+        // Verify the status - with new health-based logic, node is RUNNING
+        // because both services are healthy (one RUNNING, one STOPPED but healthy)
         await().atMost(5, TimeUnit.SECONDS).untilAsserted(() ->
             given()
                 .when().get(BASE_PATH + "/status")
                 .then()
                     .statusCode(200)
-                    .body("status", equalTo("DEGRADED"))
+                    .body("status", equalTo("RUNNING"))
                     .body("services.find { it.name == 'test-consumer' }.state", equalTo("RUNNING"))
                     .body("services.find { it.name == 'test-producer' }.state", equalTo("STOPPED"))
+                    .body("services.find { it.name == 'test-consumer' }.healthy", equalTo(true))
+                    .body("services.find { it.name == 'test-producer' }.healthy", equalTo(true))
         );
     }
 

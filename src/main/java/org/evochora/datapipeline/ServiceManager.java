@@ -501,15 +501,17 @@ public class ServiceManager implements IMonitorable {
 
         IService service = runningServices.get(serviceName);
         if (service == null) {
-            return new ServiceStatus(IService.State.STOPPED, Collections.emptyMap(), Collections.emptyList(), Collections.emptyList());
+            return new ServiceStatus(IService.State.STOPPED, true, Collections.emptyMap(), Collections.emptyList(), Collections.emptyList());
         }
 
         List<ResourceBinding> resourceBindings = serviceResourceBindings.getOrDefault(serviceName, Collections.emptyList());
         Map<String, Number> serviceMetrics = (service instanceof IMonitorable) ? ((IMonitorable) service).getMetrics() : Collections.emptyMap();
         List<OperationalError> errors = (service instanceof IMonitorable) ? ((IMonitorable) service).getErrors() : Collections.emptyList();
+        boolean healthy = (service instanceof IMonitorable) ? ((IMonitorable) service).isHealthy() : (service.getCurrentState() != IService.State.ERROR);
 
         return new ServiceStatus(
                 service.getCurrentState(),
+                healthy,
                 serviceMetrics,
                 errors,
                 resourceBindings

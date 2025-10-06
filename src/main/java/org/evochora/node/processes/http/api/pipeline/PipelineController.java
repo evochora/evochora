@@ -110,30 +110,49 @@ public class PipelineController extends AbstractController {
         ctx.status(HttpStatus.ACCEPTED).json(Map.of("message", "Request for service '" + serviceName + "' accepted."));
     }
 
+    /**
+     * Determines the overall node status based on service health and state.
+     * <p>
+     * This method uses {@code isHealthy()} as the single source of truth for service health,
+     * allowing services to define their own health semantics across all states.
+     * <p>
+     * Status logic:
+     * <ul>
+     *   <li><b>IDLE:</b> No services configured</li>
+     *   <li><b>DEGRADED:</b> Any service reports unhealthy (regardless of state)</li>
+     *   <li><b>RUNNING:</b> At least one service is RUNNING and all services are healthy</li>
+     *   <li><b>STOPPED:</b> No services RUNNING and all services are healthy</li>
+     * </ul>
+     * <p>
+     * This approach correctly handles:
+     * <ul>
+     *   <li>One-shot services (STOPPED + healthy → not degraded)</li>
+     *   <li>Running services with internal errors (RUNNING + unhealthy → degraded)</li>
+     *   <li>Intentionally paused services (PAUSED + healthy → not degraded)</li>
+     * </ul>
+     *
+     * @param services List of service status DTOs
+     * @return Overall node status: "IDLE", "RUNNING", "DEGRADED", or "STOPPED"
+     */
     private String determineOverallStatus(final List<ServiceStatusDto> services) {
         if (services.isEmpty()) {
             return "IDLE";
         }
+
         boolean hasRunning = false;
-        boolean hasStoppedOrError = false;
+        boolean hasUnhealthy = false;
 
         for (final ServiceStatusDto service : services) {
-            switch (service.state()) {
-                case "RUNNING":
-                    hasRunning = true;
-                    break;
-                case "STOPPED":
-                case "ERROR":
-                    hasStoppedOrError = true;
-                    break;
-                // PAUSED state is also considered not fully running, leading to DEGRADED
-                case "PAUSED":
-                    hasStoppedOrError = true;
-                    break;
+            if ("RUNNING".equals(service.state())) {
+                hasRunning = true;
+            }
+            if (!service.healthy()) {
+                hasUnhealthy = true;
             }
         }
 
-        if (hasRunning && hasStoppedOrError) {
+        // Any unhealthy service causes DEGRADED status (regardless of state)
+        if (hasUnhealthy) {
             return "DEGRADED";
         }
         if (hasRunning) {

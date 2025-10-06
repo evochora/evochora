@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
  *
  * @param name             The name of the service.
  * @param state            The current state of the service (e.g., "RUNNING", "STOPPED").
+ * @param healthy          Whether the service reports itself as healthy.
  * @param metrics          A map of metrics associated with the service.
  * @param errors           A list of recent error messages.
  * @param resourceBindings A list of resource bindings for the service.
@@ -20,6 +21,7 @@ import java.util.stream.Collectors;
 public record ServiceStatusDto(
     String name,
     String state,
+    boolean healthy,
     Map<String, Number> metrics,
     List<String> errors,
     List<ResourceBindingDto> resourceBindings
@@ -44,6 +46,7 @@ public record ServiceStatusDto(
         return new ServiceStatusDto(
             name,
             status.state().name(),
+            status.healthy(),
             status.metrics(),
             errorMessages,
             bindings
