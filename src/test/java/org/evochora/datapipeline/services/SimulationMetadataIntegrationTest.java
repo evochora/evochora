@@ -312,8 +312,8 @@ class SimulationMetadataIntegrationTest {
               }
             }
             """,
-            tempStorageDir.toAbsolutePath().toString(),
-            programFile.toAbsolutePath().toString()
+            tempStorageDir.toAbsolutePath().toString().replace("\\", "/"),
+            programFile.toAbsolutePath().toString().replace("\\", "/")
         );
 
         return ConfigFactory.parseString(hoconConfig);

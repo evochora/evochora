@@ -73,13 +73,14 @@ class FileSystemStorageResourceTest {
     }
 
     @Test
-    void testOpenWriter_NoCommitOnException() {
+    void testOpenWriter_NoCommitOnException() throws Exception {
         String key = "no_commit_on_exception.pb";
         File finalFile = new File(tempDir.toFile(), key);
         File tempFile = new File(tempDir.toFile(), key + ".tmp");
 
+        MessageWriter writer = null;
         try {
-            MessageWriter writer = storage.openWriter(key);
+            writer = storage.openWriter(key);
             writer.writeMessage(createTick(1));
             // Simulate a crash by not calling close() and throwing an exception
             throw new RuntimeException("Simulating crash");
@@ -87,9 +88,27 @@ class FileSystemStorageResourceTest {
             // expected
         }
 
-        // After the "crash", the final file should not exist, but the temp file should.
-        assertFalse(finalFile.exists(), "Final file should not exist after crash");
-        assertTrue(tempFile.exists(), "Temp file should still exist after crash");
+        try {
+            // After the "crash", the final file should not exist, but the temp file should.
+            assertFalse(finalFile.exists(), "Final file should not exist after crash");
+            assertTrue(tempFile.exists(), "Temp file should still exist after crash");
+        } finally {
+            // Clean up: Close the writer to release file locks on Windows so JUnit can clean up the temp directory
+            if (writer != null) {
+                try {
+                    writer.close();
+                } catch (Exception closeException) {
+                    // ignore
+                }
+            }
+            // On Windows, even after closing, we may need to manually delete files for test cleanup
+            if (finalFile.exists()) {
+                finalFile.delete();
+            }
+            if (tempFile.exists()) {
+                tempFile.delete();
+            }
+        }
     }
 
 
