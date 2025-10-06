@@ -24,6 +24,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -128,7 +130,11 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
             org.setProgramId(artifact.programId());
             this.simulation.addOrganism(org);
         }
-        this.runId = UUID.randomUUID().toString();
+        // Generate run ID with timestamp prefix: YYYYMMDDHHiissmm-UUID
+        LocalDateTime now = LocalDateTime.now();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSS");
+        String timestamp = now.format(formatter);
+        this.runId = timestamp + "-" + UUID.randomUUID().toString();
     }
 
     @Override

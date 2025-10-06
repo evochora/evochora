@@ -98,14 +98,12 @@ class FileSystemStorageResourceTest {
         String key = "single_message.pb";
         TickData originalTick = createTick(42);
 
+        // Write using MessageWriter (uses delimited format)
         try (MessageWriter writer = storage.openWriter(key)) {
-            // Note: readMessage expects a single message, not delimited.
-            // We write it directly for this test.
+            writer.writeMessage(originalTick);
         }
-        // Manually write a non-delimited message
-        java.nio.file.Files.write(tempDir.resolve(key), originalTick.toByteArray());
 
-
+        // Read using readMessage
         TickData readTick = storage.readMessage(key, TickData.parser());
         assertEquals(originalTick, readTick);
     }

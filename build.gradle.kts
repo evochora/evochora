@@ -57,6 +57,9 @@ dependencies {
     // Apache Commons Math for scientifically-validated RNG with state serialization
     implementation("org.apache.commons:commons-math3:3.6.1")
 
+    // Zstd compression library with bundled native binaries for cross-platform support
+    implementation("com.github.luben:zstd-jni:1.5.5-11")
+
     // Test fixtures: dependencies needed to compile the JUnit extension
     testFixturesImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
     testFixturesImplementation("ch.qos.logback:logback-classic:1.5.6")

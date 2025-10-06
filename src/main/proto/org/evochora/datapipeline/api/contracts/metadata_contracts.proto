@@ -14,8 +14,11 @@ option java_package = "org.evochora.datapipeline.api.contracts";
 // It provides complete context for understanding and replaying the simulation.
 message SimulationMetadata {
   // Unique identifier for this simulation run
-  // Created via: UUID.randomUUID().toString() or similar
-  // Used to correlate metadata with tick data
+  // Format: YYYYMMDDHHmmssSS-<UUID> (timestamp prefix with centiseconds + UUID)
+  // Example: 2025100614302512-550e8400-e29b-41d4-a716-446655440000
+  //          └──────┬──────┘└┬┘
+  //           date+time    cs (centiseconds: 00-99)
+  // Used to correlate metadata with tick data and provide temporal ordering
   string simulation_run_id = 1;
 
   // Timestamp when the simulation started (milliseconds since epoch)

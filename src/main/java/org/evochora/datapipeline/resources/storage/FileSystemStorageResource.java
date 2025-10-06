@@ -16,6 +16,9 @@ import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.resources.storage.wrappers.MonitoredStorageReader;
 import org.evochora.datapipeline.resources.storage.wrappers.MonitoredStorageWriter;
 import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
+import org.evochora.datapipeline.utils.compression.CompressionException;
+import org.evochora.datapipeline.utils.compression.ICompressionCodec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +27,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -39,6 +43,7 @@ public class FileSystemStorageResource extends AbstractResource
 
     private static final Logger log = LoggerFactory.getLogger(FileSystemStorageResource.class);
     private final File rootDirectory;
+    private final ICompressionCodec codec;
 
     public FileSystemStorageResource(String name, Config options) {
         super(name, options);
@@ -64,6 +69,17 @@ public class FileSystemStorageResource extends AbstractResource
         }
         if (!this.rootDirectory.isDirectory()) {
             throw new IllegalArgumentException("rootDirectory is not a directory: " + expandedPath);
+        }
+
+        // Initialize compression codec (fail-fast if environment validation fails)
+        try {
+            this.codec = CompressionCodecFactory.createAndValidate(options);
+            if (!"none".equals(codec.getName())) {
+                log.info("FileSystemStorage '{}' using compression: codec={}, level={}",
+                    name, codec.getName(), codec.getLevel());
+            }
+        } catch (CompressionException e) {
+            throw new IllegalStateException("Failed to initialize compression codec for storage '" + name + "'", e);
         }
     }
 
@@ -165,9 +181,24 @@ public class FileSystemStorageResource extends AbstractResource
         if (!file.exists()) {
             throw new IOException("Key does not exist: " + key);
         }
-        try (InputStream input = new FileInputStream(file)) {
-            return parser.parseFrom(input);
+
+        try (InputStream rawInput = new FileInputStream(file);
+             InputStream input = shouldDecompress(key) ? codec.wrapInputStream(rawInput) : rawInput) {
+            // Use parseDelimitedFrom to match writeDelimitedTo() used by MessageWriter
+            T message = parser.parseDelimitedFrom(input);
+            if (message == null) {
+                throw new IOException("No message found in file: " + key);
+            }
+            return message;
         }
+    }
+
+    /**
+     * Determines whether a file should be decompressed based on its extension.
+     * Files with .zst extension are decompressed, others are read as-is (backward compatibility).
+     */
+    private boolean shouldDecompress(String key) {
+        return key.endsWith(codec.getFileExtension()) && !codec.getFileExtension().isEmpty();
     }
 
     @Override
@@ -182,7 +213,7 @@ public class FileSystemStorageResource extends AbstractResource
             throw new IOException("Key does not exist: " + key);
         }
 
-        return new MessageReaderImpl<>(file, parser);
+        return new MessageReaderImpl<>(file, parser, key, codec);
     }
 
     @Override
@@ -216,15 +247,19 @@ public class FileSystemStorageResource extends AbstractResource
     @Override
     public MessageWriter openWriter(String key) throws IOException {
         validateKey(key);
-        File finalFile = new File(rootDirectory, key);
-        File tempFile = new File(rootDirectory, key + ".tmp");
+
+        // Add compression file extension if compression is enabled
+        String storageKey = key + codec.getFileExtension();
+
+        File finalFile = new File(rootDirectory, storageKey);
+        File tempFile = new File(rootDirectory, storageKey + ".tmp");
 
         File parentDir = finalFile.getParentFile();
         if (!parentDir.exists() && !parentDir.mkdirs()) {
             throw new IOException("Failed to create parent directories for: " + finalFile.getAbsolutePath());
         }
 
-        return new MessageWriterImpl(tempFile, finalFile);
+        return new MessageWriterImpl(tempFile, finalFile, codec);
     }
 
     @Override
@@ -299,13 +334,15 @@ public class FileSystemStorageResource extends AbstractResource
     private class MessageWriterImpl implements MessageWriter {
         private final File tempFile;
         private final File finalFile;
-        private final FileOutputStream outputStream;
+        private final FileOutputStream rawOutputStream;
+        private final OutputStream outputStream;
         private boolean closed = false;
 
-        MessageWriterImpl(File tempFile, File finalFile) throws IOException {
+        MessageWriterImpl(File tempFile, File finalFile, ICompressionCodec codec) throws IOException {
             this.tempFile = tempFile;
             this.finalFile = finalFile;
-            this.outputStream = new FileOutputStream(tempFile);
+            this.rawOutputStream = new FileOutputStream(tempFile);
+            this.outputStream = codec.wrapOutputStream(rawOutputStream);
         }
 
         @Override
@@ -327,10 +364,22 @@ public class FileSystemStorageResource extends AbstractResource
             closed = true;
 
             try {
+                // Flush compressed stream to write all buffered data
                 outputStream.flush();
-                outputStream.getFD().sync();
-            } finally {
+
+                // Sync to disk BEFORE closing (compression stream close will close raw stream)
+                rawOutputStream.getFD().sync();
+
+                // Close compressed stream (this also closes rawOutputStream)
                 outputStream.close();
+            } catch (IOException e) {
+                // Ensure raw stream is closed even if compression close fails
+                try {
+                    rawOutputStream.close();
+                } catch (IOException suppressed) {
+                    e.addSuppressed(suppressed);
+                }
+                throw e;
             }
 
             if (!tempFile.renameTo(finalFile)) {
@@ -340,14 +389,17 @@ public class FileSystemStorageResource extends AbstractResource
     }
 
     private class MessageReaderImpl<T extends MessageLite> implements MessageReader<T> {
+        private final InputStream rawInputStream;
         private final InputStream inputStream;
         private final Parser<T> parser;
         private T nextMessage = null;
         private boolean closed = false;
         private boolean eof = false;
 
-        MessageReaderImpl(File file, Parser<T> parser) throws IOException {
-            this.inputStream = new FileInputStream(file);
+        MessageReaderImpl(File file, Parser<T> parser, String key, ICompressionCodec codec) throws IOException {
+            this.rawInputStream = new FileInputStream(file);
+            // Only decompress if file has compression extension
+            this.inputStream = shouldDecompress(key) ? codec.wrapInputStream(rawInputStream) : rawInputStream;
             this.parser = parser;
         }
 
@@ -391,7 +443,15 @@ public class FileSystemStorageResource extends AbstractResource
                 return;
             }
             closed = true;
-            inputStream.close();
+
+            // Close compressed stream first (if different from raw), then raw stream
+            try {
+                if (inputStream != rawInputStream) {
+                    inputStream.close();
+                }
+            } finally {
+                rawInputStream.close();
+            }
         }
     }
 }
