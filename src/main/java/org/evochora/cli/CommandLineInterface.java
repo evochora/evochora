@@ -61,9 +61,9 @@ public class CommandLineInterface implements Callable<Integer> {
         final File confFile = (this.configFile != null) ? this.configFile : new File(CONFIG_FILE_NAME);
         try {
             if (confFile.exists()) {
-                this.config = ConfigFactory.parseFile(confFile).withFallback(ConfigFactory.load());
+                this.config = ConfigFactory.parseFile(confFile).withFallback(ConfigFactory.load()).resolve();
             } else {
-                this.config = ConfigFactory.load();
+                this.config = ConfigFactory.load().resolve();
             }
         } catch (com.typesafe.config.ConfigException e) {
             // Log config error and exit gracefully

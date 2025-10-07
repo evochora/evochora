@@ -2,36 +2,29 @@ package org.evochora.node;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.ServiceManager;
-import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.node.spi.IProcess;
-import org.evochora.node.spi.ServiceRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for Node to verify configuration parsing and IProcess lifecycle management.
- * Uses fake IProcess implementations to test reflection-based instantiation and lifecycle calls.
+ * Unit tests for Node to verify configuration parsing, dependency injection,
+ * and IProcess lifecycle management.
  */
 @Tag("unit")
-@ExtendWith({MockitoExtension.class, LogWatchExtension.class})
+@ExtendWith({LogWatchExtension.class})
 class NodeTest {
-
-    @Mock
-    private ServiceManager serviceManager;
 
     private Config testConfig;
     private Node testNode; // Track the current node for cleanup
@@ -49,9 +42,6 @@ class NodeTest {
                 }
               }
             }
-            pipeline {
-              services = []
-            }
             """);
     }
 
@@ -68,11 +58,11 @@ class NodeTest {
     @DisplayName("Should parse configuration and instantiate processes via reflection")
     void constructor_shouldParseConfigurationAndInstantiateProcesses() {
         // Act
-        testNode = new Node(testConfig, serviceManager);
-        
+        testNode = new Node(testConfig);
+
         // Assert - Verify that the node was created successfully
         assertThat(testNode).isNotNull();
-        
+
         // The actual process instantiation happens in the constructor,
         // so we verify the node was created without exceptions
         // In a real scenario, we would need to expose the processes for verification
@@ -82,8 +72,8 @@ class NodeTest {
     @DisplayName("Should start all configured processes")
     void start_shouldStartAllConfiguredProcesses() {
         // Arrange
-        testNode = new Node(testConfig, serviceManager);
-        
+        testNode = new Node(testConfig);
+
         // Act
         testNode.start();
 
@@ -97,7 +87,7 @@ class NodeTest {
     @DisplayName("Should stop all configured processes")
     void stop_shouldStopAllConfiguredProcesses() {
         // Arrange
-        testNode = new Node(testConfig, serviceManager);
+        testNode = new Node(testConfig);
         testNode.start();
         
         // Act
@@ -118,15 +108,12 @@ class NodeTest {
             node {
               # No processes configured
             }
-            pipeline {
-              services = []
-            }
             """);
 
         // Act & Assert - Should not throw exception
-        testNode = new Node(emptyConfig, serviceManager);
+        testNode = new Node(emptyConfig);
         assertThat(testNode).isNotNull();
-        
+
         // Should handle start/stop gracefully
         testNode.start();
         testNode.stop();
@@ -145,14 +132,11 @@ class NodeTest {
                 }
               }
             }
-            pipeline {
-              services = []
-            }
             """);
 
         // Act - Should not throw exception, but skip the invalid process
-        testNode = new Node(invalidConfig, serviceManager);
-        
+        testNode = new Node(invalidConfig);
+
         // Assert - Node should be created successfully, but the invalid process should be skipped
         assertThat(testNode).isNotNull();
     }
@@ -170,14 +154,11 @@ class NodeTest {
                 }
               }
             }
-            pipeline {
-              services = []
-            }
             """);
 
         // Act - Should not throw exception, but skip the invalid process
-        testNode = new Node(invalidConfig, serviceManager);
-        
+        testNode = new Node(invalidConfig);
+
         // Assert - Node should be created successfully, but the invalid process should be skipped
         assertThat(testNode).isNotNull();
     }
@@ -195,13 +176,10 @@ class NodeTest {
                 }
               }
             }
-            pipeline {
-              services = []
-            }
             """);
 
         // Act - Should not throw exception, but skip the failing process
-        testNode = new Node(failingConfig, serviceManager);
+        testNode = new Node(failingConfig);
         
         // Assert - Node should be created successfully, but the failing process should be skipped
         assertThat(testNode).isNotNull();
@@ -220,12 +198,9 @@ class NodeTest {
                 }
               }
             }
-            pipeline {
-              services = []
-            }
             """);
 
-        testNode = new Node(failingStartConfig, serviceManager);
+        testNode = new Node(failingStartConfig);
 
         // Act - Should not throw exception, but log error for failing process
         testNode.start();
@@ -247,12 +222,9 @@ class NodeTest {
                 }
               }
             }
-            pipeline {
-              services = []
-            }
             """);
 
-        testNode = new Node(failingStopConfig, serviceManager);
+        testNode = new Node(failingStopConfig);
         testNode.start(); // Start successfully
 
         // Act - Should not throw exception, but log error for failing process
@@ -278,13 +250,10 @@ class NodeTest {
                 }
               }
             }
-            pipeline {
-              services = []
-            }
             """);
 
         // Act - Should not throw exception, but skip the invalid process
-        testNode = new Node(mixedConfig, serviceManager);
+        testNode = new Node(mixedConfig);
         
         // Assert - Node should be created successfully, but the invalid process should be skipped
         assertThat(testNode).isNotNull();
@@ -299,7 +268,7 @@ class NodeTest {
         private boolean started = false;
         private boolean stopped = false;
 
-        public TestProcess(String processName, org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
+        public TestProcess(String processName, Map<String, Object> dependencies, Config config) {
             // Valid constructor
         }
 
@@ -321,7 +290,7 @@ class NodeTest {
         private boolean started = false;
         private boolean stopped = false;
 
-        public TestProcess2(String processName, org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
+        public TestProcess2(String processName, Map<String, Object> dependencies, Config config) {
             // Valid constructor
         }
 
@@ -340,7 +309,7 @@ class NodeTest {
      * A class that doesn't implement IProcess (for negative testing)
      */
     private static class InvalidProcess {
-        public InvalidProcess(String processName, org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
+        public InvalidProcess(String processName, Map<String, Object> dependencies, Config config) {
             // Valid constructor but doesn't implement IProcess
         }
     }
@@ -349,7 +318,7 @@ class NodeTest {
      * A process that throws exception in constructor
      */
     private static class FailingProcess implements IProcess {
-        public FailingProcess(String processName, org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
+        public FailingProcess(String processName, Map<String, Object> dependencies, Config config) {
             throw new RuntimeException("Constructor failed");
         }
 
@@ -368,7 +337,7 @@ class NodeTest {
      * A process that throws exception in start method
      */
     private static class FailingStartProcess implements IProcess {
-        public FailingStartProcess(String processName, org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
+        public FailingStartProcess(String processName, Map<String, Object> dependencies, Config config) {
             // Valid constructor
         }
 
@@ -389,7 +358,7 @@ class NodeTest {
     private static class FailingStopProcess implements IProcess {
         private boolean started = false;
 
-        public FailingStopProcess(String processName, org.evochora.node.spi.ServiceRegistry serviceRegistry, Config config) {
+        public FailingStopProcess(String processName, Map<String, Object> dependencies, Config config) {
             // Valid constructor
         }
 

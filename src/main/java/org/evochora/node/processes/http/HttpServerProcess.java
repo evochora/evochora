@@ -7,6 +7,7 @@ import com.typesafe.config.ConfigValue;
 import com.typesafe.config.ConfigValueType;
 import io.javalin.Javalin;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
+import org.evochora.datapipeline.ServiceManager;
 import org.evochora.node.spi.IController;
 import org.evochora.node.processes.AbstractProcess;
 import org.evochora.node.spi.ServiceRegistry;
@@ -23,6 +24,9 @@ import java.util.Objects;
  * A manageable process that runs a Javalin HTTP server. It dynamically configures its routes
  * by parsing a 'routes' block in its configuration, loading controllers and static file handlers
  * as specified.
+ *
+ * <p>This process creates an internal ServiceRegistry for controllers to maintain backward
+ * compatibility with the existing controller architecture.</p>
  */
 public class HttpServerProcess extends AbstractProcess {
     private static final Logger LOGGER = LoggerFactory.getLogger(HttpServerProcess.class);
@@ -33,18 +37,28 @@ public class HttpServerProcess extends AbstractProcess {
     private static final String STATIC_ACTION_KEY = "\"$static\"";
 
     private final List<RouteDefinition> routeDefinitions = new ArrayList<>();
+    private final ServiceRegistry controllerRegistry;
     private Javalin app;
 
     /**
      * Constructs a new HttpServerProcess.
      *
      * @param processName The name of this process instance from the configuration.
-     * @param registry The central service registry.
+     * @param dependencies Dependencies injected by the Node (expects "serviceManager" from pipeline process).
      * @param options  The configuration for this process, including network settings and routes.
      */
-    public HttpServerProcess(final String processName, final ServiceRegistry registry, final Config options) {
-        super(processName, registry, options);
+    public HttpServerProcess(final String processName, final Map<String, Object> dependencies, final Config options) {
+        super(processName, dependencies, options);
+
+        // Extract ServiceManager dependency
+        final ServiceManager serviceManager = getDependency("serviceManager", ServiceManager.class);
+
+        // Create internal ServiceRegistry for controllers (backward compatibility)
+        this.controllerRegistry = new ServiceRegistry();
+        this.controllerRegistry.register(ServiceManager.class, serviceManager);
+
         parseRoutes();
+        LOGGER.debug("HttpServerProcess '{}' initialized with ServiceManager dependency.", processName);
     }
 
     @Override
@@ -184,7 +198,7 @@ public class HttpServerProcess extends AbstractProcess {
         }
 
         final Constructor<?> constructor = controllerClass.getConstructor(ServiceRegistry.class, Config.class);
-        final IController controller = (IController) constructor.newInstance(registry, controllerOptions);
+        final IController controller = (IController) constructor.newInstance(controllerRegistry, controllerOptions);
 
         controller.registerRoutes(app, def.basePath);
     }
