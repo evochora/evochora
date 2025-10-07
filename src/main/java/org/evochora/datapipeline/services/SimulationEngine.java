@@ -130,9 +130,9 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
             org.setProgramId(artifact.programId());
             this.simulation.addOrganism(org);
         }
-        // Generate run ID with timestamp prefix: YYYYMMDDHHiissmm-UUID
+        // Generate run ID with timestamp prefix: YYYYMMDD-HHiissmm-UUID
         LocalDateTime now = LocalDateTime.now();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSS");
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSS");
         String timestamp = now.format(formatter);
         this.runId = timestamp + "-" + UUID.randomUUID().toString();
     }
@@ -168,7 +168,8 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
             return;
         }
 
-        while (getCurrentState() == State.RUNNING || getCurrentState() == State.PAUSED) {
+        while ((getCurrentState() == State.RUNNING || getCurrentState() == State.PAUSED)
+                && !Thread.currentThread().isInterrupted()) {
             checkPause();
 
             simulation.tick();
@@ -190,6 +191,10 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
                 try {
                     tickDataOutput.put(captureTickData(tick));
                     messagesSent.incrementAndGet();
+                } catch (InterruptedException e) {
+                    // Shutdown signal received while sending tick data - this is expected
+                    log.debug("Interrupted while sending tick data for tick {} during shutdown", tick);
+                    throw e; // Re-throw to exit cleanly
                 } catch (Exception e) {
                     log.error("Failed to capture or send tick data for tick {}", tick, e);
                     errors.add(new OperationalError(Instant.now(), "SEND_ERROR", "Failed to send tick data", e.getMessage()));

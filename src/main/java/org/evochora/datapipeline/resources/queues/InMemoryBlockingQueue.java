@@ -16,6 +16,9 @@ import org.evochora.datapipeline.resources.queues.wrappers.DirectOutputQueueWrap
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueConsumer;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueProducer;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -38,12 +41,18 @@ import java.util.function.Predicate;
  */
 public class InMemoryBlockingQueue<T> extends AbstractResource implements IContextualResource, IMonitorable, IInputQueueResource<T>, IOutputQueueResource<T> {
 
+    private static final Logger log = LoggerFactory.getLogger(InMemoryBlockingQueue.class);
     private final ArrayBlockingQueue<TimestampedObject<T>> queue;
     private final int capacity;
     private final int throughputWindowSeconds;
     private final boolean disableTimestamps;
     private final List<OperationalError> errors = Collections.synchronizedList(new java.util.ArrayList<>());
     private final ConcurrentHashMap<Long, Instant> timestamps = new ConcurrentHashMap<>();
+
+    // Lock to ensure drainTo(with timeout) is atomic across competing consumers
+    // This GUARANTEES non-overlapping consecutive batch ranges
+    private final Object drainLock = new Object();
+    private final int coalescingDelayMs;
 
     /**
      * Constructs an InMemoryBlockingQueue with the specified name and configuration.
@@ -56,17 +65,22 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
         super(name, options);
         Config defaults = ConfigFactory.parseMap(Map.of(
                 "capacity", 1000,
-                "throughputWindowSeconds", 5
+                "throughputWindowSeconds", 5,
+                "coalescingDelayMs", 0  // Default: no coalescing
         ));
         Config finalConfig = options.withFallback(defaults);
 
         try {
             this.capacity = finalConfig.getInt("capacity");
             this.throughputWindowSeconds = finalConfig.getInt("throughputWindowSeconds");
+            this.coalescingDelayMs = finalConfig.getInt("coalescingDelayMs");
             this.disableTimestamps = finalConfig.hasPath("disableTimestamps")
                     && finalConfig.getBoolean("disableTimestamps");
             if (capacity <= 0) {
                 throw new IllegalArgumentException("Capacity must be positive for resource '" + name + "'.");
+            }
+            if (coalescingDelayMs < 0) {
+                throw new IllegalArgumentException("coalescingDelayMs cannot be negative for resource '" + name + "'.");
             }
             this.queue = new ArrayBlockingQueue<>(capacity);
         } catch (ConfigException e) {
@@ -282,6 +296,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     public int drainTo(Collection<? super T> collection, int maxElements) {
         ArrayList<TimestampedObject<T>> drainedObjects = new ArrayList<>();
         int count = queue.drainTo(drainedObjects, maxElements);
+
         if (count > 0 && !disableTimestamps) {
             Instant now = Instant.now();
             for (TimestampedObject<T> tsObject : drainedObjects) {
@@ -303,38 +318,52 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     /**
      * {@inheritDoc}
      * This implementation simulates a timeout for the drain operation, as the underlying
-     * {@link ArrayBlockingQueue#drainTo} does not support it. It may not be perfectly accurate
-     * under high contention.
+     * {@link ArrayBlockingQueue#drainTo} does not support it.
+     *
+     * CRITICAL: This method is synchronized via drainLock to ensure atomicity across competing
+     * consumers. This GUARANTEES non-overlapping consecutive tick ranges in batch files when
+     * multiple PersistenceService instances compete for items.
+     *
+     * ADAPTIVE COALESCING: If configured with coalescingDelayMs > 0, after receiving the first
+     * element from an empty queue, the method checks if the queue is still empty. If so, it waits
+     * briefly to allow the producer to add more items, improving batch sizes. If queue has data,
+     * it drains immediately to avoid unnecessary delays.
+     *
+     * Lock scope: The entire drainTo operation (wait + drain) is atomic per consumer.
+     * Other consumers block waiting for the lock, preventing interleaved operations.
      */
     @Override
     public int drainTo(Collection<? super T> collection, int maxElements, long timeout, TimeUnit unit) throws InterruptedException {
-        long nanos = unit.toNanos(timeout);
-        long deadline = System.nanoTime() + nanos;
-        int count = 0;
-        while (count < maxElements) {
+        // ATOMIC OPERATION: Entire drain is synchronized to guarantee consecutive ranges
+        synchronized (drainLock) {
             // First, attempt a non-blocking drain to get any immediately available elements.
-            int drained = drainTo(collection, maxElements - count);
-            count += drained;
+            int drained = drainTo(collection, maxElements);
 
-            // If we have drained all we need or the deadline has passed, exit.
-            if (count == maxElements || System.nanoTime() >= deadline) {
-                break;
+            // If we drained something OR if the timeout is zero, we're done
+            if (drained > 0 || timeout == 0) {
+                return drained;
             }
 
-            // If nothing was drained in the first attempt, it means the queue was empty.
-            // Wait for a new element to arrive using a blocking poll with the remaining timeout.
-            if (drained == 0) {
-                Optional<T> item = poll(deadline - System.nanoTime(), TimeUnit.NANOSECONDS);
-                if (item.isPresent()) {
-                    collection.add(item.get());
-                    count++;
-                } else {
-                    // Timeout elapsed while waiting for an element, so we're done.
-                    break;
+            // Queue was empty - wait for at least ONE element to arrive
+            Optional<T> item = poll(timeout, unit);
+            if (item.isPresent()) {
+                collection.add(item.get());
+
+                // ADAPTIVE COALESCING: Only wait if queue is STILL empty (producer is slow)
+                // If queue has data, drain immediately (producer is fast, no need to wait)
+                boolean queueStillEmpty = queue.isEmpty();
+                if (coalescingDelayMs > 0 && queueStillEmpty) {
+                    Thread.sleep(coalescingDelayMs);
                 }
+
+                // Now drain any accumulated elements
+                int additional = drainTo(collection, maxElements - 1);
+                return 1 + additional;
             }
+
+            // Timeout elapsed with no elements
+            return 0;
         }
-        return count;
     }
 
     /**

@@ -320,6 +320,8 @@ class PersistenceServiceTest {
     @Test
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
                messagePattern = "Duplicate tick detected: .*", occurrences = -1)
+    @AllowLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
+              messagePattern = "\\[.*\\] Removed .* duplicate ticks, .* unique ticks remain: range \\[.*\\]")
     void testDuplicateTickDetection() throws Exception {
         resources.put("idempotencyTracker", Collections.singletonList(mockIdempotencyTracker));
         service = new PersistenceService("test-persistence", config, resources);

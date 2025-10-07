@@ -194,10 +194,21 @@ public class PersistenceService extends AbstractService implements IMonitorable 
         // Optional: Check for duplicate ticks (bug detection)
         List<TickData> dedupedBatch = batch;
         if (idempotencyTracker != null) {
+            int originalSize = batch.size();
             dedupedBatch = deduplicateBatch(batch);
+            int dedupedSize = dedupedBatch.size();
+            int duplicatesRemoved = originalSize - dedupedSize;
+
             if (dedupedBatch.isEmpty()) {
-                log.warn("Entire batch was duplicates, skipping");
+                log.warn("[{}] Entire batch was duplicates ({} ticks), skipping", serviceName, originalSize);
                 return;
+            }
+
+            if (duplicatesRemoved > 0) {
+                long firstTick = dedupedBatch.get(0).getTickNumber();
+                long lastTick = dedupedBatch.get(dedupedBatch.size() - 1).getTickNumber();
+                log.warn("[{}] Removed {} duplicate ticks, {} unique ticks remain: range [{}-{}]",
+                    serviceName, duplicatesRemoved, dedupedSize, firstTick, lastTick);
             }
         }
 
