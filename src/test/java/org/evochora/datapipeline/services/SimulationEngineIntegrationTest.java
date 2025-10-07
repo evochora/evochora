@@ -194,7 +194,7 @@ class SimulationEngineIntegrationTest {
 
         engine.start();
 
-        // Wait until engine pauses at tick 100
+        // Wait until engine pauses at tick 100 (101 ticks executed: 0-100)
         await().atMost(10, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertEquals(
                         AbstractService.State.PAUSED, 
@@ -205,9 +205,10 @@ class SimulationEngineIntegrationTest {
         Map<String, Number> metrics = engine.getMetrics();
         assertEquals(100L, metrics.get("current_tick").longValue());
 
-        // With sampling interval 10, we should have exactly 10 tick data messages for 100 ticks
+        // With sampling interval 10, we should have exactly 11 tick data messages for ticks 0-100
+        // Ticks: 0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100 = 11 messages
         long queueSize = tickDataQueue.getMetrics().get("current_size").longValue();
-        assertEquals(10L, queueSize, "Should have sent exactly 10 messages for 100 ticks with interval 10");
+        assertEquals(11L, queueSize, "Should have sent exactly 11 messages for ticks 0-100 with interval 10");
 
         engine.stop();
     }
@@ -222,13 +223,13 @@ class SimulationEngineIntegrationTest {
 
         engine.start();
 
-        // Wait until engine pauses at tick 50
+        // Wait until engine pauses at tick 50 (51 ticks executed: 0-50)
         await().atMost(10, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine.getCurrentState()));
 
-        // With sampling interval 100 and only 50 ticks, no tick data should be captured
+        // With sampling interval 100 and ticks 0-50, only tick 0 is captured (0 % 100 == 0)
         long queueSize = tickDataQueue.getMetrics().get("current_size").longValue();
-        assertEquals(0L, queueSize, "Should have sent 0 messages for 50 ticks with interval 100");
+        assertEquals(1L, queueSize, "Should have sent 1 message (tick 0) for ticks 0-50 with interval 100");
 
         engine.stop();
     }
@@ -242,13 +243,13 @@ class SimulationEngineIntegrationTest {
 
         engine.start();
 
-        // Wait for engine to pause
+        // Wait for engine to pause at tick 20 (21 ticks executed: 0-20)
         await().atMost(10, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine.getCurrentState()));
 
         Map<String, Number> metrics = engine.getMetrics();
         assertEquals(20L, metrics.get("current_tick").longValue());
-        assertEquals(20L, tickDataQueue.getMetrics().get("current_size").longValue());
+        assertEquals(21L, tickDataQueue.getMetrics().get("current_size").longValue());
 
         engine.stop();
     }
@@ -263,13 +264,13 @@ class SimulationEngineIntegrationTest {
 
         engine.start();
 
-        // Wait for auto-pause at first tick (12)
+        // Wait for auto-pause at first tick (12 = 13 ticks executed: 0-12)
         await().atMost(10, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine.getCurrentState()));
         assertEquals(12L, engine.getMetrics().get("current_tick").longValue(), "Should pause at tick 12");
 
-        // Verify tick data was captured up to pause
-        assertTrue(tickDataQueue.getMetrics().get("current_size").longValue() >= 12);
+        // Verify tick data was captured up to and including tick 12
+        assertTrue(tickDataQueue.getMetrics().get("current_size").longValue() >= 13);
 
         engine.stop();
     }

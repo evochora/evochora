@@ -388,14 +388,19 @@ class SimulationToPersistenceIntegrationTest {
         List<TickData> allTicks = new ArrayList<>();
         try {
             // Find all .pb batch files (handle race conditions during file walking)
+            // Note: Files.walk() can throw UncheckedIOException if files are deleted during iteration
             List<Path> batchFiles = Files.walk(tempStorageDir)
                 .filter(path -> {
+                    // Only include .pb files that exist and are regular files
+                    // (ignore .pb.tmp and .pb.zst.tmp files)
+                    // Files.exists() and Files.isRegularFile() don't throw checked exceptions
+                    if (!path.toString().endsWith(".pb") && !path.toString().endsWith(".pb.zst")) {
+                        return false;
+                    }
                     try {
-                        // Only include .pb files that exist and are regular files
-                        // (ignore .pb.tmp and handle race conditions during rename/delete)
-                        return path.toString().endsWith(".pb") && Files.exists(path) && Files.isRegularFile(path);
+                        return Files.exists(path) && Files.isRegularFile(path);
                     } catch (Exception e) {
-                        // File may have been deleted/renamed between walk and exists check
+                        // Catch any runtime exceptions (e.g., SecurityException)
                         return false;
                     }
                 })

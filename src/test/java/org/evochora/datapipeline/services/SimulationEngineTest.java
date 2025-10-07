@@ -297,7 +297,7 @@ class SimulationEngineTest {
         Map<String, Number> metrics = engine.getMetrics();
         
         assertNotNull(metrics);
-        assertEquals(0L, metrics.get("current_tick").longValue());
+        assertEquals(-1L, metrics.get("current_tick").longValue(), "Initial tick should be -1");
         assertEquals(1L, metrics.get("organisms_total").longValue());
         assertEquals(1L, metrics.get("organisms_alive").longValue());
         assertEquals(0L, metrics.get("messages_sent").longValue());

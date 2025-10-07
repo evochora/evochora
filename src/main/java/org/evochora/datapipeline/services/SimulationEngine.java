@@ -53,7 +53,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     private final List<StrategyWithConfig> energyStrategies;
     private final long seed;
     private final long startTimeMs;
-    private final AtomicLong currentTick = new AtomicLong(0);
+    private final AtomicLong currentTick = new AtomicLong(-1);
     private final AtomicLong messagesSent = new AtomicLong(0);
     private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
     private long lastMetricTime = System.currentTimeMillis();
@@ -170,11 +170,6 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
 
         while (getCurrentState() == State.RUNNING || getCurrentState() == State.PAUSED) {
             checkPause();
-            if (shouldAutoPause(currentTick.get())) {
-                log.info("{} auto-paused at tick {} due to pauseTicks configuration", getClass().getSimpleName(), currentTick.get());
-                pause();
-                continue;
-            }
 
             simulation.tick();
             long tick = currentTick.incrementAndGet();
@@ -199,6 +194,12 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
                     log.error("Failed to capture or send tick data for tick {}", tick, e);
                     errors.add(new OperationalError(Instant.now(), "SEND_ERROR", "Failed to send tick data", e.getMessage()));
                 }
+            }
+
+            if (shouldAutoPause(tick)) {
+                log.info("{} auto-paused at tick {} due to pauseTicks configuration", getClass().getSimpleName(), tick);
+                pause();
+                continue;
             }
         }
         log.info("Simulation loop finished.");
