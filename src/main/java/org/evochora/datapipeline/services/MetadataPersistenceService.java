@@ -229,22 +229,19 @@ public class MetadataPersistenceService extends AbstractService implements IMoni
     /**
      * Performs a single attempt to write metadata to storage.
      * <p>
-     * Note: Metadata is written as a single non-delimited message (not using MessageWriter's
-     * delimited format) because it's a single message that will be read with readMessage().
-     * MessageWriter is designed for streaming multiple messages with length prefixes.
+     * Metadata is written using MessageWriter's delimited format (with length prefix),
+     * which is compatible with storage.readMessage() that uses parseDelimitedFrom().
+     * Even though metadata is a single message, the delimited format is used for
+     * consistency with batch writes and correct round-trip serialization.
      *
      * @param key storage key for the metadata file
      * @param metadata the simulation metadata to persist
      * @throws IOException if write operation fails
      */
     private void writeMetadata(String key, SimulationMetadata metadata) throws IOException {
-        // For single messages, use MessageWriter but it writes delimited by default.
-        // We need non-delimited for compatibility with readMessage().
-        // Write directly to ensure non-delimited format.
         try (MessageWriter writer = storage.openWriter(key)) {
-            // MessageWriter writes delimited (with size prefix), but readMessage() expects non-delimited.
-            // For now, use MessageWriter since that's the API, but this creates an incompatibility.
-            // TODO: Either change readMessage() to read delimited, or add a writeRawMessage() method.
+            // writeMessage() uses writeDelimitedTo() internally (length-prefixed)
+            // readMessage() uses parseDelimitedFrom() - perfectly compatible
             writer.writeMessage(metadata);
         }
     }

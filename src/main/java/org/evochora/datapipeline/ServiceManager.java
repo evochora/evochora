@@ -198,11 +198,17 @@ public class ServiceManager implements IMonitorable {
         List<String> toStop = new ArrayList<>(startupSequence);
         Collections.reverse(toStop);
         runningServices.keySet().stream().filter(s -> !toStop.contains(s)).forEach(toStop::add);
-        // Filter to only stop services that are actually running
-        List<String> actuallyRunning = toStop.stream()
-                .filter(runningServices::containsKey)
+        // Filter to only stop services that are in a stoppable state (RUNNING or PAUSED)
+        // This excludes one-shot services that have already stopped themselves
+        List<String> actuallyStoppable = toStop.stream()
+                .filter(name -> {
+                    IService service = runningServices.get(name);
+                    if (service == null) return false;
+                    IService.State state = service.getCurrentState();
+                    return state == IService.State.RUNNING || state == IService.State.PAUSED;
+                })
                 .collect(Collectors.toList());
-        applyToAllServices(this::stopService, actuallyRunning);
+        applyToAllServices(this::stopService, actuallyStoppable);
     }
 
     public void pauseAll() {
@@ -263,6 +269,7 @@ public class ServiceManager implements IMonitorable {
                 serviceResourceBindings.put(name, Collections.unmodifiableList(finalBindings));
 
                 runningServices.put(name, newServiceInstance);
+
                 newServiceInstance.start();
             } finally {
                 // Step 5: Clean up temporary map
