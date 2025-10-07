@@ -115,11 +115,12 @@ class SimulationMetadataIntegrationTest {
         Path simulationDir = metadataFile.getParent();
         assertTrue(simulationDir.getFileName().toString().equals(simulationRunId));
 
-        // Verify batch files exist in same directory
-        try (Stream<Path> files = Files.list(simulationDir)) {
+        // Verify batch files exist in simulation directory (in hierarchical subdirectories)
+        try (Stream<Path> files = Files.walk(simulationDir)) {
             long batchCount = files.filter(p -> p.getFileName().toString().startsWith("batch_"))
+                                   .filter(p -> p.getFileName().toString().endsWith(".pb"))
                                    .count();
-            assertTrue(batchCount > 0, "Batch files should exist in same directory as metadata");
+            assertTrue(batchCount > 0, "Batch files should exist under simulation directory");
         }
     }
 
@@ -342,8 +343,7 @@ class SimulationMetadataIntegrationTest {
 
     private SimulationMetadata readMetadataFile(Path metadataFile) throws IOException {
         // Read metadata using storage resource (same as production would)
-        // Note: Metadata is written using MessageWriter which writes delimited messages,
-        // so we need to read it using MessageReader, not readMessage().
+        // readMessage() handles length-delimited protobuf format correctly
         Path storageRoot = metadataFile.getParent().getParent();
         String simulationRunId = metadataFile.getParent().getFileName().toString();
         String key = simulationRunId + "/metadata.pb";
@@ -354,13 +354,8 @@ class SimulationMetadataIntegrationTest {
 
         FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", storageConfig);
 
-        // Read delimited message (MessageWriter writes delimited)
-        try (MessageReader<SimulationMetadata> reader = storage.openReader(key, SimulationMetadata.parser())) {
-            if (reader.hasNext()) {
-                return reader.next();
-            }
-            throw new IOException("Metadata file is empty");
-        }
+        // Use readMessage() - validates exactly one message in file
+        return storage.readMessage(key, SimulationMetadata.parser());
     }
 
     private int countBatchFiles(Path storageRoot) throws IOException {
@@ -368,18 +363,15 @@ class SimulationMetadataIntegrationTest {
             return 0;
         }
 
-        try (Stream<Path> simulationDirs = Files.list(storageRoot)) {
-            return (int) simulationDirs
-                .filter(Files::isDirectory)
-                .flatMap(dir -> {
-                    try {
-                        return Files.list(dir);
-                    } catch (IOException e) {
-                        return Stream.empty();
-                    }
-                })
+        try (Stream<Path> paths = Files.walk(storageRoot)) {
+            return (int) paths
                 .filter(p -> p.getFileName().toString().startsWith("batch_"))
+                .filter(p -> p.getFileName().toString().endsWith(".pb"))
+                .filter(Files::exists)
                 .count();
+        } catch (IOException e) {
+            // Handle race conditions where files are being written/renamed during walk
+            return 0;
         }
     }
 }

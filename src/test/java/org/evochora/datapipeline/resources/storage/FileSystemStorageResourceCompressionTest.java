@@ -167,6 +167,70 @@ class FileSystemStorageResourceCompressionTest {
             // Assert: Keys include .zst extension
             assertThat(keys).containsExactlyInAnyOrder("file1.pb.zst", "file2.pb.zst");
         }
+
+        @Test
+        @DisplayName("Metrics are tracked on write operations")
+        void testMetricsTrackedOnWrite() throws IOException {
+            // Arrange
+            String key = "metrics/write-test.pb";
+            List<Int32Value> messages = List.of(
+                Int32Value.of(1),
+                Int32Value.of(2),
+                Int32Value.of(3)
+            );
+
+            // Get initial metrics
+            var initialMetrics = storage.getMetrics();
+            long initialWrites = initialMetrics.containsKey("write_operations") ?
+                initialMetrics.get("write_operations").longValue() : 0L;
+            long initialBytes = initialMetrics.containsKey("bytes_written") ?
+                initialMetrics.get("bytes_written").longValue() : 0L;
+
+            // Act: Write messages
+            try (MessageWriter writer = storage.openWriter(key)) {
+                for (Int32Value msg : messages) {
+                    writer.writeMessage(msg);
+                }
+            }
+
+            // Assert: Metrics updated
+            var finalMetrics = storage.getMetrics();
+            long finalWrites = finalMetrics.get("write_operations").longValue();
+            long finalBytes = finalMetrics.get("bytes_written").longValue();
+
+            assertThat(finalWrites).isEqualTo(initialWrites + 1);
+            assertThat(finalBytes).isGreaterThan(initialBytes);
+        }
+
+        @Test
+        @DisplayName("Metrics are tracked on readMessage operations")
+        void testMetricsTrackedOnReadMessage() throws IOException {
+            // Arrange: Write a test file
+            String key = "metrics/read-test.pb";
+            Int32Value message = Int32Value.of(42);
+            try (MessageWriter writer = storage.openWriter(key)) {
+                writer.writeMessage(message);
+            }
+
+            // Get initial metrics
+            var initialMetrics = storage.getMetrics();
+            long initialReads = initialMetrics.containsKey("read_operations") ?
+                initialMetrics.get("read_operations").longValue() : 0L;
+            long initialBytes = initialMetrics.containsKey("bytes_read") ?
+                initialMetrics.get("bytes_read").longValue() : 0L;
+
+            // Act: Read the message
+            Int32Value readMessage = storage.readMessage(key + ".zst", Int32Value.parser());
+
+            // Assert: Metrics updated
+            var finalMetrics = storage.getMetrics();
+            long finalReads = finalMetrics.get("read_operations").longValue();
+            long finalBytes = finalMetrics.get("bytes_read").longValue();
+
+            assertThat(readMessage.getValue()).isEqualTo(42);
+            assertThat(finalReads).isEqualTo(initialReads + 1);
+            assertThat(finalBytes).isGreaterThan(initialBytes);
+        }
     }
 
     @Nested
@@ -293,7 +357,7 @@ class FileSystemStorageResourceCompressionTest {
                 """, tempDir.resolve("level9").toString().replace("\\", "\\\\")));
             FileSystemStorageResource storageLevel9 = new FileSystemStorageResource("level9", configLevel9);
 
-            // Arrange: Repetitive data
+            // Arrange: 500 messages (testing compression ratio with meaningful data volume)
             String key = "data.pb";
             List<Int32Value> messages = new ArrayList<>();
             for (int i = 0; i < 500; i++) {
@@ -323,11 +387,23 @@ class FileSystemStorageResourceCompressionTest {
             long size9 = Files.size(file9);
             assertThat(size9).isLessThanOrEqualTo(size1);
 
-            // Both should be readable
-            Int32Value msg1 = storageLevel1.readMessage(key + ".zst", Int32Value.parser());
-            Int32Value msg9 = storageLevel9.readMessage(key + ".zst", Int32Value.parser());
-            assertThat(msg1.getValue()).isEqualTo(42);
-            assertThat(msg9.getValue()).isEqualTo(42);
+            // Both should be readable - verify all 500 messages
+            List<Int32Value> readMessages1 = new ArrayList<>();
+            try (MessageReader<Int32Value> reader = storageLevel1.openReader(key + ".zst", Int32Value.parser())) {
+                while (reader.hasNext()) {
+                    readMessages1.add(reader.next());
+                }
+            }
+            List<Int32Value> readMessages9 = new ArrayList<>();
+            try (MessageReader<Int32Value> reader = storageLevel9.openReader(key + ".zst", Int32Value.parser())) {
+                while (reader.hasNext()) {
+                    readMessages9.add(reader.next());
+                }
+            }
+            assertThat(readMessages1).hasSize(500);
+            assertThat(readMessages9).hasSize(500);
+            assertThat(readMessages1.get(0).getValue()).isEqualTo(42);
+            assertThat(readMessages9.get(0).getValue()).isEqualTo(42);
         }
     }
 }

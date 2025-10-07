@@ -10,8 +10,7 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
-import org.evochora.datapipeline.api.resources.storage.IStorageWriteResource;
-import org.evochora.datapipeline.api.resources.storage.MessageWriter;
+import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.services.IService.State;
 
 import java.io.ByteArrayOutputStream;
@@ -48,7 +47,7 @@ public class PersistenceService extends AbstractService implements IMonitorable 
 
     // Required resources
     private final IInputQueueResource<TickData> inputQueue;
-    private final IStorageWriteResource storage;
+    private final IBatchStorageWrite storage;
 
     // Optional resources
     private final IOutputQueueResource<SystemContracts.DeadLetterMessage> dlq;
@@ -77,7 +76,7 @@ public class PersistenceService extends AbstractService implements IMonitorable 
 
         // Required resources
         this.inputQueue = getRequiredResource("input", IInputQueueResource.class);
-        this.storage = getRequiredResource("storage", IStorageWriteResource.class);
+        this.storage = getRequiredResource("storage", IBatchStorageWrite.class);
 
         // Optional resources
         this.dlq = getOptionalResource("dlq", IOutputQueueResource.class).orElse(null);
@@ -191,6 +190,11 @@ public class PersistenceService extends AbstractService implements IMonitorable 
             return;
         }
 
+        // Extract tick range from original batch (before deduplication)
+        // This determines the folder and filename, so must reflect the original range
+        long startTick = batch.get(0).getTickNumber();
+        long endTick = batch.get(batch.size() - 1).getTickNumber();
+
         // Optional: Check for duplicate ticks (bug detection)
         List<TickData> dedupedBatch = batch;
         if (idempotencyTracker != null) {
@@ -212,15 +216,8 @@ public class PersistenceService extends AbstractService implements IMonitorable 
             }
         }
 
-        // Generate storage key
-        String simulationRunId = dedupedBatch.get(0).getSimulationRunId();
-        long startTick = dedupedBatch.get(0).getTickNumber();
-        long endTick = dedupedBatch.get(dedupedBatch.size() - 1).getTickNumber();
-        String filename = String.format("batch_%019d_%019d.pb", startTick, endTick);
-        String key = simulationRunId + "/" + filename;
-
-        // Write batch with retry logic
-        writeBatchWithRetry(key, dedupedBatch);
+        // Write batch with retry logic (storage handles folders, filenames, compression)
+        writeBatchWithRetry(dedupedBatch, startTick, endTick);
     }
 
     private List<TickData> deduplicateBatch(List<TickData> batch) {
@@ -244,19 +241,27 @@ public class PersistenceService extends AbstractService implements IMonitorable 
         return deduped;
     }
 
-    private void writeBatchWithRetry(String key, List<TickData> batch) {
+    private void writeBatchWithRetry(List<TickData> batch, long firstTick, long lastTick) {
         int attempt = 0;
         int backoff = retryBackoffMs;
         Exception lastException = null;
 
         while (attempt <= maxRetries) {
             try {
-                writeBatch(key, batch);
+                // Storage handles everything: folders, compression, manifests
+                String filename = storage.writeBatch(batch, firstTick, lastTick);
 
-                // Success
+                // Success - update metrics
                 batchesWritten.incrementAndGet();
                 ticksWritten.addAndGet(batch.size());
-                log.debug("Successfully wrote batch {} with {} ticks", key, batch.size());
+
+                // Calculate uncompressed bytes for metrics
+                long bytesInBatch = batch.stream()
+                    .mapToLong(TickData::getSerializedSize)
+                    .sum();
+                bytesWritten.addAndGet(bytesInBatch);
+
+                log.debug("Successfully wrote batch {} with {} ticks", filename, batch.size());
                 return;
 
             } catch (IOException e) {
@@ -264,8 +269,8 @@ public class PersistenceService extends AbstractService implements IMonitorable 
                 attempt++;
 
                 if (attempt <= maxRetries) {
-                    log.warn("Failed to write batch {} (attempt {}/{}): {}, retrying in {}ms",
-                        key, attempt, maxRetries, e.getMessage(), backoff);
+                    log.warn("Failed to write batch [ticks {}-{}] (attempt {}/{}): {}, retrying in {}ms",
+                        firstTick, lastTick, attempt, maxRetries, e.getMessage(), backoff);
 
                     try {
                         Thread.sleep(backoff);
@@ -278,14 +283,15 @@ public class PersistenceService extends AbstractService implements IMonitorable 
                     // Exponential backoff with cap to prevent overflow
                     backoff = Math.min(backoff * 2, 60000); // Max 60 seconds
                 } else {
-                    log.error("Failed to write batch {} after {} retries: {}", key, maxRetries, e.getMessage());
+                    log.error("Failed to write batch [ticks {}-{}] after {} retries: {}",
+                        firstTick, lastTick, maxRetries, e.getMessage());
                 }
             }
         }
 
         // All retries exhausted - record error
-        String errorDetails = String.format("Batch: %s, Retries: %d, Exception: %s",
-            key, maxRetries, lastException != null ? lastException.getMessage() : "Unknown");
+        String errorDetails = String.format("Batch: [ticks %d-%d], Retries: %d, Exception: %s",
+            firstTick, lastTick, maxRetries, lastException != null ? lastException.getMessage() : "Unknown");
         errors.add(new OperationalError(
             Instant.now(),
             "BATCH_WRITE_FAILED",
@@ -294,19 +300,6 @@ public class PersistenceService extends AbstractService implements IMonitorable 
         ));
         sendToDLQ(batch, lastException != null ? lastException.getMessage() : "Unknown error", attempt - 1, lastException);
         batchesFailed.incrementAndGet();
-    }
-
-    private void writeBatch(String key, List<TickData> batch) throws IOException {
-        long bytesInBatch = 0;
-
-        try (MessageWriter writer = storage.openWriter(key)) {
-            for (TickData tick : batch) {
-                writer.writeMessage(tick);
-                bytesInBatch += tick.getSerializedSize();
-            }
-        }
-
-        bytesWritten.addAndGet(bytesInBatch);
     }
 
     private void sendToDLQ(List<TickData> batch, String errorMessage, int retryAttempts, Exception exception) {

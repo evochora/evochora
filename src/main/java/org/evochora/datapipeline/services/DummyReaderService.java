@@ -3,11 +3,10 @@ package org.evochora.datapipeline.services;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.storage.IStorageReadResource;
-import org.evochora.datapipeline.api.resources.storage.MessageReader;
+import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.storage.BatchMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.OperationalError;
-import org.evochora.datapipeline.api.services.IService.State;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -17,11 +16,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * Test service that reads and validates TickData batches from storage using the batch API.
+ * Used for integration testing of storage resources.
+ */
 public class DummyReaderService extends AbstractService implements IMonitorable {
-    private final IStorageReadResource storage;
+    private final IBatchStorageRead storage;
     private final String keyPrefix;
     private final int intervalMs;
     private final boolean validateData;
@@ -30,15 +32,17 @@ public class DummyReaderService extends AbstractService implements IMonitorable 
     private final AtomicLong totalBytesRead = new AtomicLong(0);
     private final AtomicLong readOperations = new AtomicLong(0);
     private final AtomicLong validationErrors = new AtomicLong(0);
-    private final AtomicLong readFailed = new AtomicLong(0);
+    private final AtomicLong readErrors = new AtomicLong(0);
     private final Set<String> processedFiles = ConcurrentHashMap.newKeySet();
+    private final List<OperationalError> errors = Collections.synchronizedList(new ArrayList<>());
 
-    // Error tracking
-    private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
+    // Track expected tick range for validation
+    private long minTickSeen = Long.MAX_VALUE;
+    private long maxTickSeen = Long.MIN_VALUE;
 
     public DummyReaderService(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
-        this.storage = getRequiredResource("storage", IStorageReadResource.class);
+        this.storage = getRequiredResource("storage", IBatchStorageRead.class);
         this.keyPrefix = options.hasPath("keyPrefix") ? options.getString("keyPrefix") : "test";
         this.intervalMs = options.hasPath("intervalMs") ? options.getInt("intervalMs") : 1000;
         this.validateData = options.hasPath("validateData") ? options.getBoolean("validateData") : true;
@@ -49,56 +53,85 @@ public class DummyReaderService extends AbstractService implements IMonitorable 
         while (!Thread.currentThread().isInterrupted()) {
             checkPause();
 
-            List<String> batchFiles = storage.listKeys(keyPrefix + "/batch_");
-            Collections.sort(batchFiles);
+            try {
+                // Query for all batches in the tick range
+                // Start with query from 0 to a large number to get all batches
+                List<BatchMetadata> batches = storage.queryBatches(0, Long.MAX_VALUE);
 
-            for (String batchFile : batchFiles) {
-                if (processedFiles.contains(batchFile)) {
-                    continue;
-                }
+                for (BatchMetadata metadata : batches) {
+                    // Skip already processed files
+                    if (processedFiles.contains(metadata.filename)) {
+                        continue;
+                    }
 
-                try {
-                    long expectedTick = -1;
-                    try (MessageReader<TickData> reader = storage.openReader(batchFile, TickData.parser())) {
-                        while (reader.hasNext()) {
-                            TickData tick = reader.next();
+                    // Filter by key prefix (simulation run ID check)
+                    // Skip if filename doesn't match our simulation
+                    // Note: This is a simple filter; in real scenarios, storage metadata
+                    // would include simulationRunId for proper filtering
+
+                    try {
+                        List<TickData> ticks = storage.readBatch(metadata.filename);
+
+                        long expectedTick = -1;
+                        for (TickData tick : ticks) {
+                            // Filter by simulation run ID
+                            if (!tick.getSimulationRunId().equals(keyPrefix + "_run")) {
+                                continue; // Skip ticks from other simulations
+                            }
 
                             totalMessagesRead.incrementAndGet();
                             totalBytesRead.addAndGet(tick.getSerializedSize());
 
+                            // Validate sequential order within batch (before tracking tick range)
                             if (validateData && expectedTick >= 0) {
                                 if (tick.getTickNumber() != expectedTick) {
                                     log.warn("Tick sequence error in {}: expected {}, got {}",
-                                        batchFile, expectedTick, tick.getTickNumber());
+                                        metadata.filename, expectedTick, tick.getTickNumber());
                                     validationErrors.incrementAndGet();
-                                    errors.add(new OperationalError(
-                                        Instant.now(),
-                                        "VALIDATION_ERROR",
-                                        "Tick sequence error detected",
-                                        String.format("File: %s, Expected: %d, Got: %d", batchFile, expectedTick, tick.getTickNumber())
-                                    ));
                                 }
                             }
+
+                            // Track tick range across all batches
+                            if (tick.getTickNumber() < minTickSeen) {
+                                minTickSeen = tick.getTickNumber();
+                            }
+                            if (tick.getTickNumber() > maxTickSeen) {
+                                maxTickSeen = tick.getTickNumber();
+                            }
+
                             expectedTick = tick.getTickNumber() + 1;
                         }
-                    }
-                    readOperations.incrementAndGet();
-                    processedFiles.add(batchFile);
-                    log.debug("Read and validated batch {}", batchFile);
 
-                } catch (IOException e) {
-                    log.error("Failed to read batch {}", batchFile, e);
-                    readFailed.incrementAndGet();
-                    errors.add(new OperationalError(
-                        Instant.now(),
-                        "READ_FAILED",
-                        "Failed to read batch from storage",
-                        String.format("File: %s, Error: %s", batchFile, e.getMessage())
-                    ));
+                        readOperations.incrementAndGet();
+                        processedFiles.add(metadata.filename);
+                        log.debug("Read and validated batch {} with {} matching ticks",
+                            metadata.filename, ticks.stream()
+                                .filter(t -> t.getSimulationRunId().equals(keyPrefix + "_run"))
+                                .count());
+
+                    } catch (IOException e) {
+                        log.error("Failed to read batch {}", metadata.filename, e);
+                        readErrors.incrementAndGet();
+                        errors.add(new OperationalError(
+                            Instant.now(),
+                            "READ_BATCH_ERROR",
+                            "Failed to read batch " + metadata.filename,
+                            e.getMessage()
+                        ));
+                    }
                 }
+
+            } catch (IOException e) {
+                log.error("Failed to query batches", e);
+                readErrors.incrementAndGet();
+                errors.add(new OperationalError(
+                    Instant.now(),
+                    "QUERY_BATCHES_ERROR",
+                    "Failed to query batches",
+                    e.getMessage()
+                ));
             }
 
-            // Sleep between read operations - Thread.sleep respects interruption
             Thread.sleep(intervalMs);
         }
     }
@@ -110,23 +143,26 @@ public class DummyReaderService extends AbstractService implements IMonitorable 
             "bytes_read", totalBytesRead.get(),
             "read_operations", readOperations.get(),
             "validation_errors", validationErrors.get(),
-            "reads_failed", readFailed.get(),
+            "read_errors", readErrors.get(),
             "files_processed", processedFiles.size()
         );
     }
 
     @Override
     public boolean isHealthy() {
-        return getCurrentState() != State.ERROR;
+        return errors.isEmpty();
     }
 
     @Override
     public List<OperationalError> getErrors() {
-        return new ArrayList<>(errors);
+        synchronized (errors) {
+            return new ArrayList<>(errors);
+        }
     }
 
     @Override
     public void clearErrors() {
         errors.clear();
+        readErrors.set(0);
     }
 }

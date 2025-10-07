@@ -8,8 +8,7 @@ import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
-import org.evochora.datapipeline.api.resources.storage.IStorageWriteResource;
-import org.evochora.datapipeline.api.resources.storage.MessageWriter;
+import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.services.IService.State;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.ExpectLog;
@@ -46,16 +45,13 @@ class PersistenceServiceTest {
     private IInputQueueResource<TickData> mockInputQueue;
     
     @Mock
-    private IStorageWriteResource mockStorage;
-    
+    private IBatchStorageWrite mockStorage;
+
     @Mock
     private IOutputQueueResource<SystemContracts.DeadLetterMessage> mockDLQ;
-    
+
     @Mock
     private IIdempotencyTracker<String> mockIdempotencyTracker;
-    
-    @Mock
-    private MessageWriter mockMessageWriter;
 
     private PersistenceService service;
     private Map<String, List<IResource>> resources;
@@ -179,19 +175,18 @@ class PersistenceServiceTest {
                 return 3;
             })
             .thenThrow(new InterruptedException("Test shutdown"));
-        when(mockStorage.openWriter(anyString())).thenReturn(mockMessageWriter);
-        
+        when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
+            .thenReturn("001/batch_0000000000000000100_0000000000000000102.pb.zst");
+
         // Start service in background
         service.start();
-        
+
         // Wait for batch to be processed
         await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> service.getMetrics().get("batches_written").longValue() > 0);
-        
-        // Verify storage was called
-        verify(mockStorage).openWriter("sim-123/batch_0000000000000000100_0000000000000000102.pb");
-        verify(mockMessageWriter, times(3)).writeMessage(any(TickData.class));
-        verify(mockMessageWriter).close();
+
+        // Verify storage was called with batch API
+        verify(mockStorage).writeBatch(argThat(list -> list.size() == 3), eq(100L), eq(102L));
         
         // Verify metrics
         assertEquals(1, service.getMetrics().get("batches_written").longValue());
@@ -225,7 +220,7 @@ class PersistenceServiceTest {
             .until(() -> service.getMetrics().get("batches_failed").longValue() > 0);
         
         // Verify batch was not written to storage
-        verify(mockStorage, never()).openWriter(anyString());
+        verify(mockStorage, never()).writeBatch(anyList(), anyLong(), anyLong());
         
         // Verify metrics
         assertEquals(0, service.getMetrics().get("batches_written").longValue());
@@ -259,7 +254,7 @@ class PersistenceServiceTest {
             .until(() -> service.getMetrics().get("batches_failed").longValue() > 0);
 
         // Verify batch was not written to storage
-        verify(mockStorage, never()).openWriter(anyString());
+        verify(mockStorage, never()).writeBatch(anyList(), anyLong(), anyLong());
 
         // Verify DLQ was called
         verify(mockDLQ).offer(any(SystemContracts.DeadLetterMessage.class));
@@ -301,7 +296,7 @@ class PersistenceServiceTest {
             .until(() -> service.getMetrics().get("batches_failed").longValue() > 0);
 
         // Verify batch was not written to storage
-        verify(mockStorage, never()).openWriter(anyString());
+        verify(mockStorage, never()).writeBatch(anyList(), anyLong(), anyLong());
 
         // Verify DLQ was called
         verify(mockDLQ).offer(any(SystemContracts.DeadLetterMessage.class));
@@ -334,7 +329,8 @@ class PersistenceServiceTest {
                 return 3;
             })
             .thenThrow(new InterruptedException("Test shutdown"));
-        when(mockStorage.openWriter(anyString())).thenReturn(mockMessageWriter);
+        when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
+            .thenReturn("batch_file.pb.zst");
 
         // Mock idempotency tracker - uses atomic checkAndMarkProcessed()
         // First tick is duplicate (returns false), others are new (returns true)
@@ -348,8 +344,8 @@ class PersistenceServiceTest {
         await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> service.getMetrics().get("batches_written").longValue() > 0);
 
-        // Verify only 2 ticks were written (duplicate skipped)
-        verify(mockMessageWriter, times(2)).writeMessage(any(TickData.class));
+        // Verify batch write was called
+        verify(mockStorage).writeBatch(argThat(list -> list.size() == 2), eq(100L), eq(102L));
 
         // Verify the atomic method was actually called for all ticks
         verify(mockIdempotencyTracker).checkAndMarkProcessed("sim-123:100");
@@ -378,9 +374,9 @@ class PersistenceServiceTest {
             .thenThrow(new InterruptedException("Test shutdown"));
         
         // First call fails, second succeeds
-        when(mockStorage.openWriter(anyString()))
+        when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
             .thenThrow(new IOException("Transient failure"))
-            .thenReturn(mockMessageWriter);
+            .thenReturn("batch_file.pb.zst");
         
         service.start();
         
@@ -389,8 +385,7 @@ class PersistenceServiceTest {
             .until(() -> service.getMetrics().get("batches_written").longValue() > 0);
         
         // Verify storage was called twice (retry)
-        verify(mockStorage, times(2)).openWriter(anyString());
-        verify(mockMessageWriter).close();
+        verify(mockStorage, times(2)).writeBatch(anyList(), anyLong(), anyLong());
         
         // Verify success metrics
         assertEquals(1, service.getMetrics().get("batches_written").longValue());
@@ -423,7 +418,7 @@ class PersistenceServiceTest {
                 return 3;
             })
             .thenThrow(new InterruptedException("Test shutdown"));
-        when(mockStorage.openWriter(anyString()))
+        when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
             .thenThrow(new IOException("Persistent failure"));
         when(mockDLQ.offer(any(SystemContracts.DeadLetterMessage.class))).thenReturn(true);
         when(mockInputQueue.getResourceName()).thenReturn("test-input-queue");
@@ -462,7 +457,7 @@ class PersistenceServiceTest {
                 return 3;
             })
             .thenThrow(new InterruptedException("Test shutdown"));
-        when(mockStorage.openWriter(anyString()))
+        when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
             .thenThrow(new IOException("Persistent failure"));
 
         service.start();
@@ -491,7 +486,8 @@ class PersistenceServiceTest {
                 return 3;
             })
             .thenThrow(new InterruptedException("Shutdown signal"));
-        when(mockStorage.openWriter(anyString())).thenReturn(mockMessageWriter);
+        when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
+            .thenReturn("batch_file.pb.zst");
         
         service.start();
 
@@ -500,8 +496,7 @@ class PersistenceServiceTest {
             .until(() -> service.getCurrentState() == State.STOPPED);
 
         // Verify first batch was written
-        verify(mockStorage).openWriter(anyString());
-        verify(mockMessageWriter).close();
+        verify(mockStorage).writeBatch(anyList(), anyLong(), anyLong());
 
         // Verify metrics
         assertEquals(1, service.getMetrics().get("batches_written").longValue());
@@ -521,7 +516,8 @@ class PersistenceServiceTest {
                 return 3;
             })
             .thenThrow(new InterruptedException("Test shutdown"));
-        when(mockStorage.openWriter(anyString())).thenReturn(mockMessageWriter);
+        when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
+            .thenReturn("batch_file.pb.zst");
         
         service.start();
         
@@ -557,7 +553,7 @@ class PersistenceServiceTest {
                 .drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)));
 
         // Verify no storage operations occurred for empty batch
-        verify(mockStorage, never()).openWriter(anyString());
+        verify(mockStorage, never()).writeBatch(anyList(), anyLong(), anyLong());
         
         // Verify metrics remain zero
         Map<String, Number> metrics = service.getMetrics();
@@ -726,7 +722,8 @@ class PersistenceServiceTest {
             })
             .thenReturn(0) // Empty drain
             .thenThrow(new InterruptedException("Test shutdown"));
-        when(mockStorage.openWriter(anyString())).thenReturn(mockMessageWriter);
+        when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
+            .thenReturn("batch_file.pb.zst");
 
         service.start();
 
@@ -773,7 +770,8 @@ class PersistenceServiceTest {
             .thenThrow(new InterruptedException("Test shutdown"));
 
         // Storage always fails to trigger retries
-        when(mockStorage.openWriter(anyString())).thenThrow(new IOException("Persistent failure"));
+        when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
+            .thenThrow(new IOException("Persistent failure"));
         when(mockDLQ.offer(any(SystemContracts.DeadLetterMessage.class))).thenReturn(true);
         when(mockInputQueue.getResourceName()).thenReturn("test-input-queue");
 
@@ -796,7 +794,7 @@ class PersistenceServiceTest {
             String.format("Retry with exponential backoff took %dms, expected < 3500ms", elapsedTime));
 
         // Verify all retries were attempted (8 retries + 1 initial = 9 total attempts)
-        verify(mockStorage, times(9)).openWriter(anyString());
+        verify(mockStorage, times(9)).writeBatch(anyList(), anyLong(), anyLong());
 
         // Verify DLQ was called after exhausting retries
         verify(mockDLQ).offer(any(SystemContracts.DeadLetterMessage.class));

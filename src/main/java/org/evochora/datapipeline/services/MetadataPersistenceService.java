@@ -9,8 +9,7 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
-import org.evochora.datapipeline.api.resources.storage.IStorageWriteResource;
-import org.evochora.datapipeline.api.resources.storage.MessageWriter;
+import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.services.IService.State;
 
 import java.io.IOException;
@@ -65,7 +64,7 @@ public class MetadataPersistenceService extends AbstractService implements IMoni
 
     // Required resources
     private final IInputQueueResource<SimulationMetadata> inputQueue;
-    private final IStorageWriteResource storage;
+    private final IBatchStorageWrite storage;
 
     // Optional resources
     private final IOutputQueueResource<SystemContracts.DeadLetterMessage> dlq;
@@ -96,7 +95,7 @@ public class MetadataPersistenceService extends AbstractService implements IMoni
 
         // Required resources
         this.inputQueue = getRequiredResource("input", IInputQueueResource.class);
-        this.storage = getRequiredResource("storage", IStorageWriteResource.class);
+        this.storage = getRequiredResource("storage", IBatchStorageWrite.class);
 
         // Optional resources
         this.dlq = getOptionalResource("dlq", IOutputQueueResource.class).orElse(null);
@@ -229,21 +228,20 @@ public class MetadataPersistenceService extends AbstractService implements IMoni
     /**
      * Performs a single attempt to write metadata to storage.
      * <p>
-     * Metadata is written using MessageWriter's delimited format (with length prefix),
-     * which is compatible with storage.readMessage() that uses parseDelimitedFrom().
-     * Even though metadata is a single message, the delimited format is used for
-     * consistency with batch writes and correct round-trip serialization.
+     * Uses the storage abstraction's writeMessage() method, which:
+     * <ul>
+     *   <li>Works with any storage backend (local filesystem, cloud storage, etc.)</li>
+     *   <li>Handles compression automatically based on storage configuration</li>
+     *   <li>Writes in length-delimited protobuf format for compatibility</li>
+     *   <li>Performs atomic write (temp file → final file)</li>
+     * </ul>
      *
      * @param key storage key for the metadata file
      * @param metadata the simulation metadata to persist
      * @throws IOException if write operation fails
      */
     private void writeMetadata(String key, SimulationMetadata metadata) throws IOException {
-        try (MessageWriter writer = storage.openWriter(key)) {
-            // writeMessage() uses writeDelimitedTo() internally (length-prefixed)
-            // readMessage() uses parseDelimitedFrom() - perfectly compatible
-            writer.writeMessage(metadata);
-        }
+        storage.writeMessage(key, metadata);
     }
 
     /**

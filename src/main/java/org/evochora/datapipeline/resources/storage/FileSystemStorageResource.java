@@ -8,42 +8,42 @@ import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.storage.IStorageReadResource;
-import org.evochora.datapipeline.api.resources.storage.IStorageWriteResource;
 import org.evochora.datapipeline.api.resources.storage.MessageReader;
 import org.evochora.datapipeline.api.resources.storage.MessageWriter;
-import org.evochora.datapipeline.resources.AbstractResource;
-import org.evochora.datapipeline.resources.storage.wrappers.MonitoredStorageReader;
-import org.evochora.datapipeline.resources.storage.wrappers.MonitoredStorageWriter;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
 import org.evochora.datapipeline.utils.compression.CompressionException;
 import org.evochora.datapipeline.utils.compression.ICompressionCodec;
+import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageReader;
+import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class FileSystemStorageResource extends AbstractResource
-    implements IContextualResource, IStorageWriteResource, IStorageReadResource, IMonitorable {
+public class FileSystemStorageResource extends AbstractBatchStorageResource
+    implements IContextualResource, IMonitorable {
 
     private static final Logger log = LoggerFactory.getLogger(FileSystemStorageResource.class);
     private final File rootDirectory;
     private final ICompressionCodec codec;
+
+    // Metrics tracking
+    private final AtomicLong writeOperations = new AtomicLong(0);
+    private final AtomicLong readOperations = new AtomicLong(0);
+    private final AtomicLong bytesWritten = new AtomicLong(0);
+    private final AtomicLong bytesRead = new AtomicLong(0);
 
     public FileSystemStorageResource(String name, Config options) {
         super(name, options);
@@ -150,47 +150,30 @@ public class FileSystemStorageResource extends AbstractResource
         return System.getenv(varName);
     }
 
+    /**
+     * Returns a contextual wrapper for this storage resource based on usage type.
+     * Supports usage types: storage-write, storage-read.
+     */
     @Override
     public IWrappedResource getWrappedResource(ResourceContext context) {
         if (context.usageType() == null) {
             throw new IllegalArgumentException(String.format(
-                "Storage resource '%s' requires a usageType. " +
-                "Use 'storage-read' or 'storage-write'.",
-                getResourceName()
+                "Storage resource '%s' requires a usageType in the binding URI. " +
+                "Expected format: 'usageType:%s' where usageType is one of: " +
+                "storage-write, storage-read",
+                getResourceName(), getResourceName()
             ));
         }
 
         return switch (context.usageType()) {
-            case "storage-read" -> new MonitoredStorageReader(this, context);
-            case "storage-write" -> new MonitoredStorageWriter(this, context);
+            case "storage-write" -> new MonitoredBatchStorageWriter(this, context);
+            case "storage-read" -> new MonitoredBatchStorageReader(this, context);
             default -> throw new IllegalArgumentException(String.format(
                 "Unsupported usage type '%s' for storage resource '%s'. " +
-                "Supported: storage-read, storage-write",
+                "Supported types: storage-write, storage-read",
                 context.usageType(), getResourceName()
             ));
         };
-    }
-
-    @Override
-    public <T extends MessageLite> T readMessage(String key, Parser<T> parser) throws IOException {
-        validateKey(key);
-        if (parser == null) {
-            throw new IllegalArgumentException("Parser cannot be null");
-        }
-        File file = new File(rootDirectory, key);
-        if (!file.exists()) {
-            throw new IOException("Key does not exist: " + key);
-        }
-
-        try (InputStream rawInput = new FileInputStream(file);
-             InputStream input = shouldDecompress(key) ? codec.wrapInputStream(rawInput) : rawInput) {
-            // Use parseDelimitedFrom to match writeDelimitedTo() used by MessageWriter
-            T message = parser.parseDelimitedFrom(input);
-            if (message == null) {
-                throw new IOException("No message found in file: " + key);
-            }
-            return message;
-        }
     }
 
     /**
@@ -201,29 +184,138 @@ public class FileSystemStorageResource extends AbstractResource
         return key.endsWith(codec.getFileExtension()) && !codec.getFileExtension().isEmpty();
     }
 
+    // ===== IBatchStorageWrite/IBatchStorageRead interface implementations (single-message operations) =====
+
+    /**
+     * Writes a single protobuf message to storage at the specified key.
+     * Implements {@link org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite#writeMessage}.
+     */
     @Override
-    public <T extends MessageLite> MessageReader<T> openReader(String key, Parser<T> parser) throws IOException {
-        validateKey(key);
-        if (parser == null) {
-            throw new IllegalArgumentException("Parser cannot be null");
+    public <T extends MessageLite> void writeMessage(String key, T message) throws IOException {
+        if (message == null) {
+            throw new IllegalArgumentException("Message cannot be null");
         }
-        File file = new File(rootDirectory, key);
+
+        try (MessageWriter writer = openWriter(key)) {
+            writer.writeMessage(message);
+        }
+    }
+
+    /**
+     * Reads a single protobuf message from storage at the specified key.
+     * Implements {@link org.evochora.datapipeline.api.resources.storage.IBatchStorageRead#readMessage}.
+     */
+    @Override
+    public <T extends MessageLite> T readMessage(String key, Parser<T> parser) throws IOException {
+        try (MessageReader<T> reader = openReader(key, parser)) {
+            if (!reader.hasNext()) {
+                throw new IOException("File is empty: " + key);
+            }
+            T message = reader.next();
+            if (reader.hasNext()) {
+                throw new IOException("File contains multiple messages: " + key);
+            }
+            return message;
+        }
+    }
+
+    // ===== Protected helper methods for internal use =====
+
+    /**
+     * Opens a reader for streaming message reads.
+     * Protected to prevent direct access - use readMessage() or readBatch() instead.
+     * Used internally by readMessage() and test utilities.
+     */
+    protected <T extends MessageLite> MessageReader<T> openReader(String key, Parser<T> parser) throws IOException {
+        validateKey(key);
+
+        // Try with compression extension first, fallback to uncompressed
+        String storageKey = key + codec.getFileExtension();
+        File file = new File(rootDirectory, storageKey);
 
         if (!file.exists()) {
-            throw new IOException("Key does not exist: " + key);
+            // Try without extension (backward compatibility)
+            storageKey = key;
+            file = new File(rootDirectory, storageKey);
         }
 
-        return new MessageReaderImpl<>(file, parser, key, codec);
+        if (!file.exists()) {
+            throw new IOException("File does not exist: " + key);
+        }
+
+        return new MessageReaderImpl<>(file, parser, storageKey, codec);
     }
 
-    @Override
-    public boolean exists(String key) {
+    /**
+     * Opens a writer for streaming message writes.
+     * Protected to prevent direct access - use writeMessage() or writeBatch() instead.
+     * Used internally by writeMessage() and test utilities.
+     */
+    protected MessageWriter openWriter(String key) throws IOException {
         validateKey(key);
-        return new File(rootDirectory, key).exists();
+
+        // Add compression file extension if compression is enabled
+        String storageKey = key + codec.getFileExtension();
+
+        File finalFile = new File(rootDirectory, storageKey);
+        File tempFile = new File(rootDirectory, storageKey + ".tmp");
+
+        File parentDir = finalFile.getParentFile();
+        if (parentDir != null) {
+            parentDir.mkdirs();  // Idempotent - safe to call even if directory exists
+            if (!parentDir.isDirectory()) {
+                throw new IOException("Failed to create parent directories for: " + finalFile.getAbsolutePath());
+            }
+        }
+
+        return new MessageWriterImpl(tempFile, finalFile, codec);
+    }
+
+    // ===== Abstract method implementations for AbstractBatchStorageResource =====
+
+    @Override
+    protected void writeBytes(String path, byte[] data) throws IOException {
+        validateKey(path);
+        File file = new File(rootDirectory, path);
+        File parentDir = file.getParentFile();
+        if (parentDir != null) {
+            parentDir.mkdirs();  // Idempotent - safe to call even if directory exists
+            if (!parentDir.isDirectory()) {
+                throw new IOException("Failed to create parent directories for: " + file.getAbsolutePath());
+            }
+        }
+        Files.write(file.toPath(), data);
     }
 
     @Override
-    public List<String> listKeys(String prefix) {
+    protected byte[] readBytes(String path) throws IOException {
+        validateKey(path);
+        File file = new File(rootDirectory, path);
+        if (!file.exists()) {
+            throw new IOException("File does not exist: " + path);
+        }
+        return Files.readAllBytes(file.toPath());
+    }
+
+    @Override
+    protected void appendLine(String path, String line) throws IOException {
+        validateKey(path);
+        File file = new File(rootDirectory, path);
+        File parentDir = file.getParentFile();
+        if (parentDir != null) {
+            parentDir.mkdirs();  // Idempotent - safe to call even if directory exists
+            if (!parentDir.isDirectory()) {
+                throw new IOException("Failed to create parent directories for: " + file.getAbsolutePath());
+            }
+        }
+
+        String lineWithNewline = line + "\n";
+        Files.write(file.toPath(), lineWithNewline.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+            java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+    }
+
+    @Override
+    protected List<String> listKeys(String prefix) throws IOException {
         if (prefix == null) {
             throw new IllegalArgumentException("Prefix cannot be null");
         }
@@ -238,28 +330,82 @@ public class FileSystemStorageResource extends AbstractResource
                 .filter(path -> path.startsWith(prefix))
                 .collect(Collectors.toList());
         } catch (IOException e) {
-            // Fail fast instead of returning empty list (indistinguishable from "no files")
-            // This prevents indexers from thinking they're done when disk is actually failing
-            throw new RuntimeException("Failed to list keys with prefix: " + prefix, e);
+            throw new IOException("Failed to list keys with prefix: " + prefix, e);
         }
     }
 
     @Override
-    public MessageWriter openWriter(String key) throws IOException {
-        validateKey(key);
+    protected void atomicMove(String src, String dest) throws IOException {
+        validateKey(src);
+        validateKey(dest);
+        File srcFile = new File(rootDirectory, src);
+        File destFile = new File(rootDirectory, dest);
 
-        // Add compression file extension if compression is enabled
-        String storageKey = key + codec.getFileExtension();
-
-        File finalFile = new File(rootDirectory, storageKey);
-        File tempFile = new File(rootDirectory, storageKey + ".tmp");
-
-        File parentDir = finalFile.getParentFile();
-        if (!parentDir.exists() && !parentDir.mkdirs()) {
-            throw new IOException("Failed to create parent directories for: " + finalFile.getAbsolutePath());
+        // Ensure parent directory exists
+        File parentDir = destFile.getParentFile();
+        if (parentDir != null) {
+            parentDir.mkdirs();  // Idempotent - safe to call even if directory exists
+            if (!parentDir.isDirectory()) {
+                throw new IOException("Failed to create parent directories for: " + destFile.getAbsolutePath());
+            }
         }
 
-        return new MessageWriterImpl(tempFile, finalFile, codec);
+        Files.move(srcFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    @Override
+    protected boolean exists(String path) throws IOException {
+        validateKey(path);
+        return new File(rootDirectory, path).exists();
+    }
+
+    @Override
+    protected void deleteIfExists(String path) throws IOException {
+        validateKey(path);
+        File file = new File(rootDirectory, path);
+        if (file.exists()) {
+            Files.delete(file.toPath());
+        }
+    }
+
+    @Override
+    protected byte[] compressBatch(byte[] data) throws IOException {
+        if ("none".equals(compression.codec)) {
+            return data;
+        }
+
+        try {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            try (OutputStream compressedStream = codec.wrapOutputStream(bos)) {
+                compressedStream.write(data);
+            }
+            return bos.toByteArray();
+        } catch (Exception e) {
+            throw new IOException("Failed to compress batch", e);
+        }
+    }
+
+    @Override
+    protected byte[] decompressBatch(byte[] compressedData, String filename) throws IOException {
+        // Check if file should be decompressed based on extension
+        if (!shouldDecompress(filename)) {
+            return compressedData;
+        }
+
+        try {
+            ByteArrayInputStream bis = new ByteArrayInputStream(compressedData);
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            try (InputStream decompressedStream = codec.wrapInputStream(bis)) {
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = decompressedStream.read(buffer)) != -1) {
+                    bos.write(buffer, 0, bytesRead);
+                }
+            }
+            return bos.toByteArray();
+        } catch (Exception e) {
+            throw new IOException("Failed to decompress batch: " + filename, e);
+        }
     }
 
     @Override
@@ -276,7 +422,12 @@ public class FileSystemStorageResource extends AbstractResource
 
     @Override
     public Map<String, Number> getMetrics() {
-        return Collections.emptyMap();
+        Map<String, Number> metrics = new HashMap<>();
+        metrics.put("write_operations", writeOperations.get());
+        metrics.put("read_operations", readOperations.get());
+        metrics.put("bytes_written", bytesWritten.get());
+        metrics.put("bytes_read", bytesRead.get());
+        return metrics;
     }
 
     @Override
@@ -385,6 +536,11 @@ public class FileSystemStorageResource extends AbstractResource
             if (!tempFile.renameTo(finalFile)) {
                 throw new IOException("Failed to commit file: " + finalFile);
             }
+
+            // Track metrics after successful write
+            writeOperations.incrementAndGet();
+            long fileSize = finalFile.length();
+            bytesWritten.addAndGet(fileSize);
         }
     }
 
@@ -395,12 +551,18 @@ public class FileSystemStorageResource extends AbstractResource
         private T nextMessage = null;
         private boolean closed = false;
         private boolean eof = false;
+        private final long fileSize;
 
         MessageReaderImpl(File file, Parser<T> parser, String key, ICompressionCodec codec) throws IOException {
             this.rawInputStream = new FileInputStream(file);
             // Only decompress if file has compression extension
             this.inputStream = shouldDecompress(key) ? codec.wrapInputStream(rawInputStream) : rawInputStream;
             this.parser = parser;
+            this.fileSize = file.length();
+
+            // Track metrics when reader is opened
+            readOperations.incrementAndGet();
+            bytesRead.addAndGet(fileSize);
         }
 
         @Override

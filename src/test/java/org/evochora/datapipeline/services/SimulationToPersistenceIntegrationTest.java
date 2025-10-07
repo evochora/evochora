@@ -335,8 +335,13 @@ class SimulationToPersistenceIntegrationTest {
             return (int) Files.walk(storageDir)
                 .filter(path -> {
                     try {
+                        String pathStr = path.toString();
+                        // Exclude temporary files
+                        if (pathStr.contains(".tmp")) {
+                            return false;
+                        }
                         // Only count .pb files that exist (ignore .pb.tmp and handle race conditions)
-                        return path.toString().endsWith(".pb") && Files.exists(path);
+                        return pathStr.endsWith(".pb") && Files.exists(path);
                     } catch (Exception e) {
                         // File may have been deleted/renamed between walk and exists check
                         return false;
@@ -386,54 +391,79 @@ class SimulationToPersistenceIntegrationTest {
 
     private List<TickData> readAllPersistedTicks() {
         List<TickData> allTicks = new ArrayList<>();
-        try {
-            // Find all .pb batch files (handle race conditions during file walking)
-            // Note: Files.walk() can throw UncheckedIOException if files are deleted during iteration
-            List<Path> batchFiles = Files.walk(tempStorageDir)
-                .filter(path -> {
-                    // Only include .pb files that exist and are regular files
-                    // (ignore .pb.tmp and .pb.zst.tmp files)
-                    // Files.exists() and Files.isRegularFile() don't throw checked exceptions
-                    if (!path.toString().endsWith(".pb") && !path.toString().endsWith(".pb.zst")) {
-                        return false;
-                    }
-                    try {
-                        return Files.exists(path) && Files.isRegularFile(path);
-                    } catch (Exception e) {
-                        // Catch any runtime exceptions (e.g., SecurityException)
-                        return false;
-                    }
-                })
-                .collect(Collectors.toList());
 
-            // Read and deserialize each batch file
-            for (Path batchFile : batchFiles) {
-                try {
-                    // Double-check file still exists before opening
-                    if (!Files.exists(batchFile)) {
-                        continue; // File was deleted/renamed after collection
-                    }
-                    
-                    try (java.io.InputStream is = new java.io.BufferedInputStream(Files.newInputStream(batchFile))) {
-                        // Read all delimited TickData messages from the file
-                        while (is.available() > 0) {
-                            TickData tick = TickData.parseDelimitedFrom(is);
-                            if (tick == null) {
-                                break; // End of file
-                            }
-                            allTicks.add(tick);
+        // Retry up to 3 times to handle race conditions with concurrent file writes
+        int maxRetries = 3;
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                // Find all .pb batch files (handle race conditions during file walking)
+                // Note: Files.walk() can throw UncheckedIOException if files are deleted during iteration
+                List<Path> batchFiles = Files.walk(tempStorageDir)
+                    .filter(path -> {
+                        String pathStr = path.toString();
+                        // Exclude temporary files (files with .tmp in the name)
+                        if (pathStr.contains(".tmp")) {
+                            return false;
                         }
+                        // Only include .pb files that exist and are regular files
+                        // (ignore .pb.tmp and .pb.zst.tmp files)
+                        // Files.exists() and Files.isRegularFile() don't throw checked exceptions
+                        if (!pathStr.endsWith(".pb") && !pathStr.endsWith(".pb.zst")) {
+                            return false;
+                        }
+                        try {
+                            return Files.exists(path) && Files.isRegularFile(path);
+                        } catch (Exception e) {
+                            // Catch any runtime exceptions (e.g., SecurityException)
+                            return false;
+                        }
+                    })
+                    .collect(Collectors.toList());
+
+                // Read and deserialize each batch file
+                for (Path batchFile : batchFiles) {
+                    try {
+                        // Double-check file still exists before opening
+                        if (!Files.exists(batchFile)) {
+                            continue; // File was deleted/renamed after collection
+                        }
+
+                        try (java.io.InputStream is = new java.io.BufferedInputStream(Files.newInputStream(batchFile))) {
+                            // Read all delimited TickData messages from the file
+                            while (is.available() > 0) {
+                                TickData tick = TickData.parseDelimitedFrom(is);
+                                if (tick == null) {
+                                    break; // End of file
+                                }
+                                allTicks.add(tick);
+                            }
+                        }
+                    } catch (java.nio.file.NoSuchFileException e) {
+                        // File was deleted/renamed between exists check and read - this is OK in concurrent scenarios
+                        // Just skip this file and continue
+                    } catch (IOException e) {
+                        throw new RuntimeException("Failed to read batch file: " + batchFile, e);
                     }
-                } catch (java.nio.file.NoSuchFileException e) {
-                    // File was deleted/renamed between exists check and read - this is OK in concurrent scenarios
-                    // Just skip this file and continue
-                } catch (IOException e) {
-                    throw new RuntimeException("Failed to read batch file: " + batchFile, e);
                 }
+
+                // Successfully read all files, return
+                return allTicks;
+
+            } catch (java.io.UncheckedIOException | IOException e) {
+                // Handle race conditions where files are being written/renamed during walk
+                if (attempt < maxRetries - 1) {
+                    // Retry after a short delay
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("Interrupted while retrying walk", ie);
+                    }
+                    allTicks.clear(); // Clear partial results before retry
+                    continue;
+                }
+                throw new RuntimeException("Failed to walk storage directory after " + maxRetries + " attempts", e);
             }
-        } catch (java.io.UncheckedIOException | IOException e) {
-            // Handle race conditions where files are being written/renamed during walk
-            throw new RuntimeException("Failed to walk storage directory", e);
         }
         return allTicks;
     }

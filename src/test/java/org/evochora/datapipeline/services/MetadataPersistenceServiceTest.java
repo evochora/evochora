@@ -7,8 +7,7 @@ import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
-import org.evochora.datapipeline.api.resources.storage.IStorageWriteResource;
-import org.evochora.datapipeline.api.resources.storage.MessageWriter;
+import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.services.IService.State;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.ExpectLog;
@@ -45,13 +44,10 @@ class MetadataPersistenceServiceTest {
     private IInputQueueResource<SimulationMetadata> mockInputQueue;
 
     @Mock
-    private IStorageWriteResource mockStorage;
+    private IBatchStorageWrite mockStorage;
 
     @Mock
     private IOutputQueueResource<SystemContracts.DeadLetterMessage> mockDLQ;
-
-    @Mock
-    private MessageWriter mockMessageWriter;
 
     private MetadataPersistenceService service;
     private Map<String, List<IResource>> resources;
@@ -160,7 +156,7 @@ class MetadataPersistenceServiceTest {
 
         // Mock queue to return metadata
         when(mockInputQueue.take()).thenReturn(metadata);
-        when(mockStorage.openWriter(anyString())).thenReturn(mockMessageWriter);
+        doNothing().when(mockStorage).writeMessage(anyString(), any());
 
         // Start service (will process message and stop)
         service.start();
@@ -173,10 +169,8 @@ class MetadataPersistenceServiceTest {
         await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> service.getCurrentState() == State.STOPPED);
 
-        // Verify storage was called with correct key
-        verify(mockStorage).openWriter("sim-123/metadata.pb");
-        verify(mockMessageWriter).writeMessage(metadata);
-        verify(mockMessageWriter).close();
+        // Verify storage was called with correct key and metadata
+        verify(mockStorage).writeMessage("sim-123/metadata.pb", metadata);
 
         // Verify metrics
         assertEquals(1, service.getMetrics().get("metadata_written").longValue());
@@ -192,7 +186,7 @@ class MetadataPersistenceServiceTest {
         SimulationMetadata metadata = createTestMetadata("my-simulation-run-42");
 
         when(mockInputQueue.take()).thenReturn(metadata);
-        when(mockStorage.openWriter(anyString())).thenReturn(mockMessageWriter);
+        doNothing().when(mockStorage).writeMessage(anyString(), any());
 
         service.start();
 
@@ -200,7 +194,7 @@ class MetadataPersistenceServiceTest {
             .until(() -> service.getMetrics().get("metadata_written").longValue() > 0);
 
         // Verify correct storage key format: {simulationRunId}/metadata.pb
-        verify(mockStorage).openWriter("my-simulation-run-42/metadata.pb");
+        verify(mockStorage).writeMessage("my-simulation-run-42/metadata.pb", metadata);
     }
 
     // ========== Validation Tests ==========
@@ -229,7 +223,7 @@ class MetadataPersistenceServiceTest {
             .until(() -> service.getMetrics().get("metadata_failed").longValue() > 0);
 
         // Verify no storage write attempted
-        verify(mockStorage, never()).openWriter(anyString());
+        verify(mockStorage, never()).writeMessage(anyString(), any());
 
         // Verify DLQ was called
         verify(mockDLQ).offer(any(SystemContracts.DeadLetterMessage.class));
@@ -278,17 +272,17 @@ class MetadataPersistenceServiceTest {
         when(mockInputQueue.take()).thenReturn(metadata);
 
         // First attempt fails, second succeeds
-        when(mockStorage.openWriter(anyString()))
-            .thenThrow(new IOException("Transient error"))
-            .thenReturn(mockMessageWriter);
+        doThrow(new IOException("Transient error"))
+            .doNothing()
+            .when(mockStorage).writeMessage(anyString(), any());
 
         service.start();
 
         await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> service.getMetrics().get("metadata_written").longValue() > 0);
 
-        // Verify retry occurred (2 openWriter calls)
-        verify(mockStorage, times(2)).openWriter("sim-123/metadata.pb");
+        // Verify retry occurred (2 writeMessage calls)
+        verify(mockStorage, times(2)).writeMessage("sim-123/metadata.pb", metadata);
 
         // Verify success
         assertEquals(1, service.getMetrics().get("metadata_written").longValue());
@@ -308,7 +302,7 @@ class MetadataPersistenceServiceTest {
 
         when(mockInputQueue.take()).thenReturn(metadata);
         when(mockInputQueue.getResourceName()).thenReturn("context-data");
-        when(mockStorage.openWriter(anyString())).thenThrow(new IOException("Persistent error"));
+        doThrow(new IOException("Persistent error")).when(mockStorage).writeMessage(anyString(), any());
         when(mockDLQ.offer(any())).thenReturn(true);
 
         service.start();
@@ -317,7 +311,7 @@ class MetadataPersistenceServiceTest {
             .until(() -> service.getMetrics().get("metadata_failed").longValue() > 0);
 
         // Verify all retry attempts made (maxRetries=2 means 3 total attempts)
-        verify(mockStorage, times(3)).openWriter("sim-123/metadata.pb");
+        verify(mockStorage, times(3)).writeMessage("sim-123/metadata.pb", metadata);
 
         // Verify failure recorded
         assertEquals(0, service.getMetrics().get("metadata_written").longValue());
@@ -342,7 +336,7 @@ class MetadataPersistenceServiceTest {
 
         when(mockInputQueue.take()).thenReturn(metadata);
         when(mockInputQueue.getResourceName()).thenReturn("context-data");
-        when(mockStorage.openWriter(anyString())).thenThrow(new IOException("Storage failure"));
+        doThrow(new IOException("Storage failure")).when(mockStorage).writeMessage(anyString(), any());
         when(mockDLQ.offer(any())).thenReturn(true);
 
         service.start();
@@ -372,7 +366,7 @@ class MetadataPersistenceServiceTest {
         SimulationMetadata metadata = createTestMetadata("sim-789");
 
         when(mockInputQueue.take()).thenReturn(metadata);
-        when(mockStorage.openWriter(anyString())).thenThrow(new IOException("Storage failure"));
+        doThrow(new IOException("Storage failure")).when(mockStorage).writeMessage(anyString(), any());
 
         service.start();
 
@@ -396,7 +390,7 @@ class MetadataPersistenceServiceTest {
 
         when(mockInputQueue.take()).thenReturn(metadata);
         when(mockInputQueue.getResourceName()).thenReturn("context-data");
-        when(mockStorage.openWriter(anyString())).thenThrow(new IOException("Storage failure"));
+        doThrow(new IOException("Storage failure")).when(mockStorage).writeMessage(anyString(), any());
         when(mockDLQ.offer(any())).thenReturn(false); // DLQ full
 
         service.start();
@@ -448,7 +442,7 @@ class MetadataPersistenceServiceTest {
         SimulationMetadata metadata = createTestMetadata("sim-metrics");
 
         when(mockInputQueue.take()).thenReturn(metadata);
-        when(mockStorage.openWriter(anyString())).thenReturn(mockMessageWriter);
+        doNothing().when(mockStorage).writeMessage(anyString(), any());
 
         service.start();
 
