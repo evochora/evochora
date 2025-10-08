@@ -3,8 +3,8 @@ package org.evochora.datapipeline.services;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
-import org.evochora.datapipeline.api.resources.storage.BatchMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.OperationalError;
 
@@ -54,80 +54,89 @@ public class DummyReaderService extends AbstractService implements IMonitorable 
             checkPause();
 
             try {
-                // Query for all batches in the tick range
-                // Start with query from 0 to a large number to get all batches
-                List<BatchMetadata> batches = storage.queryBatches(0, Long.MAX_VALUE);
+                // Use paginated API to discover batch files
+                // Note: Production indexers will use database coordinator for work distribution.
+                // This is a test service that reads all files for validation purposes.
 
-                for (BatchMetadata metadata : batches) {
-                    // Skip already processed files
-                    if (processedFiles.contains(metadata.filename)) {
-                        continue;
-                    }
+                String continuationToken = null;
+                int filesFoundThisIteration = 0;
 
-                    // Filter by key prefix (simulation run ID check)
-                    // Skip if filename doesn't match our simulation
-                    // Note: This is a simple filter; in real scenarios, storage metadata
-                    // would include simulationRunId for proper filtering
+                do {
+                    // Files are stored under simulationRunId (keyPrefix + "_run")
+                    BatchFileListResult result = storage.listBatchFiles(keyPrefix + "_run/", continuationToken, 100);
 
-                    try {
-                        List<TickData> ticks = storage.readBatch(metadata.filename);
-
-                        long expectedTick = -1;
-                        for (TickData tick : ticks) {
-                            // Filter by simulation run ID
-                            if (!tick.getSimulationRunId().equals(keyPrefix + "_run")) {
-                                continue; // Skip ticks from other simulations
-                            }
-
-                            totalMessagesRead.incrementAndGet();
-                            totalBytesRead.addAndGet(tick.getSerializedSize());
-
-                            // Validate sequential order within batch (before tracking tick range)
-                            if (validateData && expectedTick >= 0) {
-                                if (tick.getTickNumber() != expectedTick) {
-                                    log.warn("Tick sequence error in {}: expected {}, got {}",
-                                        metadata.filename, expectedTick, tick.getTickNumber());
-                                    validationErrors.incrementAndGet();
-                                }
-                            }
-
-                            // Track tick range across all batches
-                            if (tick.getTickNumber() < minTickSeen) {
-                                minTickSeen = tick.getTickNumber();
-                            }
-                            if (tick.getTickNumber() > maxTickSeen) {
-                                maxTickSeen = tick.getTickNumber();
-                            }
-
-                            expectedTick = tick.getTickNumber() + 1;
+                    for (String filename : result.getFilenames()) {
+                        // Skip already processed files
+                        if (processedFiles.contains(filename)) {
+                            continue;
                         }
 
-                        readOperations.incrementAndGet();
-                        processedFiles.add(metadata.filename);
-                        log.debug("Read and validated batch {} with {} matching ticks",
-                            metadata.filename, ticks.stream()
-                                .filter(t -> t.getSimulationRunId().equals(keyPrefix + "_run"))
-                                .count());
+                        try {
+                            List<TickData> ticks = storage.readBatch(filename);
 
-                    } catch (IOException e) {
-                        log.error("Failed to read batch {}", metadata.filename, e);
-                        readErrors.incrementAndGet();
-                        errors.add(new OperationalError(
-                            Instant.now(),
-                            "READ_BATCH_ERROR",
-                            "Failed to read batch " + metadata.filename,
-                            e.getMessage()
-                        ));
+                            long expectedTick = -1;
+                            for (TickData tick : ticks) {
+                                // Filter by simulation run ID
+                                if (!tick.getSimulationRunId().equals(keyPrefix + "_run")) {
+                                    continue;
+                                }
+
+                                totalMessagesRead.incrementAndGet();
+                                totalBytesRead.addAndGet(tick.getSerializedSize());
+
+                                // Validate sequential order within batch
+                                if (validateData && expectedTick >= 0) {
+                                    if (tick.getTickNumber() != expectedTick) {
+                                        log.warn("Tick sequence error in {}: expected {}, got {}",
+                                            filename, expectedTick, tick.getTickNumber());
+                                        validationErrors.incrementAndGet();
+                                    }
+                                }
+
+                                // Track tick range
+                                if (tick.getTickNumber() < minTickSeen) {
+                                    minTickSeen = tick.getTickNumber();
+                                }
+                                if (tick.getTickNumber() > maxTickSeen) {
+                                    maxTickSeen = tick.getTickNumber();
+                                }
+
+                                expectedTick = tick.getTickNumber() + 1;
+                            }
+
+                            readOperations.incrementAndGet();
+                            processedFiles.add(filename);
+                            filesFoundThisIteration++;
+
+                            log.debug("Read batch {} with {} ticks", filename, ticks.size());
+
+                        } catch (IOException e) {
+                            log.error("Failed to read batch {}", filename, e);
+                            readErrors.incrementAndGet();
+                            errors.add(new OperationalError(
+                                Instant.now(),
+                                "READ_BATCH_ERROR",
+                                "Failed to read batch " + filename,
+                                e.getMessage()
+                            ));
+                        }
                     }
+
+                    continuationToken = result.getNextContinuationToken();
+
+                } while (continuationToken != null);
+
+                if (filesFoundThisIteration > 0) {
+                    log.debug("Processed {} new files this iteration", filesFoundThisIteration);
                 }
 
             } catch (IOException e) {
-                log.error("Failed to query batches", e);
+                log.error("Failed to list batch files", e);
                 readErrors.incrementAndGet();
                 errors.add(new OperationalError(
                     Instant.now(),
-                    "QUERY_BATCHES_ERROR",
-                    "Failed to query batches",
+                    "LIST_FILES_ERROR",
+                    "Failed to list batch files",
                     e.getMessage()
                 ));
             }

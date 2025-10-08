@@ -1,62 +1,74 @@
 package org.evochora.datapipeline.resources.storage;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
+import com.google.protobuf.MessageLite;
+import com.google.protobuf.Parser;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.resources.storage.BatchMetadata;
+import org.evochora.datapipeline.api.resources.IMonitorable;
+import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
-import org.evochora.datapipeline.api.resources.storage.StorageMetadata;
 import org.evochora.datapipeline.resources.AbstractResource;
+import org.evochora.datapipeline.utils.compression.ICompressionCodec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.time.Instant;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * Abstract base class for batch storage resources with hierarchical folder organization,
- * manifest-based querying, and in-memory caching.
+ * Abstract base class for batch storage resources with hierarchical folder organization.
  * <p>
  * This class implements all the high-level logic for batch storage:
  * <ul>
  *   <li>Hierarchical folder path calculation based on tick ranges</li>
- *   <li>Manifest file management (JSONL format, one per consumer)</li>
- *   <li>In-memory manifest caching with TTL and write-through invalidation</li>
- *   <li>Storage metadata generation (.storage-metadata.json)</li>
- *   <li>Query optimization (folder pruning, lookback calculation)</li>
+ *   <li>Atomic batch file writing with compression</li>
+ *   <li>Base monitoring and metrics tracking</li>
  * </ul>
  * <p>
  * Subclasses only need to implement low-level I/O primitives for their specific
- * storage backend (filesystem, S3, etc.).
+ * storage backend (filesystem, S3, etc.). Monitoring is inherited, with a hook
+ * method {@link #addCustomMetrics(Map)} for implementation-specific metrics.
  */
-public abstract class AbstractBatchStorageResource extends AbstractResource implements IBatchStorageWrite, IBatchStorageRead {
+public abstract class AbstractBatchStorageResource extends AbstractResource
+    implements IBatchStorageWrite, IBatchStorageRead, IMonitorable {
 
     private static final Logger log = LoggerFactory.getLogger(AbstractBatchStorageResource.class);
-    private static final String STORAGE_METADATA_VERSION = "1.0";
-    private static final Gson GSON = new Gson();
 
     // Configuration
     protected final List<Long> folderLevels;
-    protected final int maxBatchSize;
-    protected final StorageMetadata.CompressionConfig compression;
-    protected final int cacheTtlSeconds;
+    protected final ICompressionCodec codec;
 
-    // Manifest cache
-    protected final ManifestCache manifestCache;
-
-    // Lazy-initialized storage metadata
-    private volatile boolean metadataInitialized = false;
-    private final Object metadataLock = new Object();
+    // Base metrics tracking (all storage implementations)
+    protected final java.util.concurrent.atomic.AtomicLong writeOperations = new java.util.concurrent.atomic.AtomicLong(0);
+    protected final java.util.concurrent.atomic.AtomicLong readOperations = new java.util.concurrent.atomic.AtomicLong(0);
+    protected final java.util.concurrent.atomic.AtomicLong bytesWritten = new java.util.concurrent.atomic.AtomicLong(0);
+    protected final java.util.concurrent.atomic.AtomicLong bytesRead = new java.util.concurrent.atomic.AtomicLong(0);
+    protected final java.util.concurrent.atomic.AtomicLong writeErrors = new java.util.concurrent.atomic.AtomicLong(0);
+    protected final java.util.concurrent.atomic.AtomicLong readErrors = new java.util.concurrent.atomic.AtomicLong(0);
+    protected final List<org.evochora.datapipeline.api.resources.OperationalError> errors =
+        java.util.Collections.synchronizedList(new ArrayList<>());
 
     protected AbstractBatchStorageResource(String name, Config options) {
         super(name, options);
+
+        // Initialize compression codec (fail-fast if environment validation fails)
+        try {
+            this.codec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory.createAndValidate(options);
+            if (!"none".equals(codec.getName())) {
+                log.info("Storage '{}' using compression: codec={}, level={}",
+                    name, codec.getName(), codec.getLevel());
+            }
+        } catch (org.evochora.datapipeline.utils.compression.CompressionException e) {
+            throw new IllegalStateException("Failed to initialize compression codec for storage '" + name + "'", e);
+        }
 
         // Parse folder structure configuration
         if (options.hasPath("folderStructure.levels")) {
@@ -78,41 +90,8 @@ public abstract class AbstractBatchStorageResource extends AbstractResource impl
             }
         }
 
-        // Parse maxBatchSize
-        this.maxBatchSize = options.hasPath("folderStructure.maxBatchSize")
-            ? options.getInt("folderStructure.maxBatchSize")
-            : 10000;
-
-        if (maxBatchSize <= 0) {
-            throw new IllegalArgumentException("maxBatchSize must be positive");
-        }
-
-        // Parse compression configuration
-        if (options.hasPath("compression.enabled") && options.getBoolean("compression.enabled")) {
-            String codec = options.hasPath("compression.codec")
-                ? options.getString("compression.codec")
-                : "zstd";
-            int level = options.hasPath("compression.level")
-                ? options.getInt("compression.level")
-                : 3;
-            this.compression = new StorageMetadata.CompressionConfig(codec, level);
-        } else {
-            this.compression = new StorageMetadata.CompressionConfig("none", 0);
-        }
-
-        // Parse cache TTL (0 = disabled)
-        this.cacheTtlSeconds = options.hasPath("cacheTtlSeconds")
-            ? options.getInt("cacheTtlSeconds")
-            : 5;
-
-        if (cacheTtlSeconds < 0) {
-            throw new IllegalArgumentException("cacheTtlSeconds cannot be negative");
-        }
-
-        this.manifestCache = new ManifestCache(cacheTtlSeconds);
-
-        log.info("AbstractBatchStorageResource '{}' initialized: folders={}, maxBatch={}, compression={}/{}, cacheTTL={}s",
-            name, folderLevels, maxBatchSize, compression.codec, compression.level, cacheTtlSeconds);
+        log.info("AbstractBatchStorageResource '{}' initialized: folders={}",
+            name, folderLevels);
     }
 
     @Override
@@ -126,17 +105,15 @@ public abstract class AbstractBatchStorageResource extends AbstractResource impl
             );
         }
 
-        // Ensure storage metadata exists (lazy initialization)
-        ensureStorageMetadata(batch.get(0).getSimulationRunId());
-
         // Calculate folder path from firstTick
         String simulationId = batch.get(0).getSimulationRunId();
         String folderPath = simulationId + "/" + calculateFolderPath(firstTick);
 
         // Generate batch filename
         String filename = String.format("batch_%019d_%019d.pb", firstTick, lastTick);
-        if (!"none".equals(compression.codec)) {
-            filename += "." + getCompressionExtension(compression.codec);
+        String extension = codec.getFileExtension();
+        if (!extension.isEmpty()) {
+            filename += extension;
         }
 
         String fullPath = folderPath + "/" + filename;
@@ -146,70 +123,16 @@ public abstract class AbstractBatchStorageResource extends AbstractResource impl
         byte[] compressedData = compressBatch(data);
 
         // Write atomically: temp file → final file
+        // Note: Implementations should catch IOExceptions from these operations
+        // and perform cleanup of tempPath if needed before rethrowing
         String tempPath = folderPath + "/.tmp-" + UUID.randomUUID() + "-" + filename;
-        try {
-            writeBytes(tempPath, compressedData);
-            atomicMove(tempPath, fullPath);
-        } catch (IOException e) {
-            // Clean up temp file on failure
-            try {
-                deleteIfExists(tempPath);
-            } catch (IOException cleanupEx) {
-                log.warn("Failed to clean up temp file: {}", tempPath, cleanupEx);
-            }
-            throw e;
-        }
-
-        // Append to manifest (JSONL format)
-        String manifestPath = folderPath + "/.manifest-" + resourceName + ".jsonl";
-        String manifestEntry = createManifestEntry(filename, firstTick, lastTick,
-            batch.size(), compressedData.length);
-        appendLine(manifestPath, manifestEntry);
-
-        // Invalidate cache for this folder
-        manifestCache.invalidate(folderPath);
+        writeBytes(tempPath, compressedData);
+        atomicMove(tempPath, fullPath);
 
         log.debug("Wrote batch {} with {} ticks ({} bytes compressed)",
             fullPath, batch.size(), compressedData.length);
 
         return fullPath;
-    }
-
-    @Override
-    public List<BatchMetadata> queryBatches(long startTick, long endTick) throws IOException {
-        if (startTick > endTick) {
-            throw new IllegalArgumentException(
-                String.format("startTick (%d) cannot be greater than endTick (%d)", startTick, endTick)
-            );
-        }
-
-        // Calculate folder range with lookback
-        List<String> foldersToScan = calculateFolderRange(startTick, endTick);
-
-        List<BatchMetadata> results = new ArrayList<>();
-
-        for (String folder : foldersToScan) {
-            // Check cache first
-            List<BatchMetadata> folderBatches = manifestCache.get(folder);
-
-            if (folderBatches == null) {
-                // Cache miss - read from storage
-                folderBatches = readFolderManifests(folder);
-                manifestCache.put(folder, folderBatches);
-            }
-
-            // Filter by query range
-            for (BatchMetadata batch : folderBatches) {
-                if (batch.overlaps(startTick, endTick)) {
-                    results.add(batch);
-                }
-            }
-        }
-
-        log.debug("Query [{}-{}] scanned {} folders, found {} batches",
-            startTick, endTick, foldersToScan.size(), results.size());
-
-        return results;
     }
 
     @Override
@@ -226,6 +149,63 @@ public abstract class AbstractBatchStorageResource extends AbstractResource impl
         return deserializeBatch(data);
     }
 
+    @Override
+    public <T extends MessageLite> void writeMessage(String key, T message) throws IOException {
+        if (key == null || key.isEmpty()) {
+            throw new IllegalArgumentException("key cannot be null or empty");
+        }
+        if (message == null) {
+            throw new IllegalArgumentException("message cannot be null");
+        }
+
+        // Serialize single delimited protobuf message
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        message.writeDelimitedTo(bos);
+        byte[] data = bos.toByteArray();
+
+        // Compress
+        byte[] compressedData = compressBatch(data);
+
+        // Add codec extension to key
+        String finalKey = key + codec.getFileExtension();
+
+        writeBytes(finalKey, compressedData);
+    }
+
+    @Override
+    public <T extends MessageLite> T readMessage(String key, Parser<T> parser) throws IOException {
+        if (key == null || key.isEmpty()) {
+            throw new IllegalArgumentException("key cannot be null or empty");
+        }
+        if (parser == null) {
+            throw new IllegalArgumentException("parser cannot be null");
+        }
+
+        // Read file using key as-is (caller provides full filename with extension)
+        byte[] compressedData = readBytes(key);
+
+        // Auto-detect compression from filename and decompress
+        byte[] data = decompressBatch(compressedData, key);
+
+        // Deserialize single message
+        ByteArrayInputStream bis = new ByteArrayInputStream(data);
+        T message = parser.parseDelimitedFrom(bis);
+
+        if (message == null) {
+            throw new IOException("File is empty: " + key);
+        }
+
+        // Verify exactly one message
+        if (bis.available() > 0) {
+            T secondMessage = parser.parseDelimitedFrom(bis);
+            if (secondMessage != null) {
+                throw new IOException("File contains multiple messages: " + key);
+            }
+        }
+
+        return message;
+    }
+
     /**
      * Calculates folder path for a given tick using configured folder levels.
      * <p>
@@ -235,7 +215,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource impl
      *   <li>Tick 5,000,000,000 → "050/000/"</li>
      * </ul>
      */
-    protected String calculateFolderPath(long tick) {
+    private String calculateFolderPath(long tick) {
         StringBuilder path = new StringBuilder();
         long remaining = tick;
 
@@ -257,192 +237,9 @@ public abstract class AbstractBatchStorageResource extends AbstractResource impl
     }
 
     /**
-     * Calculates folder range that might contain batches overlapping [startTick, endTick].
-     * Includes lookback to account for batches starting before startTick.
-     * <p>
-     * Safety: Limits the maximum number of folders scanned to prevent OOM on unreasonably large ranges.
-     */
-    protected List<String> calculateFolderRange(long startTick, long endTick) {
-        // Calculate lookback distance
-        long lookback = maxBatchSize;
-        long adjustedStart = Math.max(0, startTick - lookback);
-
-        // Get innermost folder size
-        long folderSize = folderLevels.get(folderLevels.size() - 1);
-
-        // Calculate folder indices
-        long startFolder = adjustedStart / folderSize;
-        long endFolder = endTick / folderSize;
-
-        // Safety check: prevent OOM on unreasonably large ranges
-        // Limit to 100,000 folders (with default 1000 ticks/folder = 100M tick range)
-        long folderCount = endFolder - startFolder + 1;
-        if (folderCount > 100_000) {
-            log.warn("Query range [{}, {}] spans {} folders (max 100,000). " +
-                "Consider using smaller tick ranges for better performance.",
-                startTick, endTick, folderCount);
-            // Scan only existing folders instead of generating all theoretical folders
-            return scanExistingFolders();
-        }
-
-        // Generate folder paths for reasonable ranges
-        List<String> folders = new ArrayList<>();
-        for (long f = startFolder; f <= endFolder; f++) {
-            folders.add(calculateFolderPath(f * folderSize));
-        }
-
-        return folders;
-    }
-
-    /**
-     * Scans storage to find all existing folders (fallback for large queries).
-     * This is slower but safer than generating millions of theoretical folder paths.
-     */
-    protected List<String> scanExistingFolders() throws UnsupportedOperationException {
-        try {
-            // List all keys and extract unique folder paths
-            List<String> allKeys = listKeys("");
-            return allKeys.stream()
-                .map(key -> {
-                    // Extract folder path (everything except filename)
-                    int lastSlash = key.lastIndexOf('/');
-                    return lastSlash > 0 ? key.substring(0, lastSlash) : "";
-                })
-                .filter(path -> !path.isEmpty())
-                .distinct()
-                .collect(Collectors.toList());
-        } catch (IOException e) {
-            log.error("Failed to scan existing folders", e);
-            return Collections.emptyList();
-        }
-    }
-
-    /**
-     * Reads all manifest files in a folder and parses them into BatchMetadata list.
-     */
-    protected List<BatchMetadata> readFolderManifests(String folder) throws IOException {
-        // List all manifest files (.manifest-*.jsonl)
-        List<String> manifestFiles = listKeys(folder + "/.manifest-")
-            .stream()
-            .filter(key -> key.endsWith(".jsonl"))
-            .collect(Collectors.toList());
-
-        if (manifestFiles.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        List<BatchMetadata> batches = new ArrayList<>();
-
-        for (String manifestFile : manifestFiles) {
-            try {
-                List<String> lines = readLines(manifestFile);
-                for (String line : lines) {
-                    if (line != null && !line.trim().isEmpty()) {
-                        try {
-                            BatchMetadata batch = parseManifestLine(line, folder);
-                            batches.add(batch);
-                        } catch (Exception e) {
-                            log.warn("Failed to parse manifest line in {}: {}", manifestFile, line, e);
-                        }
-                    }
-                }
-            } catch (IOException e) {
-                log.warn("Failed to read manifest file: {}", manifestFile, e);
-            }
-        }
-
-        return batches;
-    }
-
-    /**
-     * Parses a single JSONL manifest entry into BatchMetadata.
-     * Format: {"f":"filename","t0":firstTick,"t1":lastTick,"n":count,"sz":size,"ts":"timestamp"}
-     */
-    protected BatchMetadata parseManifestLine(String jsonLine, String folder) {
-        JsonObject json = GSON.fromJson(jsonLine, JsonObject.class);
-
-        String filename = folder + "/" + json.get("f").getAsString();
-        long firstTick = json.get("t0").getAsLong();
-        long lastTick = json.get("t1").getAsLong();
-        int recordCount = json.get("n").getAsInt();
-        long compressedSize = json.get("sz").getAsLong();
-        Instant createdAt = Instant.parse(json.get("ts").getAsString());
-
-        return new BatchMetadata(filename, firstTick, lastTick, recordCount, compressedSize, createdAt);
-    }
-
-    /**
-     * Creates a JSONL manifest entry for a batch.
-     */
-    protected String createManifestEntry(String filename, long firstTick, long lastTick,
-                                        int recordCount, long compressedSize) {
-        JsonObject json = new JsonObject();
-        json.addProperty("f", filename);
-        json.addProperty("t0", firstTick);
-        json.addProperty("t1", lastTick);
-        json.addProperty("n", recordCount);
-        json.addProperty("sz", compressedSize);
-        json.addProperty("ts", Instant.now().toString());
-        return GSON.toJson(json);
-    }
-
-    /**
-     * Ensures .storage-metadata.json exists for the simulation.
-     * Uses double-checked locking for thread-safe lazy initialization.
-     */
-    protected void ensureStorageMetadata(String simulationId) throws IOException {
-        if (metadataInitialized) {
-            return;
-        }
-
-        synchronized (metadataLock) {
-            if (metadataInitialized) {
-                return;
-            }
-
-            String metadataPath = simulationId + "/.storage-metadata.json";
-
-            // Check if already exists
-            if (exists(metadataPath)) {
-                metadataInitialized = true;
-                return;
-            }
-
-            // Create metadata
-            StorageMetadata metadata = new StorageMetadata(
-                STORAGE_METADATA_VERSION,
-                new StorageMetadata.FolderStructure(folderLevels),
-                maxBatchSize,
-                compression
-            );
-
-            // Serialize to JSON
-            JsonObject json = new JsonObject();
-            json.addProperty("version", metadata.version);
-
-            JsonObject folderStructure = new JsonObject();
-            folderStructure.add("levels", GSON.toJsonTree(metadata.folderStructure.levels));
-            json.add("folderStructure", folderStructure);
-
-            json.addProperty("maxBatchSize", metadata.maxBatchSize);
-
-            JsonObject compressionJson = new JsonObject();
-            compressionJson.addProperty("codec", metadata.compression.codec);
-            compressionJson.addProperty("level", metadata.compression.level);
-            json.add("compression", compressionJson);
-
-            String jsonString = GSON.toJson(json);
-            writeBytes(metadataPath, jsonString.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-
-            metadataInitialized = true;
-            log.info("Created storage metadata for simulation {}", simulationId);
-        }
-    }
-
-    /**
      * Serializes a batch of TickData to bytes using length-delimited protobuf format.
      */
-    protected byte[] serializeBatch(List<TickData> batch) throws IOException {
+    private byte[] serializeBatch(List<TickData> batch) throws IOException {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         for (TickData tick : batch) {
             tick.writeDelimitedTo(bos);
@@ -453,7 +250,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource impl
     /**
      * Deserializes a batch from bytes using length-delimited protobuf format.
      */
-    protected List<TickData> deserializeBatch(byte[] data) throws IOException {
+    private List<TickData> deserializeBatch(byte[] data) throws IOException {
         List<TickData> batch = new ArrayList<>();
         ByteArrayInputStream bis = new ByteArrayInputStream(data);
 
@@ -469,33 +266,218 @@ public abstract class AbstractBatchStorageResource extends AbstractResource impl
     }
 
     /**
-     * Compresses data according to configured compression codec.
+     * Compresses data using the configured compression codec.
+     * <p>
+     * This method is implemented generically in the abstract class to avoid
+     * code duplication across storage backends. NoneCodec is treated like any
+     * other codec - it simply returns the stream unchanged.
+     *
+     * @param data uncompressed data
+     * @return compressed data (or original data if NoneCodec is used)
+     * @throws IOException if compression fails
      */
-    protected abstract byte[] compressBatch(byte[] data) throws IOException;
-
-    /**
-     * Decompresses data based on filename extension or configured codec.
-     */
-    protected abstract byte[] decompressBatch(byte[] compressedData, String filename) throws IOException;
-
-    /**
-     * Returns file extension for compression codec (e.g., "zst" for zstd).
-     */
-    protected String getCompressionExtension(String codec) {
-        return switch (codec.toLowerCase()) {
-            case "zstd" -> "zst";
-            case "gzip", "gz" -> "gz";
-            default -> "";
-        };
+    protected byte[] compressBatch(byte[] data) throws IOException {
+        try {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            try (OutputStream compressedStream = codec.wrapOutputStream(bos)) {
+                compressedStream.write(data);
+            }
+            return bos.toByteArray();
+        } catch (Exception e) {
+            throw new IOException("Failed to compress batch", e);
+        }
     }
 
     /**
-     * Reads a text file as list of lines.
+     * Decompresses data based on filename extension.
+     * <p>
+     * This method is implemented generically in the abstract class to avoid
+     * code duplication across storage backends. It auto-detects compression
+     * from the filename extension, independent of the configured codec for writing.
+     * <p>
+     * NoneCodec is treated like any other codec - it simply returns the stream unchanged.
+     *
+     * @param compressedData potentially compressed data
+     * @param filename filename used to auto-detect compression by extension
+     * @return decompressed data (or original data if no compression detected)
+     * @throws IOException if decompression fails
      */
-    protected List<String> readLines(String path) throws IOException {
-        byte[] data = readBytes(path);
-        String content = new String(data, java.nio.charset.StandardCharsets.UTF_8);
-        return Arrays.asList(content.split("\n"));
+    protected byte[] decompressBatch(byte[] compressedData, String filename) throws IOException {
+        // Auto-detect codec from file extension (independent of configured codec!)
+        ICompressionCodec detectedCodec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory.detectFromExtension(filename);
+
+        try {
+            ByteArrayInputStream bis = new ByteArrayInputStream(compressedData);
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            try (InputStream decompressedStream = detectedCodec.wrapInputStream(bis)) {
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = decompressedStream.read(buffer)) != -1) {
+                    bos.write(buffer, 0, bytesRead);
+                }
+            }
+            return bos.toByteArray();
+        } catch (Exception e) {
+            throw new IOException("Failed to decompress batch: " + filename, e);
+        }
+    }
+
+    @Override
+    public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults) throws IOException {
+        if (prefix == null) {
+            throw new IllegalArgumentException("prefix cannot be null");
+        }
+        if (maxResults <= 0) {
+            throw new IllegalArgumentException("maxResults must be > 0");
+        }
+
+        // Delegate to subclass to get all files with prefix (potentially paginated internally)
+        List<String> allFiles = listFilesWithPrefix(prefix, continuationToken, maxResults + 1);
+
+        // Filter to batch files only
+        List<String> batchFiles = allFiles.stream()
+            .filter(path -> {
+                String filename = path.substring(path.lastIndexOf('/') + 1);
+                return filename.startsWith("batch_") && (filename.endsWith(".pb") || filename.contains(".pb."));
+            })
+            .sorted()  // Lexicographic order = tick order
+            .limit(maxResults + 1)  // +1 to detect truncation
+            .toList();
+
+        // Check if truncated
+        boolean truncated = batchFiles.size() > maxResults;
+        List<String> resultFiles = truncated ? batchFiles.subList(0, maxResults) : batchFiles;
+        String nextToken = truncated ? resultFiles.get(resultFiles.size() - 1) : null;
+
+        return new BatchFileListResult(resultFiles, nextToken, truncated);
+    }
+
+    // ===== IResource implementation =====
+
+    /**
+     * Returns the current operational state for the specified usage type.
+     * <p>
+     * All batch storage implementations return ACTIVE for "storage-read" and "storage-write" usage types,
+     * as batch storage is stateless and always available.
+     * <p>
+     * This method is final to ensure consistent behavior across all storage implementations.
+     *
+     * @param usageType The usage type (must be "storage-read" or "storage-write")
+     * @return UsageState.ACTIVE for valid usage types
+     * @throws IllegalArgumentException if usageType is null or not recognized
+     */
+    @Override
+    public final UsageState getUsageState(String usageType) {
+        if (usageType == null) {
+            throw new IllegalArgumentException("Storage requires non-null usageType");
+        }
+
+        return switch (usageType) {
+            case "storage-read", "storage-write" -> UsageState.ACTIVE;
+            default -> throw new IllegalArgumentException("Unknown usageType: " + usageType);
+        };
+    }
+
+    // ===== IMonitorable implementation =====
+
+    /**
+     * Returns metrics for this storage resource.
+     * <p>
+     * This implementation returns base metrics tracked by all storage implementations,
+     * then calls {@link #addCustomMetrics(Map)} to allow subclasses to add
+     * implementation-specific metrics.
+     * <p>
+     * Base metrics included:
+     * <ul>
+     *   <li>write_operations - number of write calls</li>
+     *   <li>read_operations - number of read calls</li>
+     *   <li>bytes_written - total bytes written</li>
+     *   <li>bytes_read - total bytes read</li>
+     *   <li>write_errors - number of write errors</li>
+     *   <li>read_errors - number of read errors</li>
+     * </ul>
+     *
+     * @return Map of metric names to their current values
+     */
+    @Override
+    public final Map<String, Number> getMetrics() {
+        Map<String, Number> metrics = getBaseMetrics();
+        addCustomMetrics(metrics);
+        return metrics;
+    }
+
+    /**
+     * Returns the base metrics tracked by AbstractBatchStorageResource.
+     * <p>
+     * This method is final and cannot be overridden. Subclasses should use
+     * {@link #addCustomMetrics(Map)} to add their own metrics.
+     *
+     * @return Map containing base metrics in the order they should be reported
+     */
+    protected final Map<String, Number> getBaseMetrics() {
+        Map<String, Number> metrics = new LinkedHashMap<>();
+        metrics.put("write_operations", writeOperations.get());
+        metrics.put("read_operations", readOperations.get());
+        metrics.put("bytes_written", bytesWritten.get());
+        metrics.put("bytes_read", bytesRead.get());
+        metrics.put("write_errors", writeErrors.get());
+        metrics.put("read_errors", readErrors.get());
+        return metrics;
+    }
+
+    /**
+     * Hook method for subclasses to add implementation-specific metrics.
+     * <p>
+     * The default implementation does nothing. Subclasses should override this method
+     * to add their own metrics to the provided map.
+     * <p>
+     * Example:
+     * <pre>
+     * &#64;Override
+     * protected void addCustomMetrics(Map&lt;String, Number&gt; metrics) {
+     *     metrics.put("disk_available_bytes", rootDirectory.getUsableSpace());
+     *     metrics.put("s3_put_requests", s3PutRequests.get());
+     * }
+     * </pre>
+     *
+     * @param metrics Mutable map to add custom metrics to (already contains base metrics)
+     */
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        // Default: no custom metrics
+    }
+
+    /**
+     * Returns the list of operational errors.
+     * <p>
+     * Implementation of {@link IMonitorable#getErrors()}.
+     */
+    @Override
+    public List<OperationalError> getErrors() {
+        synchronized (errors) {
+            return new ArrayList<>(errors);
+        }
+    }
+
+    /**
+     * Clears all operational errors and resets error counters.
+     * <p>
+     * Implementation of {@link IMonitorable#clearErrors()}.
+     */
+    @Override
+    public void clearErrors() {
+        errors.clear();
+        writeErrors.set(0);
+        readErrors.set(0);
+    }
+
+    /**
+     * Returns whether the storage is healthy (no errors).
+     * <p>
+     * Implementation of {@link IMonitorable#isHealthy()}.
+     */
+    @Override
+    public boolean isHealthy() {
+        return errors.isEmpty();
     }
 
     // ===== Abstract I/O primitives (subclasses implement) =====
@@ -511,80 +493,29 @@ public abstract class AbstractBatchStorageResource extends AbstractResource impl
     protected abstract byte[] readBytes(String path) throws IOException;
 
     /**
-     * Appends a line to a file (creates if doesn't exist).
-     */
-    protected abstract void appendLine(String path, String line) throws IOException;
-
-    /**
-     * Lists all keys starting with prefix.
-     */
-    protected abstract List<String> listKeys(String prefix) throws IOException;
-
-    /**
      * Atomically moves a file from src to dest.
      */
     protected abstract void atomicMove(String src, String dest) throws IOException;
 
     /**
-     * Checks if a path exists.
+     * Lists files matching the prefix with pagination support.
+     * <p>
+     * This method recursively scans the storage for all files (not just batch files)
+     * matching the prefix. The abstract class will filter to batch files only.
+     * <p>
+     * Implementation notes:
+     * <ul>
+     *   <li>Must return results in lexicographic order by full path</li>
+     *   <li>Should support pagination via continuationToken</li>
+     *   <li>Should return up to maxResults files</li>
+     *   <li>Filter out .tmp files to avoid race conditions</li>
+     * </ul>
+     *
+     * @param prefix Filter prefix (e.g., "sim123/")
+     * @param continuationToken Token from previous call (filename to start after), or null for first page
+     * @param maxResults Maximum files to return
+     * @return List of file paths matching prefix, sorted lexicographically
+     * @throws IOException If storage access fails
      */
-    protected abstract boolean exists(String path) throws IOException;
-
-    /**
-     * Deletes a file if it exists (best-effort).
-     */
-    protected abstract void deleteIfExists(String path) throws IOException;
-
-    // ===== Manifest Cache =====
-
-    /**
-     * In-memory cache for folder manifests with TTL-based expiration.
-     */
-    protected static class ManifestCache {
-        private final ConcurrentHashMap<String, CachedEntry> cache = new ConcurrentHashMap<>();
-        private final int ttlSeconds;
-
-        ManifestCache(int ttlSeconds) {
-            this.ttlSeconds = ttlSeconds;
-        }
-
-        static class CachedEntry {
-            final List<BatchMetadata> batches;
-            final Instant cachedAt;
-
-            CachedEntry(List<BatchMetadata> batches) {
-                this.batches = Collections.unmodifiableList(new ArrayList<>(batches));
-                this.cachedAt = Instant.now();
-            }
-
-            boolean isExpired(int ttlSeconds) {
-                if (ttlSeconds == 0) {
-                    return true; // Cache disabled
-                }
-                return Instant.now().isAfter(cachedAt.plusSeconds(ttlSeconds));
-            }
-        }
-
-        List<BatchMetadata> get(String folder) {
-            if (ttlSeconds == 0) {
-                return null; // Cache disabled
-            }
-
-            CachedEntry entry = cache.get(folder);
-            if (entry != null && !entry.isExpired(ttlSeconds)) {
-                return entry.batches;
-            }
-            return null;
-        }
-
-        void put(String folder, List<BatchMetadata> batches) {
-            if (ttlSeconds > 0) {
-                cache.put(folder, new CachedEntry(batches));
-            }
-        }
-
-        void invalidate(String folder) {
-            cache.remove(folder);
-        }
-    }
+    protected abstract List<String> listFilesWithPrefix(String prefix, String continuationToken, int maxResults) throws IOException;
 }

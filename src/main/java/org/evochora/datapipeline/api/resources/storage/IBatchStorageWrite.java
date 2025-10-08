@@ -9,18 +9,17 @@ import java.util.List;
 
 /**
  * Write-only interface for storage resources that support batch write operations
- * with automatic folder organization and manifest management.
+ * with automatic folder organization.
  * <p>
  * This interface provides high-level batch write operations built on top of key-based
  * storage primitives. It handles:
  * <ul>
  *   <li>Hierarchical folder organization based on tick ranges</li>
- *   <li>Manifest file management for efficient querying</li>
- *   <li>Atomic batch writes with automatic metadata tracking</li>
- *   <li>Compression and decompression transparently</li>
+ *   <li>Atomic batch writes with compression</li>
+ *   <li>Single-message writes for metadata and configuration files</li>
  * </ul>
  * <p>
- * Storage configuration (folder structure, compression, caching) is transparent to callers.
+ * Storage configuration (folder structure, compression) is transparent to callers.
  * Services only need to know about batch write operations, not the underlying organization.
  * <p>
  * <strong>Thread Safety:</strong> writeBatch() is thread-safe. Multiple services can write
@@ -38,7 +37,6 @@ public interface IBatchStorageWrite extends IResource {
      * <ul>
      *   <li>Compressed according to storage configuration</li>
      *   <li>Written to appropriate folder based on firstTick</li>
-     *   <li>Registered in folder manifest for efficient querying</li>
      *   <li>Atomically committed (temp file → final file)</li>
      * </ul>
      * <p>

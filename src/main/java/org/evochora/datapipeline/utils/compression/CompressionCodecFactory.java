@@ -140,6 +140,35 @@ public class CompressionCodecFactory {
     }
 
     /**
+     * Detects the appropriate codec from a file extension.
+     * <p>
+     * This method is used when reading files to auto-detect compression based on
+     * the file extension, independent of the configured codec for writing.
+     * <p>
+     * Supported extensions:
+     * <ul>
+     *   <li>".zst" → {@link ZstdCodec} with default level</li>
+     *   <li>No extension or unrecognized → {@link NoneCodec}</li>
+     * </ul>
+     *
+     * @param filename the filename or path to detect codec from
+     * @return the appropriate codec for the file extension (never null)
+     */
+    public static ICompressionCodec detectFromExtension(String filename) {
+        if (filename == null || filename.isEmpty()) {
+            return new NoneCodec();
+        }
+
+        // Check known compression extensions
+        if (filename.endsWith(".zst")) {
+            return new ZstdCodec(3);  // Default compression level for reading
+        }
+
+        // No recognized compression extension
+        return new NoneCodec();
+    }
+
+    /**
      * Private constructor to prevent instantiation of utility class.
      */
     private CompressionCodecFactory() {

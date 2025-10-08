@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.resources.storage.wrappers;
 
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.BatchMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -37,21 +38,16 @@ class MonitoredStorageReaderTest {
     }
 
     @Test
-    void testQueryMetricsTracked() throws IOException {
-        List<BatchMetadata> batches = Arrays.asList(
-            new BatchMetadata("batch1.pb.zst", 100, 199, 100, 50000, Instant.now()),
-            new BatchMetadata("batch2.pb.zst", 200, 299, 100, 50000, Instant.now())
-        );
+    void testListBatchFilesPassthrough() throws IOException {
+        List<String> files = Arrays.asList("run/batch_001.pb.zst", "run/batch_002.pb.zst");
+        BatchFileListResult result = new BatchFileListResult(files, null, false);
 
-        when(mockDelegate.queryBatches(anyLong(), anyLong())).thenReturn(batches);
+        when(mockDelegate.listBatchFiles("run/", null, 10)).thenReturn(result);
 
-        monitoredReader.queryBatches(100, 299);
+        BatchFileListResult actualResult = monitoredReader.listBatchFiles("run/", null, 10);
 
-        verify(mockDelegate).queryBatches(100, 299);
-
-        Map<String, Number> metrics = monitoredReader.getMetrics();
-        assertEquals(1L, metrics.get("queries_performed").longValue());
-        assertEquals(2L, metrics.get("batches_queried").longValue());
+        verify(mockDelegate).listBatchFiles("run/", null, 10);
+        assertEquals(result, actualResult);
     }
 
     @Test
@@ -73,16 +69,18 @@ class MonitoredStorageReaderTest {
             metrics.get("bytes_read").longValue());
     }
 
-    @Test
-    void testQueryErrorTracked() throws IOException {
-        when(mockDelegate.queryBatches(anyLong(), anyLong()))
-            .thenThrow(new IOException("Query failed"));
-
-        assertThrows(IOException.class, () -> monitoredReader.queryBatches(0, 100));
-
-        Map<String, Number> metrics = monitoredReader.getMetrics();
-        assertEquals(1L, metrics.get("query_errors").longValue());
-    }
+    // Test disabled - queryBatches() removed in Step 1 (S3-incompatible non-paginated API)
+    // Will be replaced with paginated API in Step 2
+    // @Test
+    // void testQueryErrorTracked() throws IOException {
+    //     when(mockDelegate.queryBatches(anyLong(), anyLong()))
+    //         .thenThrow(new IOException("Query failed"));
+    //
+    //     assertThrows(IOException.class, () -> monitoredReader.queryBatches(0, 100));
+    //
+    //     Map<String, Number> metrics = monitoredReader.getMetrics();
+    //     assertEquals(1L, metrics.get("query_errors").longValue());
+    // }
 
     @Test
     void testReadErrorTracked() throws IOException {

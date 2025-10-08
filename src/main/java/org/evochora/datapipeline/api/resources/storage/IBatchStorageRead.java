@@ -9,20 +9,16 @@ import java.io.IOException;
 import java.util.List;
 
 /**
- * Read-only interface for storage resources that support batch query and read operations
- * with automatic folder discovery and manifest-based querying.
+ * Read-only interface for storage resources that support batch read operations.
  * <p>
- * This interface provides high-level batch read operations built on top of key-based
- * storage primitives. It handles:
+ * This interface provides batch read operations for tick data storage:
  * <ul>
- *   <li>Hierarchical folder discovery based on tick ranges</li>
- *   <li>Manifest-based querying (avoids expensive directory listing)</li>
+ *   <li>Direct batch file reading by filename</li>
  *   <li>Automatic decompression based on file extension</li>
- *   <li>In-memory caching (if enabled) for repeated queries</li>
+ *   <li>Single message reading for metadata/config files</li>
  * </ul>
  * <p>
- * Storage configuration (folder structure, compression, caching) is transparent to callers.
- * Services only need to know about batch read operations, not the underlying organization.
+ * Storage configuration (folder structure, compression) is transparent to callers.
  * <p>
  * <strong>Thread Safety:</strong> All methods are thread-safe. Multiple services can read
  * concurrently without coordination.
@@ -33,43 +29,7 @@ import java.util.List;
 public interface IBatchStorageRead extends IResource {
 
     /**
-     * Queries for all batches that overlap the specified tick range.
-     * <p>
-     * This method:
-     * <ul>
-     *   <li>Reads storage metadata to understand folder structure</li>
-     *   <li>Scans only folders that might contain relevant batches</li>
-     *   <li>Reads manifests to find overlapping batches without listing files</li>
-     *   <li>Uses in-memory cache (if enabled) to avoid redundant manifest reads</li>
-     * </ul>
-     * <p>
-     * A batch overlaps the query range if: batch.firstTick <= endTick AND batch.lastTick >= startTick
-     * <p>
-     * <strong>Performance:</strong> For typical indexer queries (1K-10K ticks), this scans 1-2 folders
-     * and returns results in ~5-10ms (local) or ~50-60ms (S3, first query). Cached queries: &lt;5ms.
-     * <p>
-     * <strong>Example usage (IndexerService):</strong>
-     * <pre>
-     * List&lt;BatchMetadata&gt; batches = storage.queryBatches(1_000_000, 1_010_000);
-     * for (BatchMetadata meta : batches) {
-     *     if (!database.isBatchIndexed(meta.filename, indexerType)) {
-     *         List&lt;TickData&gt; data = storage.readBatch(meta.filename);
-     *         indexTicks(data);
-     *         database.markBatchIndexed(meta.filename, indexerType);
-     *     }
-     * }
-     * </pre>
-     *
-     * @param startTick The inclusive start of the query range
-     * @param endTick The inclusive end of the query range
-     * @return List of batch metadata for batches overlapping [startTick, endTick], may be empty
-     * @throws IOException If reading manifests fails
-     * @throws IllegalArgumentException If startTick > endTick
-     */
-    List<BatchMetadata> queryBatches(long startTick, long endTick) throws IOException;
-
-    /**
-     * Reads a batch file by its filename (as returned by writeBatch or queryBatches).
+     * Reads a batch file by its filename.
      * <p>
      * This method:
      * <ul>
@@ -120,4 +80,40 @@ public interface IBatchStorageRead extends IResource {
      * @throws IllegalArgumentException If key or parser is null/empty
      */
     <T extends MessageLite> T readMessage(String key, Parser<T> parser) throws IOException;
+
+    /**
+     * Lists batch files with pagination support (S3-compatible).
+     * <p>
+     * This method returns batch files matching the prefix, with support for iterating through
+     * large result sets without loading all filenames into memory. Results are sorted
+     * lexicographically by filename, which gives tick-order naturally.
+     * <p>
+     * Only files matching the pattern "batch_*" are returned. The search is recursive through
+     * the hierarchical folder structure.
+     * <p>
+     * <strong>Example usage (DummyReaderService discovering files):</strong>
+     * <pre>
+     * String prefix = "sim123/";
+     * String token = null;
+     * do {
+     *     BatchFileListResult result = storage.listBatchFiles(prefix, token, 1000);
+     *     for (String filename : result.getFilenames()) {
+     *         if (!processedFiles.contains(filename)) {
+     *             List&lt;TickData&gt; ticks = storage.readBatch(filename);
+     *             // Process ticks...
+     *             processedFiles.add(filename);
+     *         }
+     *     }
+     *     token = result.getNextContinuationToken();
+     * } while (result.isTruncated());
+     * </pre>
+     *
+     * @param prefix Filter prefix (e.g., "sim123/" for specific simulation, "" for all)
+     * @param continuationToken Token from previous call, or null for first page
+     * @param maxResults Maximum files to return per page (must be > 0, typical: 1000)
+     * @return Paginated result with filenames and continuation token
+     * @throws IOException If storage access fails
+     * @throws IllegalArgumentException If prefix is null or maxResults <= 0
+     */
+    BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults) throws IOException;
 }

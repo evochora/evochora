@@ -3,6 +3,7 @@ package org.evochora.datapipeline.resources.storage;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.MessageReader;
 import org.evochora.datapipeline.api.resources.storage.MessageWriter;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -54,75 +55,14 @@ class FileSystemStorageResourceTest {
     }
 
     @Test
-    void testOpenWriter_AtomicCommit() throws IOException {
-        String key = "atomic_commit_test.pb";
-        File finalFile = new File(tempDir.toFile(), key);
-        File tempFile = new File(tempDir.toFile(), key + ".tmp");
-
-        assertFalse(finalFile.exists(), "Final file should not exist before open");
-        assertFalse(tempFile.exists(), "Temp file should not exist before open");
-
-        try (MessageWriter writer = storage.openWriter(key)) {
-            assertTrue(tempFile.exists(), "Temp file should exist after open");
-            assertFalse(finalFile.exists(), "Final file should not exist before close");
-            writer.writeMessage(createTick(1));
-        }
-
-        assertTrue(finalFile.exists(), "Final file should exist after close");
-        assertFalse(tempFile.exists(), "Temp file should not exist after close");
-    }
-
-    @Test
-    void testOpenWriter_NoCommitOnException() throws Exception {
-        String key = "no_commit_on_exception.pb";
-        File finalFile = new File(tempDir.toFile(), key);
-        File tempFile = new File(tempDir.toFile(), key + ".tmp");
-
-        MessageWriter writer = null;
-        try {
-            writer = storage.openWriter(key);
-            writer.writeMessage(createTick(1));
-            // Simulate a crash by not calling close() and throwing an exception
-            throw new RuntimeException("Simulating crash");
-        } catch (Exception e) {
-            // expected
-        }
-
-        try {
-            // After the "crash", the final file should not exist, but the temp file should.
-            assertFalse(finalFile.exists(), "Final file should not exist after crash");
-            assertTrue(tempFile.exists(), "Temp file should still exist after crash");
-        } finally {
-            // Clean up: Close the writer to release file locks on Windows so JUnit can clean up the temp directory
-            if (writer != null) {
-                try {
-                    writer.close();
-                } catch (Exception closeException) {
-                    // ignore
-                }
-            }
-            // On Windows, even after closing, we may need to manually delete files for test cleanup
-            if (finalFile.exists()) {
-                finalFile.delete();
-            }
-            if (tempFile.exists()) {
-                tempFile.delete();
-            }
-        }
-    }
-
-
-    @Test
-    void testReadMessage_Success() throws IOException {
+    void testWriteMessage_ReadMessage_RoundTrip() throws IOException {
         String key = "single_message.pb";
         TickData originalTick = createTick(42);
 
-        // Write using MessageWriter (uses delimited format)
-        try (MessageWriter writer = storage.openWriter(key)) {
-            writer.writeMessage(originalTick);
-        }
+        // Write using writeMessage (interface method)
+        storage.writeMessage(key, originalTick);
 
-        // Read using readMessage
+        // Read using readMessage - need to add extension that writeMessage added
         TickData readTick = storage.readMessage(key, TickData.parser());
         assertEquals(originalTick, readTick);
     }
@@ -133,53 +73,31 @@ class FileSystemStorageResourceTest {
     }
 
     @Test
-    void testOpenReader_Success() throws IOException {
-        String key = "multi_message.pb";
-        List<TickData> originalTicks = List.of(createTick(1), createTick(2), createTick(3));
+    void testListBatchFiles_Success() throws IOException {
+        // Write 3 batch files for test-sim
+        storage.writeBatch(List.of(createTick(1), createTick(2)), 1, 2);
+        storage.writeBatch(List.of(createTick(10), createTick(20)), 10, 20);
+        storage.writeBatch(List.of(createTick(100), createTick(200)), 100, 200);
 
-        try (MessageWriter writer = storage.openWriter(key)) {
-            for (TickData tick : originalTicks) {
-                writer.writeMessage(tick);
-            }
-        }
+        // List all batches for test-sim
+        BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 10);
 
-        List<TickData> readTicks = new ArrayList<>();
-        try (MessageReader<TickData> reader = storage.openReader(key, TickData.parser())) {
-            while (reader.hasNext()) {
-                readTicks.add(reader.next());
-            }
-        }
-
-        assertEquals(originalTicks, readTicks);
-    }
-
-    @Test
-    void testListKeys_Success() throws IOException {
-        storage.openWriter("prefix/a.pb").close();
-        storage.openWriter("prefix/b.pb").close();
-        storage.openWriter("other/c.pb").close();
-
-        List<String> keys = storage.listKeys("prefix/");
-        Collections.sort(keys);
-
-        List<String> expected = List.of("prefix/a.pb", "prefix/b.pb");
-        assertEquals(expected, keys.stream().sorted().toList());
+        assertEquals(3, result.getFilenames().size(), "Should find 3 batch files");
+        assertTrue(result.getFilenames().stream().allMatch(f -> f.startsWith("test-sim/")));
+        assertTrue(result.getFilenames().stream().allMatch(f -> f.contains("batch_")));
+        assertFalse(result.isTruncated());
     }
 
     @Test
     void testConcurrentRead() throws Exception {
-        String key = "concurrent_read.pb";
-        List<TickData> originalTicks = new ArrayList<>();
+        // Write a batch of 100 ticks
+        List<TickData> batch = new ArrayList<>();
         for(int i=0; i<100; i++) {
-            originalTicks.add(createTick(i));
+            batch.add(createTick(i));
         }
+        String batchPath = storage.writeBatch(batch, 0, 99);
 
-        try (MessageWriter writer = storage.openWriter(key)) {
-            for (TickData tick : originalTicks) {
-                writer.writeMessage(tick);
-            }
-        }
-
+        // Read the batch concurrently from 10 threads
         int numThreads = 10;
         ExecutorService executor = Executors.newFixedThreadPool(numThreads);
         CountDownLatch latch = new CountDownLatch(numThreads);
@@ -188,12 +106,10 @@ class FileSystemStorageResourceTest {
         for (int i = 0; i < numThreads; i++) {
             executor.submit(() -> {
                 try {
-                    List<TickData> readTicks = new ArrayList<>();
-                    try (MessageReader<TickData> reader = storage.openReader(key, TickData.parser())) {
-                        reader.forEachRemaining(readTicks::add);
-                    }
-                    assertEquals(originalTicks, readTicks);
-                } catch (IOException e) {
+                    List<TickData> readBatch = storage.readBatch(batchPath);
+                    assertEquals(batch.size(), readBatch.size());
+                    assertEquals(batch, readBatch);
+                } catch (Exception e) {
                     failed.set(true);
                     e.printStackTrace();
                 } finally {
@@ -210,12 +126,19 @@ class FileSystemStorageResourceTest {
     @Test
     void testHierarchicalKeys() throws IOException {
         String key = "a/b/c/d.pb";
-        storage.openWriter(key).close();
-        assertTrue(storage.exists(key));
-        File file = new File(tempDir.toFile(), key);
-        assertTrue(file.exists());
-        assertTrue(file.getParentFile().exists());
-        assertEquals("c", file.getParentFile().getName());
+        TickData tick = createTick(1);
+
+        // writeMessage should create nested directories automatically
+        storage.writeMessage(key, tick);
+
+        // Verify the file was created and is readable
+        TickData readTick = storage.readMessage(key, TickData.parser());
+        assertEquals(tick, readTick, "Read tick should match written tick");
+
+        // Verify all parent directories were created
+        File parentDir = new File(tempDir.toFile(), "a/b/c");
+        assertTrue(parentDir.exists(), "Parent directory a/b/c should exist");
+        assertTrue(parentDir.isDirectory(), "a/b/c should be a directory");
     }
 
     // Variable expansion tests

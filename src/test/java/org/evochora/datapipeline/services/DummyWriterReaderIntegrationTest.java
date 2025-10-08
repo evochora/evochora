@@ -89,10 +89,18 @@ class DummyWriterReaderIntegrationTest {
 
         serviceManager.startAll();
 
-        // Wait for services to be running
-        await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
-            assertEquals(IService.State.RUNNING, serviceManager.getServiceStatus("dummy-writer").state());
-            assertEquals(IService.State.RUNNING, serviceManager.getServiceStatus("dummy-reader").state());
+        // Wait for services to start successfully (not in ERROR state)
+        // Note: Fast services like dummy-writer may complete and reach STOPPED before this check
+        await().atMost(5, TimeUnit.SECONDS).pollDelay(50, TimeUnit.MILLISECONDS).untilAsserted(() -> {
+            IService.State writerState = serviceManager.getServiceStatus("dummy-writer").state();
+            IService.State readerState = serviceManager.getServiceStatus("dummy-reader").state();
+
+            if (writerState == IService.State.ERROR) {
+                fail("Writer service failed with ERROR state");
+            }
+            if (readerState == IService.State.ERROR) {
+                fail("Reader service failed with ERROR state");
+            }
         });
 
         // Wait for writer to finish

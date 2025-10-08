@@ -116,9 +116,11 @@ class SimulationMetadataIntegrationTest {
         assertTrue(simulationDir.getFileName().toString().equals(simulationRunId));
 
         // Verify batch files exist in simulation directory (in hierarchical subdirectories)
+        // Filter out .tmp files to avoid race condition during atomic file moves
         try (Stream<Path> files = Files.walk(simulationDir)) {
             long batchCount = files.filter(p -> p.getFileName().toString().startsWith("batch_"))
                                    .filter(p -> p.getFileName().toString().endsWith(".pb"))
+                                   .filter(p -> !p.getFileName().toString().contains(".tmp"))
                                    .count();
             assertTrue(batchCount > 0, "Batch files should exist under simulation directory");
         }

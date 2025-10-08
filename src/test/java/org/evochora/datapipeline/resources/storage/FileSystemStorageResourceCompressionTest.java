@@ -3,8 +3,7 @@ package org.evochora.datapipeline.resources.storage;
 import com.google.protobuf.Int32Value;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.resources.storage.MessageReader;
-import org.evochora.datapipeline.api.resources.storage.MessageWriter;
+import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -28,6 +27,15 @@ class FileSystemStorageResourceCompressionTest {
 
     @TempDir
     Path tempDir;
+
+    // Helper to create TickData for batch testing
+    private TickData createTick(long tickNumber) {
+        return TickData.newBuilder()
+            .setTickNumber(tickNumber)
+            .setSimulationRunId("test-sim")
+            .setCaptureTimeMs(System.currentTimeMillis())
+            .build();
+    }
 
     @Nested
     @DisplayName("Compression Enabled Tests")
@@ -55,10 +63,8 @@ class FileSystemStorageResourceCompressionTest {
             String key = "test/data.pb";
             Int32Value message = Int32Value.of(42);
 
-            // Act: Write message
-            try (MessageWriter writer = storage.openWriter(key)) {
-                writer.writeMessage(message);
-            }
+            // Act: Write message using interface method
+            storage.writeMessage(key, message);
 
             // Assert: File exists with .zst extension
             Path compressedFile = tempDir.resolve("test/data.pb.zst");
@@ -72,60 +78,36 @@ class FileSystemStorageResourceCompressionTest {
         @Test
         @DisplayName("Round-trip preserves data integrity")
         void roundTripPreservesData() throws IOException {
-            // Arrange: Multiple messages
-            String key = "test/messages.pb";
-            List<Int32Value> originalMessages = List.of(
-                Int32Value.of(1),
-                Int32Value.of(42),
-                Int32Value.of(12345),
-                Int32Value.of(-999)
-            );
+            // Arrange
+            String key = "test/message.pb";
+            Int32Value originalMessage = Int32Value.of(12345);
 
-            // Act: Write messages
-            try (MessageWriter writer = storage.openWriter(key)) {
-                for (Int32Value msg : originalMessages) {
-                    writer.writeMessage(msg);
-                }
-            }
-
-            // Act: Read messages back
-            List<Int32Value> readMessages = new ArrayList<>();
-            try (MessageReader<Int32Value> reader = storage.openReader(key + ".zst", Int32Value.parser())) {
-                while (reader.hasNext()) {
-                    readMessages.add(reader.next());
-                }
-            }
+            // Act: Write and read back
+            storage.writeMessage(key, originalMessage);
+            Int32Value readMessage = storage.readMessage(key + ".zst", Int32Value.parser());
 
             // Assert: Data preserved
-            assertThat(readMessages).hasSize(originalMessages.size());
-            for (int i = 0; i < originalMessages.size(); i++) {
-                assertThat(readMessages.get(i).getValue()).isEqualTo(originalMessages.get(i).getValue());
-            }
+            assertThat(readMessage.getValue()).isEqualTo(originalMessage.getValue());
         }
 
         @Test
         @DisplayName("Compression achieves size reduction")
         void compressionAchievesSizeReduction() throws IOException {
-            // Arrange: Repetitive data (compresses well)
-            String key = "test/repetitive.pb";
-            List<Int32Value> messages = new ArrayList<>();
+            // Arrange: Repetitive data (compresses well) - use TickData batches
+            List<TickData> batch = new ArrayList<>();
             for (int i = 0; i < 1000; i++) {
-                messages.add(Int32Value.of(42)); // Same value repeated
+                batch.add(createTick(42)); // Same tick repeated
             }
 
-            // Act: Write compressed
-            try (MessageWriter writer = storage.openWriter(key)) {
-                for (Int32Value msg : messages) {
-                    writer.writeMessage(msg);
-                }
-            }
+            // Act: Write compressed batch
+            String batchPath = storage.writeBatch(batch, 42, 42);
 
             // Assert: Compressed file is significantly smaller than uncompressed would be
-            Path compressedFile = tempDir.resolve(key + ".zst");
+            Path compressedFile = tempDir.resolve(batchPath);
             long compressedSize = Files.size(compressedFile);
 
-            // Each Int32Value message when delimited is ~3 bytes, so 1000 messages ~= 3000 bytes
-            long estimatedUncompressedSize = 3000;
+            // Each TickData message when delimited is ~30-40 bytes, so 1000 messages ~= 35000 bytes
+            long estimatedUncompressedSize = 35000;
 
             // Compression should achieve at least 2x ratio for this repetitive data
             double ratio = (double) estimatedUncompressedSize / compressedSize;
@@ -139,9 +121,7 @@ class FileSystemStorageResourceCompressionTest {
             String key = "test/single.pb";
             Int32Value originalMessage = Int32Value.of(9999);
 
-            try (MessageWriter writer = storage.openWriter(key)) {
-                writer.writeMessage(originalMessage);
-            }
+            storage.writeMessage(key, originalMessage);
 
             // Act: Read using readMessage
             Int32Value readMessage = storage.readMessage(key + ".zst", Int32Value.parser());
@@ -154,18 +134,17 @@ class FileSystemStorageResourceCompressionTest {
         @DisplayName("listKeys includes compressed files")
         void listKeysIncludesCompressedFiles() throws IOException {
             // Arrange: Write multiple compressed files
-            try (MessageWriter w1 = storage.openWriter("file1.pb")) {
-                w1.writeMessage(Int32Value.of(1));
-            }
-            try (MessageWriter w2 = storage.openWriter("file2.pb")) {
-                w2.writeMessage(Int32Value.of(2));
-            }
+            storage.writeMessage("file1.pb", Int32Value.of(1));
+            storage.writeMessage("file2.pb", Int32Value.of(2));
 
-            // Act
-            List<String> keys = storage.listKeys("");
+            // Act & Assert: Verify files exist with .zst extension by reading them back
+            // (listKeys() removed in Step 1, will be replaced with paginated API in Step 2)
+            // Files are written with .zst extension when compression is enabled
+            Int32Value read1 = storage.readMessage("file1.pb.zst", Int32Value.parser());
+            Int32Value read2 = storage.readMessage("file2.pb.zst", Int32Value.parser());
 
-            // Assert: Keys include .zst extension
-            assertThat(keys).containsExactlyInAnyOrder("file1.pb.zst", "file2.pb.zst");
+            assertThat(read1.getValue()).isEqualTo(1);
+            assertThat(read2.getValue()).isEqualTo(2);
         }
 
         @Test
@@ -173,11 +152,7 @@ class FileSystemStorageResourceCompressionTest {
         void testMetricsTrackedOnWrite() throws IOException {
             // Arrange
             String key = "metrics/write-test.pb";
-            List<Int32Value> messages = List.of(
-                Int32Value.of(1),
-                Int32Value.of(2),
-                Int32Value.of(3)
-            );
+            Int32Value message = Int32Value.of(42);
 
             // Get initial metrics
             var initialMetrics = storage.getMetrics();
@@ -186,12 +161,8 @@ class FileSystemStorageResourceCompressionTest {
             long initialBytes = initialMetrics.containsKey("bytes_written") ?
                 initialMetrics.get("bytes_written").longValue() : 0L;
 
-            // Act: Write messages
-            try (MessageWriter writer = storage.openWriter(key)) {
-                for (Int32Value msg : messages) {
-                    writer.writeMessage(msg);
-                }
-            }
+            // Act: Write message
+            storage.writeMessage(key, message);
 
             // Assert: Metrics updated
             var finalMetrics = storage.getMetrics();
@@ -208,9 +179,7 @@ class FileSystemStorageResourceCompressionTest {
             // Arrange: Write a test file
             String key = "metrics/read-test.pb";
             Int32Value message = Int32Value.of(42);
-            try (MessageWriter writer = storage.openWriter(key)) {
-                writer.writeMessage(message);
-            }
+            storage.writeMessage(key, message);
 
             // Get initial metrics
             var initialMetrics = storage.getMetrics();
@@ -250,9 +219,7 @@ class FileSystemStorageResourceCompressionTest {
             String key = "old-file.pb";
             Int32Value originalMessage = Int32Value.of(12345);
 
-            try (MessageWriter writer = uncompressedStorage.openWriter(key)) {
-                writer.writeMessage(originalMessage);
-            }
+            uncompressedStorage.writeMessage(key, originalMessage);
 
             // Act: Read back with same uncompressed storage
             Int32Value readMessage = uncompressedStorage.readMessage(key, Int32Value.parser());
@@ -279,9 +246,7 @@ class FileSystemStorageResourceCompressionTest {
             String key = "legacy-file.pb";
             Int32Value originalMessage = Int32Value.of(67890);
 
-            try (MessageWriter writer = uncompressedStorage.openWriter(key)) {
-                writer.writeMessage(originalMessage);
-            }
+            uncompressedStorage.writeMessage(key, originalMessage);
 
             // Act: Read with compressed storage (reading legacy uncompressed file)
             Config compressedConfig = ConfigFactory.parseString(String.format("""
@@ -322,9 +287,7 @@ class FileSystemStorageResourceCompressionTest {
             Int32Value message = Int32Value.of(100);
 
             // Act: Write
-            try (MessageWriter writer = storage.openWriter(key)) {
-                writer.writeMessage(message);
-            }
+            storage.writeMessage(key, message);
 
             // Assert: File has NO .zst extension
             Path file = tempDir.resolve(key);
@@ -357,28 +320,19 @@ class FileSystemStorageResourceCompressionTest {
                 """, tempDir.resolve("level9").toString().replace("\\", "\\\\")));
             FileSystemStorageResource storageLevel9 = new FileSystemStorageResource("level9", configLevel9);
 
-            // Arrange: 500 messages (testing compression ratio with meaningful data volume)
-            String key = "data.pb";
-            List<Int32Value> messages = new ArrayList<>();
+            // Arrange: 500 TickData messages (testing compression ratio with meaningful data volume)
+            List<TickData> batch = new ArrayList<>();
             for (int i = 0; i < 500; i++) {
-                messages.add(Int32Value.of(42));
+                batch.add(createTick(42));
             }
 
-            // Act: Write with both levels
-            try (MessageWriter w1 = storageLevel1.openWriter(key)) {
-                for (Int32Value msg : messages) {
-                    w1.writeMessage(msg);
-                }
-            }
-            try (MessageWriter w9 = storageLevel9.openWriter(key)) {
-                for (Int32Value msg : messages) {
-                    w9.writeMessage(msg);
-                }
-            }
+            // Act: Write with both levels using writeBatch
+            String batchPath1 = storageLevel1.writeBatch(batch, 42, 42);
+            String batchPath9 = storageLevel9.writeBatch(batch, 42, 42);
 
             // Assert: Both create valid compressed files
-            Path file1 = tempDir.resolve("level1/" + key + ".zst");
-            Path file9 = tempDir.resolve("level9/" + key + ".zst");
+            Path file1 = tempDir.resolve("level1/" + batchPath1);
+            Path file9 = tempDir.resolve("level9/" + batchPath9);
             assertThat(file1).exists();
             assertThat(file9).exists();
 
@@ -388,22 +342,13 @@ class FileSystemStorageResourceCompressionTest {
             assertThat(size9).isLessThanOrEqualTo(size1);
 
             // Both should be readable - verify all 500 messages
-            List<Int32Value> readMessages1 = new ArrayList<>();
-            try (MessageReader<Int32Value> reader = storageLevel1.openReader(key + ".zst", Int32Value.parser())) {
-                while (reader.hasNext()) {
-                    readMessages1.add(reader.next());
-                }
-            }
-            List<Int32Value> readMessages9 = new ArrayList<>();
-            try (MessageReader<Int32Value> reader = storageLevel9.openReader(key + ".zst", Int32Value.parser())) {
-                while (reader.hasNext()) {
-                    readMessages9.add(reader.next());
-                }
-            }
-            assertThat(readMessages1).hasSize(500);
-            assertThat(readMessages9).hasSize(500);
-            assertThat(readMessages1.get(0).getValue()).isEqualTo(42);
-            assertThat(readMessages9.get(0).getValue()).isEqualTo(42);
+            List<TickData> readBatch1 = storageLevel1.readBatch(batchPath1);
+            List<TickData> readBatch9 = storageLevel9.readBatch(batchPath9);
+
+            assertThat(readBatch1).hasSize(500);
+            assertThat(readBatch9).hasSize(500);
+            assertThat(readBatch1.get(0).getTickNumber()).isEqualTo(42);
+            assertThat(readBatch9.get(0).getTickNumber()).isEqualTo(42);
         }
     }
 }
