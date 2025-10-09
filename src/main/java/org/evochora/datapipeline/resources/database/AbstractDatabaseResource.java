@@ -66,6 +66,11 @@ public abstract class AbstractDatabaseResource extends AbstractResource
         throw new UnsupportedOperationException("This operation must be called on a wrapped resource.");
     }
 
+    @Override
+    public void close() {
+        throw new UnsupportedOperationException("This operation must be called on a wrapped resource.");
+    }
+
     protected void recordError(String code, String message, String details) {
         errors.add(new OperationalError(Instant.now(), code, message, details));
         while (errors.size() > MAX_ERRORS) {

@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.resources.storage;
 
 import com.typesafe.config.Config;
+import org.evochora.datapipeline.utils.PathExpansion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,7 +32,7 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
             throw new IllegalArgumentException("rootDirectory is required for FileSystemStorageResource");
         }
         String rootPath = options.getString("rootDirectory");
-        String expandedPath = expandPath(rootPath);
+        String expandedPath = PathExpansion.expandPath(rootPath);
         this.rootDirectory = new File(expandedPath);
         if (!this.rootDirectory.isAbsolute()) {
             throw new IllegalArgumentException("rootDirectory must be an absolute path: " + expandedPath);
@@ -39,37 +40,6 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
         if (!this.rootDirectory.exists() && !this.rootDirectory.mkdirs()) {
             throw new IllegalArgumentException("Failed to create rootDirectory: " + expandedPath);
         }
-    }
-
-    /**
-     * Expands environment variables and Java system properties in a path string.
-     * Supports syntax: ${VAR} for both environment variables and system properties.
-     * System properties are checked first, then environment variables.
-     *
-     * @param path the path potentially containing variables like ${HOME} or ${user.home}
-     * @return the path with all variables expanded
-     * @throws IllegalArgumentException if a variable is referenced but not defined
-     */
-    private static String expandPath(String path) {
-        if (path == null || !path.contains("${")) return path;
-        StringBuilder result = new StringBuilder();
-        int pos = 0;
-        while (pos < path.length()) {
-            int startVar = path.indexOf("${", pos);
-            if (startVar == -1) {
-                result.append(path.substring(pos));
-                break;
-            }
-            result.append(path.substring(pos, startVar));
-            int endVar = path.indexOf("}", startVar + 2);
-            if (endVar == -1) throw new IllegalArgumentException("Unclosed variable in path: " + path);
-            String varName = path.substring(startVar + 2, endVar);
-            String value = System.getProperty(varName, System.getenv(varName));
-            if (value == null) throw new IllegalArgumentException("Undefined variable '${" + varName + "}' in path: " + path);
-            result.append(value);
-            pos = endVar + 1;
-        }
-        return result.toString();
     }
 
     @Override

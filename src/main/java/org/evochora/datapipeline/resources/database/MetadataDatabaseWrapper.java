@@ -4,7 +4,11 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.*;
 import org.evochora.datapipeline.api.resources.database.IMetadataDatabase;
 import org.evochora.datapipeline.utils.monitoring.LatencyBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -15,6 +19,8 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class MetadataDatabaseWrapper implements IMetadataDatabase, IWrappedResource, IMonitorable {
+    private static final Logger log = LoggerFactory.getLogger(MetadataDatabaseWrapper.class);
+    
     private final AbstractDatabaseResource database;
     private final ResourceContext context;
     private final Object dedicatedConnection;
@@ -140,5 +146,25 @@ public class MetadataDatabaseWrapper implements IMetadataDatabase, IWrappedResou
     @Override
     public IResource.UsageState getUsageState(String usageType) {
         return database.getUsageState(usageType);
+    }
+
+    /**
+     * Closes the database wrapper and releases its dedicated connection back to the pool.
+     * <p>
+     * This method is automatically called when used with try-with-resources.
+     * Ensures the connection is properly closed even if errors occur.
+     */
+    @Override
+    public void close() {
+        if (dedicatedConnection != null && dedicatedConnection instanceof Connection) {
+            try {
+                ((Connection) dedicatedConnection).close();
+                log.debug("Released database connection for service: {}", context.serviceName());
+            } catch (SQLException e) {
+                log.warn("Failed to close database connection for service: {}", context.serviceName(), e);
+                recordError("CONNECTION_CLOSE_FAILED", "Failed to close database connection",
+                        "Service: " + context.serviceName() + ", Error: " + e.getMessage());
+            }
+        }
     }
 }

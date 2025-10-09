@@ -7,8 +7,18 @@ import org.evochora.datapipeline.api.resources.IResource;
 /**
  * Defines the capability interface for a database that can store and retrieve
  * simulation metadata. This interface is used by the MetadataIndexer service.
+ * <p>
+ * Implements {@link AutoCloseable} to enable try-with-resources pattern for
+ * automatic connection cleanup:
+ * <pre>
+ * try (IMetadataDatabase db = resource.getWrappedResource(context)) {
+ *     db.createSimulationRun(runId);
+ *     db.setSimulationRun(runId);
+ *     db.insertMetadata(metadata);
+ * }  // Connection automatically released
+ * </pre>
  */
-public interface IMetadataDatabase extends IResource, IMonitorable {
+public interface IMetadataDatabase extends IResource, IMonitorable, AutoCloseable {
     /**
      * Sets the database schema for all subsequent operations on the current connection/wrapper.
      * This must be called once after an indexer discovers its target simulation run ID.
@@ -35,4 +45,13 @@ public interface IMetadataDatabase extends IResource, IMonitorable {
      * @param metadata The {@link SimulationMetadata} protobuf message to persist.
      */
     void insertMetadata(SimulationMetadata metadata);
+
+    /**
+     * Closes the database wrapper and releases its dedicated connection back to the pool.
+     * <p>
+     * This method is automatically called when used with try-with-resources.
+     * Implementations must ensure the connection is properly closed even if errors occur.
+     */
+    @Override
+    void close();
 }
