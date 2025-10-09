@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) 2024-Present Perracodex. Use of this source code is governed by an MIT license.
+ */
+
 package org.evochora.datapipeline.api.resources;
 
 import java.util.Map;
@@ -22,10 +26,10 @@ import java.util.Map;
  * @param parameters   URI parameters for fine-tuning resource behavior (e.g., window=30, batch=100).
  */
 public record ResourceContext(
-    String serviceName,
-    String portName,
-    String usageType,
-    String resourceName,
-    Map<String, String> parameters
+        String serviceName,
+        String portName,
+        String usageType,
+        String resourceName,
+        Map<String, String> parameters
 ) {
 }

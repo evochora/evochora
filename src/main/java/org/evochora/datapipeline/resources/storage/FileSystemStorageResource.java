@@ -4,13 +4,20 @@ import com.typesafe.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class FileSystemStorageResource extends AbstractBatchStorageResource {
@@ -18,32 +25,19 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
     private static final Logger log = LoggerFactory.getLogger(FileSystemStorageResource.class);
     private final File rootDirectory;
 
-    // All metrics tracking inherited from AbstractBatchStorageResource
-
     public FileSystemStorageResource(String name, Config options) {
         super(name, options);
         if (!options.hasPath("rootDirectory")) {
             throw new IllegalArgumentException("rootDirectory is required for FileSystemStorageResource");
         }
         String rootPath = options.getString("rootDirectory");
-
-        // Expand environment variables and system properties
         String expandedPath = expandPath(rootPath);
-        if (!rootPath.equals(expandedPath)) {
-            log.debug("Expanded rootDirectory: '{}' -> '{}'", rootPath, expandedPath);
-        }
-
         this.rootDirectory = new File(expandedPath);
         if (!this.rootDirectory.isAbsolute()) {
-            throw new IllegalArgumentException("rootDirectory must be an absolute path (after variable expansion): " + expandedPath);
+            throw new IllegalArgumentException("rootDirectory must be an absolute path: " + expandedPath);
         }
-        if (!this.rootDirectory.exists()) {
-            if (!this.rootDirectory.mkdirs()) {
-                throw new IllegalArgumentException("Failed to create rootDirectory: " + expandedPath);
-            }
-        }
-        if (!this.rootDirectory.isDirectory()) {
-            throw new IllegalArgumentException("rootDirectory is not a directory: " + expandedPath);
+        if (!this.rootDirectory.exists() && !this.rootDirectory.mkdirs()) {
+            throw new IllegalArgumentException("Failed to create rootDirectory: " + expandedPath);
         }
     }
 
@@ -57,64 +51,26 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
      * @throws IllegalArgumentException if a variable is referenced but not defined
      */
     private static String expandPath(String path) {
-        if (path == null || !path.contains("${")) {
-            return path;
-        }
-
+        if (path == null || !path.contains("${")) return path;
         StringBuilder result = new StringBuilder();
         int pos = 0;
-
         while (pos < path.length()) {
             int startVar = path.indexOf("${", pos);
             if (startVar == -1) {
-                // No more variables, append rest of string
                 result.append(path.substring(pos));
                 break;
             }
-
-            // Append text before variable
             result.append(path.substring(pos, startVar));
-
             int endVar = path.indexOf("}", startVar + 2);
-            if (endVar == -1) {
-                throw new IllegalArgumentException("Unclosed variable in path: " + path);
-            }
-
+            if (endVar == -1) throw new IllegalArgumentException("Unclosed variable in path: " + path);
             String varName = path.substring(startVar + 2, endVar);
-            String value = resolveVariable(varName);
-
-            if (value == null) {
-                throw new IllegalArgumentException(
-                    "Undefined variable '${" + varName + "}' in path: " + path +
-                    ". Check that environment variable or system property exists."
-                );
-            }
-
+            String value = System.getProperty(varName, System.getenv(varName));
+            if (value == null) throw new IllegalArgumentException("Undefined variable '${" + varName + "}' in path: " + path);
             result.append(value);
             pos = endVar + 1;
         }
-
         return result.toString();
     }
-
-    /**
-     * Resolves a variable name to its value, checking system properties first, then environment variables.
-     *
-     * @param varName the variable name (without ${} delimiters)
-     * @return the resolved value, or null if not found
-     */
-    private static String resolveVariable(String varName) {
-        // Check system properties first (e.g., user.home, java.io.tmpdir)
-        String value = System.getProperty(varName);
-        if (value != null) {
-            return value;
-        }
-
-        // Check environment variables (e.g., HOME, USERPROFILE)
-        return System.getenv(varName);
-    }
-
-    // ===== Abstract method implementations for AbstractBatchStorageResource =====
 
     @Override
     protected void writeBytes(String path, byte[] data) throws IOException {
@@ -122,14 +78,12 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
         File file = new File(rootDirectory, path);
         File parentDir = file.getParentFile();
         if (parentDir != null) {
-            parentDir.mkdirs();  // Idempotent - safe to call even if directory exists
+            parentDir.mkdirs(); // Idempotent - safe to call even if directory exists
             if (!parentDir.isDirectory()) {
                 throw new IOException("Failed to create parent directories for: " + file.getAbsolutePath());
             }
         }
         Files.write(file.toPath(), data);
-
-        // Track metrics
         writeOperations.incrementAndGet();
         bytesWritten.addAndGet(data.length);
     }
@@ -142,11 +96,8 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
             throw new IOException("File does not exist: " + path);
         }
         byte[] data = Files.readAllBytes(file.toPath());
-
-        // Track metrics
         readOperations.incrementAndGet();
         bytesRead.addAndGet(data.length);
-
         return data;
     }
 
@@ -182,7 +133,6 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
         }
     }
 
-
     @Override
     protected List<String> listFilesWithPrefix(String prefix, String continuationToken, int maxResults) throws IOException {
         final String finalPrefix = (prefix == null) ? "" : prefix;
@@ -199,15 +149,15 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
 
         try (Stream<Path> stream = Files.walk(startPath)) {
             List<String> allFiles = stream
-                .filter(Files::isRegularFile)
-                .map(p -> Paths.get(rootDirectory.getAbsolutePath()).relativize(p))
-                .map(Path::toString)
-                .map(s -> s.replace(File.separatorChar, '/'))  // Normalize to forward slashes
-                .filter(path -> path.startsWith(finalPrefix))
-                .filter(path -> !path.contains("/.tmp"))  // Filter out .tmp files
-                .filter(path -> !path.endsWith(".tmp"))
-                .sorted()  // Lexicographic order
-                .toList();
+                    .filter(Files::isRegularFile)
+                    .map(p -> Paths.get(rootDirectory.getAbsolutePath()).relativize(p))
+                    .map(Path::toString)
+                    .map(s -> s.replace(File.separatorChar, '/'))  // Normalize to forward slashes
+                    .filter(path -> path.startsWith(finalPrefix))
+                    .filter(path -> !path.contains("/.tmp"))  // Filter out .tmp files
+                    .filter(path -> !path.endsWith(".tmp"))
+                    .sorted()  // Lexicographic order
+                    .toList();
 
             // Apply continuation token (skip files until we're past the token)
             boolean foundToken = (continuationToken == null);
@@ -232,8 +182,34 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
         }
     }
 
-    // All monitoring methods (getUsageState, getMetrics, getErrors, clearErrors, isHealthy)
-    // and getWrappedResource inherited from AbstractBatchStorageResource
+    @Override
+    public List<String> listRunIds(Instant afterTimestamp) {
+        if (rootDirectory == null || !rootDirectory.isDirectory()) {
+            return Collections.emptyList();
+        }
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSS");
+        try (Stream<Path> stream = Files.list(rootDirectory.toPath())) {
+            return stream.filter(Files::isDirectory)
+                    .map(path -> path.getFileName().toString())
+                    .filter(runId -> {
+                        if (runId.length() < 16) return false;
+                        try {
+                            String timestampStr = runId.substring(0, 16);
+                            LocalDateTime ldt = LocalDateTime.parse(timestampStr, formatter);
+                            return ldt.toInstant(ZoneOffset.UTC).isAfter(afterTimestamp);
+                        } catch (DateTimeParseException e) {
+                            log.trace("Ignoring non-runId directory: {}", runId);
+                            return false;
+                        }
+                    })
+                    .sorted()
+                    .collect(Collectors.toList());
+        } catch (IOException e) {
+            log.warn("Could not list directories in storage root for run discovery. This can happen during concurrent test execution and is handled gracefully.", e);
+            return Collections.emptyList();
+        }
+    }
 
     @Override
     protected void addCustomMetrics(java.util.Map<String, Number> metrics) {
@@ -287,7 +263,7 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
         for (char c : key.toCharArray()) {
             if (c < 0x20) {
                 throw new IllegalArgumentException("Key contains control character (0x" +
-                    Integer.toHexString(c) + "): " + key);
+                        Integer.toHexString(c) + "): " + key);
             }
         }
     }

@@ -156,6 +156,12 @@ public class MonitoredBatchStorageReader implements IBatchStorageRead, IWrappedR
     }
 
     @Override
+    public List<String> listRunIds(Instant afterTimestamp) throws IOException {
+        // Simple delegation, like listBatchFiles.
+        return delegate.listRunIds(afterTimestamp);
+    }
+
+    @Override
     public String getResourceName() {
         return delegate.getResourceName() + ":" + context.serviceName();
     }

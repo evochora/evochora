@@ -1,0 +1,167 @@
+/*
+ * Copyright (c) 2024-Present Perracodex. Use of this source code is governed by an MIT license.
+ */
+
+package org.evochora.datapipeline.services.indexers;
+
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.services.IService;
+import org.evochora.datapipeline.resources.database.H2Database;
+import org.evochora.datapipeline.resources.database.MetadataDatabaseWrapper;
+import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.*;
+
+@Tag("integration")
+@ExtendWith(LogWatchExtension.class)
+class MetadataIndexerIntegrationTest {
+
+    private H2Database testDatabase;
+    private FileSystemStorageResource testStorage;
+    private Path tempStorageDir;
+    private String dbUrl;
+
+    @BeforeEach
+    void setUp() throws IOException {
+        tempStorageDir = Files.createTempDirectory("evochora-test-storage-");
+        Config storageConfig = ConfigFactory.parseString("rootDirectory = \"" + tempStorageDir.toAbsolutePath().toString().replace("\\", "/") + "\"");
+        testStorage = new FileSystemStorageResource("test-storage", storageConfig);
+
+        dbUrl = "jdbc:h2:mem:test-" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1;MODE=PostgreSQL";
+        Config dbConfig = ConfigFactory.parseString("jdbcUrl = \"" + dbUrl + "\"");
+        testDatabase = new H2Database("test-db", dbConfig);
+    }
+
+    @AfterEach
+    void tearDown() throws IOException {
+        if (testDatabase != null) {
+            // Verify no connection leaks before shutting down
+            Map<String, Number> metrics = testDatabase.getMetrics();
+            Number activeConnections = metrics.get("h2_pool_active_connections");
+            assertEquals(0, activeConnections != null ? activeConnections.intValue() : 0,
+                    "Connection leak detected! Active connections should be 0 after test completion");
+            
+            testDatabase.stop();
+        }
+        if (tempStorageDir != null) {
+            Files.walk(tempStorageDir).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(java.io.File::delete);
+        }
+    }
+
+    @Test
+    void testMetadataIndexing_PostMortemMode() throws Exception {
+        String runId = "20250101120000-" + UUID.randomUUID();
+        SimulationMetadata metadata = createTestMetadata(runId);
+        testStorage.writeMessage(runId + "/metadata.pb", metadata);
+
+        // Manually wrap the database resource, simulating what the ServiceManager does.
+        ResourceContext dbContext = new ResourceContext("test-indexer", "database", "database-metadata", "test-db", Collections.emptyMap());
+        IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
+
+        Config indexerConfig = ConfigFactory.parseString("runId = \"" + runId + "\"");
+        Map<String, List<IResource>> resources = Map.of("storage", List.of(testStorage), "database", List.of(wrappedDatabase));
+        MetadataIndexer indexer = new MetadataIndexer("test-indexer", indexerConfig, resources);
+
+        indexer.start();
+
+        await().atMost(10, TimeUnit.SECONDS).until(() -> indexer.getCurrentState() == IService.State.STOPPED);
+        assertEquals(IService.State.STOPPED, indexer.getCurrentState(), "Indexer should be in STOPPED state.");
+
+        assertSchemaExists(toSchemaName(runId));
+        assertMetadataInDatabase(toSchemaName(runId), metadata);
+    }
+
+    @Test
+    void testMetadataIndexing_ParallelMode() throws Exception {
+        // Manually wrap the database resource.
+        ResourceContext dbContext = new ResourceContext("test-indexer", "database", "database-metadata", "test-db", Collections.emptyMap());
+        IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
+
+        Config indexerConfig = ConfigFactory.empty();
+        Map<String, List<IResource>> resources = Map.of("storage", List.of(testStorage), "database", List.of(wrappedDatabase));
+        MetadataIndexer indexer = new MetadataIndexer("test-indexer", indexerConfig, resources);
+        indexer.start();
+
+        Thread.sleep(200);
+
+        // Generate a runId with a timestamp slightly in the future to guarantee it's discovered.
+        // This avoids a race condition where the truncated (to the second) run timestamp is not
+        // strictly 'after' the indexer's start time (which has millisecond precision).
+        Instant runInstant = java.time.Instant.now().plusSeconds(1);
+        String timestamp = java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmssSS")
+                .withZone(java.time.ZoneOffset.UTC)
+                .format(runInstant);
+        String runId = timestamp + "-" + UUID.randomUUID();
+        SimulationMetadata metadata = createTestMetadata(runId);
+
+        Files.createDirectories(tempStorageDir.resolve(runId));
+        testStorage.writeMessage(runId + "/metadata.pb", metadata);
+
+        await().atMost(10, TimeUnit.SECONDS).until(() -> indexer.getCurrentState() == IService.State.STOPPED);
+        assertEquals(IService.State.STOPPED, indexer.getCurrentState(), "Indexer should be in STOPPED state.");
+
+        assertSchemaExists(toSchemaName(runId));
+        assertMetadataInDatabase(toSchemaName(runId), metadata);
+    }
+
+    private SimulationMetadata createTestMetadata(String runId) {
+        return SimulationMetadata.newBuilder()
+                .setSimulationRunId(runId)
+                .setStartTimeMs(System.currentTimeMillis())
+                .setInitialSeed(12345L)
+                .build();
+    }
+
+    private String toSchemaName(String runId) {
+        return "sim_" + runId.replace("-", "_");
+    }
+
+    private void assertSchemaExists(String schemaName) throws Exception {
+        try (Connection conn = DriverManager.getConnection(dbUrl);
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '" + schemaName.toUpperCase() + "'")) {
+            assertTrue(rs.next(), "Schema '" + schemaName + "' should exist.");
+        }
+    }
+
+    private void assertMetadataInDatabase(String schemaName, SimulationMetadata expectedMetadata) throws Exception {
+        try (Connection conn = DriverManager.getConnection(dbUrl)) {
+            conn.setSchema(schemaName.toUpperCase());
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT \"key\", \"value\" FROM metadata WHERE \"key\" = 'simulation_info'")) {
+
+                assertTrue(rs.next(), "Metadata with key 'simulation_info' should exist.");
+                String jsonValue = rs.getString("value");
+                assertNotNull(jsonValue);
+                assertTrue(jsonValue.contains(expectedMetadata.getSimulationRunId()));
+                assertFalse(rs.next(), "Should only be one row for 'simulation_info'.");
+            }
+        }
+    }
+}
