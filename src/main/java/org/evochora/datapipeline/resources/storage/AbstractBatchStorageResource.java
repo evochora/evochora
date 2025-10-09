@@ -4,13 +4,18 @@ import com.google.protobuf.MessageLite;
 import com.google.protobuf.Parser;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.IContextualResource;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.resources.AbstractResource;
+import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageReader;
+import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageWriter;
 import org.evochora.datapipeline.utils.compression.ICompressionCodec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,7 +25,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -38,13 +45,14 @@ import java.util.stream.Collectors;
  * method {@link #addCustomMetrics(Map)} for implementation-specific metrics.
  */
 public abstract class AbstractBatchStorageResource extends AbstractResource
-    implements IBatchStorageWrite, IBatchStorageRead, IMonitorable {
+    implements IBatchStorageWrite, IBatchStorageRead, IMonitorable, IContextualResource {
 
     private static final Logger log = LoggerFactory.getLogger(AbstractBatchStorageResource.class);
 
     // Configuration
     protected final List<Long> folderLevels;
     protected final ICompressionCodec codec;
+    protected final int performanceWindowSeconds;
 
     // Base metrics tracking (all storage implementations)
     protected final java.util.concurrent.atomic.AtomicLong writeOperations = new java.util.concurrent.atomic.AtomicLong(0);
@@ -55,6 +63,14 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     protected final java.util.concurrent.atomic.AtomicLong readErrors = new java.util.concurrent.atomic.AtomicLong(0);
     protected final List<org.evochora.datapipeline.api.resources.OperationalError> errors =
         java.util.Collections.synchronizedList(new ArrayList<>());
+
+    // Performance metrics (sliding window with per-second buckets)
+    private final ConcurrentHashMap<Long, java.util.concurrent.atomic.AtomicLong> writesPerSecond = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, java.util.concurrent.atomic.AtomicLong> readsPerSecond = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, java.util.concurrent.atomic.AtomicLong> writeBytesPerSecond = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, java.util.concurrent.atomic.AtomicLong> readBytesPerSecond = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, LatencyBucket> writeLatencyBuckets = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, LatencyBucket> readLatencyBuckets = new ConcurrentHashMap<>();
 
     protected AbstractBatchStorageResource(String name, Config options) {
         super(name, options);
@@ -90,8 +106,13 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             }
         }
 
-        log.info("AbstractBatchStorageResource '{}' initialized: folders={}",
-            name, folderLevels);
+        // Parse performance window configuration (default: 5 seconds)
+        this.performanceWindowSeconds = options.hasPath("performanceWindowSeconds")
+            ? options.getInt("performanceWindowSeconds")
+            : 5;
+
+        log.info("AbstractBatchStorageResource '{}' initialized: folders={}, performanceWindow={}s",
+            name, folderLevels, performanceWindowSeconds);
     }
 
     @Override
@@ -126,8 +147,13 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         // Note: Implementations should catch IOExceptions from these operations
         // and perform cleanup of tempPath if needed before rethrowing
         String tempPath = folderPath + "/.tmp-" + UUID.randomUUID() + "-" + filename;
+
+        // Track I/O performance
+        long writeStart = System.nanoTime();
         writeBytes(tempPath, compressedData);
         atomicMove(tempPath, fullPath);
+        long writeLatency = System.nanoTime() - writeStart;
+        recordWrite(compressedData.length, writeLatency);
 
         log.debug("Wrote batch {} with {} ticks ({} bytes compressed)",
             fullPath, batch.size(), compressedData.length);
@@ -141,11 +167,14 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             throw new IllegalArgumentException("filename cannot be null or empty");
         }
 
-        // Read and decompress
+        // Track I/O performance
+        long readStart = System.nanoTime();
         byte[] compressedData = readBytes(filename);
-        byte[] data = decompressBatch(compressedData, filename);
+        long readLatency = System.nanoTime() - readStart;
+        recordRead(compressedData.length, readLatency);
 
-        // Deserialize protobuf messages
+        // Decompress and deserialize
+        byte[] data = decompressBatch(compressedData, filename);
         return deserializeBatch(data);
     }
 
@@ -169,7 +198,11 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         // Add codec extension to key
         String finalKey = key + codec.getFileExtension();
 
+        // Track I/O performance
+        long writeStart = System.nanoTime();
         writeBytes(finalKey, compressedData);
+        long writeLatency = System.nanoTime() - writeStart;
+        recordWrite(compressedData.length, writeLatency);
     }
 
     @Override
@@ -181,8 +214,11 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             throw new IllegalArgumentException("parser cannot be null");
         }
 
-        // Read file using key as-is (caller provides full filename with extension)
+        // Track I/O performance
+        long readStart = System.nanoTime();
         byte[] compressedData = readBytes(key);
+        long readLatency = System.nanoTime() - readStart;
+        recordRead(compressedData.length, readLatency);
 
         // Auto-detect compression from filename and decompress
         byte[] data = decompressBatch(compressedData, key);
@@ -416,12 +452,20 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      */
     protected final Map<String, Number> getBaseMetrics() {
         Map<String, Number> metrics = new LinkedHashMap<>();
+        // Cumulative metrics
         metrics.put("write_operations", writeOperations.get());
         metrics.put("read_operations", readOperations.get());
         metrics.put("bytes_written", bytesWritten.get());
         metrics.put("bytes_read", bytesRead.get());
         metrics.put("write_errors", writeErrors.get());
         metrics.put("read_errors", readErrors.get());
+        // Performance metrics (sliding window)
+        metrics.put("writes_per_sec", calculateWriteThroughput());
+        metrics.put("reads_per_sec", calculateReadThroughput());
+        metrics.put("write_bytes_per_sec", calculateWriteByteThroughput());
+        metrics.put("read_bytes_per_sec", calculateReadByteThroughput());
+        metrics.put("write_latency_ms", calculateAvgWriteLatencyMs());
+        metrics.put("read_latency_ms", calculateAvgReadLatencyMs());
         return metrics;
     }
 
@@ -480,6 +524,47 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         return errors.isEmpty();
     }
 
+    // ===== IContextualResource implementation =====
+
+    /**
+     * Returns a contextual wrapper for this storage resource based on usage type.
+     * <p>
+     * All batch storage implementations support the same usage types and use the same
+     * monitoring wrappers, as the wrappers operate on the standard {@link IBatchStorageRead}
+     * and {@link IBatchStorageWrite} interfaces.
+     * <p>
+     * Supported usage types:
+     * <ul>
+     *   <li>storage-write - Returns a {@link MonitoredBatchStorageWriter} that tracks write metrics</li>
+     *   <li>storage-read - Returns a {@link MonitoredBatchStorageReader} that tracks read metrics</li>
+     * </ul>
+     *
+     * @param context The resource context containing usage type and service information
+     * @return The wrapped resource with monitoring capabilities
+     * @throws IllegalArgumentException if usageType is null or not supported
+     */
+    @Override
+    public IWrappedResource getWrappedResource(ResourceContext context) {
+        if (context.usageType() == null) {
+            throw new IllegalArgumentException(String.format(
+                "Storage resource '%s' requires a usageType in the binding URI. " +
+                "Expected format: 'usageType:%s' where usageType is one of: " +
+                "storage-write, storage-read",
+                getResourceName(), getResourceName()
+            ));
+        }
+
+        return switch (context.usageType()) {
+            case "storage-write" -> new MonitoredBatchStorageWriter(this, context);
+            case "storage-read" -> new MonitoredBatchStorageReader(this, context);
+            default -> throw new IllegalArgumentException(String.format(
+                "Unsupported usage type '%s' for storage resource '%s'. " +
+                "Supported types: storage-write, storage-read",
+                context.usageType(), getResourceName()
+            ));
+        };
+    }
+
     // ===== Abstract I/O primitives (subclasses implement) =====
 
     /**
@@ -518,4 +603,166 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * @throws IOException If storage access fails
      */
     protected abstract List<String> listFilesWithPrefix(String prefix, String continuationToken, int maxResults) throws IOException;
+
+    // ===== Performance tracking helpers =====
+
+    /**
+     * Records a write operation for performance tracking using sliding window counters.
+     * This is an O(1) operation that just increments counters for the current second.
+     *
+     * @param bytes Number of bytes written
+     * @param latencyNanos Write latency in nanoseconds
+     */
+    protected void recordWrite(long bytes, long latencyNanos) {
+        long currentSecond = Instant.now().getEpochSecond();
+        writesPerSecond.computeIfAbsent(currentSecond, k -> new java.util.concurrent.atomic.AtomicLong(0)).incrementAndGet();
+        writeBytesPerSecond.computeIfAbsent(currentSecond, k -> new java.util.concurrent.atomic.AtomicLong(0)).addAndGet(bytes);
+        writeLatencyBuckets.computeIfAbsent(currentSecond, k -> new LatencyBucket()).record(latencyNanos);
+        cleanupOldBuckets(currentSecond, writesPerSecond, writeBytesPerSecond, writeLatencyBuckets);
+    }
+
+    /**
+     * Records a read operation for performance tracking using sliding window counters.
+     * This is an O(1) operation that just increments counters for the current second.
+     *
+     * @param bytes Number of bytes read
+     * @param latencyNanos Read latency in nanoseconds
+     */
+    protected void recordRead(long bytes, long latencyNanos) {
+        long currentSecond = Instant.now().getEpochSecond();
+        readsPerSecond.computeIfAbsent(currentSecond, k -> new java.util.concurrent.atomic.AtomicLong(0)).incrementAndGet();
+        readBytesPerSecond.computeIfAbsent(currentSecond, k -> new java.util.concurrent.atomic.AtomicLong(0)).addAndGet(bytes);
+        readLatencyBuckets.computeIfAbsent(currentSecond, k -> new LatencyBucket()).record(latencyNanos);
+        cleanupOldBuckets(currentSecond, readsPerSecond, readBytesPerSecond, readLatencyBuckets);
+    }
+
+    /**
+     * Removes counter buckets older than the monitoring window to prevent unbounded memory growth.
+     * Only removes counters if we have more buckets than needed (window + buffer).
+     */
+    private void cleanupOldBuckets(long currentSecond,
+                                    ConcurrentHashMap<Long, java.util.concurrent.atomic.AtomicLong> opsMap,
+                                    ConcurrentHashMap<Long, java.util.concurrent.atomic.AtomicLong> bytesMap,
+                                    ConcurrentHashMap<Long, LatencyBucket> latencyMap) {
+        // Keep windowSeconds + 5 extra seconds as buffer
+        int maxBuckets = performanceWindowSeconds + 5;
+        if (opsMap.size() > maxBuckets) {
+            long cutoffSecond = currentSecond - performanceWindowSeconds - 1;
+            opsMap.keySet().removeIf(second -> second < cutoffSecond);
+            bytesMap.keySet().removeIf(second -> second < cutoffSecond);
+            latencyMap.keySet().removeIf(second -> second < cutoffSecond);
+        }
+    }
+
+    /**
+     * Calculates the write throughput (writes per second) based on per-second counters within the configured window.
+     * This is an O(windowSeconds) operation, typically O(5).
+     */
+    private double calculateWriteThroughput() {
+        long currentSecond = Instant.now().getEpochSecond();
+        long total = 0;
+        for (int i = 0; i < performanceWindowSeconds; i++) {
+            java.util.concurrent.atomic.AtomicLong counter = writesPerSecond.get(currentSecond - i);
+            if (counter != null) total += counter.get();
+        }
+        return (double) total / performanceWindowSeconds;
+    }
+
+    /**
+     * Calculates the read throughput (reads per second) based on per-second counters within the configured window.
+     * This is an O(windowSeconds) operation, typically O(5).
+     */
+    private double calculateReadThroughput() {
+        long currentSecond = Instant.now().getEpochSecond();
+        long total = 0;
+        for (int i = 0; i < performanceWindowSeconds; i++) {
+            java.util.concurrent.atomic.AtomicLong counter = readsPerSecond.get(currentSecond - i);
+            if (counter != null) total += counter.get();
+        }
+        return (double) total / performanceWindowSeconds;
+    }
+
+    /**
+     * Calculates the write byte throughput (bytes per second) based on per-second counters within the configured window.
+     * This is an O(windowSeconds) operation, typically O(5).
+     */
+    private double calculateWriteByteThroughput() {
+        long currentSecond = Instant.now().getEpochSecond();
+        long total = 0;
+        for (int i = 0; i < performanceWindowSeconds; i++) {
+            java.util.concurrent.atomic.AtomicLong counter = writeBytesPerSecond.get(currentSecond - i);
+            if (counter != null) total += counter.get();
+        }
+        return (double) total / performanceWindowSeconds;
+    }
+
+    /**
+     * Calculates the read byte throughput (bytes per second) based on per-second counters within the configured window.
+     * This is an O(windowSeconds) operation, typically O(5).
+     */
+    private double calculateReadByteThroughput() {
+        long currentSecond = Instant.now().getEpochSecond();
+        long total = 0;
+        for (int i = 0; i < performanceWindowSeconds; i++) {
+            java.util.concurrent.atomic.AtomicLong counter = readBytesPerSecond.get(currentSecond - i);
+            if (counter != null) total += counter.get();
+        }
+        return (double) total / performanceWindowSeconds;
+    }
+
+    /**
+     * Calculates average write latency in milliseconds based on latency buckets within the configured window.
+     * This is an O(windowSeconds) operation, typically O(5).
+     */
+    private double calculateAvgWriteLatencyMs() {
+        long currentSecond = Instant.now().getEpochSecond();
+        long totalNanos = 0, count = 0;
+        for (int i = 0; i < performanceWindowSeconds; i++) {
+            LatencyBucket bucket = writeLatencyBuckets.get(currentSecond - i);
+            if (bucket != null) {
+                totalNanos += bucket.getTotalNanos();
+                count += bucket.getCount();
+            }
+        }
+        return count == 0 ? 0.0 : (double) totalNanos / count / 1_000_000.0;
+    }
+
+    /**
+     * Calculates average read latency in milliseconds based on latency buckets within the configured window.
+     * This is an O(windowSeconds) operation, typically O(5).
+     */
+    private double calculateAvgReadLatencyMs() {
+        long currentSecond = Instant.now().getEpochSecond();
+        long totalNanos = 0, count = 0;
+        for (int i = 0; i < performanceWindowSeconds; i++) {
+            LatencyBucket bucket = readLatencyBuckets.get(currentSecond - i);
+            if (bucket != null) {
+                totalNanos += bucket.getTotalNanos();
+                count += bucket.getCount();
+            }
+        }
+        return count == 0 ? 0.0 : (double) totalNanos / count / 1_000_000.0;
+    }
+
+    /**
+     * Simple latency bucket that tracks count and total latency for a specific second.
+     * Thread-safe for concurrent updates within the same bucket.
+     */
+    private static class LatencyBucket {
+        private final java.util.concurrent.atomic.AtomicLong count = new java.util.concurrent.atomic.AtomicLong(0);
+        private final java.util.concurrent.atomic.AtomicLong totalNanos = new java.util.concurrent.atomic.AtomicLong(0);
+
+        void record(long latencyNanos) {
+            count.incrementAndGet();
+            totalNanos.addAndGet(latencyNanos);
+        }
+
+        long getCount() {
+            return count.get();
+        }
+
+        long getTotalNanos() {
+            return totalNanos.get();
+        }
+    }
 }

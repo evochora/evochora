@@ -1,11 +1,6 @@
 package org.evochora.datapipeline.resources.storage;
 
 import com.typesafe.config.Config;
-import org.evochora.datapipeline.api.resources.IContextualResource;
-import org.evochora.datapipeline.api.resources.IWrappedResource;
-import org.evochora.datapipeline.api.resources.ResourceContext;
-import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageReader;
-import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,8 +13,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Stream;
 
-public class FileSystemStorageResource extends AbstractBatchStorageResource
-    implements IContextualResource {
+public class FileSystemStorageResource extends AbstractBatchStorageResource {
 
     private static final Logger log = LoggerFactory.getLogger(FileSystemStorageResource.class);
     private final File rootDirectory;
@@ -118,32 +112,6 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
 
         // Check environment variables (e.g., HOME, USERPROFILE)
         return System.getenv(varName);
-    }
-
-    /**
-     * Returns a contextual wrapper for this storage resource based on usage type.
-     * Supports usage types: storage-write, storage-read.
-     */
-    @Override
-    public IWrappedResource getWrappedResource(ResourceContext context) {
-        if (context.usageType() == null) {
-            throw new IllegalArgumentException(String.format(
-                "Storage resource '%s' requires a usageType in the binding URI. " +
-                "Expected format: 'usageType:%s' where usageType is one of: " +
-                "storage-write, storage-read",
-                getResourceName(), getResourceName()
-            ));
-        }
-
-        return switch (context.usageType()) {
-            case "storage-write" -> new MonitoredBatchStorageWriter(this, context);
-            case "storage-read" -> new MonitoredBatchStorageReader(this, context);
-            default -> throw new IllegalArgumentException(String.format(
-                "Unsupported usage type '%s' for storage resource '%s'. " +
-                "Supported types: storage-write, storage-read",
-                context.usageType(), getResourceName()
-            ));
-        };
     }
 
     // ===== Abstract method implementations for AbstractBatchStorageResource =====
@@ -265,7 +233,27 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
     }
 
     // All monitoring methods (getUsageState, getMetrics, getErrors, clearErrors, isHealthy)
-    // inherited from AbstractBatchStorageResource
+    // and getWrappedResource inherited from AbstractBatchStorageResource
+
+    @Override
+    protected void addCustomMetrics(java.util.Map<String, Number> metrics) {
+        // Add filesystem-specific capacity metrics
+        long totalSpace = rootDirectory.getTotalSpace();
+        long usableSpace = rootDirectory.getUsableSpace();
+        long usedSpace = totalSpace - usableSpace;
+
+        metrics.put("disk_total_bytes", totalSpace);
+        metrics.put("disk_available_bytes", usableSpace);
+        metrics.put("disk_used_bytes", usedSpace);
+
+        // Calculate percentage used (avoid division by zero)
+        if (totalSpace > 0) {
+            double usedPercent = (double) usedSpace / totalSpace * 100.0;
+            metrics.put("disk_used_percent", usedPercent);
+        } else {
+            metrics.put("disk_used_percent", 0.0);
+        }
+    }
 
     private void validateKey(String key) {
         if (key == null || key.isEmpty()) {
