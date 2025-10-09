@@ -142,11 +142,32 @@ org.evochora.datapipeline.services.indexers/
 ### Interface Design (Capability-Based)
 
 ```java
-public interface IMetadataDatabase extends IResource {
+public interface IMetadataDatabase extends IResource, AutoCloseable {
+    /**
+     * Sanitizes simulation run ID to valid schema/namespace identifier.
+     * <p>
+     * Database-specific implementation handles naming requirements:
+     * - SQL: alphanumeric + underscore only
+     * - NoSQL: may allow hyphens
+     * - Case sensitivity varies
+     * <p>
+     * Example (SQL databases):
+     * <pre>
+     * 20251006143025-550e8400-e29b-41d4-a716-446655440000
+     * → sim_20251006143025_550e8400_e29b_41d4_a716_446655440000
+     * </pre>
+     *
+     * @param simulationRunId Raw simulation run ID
+     * @return Sanitized schema/namespace name
+     */
+    String toSchemaName(String simulationRunId);
+
     /**
      * Sets the database schema for all subsequent operations.
      * Must be called once after indexer discovers its runId.
      * Thread-safe: each wrapper has isolated connection.
+     *
+     * @param simulationRunId Raw simulation run ID (will be sanitized internally)
      */
     void setSimulationRun(String simulationRunId);
 
@@ -154,7 +175,7 @@ public interface IMetadataDatabase extends IResource {
      * Creates a new schema for a simulation run.
      * Uses CREATE SCHEMA IF NOT EXISTS internally.
      *
-     * @param simulationRunId Sanitized schema name (e.g., sim_20251006143025_uuid)
+     * @param simulationRunId Raw simulation run ID (will be sanitized internally)
      */
     void createSimulationRun(String simulationRunId);
 
@@ -170,6 +191,20 @@ public interface IMetadataDatabase extends IResource {
      * Future extensions can add more keys without schema changes.
      */
     void insertMetadata(SimulationMetadata metadata);
+
+    /**
+     * Closes the database wrapper and releases its dedicated connection.
+     * <p>
+     * Enables try-with-resources pattern:
+     * <pre>
+     * try (IMetadataDatabase db = resource.getWrappedResource(context)) {
+     *     db.createSimulationRun(runId);
+     *     db.insertMetadata(metadata);
+     * }  // Connection automatically released
+     * </pre>
+     */
+    @Override
+    void close();
 }
 ```
 
@@ -557,7 +592,28 @@ class MetadataDatabaseWrapper implements IMetadataDatabase, IWrappedResource, IM
 }
 ```
 
-**Note on close():** IWrappedResource doesn't define close(). Connection lifecycle is managed by the database resource's connection pooling strategy. When the service stops, the framework can call resource cleanup methods if needed.
+**Implementing close() for AutoCloseable:**
+```java
+@Override
+public void close() {
+    // Release dedicated connection back to pool
+    if (dedicatedConnection != null && dedicatedConnection instanceof Connection) {
+        try {
+            ((Connection) dedicatedConnection).close();
+        } catch (SQLException e) {
+            log.warn("Failed to close database connection", e);
+        }
+    }
+}
+
+@Override
+public String toSchemaName(String simulationRunId) {
+    // Delegate to database resource
+    return database.toSchemaName(simulationRunId);
+}
+```
+
+**Note:** Since IMetadataDatabase extends AutoCloseable, the wrapper must implement close() to release the dedicated connection back to the pool.
 
 **Future wrapper implementations (not part of this phase):**
 ```java
@@ -765,27 +821,26 @@ public class H2Database extends AbstractDatabaseResource {
                 ")"
             );
 
-            // Prepare key-value pairs
+            // Prepare key-value pairs using GSON for type-safe JSON generation
+            Gson gson = new Gson();
             Map<String, String> kvPairs = new HashMap<>();
 
             // Environment config (needed by environment indexers)
             EnvironmentConfig env = metadata.getEnvironment();
-            String envJson = String.format(
-                "{\"dimensions\":%d,\"shape\":%s,\"toroidal\":%s}",
-                env.getDimensions(),
-                Arrays.toString(env.getShapeList().toArray()),
-                Arrays.toString(env.getToroidalList().toArray())
+            Map<String, Object> envMap = Map.of(
+                "dimensions", env.getDimensions(),
+                "shape", env.getShapeList(),
+                "toroidal", env.getToroidalList()
             );
-            kvPairs.put("environment", envJson);
+            kvPairs.put("environment", gson.toJson(envMap));
 
             // Simulation info (useful for web client)
-            String simInfoJson = String.format(
-                "{\"runId\":\"%s\",\"startTime\":%d,\"seed\":%d}",
-                metadata.getSimulationRunId(),
-                metadata.getStartTimeMs(),
-                metadata.getInitialSeed()
+            Map<String, Object> simInfoMap = Map.of(
+                "runId", metadata.getSimulationRunId(),
+                "startTime", metadata.getStartTimeMs(),
+                "seed", metadata.getInitialSeed()
             );
-            kvPairs.put("simulation_info", simInfoJson);
+            kvPairs.put("simulation_info", gson.toJson(simInfoMap));
 
             // Batch insert/update all key-value pairs (idempotent using MERGE)
             // MERGE allows safe restart after partial failure (schema created but insert failed)
@@ -1010,28 +1065,27 @@ public class MetadataIndexer extends AbstractIndexer implements IMonitorable {
 
     @Override
     protected void indexRun(String runId) throws Exception {
-        log.info("Indexing metadata for run: {}", runId);
+        log.info("Indexing metadata for run: runId={}", runId);
 
         // Wait for metadata file to exist
         String metadataKey = runId + "/metadata.pb";
         SimulationMetadata metadata = pollForMetadataFile(metadataKey);
 
-        // Create schema
-        String schemaName = toSchemaName(runId);
-        database.createSchema(schemaName);
-        database.setSchema(schemaName);
-
-        // Write metadata
-        database.insertMetadata(metadata);
+        // Use try-with-resources to ensure connection cleanup
+        try (IMetadataDatabase db = database) {
+            db.createSimulationRun(runId);  // Uses raw runId, sanitizes internally
+            db.setSimulationRun(runId);     // Uses raw runId, sanitizes internally
+            db.insertMetadata(metadata);
+        }
 
         metadataIndexed.incrementAndGet();
-        log.info("Successfully indexed metadata for run: {}", runId);
+        log.info("Successfully indexed metadata for run: runId={}", runId);
 
         // Service stops naturally after indexing (one-shot pattern)
     }
 
     private SimulationMetadata pollForMetadataFile(String key) throws Exception {
-        log.debug("Polling for metadata file: {}", key);
+        log.debug("Polling for metadata file: key={}", key);
 
         long startTime = System.currentTimeMillis();
 
@@ -1061,10 +1115,6 @@ public class MetadataIndexer extends AbstractIndexer implements IMonitorable {
         }
 
         throw new InterruptedException("Metadata polling interrupted");
-    }
-
-    private String toSchemaName(String runId) {
-        return "sim_" + runId.replace("-", "_");
     }
 
     @Override
@@ -1296,6 +1346,7 @@ try {
 - LogWatchExtension mandatory: Use `@AllowLog` or `@ExpectLog` for every expected log
 - No broad ERROR/WARN allowances - only explicitly expected logs
 - Tests fail if unexpected errors/warnings occur
+- **No Thread.sleep**: Use Awaitility for waiting on dependencies (already in project dependencies)
 
 **Example:**
 ```java
@@ -1379,6 +1430,46 @@ class MetadataIndexerIntegrationTest {
   // Single INFO log for entire metadata indexing operation
   log.info("Successfully indexed metadata for run: runId={}", metadata.getSimulationRunId());
   ```
+
+### 5. Code Refactoring
+
+**Path Expansion Utility: Extract to Centralized Utils Class**
+- **Problem**: Path expansion logic duplicated in FileSystemStorageResource and H2Database (identical code, ~60 lines each)
+- **Solution**: Extract to `org.evochora.datapipeline.utils.PathExpansion` utility class
+- **Implementation**:
+  ```java
+  package org.evochora.datapipeline.utils;
+
+  public class PathExpansion {
+      /**
+       * Expands environment variables and Java system properties in a path string.
+       * Supports syntax: ${VAR} for both environment variables and system properties.
+       * System properties are checked first, then environment variables.
+       *
+       * @param path the path potentially containing variables like ${HOME} or ${user.home}
+       * @return the path with all variables expanded
+       * @throws IllegalArgumentException if a variable is referenced but not defined
+       */
+      public static String expandPath(String path) {
+          // Implementation moves here from FileSystemStorageResource/H2Database
+      }
+
+      private static String resolveVariable(String varName) {
+          // Implementation moves here from FileSystemStorageResource/H2Database
+      }
+  }
+  ```
+- **Usage**:
+  ```java
+  // In FileSystemStorageResource and H2Database
+  String expandedPath = PathExpansion.expandPath(rootPath);
+  ```
+- **Benefits**:
+  - DRY principle - single source of truth
+  - Easier testing - test utility class once
+  - Easier maintenance - bug fixes apply everywhere
+  - Consistent behavior across storage and database resources
+- **Priority**: Medium - implement after Phase 2.4 completion, before adding more resources that need path expansion
 
 ## Future Extensions
 
