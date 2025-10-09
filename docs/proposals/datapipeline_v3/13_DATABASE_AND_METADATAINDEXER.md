@@ -7,7 +7,7 @@ Implement database resource abstraction and metadata indexer service that reads 
 ## Scope
 
 **This phase implements:**
-1. Database resource abstraction with capability-based interfaces
+1. Database resource abstraction with single metadata capability interface
 2. H2 database implementation with HikariCP connection pooling
 3. AbstractIndexer base class with run discovery logic
 4. MetadataIndexer service that indexes SimulationMetadata
@@ -15,26 +15,27 @@ Implement database resource abstraction and metadata indexer service that reads 
 6. Integration tests verifying storage → indexer → database flow
 
 **This phase does NOT implement:**
-- Organism indexer (future phase)
-- Environment indexer (future phase)
+- Organism indexer (deferred - not part of this implementation)
+- Environment/cell indexer (deferred - not part of this implementation)
 - HTTP API for querying indexed data (future phase)
 - PostgreSQL implementation (designed for, implemented later)
-- Competing consumer coordination for batch indexers (future phase)
+- Competing consumer coordination for batch indexers (not needed for metadata indexer)
 
 ## Success Criteria
 
 Upon completion:
-1. Database capability interfaces (IMetadataDatabase, IOrganismDatabase, IEnvironmentDatabase) defined in API
+1. IMetadataDatabase capability interface defined in API
 2. AbstractDatabaseResource implements connection pooling, wrapper creation, and monitoring
 3. H2Database concrete implementation working with in-memory and file-based modes
-4. AbstractIndexer implements run discovery (config runId vs. timestamp-based)
-5. MetadataIndexer polls for metadata.pb, creates schema, writes to database
-6. Schema-per-run design with sanitized schema names (sim_timestamp_uuid)
-7. Dedicated connection per indexer instance with setSchema() support
-8. Transaction management per batch operation
-9. IBatchStorageRead.listRunIds(Instant afterTimestamp) for run discovery
-10. Integration tests verify SimulationEngine → Storage → MetadataIndexer → Database flow
-11. All tests pass with proper cleanup
+4. MetadataDatabaseWrapper implements IMetadataDatabase with dedicated connection
+5. AbstractIndexer implements run discovery (config runId vs. timestamp-based)
+6. MetadataIndexer polls for metadata.pb, creates schema, writes to database
+7. Schema-per-run design with sanitized schema names (sim_timestamp_uuid)
+8. Dedicated connection per indexer instance with setSchema() support
+9. Transaction management per database operation (handled internally)
+10.IBatchStorageRead.listRunIds(Instant afterTimestamp) for run discovery
+11. Integration tests verify SimulationEngine → Storage → MetadataIndexer → Database flow
+12. All tests pass with proper cleanup
 
 ## Prerequisites
 
@@ -119,18 +120,22 @@ CREATE TABLE cells (...);
 ```
 org.evochora.datapipeline.api.resources.database/
   - IMetadataDatabase.java       # Metadata indexer operations
-  - IOrganismDatabase.java        # Organism indexer operations (future)
-  - IEnvironmentDatabase.java     # Environment indexer operations (future)
+  - IOrganismDatabase.java        # Organism indexer operations (future, not part of this scope)
+  - IEnvironmentDatabase.java     # Environment indexer operations (future, not part of this scope)
 
 org.evochora.datapipeline.resources.database/
-  - AbstractDatabaseResource.java # Base class with pooling, wrappers, monitoring
-  - H2Database.java               # H2 implementation
-  - DatabaseWrapper.java          # Per-usage-type wrapper with dedicated connection
+  - AbstractDatabaseResource.java      # Base class with pooling, monitoring, addCustomMetrics()
+  - H2Database.java                    # H2 implementation
+  - MetadataDatabaseWrapper.java       # IMetadataDatabase wrapper with dedicated connection
+  - OrganismDatabaseWrapper.java       # IOrganismDatabase wrapper with dedicated connection (future, not part of this scope)
+  - EnvironmentDatabaseWrapper.java    # IEnvironmentDatabase wrapper with dedicated connection (future, not part of this scope)
 
 org.evochora.datapipeline.services.indexers/
   - AbstractIndexer.java          # Base indexer with run discovery
   - MetadataIndexer.java          # Metadata indexing implementation
 ```
+
+**Note:** Additional capability interfaces (IOrganismDatabase, IEnvironmentDatabase) and their wrappers will be added when implementing future indexers. The architecture is designed to support this extension pattern.
 
 ## Database Resource Architecture
 
@@ -143,15 +148,15 @@ public interface IMetadataDatabase extends IResource {
      * Must be called once after indexer discovers its runId.
      * Thread-safe: each wrapper has isolated connection.
      */
-    void setSchema(String schemaName);
+    void setSimulationRun(String simulationRunId);
 
     /**
      * Creates a new schema for a simulation run.
      * Uses CREATE SCHEMA IF NOT EXISTS internally.
      *
-     * @param schemaName Sanitized schema name (e.g., sim_20251006143025_uuid)
+     * @param simulationRunId Sanitized schema name (e.g., sim_20251006143025_uuid)
      */
-    void createSchema(String schemaName);
+    void createSimulationRun(String simulationRunId);
 
     /**
      * Writes complete simulation metadata to database.
@@ -168,174 +173,589 @@ public interface IMetadataDatabase extends IResource {
 }
 ```
 
-```java
-public interface IOrganismDatabase extends IResource {
-    void setSchema(String schemaName);
-
-    /**
-     * Inserts a batch of organism states.
-     * Uses JDBC batch INSERT for performance.
-     * Atomic operation per batch.
-     */
-    void insertOrganismBatch(List<OrganismState> organisms);
-
-    // CREATE TABLE organisms/organism_states when first called
-}
-```
-
-```java
-public interface IEnvironmentDatabase extends IResource {
-    void setSchema(String schemaName);
-
-    /**
-     * Inserts a batch of cell states.
-     * Uses JDBC batch INSERT for performance.
-     */
-    void insertCellBatch(List<CellState> cells);
-
-    // CREATE TABLE cells when first called
-}
-```
+**Future capability interfaces (not implemented in this phase):**
+- `IOrganismDatabase` - for organism indexers
+- `IEnvironmentDatabase` - for environment/cell indexers
 
 ### AbstractDatabaseResource Implementation
 
 ```java
+/**
+ * Abstract base class for database resources.
+ * <p>
+ * Database-agnostic implementation that delegates connection management,
+ * schema handling, and metrics collection to concrete implementations.
+ * <p>
+ * <strong>Performance Contract:</strong>
+ * All metric recording operations MUST be O(1). Use atomic counters and bucket-based
+ * data structures (LatencyBucket, RateBucket) for efficient lock-free recording.
+ */
 public abstract class AbstractDatabaseResource extends AbstractResource
-    implements IMetadataDatabase, IOrganismDatabase, IEnvironmentDatabase,
+    implements IMetadataDatabase, /* IOrganismDatabase, IEnvironmentDatabase, */
                IContextualResource, IMonitorable {
 
-    // HikariCP connection pool
-    protected final HikariDataSource dataSource;
+    // Base metrics (O(1) recording via atomic counters)
+    protected final AtomicLong queriesExecuted = new AtomicLong(0);
+    protected final AtomicLong rowsInserted = new AtomicLong(0);
+    protected final AtomicLong writeErrors = new AtomicLong(0);
+    protected final AtomicLong readErrors = new AtomicLong(0);
 
-    // Metrics
-    private final AtomicLong queriesExecuted = new AtomicLong(0);
-    private final AtomicLong rowsInserted = new AtomicLong(0);
-    private final AtomicLong errors = new AtomicLong(0);
+    // Error tracking (like storage/queue resources)
+    protected final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
+    private static final int MAX_ERRORS = 100;
 
     protected AbstractDatabaseResource(String name, Config options) {
         super(name, options);
-
-        // Initialize HikariCP with config
-        HikariConfig config = new HikariConfig();
-        config.setJdbcUrl(getJdbcUrl(options));
-        config.setMaximumPoolSize(options.getInt("maxPoolSize"));
-        config.setConnectionTimeout(options.getLong("connectionTimeout"));
-        // ... other HikariCP settings
-
-        this.dataSource = new HikariDataSource(config);
     }
-
-    // Abstract method for subclasses to provide JDBC URL
-    protected abstract String getJdbcUrl(Config options);
 
     @Override
     public IWrappedResource getWrappedResource(ResourceContext context) {
-        // Returns DatabaseWrapper with dedicated connection
-        return new DatabaseWrapper(this, context);
+        // Returns appropriate wrapper based on usage type
+        String usageType = context.usageType();
+
+        return switch (usageType) {
+            case "database-metadata" -> new MetadataDatabaseWrapper(this, context);
+            /*case "database-organisms" -> new OrganismDatabaseWrapper(this, context);
+            case "database-environment" -> new EnvironmentDatabaseWrapper(this, context);*/
+            default -> throw new IllegalArgumentException(
+                "Unknown database usage type: " + usageType +
+                ". Supported: database-metadata"
+            );
+        };
     }
 
-    // Connection management
-    Connection acquireDedicatedConnection() throws SQLException {
-        Connection conn = dataSource.getConnection();
-        conn.setAutoCommit(false);  // Manual commit control
-        return conn;
+    // ==================== Abstract Methods (implemented by concrete databases) ====================
+
+    /**
+     * Acquires a dedicated connection for exclusive use by a wrapper.
+     * <p>
+     * Connection lifecycle:
+     * - Acquired on wrapper creation
+     * - Held for wrapper's entire lifetime
+     * - Returned to pool (if applicable) when wrapper is closed
+     * <p>
+     * Concrete implementations handle connection pooling strategy
+     * (e.g., HikariCP for JDBC, connection reuse for embedded DBs).
+     *
+     * @return Database-specific connection handle
+     * @throws Exception if connection acquisition fails
+     */
+    protected abstract Object acquireDedicatedConnection() throws Exception;
+
+    /**
+     * Sanitizes simulation run ID to valid schema/namespace identifier.
+     * <p>
+     * Different databases have different naming requirements:
+     * - SQL: alphanumeric + underscore only
+     * - NoSQL: may allow hyphens
+     * - Case sensitivity varies
+     * <p>
+     * Example (SQL databases):
+     * <pre>
+     * 20251006143025-550e8400-e29b-41d4-a716-446655440000
+     * → sim_20251006143025_550e8400_e29b_41d4_a716_446655440000
+     * </pre>
+     *
+     * @param simulationRunId Raw simulation run ID
+     * @return Sanitized schema/namespace name
+     */
+    protected abstract String toSchemaName(String simulationRunId);
+
+    /**
+     * Implementation-specific method to insert metadata.
+     * Called by MetadataDatabaseWrapper after connection and schema setup.
+     * <p>
+     * Concrete implementation handles:
+     * - Schema creation (CREATE SCHEMA IF NOT EXISTS)
+     * - Table creation (CREATE TABLE IF NOT EXISTS metadata)
+     * - Data insertion with transaction management
+     * - Metric tracking (O(1) recording)
+     *
+     * @param connection Database-specific connection handle
+     * @param metadata Simulation metadata to persist
+     * @throws Exception if insertion fails
+     */
+    protected abstract void doInsertMetadata(Object connection, SimulationMetadata metadata) throws Exception;
+
+    /**
+     * Sets the active schema/namespace for subsequent operations.
+     * <p>
+     * SQL example: SET SCHEMA schema_name
+     * NoSQL example: Switch database context
+     *
+     * @param connection Database-specific connection handle
+     * @param schemaName Sanitized schema name from toSchemaName()
+     * @throws Exception if schema switching fails
+     */
+    protected abstract void doSetSchema(Object connection, String schemaName) throws Exception;
+
+    /**
+     * Creates a new schema/namespace for a simulation run.
+     * <p>
+     * Must be idempotent (CREATE ... IF NOT EXISTS).
+     * Includes transaction commit if applicable.
+     *
+     * @param connection Database-specific connection handle
+     * @param schemaName Sanitized schema name from toSchemaName()
+     * @throws Exception if schema creation fails
+     */
+    protected abstract void doCreateSchema(Object connection, String schemaName) throws Exception;
+
+    // ==================== Error Tracking (like storage/queue resources) ====================
+
+    protected void recordError(String code, String message, String details) {
+        errors.add(new OperationalError(Instant.now(), code, message, details));
+
+        // Prevent unbounded memory growth
+        while (errors.size() > MAX_ERRORS) {
+            errors.pollFirst();
+        }
     }
 
-    // Monitoring
     @Override
-    public Map<String, Number> getMetrics() {
-        Map<String, Number> metrics = new HashMap<>();
-        metrics.put("queries_executed", queriesExecuted.get());
-        metrics.put("rows_inserted", rowsInserted.get());
-        metrics.put("errors", errors.get());
-        metrics.put("active_connections", dataSource.getHikariPoolMXBean().getActiveConnections());
-        metrics.put("idle_connections", dataSource.getHikariPoolMXBean().getIdleConnections());
+    public boolean isHealthy() {
+        // Override in concrete class if connection health check available
+        return getCurrentState() != State.ERROR;
+    }
+
+    @Override
+    public List<OperationalError> getErrors() {
+        return new ArrayList<>(errors);
+    }
+
+    @Override
+    public void clearErrors() {
+        errors.clear();
+    }
+
+    // ==================== Monitoring (Template Method Pattern) ====================
+
+    @Override
+    public final Map<String, Number> getMetrics() {
+        Map<String, Number> metrics = getBaseMetrics();
+        addCustomMetrics(metrics);
         return metrics;
     }
 
-    // Utility: Sanitize runId to valid schema name
-    protected String toSchemaName(String runId) {
-        // 20251006143025-550e8400-e29b-41d4-a716-446655440000
-        // → sim_20251006143025_550e8400_e29b_41d4_a716_446655440000
-        return "sim_" + runId.replace("-", "_");
+    /**
+     * Returns base metrics tracked by AbstractDatabaseResource.
+     * Final - cannot be overridden.
+     * <p>
+     * <strong>Performance:</strong> All metrics use O(1) atomic operations.
+     */
+    protected final Map<String, Number> getBaseMetrics() {
+        Map<String, Number> metrics = new LinkedHashMap<>();
+
+        // Query metrics (O(1) atomic reads)
+        metrics.put("queries_executed", queriesExecuted.get());
+        metrics.put("rows_inserted", rowsInserted.get());
+        metrics.put("write_errors", writeErrors.get());
+        metrics.put("read_errors", readErrors.get());
+        metrics.put("error_count", errors.size());
+
+        return metrics;
+    }
+
+    /**
+     * Hook method for subclasses to add implementation-specific metrics.
+     * Default implementation does nothing.
+     * <p>
+     * <strong>Performance Contract:</strong> All custom metrics MUST use O(1) recording.
+     * <p>
+     * Example (H2Database):
+     * <pre>
+     * protected void addCustomMetrics(Map<String, Number> metrics) {
+     *     // Connection pool metrics (O(1) via HikariCP MXBean)
+     *     metrics.put("h2_active_connections", hikariPool.getActiveConnections());
+     *     metrics.put("h2_idle_connections", hikariPool.getIdleConnections());
+     *
+     *     // Cache metrics (O(1) atomic counters)
+     *     metrics.put("h2_cache_hit_ratio", cacheHits.get() / (double) totalAccesses.get());
+     *
+     *     // Rate metrics (O(1) via RateBucket)
+     *     metrics.put("h2_disk_writes_per_sec", diskWritesBucket.getRate(now));
+     * }
+     * </pre>
+     */
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        // Default: no custom metrics
     }
 }
 ```
 
-### DatabaseWrapper (Per-Usage-Type)
+**Key Design Principles:**
+1. **Database Agnostic**: No knowledge of JDBC, HikariCP, SQL, or any specific database technology
+2. **O(1) Metrics**: Explicit contract that all recording must be constant-time
+3. **Template Method**: Abstract methods delegate implementation details to concrete classes
+4. **Error Tracking**: Follows storage/queue pattern with bounded error list
+5. **Schema Naming**: Delegated to concrete class (different databases have different constraints)
+
+### MetadataDatabaseWrapper
 
 ```java
-class DatabaseWrapper implements IMetadataDatabase, IOrganismDatabase, IEnvironmentDatabase {
+/**
+ * Database-agnostic wrapper for metadata database operations.
+ * <p>
+ * Holds dedicated connection for exclusive use by one indexer instance.
+ * Delegates actual database operations to AbstractDatabaseResource methods.
+ * <p>
+ * <strong>Performance Contract:</strong> All metrics use O(1) recording
+ * via atomic counters and LatencyBucket for percentile tracking.
+ */
+class MetadataDatabaseWrapper implements IMetadataDatabase, IWrappedResource, IMonitorable {
     private final AbstractDatabaseResource database;
-    private final Connection dedicatedConnection;
-    private String currentSchema;
+    private final ResourceContext context;
+    private final Object dedicatedConnection;  // Database-agnostic handle
+    private String currentSimulationRunId;
 
-    DatabaseWrapper(AbstractDatabaseResource db, ResourceContext context) {
+    // Operation counters (O(1) recording via atomic operations)
+    private final AtomicLong schemasCreated = new AtomicLong(0);
+    private final AtomicLong metadataInserts = new AtomicLong(0);
+    private final AtomicLong operationErrors = new AtomicLong(0);
+
+    // Performance bucketing (O(1) recording, following storage/queue pattern)
+    private final Map<String, LatencyBucket> operationLatencies = new ConcurrentHashMap<>();
+
+    // Error tracking (bounded, like storage/queue)
+    private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
+    private static final int MAX_ERRORS = 100;
+
+    MetadataDatabaseWrapper(AbstractDatabaseResource db, ResourceContext context) {
         this.database = db;
+        this.context = context;
+
         try {
             this.dedicatedConnection = db.acquireDedicatedConnection();
-        } catch (SQLException e) {
+        } catch (Exception e) {
             throw new RuntimeException("Failed to acquire database connection", e);
         }
+
+        // Initialize latency buckets
+        operationLatencies.put("create_simulation_run", new LatencyBucket());
+        operationLatencies.put("set_simulation_run", new LatencyBucket());
+        operationLatencies.put("insert_metadata", new LatencyBucket());
     }
 
     @Override
-    public void setSchema(String schemaName) {
+    public void setSimulationRun(String simulationRunId) {
+        long startNanos = System.nanoTime();
         try {
-            dedicatedConnection.createStatement()
-                .execute("SET SCHEMA " + schemaName);
-            this.currentSchema = schemaName;
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to set schema: " + schemaName, e);
+            String schemaName = database.toSchemaName(simulationRunId);
+            database.doSetSchema(dedicatedConnection, schemaName);
+            this.currentSimulationRunId = simulationRunId;
+
+            long durationMs = (System.nanoTime() - startNanos) / 1_000_000;
+            operationLatencies.get("set_simulation_run").record(durationMs);
+
+        } catch (Exception e) {
+            operationErrors.incrementAndGet();
+            recordError("SET_SCHEMA_FAILED", "Failed to set simulation run",
+                       "RunId: " + simulationRunId + ", Error: " + e.getMessage());
+            throw new RuntimeException("Failed to set simulation run: " + simulationRunId, e);
         }
     }
 
     @Override
-    public void createSchema(String schemaName) {
+    public void createSimulationRun(String simulationRunId) {
+        long startNanos = System.nanoTime();
         try {
-            dedicatedConnection.createStatement()
-                .execute("CREATE SCHEMA IF NOT EXISTS " + schemaName);
-            dedicatedConnection.commit();
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to create schema: " + schemaName, e);
+            String schemaName = database.toSchemaName(simulationRunId);
+            database.doCreateSchema(dedicatedConnection, schemaName);
+            schemasCreated.incrementAndGet();
+
+            long durationMs = (System.nanoTime() - startNanos) / 1_000_000;
+            operationLatencies.get("create_simulation_run").record(durationMs);
+
+        } catch (Exception e) {
+            operationErrors.incrementAndGet();
+            recordError("CREATE_SCHEMA_FAILED", "Failed to create simulation run",
+                       "RunId: " + simulationRunId + ", Error: " + e.getMessage());
+            throw new RuntimeException("Failed to create simulation run: " + simulationRunId, e);
         }
     }
 
     @Override
     public void insertMetadata(SimulationMetadata metadata) {
-        // Delegates to database-specific implementation
-        database.doInsertMetadata(dedicatedConnection, metadata);
-    }
-
-    // Similar delegation for other operations...
-
-    public void close() {
+        long startNanos = System.nanoTime();
         try {
-            dedicatedConnection.close();  // Returns to pool
-        } catch (SQLException e) {
-            // Log error
+            // Delegates to database-specific implementation
+            database.doInsertMetadata(dedicatedConnection, metadata);
+            metadataInserts.incrementAndGet();
+
+            long durationMs = (System.nanoTime() - startNanos) / 1_000_000;
+            operationLatencies.get("insert_metadata").record(durationMs);
+
+        } catch (Exception e) {
+            operationErrors.incrementAndGet();
+            recordError("INSERT_METADATA_FAILED", "Failed to insert metadata",
+                       "RunId: " + metadata.getSimulationRunId() + ", Error: " + e.getMessage());
+            throw new RuntimeException("Failed to insert metadata", e);
         }
     }
+
+    private void recordError(String code, String message, String details) {
+        errors.add(new OperationalError(Instant.now(), code, message, details));
+
+        // Prevent unbounded memory growth
+        while (errors.size() > MAX_ERRORS) {
+            errors.pollFirst();
+        }
+    }
+
+    @Override
+    public String getResourceName() {
+        return database.getResourceName();
+    }
+
+    @Override
+    public Map<String, Number> getUsageStats() {
+        return Map.of(
+            "schemas_created", schemasCreated.get(),
+            "metadata_inserts", metadataInserts.get(),
+            "operation_errors", operationErrors.get()
+        );
+    }
+
+    @Override
+    public Map<String, Number> getMetrics() {
+        Map<String, Number> metrics = new LinkedHashMap<>();
+
+        // Operation counts (O(1) atomic reads)
+        metrics.put("schemas_created", schemasCreated.get());
+        metrics.put("metadata_inserts", metadataInserts.get());
+        metrics.put("operation_errors", operationErrors.get());
+        metrics.put("error_count", errors.size());
+        metrics.put("current_simulation_run_set", currentSimulationRunId != null ? 1 : 0);
+
+        // Latency percentiles (O(1) calculation from buckets)
+        for (Map.Entry<String, LatencyBucket> entry : operationLatencies.entrySet()) {
+            String op = entry.getKey();
+            LatencyBucket bucket = entry.getValue();
+            metrics.put(op + "_latency_p50", bucket.getPercentile(50));
+            metrics.put(op + "_latency_p95", bucket.getPercentile(95));
+            metrics.put(op + "_latency_p99", bucket.getPercentile(99));
+        }
+
+        return metrics;
+    }
+
+    @Override
+    public boolean isHealthy() {
+        // Delegate health check to database resource
+        return database.isHealthy();
+    }
+
+    @Override
+    public List<OperationalError> getErrors() {
+        return new ArrayList<>(errors);
+    }
+
+    @Override
+    public void clearErrors() {
+        errors.clear();
+    }
+}
+```
+
+**Note on close():** IWrappedResource doesn't define close(). Connection lifecycle is managed by the database resource's connection pooling strategy. When the service stops, the framework can call resource cleanup methods if needed.
+
+**Future wrapper implementations (not part of this phase):**
+```java
+class OrganismDatabaseWrapper implements IOrganismDatabase, IWrappedResource, IMonitorable {
+    // Similar structure - dedicated connection, organism-specific metrics
+}
+
+class EnvironmentDatabaseWrapper implements IEnvironmentDatabase, IWrappedResource, IMonitorable {
+    // Similar structure - dedicated connection, environment-specific metrics
 }
 ```
 
 ### H2Database Implementation
 
 ```java
+/**
+ * H2 database implementation using HikariCP for connection pooling.
+ * <p>
+ * Supports both in-memory and file-based modes for testing and production.
+ * <p>
+ * <strong>Performance:</strong> All metrics use O(1) recording via atomic counters
+ * and RateBucket for moving window averages.
+ */
 public class H2Database extends AbstractDatabaseResource {
 
-    @Override
-    protected String getJdbcUrl(Config options) {
+    // HikariCP connection pool (H2-specific implementation detail)
+    private final HikariDataSource dataSource;
+
+    // H2-specific metrics (O(1) recording via atomic operations)
+    private final AtomicLong cacheHits = new AtomicLong(0);
+    private final AtomicLong cacheMisses = new AtomicLong(0);
+    private final AtomicLong diskReads = new AtomicLong(0);
+    private final AtomicLong diskWrites = new AtomicLong(0);
+
+    // Moving window rate buckets (O(1) recording, configurable window size)
+    private final Map<String, RateBucket> rateBuckets = new ConcurrentHashMap<>();
+    private final int metricsWindowSizeMs;
+
+    public H2Database(String name, Config options) {
+        super(name, options);
+
+        // Initialize HikariCP connection pool
+        HikariConfig hikariConfig = new HikariConfig();
+        hikariConfig.setJdbcUrl(getJdbcUrl(options));
+        hikariConfig.setMaximumPoolSize(options.hasPath("maxPoolSize") ?
+            options.getInt("maxPoolSize") : 10);
+        hikariConfig.setMinimumIdle(options.hasPath("minIdle") ?
+            options.getInt("minIdle") : 2);
+        hikariConfig.setConnectionTimeout(options.hasPath("connectionTimeout") ?
+            options.getLong("connectionTimeout") : 30000);
+        hikariConfig.setIdleTimeout(options.hasPath("idleTimeout") ?
+            options.getLong("idleTimeout") : 600000);
+        hikariConfig.setMaxLifetime(options.hasPath("maxLifetime") ?
+            options.getLong("maxLifetime") : 1800000);
+
+        this.dataSource = new HikariDataSource(hikariConfig);
+
+        // Configurable metrics window size (default 5 seconds per user preference)
+        this.metricsWindowSizeMs = options.hasPath("metricsWindowSizeMs") ?
+            options.getInt("metricsWindowSizeMs") : 5000;
+
+        // Initialize rate buckets with configurable window
+        rateBuckets.put("cache_hits", new RateBucket(metricsWindowSizeMs));
+        rateBuckets.put("cache_misses", new RateBucket(metricsWindowSizeMs));
+        rateBuckets.put("disk_reads", new RateBucket(metricsWindowSizeMs));
+        rateBuckets.put("disk_writes", new RateBucket(metricsWindowSizeMs));
+    }
+
+    private String getJdbcUrl(Config options) {
         if (options.hasPath("jdbcUrl")) {
             return options.getString("jdbcUrl");
         }
-        // Default: file-based H2
+
+        // Require dataDirectory if jdbcUrl not provided
+        if (!options.hasPath("dataDirectory")) {
+            throw new IllegalArgumentException(
+                "Either 'jdbcUrl' or 'dataDirectory' must be configured for H2Database"
+            );
+        }
+
         String dataDir = options.getString("dataDirectory");
-        return "jdbc:h2:" + dataDir + "/evochora";
+
+        // Expand environment variables and system properties (like storage resources)
+        String expandedPath = expandPath(dataDir);
+        if (!dataDir.equals(expandedPath)) {
+            log.debug("Expanded dataDirectory: '{}' -> '{}'", dataDir, expandedPath);
+        }
+
+        return "jdbc:h2:" + expandedPath + "/evochora;MODE=PostgreSQL";
+    }
+
+    /**
+     * Expands environment variables and Java system properties in a path string.
+     * Supports syntax: ${VAR} for both environment variables and system properties.
+     * System properties are checked first, then environment variables.
+     * <p>
+     * Examples:
+     * <ul>
+     *   <li>${user.home}/data → /home/user/data</li>
+     *   <li>${HOME}/evochora → /home/user/evochora</li>
+     *   <li>${EVOCHORA_DATA_DIR} → /var/lib/evochora</li>
+     * </ul>
+     *
+     * @param path the path potentially containing variables like ${HOME} or ${user.home}
+     * @return the path with all variables expanded
+     * @throws IllegalArgumentException if a variable is referenced but not defined
+     */
+    private static String expandPath(String path) {
+        if (path == null || !path.contains("${")) {
+            return path;
+        }
+
+        StringBuilder result = new StringBuilder();
+        int pos = 0;
+
+        while (pos < path.length()) {
+            int startVar = path.indexOf("${", pos);
+            if (startVar == -1) {
+                // No more variables, append rest of string
+                result.append(path.substring(pos));
+                break;
+            }
+
+            // Append text before variable
+            result.append(path.substring(pos, startVar));
+
+            int endVar = path.indexOf("}", startVar + 2);
+            if (endVar == -1) {
+                throw new IllegalArgumentException("Unclosed variable in path: " + path);
+            }
+
+            String varName = path.substring(startVar + 2, endVar);
+            String value = resolveVariable(varName);
+
+            if (value == null) {
+                throw new IllegalArgumentException(
+                    "Undefined variable '${" + varName + "}' in path: " + path +
+                    ". Check that environment variable or system property exists."
+                );
+            }
+
+            result.append(value);
+            pos = endVar + 1;
+        }
+
+        return result.toString();
+    }
+
+    /**
+     * Resolves a variable name to its value, checking system properties first, then environment variables.
+     *
+     * @param varName the variable name (without ${} delimiters)
+     * @return the resolved value, or null if not found
+     */
+    private static String resolveVariable(String varName) {
+        // Check system properties first (e.g., user.home, java.io.tmpdir)
+        String value = System.getProperty(varName);
+        if (value != null) {
+            return value;
+        }
+
+        // Check environment variables (e.g., HOME, USERPROFILE, EVOCHORA_DATA_DIR)
+        return System.getenv(varName);
     }
 
     @Override
-    public void doInsertMetadata(Connection conn, SimulationMetadata metadata) {
+    protected Object acquireDedicatedConnection() throws Exception {
+        Connection conn = dataSource.getConnection();
+        conn.setAutoCommit(false);  // Manual transaction control
+        return conn;
+    }
+
+    @Override
+    protected String toSchemaName(String simulationRunId) {
+        // SQL identifier: alphanumeric + underscore only
+        // 20251006143025-550e8400-e29b-41d4-a716-446655440000
+        // → sim_20251006143025_550e8400_e29b_41d4_a716_446655440000
+        return "sim_" + simulationRunId.replace("-", "_");
+    }
+
+    @Override
+    protected void doSetSchema(Object connection, String schemaName) throws Exception {
+        Connection conn = (Connection) connection;
+        conn.createStatement().execute("SET SCHEMA " + schemaName);
+    }
+
+    @Override
+    protected void doCreateSchema(Object connection, String schemaName) throws Exception {
+        Connection conn = (Connection) connection;
+        conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS " + schemaName);
+        conn.commit();
+    }
+
+    @Override
+    protected void doInsertMetadata(Object connection, SimulationMetadata metadata) throws Exception {
+        Connection conn = (Connection) connection;
+        long now = System.currentTimeMillis();
+
         try {
             // Create metadata table if not exists
             conn.createStatement().execute(
@@ -367,9 +787,10 @@ public class H2Database extends AbstractDatabaseResource {
             );
             kvPairs.put("simulation_info", simInfoJson);
 
-            // Batch insert all key-value pairs
+            // Batch insert/update all key-value pairs (idempotent using MERGE)
+            // MERGE allows safe restart after partial failure (schema created but insert failed)
             PreparedStatement stmt = conn.prepareStatement(
-                "INSERT INTO metadata (key, value) VALUES (?, ?)"
+                "MERGE INTO metadata (key, value) KEY(key) VALUES (?, ?)"
             );
 
             for (Map.Entry<String, String> entry : kvPairs.entrySet()) {
@@ -381,18 +802,80 @@ public class H2Database extends AbstractDatabaseResource {
             stmt.executeBatch();
             conn.commit();
 
-            // Track metrics
+            // Track metrics (O(1) recording)
             rowsInserted.addAndGet(kvPairs.size());
             queriesExecuted.incrementAndGet();
+            diskWrites.incrementAndGet();  // H2-specific metric
+            rateBuckets.get("disk_writes").record(now);  // O(1) moving window recording
 
         } catch (SQLException e) {
             try {
                 conn.rollback();
             } catch (SQLException re) {
-                // Log rollback failure
+                log.warn("Rollback failed", re);
             }
-            throw new RuntimeException("Failed to insert metadata", e);
+            recordError("INSERT_METADATA_FAILED", "Failed to insert metadata",
+                       "Error: " + e.getMessage());
+            throw e;
         }
+    }
+
+    /**
+     * Adds H2-specific metrics via Template Method Pattern hook.
+     * Called by AbstractDatabaseResource.getMetrics() after base metrics.
+     * <p>
+     * <strong>Performance:</strong> All metrics use O(1) operations.
+     */
+    @Override
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        long now = System.currentTimeMillis();
+
+        // H2 cache metrics (O(1) atomic reads)
+        long hits = cacheHits.get();
+        long misses = cacheMisses.get();
+        long total = hits + misses;
+
+        metrics.put("h2_cache_hits", hits);
+        metrics.put("h2_cache_misses", misses);
+        metrics.put("h2_cache_hit_ratio", total > 0 ? hits / (double) total : 0.0);
+
+        // H2 disk I/O metrics (O(1) atomic reads)
+        metrics.put("h2_disk_reads", diskReads.get());
+        metrics.put("h2_disk_writes", diskWrites.get());
+
+        // H2 rates (operations per second) - moving window average with O(1) calculation
+        metrics.put("h2_cache_hits_per_sec", rateBuckets.get("cache_hits").getRate(now));
+        metrics.put("h2_cache_misses_per_sec", rateBuckets.get("cache_misses").getRate(now));
+        metrics.put("h2_disk_reads_per_sec", rateBuckets.get("disk_reads").getRate(now));
+        metrics.put("h2_disk_writes_per_sec", rateBuckets.get("disk_writes").getRate(now));
+
+        // HikariCP connection pool metrics (O(1) via MXBean)
+        metrics.put("h2_pool_active_connections", dataSource.getHikariPoolMXBean().getActiveConnections());
+        metrics.put("h2_pool_idle_connections", dataSource.getHikariPoolMXBean().getIdleConnections());
+        metrics.put("h2_pool_total_connections", dataSource.getHikariPoolMXBean().getTotalConnections());
+        metrics.put("h2_pool_threads_awaiting", dataSource.getHikariPoolMXBean().getThreadsAwaitingConnection());
+
+        // H2 memory usage (can query H2 internal statistics)
+        try (Connection conn = dataSource.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(
+                 "SELECT * FROM INFORMATION_SCHEMA.SETTINGS WHERE NAME = 'info.CACHE_SIZE'")) {
+
+            if (rs.next()) {
+                metrics.put("h2_cache_size_bytes", rs.getLong("VALUE"));
+            }
+        } catch (SQLException e) {
+            // Log but don't fail metrics collection
+            log.warn("Failed to query H2 statistics: {}", e.getMessage());
+        }
+    }
+
+    @Override
+    public boolean isHealthy() {
+        // Check connection pool health
+        return dataSource != null &&
+               !dataSource.isClosed() &&
+               getCurrentState() != State.ERROR;
     }
 }
 ```
@@ -629,9 +1112,15 @@ List<String> listRunIds(Instant afterTimestamp) throws IOException;
 mydb {
   className = "org.evochora.datapipeline.resources.database.H2Database"
   options {
-    # JDBC URL - if not specified, uses dataDirectory
-    jdbcUrl = "jdbc:h2:./data/evochora;MODE=PostgreSQL"
-    # Or: jdbcUrl = "jdbc:h2:mem:test;DB_CLOSE_DELAY=-1"  # In-memory for tests
+    # Option 1: Specify JDBC URL directly
+    # jdbcUrl = "jdbc:h2:./data/evochora;MODE=PostgreSQL"
+    # jdbcUrl = "jdbc:h2:mem:test;DB_CLOSE_DELAY=-1"  # In-memory for tests
+
+    # Option 2: Use dataDirectory with variable expansion (like storage resources)
+    # Supports ${VAR} syntax for environment variables and system properties
+    dataDirectory = "${user.home}/evochora/data"  # Uses Java system property
+    # dataDirectory = "${HOME}/evochora/data"      # Uses environment variable
+    # dataDirectory = "${EVOCHORA_DATA_DIR}"       # Uses custom env variable
 
     # HikariCP settings
     maxPoolSize = 10
@@ -639,9 +1128,19 @@ mydb {
     connectionTimeout = 30000
     idleTimeout = 600000
     maxLifetime = 1800000
+
+    # Performance metrics window size (moving average)
+    # Controls RateBucket window for per-second metrics (default: 5000ms = 5 seconds)
+    metricsWindowSizeMs = 5000
   }
 }
 ```
+
+**Variable Expansion Examples:**
+- `${user.home}/data` → `/home/user/data` (Java system property)
+- `${HOME}/evochora` → `/home/user/evochora` (environment variable)
+- `${EVOCHORA_DATA_DIR}` → `/var/lib/evochora` (custom environment variable)
+- System properties are checked first, then environment variables
 
 ### Metadata Indexer
 
@@ -733,32 +1232,153 @@ void testMetadataIndexing_ParallelMode() {
 }
 ```
 
-## Open Questions
+## Architectural Decisions
 
-### 1. Database Schema Details
-- Should we store full SimulationMetadata or just essential fields initially?
-- Programs table structure: Flatten all fields or store as JSONB?
-- How to handle dimension-dependent tables (separate tables per dimension count)?
+### 1. Database Schema
+**Decision:** Hybrid approach - essential fields as key-value pairs + full metadata JSON backup
+- Store `environment`, `simulation_info` as structured JSON for query performance
+- Store `full_metadata` as complete JSON backup for future needs
+- Add more key-value pairs (e.g., `programs`) when web client query patterns emerge
+- Use single polymorphic tables with dimension field (not separate tables per dimension)
 
 ### 2. Error Handling
-- Should failed metadata indexing go to DLQ?
-- Retry strategy if database write fails?
-- What if schema creation succeeds but metadata insert fails?
 
-### 3. Testing
-- Test database cleanup strategy (drop schemas after tests)?
-- How to test connection pooling exhaustion?
-- Performance benchmarks for batch inserts?
+**Metadata Indexing Failures: Fail Fast, No DLQ**
+- **Rationale**: Metadata is critical dependency for all other indexers. Silent DLQ creates confusing failures.
+- **Implementation**: Let exceptions propagate, service enters ERROR state, triggers operational alerts
+- **Recovery**: Operator fixes root cause (DB connection, etc.) and restarts indexer with same runId
 
-### 4. Logging
-- Log level for polling iterations (DEBUG vs INFO)?
-- Structured logging format for indexer lifecycle events?
-- Should we log full metadata or just summary?
+```java
+// MetadataIndexer.indexRun()
+try {
+    database.insertMetadata(metadata);
+    metadataIndexed.incrementAndGet();
+} catch (Exception e) {
+    metadataFailed.incrementAndGet();
+    log.error("Metadata indexing failed for run {}. " +
+             "Other indexers cannot proceed.", runId, e);
+    throw new RuntimeException("Metadata indexing failed", e);  // ERROR state
+}
+```
 
-### 5. Future PostgreSQL Implementation
-- Schema compatibility between H2 and Postgres?
-- Migration path from H2 to Postgres?
-- Performance tuning differences?
+**Database Write Retries: Not Implemented for Metadata**
+- **Rationale**: YAGNI - Metadata is single small write, transient failures rare. Adding retry logic to wrapper would require database-specific error detection (violates wrapper purity).
+- **Implementation**: No retry logic in wrapper or indexer - let exceptions propagate immediately
+- **Future**: If needed for organism indexer (millions of writes), implement retry logic in concrete database class (H2Database.doInsertMetadata), not in wrapper
+
+**Metadata Insert Idempotency: Using MERGE Instead of INSERT**
+- **Rationale**: Enables safe restart after partial failure (schema created but insert failed) with minimal complexity
+- **Implementation**: H2Database.doInsertMetadata() uses `MERGE INTO metadata (key, value) KEY(key) VALUES (?, ?)` instead of `INSERT INTO metadata (key, value) VALUES (?, ?)`
+- **Benefit**: Restart continues from partial state without error - updates existing keys or inserts new ones atomically
+- **Cost**: None - simple SQL statement change with same performance characteristics
+
+### 3. Testing Strategy
+
+**Database Cleanup: In-memory H2 with @AfterEach cleanup**
+- **Approach**: Each test gets unique in-memory database (`jdbc:h2:mem:test_${UUID}`) that disappears on close
+- **Cleanup**: @AfterEach deletes temporary storage directories, closes database connections
+- **Isolation**: UUID in database name ensures parallel tests don't interfere
+- **No artifacts**: In-memory DB vanishes on JVM exit, temp directories explicitly deleted
+
+**Connection Pool Management in Tests**
+- **Strategy**: Use small pool sizes (maxPoolSize=2) appropriate for single-threaded test execution
+- **Leak detection**: @AfterEach verifies activeConnections=0 to catch connection leaks
+- **No exhaustion tests**: Not testing HikariCP internals, tests use 1-2 connections maximum
+- **Fast failure**: connectionTimeout=5000ms makes leaked connections fail tests quickly
+
+**Performance Benchmarks**
+- **Decision**: Not implemented (YAGNI)
+- **Rationale**: Benchmarks are environment-dependent, testing correctness not performance
+- **Future**: Add targeted benchmarks if production performance issues arise
+
+**Test Requirements**
+- All tests tagged with `@Tag("unit")` or `@Tag("integration")`
+- LogWatchExtension mandatory: Use `@AllowLog` or `@ExpectLog` for every expected log
+- No broad ERROR/WARN allowances - only explicitly expected logs
+- Tests fail if unexpected errors/warnings occur
+
+**Example:**
+```java
+@ExtendWith(LogWatchExtension.class)
+@Tag("integration")
+class MetadataIndexerIntegrationTest {
+
+    @BeforeEach
+    void setup() {
+        testDatabase = new H2Database("test-db", ConfigFactory.parseString("""
+            jdbcUrl = "jdbc:h2:mem:test_${UUID.randomUUID()};DB_CLOSE_DELAY=-1"
+            maxPoolSize = 2
+            minIdle = 1
+            connectionTimeout = 5000
+        """));
+
+        Path tempStorage = Files.createTempDirectory("evochora-test-");
+        testStorage = new FileSystemStorageResource("test-storage",
+            ConfigFactory.parseString("rootDirectory = \"" + tempStorage + "\""));
+    }
+
+    @AfterEach
+    void cleanup() throws IOException {
+        if (testDatabase != null) {
+            // Verify no connection leaks
+            assertEquals(0, testDatabase.getMetrics().get("h2_pool_active_connections"));
+            testDatabase.stop();
+        }
+
+        if (testStorage != null) {
+            Files.walk(Paths.get(testStorage.getRootDirectory()))
+                .sorted(Comparator.reverseOrder())
+                .forEach(path -> path.toFile().delete());
+        }
+    }
+
+    @Test
+    @AllowLog(logger = "org.evochora.datapipeline.services.indexers.MetadataIndexer",
+              level = INFO,
+              message = "Indexing metadata for run: test-run-123")
+    @AllowLog(logger = "org.evochora.datapipeline.services.indexers.MetadataIndexer",
+              level = INFO,
+              message = "Successfully indexed metadata for run: test-run-123")
+    void testMetadataIndexing() {
+        // Test implementation
+    }
+}
+```
+
+### 4. Logging Strategy
+
+**Log Levels: DEBUG for polling, INFO for results**
+- **Polling iterations**: DEBUG (repetitive, too noisy for INFO)
+- **Discovery/completion**: INFO (successful discovery, major operations)
+- **Example**:
+  ```java
+  log.debug("Polling for simulation runs");           // DEBUG: Repetitive
+  log.info("Discovered runId={}", runId);              // INFO: Success
+  log.info("Successfully indexed metadata for run: runId={}", runId);  // INFO: Completion
+  ```
+
+**Structured Logging: Simple key=value format**
+- Logback automatically provides: logger name, timestamp, thread, level
+- Use key=value pairs for structured data (e.g., `runId={}`)
+- Always include runId for correlation
+- **Example**:
+  ```java
+  log.info("Using configured runId={}", configuredRunId);
+  log.info("Discovered runId={}", runId);
+  log.info("Indexing metadata for run: runId={}", runId);
+  log.info("Successfully indexed metadata for run: runId={}", runId);
+  ```
+
+**Metadata Content: Never logged**
+- **Single INFO log** after all metadata inserts complete
+- **No logging of**: individual key-value pairs, row counts, dimensions, seed, full protobuf content
+- **No performance metrics**: No duration, throughput, or timing information in logs
+- **Rationale**: Metadata already persisted to database and storage - logging adds no operational value
+- **Example**:
+  ```java
+  // Single INFO log for entire metadata indexing operation
+  log.info("Successfully indexed metadata for run: runId={}", metadata.getSimulationRunId());
+  ```
 
 ## Future Extensions
 
@@ -780,4 +1400,4 @@ void testMetadataIndexing_ParallelMode() {
 
 ---
 
-**Status:** Architecture defined, ready for implementation discussion of remaining open questions.
+**Status:** Architecture defined, ready for implementation.

@@ -405,8 +405,8 @@ After these 8 steps, the system will be:
 
 **Documentation:** See `10_SIMULATIONENGINE.md` for detailed implementation specification.
 
-#### Phase 2.2: Storage Resource Abstraction
-**Status:** Specification complete, ready for implementation
+#### Phase 2.2: Storage Resource Abstraction ✅ COMPLETED
+**Status:** Implemented and functional
 - Storage capability interfaces (IStorageReadResource, IStorageWriteResource)
 - Streaming interfaces (MessageWriter, MessageReader) with Protobuf-aware design
 - FileSystemStorageResource with atomic writes (temp file + fsync + rename)
@@ -424,8 +424,8 @@ After these 8 steps, the system will be:
 - Batch filenames: `batch_[19-digit-start]_[19-digit-end].pb` for lexicographic = chronological sort
 - Usage types: `storage-read` and `storage-write` (direct variants deferred)
 
-#### Phase 2.3: PersistenceService
-**Status:** Specification complete, ready for implementation
+#### Phase 2.3: PersistenceService ✅ COMPLETED
+**Status:** Implemented and functional
 - Consumes TickData batches from queue (using drainTo with configurable size and timeout)
 - Writes batches to storage using MessageWriter (streaming, atomic)
 - Supports competing consumers (multiple instances for throughput)
@@ -451,19 +451,47 @@ After these 8 steps, the system will be:
 - Uses existing DeadLetterMessage from system_contracts.proto
 - Integrates with Phase 2.1 output (SimulationEngine queue outputs)
 
-#### Phase 2.4: Indexer Services
-**Status:** Specification pending
-- Family of specialized indexers reading batches from storage
-- Each indexer focuses on specific data aspects (environment, organisms, metadata, etc.)
-- Database-coordinated competing consumers (check "batch already indexed?" before processing)
-- Uses MessageReader for streaming batch processing (O(1) memory)
-- Can run concurrently with persistence or batch process after completion
-- Exact indexer specializations to be determined based on analysis requirements
+#### Phase 2.4: Database Resource and Metadata Indexer 
+**Status:** Architecture defined, ready for implementation
+- Database resource abstraction with capability-based interfaces (IMetadataDatabase)
+- AbstractDatabaseResource with connection pooling, wrapper creation, and monitoring
+- H2Database implementation with HikariCP (in-memory and file-based modes)
+- MetadataDatabaseWrapper with dedicated connection per indexer instance
+- AbstractIndexer base class with run discovery (configured runId vs. timestamp-based)
+- MetadataIndexer service: reads metadata.pb from storage, creates schema-per-run, writes to database
+- Schema-per-run design (sim_timestamp_uuid) for complete isolation
+- IBatchStorageRead.listRunIds(Instant) for timestamp-based run discovery
+- Integration tests with in-memory H2, LogWatch extension, no artifacts
+
+**Documentation:** See `13_DATABASE_AND_METADATAINDEXER.md` for complete architecture specification.
+
+**Key Design Decisions:**
+- Fail fast strategy (no DLQ for metadata - critical dependency for other indexers)
+- No retry logic for metadata (YAGNI - single small write, wrappers must remain database-agnostic)
+- MERGE instead of INSERT for idempotent metadata writes (safe restart after partial failure)
+- In-memory H2 for tests with UUID-based database names (complete isolation, no artifacts)
+- Simple logging: DEBUG for polling, INFO for results only, never log metadata content
+- Template method pattern: addCustomMetrics() hook for database-specific metrics (H2: cache, pool, disk I/O)
 
 **Dependencies:**
-- Requires Phase 2.2 (Storage Resource) implementation complete
-- Uses Phase 2.0 contracts (TickData, SimulationMetadata)
-- Requires database resources (initially SQLite, later PostgreSQL)
+- Requires Phase 2.2 (Storage Resource) and 2.3 (Persistence Service) implementation complete
+- Uses Phase 2.0 contracts (SimulationMetadata)
+- Future indexers (organism, environment) will use same patterns
+
+#### Phase 2.5: Organism and Environment Indexers
+**Status:** Architecture pending
+- Family of specialized indexers reading tick batches from storage
+- Each indexer focuses on specific data aspects (organisms, environment/cells, etc.)
+- Database-coordinated competing consumers (check "batch already indexed?" before processing)
+- Uses IBatchStorageRead for streaming batch processing (O(1) memory)
+- Capability interfaces: IOrganismDatabase, IEnvironmentDatabase
+- Can run concurrently with persistence or batch process after completion
+- Schema created by MetadataIndexer (Phase 2.4), indexers write to organism/cell tables
+
+**Dependencies:**
+- Requires Phase 2.4 (Database Resource, MetadataIndexer) implementation complete
+- Uses Phase 2.0 contracts (TickData)
+- Requires metadata indexing complete (schema and environment config available)
 
 ### Phase 3: Production Resources
 - Cloud storage resources (S3, GCS)
