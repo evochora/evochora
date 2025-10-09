@@ -604,6 +604,14 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      */
     protected abstract List<String> listFilesWithPrefix(String prefix, String continuationToken, int maxResults) throws IOException;
 
+    @Override
+    public List<String> listRunIds(Instant afterTimestamp) throws IOException {
+        // Default implementation returns an empty list.
+        // Concrete implementations should override this to provide efficient discovery.
+        log.warn("listRunIds() is not implemented for this storage resource. Returning empty list.");
+        return Collections.emptyList();
+    }
+
     // ===== Performance tracking helpers =====
 
     /**

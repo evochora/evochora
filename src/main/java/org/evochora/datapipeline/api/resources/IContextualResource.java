@@ -1,21 +1,23 @@
+/*
+ * Copyright (c) 2024-Present Perracodex. Use of this source code is governed by an MIT license.
+ */
+
 package org.evochora.datapipeline.api.resources;
 
 /**
- * An interface for resources that can provide specialized implementations based on their usage context.
+ * An interface for resources that can provide wrapped, context-specific instances of themselves.
  * <p>
- * When a resource implements this interface, the ServiceManager will call
- * {@link #getWrappedResource(ResourceContext)} to get the object that should be
- * injected into the resource binding, rather than injecting the resource itself. This allows
- * a single resource definition to provide different functionalities based on which
- * service and port it is connected to.
+ * This allows a single shared resource (e.g., a database connection pool) to be used by
+ * multiple consumers (e.g., different indexer services), each with its own isolated,
+ * monitored wrapper.
  */
-public interface    IContextualResource extends IResource {
+public interface IContextualResource extends IResource {
 
     /**
-     * Returns the wrapped resource object that should be injected into a service.
+     * Returns a wrapped instance of the resource tailored to the provided context.
      *
-     * @param context The context describing how the resource is being used.
-     * @return The {@link IWrappedResource} object to be injected.
+     * @param context The {@link ResourceContext} defining the consumer and usage type.
+     * @return An {@link IWrappedResource} instance.
      */
     IWrappedResource getWrappedResource(ResourceContext context);
 }

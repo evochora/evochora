@@ -1,16 +1,27 @@
+/*
+ * Copyright (c) 2024-Present Perracodex. Use of this source code is governed by an MIT license.
+ */
+
 package org.evochora.datapipeline.resources.storage;
 
 import com.typesafe.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class FileSystemStorageResource extends AbstractBatchStorageResource {
@@ -18,103 +29,43 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
     private static final Logger log = LoggerFactory.getLogger(FileSystemStorageResource.class);
     private final File rootDirectory;
 
-    // All metrics tracking inherited from AbstractBatchStorageResource
-
     public FileSystemStorageResource(String name, Config options) {
         super(name, options);
         if (!options.hasPath("rootDirectory")) {
             throw new IllegalArgumentException("rootDirectory is required for FileSystemStorageResource");
         }
         String rootPath = options.getString("rootDirectory");
-
-        // Expand environment variables and system properties
         String expandedPath = expandPath(rootPath);
-        if (!rootPath.equals(expandedPath)) {
-            log.debug("Expanded rootDirectory: '{}' -> '{}'", rootPath, expandedPath);
-        }
-
         this.rootDirectory = new File(expandedPath);
         if (!this.rootDirectory.isAbsolute()) {
-            throw new IllegalArgumentException("rootDirectory must be an absolute path (after variable expansion): " + expandedPath);
+            throw new IllegalArgumentException("rootDirectory must be an absolute path: " + expandedPath);
         }
-        if (!this.rootDirectory.exists()) {
-            if (!this.rootDirectory.mkdirs()) {
-                throw new IllegalArgumentException("Failed to create rootDirectory: " + expandedPath);
-            }
-        }
-        if (!this.rootDirectory.isDirectory()) {
-            throw new IllegalArgumentException("rootDirectory is not a directory: " + expandedPath);
+        if (!this.rootDirectory.exists() && !this.rootDirectory.mkdirs()) {
+            throw new IllegalArgumentException("Failed to create rootDirectory: " + expandedPath);
         }
     }
 
-    /**
-     * Expands environment variables and Java system properties in a path string.
-     * Supports syntax: ${VAR} for both environment variables and system properties.
-     * System properties are checked first, then environment variables.
-     *
-     * @param path the path potentially containing variables like ${HOME} or ${user.home}
-     * @return the path with all variables expanded
-     * @throws IllegalArgumentException if a variable is referenced but not defined
-     */
     private static String expandPath(String path) {
-        if (path == null || !path.contains("${")) {
-            return path;
-        }
-
+        if (path == null || !path.contains("${")) return path;
         StringBuilder result = new StringBuilder();
         int pos = 0;
-
         while (pos < path.length()) {
             int startVar = path.indexOf("${", pos);
             if (startVar == -1) {
-                // No more variables, append rest of string
                 result.append(path.substring(pos));
                 break;
             }
-
-            // Append text before variable
             result.append(path.substring(pos, startVar));
-
             int endVar = path.indexOf("}", startVar + 2);
-            if (endVar == -1) {
-                throw new IllegalArgumentException("Unclosed variable in path: " + path);
-            }
-
+            if (endVar == -1) throw new IllegalArgumentException("Unclosed variable in path: " + path);
             String varName = path.substring(startVar + 2, endVar);
-            String value = resolveVariable(varName);
-
-            if (value == null) {
-                throw new IllegalArgumentException(
-                    "Undefined variable '${" + varName + "}' in path: " + path +
-                    ". Check that environment variable or system property exists."
-                );
-            }
-
+            String value = System.getProperty(varName, System.getenv(varName));
+            if (value == null) throw new IllegalArgumentException("Undefined variable '${" + varName + "}' in path: " + path);
             result.append(value);
             pos = endVar + 1;
         }
-
         return result.toString();
     }
-
-    /**
-     * Resolves a variable name to its value, checking system properties first, then environment variables.
-     *
-     * @param varName the variable name (without ${} delimiters)
-     * @return the resolved value, or null if not found
-     */
-    private static String resolveVariable(String varName) {
-        // Check system properties first (e.g., user.home, java.io.tmpdir)
-        String value = System.getProperty(varName);
-        if (value != null) {
-            return value;
-        }
-
-        // Check environment variables (e.g., HOME, USERPROFILE)
-        return System.getenv(varName);
-    }
-
-    // ===== Abstract method implementations for AbstractBatchStorageResource =====
 
     @Override
     protected void writeBytes(String path, byte[] data) throws IOException {
@@ -122,14 +73,9 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
         File file = new File(rootDirectory, path);
         File parentDir = file.getParentFile();
         if (parentDir != null) {
-            parentDir.mkdirs();  // Idempotent - safe to call even if directory exists
-            if (!parentDir.isDirectory()) {
-                throw new IOException("Failed to create parent directories for: " + file.getAbsolutePath());
-            }
+            parentDir.mkdirs();
         }
         Files.write(file.toPath(), data);
-
-        // Track metrics
         writeOperations.incrementAndGet();
         bytesWritten.addAndGet(data.length);
     }
@@ -142,11 +88,8 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
             throw new IOException("File does not exist: " + path);
         }
         byte[] data = Files.readAllBytes(file.toPath());
-
-        // Track metrics
         readOperations.incrementAndGet();
         bytesRead.addAndGet(data.length);
-
         return data;
     }
 
@@ -156,139 +99,87 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
         validateKey(dest);
         File srcFile = new File(rootDirectory, src);
         File destFile = new File(rootDirectory, dest);
-
-        // Ensure parent directory exists
-        File parentDir = destFile.getParentFile();
-        if (parentDir != null) {
-            parentDir.mkdirs();  // Idempotent - safe to call even if directory exists
-            if (!parentDir.isDirectory()) {
-                throw new IOException("Failed to create parent directories for: " + destFile.getAbsolutePath());
-            }
+        if (destFile.getParentFile() != null) {
+            destFile.getParentFile().mkdirs();
         }
-
-        try {
-            Files.move(srcFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE);
-        } catch (IOException e) {
-            // Clean up source file on failure (filesystem-specific optimization)
-            // Source file cleanup is cheap on filesystem, so we do it here
-            try {
-                if (srcFile.exists()) {
-                    Files.delete(srcFile.toPath());
-                }
-            } catch (IOException cleanupEx) {
-                log.warn("Failed to clean up temp file after move failure: {}", src, cleanupEx);
-            }
-            throw e;
-        }
+        Files.move(srcFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE);
     }
-
 
     @Override
     protected List<String> listFilesWithPrefix(String prefix, String continuationToken, int maxResults) throws IOException {
         final String finalPrefix = (prefix == null) ? "" : prefix;
-
-        // Determine starting path for the walk
         Path startPath = Paths.get(rootDirectory.getAbsolutePath(), finalPrefix);
-
-        // If startPath doesn't exist yet (no files written), return empty list
         if (!Files.exists(startPath)) {
             return Collections.emptyList();
         }
-
         List<String> results = new ArrayList<>();
-
         try (Stream<Path> stream = Files.walk(startPath)) {
-            List<String> allFiles = stream
-                .filter(Files::isRegularFile)
-                .map(p -> Paths.get(rootDirectory.getAbsolutePath()).relativize(p))
-                .map(Path::toString)
-                .map(s -> s.replace(File.separatorChar, '/'))  // Normalize to forward slashes
-                .filter(path -> path.startsWith(finalPrefix))
-                .filter(path -> !path.contains("/.tmp"))  // Filter out .tmp files
-                .filter(path -> !path.endsWith(".tmp"))
-                .sorted()  // Lexicographic order
-                .toList();
-
-            // Apply continuation token (skip files until we're past the token)
+            List<String> allFiles = stream.filter(Files::isRegularFile)
+                    .map(p -> Paths.get(rootDirectory.getAbsolutePath()).relativize(p))
+                    .map(Path::toString).map(s -> s.replace(File.separatorChar, '/'))
+                    .filter(path -> path.startsWith(finalPrefix) && !path.contains("/.tmp") && !path.endsWith(".tmp"))
+                    .sorted().collect(Collectors.toList());
             boolean foundToken = (continuationToken == null);
             for (String file : allFiles) {
                 if (!foundToken) {
                     if (file.compareTo(continuationToken) > 0) {
                         foundToken = true;
                     } else {
-                        continue;  // Skip files up to and including the token
+                        continue;
                     }
                 }
-
                 results.add(file);
                 if (results.size() >= maxResults) {
                     break;
                 }
             }
-
             return results;
-        } catch (IOException e) {
-            throw new IOException("Failed to list files with prefix: " + prefix, e);
         }
     }
 
-    // All monitoring methods (getUsageState, getMetrics, getErrors, clearErrors, isHealthy)
-    // and getWrappedResource inherited from AbstractBatchStorageResource
+    @Override
+    public List<String> listRunIds(Instant afterTimestamp) throws IOException {
+        if (rootDirectory == null || !rootDirectory.isDirectory()) {
+            return Collections.emptyList();
+        }
+
+        List<String> validRunIds = new ArrayList<>();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSS");
+
+        try (Stream<Path> stream = Files.list(rootDirectory.toPath())) {
+            stream.filter(Files::isDirectory).forEach(path -> {
+                String runId = path.getFileName().toString();
+                if (runId.length() >= 16) {
+                    try {
+                        String timestampStr = runId.substring(0, 16);
+                        LocalDateTime localDateTime = LocalDateTime.parse(timestampStr, formatter);
+                        Instant runTimestamp = localDateTime.toInstant(ZoneOffset.UTC);
+                        if (runTimestamp.isAfter(afterTimestamp)) {
+                            validRunIds.add(runId);
+                        }
+                    } catch (DateTimeParseException e) {
+                        log.trace("Ignoring directory '{}' as it does not match expected runId format.", runId);
+                    }
+                }
+            });
+        }
+
+        Collections.sort(validRunIds);
+        return validRunIds;
+    }
 
     @Override
     protected void addCustomMetrics(java.util.Map<String, Number> metrics) {
-        // Add filesystem-specific capacity metrics
         long totalSpace = rootDirectory.getTotalSpace();
         long usableSpace = rootDirectory.getUsableSpace();
-        long usedSpace = totalSpace - usableSpace;
-
         metrics.put("disk_total_bytes", totalSpace);
         metrics.put("disk_available_bytes", usableSpace);
-        metrics.put("disk_used_bytes", usedSpace);
-
-        // Calculate percentage used (avoid division by zero)
-        if (totalSpace > 0) {
-            double usedPercent = (double) usedSpace / totalSpace * 100.0;
-            metrics.put("disk_used_percent", usedPercent);
-        } else {
-            metrics.put("disk_used_percent", 0.0);
-        }
+        metrics.put("disk_used_bytes", totalSpace - usableSpace);
     }
 
     private void validateKey(String key) {
-        if (key == null || key.isEmpty()) {
-            throw new IllegalArgumentException("Key cannot be null or empty");
-        }
-
-        // Prevent path traversal attacks
-        if (key.contains("..")) {
-            throw new IllegalArgumentException("Key cannot contain '..' (path traversal attempt): " + key);
-        }
-
-        // Prevent absolute paths
-        if (key.startsWith("/") || key.startsWith("\\")) {
-            throw new IllegalArgumentException("Key cannot be an absolute path: " + key);
-        }
-
-        // Check for Windows drive letter (C:, D:, etc.)
-        if (key.length() >= 2 && key.charAt(1) == ':') {
-            throw new IllegalArgumentException("Key cannot contain Windows drive letter: " + key);
-        }
-
-        // Prevent Windows-invalid characters
-        String invalidChars = "<>\"?*|";
-        for (char c : invalidChars.toCharArray()) {
-            if (key.indexOf(c) >= 0) {
-                throw new IllegalArgumentException("Key contains invalid character '" + c + "': " + key);
-            }
-        }
-
-        // Prevent control characters (0x00-0x1F)
-        for (char c : key.toCharArray()) {
-            if (c < 0x20) {
-                throw new IllegalArgumentException("Key contains control character (0x" +
-                    Integer.toHexString(c) + "): " + key);
-            }
+        if (key == null || key.isEmpty() || key.contains("..") || key.startsWith("/") || key.startsWith("\\")) {
+            throw new IllegalArgumentException("Invalid key: " + key);
         }
     }
 }

@@ -5,7 +5,13 @@ import com.google.protobuf.Parser;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 
+import com.google.protobuf.MessageLite;
+import com.google.protobuf.Parser;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.IResource;
+
 import java.io.IOException;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -27,6 +33,30 @@ import java.util.List;
  * "storage-read:resourceName" to ensure type safety and proper metric isolation.
  */
 public interface IBatchStorageRead extends IResource {
+
+    /**
+     * Lists simulation run IDs in storage that started after the given timestamp.
+     * <p>
+     * Used by indexers for run discovery in parallel mode.
+     * <p>
+     * Implementation notes:
+     * <ul>
+     *   <li>Returns empty list if no matching runs</li>
+     *   <li>Never blocks - returns immediately</li>
+     *   <li>Run timestamp can be determined from:
+     *     <ul>
+     *       <li>Parsing runId format (YYYYMMDDHHmmssSS-UUID)</li>
+     *       <li>Directory creation time (filesystem)</li>
+     *       <li>Object metadata (S3/Azure)</li>
+     *     </ul>
+     *   </li>
+     * </ul>
+     *
+     * @param afterTimestamp Only return runs that started after this time
+     * @return List of simulation run IDs, sorted by timestamp (oldest first)
+     * @throws IOException if storage access fails
+     */
+    List<String> listRunIds(Instant afterTimestamp) throws IOException;
 
     /**
      * Reads a batch file by its filename.
