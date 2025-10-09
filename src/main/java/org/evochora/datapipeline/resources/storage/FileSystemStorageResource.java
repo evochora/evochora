@@ -41,6 +41,15 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
         }
     }
 
+    /**
+     * Expands environment variables and Java system properties in a path string.
+     * Supports syntax: ${VAR} for both environment variables and system properties.
+     * System properties are checked first, then environment variables.
+     *
+     * @param path the path potentially containing variables like ${HOME} or ${user.home}
+     * @return the path with all variables expanded
+     * @throws IllegalArgumentException if a variable is referenced but not defined
+     */
     private static String expandPath(String path) {
         if (path == null || !path.contains("${")) return path;
         StringBuilder result = new StringBuilder();
@@ -69,7 +78,10 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
         File file = new File(rootDirectory, path);
         File parentDir = file.getParentFile();
         if (parentDir != null) {
-            parentDir.mkdirs();
+            parentDir.mkdirs(); // Idempotent - safe to call even if directory exists
+            if (!parentDir.isDirectory()) {
+                throw new IOException("Failed to create parent directories for: " + file.getAbsolutePath());
+            }
         }
         Files.write(file.toPath(), data);
         writeOperations.incrementAndGet();
@@ -95,41 +107,78 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
         validateKey(dest);
         File srcFile = new File(rootDirectory, src);
         File destFile = new File(rootDirectory, dest);
-        if (destFile.getParentFile() != null) {
-            destFile.getParentFile().mkdirs();
+
+        // Ensure parent directory exists
+        File parentDir = destFile.getParentFile();
+        if (parentDir != null) {
+            parentDir.mkdirs();  // Idempotent - safe to call even if directory exists
+            if (!parentDir.isDirectory()) {
+                throw new IOException("Failed to create parent directories for: " + destFile.getAbsolutePath());
+            }
         }
-        Files.move(srcFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+
+        try {
+            Files.move(srcFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            // Clean up source file on failure (filesystem-specific optimization)
+            // Source file cleanup is cheap on filesystem, so we do it here
+            try {
+                if (srcFile.exists()) {
+                    Files.delete(srcFile.toPath());
+                }
+            } catch (IOException cleanupEx) {
+                log.warn("Failed to clean up temp file after move failure: {}", src, cleanupEx);
+            }
+            throw e;
+        }
     }
 
     @Override
     protected List<String> listFilesWithPrefix(String prefix, String continuationToken, int maxResults) throws IOException {
         final String finalPrefix = (prefix == null) ? "" : prefix;
+
+        // Determine starting path for the walk
         Path startPath = Paths.get(rootDirectory.getAbsolutePath(), finalPrefix);
+
+        // If startPath doesn't exist yet (no files written), return empty list
         if (!Files.exists(startPath)) {
             return Collections.emptyList();
         }
+
         List<String> results = new ArrayList<>();
+
         try (Stream<Path> stream = Files.walk(startPath)) {
-            List<String> allFiles = stream.filter(Files::isRegularFile)
+            List<String> allFiles = stream
+                    .filter(Files::isRegularFile)
                     .map(p -> Paths.get(rootDirectory.getAbsolutePath()).relativize(p))
-                    .map(Path::toString).map(s -> s.replace(File.separatorChar, '/'))
-                    .filter(path -> path.startsWith(finalPrefix) && !path.contains("/.tmp") && !path.endsWith(".tmp"))
-                    .sorted().collect(Collectors.toList());
+                    .map(Path::toString)
+                    .map(s -> s.replace(File.separatorChar, '/'))  // Normalize to forward slashes
+                    .filter(path -> path.startsWith(finalPrefix))
+                    .filter(path -> !path.contains("/.tmp"))  // Filter out .tmp files
+                    .filter(path -> !path.endsWith(".tmp"))
+                    .sorted()  // Lexicographic order
+                    .toList();
+
+            // Apply continuation token (skip files until we're past the token)
             boolean foundToken = (continuationToken == null);
             for (String file : allFiles) {
                 if (!foundToken) {
                     if (file.compareTo(continuationToken) > 0) {
                         foundToken = true;
                     } else {
-                        continue;
+                        continue;  // Skip files up to and including the token
                     }
                 }
+
                 results.add(file);
                 if (results.size() >= maxResults) {
                     break;
                 }
             }
+
             return results;
+        } catch (IOException e) {
+            throw new IOException("Failed to list files with prefix: " + prefix, e);
         }
     }
 
@@ -164,16 +213,58 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
 
     @Override
     protected void addCustomMetrics(java.util.Map<String, Number> metrics) {
+        // Add filesystem-specific capacity metrics
         long totalSpace = rootDirectory.getTotalSpace();
         long usableSpace = rootDirectory.getUsableSpace();
+        long usedSpace = totalSpace - usableSpace;
+
         metrics.put("disk_total_bytes", totalSpace);
         metrics.put("disk_available_bytes", usableSpace);
-        metrics.put("disk_used_bytes", totalSpace - usableSpace);
+        metrics.put("disk_used_bytes", usedSpace);
+
+        // Calculate percentage used (avoid division by zero)
+        if (totalSpace > 0) {
+            double usedPercent = (double) usedSpace / totalSpace * 100.0;
+            metrics.put("disk_used_percent", usedPercent);
+        } else {
+            metrics.put("disk_used_percent", 0.0);
+        }
     }
 
     private void validateKey(String key) {
-        if (key == null || key.isEmpty() || key.contains("..") || key.startsWith("/") || key.startsWith("\\")) {
-            throw new IllegalArgumentException("Invalid key: " + key);
+        if (key == null || key.isEmpty()) {
+            throw new IllegalArgumentException("Key cannot be null or empty");
+        }
+
+        // Prevent path traversal attacks
+        if (key.contains("..")) {
+            throw new IllegalArgumentException("Key cannot contain '..' (path traversal attempt): " + key);
+        }
+
+        // Prevent absolute paths
+        if (key.startsWith("/") || key.startsWith("\\")) {
+            throw new IllegalArgumentException("Key cannot be an absolute path: " + key);
+        }
+
+        // Check for Windows drive letter (C:, D:, etc.)
+        if (key.length() >= 2 && key.charAt(1) == ':') {
+            throw new IllegalArgumentException("Key cannot contain Windows drive letter: " + key);
+        }
+
+        // Prevent Windows-invalid characters
+        String invalidChars = "<>\"?*|";
+        for (char c : invalidChars.toCharArray()) {
+            if (key.indexOf(c) >= 0) {
+                throw new IllegalArgumentException("Key contains invalid character '" + c + "': " + key);
+            }
+        }
+
+        // Prevent control characters (0x00-0x1F)
+        for (char c : key.toCharArray()) {
+            if (c < 0x20) {
+                throw new IllegalArgumentException("Key contains control character (0x" +
+                        Integer.toHexString(c) + "): " + key);
+            }
         }
     }
 }

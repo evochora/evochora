@@ -61,6 +61,12 @@ class MetadataIndexerIntegrationTest {
     @AfterEach
     void tearDown() throws IOException {
         if (testDatabase != null) {
+            // Verify no connection leaks before shutting down
+            Map<String, Number> metrics = testDatabase.getMetrics();
+            Number activeConnections = metrics.get("h2_pool_active_connections");
+            assertEquals(0, activeConnections != null ? activeConnections.intValue() : 0,
+                    "Connection leak detected! Active connections should be 0 after test completion");
+            
             testDatabase.stop();
         }
         if (tempStorageDir != null) {
