@@ -4,7 +4,6 @@
 
 package org.evochora.datapipeline.api.resources;
 
-import java.util.Collections;
 import java.util.Map;
 
 /**
@@ -25,8 +24,4 @@ public record ResourceContext(
         String resourceName,
         Map<String, String> parameters
 ) {
-    public ResourceContext {
-        // Ensure parameters map is immutable to prevent modification after creation.
-        parameters = Collections.unmodifiableMap(parameters);
-    }
 }

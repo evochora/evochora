@@ -1,8 +1,4 @@
-/*
- * Copyright (c) 2024-Present Perracodex. Use of this source code is governed by an MIT license.
- */
-
-package org.evochora.datapipeline.common.utils;
+package org.evochora.datapipeline.utils.monitoring;
 
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicInteger;

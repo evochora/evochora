@@ -1,7 +1,3 @@
-/*
- * Copyright (c) 2024-Present Perracodex. Use of this source code is governed by an MIT license.
- */
-
 package org.evochora.datapipeline.api.resources.database;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;

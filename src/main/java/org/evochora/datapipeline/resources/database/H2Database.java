@@ -1,15 +1,11 @@
-/*
- * Copyright (c) 2024-Present Perracodex. Use of this source code is governed by an MIT license.
- */
-
 package org.evochora.datapipeline.resources.database;
 
 import com.typesafe.config.Config;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.common.protobuf.ProtobufConverter;
-import org.evochora.datapipeline.common.utils.RateBucket;
+import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
+import org.evochora.datapipeline.utils.monitoring.RateBucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

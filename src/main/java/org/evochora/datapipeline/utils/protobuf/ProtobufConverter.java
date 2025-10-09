@@ -1,8 +1,4 @@
-/*
- * Copyright (c) 2024-Present Perracodex. Use of this source code is governed by an MIT license.
- */
-
-package org.evochora.datapipeline.common.protobuf;
+package org.evochora.datapipeline.utils.protobuf;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;

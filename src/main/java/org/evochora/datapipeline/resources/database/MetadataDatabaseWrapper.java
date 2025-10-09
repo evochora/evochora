@@ -1,13 +1,9 @@
-/*
- * Copyright (c) 2024-Present Perracodex. Use of this source code is governed by an MIT license.
- */
-
 package org.evochora.datapipeline.resources.database;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.*;
 import org.evochora.datapipeline.api.resources.database.IMetadataDatabase;
-import org.evochora.datapipeline.common.utils.LatencyBucket;
+import org.evochora.datapipeline.utils.monitoring.LatencyBucket;
 
 import java.time.Instant;
 import java.util.ArrayList;

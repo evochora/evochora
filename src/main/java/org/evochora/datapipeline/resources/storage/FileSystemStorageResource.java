@@ -1,7 +1,3 @@
-/*
- * Copyright (c) 2024-Present Perracodex. Use of this source code is governed by an MIT license.
- */
-
 package org.evochora.datapipeline.resources.storage;
 
 import com.typesafe.config.Config;
@@ -138,7 +134,7 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
     }
 
     @Override
-    public List<String> listRunIds(Instant afterTimestamp) throws IOException {
+    public List<String> listRunIds(Instant afterTimestamp) {
         if (rootDirectory == null || !rootDirectory.isDirectory()) {
             return Collections.emptyList();
         }
@@ -162,6 +158,9 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
                     }
                 }
             });
+        } catch (IOException e) {
+            log.debug("Error listing run IDs from storage, returning empty list.", e);
+            return Collections.emptyList();
         }
 
         Collections.sort(validRunIds);
