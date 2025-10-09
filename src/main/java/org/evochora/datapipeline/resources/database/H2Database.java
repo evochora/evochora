@@ -7,7 +7,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.utils.PathExpansion;
 import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
-import org.evochora.datapipeline.utils.monitoring.RateBucket;
+import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,7 +29,7 @@ public class H2Database extends AbstractDatabaseResource {
     private static final Logger log = LoggerFactory.getLogger(H2Database.class);
     private final HikariDataSource dataSource;
     private final AtomicLong diskWrites = new AtomicLong(0);
-    private final Map<String, RateBucket> rateBuckets = new ConcurrentHashMap<>();
+    private final SlidingWindowCounter diskWritesCounter;
 
     public H2Database(String name, Config options) {
         super(name, options);
@@ -39,8 +39,18 @@ public class H2Database extends AbstractDatabaseResource {
         hikariConfig.setMaximumPoolSize(options.hasPath("maxPoolSize") ? options.getInt("maxPoolSize") : 10);
         hikariConfig.setMinimumIdle(options.hasPath("minIdle") ? options.getInt("minIdle") : 2);
         this.dataSource = new HikariDataSource(hikariConfig);
-        int metricsWindowSizeMs = options.hasPath("metricsWindowSizeMs") ? options.getInt("metricsWindowSizeMs") : 5000;
-        rateBuckets.put("disk_writes", new RateBucket(metricsWindowSizeMs));
+        
+        // Configuration: metricsWindowSeconds (new) or metricsWindowSizeMs (old, convert to seconds)
+        int metricsWindowSeconds;
+        if (options.hasPath("metricsWindowSeconds")) {
+            metricsWindowSeconds = options.getInt("metricsWindowSeconds");
+        } else if (options.hasPath("metricsWindowSizeMs")) {
+            metricsWindowSeconds = options.getInt("metricsWindowSizeMs") / 1000;
+        } else {
+            metricsWindowSeconds = 5;  // Default: 5 seconds
+        }
+        
+        this.diskWritesCounter = new SlidingWindowCounter(metricsWindowSeconds);
     }
 
     private String getJdbcUrl(Config options) {
@@ -151,7 +161,7 @@ public class H2Database extends AbstractDatabaseResource {
             rowsInserted.addAndGet(kvPairs.size());
             queriesExecuted.incrementAndGet();
             diskWrites.incrementAndGet();
-            rateBuckets.get("disk_writes").record(System.currentTimeMillis());
+            diskWritesCounter.recordCount();  // O(1) recording
         } catch (SQLException e) {
             try {
                 conn.rollback();
@@ -169,7 +179,7 @@ public class H2Database extends AbstractDatabaseResource {
      * Includes:
      * <ul>
      *   <li>HikariCP connection pool metrics (O(1) via MXBean)</li>
-     *   <li>Disk write rate (O(1) via RateBucket)</li>
+     *   <li>Disk write rate (O(1) via SlidingWindowCounter)</li>
      *   <li>H2 cache size (fast SQL query in INFORMATION_SCHEMA)</li>
      * </ul>
      * <p>
@@ -178,10 +188,8 @@ public class H2Database extends AbstractDatabaseResource {
      */
     @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {
-        long now = System.currentTimeMillis();
-        
-        // Disk write rate (O(1) via RateBucket)
-        metrics.put("h2_disk_writes_per_sec", rateBuckets.get("disk_writes").getRate(now));
+        // Disk write rate (O(1) via SlidingWindowCounter)
+        metrics.put("h2_disk_writes_per_sec", diskWritesCounter.getRate());
         
         if (dataSource != null && !dataSource.isClosed()) {
             // HikariCP connection pool metrics (O(1) via MXBean - instant reads)

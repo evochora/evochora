@@ -9,56 +9,50 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * A generic utility class for tracking metrics over a sliding time window.
+ * A thread-safe utility for tracking counts and sums over a sliding time window.
  * <p>
- * This class provides O(1) recording operations and efficient sliding window calculations
- * for various metric types:
- * <ul>
- *   <li><b>Count Metrics:</b> Track event counts (e.g., messages processed, operations completed)</li>
- *   <li><b>Sum Metrics:</b> Track cumulative values (e.g., bytes written, total duration)</li>
- *   <li><b>Rate Metrics:</b> Calculate per-second rates from counts</li>
- * </ul>
+ * This class provides O(1) recording operations and efficient rate calculations
+ * for monitoring throughput, bytes transferred, or any cumulative metric.
  * <p>
  * <strong>Performance Characteristics:</strong>
  * <ul>
  *   <li>Recording: O(1) - just increments AtomicLong in HashMap</li>
- *   <li>Reading: O(windowSeconds) - typically O(5) for 5-second window</li>
+ *   <li>Rate calculation: O(windowSeconds) - typically O(5) for 5-second window</li>
  *   <li>Cleanup: O(1) amortized - only when bucket count exceeds threshold</li>
  * </ul>
  * <p>
- * <strong>Thread Safety:</strong> All operations are thread-safe using ConcurrentHashMap and AtomicLong.
- * <p>
- * <strong>Memory Management:</strong> Old buckets are automatically cleaned up to prevent unbounded growth.
+ * <strong>Memory Management:</strong>
+ * Automatically cleans up old buckets to prevent unbounded growth.
  * Keeps windowSeconds + 5 buffer buckets (typically 10 buckets for 5-second window).
  * <p>
- * <strong>Usage Example:</strong>
+ * <strong>Usage Examples:</strong>
  * <pre>
  * // Track operations per second
- * SlidingWindowMetrics opsMetric = new SlidingWindowMetrics(5);  // 5-second window
- * opsMetric.recordCount();  // O(1) - increment counter for current second
- * double opsPerSec = opsMetric.getRate();  // Calculate average rate
+ * SlidingWindowCounter opsCounter = new SlidingWindowCounter(5);  // 5-second window
+ * opsCounter.recordCount();  // O(1) - increment for current second
+ * double opsPerSec = opsCounter.getRate();  // Average over last 5 seconds
  * 
  * // Track bytes per second
- * SlidingWindowMetrics bytesMetric = new SlidingWindowMetrics(5);
- * bytesMetric.recordSum(1024);  // O(1) - add 1024 bytes to current second
- * double bytesPerSec = bytesMetric.getRate();  // Calculate average byte rate
+ * SlidingWindowCounter bytesCounter = new SlidingWindowCounter(5);
+ * bytesCounter.recordSum(1024);  // O(1) - add 1024 bytes
+ * double bytesPerSec = bytesCounter.getRate();
  * </pre>
  *
- * @see RateBucket
+ * @see RateBucket (replaced by this class)
  */
-public class SlidingWindowMetrics {
+public class SlidingWindowCounter {
 
     private final ConcurrentHashMap<Long, AtomicLong> buckets = new ConcurrentHashMap<>();
     private final int windowSeconds;
     private final int maxBuckets;
 
     /**
-     * Creates a new SlidingWindowMetrics with the specified window size.
+     * Creates a new SlidingWindowCounter with the specified window size.
      *
      * @param windowSeconds The size of the sliding window in seconds (typically 5)
      * @throws IllegalArgumentException if windowSeconds <= 0
      */
-    public SlidingWindowMetrics(int windowSeconds) {
+    public SlidingWindowCounter(int windowSeconds) {
         if (windowSeconds <= 0) {
             throw new IllegalArgumentException("Window size must be positive, got: " + windowSeconds);
         }

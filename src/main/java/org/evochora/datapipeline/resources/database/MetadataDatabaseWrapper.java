@@ -3,7 +3,7 @@ package org.evochora.datapipeline.resources.database;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.*;
 import org.evochora.datapipeline.api.resources.database.IMetadataDatabase;
-import org.evochora.datapipeline.utils.monitoring.LatencyBucket;
+import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,21 +28,34 @@ public class MetadataDatabaseWrapper implements IMetadataDatabase, IWrappedResou
     private final AtomicLong schemasCreated = new AtomicLong(0);
     private final AtomicLong metadataInserts = new AtomicLong(0);
     private final AtomicLong operationErrors = new AtomicLong(0);
-    private final Map<String, LatencyBucket> operationLatencies = new ConcurrentHashMap<>();
+    
+    // Performance metrics (sliding window using unified utils)
+    private final SlidingWindowPercentiles createSchemaLatency;
+    private final SlidingWindowPercentiles setSchemaLatency;
+    private final SlidingWindowPercentiles insertMetadataLatency;
+    
     private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
     private static final int MAX_ERRORS = 100;
 
     MetadataDatabaseWrapper(AbstractDatabaseResource db, ResourceContext context) {
         this.database = db;
         this.context = context;
+        
+        // Get metrics window from database resource config (default: 5)
+        int windowSeconds = db.getOptions().hasPath("metricsWindowSeconds")
+            ? db.getOptions().getInt("metricsWindowSeconds")
+            : 5;
+        
+        // Initialize latency trackers with sliding window
+        this.createSchemaLatency = new SlidingWindowPercentiles(windowSeconds);
+        this.setSchemaLatency = new SlidingWindowPercentiles(windowSeconds);
+        this.insertMetadataLatency = new SlidingWindowPercentiles(windowSeconds);
+        
         try {
             this.dedicatedConnection = db.acquireDedicatedConnection();
         } catch (Exception e) {
             throw new RuntimeException("Failed to acquire database connection", e);
         }
-        operationLatencies.put("create_simulation_run", new LatencyBucket());
-        operationLatencies.put("set_simulation_run", new LatencyBucket());
-        operationLatencies.put("insert_metadata", new LatencyBucket());
     }
 
     @Override
@@ -52,7 +65,7 @@ public class MetadataDatabaseWrapper implements IMetadataDatabase, IWrappedResou
             String schemaName = database.toSchemaName(simulationRunId);
             database.doSetSchema(dedicatedConnection, schemaName);
             this.currentSimulationRunId = simulationRunId;
-            operationLatencies.get("set_simulation_run").record(System.nanoTime() - startNanos);
+            setSchemaLatency.record(System.nanoTime() - startNanos);
         } catch (Exception e) {
             handleException("SET_SCHEMA_FAILED", "Failed to set simulation run", simulationRunId, e);
         }
@@ -65,7 +78,7 @@ public class MetadataDatabaseWrapper implements IMetadataDatabase, IWrappedResou
             String schemaName = database.toSchemaName(simulationRunId);
             database.doCreateSchema(dedicatedConnection, schemaName);
             schemasCreated.incrementAndGet();
-            operationLatencies.get("create_simulation_run").record(System.nanoTime() - startNanos);
+            createSchemaLatency.record(System.nanoTime() - startNanos);
         } catch (Exception e) {
             handleException("CREATE_SCHEMA_FAILED", "Failed to create simulation run", simulationRunId, e);
         }
@@ -77,7 +90,7 @@ public class MetadataDatabaseWrapper implements IMetadataDatabase, IWrappedResou
         try {
             database.doInsertMetadata(dedicatedConnection, metadata);
             metadataInserts.incrementAndGet();
-            operationLatencies.get("insert_metadata").record(System.nanoTime() - startNanos);
+            insertMetadataLatency.record(System.nanoTime() - startNanos);
         } catch (Exception e) {
             handleException("INSERT_METADATA_FAILED", "Failed to insert metadata", metadata.getSimulationRunId(), e);
         }
@@ -118,13 +131,20 @@ public class MetadataDatabaseWrapper implements IMetadataDatabase, IWrappedResou
         metrics.put("operation_errors", operationErrors.get());
         metrics.put("error_count", errors.size());
         metrics.put("current_simulation_run_set", currentSimulationRunId != null ? 1 : 0);
-        for (Map.Entry<String, LatencyBucket> entry : operationLatencies.entrySet()) {
-            String op = entry.getKey();
-            LatencyBucket bucket = entry.getValue();
-            metrics.put(op + "_latency_p50", bucket.getPercentile(50) / 1_000_000.0);
-            metrics.put(op + "_latency_p95", bucket.getPercentile(95) / 1_000_000.0);
-            metrics.put(op + "_latency_p99", bucket.getPercentile(99) / 1_000_000.0);
-        }
+        
+        // Latency percentiles in milliseconds (converted from nanoseconds)
+        metrics.put("create_simulation_run_latency_p50", createSchemaLatency.getPercentile(50) / 1_000_000.0);
+        metrics.put("create_simulation_run_latency_p95", createSchemaLatency.getPercentile(95) / 1_000_000.0);
+        metrics.put("create_simulation_run_latency_p99", createSchemaLatency.getPercentile(99) / 1_000_000.0);
+        
+        metrics.put("set_simulation_run_latency_p50", setSchemaLatency.getPercentile(50) / 1_000_000.0);
+        metrics.put("set_simulation_run_latency_p95", setSchemaLatency.getPercentile(95) / 1_000_000.0);
+        metrics.put("set_simulation_run_latency_p99", setSchemaLatency.getPercentile(99) / 1_000_000.0);
+        
+        metrics.put("insert_metadata_latency_p50", insertMetadataLatency.getPercentile(50) / 1_000_000.0);
+        metrics.put("insert_metadata_latency_p95", insertMetadataLatency.getPercentile(95) / 1_000_000.0);
+        metrics.put("insert_metadata_latency_p99", insertMetadataLatency.getPercentile(99) / 1_000_000.0);
+        
         return metrics;
     }
 

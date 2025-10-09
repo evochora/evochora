@@ -9,13 +9,13 @@ import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchMetadata;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
+import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
+import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -35,106 +35,32 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
     private final AtomicLong writeErrors = new AtomicLong(0);
     private final AtomicLong messagesWritten = new AtomicLong(0);
 
-    // Performance metrics (sliding window with per-second buckets)
-    private final int windowSeconds;
-    private final ConcurrentHashMap<Long, AtomicLong> batchesPerSecond = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Long, AtomicLong> bytesPerSecond = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Long, LatencyBucket> latencyBuckets = new ConcurrentHashMap<>();
+    // Performance metrics (sliding window using unified utils)
+    private final SlidingWindowCounter batchesCounter;
+    private final SlidingWindowCounter bytesCounter;
+    private final SlidingWindowPercentiles latencyTracker;
 
     public MonitoredBatchStorageWriter(IBatchStorageWrite delegate, ResourceContext context) {
         this.delegate = delegate;
         this.context = context;
-        this.windowSeconds = Integer.parseInt(context.parameters().getOrDefault("throughputWindowSeconds", "5"));
+        
+        // Configuration hierarchy: Context parameter > Resource option > Default (5)
+        int windowSeconds = Integer.parseInt(context.parameters().getOrDefault("metricsWindowSeconds",
+                context.parameters().getOrDefault("throughputWindowSeconds", "5")));  // Support old name during transition
+        
+        this.batchesCounter = new SlidingWindowCounter(windowSeconds);
+        this.bytesCounter = new SlidingWindowCounter(windowSeconds);
+        this.latencyTracker = new SlidingWindowPercentiles(windowSeconds);
     }
 
     /**
-     * Records a write operation for performance tracking using sliding window counters.
-     * This is an O(1) operation that just increments counters for the current second.
+     * Records a write operation for performance tracking.
+     * This is an O(1) operation using unified monitoring utils.
      */
     private void recordWrite(int batchSize, long bytes, long latencyNanos) {
-        long currentSecond = Instant.now().getEpochSecond();
-        batchesPerSecond.computeIfAbsent(currentSecond, k -> new AtomicLong(0)).incrementAndGet();
-        bytesPerSecond.computeIfAbsent(currentSecond, k -> new AtomicLong(0)).addAndGet(bytes);
-        latencyBuckets.computeIfAbsent(currentSecond, k -> new LatencyBucket()).record(latencyNanos);
-        cleanupOldBuckets(currentSecond);
-    }
-
-    /**
-     * Removes counter buckets older than the monitoring window to prevent unbounded memory growth.
-     * Only removes counters if we have more buckets than needed (window + buffer).
-     */
-    private void cleanupOldBuckets(long currentSecond) {
-        // Keep windowSeconds + 5 extra seconds as buffer
-        int maxBuckets = windowSeconds + 5;
-        if (batchesPerSecond.size() > maxBuckets) {
-            long cutoffSecond = currentSecond - windowSeconds - 1;
-            batchesPerSecond.keySet().removeIf(second -> second < cutoffSecond);
-            bytesPerSecond.keySet().removeIf(second -> second < cutoffSecond);
-            latencyBuckets.keySet().removeIf(second -> second < cutoffSecond);
-        }
-    }
-
-    /**
-     * Calculates the throughput (batches per second) based on per-second counters within the configured window.
-     * This is an O(windowSeconds) operation, typically O(5).
-     */
-    private double calculateBatchThroughput() {
-        long currentSecond = Instant.now().getEpochSecond();
-        long totalBatches = 0;
-
-        for (int i = 0; i < windowSeconds; i++) {
-            long second = currentSecond - i;
-            AtomicLong counter = batchesPerSecond.get(second);
-            if (counter != null) {
-                totalBatches += counter.get();
-            }
-        }
-
-        return (double) totalBatches / windowSeconds;
-    }
-
-    /**
-     * Calculates the byte throughput (bytes per second) based on per-second counters within the configured window.
-     * This is an O(windowSeconds) operation, typically O(5).
-     */
-    private double calculateByteThroughput() {
-        long currentSecond = Instant.now().getEpochSecond();
-        long totalBytes = 0;
-
-        for (int i = 0; i < windowSeconds; i++) {
-            long second = currentSecond - i;
-            AtomicLong counter = bytesPerSecond.get(second);
-            if (counter != null) {
-                totalBytes += counter.get();
-            }
-        }
-
-        return (double) totalBytes / windowSeconds;
-    }
-
-    /**
-     * Calculates average write latency in milliseconds based on latency buckets within the configured window.
-     * This is an O(windowSeconds) operation, typically O(5).
-     */
-    private double calculateAvgLatencyMs() {
-        long currentSecond = Instant.now().getEpochSecond();
-        long totalLatencyNanos = 0;
-        long totalCount = 0;
-
-        for (int i = 0; i < windowSeconds; i++) {
-            long second = currentSecond - i;
-            LatencyBucket bucket = latencyBuckets.get(second);
-            if (bucket != null) {
-                totalLatencyNanos += bucket.getTotalNanos();
-                totalCount += bucket.getCount();
-            }
-        }
-
-        if (totalCount == 0) {
-            return 0.0;
-        }
-
-        return (double) totalLatencyNanos / totalCount / 1_000_000.0;
+        batchesCounter.recordCount();
+        bytesCounter.recordSum(bytes);
+        latencyTracker.record(latencyNanos);
     }
 
     @Override
@@ -202,9 +128,9 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
             "messages_written", messagesWritten.get(),
             "bytes_written", bytesWritten.get(),
             "write_errors", writeErrors.get(),
-            "batches_per_sec", calculateBatchThroughput(),
-            "bytes_per_sec", calculateByteThroughput(),
-            "avg_write_latency_ms", calculateAvgLatencyMs()
+            "batches_per_sec", batchesCounter.getRate(),
+            "bytes_per_sec", bytesCounter.getRate(),
+            "avg_write_latency_ms", latencyTracker.getAverage() / 1_000_000.0  // Convert nanos to ms
         );
     }
 
@@ -221,27 +147,5 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
     @Override
     public void clearErrors() {
         // No-op
-    }
-
-    /**
-     * Simple latency bucket that tracks count and total latency for a specific second.
-     * Thread-safe for concurrent updates within the same bucket.
-     */
-    private static class LatencyBucket {
-        private final AtomicLong count = new AtomicLong(0);
-        private final AtomicLong totalNanos = new AtomicLong(0);
-
-        void record(long latencyNanos) {
-            count.incrementAndGet();
-            totalNanos.addAndGet(latencyNanos);
-        }
-
-        long getCount() {
-            return count.get();
-        }
-
-        long getTotalNanos() {
-            return totalNanos.get();
-        }
     }
 }

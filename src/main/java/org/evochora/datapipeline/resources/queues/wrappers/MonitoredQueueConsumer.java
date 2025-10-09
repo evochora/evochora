@@ -7,6 +7,7 @@ import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.resources.AbstractResource;
+import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 
 import java.time.Instant;
 import java.util.Collection;
@@ -14,7 +15,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -31,8 +31,7 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
     private final IInputQueueResource<T> delegate;
     private final ResourceContext context;
     private final AtomicLong messagesConsumed = new AtomicLong(0);
-    private final int windowSeconds;
-    private final ConcurrentHashMap<Long, AtomicLong> perSecondCounters = new ConcurrentHashMap<>();
+    private final SlidingWindowCounter throughputCounter;
     private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
 
     /**
@@ -47,42 +46,30 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
         super(((AbstractResource) delegate).getResourceName(), ((AbstractResource) delegate).getOptions());
         this.delegate = delegate;
         this.context = context;
-        this.windowSeconds = Integer.parseInt(context.parameters().getOrDefault("throughputWindowSeconds", "5"));
+        
+        // Configuration hierarchy: Context parameter > Resource option > Default (5)
+        int windowSeconds = Integer.parseInt(context.parameters().getOrDefault("metricsWindowSeconds",
+                context.parameters().getOrDefault("throughputWindowSeconds", "5")));  // Support old name during transition
+        
+        this.throughputCounter = new SlidingWindowCounter(windowSeconds);
     }
 
     /**
-     * Records a consumption event for throughput calculation using sliding window counters.
-     * This is an O(1) operation that just increments a counter for the current second.
+     * Records a consumption event for throughput calculation.
+     * This is an O(1) operation using SlidingWindowCounter.
      */
     private void recordConsumption() {
         messagesConsumed.incrementAndGet();
-        long currentSecond = Instant.now().getEpochSecond();
-        perSecondCounters.computeIfAbsent(currentSecond, k -> new AtomicLong(0)).incrementAndGet();
-        cleanupOldCounters(currentSecond);
+        throughputCounter.recordCount();
     }
 
     /**
      * Records multiple consumption events for throughput calculation.
-     * This is an O(1) operation that adds to the counter for the current second.
+     * This is an O(1) operation using SlidingWindowCounter.
      */
     private void recordConsumptions(int count) {
         messagesConsumed.addAndGet(count);
-        long currentSecond = Instant.now().getEpochSecond();
-        perSecondCounters.computeIfAbsent(currentSecond, k -> new AtomicLong(0)).addAndGet(count);
-        cleanupOldCounters(currentSecond);
-    }
-
-    /**
-     * Removes counter buckets older than the monitoring window to prevent unbounded memory growth.
-     * Only removes counters if we have more buckets than needed (window + buffer).
-     */
-    private void cleanupOldCounters(long currentSecond) {
-        // Keep windowSeconds + 5 extra seconds as buffer
-        int maxBuckets = windowSeconds + 5;
-        if (perSecondCounters.size() > maxBuckets) {
-            long cutoffSecond = currentSecond - windowSeconds - 1;
-            perSecondCounters.keySet().removeIf(second -> second < cutoffSecond);
-        }
+        throughputCounter.recordSum(count);
     }
 
     /**
@@ -180,28 +167,6 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
     }
 
     /**
-     * Calculates the throughput (messages per second) based on per-second counters within the configured window.
-     * This is an O(windowSeconds) operation, typically O(5-10).
-     *
-     * @return The throughput in messages per second.
-     */
-    private double calculateThroughput() {
-        long currentSecond = Instant.now().getEpochSecond();
-        long totalMessages = 0;
-
-        // Sum counters from the last windowSeconds
-        for (int i = 0; i < windowSeconds; i++) {
-            long second = currentSecond - i;
-            AtomicLong counter = perSecondCounters.get(second);
-            if (counter != null) {
-                totalMessages += counter.get();
-            }
-        }
-
-        return (double) totalMessages / windowSeconds;
-    }
-
-    /**
      * {@inheritDoc}
      * This implementation provides metrics specific to this consumer context, calculated independently
      * of the underlying resource.
@@ -210,7 +175,7 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
     public Map<String, Number> getMetrics() {
         return Map.of(
                 "messages_consumed", messagesConsumed.get(),
-                "throughput_per_sec", calculateThroughput()
+                "throughput_per_sec", throughputCounter.getRate()
         );
     }
 
