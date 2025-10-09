@@ -38,12 +38,21 @@ public class MetadataIndexer extends AbstractIndexer implements IMonitorable {
     protected void indexRun(String runId) throws Exception {
         log.info("Indexing metadata for run: {}", runId);
         String metadataKey = runId + "/metadata.pb";
-        SimulationMetadata metadata = pollForMetadataFile(metadataKey);
-        database.createSimulationRun(runId);
-        database.setSimulationRun(runId);
-        database.insertMetadata(metadata);
-        metadataIndexed.incrementAndGet();
-        log.info("Successfully indexed metadata for run: {}", runId);
+        try {
+            SimulationMetadata metadata = pollForMetadataFile(metadataKey);
+            database.createSimulationRun(runId);
+            database.setSimulationRun(runId);
+            database.insertMetadata(metadata);
+            metadataIndexed.incrementAndGet();
+            log.info("Successfully indexed metadata for run: {}", runId);
+        } catch (Exception e) {
+            // The pollForMetadataFile method increments metadataFailed on its own.
+            // We only increment it here if the failure happened after polling succeeded.
+            if (!(e instanceof TimeoutException)) {
+                metadataFailed.incrementAndGet();
+            }
+            throw e;
+        }
     }
 
     private SimulationMetadata pollForMetadataFile(String key) throws InterruptedException, TimeoutException, IOException {

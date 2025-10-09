@@ -139,32 +139,27 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
             return Collections.emptyList();
         }
 
-        List<String> validRunIds = new ArrayList<>();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSS");
-
         try (Stream<Path> stream = Files.list(rootDirectory.toPath())) {
-            stream.filter(Files::isDirectory).forEach(path -> {
-                String runId = path.getFileName().toString();
-                if (runId.length() >= 16) {
-                    try {
-                        String timestampStr = runId.substring(0, 16);
-                        LocalDateTime localDateTime = LocalDateTime.parse(timestampStr, formatter);
-                        Instant runTimestamp = localDateTime.toInstant(ZoneOffset.UTC);
-                        if (runTimestamp.isAfter(afterTimestamp)) {
-                            validRunIds.add(runId);
+            return stream.filter(Files::isDirectory)
+                    .map(path -> path.getFileName().toString())
+                    .filter(runId -> {
+                        if (runId.length() < 16) return false;
+                        try {
+                            String timestampStr = runId.substring(0, 16);
+                            LocalDateTime ldt = LocalDateTime.parse(timestampStr, formatter);
+                            return ldt.toInstant(ZoneOffset.UTC).isAfter(afterTimestamp);
+                        } catch (DateTimeParseException e) {
+                            log.trace("Ignoring non-runId directory: {}", runId);
+                            return false;
                         }
-                    } catch (DateTimeParseException e) {
-                        log.trace("Ignoring directory '{}' as it does not match expected runId format.", runId);
-                    }
-                }
-            });
+                    })
+                    .sorted()
+                    .collect(Collectors.toList());
         } catch (IOException e) {
-            log.debug("Error listing run IDs from storage, returning empty list.", e);
+            log.warn("Could not list directories in storage root for run discovery. This can happen during concurrent test execution and is handled gracefully.", e);
             return Collections.emptyList();
         }
-
-        Collections.sort(validRunIds);
-        return validRunIds;
     }
 
     @Override
