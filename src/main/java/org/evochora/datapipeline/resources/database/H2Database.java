@@ -34,12 +34,39 @@ public class H2Database extends AbstractDatabaseResource {
     public H2Database(String name, Config options) {
         super(name, options);
 
+        final String jdbcUrl = getJdbcUrl(options);
+        final String username = options.hasPath("username") ? options.getString("username") : "sa";
+        final String password = options.hasPath("password") ? options.getString("password") : "";
+
         HikariConfig hikariConfig = new HikariConfig();
-        hikariConfig.setJdbcUrl(getJdbcUrl(options));
+        hikariConfig.setJdbcUrl(jdbcUrl);
         hikariConfig.setDriverClassName("org.h2.Driver"); // Explicitly set driver for Fat JAR compatibility
         hikariConfig.setMaximumPoolSize(options.hasPath("maxPoolSize") ? options.getInt("maxPoolSize") : 10);
         hikariConfig.setMinimumIdle(options.hasPath("minIdle") ? options.getInt("minIdle") : 2);
-        this.dataSource = new HikariDataSource(hikariConfig);
+        hikariConfig.setUsername(username);
+        hikariConfig.setPassword(password);
+        
+        try {
+            this.dataSource = new HikariDataSource(hikariConfig);
+            log.debug("Successfully connected to H2 database: {}", jdbcUrl);
+        } catch (Exception e) {
+            // Unwrap to find root cause
+            Throwable cause = e;
+            while (cause.getCause() != null && cause.getCause() != cause) {
+                cause = cause.getCause();
+            }
+            
+            // Known error: wrong credentials
+            if (cause.getMessage() != null && cause.getMessage().contains("Wrong user name or password")) {
+                String errorMsg = String.format("Failed to connect to H2 database '%s': Wrong username/password. URL=%s, User=%s, Password=%s. Hint: Delete database files or use original credentials.", 
+                    name, jdbcUrl, username.isEmpty() ? "(empty)" : username, password.isEmpty() ? "(empty)" : "***");
+                log.error(errorMsg);
+                throw new RuntimeException(errorMsg);
+            }
+            
+            // Unknown error - rethrow for debugging
+            throw e;
+        }
         
         // Configuration: metricsWindowSeconds (default: 5)
         int metricsWindowSeconds = options.hasPath("metricsWindowSeconds")
