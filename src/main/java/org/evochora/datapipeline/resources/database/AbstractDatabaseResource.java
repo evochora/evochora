@@ -35,7 +35,7 @@ public abstract class AbstractDatabaseResource extends AbstractResource
     public IWrappedResource getWrappedResource(ResourceContext context) {
         String usageType = context.usageType();
         return switch (usageType) {
-            case "database-metadata" -> new MetadataWriterWrapper(this, context);
+            case "db-meta-write" -> new MetadataWriterWrapper(this, context);
             default -> throw new IllegalArgumentException(
                     "Unknown database usage type: " + usageType + ". Supported: database-metadata");
         };

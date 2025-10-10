@@ -58,6 +58,13 @@ message SimulationMetadata {
   // Source: TypesafeConfig.root().render(ConfigRenderOptions.concise())
   // Includes all config values (defaults + overrides) for self-contained replay
   string resolved_config_json = 9;
+  
+  // Sampling interval for tick data capture
+  // Source: SimulationEngine options "samplingInterval"
+  // Determines which ticks are captured: tick % samplingInterval == 0
+  // Default: 1 (every tick)
+  // Used by indexers for gap detection to distinguish missing batches from unsampled ticks
+  int32 sampling_interval = 10;
 }
 
 // Configuration for the simulation environment (world grid).

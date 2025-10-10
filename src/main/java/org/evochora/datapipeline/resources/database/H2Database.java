@@ -169,7 +169,8 @@ public class H2Database extends AbstractDatabaseResource {
             Map<String, Object> simInfoMap = Map.of(
                 "runId", metadata.getSimulationRunId(),
                 "startTime", metadata.getStartTimeMs(),
-                "seed", metadata.getInitialSeed()
+                "seed", metadata.getInitialSeed(),
+                "samplingInterval", metadata.getSamplingInterval()
             );
             kvPairs.put("simulation_info", gson.toJson(simInfoMap));
 

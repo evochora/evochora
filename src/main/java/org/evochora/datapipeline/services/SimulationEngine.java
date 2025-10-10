@@ -261,6 +261,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         builder.setSimulationRunId(this.runId);
         builder.setStartTimeMs(this.startTimeMs);
         builder.setInitialSeed(this.seed);
+        builder.setSamplingInterval(this.samplingInterval);
 
         EnvironmentProperties envProps = this.simulation.getEnvironment().getProperties();
         EnvironmentConfig.Builder envConfigBuilder = EnvironmentConfig.newBuilder();

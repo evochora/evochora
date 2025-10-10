@@ -88,7 +88,7 @@ class MetadataIndexerIntegrationTest {
         testStorage.writeMessage(runId + "/metadata.pb", metadata);
 
         // Manually wrap the database resource, simulating what the ServiceManager does.
-        ResourceContext dbContext = new ResourceContext("test-indexer", "database", "database-metadata", "test-db", Collections.emptyMap());
+        ResourceContext dbContext = new ResourceContext("test-indexer", "database", "db-meta-write", "test-db", Collections.emptyMap());
         IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
 
         Config indexerConfig = ConfigFactory.parseString("runId = \"" + runId + "\"");
@@ -107,7 +107,7 @@ class MetadataIndexerIntegrationTest {
     @Test
     void testMetadataIndexing_ParallelMode() throws Exception {
         // Manually wrap the database resource.
-        ResourceContext dbContext = new ResourceContext("test-indexer", "database", "database-metadata", "test-db", Collections.emptyMap());
+        ResourceContext dbContext = new ResourceContext("test-indexer", "database", "db-meta-write", "test-db", Collections.emptyMap());
         IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
 
         Config indexerConfig = ConfigFactory.empty();
@@ -145,6 +145,7 @@ class MetadataIndexerIntegrationTest {
                 .setSimulationRunId(runId)
                 .setStartTimeMs(System.currentTimeMillis())
                 .setInitialSeed(12345L)
+                .setSamplingInterval(1)
                 .build();
     }
 
