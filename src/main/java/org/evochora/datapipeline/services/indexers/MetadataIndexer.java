@@ -44,6 +44,12 @@ public class MetadataIndexer extends AbstractIndexer implements IMonitorable {
     }
 
     @Override
+    protected void prepareSchema(String runId) throws Exception {
+        // Create schema and tables for this simulation run
+        database.createSimulationRun(runId);
+    }
+    
+    @Override
     protected void indexRun(String runId) throws Exception {
         log.info("Indexing metadata for run: {}", runId);
         String metadataKey = runId + "/metadata.pb";
@@ -51,9 +57,8 @@ public class MetadataIndexer extends AbstractIndexer implements IMonitorable {
         SimulationMetadata metadata = pollForMetadataFile(metadataKey);
         
         // Use try-with-resources to ensure connection is released
+        // Note: prepareSchema() and setSchema() already called by AbstractIndexer.discoverRunId()
         try (IMetadataWriter db = database) {
-            db.createSimulationRun(runId);
-            db.setSimulationRun(runId);
             db.insertMetadata(metadata);
             metadataIndexed.incrementAndGet();
             log.info("Successfully indexed metadata for run: {}", runId);

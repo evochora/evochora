@@ -64,6 +64,30 @@ SimulationEngine (samplingInterval=10) → Queue → PersistenceService
                  Claims batch, reads ticks, no writes
 ```
 
+### Schema Management
+
+**AbstractIndexer** provides centralized schema management via template method pattern:
+
+1. **`discoverRunId()`** orchestrates schema preparation:
+   - Discovers the runId (configured or timestamp-based)
+   - Calls `prepareSchema(runId)` (template method hook)
+   - Calls `setSchemaForAllDatabaseResources(runId)`
+
+2. **`prepareSchema(runId)`** - Template method hook (default no-op):
+   - **MetadataIndexer** overrides this to create the schema (`database.createSimulationRun(runId)`)
+   - **DummyIndexer** and future indexers don't override (schema already exists)
+
+3. **`setSchemaForAllDatabaseResources(runId)`** - Sets schema for all `ISchemaAwareDatabase` resources:
+   - Discovers all `ISchemaAwareDatabase` resources (coordinators, metadata readers, etc.)
+   - Calls `setSimulationRun(runId)` on each
+   - Called automatically after `prepareSchema()`
+
+**This ensures:**
+- Schema is created exactly once (by MetadataIndexer)
+- All indexers' database resources operate in the correct schema
+- Race-safe and idempotent
+- No redundant schema creation calls
+
 ### Competing Consumer Pattern
 
 ```
@@ -159,9 +183,12 @@ t=60: Gap still pending, logs WARNING, increments permanentGapsDetected counter
 
 ```
 org.evochora.datapipeline.api.resources.database/
-  - IMetadataWriter.java          # Write metadata (existing, renamed)
-  - IMetadataReader.java           # Read metadata (NEW)
-  - IBatchCoordinator.java         # Batch coordination (NEW)
+  - ISchemaAwareDatabase.java      # Base interface for schema-aware operations (NEW)
+  - IMetadataWriter.java           # Write metadata (existing, renamed, extends ISchemaAwareDatabase)
+  - IMetadataReader.java           # Read metadata (NEW, extends ISchemaAwareDatabase)
+  - IBatchCoordinator.java         # Batch coordination (NEW, extends ISchemaAwareDatabase)
+  - MetadataNotFoundException.java # Exception for metadata not found (NEW)
+  - BatchAlreadyClaimedException.java # Exception for duplicate claims (NEW)
 
 org.evochora.datapipeline.resources.database/
   - AbstractDatabaseResource.java  # Base class (existing, extend)
@@ -178,40 +205,107 @@ org.evochora.datapipeline.services.indexers/
 
 ## Database Capability Interfaces
 
+### ISchemaAwareDatabase
+
+Base interface for all database capabilities that operate within a simulation run schema:
+
+```java
+/**
+ * Base capability for database operations that work within a simulation run schema.
+ * <p>
+ * All database capabilities that operate on run-specific data extend this interface.
+ * The schema is set once per wrapper instance by AbstractIndexer after run discovery.
+ * <p>
+ * <strong>Lifecycle:</strong>
+ * <ol>
+ *   <li>AbstractIndexer discovers runId</li>
+ *   <li>AbstractIndexer calls setSimulationRun(runId) on ALL ISchemaAwareDatabase resources</li>
+ *   <li>All subsequent operations on these wrappers work within the set schema</li>
+ * </ol>
+ */
+public interface ISchemaAwareDatabase extends IResource {
+    /**
+     * Sets the active database schema for this wrapper's connection.
+     * <p>
+     * Must be called once before any schema-specific operations.
+     * AbstractIndexer calls this automatically for all database resources after run discovery.
+     * <p>
+     * Implementation executes: SET SCHEMA schema_name
+     * 
+     * @param simulationRunId Raw simulation run ID (sanitized internally to schema name)
+     */
+    void setSimulationRun(String simulationRunId);
+}
+```
+
 ### IBatchCoordinator
 
 ```java
 /**
  * Database capability for coordinating batch processing across multiple indexer instances.
  * <p>
+ * <strong>Fluent API for Compile-Time Safety:</strong>
+ * This interface only provides setIndexerClass(), which returns IBatchCoordinatorReady.
+ * The compiler enforces that indexer class is set before any coordination methods can be called.
+ * <p>
+ * <strong>Usage Pattern:</strong>
+ * <pre>
+ * IBatchCoordinatorReady coordinator = getRequiredResource(IBatchCoordinator.class, "db-coordinator")
+ *     .setIndexerClass(this.getClass().getName());
+ * coordinator.tryClaim(...);  // Now usable
+ * </pre>
+ */
+public interface IBatchCoordinator extends ISchemaAwareDatabase, AutoCloseable {
+    
+    /**
+     * Sets the indexer class for this coordinator instance.
+     * MUST be called before any coordination operations.
+     * <p>
+     * Returns the ready-to-use coordinator with all coordination methods available.
+     *
+     * @param indexerClass Fully qualified class name (e.g., "org.evochora.datapipeline.services.indexers.DummyIndexer")
+     * @return Ready coordinator instance
+     */
+    IBatchCoordinatorReady setIndexerClass(String indexerClass);
+    
+    @Override
+    void close();
+}
+
+/**
+ * Ready-to-use batch coordinator with all coordination methods.
+ * <p>
+ * Obtained by calling setIndexerClass() on IBatchCoordinator.
  * Implements the competing consumer pattern where multiple indexers cooperatively process
  * batch files without duplication. Provides atomic claim operations, gap detection, and
  * stuck claim recovery.
  * <p>
+ * <strong>Schema Handling:</strong> Extends ISchemaAwareDatabase. AbstractIndexer automatically
+ * calls setSimulationRun() after run discovery, setting the schema for all operations.
+ * <p>
  * <strong>Thread Safety:</strong> All methods are thread-safe. Multiple indexer instances
  * can call methods concurrently without coordination.
- * <p>
- * <strong>Usage Pattern:</strong> This interface is injected via usage type
- * "db-coordinator:resourceName" to ensure proper wrapper isolation.
  */
-public interface IBatchCoordinator extends IResource, IMonitorable, AutoCloseable {
+public interface IBatchCoordinatorReady extends ISchemaAwareDatabase, IMonitorable, AutoCloseable {
     
     /**
      * Attempts to atomically claim a batch for processing.
      * <p>
-     * Only one indexer can successfully claim a batch. Uses database-level atomicity
-     * (e.g., INSERT with unique constraint or SELECT FOR UPDATE) to prevent races.
+     * Only one indexer instance of the same class can successfully claim a batch.
+     * Uses composite key (indexer_class, batch_filename) to allow different indexer
+     * types to process the same batch independently.
      * <p>
-     * Implementation stores: batch_filename, indexer_instance_id, tick_start, tick_end,
-     * claim_timestamp, status='claimed'
+     * Implementation stores: indexer_class (from setIndexerClass), batch_filename, 
+     * indexer_instance_id, tick_start, tick_end, claim_timestamp, status='claimed'
      *
      * @param batchFilename Storage filename (e.g., "batch_0000000000_0000000999.pb")
      * @param tickStart First tick number in batch
      * @param tickEnd Last tick number in batch
      * @param indexerInstanceId Unique ID of claiming indexer instance
-     * @return true if claim successful, false if already claimed/completed by another indexer
+     * @throws BatchAlreadyClaimedException if batch already claimed by another indexer of same class
      */
-    boolean tryClaim(String batchFilename, long tickStart, long tickEnd, String indexerInstanceId);
+    void tryClaim(String batchFilename, long tickStart, long tickEnd, String indexerInstanceId)
+        throws BatchAlreadyClaimedException;
     
     /**
      * Marks a batch as successfully completed.
@@ -247,16 +341,16 @@ public interface IBatchCoordinator extends IResource, IMonitorable, AutoCloseabl
     void markGapPending(String batchFilename, long tickStart, long tickEnd);
     
     /**
-     * Checks if there is a gap before the given batch start tick.
+     * Checks if there is a gap before the given batch start tick for this indexer.
      * <p>
      * Uses deterministic formula based on samplingInterval:
      * <pre>
-     * previousBatch = find max(tick_end) where tick_end < batchStartTick
+     * previousBatch = find max(tick_end) WHERE tick_end < batchStartTick AND indexer_class = [this]
      * expectedNextStart = previousBatch.tick_end + samplingInterval
      * return batchStartTick != expectedNextStart
      * </pre>
      * <p>
-     * Returns false if no previous batch exists (first batch of run).
+     * Returns false if no previous batch exists (first batch of run for this indexer).
      *
      * @param batchStartTick First tick number of batch being checked
      * @param samplingInterval Sampling interval from simulation metadata
@@ -265,10 +359,10 @@ public interface IBatchCoordinator extends IResource, IMonitorable, AutoCloseabl
     boolean hasGapBefore(long batchStartTick, int samplingInterval);
     
     /**
-     * Gets timestamp when a gap was first detected for batches starting at given tick.
+     * Gets timestamp when a gap was first detected for this indexer.
      * <p>
      * Returns the first_gap_detection_timestamp for any gap_pending batch where
-     * the gap is before batchStartTick.
+     * the gap is before batchStartTick for this indexer class.
      *
      * @param batchStartTick Tick number to check
      * @return Timestamp when gap was first detected, or null if no gap pending
@@ -276,12 +370,12 @@ public interface IBatchCoordinator extends IResource, IMonitorable, AutoCloseabl
     Instant getGapPendingSince(long batchStartTick);
     
     /**
-     * Releases gap-pending batches that are now processable.
+     * Releases gap-pending batches for this indexer that are now processable.
      * <p>
-     * After completing a batch with tick_end, checks all gap_pending batches
-     * to see if their gaps are now filled. Updates status: 'gap_pending' → 'ready'.
+     * After completing a batch with tick_end, checks all gap_pending batches for this
+     * indexer class to see if their gaps are now filled. Updates status: 'gap_pending' → 'ready'.
      * <p>
-     * Called automatically by AbstractIndexer after markCompleted().
+     * Called automatically by indexers after markCompleted().
      *
      * @param completedTickEnd The tick_end of the batch just completed
      * @param samplingInterval Sampling interval from metadata
@@ -305,11 +399,14 @@ public interface IBatchCoordinator extends IResource, IMonitorable, AutoCloseabl
  * Provides non-blocking read access to metadata. Services should poll using
  * AbstractIndexer.pollForMetadata() helper if metadata is not yet available.
  * <p>
+ * <strong>Schema Handling:</strong> Extends ISchemaAwareDatabase. AbstractIndexer automatically
+ * calls setSimulationRun() after run discovery, setting the schema for all read operations.
+ * <p>
  * <strong>Thread Safety:</strong> All methods are thread-safe.
  * <p>
  * <strong>Usage Pattern:</strong> Injected via usage type "db-meta-read:resourceName".
  */
-public interface IMetadataReader extends IResource, IMonitorable, AutoCloseable {
+public interface IMetadataReader extends ISchemaAwareDatabase, IMonitorable, AutoCloseable {
     
     /**
      * Reads complete simulation metadata for a run.
@@ -351,16 +448,40 @@ public class MetadataNotFoundException extends Exception {
         super(message);
     }
 }
+
+/**
+ * Exception thrown when attempting to claim a batch that is already claimed or completed.
+ * <p>
+ * This is a checked exception that represents an expected condition in the competing
+ * consumer pattern, not an error. Callers should handle this gracefully by trying
+ * the next available batch.
+ */
+public class BatchAlreadyClaimedException extends Exception {
+    private final String batchFilename;
+    
+    public BatchAlreadyClaimedException(String batchFilename) {
+        super("Batch already claimed: " + batchFilename);
+        this.batchFilename = batchFilename;
+    }
+    
+    public String getBatchFilename() {
+        return batchFilename;
+    }
+}
 ```
 
 ## Database Schema Extensions
 
 ### batch_processing Table
 
+**Creation:** Lazy creation in `H2Database.doTryClaim()` with cached check (see "Schema Initialization Cache" section).
+
+**Schema Definition:**
+
 ```sql
 CREATE TABLE IF NOT EXISTS batch_processing (
-  batch_filename VARCHAR PRIMARY KEY,
-  simulation_run_id VARCHAR NOT NULL,
+  indexer_class VARCHAR NOT NULL,
+  batch_filename VARCHAR NOT NULL,
   tick_start BIGINT NOT NULL,
   tick_end BIGINT NOT NULL,
   indexer_instance_id VARCHAR,
@@ -370,13 +491,22 @@ CREATE TABLE IF NOT EXISTS batch_processing (
   status VARCHAR NOT NULL,
   error_message VARCHAR,
   
+  PRIMARY KEY (indexer_class, batch_filename),
+  
   CONSTRAINT check_status CHECK (status IN ('claimed', 'completed', 'failed', 'gap_pending', 'ready')),
   
-  INDEX idx_run_tick_range (simulation_run_id, tick_start, tick_end),
+  INDEX idx_tick_range (tick_start, tick_end),
   INDEX idx_status (status),
   INDEX idx_tick_end (tick_end)
 );
 ```
+
+**Columns:**
+- `indexer_class`: Fully qualified class name (e.g., `org.evochora.datapipeline.services.indexers.DummyIndexer`)
+- `batch_filename`: Batch file name (e.g., `runId/tickdata/batch_0000000000_0000000999.pb`)
+- Composite PRIMARY KEY ensures each indexer type processes each batch independently
+- Multiple indexer types can process the same batch (DummyIndexer, EnvironmentIndexer, etc.)
+- Competing consumers only within the same indexer class
 
 **Status Values:**
 - `claimed`: Batch currently being processed by an indexer
@@ -385,20 +515,23 @@ CREATE TABLE IF NOT EXISTS batch_processing (
 - `gap_pending`: Batch discovered but has gap before it
 - `ready`: Gap-pending batch whose gap has been filled
 
+**Note:** The `batch_processing` table exists within each simulation run's schema (created by MetadataIndexer via `createSimulationRun()`). Therefore, no `simulation_run_id` column is needed - the schema itself provides run isolation.
+
 ## AbstractDatabaseResource Extensions
 
 AbstractDatabaseResource must be extended with new abstract methods for coordination and metadata reading:
 
 ```java
 // Coordination methods (NEW)
-protected abstract void doTryClaim(Object connection, String batchFilename, long tickStart, 
-                                   long tickEnd, String indexerInstanceId) throws Exception;
-protected abstract void doMarkCompleted(Object connection, String batchFilename) throws Exception;
-protected abstract void doMarkFailed(Object connection, String batchFilename, String errorMessage) throws Exception;
-protected abstract void doMarkGapPending(Object connection, String batchFilename, long tickStart, long tickEnd) throws Exception;
-protected abstract boolean doHasGapBefore(Object connection, long batchStartTick, int samplingInterval) throws Exception;
-protected abstract Instant doGetGapPendingSince(Object connection, long batchStartTick) throws Exception;
-protected abstract void doReleaseGapPendingBatches(Object connection, long completedTickEnd, int samplingInterval) throws Exception;
+protected abstract void doTryClaim(Object connection, String indexerClass, String batchFilename, 
+                                   long tickStart, long tickEnd, String indexerInstanceId) 
+    throws BatchAlreadyClaimedException, Exception;
+protected abstract void doMarkCompleted(Object connection, String indexerClass, String batchFilename) throws Exception;
+protected abstract void doMarkFailed(Object connection, String indexerClass, String batchFilename, String errorMessage) throws Exception;
+protected abstract void doMarkGapPending(Object connection, String indexerClass, String batchFilename, long tickStart, long tickEnd) throws Exception;
+protected abstract boolean doHasGapBefore(Object connection, String indexerClass, long batchStartTick, int samplingInterval) throws Exception;
+protected abstract Instant doGetGapPendingSince(Object connection, String indexerClass, long batchStartTick) throws Exception;
+protected abstract void doReleaseGapPendingBatches(Object connection, String indexerClass, long completedTickEnd, int samplingInterval) throws Exception;
 
 // Metadata reading methods (NEW)
 protected abstract SimulationMetadata doGetMetadata(Object connection, String simulationRunId) throws Exception;
@@ -409,30 +542,67 @@ These methods are called by their respective wrappers (BatchCoordinatorWrapper, 
 
 ## H2Database Extensions
 
+### Schema Initialization Cache
+
+**Purpose:** Avoid repeated `CREATE TABLE IF NOT EXISTS` overhead for coordination tables.
+
+**Implementation:**
+```java
+// In H2Database.java (class field)
+private final Set<String> coordinationTablesInitialized = ConcurrentHashMap.newKeySet();
+```
+
+**Performance:**
+- Metadata table: Created in `doInsertMetadata()` (1× per run, no caching needed)
+- Coordination table: Created in `doTryClaim()` with cached check (1× per schema, then O(1) lookups)
+
 ### Coordination Methods
 
 ```java
 // In H2Database.java
 
 @Override
-protected void doTryClaim(Object connection, String batchFilename, long tickStart, long tickEnd, 
-                          String indexerInstanceId) throws Exception {
+protected void doTryClaim(Object connection, String indexerClass, String batchFilename, 
+                          long tickStart, long tickEnd, String indexerInstanceId) 
+                          throws BatchAlreadyClaimedException, Exception {
     Connection conn = (Connection) connection;
     
+    // Ensure batch_processing table exists (lazy creation with cache)
+    String currentSchema = conn.getSchema();
+    if (!coordinationTablesInitialized.contains(currentSchema)) {
+        conn.createStatement().execute(
+            "CREATE TABLE IF NOT EXISTS batch_processing (" +
+            "  indexer_class VARCHAR(255) NOT NULL," +
+            "  batch_filename VARCHAR(255) NOT NULL," +
+            "  tick_start BIGINT NOT NULL," +
+            "  tick_end BIGINT NOT NULL," +
+            "  indexer_instance_id VARCHAR(255) NOT NULL," +
+            "  claim_timestamp TIMESTAMP NOT NULL," +
+            "  completion_timestamp TIMESTAMP," +
+            "  first_gap_detection_timestamp TIMESTAMP," +
+            "  status VARCHAR(20) NOT NULL," +
+            "  error_message TEXT," +
+            "  PRIMARY KEY (indexer_class, batch_filename)," +
+            "  CONSTRAINT check_status CHECK (status IN ('claimed', 'completed', 'failed', 'gap_pending', 'ready'))," +
+            "  INDEX idx_tick_range (tick_start, tick_end)," +
+            "  INDEX idx_status (status)," +
+            "  INDEX idx_tick_end (tick_end)" +
+            ")"
+        );
+        conn.commit();
+        coordinationTablesInitialized.add(currentSchema);
+    }
+    
     try {
-        // Atomic INSERT with unique constraint
+        // Atomic INSERT with composite primary key (indexer_class, batch_filename)
         PreparedStatement stmt = conn.prepareStatement(
             "INSERT INTO batch_processing " +
-            "(batch_filename, simulation_run_id, tick_start, tick_end, " +
-            " indexer_instance_id, claim_timestamp, status) " +
+            "(indexer_class, batch_filename, tick_start, tick_end, indexer_instance_id, claim_timestamp, status) " +
             "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'claimed')"
         );
         
-        // Extract simulation_run_id from filename (first path component)
-        String runId = extractRunIdFromFilename(batchFilename);
-        
-        stmt.setString(1, batchFilename);
-        stmt.setString(2, runId);
+        stmt.setString(1, indexerClass);
+        stmt.setString(2, batchFilename);
         stmt.setLong(3, tickStart);
         stmt.setLong(4, tickEnd);
         stmt.setString(5, indexerInstanceId);
@@ -443,44 +613,28 @@ protected void doTryClaim(Object connection, String batchFilename, long tickStar
         rowsInserted.incrementAndGet();
         
     } catch (SQLException e) {
-        if (e.getErrorCode() == 23505) { // H2 unique constraint violation
-            // Already claimed - this is expected, not an error
-            conn.rollback();
-            return; // Wrapper will return false
-        }
         conn.rollback();
+        
+        if (e.getErrorCode() == 23505) { // H2 unique constraint violation
+            // Expected case - batch already claimed by another indexer of same class
+            throw new BatchAlreadyClaimedException(batchFilename);
+        }
+        
+        // Unexpected database error
         throw e;
     }
 }
 
 @Override
-protected void doMarkCompleted(Object connection, String batchFilename) throws Exception {
+protected void doMarkCompleted(Object connection, String indexerClass, String batchFilename) throws Exception {
     Connection conn = (Connection) connection;
     
     PreparedStatement stmt = conn.prepareStatement(
         "UPDATE batch_processing " +
         "SET status = 'completed', completion_timestamp = CURRENT_TIMESTAMP " +
-        "WHERE batch_filename = ?"
+        "WHERE indexer_class = ? AND batch_filename = ?"
     );
-    stmt.setString(1, batchFilename);
-    stmt.executeUpdate();
-    conn.commit();
-    
-    queriesExecuted.incrementAndGet();
-}
-
-@Override
-protected void doMarkFailed(Object connection, String batchFilename, String errorMessage) throws Exception {
-    Connection conn = (Connection) connection;
-    
-    PreparedStatement stmt = conn.prepareStatement(
-        "UPDATE batch_processing " +
-        "SET status = 'failed', " +
-        "    completion_timestamp = CURRENT_TIMESTAMP, " +
-        "    error_message = ? " +
-        "WHERE batch_filename = ?"
-    );
-    stmt.setString(1, errorMessage);
+    stmt.setString(1, indexerClass);
     stmt.setString(2, batchFilename);
     stmt.executeUpdate();
     conn.commit();
@@ -489,21 +643,39 @@ protected void doMarkFailed(Object connection, String batchFilename, String erro
 }
 
 @Override
-protected void doMarkGapPending(Object connection, String batchFilename, long tickStart, long tickEnd) throws Exception {
+protected void doMarkFailed(Object connection, String indexerClass, String batchFilename, String errorMessage) throws Exception {
+    Connection conn = (Connection) connection;
+    
+    PreparedStatement stmt = conn.prepareStatement(
+        "UPDATE batch_processing " +
+        "SET status = 'failed', " +
+        "    completion_timestamp = CURRENT_TIMESTAMP, " +
+        "    error_message = ? " +
+        "WHERE indexer_class = ? AND batch_filename = ?"
+    );
+    stmt.setString(1, errorMessage);
+    stmt.setString(2, indexerClass);
+    stmt.setString(3, batchFilename);
+    stmt.executeUpdate();
+    conn.commit();
+    
+    queriesExecuted.incrementAndGet();
+}
+
+@Override
+protected void doMarkGapPending(Object connection, String indexerClass, String batchFilename, long tickStart, long tickEnd) throws Exception {
     Connection conn = (Connection) connection;
     
     // Use MERGE to handle race condition where multiple indexers detect same gap
     PreparedStatement stmt = conn.prepareStatement(
         "MERGE INTO batch_processing " +
-        "(batch_filename, simulation_run_id, tick_start, tick_end, " +
-        " first_gap_detection_timestamp, status) " +
-        "KEY(batch_filename) " +
+        "(indexer_class, batch_filename, tick_start, tick_end, first_gap_detection_timestamp, status) " +
+        "KEY(indexer_class, batch_filename) " +
         "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, 'gap_pending')"
     );
     
-    String runId = extractRunIdFromFilename(batchFilename);
-    stmt.setString(1, batchFilename);
-    stmt.setString(2, runId);
+    stmt.setString(1, indexerClass);
+    stmt.setString(2, batchFilename);
     stmt.setLong(3, tickStart);
     stmt.setLong(4, tickEnd);
     stmt.executeUpdate();
@@ -513,25 +685,27 @@ protected void doMarkGapPending(Object connection, String batchFilename, long ti
 }
 
 @Override
-protected boolean doHasGapBefore(Object connection, long batchStartTick, int samplingInterval) throws Exception {
+protected boolean doHasGapBefore(Object connection, String indexerClass, long batchStartTick, int samplingInterval) throws Exception {
     Connection conn = (Connection) connection;
     
     if (batchStartTick == 0) {
         return false; // First batch, no gap possible
     }
     
-    // Find previous batch
+    // Find previous batch for this indexer class
     PreparedStatement stmt = conn.prepareStatement(
         "SELECT tick_end FROM batch_processing " +
-        "WHERE tick_end < ? " +
+        "WHERE indexer_class = ? " +
+        "AND tick_end < ? " +
         "AND status IN ('completed', 'claimed', 'gap_pending', 'ready') " +
         "ORDER BY tick_end DESC LIMIT 1"
     );
-    stmt.setLong(1, batchStartTick);
+    stmt.setString(1, indexerClass);
+    stmt.setLong(2, batchStartTick);
     ResultSet rs = stmt.executeQuery();
     
     if (!rs.next()) {
-        return false; // No previous batch found, this is first batch
+        return false; // No previous batch found, this is first batch for this indexer
     }
     
     long previousTickEnd = rs.getLong("tick_end");
@@ -543,17 +717,19 @@ protected boolean doHasGapBefore(Object connection, long batchStartTick, int sam
 }
 
 @Override
-protected Instant doGetGapPendingSince(Object connection, long batchStartTick) throws Exception {
+protected Instant doGetGapPendingSince(Object connection, String indexerClass, long batchStartTick) throws Exception {
     Connection conn = (Connection) connection;
     
-    // Find any gap_pending batch that has a gap before batchStartTick
+    // Find any gap_pending batch for this indexer class that has a gap before batchStartTick
     PreparedStatement stmt = conn.prepareStatement(
         "SELECT first_gap_detection_timestamp FROM batch_processing " +
-        "WHERE status = 'gap_pending' " +
+        "WHERE indexer_class = ? " +
+        "AND status = 'gap_pending' " +
         "AND tick_start >= ? " +
         "ORDER BY tick_start ASC LIMIT 1"
     );
-    stmt.setLong(1, batchStartTick);
+    stmt.setString(1, indexerClass);
+    stmt.setLong(2, batchStartTick);
     ResultSet rs = stmt.executeQuery();
     
     queriesExecuted.incrementAndGet();
@@ -566,27 +742,30 @@ protected Instant doGetGapPendingSince(Object connection, long batchStartTick) t
 }
 
 @Override
-protected void doReleaseGapPendingBatches(Object connection, long completedTickEnd, int samplingInterval) throws Exception {
+protected void doReleaseGapPendingBatches(Object connection, String indexerClass, long completedTickEnd, int samplingInterval) throws Exception {
     Connection conn = (Connection) connection;
     
-    // Find gap_pending batches that can now be processed
+    // Find gap_pending batches for this indexer class that can now be processed
     // Their expected previous tick is completedTickEnd
     long expectedNextStart = completedTickEnd + samplingInterval;
     
     PreparedStatement stmt = conn.prepareStatement(
         "UPDATE batch_processing " +
         "SET status = 'ready' " +
-        "WHERE status = 'gap_pending' " +
+        "WHERE indexer_class = ? " +
+        "AND status = 'gap_pending' " +
         "AND tick_start = ?"
     );
-    stmt.setLong(1, expectedNextStart);
+    stmt.setString(1, indexerClass);
+    stmt.setLong(2, expectedNextStart);
     int updatedRows = stmt.executeUpdate();
     conn.commit();
     
     queriesExecuted.incrementAndGet();
     
     if (updatedRows > 0) {
-        log.debug("Released {} gap-pending batches after completing tick {}", updatedRows, completedTickEnd);
+        log.debug("Released {} gap-pending batches for {} after completing tick {}", 
+                  updatedRows, indexerClass, completedTickEnd);
     }
 }
 
@@ -663,15 +842,6 @@ protected boolean doHasMetadata(Object connection, String simulationRunId) throw
     return rs.next();
 }
 
-private String extractRunIdFromFilename(String batchFilename) {
-    // batch_filename format: "runId/subfolder/batch_X_Y.pb"
-    // Extract first path component
-    int slashIndex = batchFilename.indexOf('/');
-    if (slashIndex > 0) {
-        return batchFilename.substring(0, slashIndex);
-    }
-    throw new IllegalArgumentException("Invalid batch filename format: " + batchFilename);
-}
 ```
 
 ### getWrappedResource Extension
@@ -701,16 +871,20 @@ public IWrappedResource getWrappedResource(ResourceContext context) {
 /**
  * Database-agnostic wrapper for batch coordination operations.
  * <p>
+ * Implements fluent API pattern: IBatchCoordinator (initialization) and IBatchCoordinatorReady (operations).
  * Holds dedicated connection for exclusive use by one indexer instance.
  * Delegates coordination operations to AbstractDatabaseResource.
  * <p>
+ * <strong>Compile-Time Safety:</strong> setIndexerClass() must be called before any coordination methods.
+ * <p>
  * <strong>Performance Contract:</strong> All metrics use O(1) recording.
  */
-class BatchCoordinatorWrapper implements IBatchCoordinator, IWrappedResource, IMonitorable {
+class BatchCoordinatorWrapper implements IBatchCoordinator, IBatchCoordinatorReady, IWrappedResource, IMonitorable {
     
     private final AbstractDatabaseResource database;
     private final ResourceContext context;
     private final Object dedicatedConnection;
+    private String indexerClass;  // Set via setIndexerClass(), used in all operations
     
     // Operation counters (O(1) atomic operations)
     private final AtomicLong claimAttempts = new AtomicLong(0);
@@ -757,27 +931,44 @@ class BatchCoordinatorWrapper implements IBatchCoordinator, IWrappedResource, IM
     }
     
     @Override
-    public boolean tryClaim(String batchFilename, long tickStart, long tickEnd, String indexerInstanceId) {
+    public IBatchCoordinatorReady setIndexerClass(String indexerClass) {
+        if (indexerClass == null || indexerClass.isEmpty()) {
+            throw new IllegalArgumentException("indexerClass cannot be null or empty");
+        }
+        this.indexerClass = indexerClass;
+        return this;  // Return self as IBatchCoordinatorReady
+    }
+    
+    private void ensureIndexerClassSet() {
+        if (indexerClass == null) {
+            throw new IllegalStateException(
+                "indexerClass not set - must call setIndexerClass() before using coordinator"
+            );
+        }
+    }
+    
+    @Override
+    public void tryClaim(String batchFilename, long tickStart, long tickEnd, String indexerInstanceId)
+            throws BatchAlreadyClaimedException {
+        ensureIndexerClassSet();
         long startNanos = System.nanoTime();
         claimAttempts.incrementAndGet();
         
         try {
-            database.doTryClaim(dedicatedConnection, batchFilename, tickStart, tickEnd, indexerInstanceId);
+            database.doTryClaim(dedicatedConnection, indexerClass, batchFilename, tickStart, tickEnd, indexerInstanceId);
             
+            // Claim successful
             claimSuccesses.incrementAndGet();
-            tryClaimLatency.record(System.nanoTime() - startNanos);  // Record in nanoseconds
+            tryClaimLatency.record(System.nanoTime() - startNanos);
             
-            return true; // Claim successful
+        } catch (BatchAlreadyClaimedException e) {
+            // Expected case - another indexer claimed it first
+            // Re-throw to caller
+            tryClaimLatency.record(System.nanoTime() - startNanos);
+            throw e;
             
         } catch (Exception e) {
-            // Check if it's a constraint violation (already claimed)
-            if (e.getMessage() != null && e.getMessage().contains("unique constraint")) {
-                // Expected case - another indexer claimed it first
-                tryClaimLatency.record(System.nanoTime() - startNanos);
-                return false;
-            }
-            
-            // Unexpected error
+            // Unexpected database error
             recordError("CLAIM_FAILED", "Failed to claim batch",
                        "Batch: " + batchFilename + ", Error: " + e.getMessage());
             throw new RuntimeException("Failed to claim batch: " + batchFilename, e);
@@ -786,10 +977,11 @@ class BatchCoordinatorWrapper implements IBatchCoordinator, IWrappedResource, IM
     
     @Override
     public void markCompleted(String batchFilename) {
+        ensureIndexerClassSet();
         long startNanos = System.nanoTime();
         
         try {
-            database.doMarkCompleted(dedicatedConnection, batchFilename);
+            database.doMarkCompleted(dedicatedConnection, indexerClass, batchFilename);
             batchesCompleted.incrementAndGet();
             markCompletedLatency.record(System.nanoTime() - startNanos);
             
@@ -802,10 +994,11 @@ class BatchCoordinatorWrapper implements IBatchCoordinator, IWrappedResource, IM
     
     @Override
     public void markFailed(String batchFilename, String errorMessage) {
+        ensureIndexerClassSet();
         long startNanos = System.nanoTime();
         
         try {
-            database.doMarkFailed(dedicatedConnection, batchFilename, errorMessage);
+            database.doMarkFailed(dedicatedConnection, indexerClass, batchFilename, errorMessage);
             batchesFailed.incrementAndGet();
             markFailedLatency.record(System.nanoTime() - startNanos);
             
@@ -818,10 +1011,11 @@ class BatchCoordinatorWrapper implements IBatchCoordinator, IWrappedResource, IM
     
     @Override
     public void markGapPending(String batchFilename, long tickStart, long tickEnd) {
+        ensureIndexerClassSet();
         long startNanos = System.nanoTime();
         
         try {
-            database.doMarkGapPending(dedicatedConnection, batchFilename, tickStart, tickEnd);
+            database.doMarkGapPending(dedicatedConnection, indexerClass, batchFilename, tickStart, tickEnd);
             gapsPending.incrementAndGet();
             markGapPendingLatency.record(System.nanoTime() - startNanos);
             
@@ -834,10 +1028,11 @@ class BatchCoordinatorWrapper implements IBatchCoordinator, IWrappedResource, IM
     
     @Override
     public boolean hasGapBefore(long batchStartTick, int samplingInterval) {
+        ensureIndexerClassSet();
         long startNanos = System.nanoTime();
         
         try {
-            boolean hasGap = database.doHasGapBefore(dedicatedConnection, batchStartTick, samplingInterval);
+            boolean hasGap = database.doHasGapBefore(dedicatedConnection, indexerClass, batchStartTick, samplingInterval);
             hasGapBeforeLatency.record(System.nanoTime() - startNanos);
             
             return hasGap;
@@ -851,8 +1046,9 @@ class BatchCoordinatorWrapper implements IBatchCoordinator, IWrappedResource, IM
     
     @Override
     public Instant getGapPendingSince(long batchStartTick) {
+        ensureIndexerClassSet();
         try {
-            return database.doGetGapPendingSince(dedicatedConnection, batchStartTick);
+            return database.doGetGapPendingSince(dedicatedConnection, indexerClass, batchStartTick);
         } catch (Exception e) {
             recordError("GET_GAP_PENDING_SINCE_FAILED", "Failed to get gap pending timestamp",
                        "TickStart: " + batchStartTick + ", Error: " + e.getMessage());
@@ -862,10 +1058,11 @@ class BatchCoordinatorWrapper implements IBatchCoordinator, IWrappedResource, IM
     
     @Override
     public void releaseGapPendingBatches(long completedTickEnd, int samplingInterval) {
+        ensureIndexerClassSet();
         long startNanos = System.nanoTime();
         
         try {
-            database.doReleaseGapPendingBatches(dedicatedConnection, completedTickEnd, samplingInterval);
+            database.doReleaseGapPendingBatches(dedicatedConnection, indexerClass, completedTickEnd, samplingInterval);
             gapsReleased.incrementAndGet();
             releaseGapPendingLatency.record(System.nanoTime() - startNanos);
             
@@ -1183,9 +1380,33 @@ public abstract class AbstractIndexer extends AbstractService {
         }
     }
     
-    // Existing method - unchanged
-    protected String discoverRunId() throws InterruptedException, TimeoutException {
-        // ... existing implementation ...
+    // Modified: discoverRunId now handles schema preparation
+    protected String discoverRunId() throws Exception {
+        // 1. Discover runId (configured or timestamp-based)
+        String runId = /* existing discovery logic */;
+        
+        // 2. Prepare schema (template method hook - default no-op, MetadataIndexer creates schema)
+        prepareSchema(runId);
+        
+        // 3. Set schema for all database resources
+        setSchemaForAllDatabaseResources(runId);
+        
+        return runId;
+    }
+    
+    /**
+     * Template method hook for schema preparation (e.g., schema creation).
+     * This is called by discoverRunId() after the runId is discovered but before
+     * setSchemaForAllDatabaseResources() is called.
+     * <p>
+     * Default implementation does nothing. Override to perform schema setup tasks
+     * (e.g., MetadataIndexer overrides this to create the schema).
+     *
+     * @param runId the simulation run ID
+     * @throws Exception if schema preparation fails
+     */
+    protected void prepareSchema(String runId) throws Exception {
+        // Default: no-op
     }
     
     // NEW: Wait for metadata to be indexed
@@ -1240,6 +1461,26 @@ public abstract class AbstractIndexer extends AbstractService {
         throw new IllegalArgumentException("Invalid batch filename format: " + batchFilename);
     }
     
+    /**
+     * Sets the schema for all ISchemaAwareDatabase resources.
+     * <p>
+     * Called automatically by discoverRunId() after prepareSchema().
+     * Ensures all database wrappers (coordinator, metadata reader, etc.)
+     * operate within the correct simulation run schema.
+     *
+     * @param runId The simulation run ID
+     */
+    protected void setSchemaForAllDatabaseResources(String runId) {
+        for (List<IResource> resourceList : resources.values()) {
+            for (IResource resource : resourceList) {
+                if (resource instanceof ISchemaAwareDatabase) {
+                    ((ISchemaAwareDatabase) resource).setSimulationRun(runId);
+                    log.debug("Set schema for database resource: {}", resource.getResourceName());
+                }
+            }
+        }
+    }
+    
     // Template method - subclasses implement specific processing
     protected abstract void processBatch(List<TickData> ticks) throws Exception;
     
@@ -1253,12 +1494,17 @@ public abstract class AbstractIndexer extends AbstractService {
             cachedMetadata = pollForMetadata(runId);
             samplingInterval = cachedMetadata.getSamplingInterval();
             
+            // Step 3: Set schema for all database resources
+            // Note: Schema must already exist (created by MetadataIndexer)
+            // For other indexers this is called at start of indexRun()
+            setSchemaForAllDatabaseResources(runId);
+            
             log.info("Starting batch processing: runId={}, samplingInterval={}, insertBatchSize={}, flushTimeout={}ms",
                     runId, samplingInterval, insertBatchSize, flushTimeoutMs);
             
             lastBatchClaimTime = System.currentTimeMillis();
             
-            // Step 3: Batch processing loop
+            // Step 4: Batch processing loop
             while (!Thread.currentThread().isInterrupted()) {
                 boolean claimedAny = processBatchDiscoveryIteration(runId);
                 
@@ -1398,6 +1644,7 @@ public abstract class AbstractIndexer extends AbstractService {
  *   <li>Coordinates batch processing with other indexer instances</li>
  *   <li>Reads tick data from batches</li>
  *   <li>Does NOT write any data (no database operations)</li>
+ *   <li>Does NOT override prepareSchema() - schema already exists from MetadataIndexer</li>
  * </ul>
  * <p>
  * Purpose: Validate competing consumer patterns, gap detection, and coordination logic
@@ -1878,58 +2125,40 @@ class DummyIndexerIntegrationTest {
 
 ### 1. Coordination Strategy
 
-**Decision:** Pessimistic locking with atomic database operations (INSERT with unique constraint)
+Pessimistic locking with atomic database operations (INSERT with unique constraint).
 
-**Rationale:**
 - Guarantees no duplicate processing
 - Database handles atomicity and races
 - Simple mental model
 - Visible coordination state for operations
 
-**Alternatives Rejected:**
-- Optimistic locking (race conditions possible, duplicate processing)
-- Tick-level tracking (too granular, massive overhead)
-- Sequential only (idle indexers during gaps)
-
 ### 2. Gap Detection Formula
 
-**Decision:** Deterministic formula using samplingInterval
+Deterministic formula using samplingInterval:
 
 ```
 expectedNextStart = previousBatch.tick_end + samplingInterval
 hasGap = (batchStartTick != expectedNextStart)
 ```
 
-**Rationale:**
 - SimulationEngine is deterministic (always samples tick % samplingInterval == 0)
 - Works with variable batch sizes (timeout-triggered batches)
 - No need for complex analysis or tolerances
-
-**Prerequisites:**
-- samplingInterval must be in SimulationMetadata
-- SimulationEngine must write samplingInterval field
-- **This is a blocking prerequisite for Phase 2.5**
+- Requires samplingInterval in SimulationMetadata (completed in Prerequisites)
 
 ### 3. Gap Handling Strategy
 
-**Decision:** Mark as 'gap_pending', release when filled, warn after timeout
+Mark as 'gap_pending', release when filled, warn after timeout.
 
-**Rationale:**
 - Non-blocking (indexers process what they can)
 - Automatic backfill when gaps close
 - Timeout warnings detect permanent gaps
 - Pipeline continues running (operational > perfect)
 
-**Alternatives Rejected:**
-- Strict sequential (idle indexers)
-- Ignore gaps (data loss)
-- ERROR state on gaps (too aggressive)
-
 ### 4. Tick Buffering
 
-**Decision:** Flexible insertBatchSize independent of storage batch size
+Flexible insertBatchSize independent of storage batch size.
 
-**Rationale:**
 - Different indexers have different optimal batch sizes
 - Environment indexer: many small transactions (insertBatchSize=100)
 - Organism indexer: large bulk inserts (insertBatchSize=10000)
@@ -1937,9 +2166,8 @@ hasGap = (batchStartTick != expectedNextStart)
 
 ### 5. Metadata Access
 
-**Decision:** IMetadataReader capability, poll from database, not storage
+IMetadataReader capability, poll from database, not storage.
 
-**Rationale:**
 - Single source of truth (database)
 - Structured and parsed data
 - Clear dependency: MetadataIndexer → other indexers
@@ -1947,13 +2175,54 @@ hasGap = (batchStartTick != expectedNextStart)
 
 ### 6. DummyIndexer Scope
 
-**Decision:** No database writes, only observation and counting
+No database writes, only observation and counting.
 
-**Rationale:**
 - Tests coordination infrastructure in isolation
 - No schema complexity
 - Fast test execution
 - Clear separation of concerns (coordination vs. processing)
+
+### 7. Exception-Based Claim Result Communication
+
+Use checked `BatchAlreadyClaimedException` for claim conflicts.
+
+- Type-safe and database-agnostic (no string matching on error messages)
+- Exception signature documents expected behavior (competing consumer pattern)
+- Uses database error codes (H2: 23505, PostgreSQL: 23505, MySQL: 1062)
+- Robust across database versions and locales
+- Clear separation: BatchAlreadyClaimedException = expected, other exceptions = errors
+
+```java
+// H2 implementation
+if (e.getErrorCode() == 23505) {
+    throw new BatchAlreadyClaimedException(batchFilename);
+}
+```
+
+### 8. Table Creation Strategy
+
+Lazy creation with cached check: each capability creates its tables on first use.
+
+```java
+// In H2Database
+private final Set<String> coordinationTablesInitialized = ConcurrentHashMap.newKeySet();
+
+protected void doTryClaim(...) {
+    String currentSchema = conn.getSchema();
+    if (!coordinationTablesInitialized.contains(currentSchema)) {
+        CREATE TABLE IF NOT EXISTS batch_processing (...);
+        coordinationTablesInitialized.add(currentSchema);
+    }
+    // ... actual claim logic ...
+}
+```
+
+- O(1) cache lookup per operation
+- Thread-safe without locks
+- Each capability manages its own tables
+- Constant overhead regardless of batch count (~1.8ms per schema)
+- IMetadataWriter creates `metadata` table in `doInsertMetadata`
+- IBatchCoordinator creates `batch_processing` table in `doTryClaim`
 
 ## Monitoring Requirements
 

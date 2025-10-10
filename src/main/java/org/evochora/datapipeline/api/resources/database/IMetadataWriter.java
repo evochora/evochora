@@ -2,31 +2,25 @@ package org.evochora.datapipeline.api.resources.database;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IMonitorable;
-import org.evochora.datapipeline.api.resources.IResource;
 
 /**
  * Defines the capability interface for a database that can store and retrieve
  * simulation metadata. This interface is used by the MetadataIndexer service.
  * <p>
+ * Extends {@link ISchemaAwareDatabase} - AbstractIndexer automatically calls
+ * {@code setSimulationRun()} after run discovery to set the schema.
+ * <p>
  * Implements {@link AutoCloseable} to enable try-with-resources pattern for
  * automatic connection cleanup:
  * <pre>
  * try (IMetadataWriter db = resource.getWrappedResource(context)) {
+ *     // setSimulationRun() already called by AbstractIndexer
  *     db.createSimulationRun(runId);
- *     db.setSimulationRun(runId);
  *     db.insertMetadata(metadata);
  * }  // Connection automatically released
  * </pre>
  */
-public interface IMetadataWriter extends IResource, IMonitorable, AutoCloseable {
-    /**
-     * Sets the database schema for all subsequent operations on the current connection/wrapper.
-     * This must be called once after an indexer discovers its target simulation run ID.
-     * This method is thread-safe, as each wrapper instance holds an isolated connection.
-     *
-     * @param simulationRunId The unique identifier for the simulation run.
-     */
-    void setSimulationRun(String simulationRunId);
+public interface IMetadataWriter extends ISchemaAwareDatabase, IMonitorable, AutoCloseable {
 
     /**
      * Creates a new schema in the database for a specific simulation run.

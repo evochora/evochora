@@ -130,15 +130,21 @@ class MetadataIndexerTest {
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
     @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*Indexing failed.*")
     void errorTracking_recordsErrorsOnDatabaseFailure() throws Exception {
-        // Setup: Storage returns metadata, but database throws exception
+        // Setup: Storage returns metadata, but database throws exception on insertMetadata
         Config config = ConfigFactory.parseString("runId = \"" + testRunId + "\"");
         MetadataIndexer indexer = new MetadataIndexer("test-indexer", config, resources);
-        SimulationMetadata metadata = SimulationMetadata.newBuilder().setSimulationRunId(testRunId).build();
+        SimulationMetadata metadata = SimulationMetadata.newBuilder()
+                .setSimulationRunId(testRunId)
+                .setSamplingInterval(1)
+                .build();
         when(mockStorage.readMessage(eq(testRunId + "/metadata.pb"), any())).thenReturn(metadata);
-        doThrow(new RuntimeException("Database connection failed"))
-                .when(mockDatabase).createSimulationRun(anyString());
         
-        // Start indexer - should fail on database operation
+        // Mock: createSimulationRun succeeds, but insertMetadata fails
+        doNothing().when(mockDatabase).createSimulationRun(anyString());
+        doThrow(new RuntimeException("Database write failed"))
+                .when(mockDatabase).insertMetadata(any());
+        
+        // Start indexer - should fail on insertMetadata
         indexer.start();
         await().atMost(5, TimeUnit.SECONDS).until(() -> indexer.getCurrentState() == IService.State.ERROR);
         

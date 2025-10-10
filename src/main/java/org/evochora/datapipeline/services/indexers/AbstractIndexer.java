@@ -2,6 +2,7 @@ package org.evochora.datapipeline.services.indexers;
 
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.services.AbstractService;
 
@@ -35,34 +36,88 @@ public abstract class AbstractIndexer extends AbstractService {
     }
 
     protected String discoverRunId() throws InterruptedException, TimeoutException {
+        String runId = null;
+        
         if (configuredRunId != null) {
             log.info("Using configured runId: {}", configuredRunId);
-            return configuredRunId;
-        }
+            runId = configuredRunId;
+        } else {
+            log.info("Discovering runId from storage (timestamp-based, after {})", indexerStartTime);
+            long startTime = System.currentTimeMillis();
 
-        log.info("Discovering runId from storage (timestamp-based, after {})", indexerStartTime);
-        long startTime = System.currentTimeMillis();
+            while (!Thread.currentThread().isInterrupted()) {
+                try {
+                    List<String> runIds = storage.listRunIds(indexerStartTime);
+                    if (!runIds.isEmpty()) {
+                        runId = runIds.get(0);
+                        log.info("Discovered runId from storage: {}", runId);
+                        break;
+                    }
 
-        while (!Thread.currentThread().isInterrupted()) {
-            try {
-                List<String> runIds = storage.listRunIds(indexerStartTime);
-                if (!runIds.isEmpty()) {
-                    String discoveredRunId = runIds.get(0);
-                    log.info("Discovered runId from storage: {}", discoveredRunId);
-                    return discoveredRunId;
+                    if (System.currentTimeMillis() - startTime > maxPollDurationMs) {
+                        throw new TimeoutException("No simulation run appeared within " + maxPollDurationMs + "ms.");
+                    }
+
+                    Thread.sleep(pollIntervalMs);
+                } catch (IOException e) {
+                    log.warn("Error listing run IDs from storage, retrying: {}", e.getMessage());
+                    Thread.sleep(pollIntervalMs);
                 }
-
-                if (System.currentTimeMillis() - startTime > maxPollDurationMs) {
-                    throw new TimeoutException("No simulation run appeared within " + maxPollDurationMs + "ms.");
-                }
-
-                Thread.sleep(pollIntervalMs);
-            } catch (IOException e) {
-                log.warn("Error listing run IDs from storage, retrying: {}", e.getMessage());
-                Thread.sleep(pollIntervalMs);
+            }
+            
+            if (runId == null) {
+                throw new InterruptedException("Run discovery interrupted.");
             }
         }
-        throw new InterruptedException("Run discovery interrupted.");
+        
+        // Prepare schema (MetadataIndexer creates it, others do nothing)
+        try {
+            prepareSchema(runId);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to prepare schema for run: " + runId, e);
+        }
+        
+        // Set schema for all database resources of this indexer
+        setSchemaForAllDatabaseResources(runId);
+        
+        return runId;
+    }
+    
+    /**
+     * Template method hook for schema preparation before setting schema.
+     * <p>
+     * Default implementation does nothing (assumes schema already exists).
+     * MetadataIndexer overrides this to create the schema via createSimulationRun().
+     * <p>
+     * Called automatically by discoverRunId() before setSchemaForAllDatabaseResources().
+     *
+     * @param runId The simulation run ID
+     * @throws Exception if schema preparation fails
+     */
+    protected void prepareSchema(String runId) throws Exception {
+        // Default: no-op (schema already exists)
+    }
+
+    /**
+     * Sets the schema for all ISchemaAwareDatabase resources of this indexer.
+     * <p>
+     * Called automatically by discoverRunId() after prepareSchema().
+     * Iterates through this indexer's resources and calls setSimulationRun() on all
+     * ISchemaAwareDatabase instances (coordinator, metadata reader, etc.).
+     * <p>
+     * Each indexer instance only sets schema for its own resources, not for other indexers.
+     *
+     * @param runId The simulation run ID
+     */
+    private void setSchemaForAllDatabaseResources(String runId) {
+        for (List<IResource> resourceList : resources.values()) {
+            for (IResource resource : resourceList) {
+                if (resource instanceof ISchemaAwareDatabase) {
+                    ((ISchemaAwareDatabase) resource).setSimulationRun(runId);
+                    log.debug("Set schema for database resource: {}", resource.getResourceName());
+                }
+            }
+        }
     }
 
     protected abstract void indexRun(String runId) throws Exception;
