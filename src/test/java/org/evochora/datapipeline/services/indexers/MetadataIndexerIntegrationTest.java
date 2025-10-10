@@ -108,7 +108,9 @@ class MetadataIndexerIntegrationTest {
         MetadataIndexer indexer = new MetadataIndexer("test-indexer", indexerConfig, resources);
         indexer.start();
 
-        Thread.sleep(200);
+        // Wait for indexer to be running before creating the run (avoid Thread.sleep)
+        await().atMost(2, TimeUnit.SECONDS)
+                .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
 
         // Generate a runId with a timestamp slightly in the future to guarantee it's discovered.
         // This avoids a race condition where the truncated (to the second) run timestamp is not

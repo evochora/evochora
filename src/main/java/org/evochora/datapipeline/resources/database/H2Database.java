@@ -137,7 +137,7 @@ public class H2Database extends AbstractDatabaseResource {
             
             // Environment: Use ProtobufConverter (direct Protobuf → JSON, fastest)
             kvPairs.put("environment", ProtobufConverter.toJson(metadata.getEnvironment()));
-            
+
             // Simulation info: Use GSON (no Protobuf message available, safer than String.format)
             Map<String, Object> simInfoMap = Map.of(
                 "runId", metadata.getSimulationRunId(),
@@ -145,6 +145,9 @@ public class H2Database extends AbstractDatabaseResource {
                 "seed", metadata.getInitialSeed()
             );
             kvPairs.put("simulation_info", gson.toJson(simInfoMap));
+
+            // Full metadata backup: Complete JSON for future extensibility without re-indexing
+            kvPairs.put("full_metadata", ProtobufConverter.toJson(metadata));
 
             PreparedStatement stmt = conn.prepareStatement("MERGE INTO metadata (\"key\", \"value\") KEY(\"key\") VALUES (?, ?)");
             for (Map.Entry<String, String> entry : kvPairs.entrySet()) {

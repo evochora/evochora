@@ -188,8 +188,8 @@ class FileSystemStorageResourceCompressionTest {
             long initialBytes = initialMetrics.containsKey("bytes_read") ?
                 initialMetrics.get("bytes_read").longValue() : 0L;
 
-            // Act: Read the message
-            Int32Value readMessage = storage.readMessage(key + ".zst", Int32Value.parser());
+            // Act: Read the message (using logical key - storage finds .zst automatically)
+            Int32Value readMessage = storage.readMessage(key, Int32Value.parser());
 
             // Assert: Metrics updated
             var finalMetrics = storage.getMetrics();

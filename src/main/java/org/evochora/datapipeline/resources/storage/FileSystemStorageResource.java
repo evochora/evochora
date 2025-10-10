@@ -43,100 +43,119 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
     }
 
     @Override
-    protected void writeBytes(String path, byte[] data) throws IOException {
-        validateKey(path);
-        File file = new File(rootDirectory, path);
+    protected void putRaw(String physicalPath, byte[] data) throws IOException {
+        validateKey(physicalPath);
+        File file = new File(rootDirectory, physicalPath);
+        
+        // Atomic write: temp file → atomic move
         File parentDir = file.getParentFile();
         if (parentDir != null) {
-            parentDir.mkdirs(); // Idempotent - safe to call even if directory exists
+            parentDir.mkdirs();
             if (!parentDir.isDirectory()) {
                 throw new IOException("Failed to create parent directories for: " + file.getAbsolutePath());
             }
         }
-        Files.write(file.toPath(), data);
-        writeOperations.incrementAndGet();
-        bytesWritten.addAndGet(data.length);
-    }
-
-    @Override
-    protected byte[] readBytes(String path) throws IOException {
-        validateKey(path);
-        File file = new File(rootDirectory, path);
-        if (!file.exists()) {
-            throw new IOException("File does not exist: " + path);
-        }
-        byte[] data = Files.readAllBytes(file.toPath());
-        readOperations.incrementAndGet();
-        bytesRead.addAndGet(data.length);
-        return data;
-    }
-
-    @Override
-    protected void atomicMove(String src, String dest) throws IOException {
-        validateKey(src);
-        validateKey(dest);
-        File srcFile = new File(rootDirectory, src);
-        File destFile = new File(rootDirectory, dest);
-
-        // Ensure parent directory exists
-        File parentDir = destFile.getParentFile();
-        if (parentDir != null) {
-            parentDir.mkdirs();  // Idempotent - safe to call even if directory exists
-            if (!parentDir.isDirectory()) {
-                throw new IOException("Failed to create parent directories for: " + destFile.getAbsolutePath());
-            }
-        }
-
+        
+        File tempFile = new File(parentDir, ".tmp-" + java.util.UUID.randomUUID() + "-" + file.getName());
+        Files.write(tempFile.toPath(), data);
+        
         try {
-            Files.move(srcFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            Files.move(tempFile.toPath(), file.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
-            // Clean up source file on failure (filesystem-specific optimization)
-            // Source file cleanup is cheap on filesystem, so we do it here
+            // Clean up temp file on failure
             try {
-                if (srcFile.exists()) {
-                    Files.delete(srcFile.toPath());
+                if (tempFile.exists()) {
+                    Files.delete(tempFile.toPath());
                 }
             } catch (IOException cleanupEx) {
-                log.warn("Failed to clean up temp file after move failure: {}", src, cleanupEx);
+                log.warn("Failed to clean up temp file after move failure: {}", tempFile, cleanupEx);
             }
             throw e;
         }
     }
 
     @Override
-    protected List<String> listFilesWithPrefix(String prefix, String continuationToken, int maxResults) throws IOException {
+    protected byte[] getRaw(String physicalPath) throws IOException {
+        validateKey(physicalPath);
+        File file = new File(rootDirectory, physicalPath);
+        if (!file.exists()) {
+            throw new IOException("File does not exist: " + physicalPath);
+        }
+        return Files.readAllBytes(file.toPath());
+    }
+
+    @Override
+    protected List<String> listRaw(String prefix, boolean listDirectories, String continuationToken, int maxResults) throws IOException {
         final String finalPrefix = (prefix == null) ? "" : prefix;
+        Path rootPath = rootDirectory.toPath();
 
-        // Determine starting path for the walk
-        Path startPath = Paths.get(rootDirectory.getAbsolutePath(), finalPrefix);
+        if (listDirectories) {
+            // List immediate subdirectories only (non-recursive)
+            File searchDir = new File(rootDirectory, finalPrefix);
+            if (!searchDir.exists() || !searchDir.isDirectory()) {
+                return Collections.emptyList();
+            }
+            
+            File[] dirs = searchDir.listFiles(File::isDirectory);
+            if (dirs == null) {
+                return Collections.emptyList();
+            }
+            
+            return java.util.Arrays.stream(dirs)
+                .map(d -> rootPath.relativize(d.toPath()).toString())
+                .map(s -> s.replace(File.separatorChar, '/'))
+                .map(s -> s.endsWith("/") ? s : s + "/")  // Ensure trailing slash
+                .sorted()
+                .limit(maxResults)
+                .collect(java.util.stream.Collectors.toList());
+        }
 
-        // If startPath doesn't exist yet (no files written), return empty list
-        if (!Files.exists(startPath)) {
+        // List files recursively
+        File prefixFile = new File(rootDirectory, finalPrefix);
+        File searchDir;
+        String filePattern;
+        
+        if (finalPrefix.isEmpty() || finalPrefix.endsWith("/")) {
+            searchDir = prefixFile;
+            filePattern = null;
+        } else {
+            searchDir = prefixFile.getParentFile();
+            filePattern = prefixFile.getName();
+        }
+        
+        if (searchDir == null || !searchDir.exists()) {
             return Collections.emptyList();
         }
 
         List<String> results = new ArrayList<>();
 
-        try (Stream<Path> stream = Files.walk(startPath)) {
+        try (Stream<Path> stream = Files.walk(searchDir.toPath())) {
             List<String> allFiles = stream
                     .filter(Files::isRegularFile)
-                    .map(p -> Paths.get(rootDirectory.getAbsolutePath()).relativize(p))
+                    .map(p -> rootPath.relativize(p))
                     .map(Path::toString)
-                    .map(s -> s.replace(File.separatorChar, '/'))  // Normalize to forward slashes
+                    .map(s -> s.replace(File.separatorChar, '/'))
                     .filter(path -> path.startsWith(finalPrefix))
-                    .filter(path -> !path.contains("/.tmp"))  // Filter out .tmp files
+                    .filter(path -> {
+                        if (filePattern != null) {
+                            String filename = path.substring(path.lastIndexOf('/') + 1);
+                            return filename.equals(filePattern) || filename.startsWith(filePattern + ".");
+                        }
+                        return true;
+                    })
+                    .filter(path -> !path.contains("/.tmp"))
                     .filter(path -> !path.endsWith(".tmp"))
-                    .sorted()  // Lexicographic order
+                    .sorted()
                     .toList();
 
-            // Apply continuation token (skip files until we're past the token)
+            // Apply continuation token
             boolean foundToken = (continuationToken == null);
             for (String file : allFiles) {
                 if (!foundToken) {
                     if (file.compareTo(continuationToken) > 0) {
                         foundToken = true;
                     } else {
-                        continue;  // Skip files up to and including the token
+                        continue;
                     }
                 }
 
@@ -148,40 +167,10 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
 
             return results;
         } catch (IOException e) {
-            throw new IOException("Failed to list files with prefix: " + prefix, e);
+            throw new IOException("Failed to list with prefix: " + prefix, e);
         }
     }
 
-    @Override
-    public List<String> listRunIds(Instant afterTimestamp) {
-        if (rootDirectory == null || !rootDirectory.isDirectory()) {
-            return Collections.emptyList();
-        }
-
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSS");
-        try (Stream<Path> stream = Files.list(rootDirectory.toPath())) {
-            return stream.filter(Files::isDirectory)
-                    .map(path -> path.getFileName().toString())
-                    .filter(runId -> {
-                        if (runId.length() < 17) return false;  // Updated: 8 + 1 + 8 = 17 chars minimum
-                        try {
-                            String timestampStr = runId.substring(0, 17);  // Updated: include dash
-                            LocalDateTime ldt = LocalDateTime.parse(timestampStr, formatter);
-                            // Use system default timezone for conversion (same as SimulationEngine uses)
-                            Instant runIdInstant = ldt.atZone(java.time.ZoneId.systemDefault()).toInstant();
-                            return runIdInstant.isAfter(afterTimestamp);
-                        } catch (DateTimeParseException e) {
-                            log.trace("Ignoring non-runId directory: {}", runId);
-                            return false;
-                        }
-                    })
-                    .sorted()
-                    .collect(Collectors.toList());
-        } catch (IOException e) {
-            log.warn("Could not list directories in storage root for run discovery. This can happen during concurrent test execution and is handled gracefully.", e);
-            return Collections.emptyList();
-        }
-    }
 
     @Override
     protected void addCustomMetrics(java.util.Map<String, Number> metrics) {

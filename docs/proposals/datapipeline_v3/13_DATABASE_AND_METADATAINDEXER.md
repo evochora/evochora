@@ -142,26 +142,7 @@ org.evochora.datapipeline.services.indexers/
 ### Interface Design (Capability-Based)
 
 ```java
-public interface IMetadataDatabase extends IResource, AutoCloseable {
-    /**
-     * Sanitizes simulation run ID to valid schema/namespace identifier.
-     * <p>
-     * Database-specific implementation handles naming requirements:
-     * - SQL: alphanumeric + underscore only
-     * - NoSQL: may allow hyphens
-     * - Case sensitivity varies
-     * <p>
-     * Example (SQL databases):
-     * <pre>
-     * 20251006143025-550e8400-e29b-41d4-a716-446655440000
-     * → sim_20251006143025_550e8400_e29b_41d4_a716_446655440000
-     * </pre>
-     *
-     * @param simulationRunId Raw simulation run ID
-     * @return Sanitized schema/namespace name
-     */
-    String toSchemaName(String simulationRunId);
-
+public interface IMetadataDatabase extends IResource, IMonitorable, AutoCloseable {
     /**
      * Sets the database schema for all subsequent operations.
      * Must be called once after indexer discovers its runId.
@@ -206,6 +187,13 @@ public interface IMetadataDatabase extends IResource, AutoCloseable {
     @Override
     void close();
 }
+
+/**
+ * Note: Schema name sanitization (toSchemaName) is intentionally NOT part of the public interface.
+ * It is a protected abstract method in AbstractDatabaseResource, used internally by wrappers.
+ * This maintains proper encapsulation - services work with raw runIds, and the database
+ * handles all schema naming concerns internally without exposing implementation details.
+ */
 ```
 
 **Future capability interfaces (not implemented in this phase):**
@@ -349,8 +337,9 @@ public abstract class AbstractDatabaseResource extends AbstractResource
 
     @Override
     public boolean isHealthy() {
-        // Override in concrete class if connection health check available
-        return getCurrentState() != State.ERROR;
+        // Resources track operational errors, not lifecycle state (State is for services only)
+        // Consistent with AbstractBatchStorageResource pattern
+        return errors.isEmpty();
     }
 
     @Override
