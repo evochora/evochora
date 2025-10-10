@@ -44,7 +44,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     private static final Logger log = LoggerFactory.getLogger(InMemoryBlockingQueue.class);
     private final ArrayBlockingQueue<TimestampedObject<T>> queue;
     private final int capacity;
-    private final int throughputWindowSeconds;
+    private final int metricsWindowSeconds;
     private final boolean disableTimestamps;
     private final List<OperationalError> errors = Collections.synchronizedList(new java.util.ArrayList<>());
     private final ConcurrentHashMap<Long, Instant> timestamps = new ConcurrentHashMap<>();
@@ -58,21 +58,21 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
      * Constructs an InMemoryBlockingQueue with the specified name and configuration.
      *
      * @param name    The name of the resource.
-     * @param options The TypeSafe Config object containing queue options like "capacity" and "throughputWindowSeconds".
+     * @param options The TypeSafe Config object containing queue options like "capacity" and "metricsWindowSeconds".
      * @throws IllegalArgumentException if the configuration is invalid (e.g., non-positive capacity).
      */
     public InMemoryBlockingQueue(String name, Config options) {
         super(name, options);
         Config defaults = ConfigFactory.parseMap(Map.of(
                 "capacity", 1000,
-                "throughputWindowSeconds", 5,
+                "metricsWindowSeconds", 5,
                 "coalescingDelayMs", 0  // Default: no coalescing
         ));
         Config finalConfig = options.withFallback(defaults);
 
         try {
             this.capacity = finalConfig.getInt("capacity");
-            this.throughputWindowSeconds = finalConfig.getInt("throughputWindowSeconds");
+            this.metricsWindowSeconds = finalConfig.getInt("metricsWindowSeconds");
             this.coalescingDelayMs = finalConfig.getInt("coalescingDelayMs");
             this.disableTimestamps = finalConfig.hasPath("disableTimestamps")
                     && finalConfig.getBoolean("disableTimestamps");
@@ -172,7 +172,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
         return Map.of(
                 "capacity", capacity,
                 "current_size", queue.size(),
-                "throughput_per_sec", calculateThroughput(this.throughputWindowSeconds)
+                "throughput_per_sec", calculateThroughput(this.metricsWindowSeconds)
         );
     }
 
@@ -234,12 +234,12 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     }
 
     /**
-     * Gets the default throughput calculation window in seconds.
+     * Gets the metrics calculation window in seconds.
      *
-     * @return The default throughput window in seconds.
+     * @return The metrics window in seconds.
      */
-    public int getThroughputWindowSeconds() {
-        return throughputWindowSeconds;
+    public int getMetricsWindowSeconds() {
+        return metricsWindowSeconds;
     }
 
     /**

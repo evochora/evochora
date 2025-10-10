@@ -109,12 +109,9 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         }
 
         // Parse metrics window configuration (default: 5 seconds)
-        // Support both old and new parameter names during transition
         this.metricsWindowSeconds = options.hasPath("metricsWindowSeconds")
             ? options.getInt("metricsWindowSeconds")
-            : (options.hasPath("performanceWindowSeconds")
-                ? options.getInt("performanceWindowSeconds")
-                : 5);
+            : 5;
 
         // Initialize performance metrics trackers
         this.writeOpsCounter = new SlidingWindowCounter(metricsWindowSeconds);
@@ -229,12 +226,28 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
 
         // Track I/O performance
         long readStart = System.nanoTime();
-        byte[] compressedData = readBytes(key);
+        byte[] compressedData;
+        String actualKey = key;
+        
+        // Try exact key first, then fallback to compressed version if not found
+        try {
+            compressedData = readBytes(key);
+        } catch (IOException e) {
+            // If exact key not found and doesn't end with compression extension,
+            // try with compression extension (supports mixed compressed/uncompressed storage)
+            if (codec != null && !key.endsWith(codec.getFileExtension())) {
+                actualKey = key + codec.getFileExtension();
+                compressedData = readBytes(actualKey);
+            } else {
+                throw e;
+            }
+        }
+        
         long readLatency = System.nanoTime() - readStart;
         recordRead(compressedData.length, readLatency);
 
         // Auto-detect compression from filename and decompress
-        byte[] data = decompressBatch(compressedData, key);
+        byte[] data = decompressBatch(compressedData, actualKey);
 
         // Deserialize single message
         ByteArrayInputStream bis = new ByteArrayInputStream(data);

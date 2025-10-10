@@ -113,9 +113,10 @@ class MetadataIndexerIntegrationTest {
         // Generate a runId with a timestamp slightly in the future to guarantee it's discovered.
         // This avoids a race condition where the truncated (to the second) run timestamp is not
         // strictly 'after' the indexer's start time (which has millisecond precision).
+        // Use systemDefault timezone to match SimulationEngine and FileSystemStorageResource
         Instant runInstant = java.time.Instant.now().plusSeconds(1);
-        String timestamp = java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmssSS")
-                .withZone(java.time.ZoneOffset.UTC)
+        String timestamp = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSS")
+                .withZone(java.time.ZoneId.systemDefault())
                 .format(runInstant);
         String runId = timestamp + "-" + UUID.randomUUID();
         SimulationMetadata metadata = createTestMetadata(runId);

@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li><b>processingDelayMs</b>: Artificial delay per message in milliseconds (default: 0).</li>
  *   <li><b>logReceivedMessages</b>: Whether to log received messages at DEBUG level (default: false).</li>
  *   <li><b>maxMessages</b>: Maximum messages to process, -1 for unlimited (default: -1).</li>
- *   <li><b>throughputWindowSeconds</b>: Time window in seconds for throughput calculation (default: 5).</li>
+ *   <li><b>metricsWindowSeconds</b>: Time window in seconds for throughput calculation (default: 5).</li>
  *   <li><b>maxRetries</b>: Maximum processing attempts before sending to DLQ (default: 3).</li>
  * </ul>
  *
@@ -52,7 +52,7 @@ public class DummyConsumerService<T> extends AbstractService implements IMonitor
     private final long processingDelayMs;
     private final boolean logReceivedMessages;
     private final long maxMessages;
-    private final int throughputWindowSeconds;
+    private final int metricsWindowSeconds;
     private final int maxRetries;
 
     private final IIdempotencyTracker<Integer> idempotencyTracker;
@@ -69,7 +69,7 @@ public class DummyConsumerService<T> extends AbstractService implements IMonitor
         this.processingDelayMs = options.hasPath("processingDelayMs") ? options.getLong("processingDelayMs") : 0L;
         this.logReceivedMessages = options.hasPath("logReceivedMessages") && options.getBoolean("logReceivedMessages");
         this.maxMessages = options.hasPath("maxMessages") ? options.getLong("maxMessages") : -1L;
-        this.throughputWindowSeconds = options.hasPath("throughputWindowSeconds") ? options.getInt("throughputWindowSeconds") : 5;
+        this.metricsWindowSeconds = options.hasPath("metricsWindowSeconds") ? options.getInt("metricsWindowSeconds") : 5;
         this.maxRetries = options.hasPath("maxRetries") ? options.getInt("maxRetries") : 3;
 
         // Get required resources
@@ -332,9 +332,9 @@ public class DummyConsumerService<T> extends AbstractService implements IMonitor
 
     private double calculateThroughput() {
         long now = System.currentTimeMillis();
-        long windowStart = now - (throughputWindowSeconds * 1000L);
+        long windowStart = now - (metricsWindowSeconds * 1000L);
         messageTimestamps.removeIf(timestamp -> timestamp < windowStart);
-        if (throughputWindowSeconds == 0) return 0;
-        return (double) messageTimestamps.size() / throughputWindowSeconds;
+        if (metricsWindowSeconds == 0) return 0;
+        return (double) messageTimestamps.size() / metricsWindowSeconds;
     }
 }

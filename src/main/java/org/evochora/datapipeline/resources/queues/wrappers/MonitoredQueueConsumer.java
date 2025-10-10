@@ -48,8 +48,7 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
         this.context = context;
         
         // Configuration hierarchy: Context parameter > Resource option > Default (5)
-        int windowSeconds = Integer.parseInt(context.parameters().getOrDefault("metricsWindowSeconds",
-                context.parameters().getOrDefault("throughputWindowSeconds", "5")));  // Support old name during transition
+        int windowSeconds = Integer.parseInt(context.parameters().getOrDefault("metricsWindowSeconds", "5"));
         
         this.throughputCounter = new SlidingWindowCounter(windowSeconds);
     }

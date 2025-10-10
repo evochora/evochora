@@ -158,16 +158,18 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
             return Collections.emptyList();
         }
 
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSS");
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSS");
         try (Stream<Path> stream = Files.list(rootDirectory.toPath())) {
             return stream.filter(Files::isDirectory)
                     .map(path -> path.getFileName().toString())
                     .filter(runId -> {
-                        if (runId.length() < 16) return false;
+                        if (runId.length() < 17) return false;  // Updated: 8 + 1 + 8 = 17 chars minimum
                         try {
-                            String timestampStr = runId.substring(0, 16);
+                            String timestampStr = runId.substring(0, 17);  // Updated: include dash
                             LocalDateTime ldt = LocalDateTime.parse(timestampStr, formatter);
-                            return ldt.toInstant(ZoneOffset.UTC).isAfter(afterTimestamp);
+                            // Use system default timezone for conversion (same as SimulationEngine uses)
+                            Instant runIdInstant = ldt.atZone(java.time.ZoneId.systemDefault()).toInstant();
+                            return runIdInstant.isAfter(afterTimestamp);
                         } catch (DateTimeParseException e) {
                             log.trace("Ignoring non-runId directory: {}", runId);
                             return false;

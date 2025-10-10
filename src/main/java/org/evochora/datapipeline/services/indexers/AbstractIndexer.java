@@ -72,12 +72,16 @@ public abstract class AbstractIndexer extends AbstractService {
         try {
             String runId = discoverRunId();
             indexRun(runId);
+        } catch (InterruptedException e) {
+            // Normal during shutdown - re-throw to signal clean termination
+            log.info("Indexing interrupted during shutdown");
+            throw e;
         } catch (TimeoutException e) {
             log.error("Failed to discover run: {}", e.getMessage());
-            throw new RuntimeException(e);
+            throw new RuntimeException(e); // Error state
         } catch (Exception e) {
-            log.error("Indexing failed", e);
-            throw new RuntimeException(e);
+            log.error("Indexing failed: {}", e.getMessage(), e);
+            throw new RuntimeException(e); // Error state
         }
     }
 }

@@ -47,8 +47,7 @@ public class MonitoredBatchStorageReader implements IBatchStorageRead, IWrappedR
         this.context = context;
         
         // Configuration hierarchy: Context parameter > Resource option > Default (5)
-        int windowSeconds = Integer.parseInt(context.parameters().getOrDefault("metricsWindowSeconds",
-                context.parameters().getOrDefault("throughputWindowSeconds", "5")));  // Support old name during transition
+        int windowSeconds = Integer.parseInt(context.parameters().getOrDefault("metricsWindowSeconds", "5"));
         
         this.readsCounter = new SlidingWindowCounter(windowSeconds);
         this.bytesCounter = new SlidingWindowCounter(windowSeconds);

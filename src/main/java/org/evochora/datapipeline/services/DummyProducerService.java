@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li><b>intervalMs</b>: Milliseconds between messages (default: 1000).</li>
  *   <li><b>messagePrefix</b>: Prefix for the message content (default: "Message").</li>
  *   <li><b>maxMessages</b>: Maximum messages to send, -1 for unlimited (default: -1).</li>
- *   <li><b>throughputWindowSeconds</b>: Time window in seconds for throughput calculation (default: 5).</li>
+ *   <li><b>metricsWindowSeconds</b>: Time window in seconds for throughput calculation (default: 5).</li>
  * </ul>
  */
 public class DummyProducerService extends AbstractService implements IMonitorable {
@@ -37,7 +37,7 @@ public class DummyProducerService extends AbstractService implements IMonitorabl
     private final long intervalMs;
     private final String messagePrefix;
     private final long maxMessages;
-    private final int throughputWindowSeconds;
+    private final int metricsWindowSeconds;
 
     private final AtomicLong messagesSent = new AtomicLong(0);
     private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
@@ -48,7 +48,7 @@ public class DummyProducerService extends AbstractService implements IMonitorabl
         this.intervalMs = options.hasPath("intervalMs") ? options.getLong("intervalMs") : 1000L;
         this.messagePrefix = options.hasPath("messagePrefix") ? options.getString("messagePrefix") : "Message";
         this.maxMessages = options.hasPath("maxMessages") ? options.getLong("maxMessages") : -1L;
-        this.throughputWindowSeconds = options.hasPath("throughputWindowSeconds") ? options.getInt("throughputWindowSeconds") : 5;
+        this.metricsWindowSeconds = options.hasPath("metricsWindowSeconds") ? options.getInt("metricsWindowSeconds") : 5;
     }
 
     @Override
@@ -115,9 +115,9 @@ public class DummyProducerService extends AbstractService implements IMonitorabl
 
     private double calculateThroughput() {
         long now = System.currentTimeMillis();
-        long windowStart = now - (throughputWindowSeconds * 1000L);
+        long windowStart = now - (metricsWindowSeconds * 1000L);
         messageTimestamps.removeIf(timestamp -> timestamp < windowStart);
-        if (throughputWindowSeconds == 0) return 0;
-        return (double) messageTimestamps.size() / throughputWindowSeconds;
+        if (metricsWindowSeconds == 0) return 0;
+        return (double) messageTimestamps.size() / metricsWindowSeconds;
     }
 }

@@ -36,19 +36,15 @@ public class H2Database extends AbstractDatabaseResource {
 
         HikariConfig hikariConfig = new HikariConfig();
         hikariConfig.setJdbcUrl(getJdbcUrl(options));
+        hikariConfig.setDriverClassName("org.h2.Driver"); // Explicitly set driver for Fat JAR compatibility
         hikariConfig.setMaximumPoolSize(options.hasPath("maxPoolSize") ? options.getInt("maxPoolSize") : 10);
         hikariConfig.setMinimumIdle(options.hasPath("minIdle") ? options.getInt("minIdle") : 2);
         this.dataSource = new HikariDataSource(hikariConfig);
         
-        // Configuration: metricsWindowSeconds (new) or metricsWindowSizeMs (old, convert to seconds)
-        int metricsWindowSeconds;
-        if (options.hasPath("metricsWindowSeconds")) {
-            metricsWindowSeconds = options.getInt("metricsWindowSeconds");
-        } else if (options.hasPath("metricsWindowSizeMs")) {
-            metricsWindowSeconds = options.getInt("metricsWindowSizeMs") / 1000;
-        } else {
-            metricsWindowSeconds = 5;  // Default: 5 seconds
-        }
+        // Configuration: metricsWindowSeconds (default: 5)
+        int metricsWindowSeconds = options.hasPath("metricsWindowSeconds")
+            ? options.getInt("metricsWindowSeconds")
+            : 5;
         
         this.diskWritesCounter = new SlidingWindowCounter(metricsWindowSeconds);
     }
