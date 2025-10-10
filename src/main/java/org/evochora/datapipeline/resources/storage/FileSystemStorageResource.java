@@ -85,12 +85,14 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
     }
 
     @Override
-    protected List<String> listRaw(String prefix, boolean listDirectories, String continuationToken, int maxResults) throws IOException {
+    protected List<String> listRaw(String prefix, boolean listDirectories, String continuationToken, int maxResults,
+                                    Long startTick, Long endTick) throws IOException {
         final String finalPrefix = (prefix == null) ? "" : prefix;
         Path rootPath = rootDirectory.toPath();
 
         if (listDirectories) {
             // List immediate subdirectories only (non-recursive)
+            // startTick/endTick are ignored for directory listings
             File searchDir = new File(rootDirectory, finalPrefix);
             if (!searchDir.exists() || !searchDir.isDirectory()) {
                 return Collections.emptyList();
@@ -145,6 +147,34 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
                     })
                     .filter(path -> !path.contains("/.tmp"))
                     .filter(path -> !path.endsWith(".tmp"))
+                    .filter(path -> {
+                        // Apply tick filtering if specified
+                        if (startTick == null && endTick == null) {
+                            return true;  // No filtering
+                        }
+                        
+                        // Check if this is a batch file
+                        String filename = path.substring(path.lastIndexOf('/') + 1);
+                        if (!filename.startsWith("batch_")) {
+                            return true;  // Not a batch file, include it
+                        }
+                        
+                        // Parse the start tick from the batch filename
+                        long batchStartTick = parseBatchStartTick(filename);
+                        if (batchStartTick < 0) {
+                            return true;  // Failed to parse, include it anyway
+                        }
+                        
+                        // Apply tick filters
+                        if (startTick != null && batchStartTick < startTick) {
+                            return false;  // Below start tick threshold
+                        }
+                        if (endTick != null && batchStartTick > endTick) {
+                            return false;  // Above end tick threshold
+                        }
+                        
+                        return true;
+                    })
                     .sorted()
                     .toList();
 

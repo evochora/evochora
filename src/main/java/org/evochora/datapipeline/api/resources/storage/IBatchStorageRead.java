@@ -146,4 +146,76 @@ public interface IBatchStorageRead extends IResource {
      * @throws IllegalArgumentException If prefix is null or maxResults <= 0
      */
     BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults) throws IOException;
+
+    /**
+     * Lists batch files starting from a specific tick with pagination support.
+     * <p>
+     * Returns batch files where the batch start tick is greater than or equal to {@code startTick}.
+     * Results are sorted by start tick (ascending), enabling sequential processing.
+     * <p>
+     * This method is optimized for both filesystem and S3:
+     * <ul>
+     *   <li>Filesystem: Efficient directory traversal with early termination after maxResults</li>
+     *   <li>S3: Pagination with server-side filtering by filename pattern</li>
+     * </ul>
+     * <p>
+     * <strong>Example usage (EnvironmentIndexer discovering new batches):</strong>
+     * <pre>
+     * long lastProcessedTick = 5000;
+     * String token = null;
+     * BatchFileListResult result = storage.listBatchFiles(
+     *     "sim123/",
+     *     token,
+     *     100,  // Process up to 100 batches per iteration
+     *     lastProcessedTick + samplingInterval  // Start from next expected tick
+     * );
+     * for (String filename : result.getFilenames()) {
+     *     // Process batch...
+     * }
+     * </pre>
+     *
+     * @param prefix Filter prefix (e.g., "sim123/" for specific simulation)
+     * @param continuationToken Token from previous call, or null for first page
+     * @param maxResults Maximum files to return per page (must be > 0)
+     * @param startTick Minimum start tick (inclusive) - batches with startTick >= this value
+     * @return Paginated result with matching batch filenames, sorted by start tick
+     * @throws IOException If storage access fails
+     * @throws IllegalArgumentException If prefix is null, startTick < 0, or maxResults <= 0
+     */
+    BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults, long startTick) throws IOException;
+
+    /**
+     * Lists batch files within a tick range with pagination support.
+     * <p>
+     * Returns batch files where the batch start tick is greater than or equal to {@code startTick}
+     * and less than or equal to {@code endTick}. Results are sorted by start tick (ascending).
+     * <p>
+     * This method is optimized for both filesystem and S3:
+     * <ul>
+     *   <li>Filesystem: Efficient filtering with early termination when range exceeded</li>
+     *   <li>S3: Pagination with server-side filtering by filename pattern</li>
+     * </ul>
+     * <p>
+     * <strong>Example usage (analyze specific tick range):</strong>
+     * <pre>
+     * BatchFileListResult result = storage.listBatchFiles(
+     *     "sim123/",
+     *     null,   // continuationToken
+     *     100,    // maxResults
+     *     1000,   // startTick
+     *     5000    // endTick
+     * );
+     * // Process batches in range [1000, 5000]
+     * </pre>
+     *
+     * @param prefix Filter prefix (e.g., "sim123/" for specific simulation)
+     * @param continuationToken Token from previous call, or null for first page
+     * @param maxResults Maximum files to return per page (must be > 0)
+     * @param startTick Minimum start tick (inclusive)
+     * @param endTick Maximum start tick (inclusive)
+     * @return Paginated result with matching batch filenames, sorted by start tick
+     * @throws IOException If storage access fails
+     * @throws IllegalArgumentException If prefix is null, ticks invalid, or maxResults <= 0
+     */
+    BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults, long startTick, long endTick) throws IOException;
 }

@@ -71,6 +71,18 @@ public class MonitoredBatchStorageReader implements IBatchStorageRead, IWrappedR
     }
 
     @Override
+    public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults, long startTick) throws IOException {
+        // Simple delegation - no metrics for now (can be added later if needed)
+        return delegate.listBatchFiles(prefix, continuationToken, maxResults, startTick);
+    }
+
+    @Override
+    public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults, long startTick, long endTick) throws IOException {
+        // Simple delegation - no metrics for now (can be added later if needed)
+        return delegate.listBatchFiles(prefix, continuationToken, maxResults, startTick, endTick);
+    }
+
+    @Override
     public List<TickData> readBatch(String filename) throws IOException {
         long startNanos = System.nanoTime();
         try {

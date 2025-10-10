@@ -248,6 +248,88 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     }
 
     /**
+     * Parses the start tick from a batch filename.
+     * <p>
+     * Batch filenames follow the pattern: batch_STARTICK_ENDTICK.pb[.compression]
+     * Example: "batch_0000000000_0000000999.pb.zst" → startTick = 0
+     * <p>
+     * This method is protected so subclasses can use it for tick-based filtering
+     * in their {@link #listRaw} implementations.
+     *
+     * @param filename The batch filename (with or without path, with or without compression extension)
+     * @return The start tick, or -1 if filename doesn't match the batch pattern
+     */
+    protected long parseBatchStartTick(String filename) {
+        // Extract just the filename if a path is provided
+        String name = filename.substring(filename.lastIndexOf('/') + 1);
+        
+        // Check if it matches the batch pattern
+        if (!name.startsWith("batch_") || !name.contains(".pb")) {
+            return -1;
+        }
+        
+        try {
+            // Extract the part between "batch_" and the first underscore after it
+            // Pattern: batch_0000000000_0000000999.pb...
+            int startIdx = 6; // Length of "batch_"
+            int endIdx = name.indexOf('_', startIdx);
+            if (endIdx == -1) {
+                return -1;
+            }
+            
+            String tickStr = name.substring(startIdx, endIdx);
+            return Long.parseLong(tickStr);
+        } catch (NumberFormatException e) {
+            log.trace("Failed to parse start tick from filename: {}", filename, e);
+            return -1;
+        }
+    }
+
+    /**
+     * Parses the end tick from a batch filename.
+     * <p>
+     * Batch filenames follow the pattern: batch_STARTICK_ENDTICK.pb[.compression]
+     * Example: "batch_0000000000_0000000999.pb.zst" → endTick = 999
+     * <p>
+     * This method is protected so subclasses can use it for tick-based filtering
+     * in their {@link #listRaw} implementations.
+     *
+     * @param filename The batch filename (with or without path, with or without compression extension)
+     * @return The end tick, or -1 if filename doesn't match the batch pattern
+     */
+    protected long parseBatchEndTick(String filename) {
+        // Extract just the filename if a path is provided
+        String name = filename.substring(filename.lastIndexOf('/') + 1);
+        
+        // Check if it matches the batch pattern
+        if (!name.startsWith("batch_") || !name.contains(".pb")) {
+            return -1;
+        }
+        
+        try {
+            // Extract the part between the second underscore and ".pb"
+            // Pattern: batch_0000000000_0000000999.pb...
+            int startIdx = 6; // Length of "batch_"
+            int firstUnderscore = name.indexOf('_', startIdx);
+            if (firstUnderscore == -1) {
+                return -1;
+            }
+            
+            int secondUnderscore = firstUnderscore + 1;
+            int dotPbIdx = name.indexOf(".pb");
+            if (dotPbIdx == -1) {
+                return -1;
+            }
+            
+            String tickStr = name.substring(secondUnderscore, dotPbIdx);
+            return Long.parseLong(tickStr);
+        } catch (NumberFormatException e) {
+            log.trace("Failed to parse end tick from filename: {}", filename, e);
+            return -1;
+        }
+    }
+
+    /**
      * Calculates folder path for a given tick using configured folder levels.
      * <p>
      * Example with levels=[100000000, 100000]:
@@ -365,6 +447,44 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
 
     @Override
     public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults) throws IOException {
+        return listBatchFilesInternal(prefix, continuationToken, maxResults, null, null);
+    }
+
+    @Override
+    public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults, long startTick) throws IOException {
+        if (startTick < 0) {
+            throw new IllegalArgumentException("startTick must be >= 0");
+        }
+        return listBatchFilesInternal(prefix, continuationToken, maxResults, startTick, null);
+    }
+
+    @Override
+    public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults, long startTick, long endTick) throws IOException {
+        if (startTick < 0) {
+            throw new IllegalArgumentException("startTick must be >= 0");
+        }
+        if (endTick < startTick) {
+            throw new IllegalArgumentException("endTick must be >= startTick");
+        }
+        return listBatchFilesInternal(prefix, continuationToken, maxResults, startTick, endTick);
+    }
+
+    /**
+     * Internal implementation for listing batch files with optional tick filtering.
+     * <p>
+     * This method delegates to {@link #listRaw} with nullable tick parameters and performs
+     * the common logic of converting physical paths to logical paths and filtering to batch files.
+     *
+     * @param prefix Filter prefix (e.g., "sim123/" for specific simulation)
+     * @param continuationToken Token from previous call, or null for first page
+     * @param maxResults Maximum files to return per page
+     * @param startTick Minimum start tick (nullable - null means no lower bound)
+     * @param endTick Maximum start tick (nullable - null means no upper bound)
+     * @return Paginated result with matching batch filenames
+     * @throws IOException If storage access fails
+     */
+    private BatchFileListResult listBatchFilesInternal(String prefix, String continuationToken, int maxResults,
+                                                        Long startTick, Long endTick) throws IOException {
         if (prefix == null) {
             throw new IllegalArgumentException("prefix cannot be null");
         }
@@ -374,7 +494,8 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
 
         // Delegate to subclass to get all files with prefix (potentially paginated internally)
         // listRaw returns PHYSICAL paths (with compression extensions)
-        List<String> allPhysicalFiles = listRaw(prefix, false, continuationToken, maxResults + 1);
+        // Request maxResults + 1 to detect truncation
+        List<String> allPhysicalFiles = listRaw(prefix, false, continuationToken, maxResults + 1, startTick, endTick);
 
         // Convert to logical paths and filter to batch files
         List<String> batchFiles = allPhysicalFiles.stream()
@@ -593,7 +714,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * @throws IOException if file not found
      */
     private String findPhysicalPath(String logicalKey) throws IOException {
-        List<String> matches = listRaw(logicalKey, false, null, 1);
+        List<String> matches = listRaw(logicalKey, false, null, 1, null, null);
         if (matches.isEmpty()) {
             throw new IOException("File not found: " + logicalKey);
         }
@@ -679,13 +800,15 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     protected abstract byte[] getRaw(String physicalPath) throws IOException;
 
     /**
-     * Lists physical paths or directory prefixes matching a prefix.
+     * Lists physical paths or directory prefixes matching a prefix, with optional tick filtering.
      * <p>
      * This method works for three use cases:
      * <ul>
-     *   <li>Finding file variants: listRaw("runId/metadata.pb", false, null, 1)</li>
-     *   <li>Listing batches: listRaw("runId/", false, token, 1000)</li>
-     *   <li>Listing run IDs: listRaw("", true, null, 1000)</li>
+     *   <li>Finding file variants: listRaw("runId/metadata.pb", false, null, 1, null, null)</li>
+     *   <li>Listing batches: listRaw("runId/", false, token, 1000, null, null)</li>
+     *   <li>Listing batches from tick: listRaw("runId/", false, token, 1000, 5000L, null)</li>
+     *   <li>Listing batches in range: listRaw("runId/", false, token, 1000, 1000L, 5000L)</li>
+     *   <li>Listing run IDs: listRaw("", true, null, 1000, null, null)</li>
      * </ul>
      * <p>
      * Performance: O(1) for directories or single file, O(n) for recursive file listing.
@@ -696,6 +819,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      *   <li>If listDirectories=true: List immediate subdirectory prefixes (Files.list)</li>
      *   <li>Return physical paths with compression extensions (files) or directory prefixes ending with "/"</li>
      *   <li>Filter out .tmp files to avoid race conditions</li>
+     *   <li>Apply tick filtering if startTick/endTick are non-null (only relevant for batch files)</li>
      *   <li>Support pagination via continuationToken</li>
      *   <li>Enforce maxResults limit (prevent runaway queries)</li>
      *   <li>Return results in lexicographic order</li>
@@ -711,15 +835,19 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * @param listDirectories if true, return directory prefixes; if false, return files
      * @param continuationToken pagination token from previous call, or null
      * @param maxResults hard limit on results
+     * @param startTick minimum batch start tick (nullable, ignored if listDirectories=true or null)
+     * @param endTick maximum batch start tick (nullable, ignored if listDirectories=true or null)
      * @return physical paths (files) or directory prefixes, max maxResults items
      * @throws IOException if storage access fails
      */
-    protected abstract List<String> listRaw(String prefix, boolean listDirectories, String continuationToken, int maxResults) throws IOException;
+    protected abstract List<String> listRaw(String prefix, boolean listDirectories, String continuationToken, 
+                                             int maxResults, Long startTick, Long endTick) throws IOException;
 
     @Override
     public List<String> listRunIds(Instant afterTimestamp) throws IOException {
         // List all run directories (first level directories in storage root)
-        List<String> runDirs = listRaw("", true, null, 10000);
+        // Pass null for startTick/endTick as they are not relevant for directory listing
+        List<String> runDirs = listRaw("", true, null, 10000, null, null);
         
         // Parse timestamps and filter
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSS");
