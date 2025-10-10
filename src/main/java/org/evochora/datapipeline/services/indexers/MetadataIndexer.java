@@ -5,7 +5,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
-import org.evochora.datapipeline.api.resources.database.IMetadataDatabase;
+import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
 import org.evochora.datapipeline.api.services.IService;
 
 import java.io.IOException;
@@ -25,7 +25,7 @@ public class MetadataIndexer extends AbstractIndexer implements IMonitorable {
 
     private static final int MAX_ERRORS = 100;
 
-    private final IMetadataDatabase database;
+    private final IMetadataWriter database;
     private final int metadataFilePollIntervalMs;
     private final int metadataFileMaxPollDurationMs;
     
@@ -38,7 +38,7 @@ public class MetadataIndexer extends AbstractIndexer implements IMonitorable {
 
     public MetadataIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
-        this.database = getRequiredResource("database", IMetadataDatabase.class);
+        this.database = getRequiredResource("database", IMetadataWriter.class);
         this.metadataFilePollIntervalMs = options.hasPath("metadataFilePollIntervalMs") ? options.getInt("metadataFilePollIntervalMs") : 1000;
         this.metadataFileMaxPollDurationMs = options.hasPath("metadataFileMaxPollDurationMs") ? options.getInt("metadataFileMaxPollDurationMs") : 60000;
     }
@@ -51,7 +51,7 @@ public class MetadataIndexer extends AbstractIndexer implements IMonitorable {
         SimulationMetadata metadata = pollForMetadataFile(metadataKey);
         
         // Use try-with-resources to ensure connection is released
-        try (IMetadataDatabase db = database) {
+        try (IMetadataWriter db = database) {
             db.createSimulationRun(runId);
             db.setSimulationRun(runId);
             db.insertMetadata(metadata);

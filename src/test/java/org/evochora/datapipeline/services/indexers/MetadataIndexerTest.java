@@ -5,7 +5,7 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
-import org.evochora.datapipeline.api.resources.database.IMetadataDatabase;
+import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.junit.extensions.logging.AllowLog;
@@ -38,7 +38,7 @@ class MetadataIndexerTest {
     private IBatchStorageRead mockStorage;
 
     @Mock
-    private IMetadataDatabase mockDatabase;
+    private IMetadataWriter mockDatabase;
 
     private Map<String, List<IResource>> resources;
     private final String testRunId = "test-run-123";

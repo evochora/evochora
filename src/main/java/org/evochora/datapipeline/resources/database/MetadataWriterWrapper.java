@@ -2,7 +2,7 @@ package org.evochora.datapipeline.resources.database;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.*;
-import org.evochora.datapipeline.api.resources.database.IMetadataDatabase;
+import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,12 +14,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class MetadataDatabaseWrapper implements IMetadataDatabase, IWrappedResource, IMonitorable {
-    private static final Logger log = LoggerFactory.getLogger(MetadataDatabaseWrapper.class);
+public class MetadataWriterWrapper implements IMetadataWriter, IWrappedResource, IMonitorable {
+    private static final Logger log = LoggerFactory.getLogger(MetadataWriterWrapper.class);
     
     private final AbstractDatabaseResource database;
     private final ResourceContext context;
@@ -37,7 +36,7 @@ public class MetadataDatabaseWrapper implements IMetadataDatabase, IWrappedResou
     private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
     private static final int MAX_ERRORS = 100;
 
-    MetadataDatabaseWrapper(AbstractDatabaseResource db, ResourceContext context) {
+    MetadataWriterWrapper(AbstractDatabaseResource db, ResourceContext context) {
         this.database = db;
         this.context = context;
         

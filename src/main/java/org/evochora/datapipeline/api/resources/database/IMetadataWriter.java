@@ -11,14 +11,14 @@ import org.evochora.datapipeline.api.resources.IResource;
  * Implements {@link AutoCloseable} to enable try-with-resources pattern for
  * automatic connection cleanup:
  * <pre>
- * try (IMetadataDatabase db = resource.getWrappedResource(context)) {
+ * try (IMetadataWriter db = resource.getWrappedResource(context)) {
  *     db.createSimulationRun(runId);
  *     db.setSimulationRun(runId);
  *     db.insertMetadata(metadata);
  * }  // Connection automatically released
  * </pre>
  */
-public interface IMetadataDatabase extends IResource, IMonitorable, AutoCloseable {
+public interface IMetadataWriter extends IResource, IMonitorable, AutoCloseable {
     /**
      * Sets the database schema for all subsequent operations on the current connection/wrapper.
      * This must be called once after an indexer discovers its target simulation run ID.

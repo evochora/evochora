@@ -3,7 +3,7 @@ package org.evochora.datapipeline.resources.database;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.*;
-import org.evochora.datapipeline.api.resources.database.IMetadataDatabase;
+import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
 import org.evochora.datapipeline.resources.AbstractResource;
 
 import java.time.Instant;
@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Abstract base class for database resources.
  */
 public abstract class AbstractDatabaseResource extends AbstractResource
-        implements IMetadataDatabase, IContextualResource, IMonitorable {
+        implements IMetadataWriter, IContextualResource, IMonitorable {
 
     protected final AtomicLong queriesExecuted = new AtomicLong(0);
     protected final AtomicLong rowsInserted = new AtomicLong(0);
@@ -35,7 +35,7 @@ public abstract class AbstractDatabaseResource extends AbstractResource
     public IWrappedResource getWrappedResource(ResourceContext context) {
         String usageType = context.usageType();
         return switch (usageType) {
-            case "database-metadata" -> new MetadataDatabaseWrapper(this, context);
+            case "database-metadata" -> new MetadataWriterWrapper(this, context);
             default -> throw new IllegalArgumentException(
                     "Unknown database usage type: " + usageType + ". Supported: database-metadata");
         };

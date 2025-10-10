@@ -11,6 +11,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.UUID;
 
@@ -25,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class H2DatabaseTest {
 
     private H2Database database;
+    private Path tempDbDirectory;
 
     @BeforeEach
     void setUp() {
@@ -35,9 +41,21 @@ class H2DatabaseTest {
     }
 
     @AfterEach
-    void tearDown() {
+    void tearDown() throws IOException {
         if (database != null) {
             database.stop();
+        }
+        // Clean up temporary database directories created during tests
+        if (tempDbDirectory != null && Files.exists(tempDbDirectory)) {
+            Files.walk(tempDbDirectory)
+                .sorted(Comparator.reverseOrder())
+                .map(Path::toFile)
+                .forEach(file -> {
+                    if (!file.delete()) {
+                        System.err.println("Failed to delete: " + file);
+                    }
+                });
+            tempDbDirectory = null;
         }
     }
 
@@ -165,8 +183,8 @@ class H2DatabaseTest {
     @Test
     void testJdbcUrl_DataDirectoryWithoutVariables() {
         // When dataDirectory is provided without variables, it should construct JDBC URL
-        String testDir = System.getProperty("java.io.tmpdir") + "/h2-test-" + UUID.randomUUID();
-        Config config = ConfigFactory.parseString("dataDirectory = \"" + testDir + "\"");
+        tempDbDirectory = Paths.get(System.getProperty("java.io.tmpdir"), "h2-test-" + UUID.randomUUID());
+        Config config = ConfigFactory.parseString("dataDirectory = \"" + tempDbDirectory.toString().replace("\\", "/") + "\"");
         
         H2Database db = new H2Database("test", config);
         
@@ -178,8 +196,11 @@ class H2DatabaseTest {
     @Test
     void testJdbcUrl_DataDirectoryWithVariables() {
         // When dataDirectory contains variables, they should be expanded
-        System.setProperty("test.db.dir", System.getProperty("java.io.tmpdir"));
-        Config config = ConfigFactory.parseString("dataDirectory = \"${test.db.dir}/h2-test\"");
+        String tmpDir = System.getProperty("java.io.tmpdir");
+        System.setProperty("test.db.dir", tmpDir);
+        String uniqueDir = "h2-test-" + UUID.randomUUID();
+        tempDbDirectory = Paths.get(tmpDir, uniqueDir);
+        Config config = ConfigFactory.parseString("dataDirectory = \"${test.db.dir}/" + uniqueDir + "\"");
         
         H2Database db = new H2Database("test", config);
         

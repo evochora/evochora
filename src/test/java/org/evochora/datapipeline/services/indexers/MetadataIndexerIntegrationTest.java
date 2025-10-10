@@ -11,7 +11,6 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.resources.database.H2Database;
-import org.evochora.datapipeline.resources.database.MetadataDatabaseWrapper;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
@@ -46,6 +45,8 @@ class MetadataIndexerIntegrationTest {
     private FileSystemStorageResource testStorage;
     private Path tempStorageDir;
     private String dbUrl;
+    private String dbUsername;
+    private String dbPassword;
 
     @BeforeEach
     void setUp() throws IOException {
@@ -54,7 +55,13 @@ class MetadataIndexerIntegrationTest {
         testStorage = new FileSystemStorageResource("test-storage", storageConfig);
 
         dbUrl = "jdbc:h2:mem:test-" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1;MODE=PostgreSQL";
-        Config dbConfig = ConfigFactory.parseString("jdbcUrl = \"" + dbUrl + "\"");
+        dbUsername = "test-user";
+        dbPassword = "test-password";
+        Config dbConfig = ConfigFactory.parseString(
+            "jdbcUrl = \"" + dbUrl + "\"\n" +
+            "username = \"" + dbUsername + "\"\n" +
+            "password = \"" + dbPassword + "\""
+        );
         testDatabase = new H2Database("test-db", dbConfig);
     }
 
@@ -146,7 +153,7 @@ class MetadataIndexerIntegrationTest {
     }
 
     private void assertSchemaExists(String schemaName) throws Exception {
-        try (Connection conn = DriverManager.getConnection(dbUrl);
+        try (Connection conn = DriverManager.getConnection(dbUrl, dbUsername, dbPassword);
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '" + schemaName.toUpperCase() + "'")) {
             assertTrue(rs.next(), "Schema '" + schemaName + "' should exist.");
@@ -154,7 +161,7 @@ class MetadataIndexerIntegrationTest {
     }
 
     private void assertMetadataInDatabase(String schemaName, SimulationMetadata expectedMetadata) throws Exception {
-        try (Connection conn = DriverManager.getConnection(dbUrl)) {
+        try (Connection conn = DriverManager.getConnection(dbUrl, dbUsername, dbPassword)) {
             conn.setSchema(schemaName.toUpperCase());
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery("SELECT \"key\", \"value\" FROM metadata WHERE \"key\" = 'simulation_info'")) {
