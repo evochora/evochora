@@ -628,32 +628,234 @@ CREATE TABLE IF NOT EXISTS coordinator_gaps (
 
 ## AbstractDatabaseResource Extensions
 
-AbstractDatabaseResource must be extended with new abstract methods for coordination and metadata reading:
+AbstractDatabaseResource must be extended with new abstract methods grouped by capability interface:
 
 ```java
-// Batch coordination methods (NEW)
-protected abstract void doTryClaim(Object connection, String indexerClass, String batchFilename, 
-                                   long tickStart, long tickEnd, String indexerInstanceId) 
-    throws BatchAlreadyClaimedException, Exception;
-protected abstract void doMarkCompleted(Object connection, String indexerClass, String batchFilename) throws Exception;
-protected abstract void doMarkFailed(Object connection, String indexerClass, String batchFilename, String errorMessage) throws Exception;
-protected abstract long doGetMaxCompletedTickEnd(Object connection, String indexerClass) throws Exception;
+// In AbstractDatabaseResource.java
 
-// Gap tracking methods (NEW)
-protected abstract void doRecordGap(Object connection, String indexerClass, long gapStart, long gapEnd) throws Exception;
-protected abstract GapInfo doGetOldestPendingGap(Object connection, String indexerClass) throws Exception;
-protected abstract void doSplitGap(Object connection, String indexerClass, long oldGapStart, long oldGapEnd,
-                                   long foundBatchStart, long foundBatchEnd, int samplingInterval) throws Exception;
-protected abstract void doMarkGapPermanent(Object connection, String indexerClass, long gapStart) throws Exception;
+// Cached table initialization checks
+private final ConcurrentHashMap<String, Boolean> coordinatorBatchesInitialized = new ConcurrentHashMap<>();
+private final ConcurrentHashMap<String, Boolean> coordinatorGapsInitialized = new ConcurrentHashMap<>();
 
-// Metadata reading methods (NEW)
-protected abstract SimulationMetadata doGetMetadata(Object connection, String simulationRunId) throws Exception;
-protected abstract boolean doHasMetadata(Object connection, String simulationRunId) throws Exception;
+// ========================================================================
+// IMetadataReader Capability
+// ========================================================================
+
+/**
+ * Retrieves simulation metadata from the database.
+ * <p>
+ * <strong>Capability:</strong> {@link IMetadataReader#getMetadata(String)}
+ * <p>
+ * Implementation reads from metadata table in current schema.
+ * Used by indexers to access simulation configuration (e.g., samplingInterval).
+ *
+ * @param connection Database connection (with schema already set)
+ * @param simulationRunId Simulation run ID (for validation)
+ * @return Parsed SimulationMetadata protobuf
+ * @throws MetadataNotFoundException if metadata doesn't exist
+ * @throws Exception for other database errors
+ */
+protected abstract SimulationMetadata doGetMetadata(Object connection, String simulationRunId) 
+        throws Exception;
+
+/**
+ * Checks if metadata exists in the database.
+ * <p>
+ * <strong>Capability:</strong> {@link IMetadataReader#hasMetadata(String)}
+ * <p>
+ * Non-blocking check used for polling scenarios.
+ *
+ * @param connection Database connection (with schema already set)
+ * @param simulationRunId Simulation run ID
+ * @return true if metadata exists, false otherwise
+ * @throws Exception if database query fails
+ */
+protected abstract boolean doHasMetadata(Object connection, String simulationRunId) 
+        throws Exception;
+
+// ========================================================================
+// IBatchCoordinator Capability - Batch Coordination
+// ========================================================================
+
+/**
+ * Ensures coordinator_batches table exists for the current schema.
+ * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinator} (internal - table creation)
+ * <p>
+ * Called once per schema via cached check in doTryClaim.
+ * Creates table with composite PRIMARY KEY (indexer_class, batch_filename).
+ *
+ * @param connection Database connection (with schema already set)
+ * @throws Exception if table creation fails
+ */
+protected abstract void doEnsureCoordinatorBatchesTable(Object connection) throws Exception;
+
+/**
+ * Attempts to claim a batch atomically.
+ * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady#tryClaim(String, long, long)}
+ * <p>
+ * Performs lazy table creation with cached check, then atomic INSERT.
+ * Uses composite PRIMARY KEY to prevent duplicate claims by different indexer instances.
+ *
+ * @param connection Database connection (with schema already set)
+ * @param indexerClass Fully qualified class name (e.g., "org.evochora.datapipeline.services.indexers.DummyIndexer")
+ * @param batchFilename Batch file name (e.g., "batch_0000000000_0000009990.pb")
+ * @param tickStart Starting tick (parsed from filename)
+ * @param tickEnd Ending tick (parsed from filename)
+ * @throws BatchAlreadyClaimedException if batch already claimed by another indexer instance of same class
+ * @throws Exception for other database errors
+ */
+protected abstract void doTryClaim(Object connection, String indexerClass, 
+                                   String batchFilename, long tickStart, long tickEnd) 
+        throws BatchAlreadyClaimedException, Exception;
+
+/**
+ * Marks a batch as completed.
+ * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady#markCompleted(String)}
+ * <p>
+ * Updates status='completed', records completion timestamp.
+ *
+ * @param connection Database connection (with schema already set)
+ * @param indexerClass Fully qualified class name
+ * @param batchFilename Batch file name
+ * @throws Exception if update fails or batch not in 'claimed' state
+ */
+protected abstract void doMarkCompleted(Object connection, String indexerClass, 
+                                       String batchFilename) throws Exception;
+
+/**
+ * Marks a batch as failed.
+ * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady#markFailed(String)}
+ * <p>
+ * Updates status='failed', records completion timestamp.
+ *
+ * @param connection Database connection (with schema already set)
+ * @param indexerClass Fully qualified class name
+ * @param batchFilename Batch file name
+ * @throws Exception if update fails or batch not in 'claimed' state
+ */
+protected abstract void doMarkFailed(Object connection, String indexerClass, 
+                                    String batchFilename) throws Exception;
+
+/**
+ * Gets the maximum tick_end among completed batches.
+ * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady#getMaxCompletedTickEnd()}
+ * <p>
+ * Used for gap detection to determine expected next tick.
+ *
+ * @param connection Database connection (with schema already set)
+ * @param indexerClass Fully qualified class name
+ * @return Maximum tick_end, or -1 if no completed batches
+ * @throws Exception if query fails
+ */
+protected abstract long doGetMaxCompletedTickEnd(Object connection, String indexerClass) 
+        throws Exception;
+
+// ========================================================================
+// IBatchCoordinator Capability - Gap Tracking
+// ========================================================================
+
+/**
+ * Ensures coordinator_gaps table exists for the current schema.
+ * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady} (internal - table creation)
+ * <p>
+ * Called once per schema via cached check in doRecordGap.
+ * Creates table with PRIMARY KEY (indexer_class, gap_start_tick).
+ *
+ * @param connection Database connection (with schema already set)
+ * @throws Exception if table creation fails
+ */
+protected abstract void doEnsureCoordinatorGapsTable(Object connection) throws Exception;
+
+/**
+ * Records a new gap in the database.
+ * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady#recordGap(long, long)}
+ * <p>
+ * Performs lazy table creation with cached check before INSERT.
+ * Gap represents missing tick range [gapStart, gapEnd).
+ *
+ * @param connection Database connection (with schema already set)
+ * @param indexerClass Fully qualified class name
+ * @param gapStart Inclusive start of gap (multiple of samplingInterval)
+ * @param gapEnd Exclusive end of gap (multiple of samplingInterval)
+ * @throws Exception if insert fails (duplicate gaps are silently ignored via MERGE)
+ */
+protected abstract void doRecordGap(Object connection, String indexerClass, 
+                                    long gapStart, long gapEnd) throws Exception;
+
+/**
+ * Retrieves the oldest pending gap (lowest gap_start_tick).
+ * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady#getOldestPendingGap()}
+ * <p>
+ * Used to prioritize filling oldest gaps first (FIFO gap processing).
+ *
+ * @param connection Database connection (with schema already set)
+ * @param indexerClass Fully qualified class name
+ * @return GapInfo with startTick and endTick, or null if no pending gaps
+ * @throws Exception if query fails
+ */
+protected abstract GapInfo doGetOldestPendingGap(Object connection, String indexerClass) 
+        throws Exception;
+
+/**
+ * Splits a gap atomically when a batch is found within it.
+ * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady} (internal - gap splitting)
+ * <p>
+ * Algorithm:
+ * <ol>
+ *   <li>SELECT FOR UPDATE on existing gap (pessimistic lock)</li>
+ *   <li>DELETE old gap</li>
+ *   <li>INSERT up to 2 new gaps (before and/or after found batch)</li>
+ * </ol>
+ * <p>
+ * Example: Gap [1000, 3000), found batch [1500, 2000)
+ * <ul>
+ *   <li>Delete [1000, 3000)</li>
+ *   <li>Insert [1000, 1500) - before batch</li>
+ *   <li>Insert [2000, 3000) - after batch</li>
+ * </ul>
+ *
+ * @param connection Database connection (with schema already set)
+ * @param indexerClass Fully qualified class name
+ * @param gapStart Original gap start tick
+ * @param batchTickStart Start of found batch (inclusive)
+ * @param batchTickEnd End of found batch (exclusive)
+ * @throws Exception if split fails (e.g., gap not found, concurrent modification)
+ */
+protected abstract void doSplitGap(Object connection, String indexerClass,
+                                   long gapStart, long batchTickStart, long batchTickEnd) 
+        throws Exception;
+
+/**
+ * Marks a gap as permanent (lost data).
+ * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady#markGapPermanent(long)}
+ * <p>
+ * Updates status to 'permanent'. Gap remains in database for observability
+ * but is excluded from active search (WHERE status='pending').
+ *
+ * @param connection Database connection (with schema already set)
+ * @param indexerClass Fully qualified class name
+ * @param gapStart Gap start tick
+ * @throws Exception if update fails (e.g., gap not found)
+ */
+protected abstract void doMarkGapPermanent(Object connection, String indexerClass, 
+                                          long gapStart) throws Exception;
 ```
 
-These methods are called by their respective wrappers (BatchCoordinatorWrapper, MetadataReaderWrapper) and implemented by concrete database classes (H2Database, PostgreSQLDatabase, etc.).
+These methods are called by their respective wrappers (MetadataReaderWrapper, BatchCoordinatorWrapper) and implemented by concrete database classes (H2Database, PostgreSQLDatabase, etc.).
 
 ## H2Database Extensions
+
+H2Database must implement all new abstract methods from AbstractDatabaseResource, grouped by capability interface.
 
 ### Schema Initialization Cache
 
@@ -661,15 +863,24 @@ These methods are called by their respective wrappers (BatchCoordinatorWrapper, 
 
 **Implementation:**
 ```java
-// In H2Database.java (class field)
-private final Set<String> coordinationTablesInitialized = ConcurrentHashMap.newKeySet();
+// In H2Database.java (class fields)
+private final ConcurrentHashMap<String, Boolean> coordinatorBatchesInitialized = new ConcurrentHashMap<>();
+private final ConcurrentHashMap<String, Boolean> coordinatorGapsInitialized = new ConcurrentHashMap<>();
 ```
 
 **Performance:**
 - Metadata table: Created in `doInsertMetadata()` (1× per run, no caching needed)
-- Coordination tables: Created in `doTryClaim()` and `doRecordGap()` with cached check (1× per schema, then O(1) lookups)
+- Coordination tables: Created in `doEnsureCoordinator*Table()` with cached check (1× per schema, then O(1) lookups)
 
-### Coordination Methods
+### Implementation by Capability
+
+#### IMetadataReader Capability
+
+Implementations for `doGetMetadata()` and `doHasMetadata()` - see Phase 14_1 spec for full details.
+
+#### IBatchCoordinator Capability - Batch Coordination
+
+Implementations for batch coordination methods:
 
 ```java
 // In H2Database.java
@@ -792,8 +1003,14 @@ protected long doGetMaxCompletedTickEnd(Object connection, String indexerClass) 
     }
     return -1; // No batches processed yet
 }
+```
 
-// Gap Tracking Methods
+#### IBatchCoordinator Capability - Gap Tracking
+
+Implementations for gap tracking methods:
+
+```java
+// In H2Database.java
 
 @Override
 protected void doRecordGap(Object connection, String indexerClass, long gapStart, long gapEnd) throws Exception {
@@ -2607,26 +2824,46 @@ class DummyIndexerIntegrationTest {
 
 ## Architectural Decisions
 
-### 1. AbstractDatabaseWrapper Base Class (DRY)
+### 1. AbstractDatabaseWrapper Base Class (DRY + Connection Pooling Optimization)
 
-**Decision:** Introduce `AbstractDatabaseWrapper` as base class for all database capability wrappers.
+**Decision:** Introduce `AbstractDatabaseWrapper` as base class for all database capability wrappers with smart connection caching.
 
 **Problem:** Without base class, each wrapper (MetadataReaderWrapper, BatchCoordinatorWrapper, etc.) duplicates ~150 lines of identical code:
-- Dedicated connection management
+- Connection management
 - Schema setting (`setSimulationRun()` implementation)
 - Error tracking and recording
 - Metrics infrastructure (Template Method Pattern)
 - Resource lifecycle (close, isHealthy, getErrors, etc.)
 
-**Solution:** Extract common functionality into `AbstractDatabaseWrapper`:
+**Additional Problem:** Connection Pool Exhaustion
+- Each indexer needs multiple capabilities (metadata reader, coordinator)
+- Each capability held a dedicated connection permanently
+- Example: 10 indexers × 2 capabilities = 20 connections (exhausts default pool!)
+
+**Solution:** Extract common functionality into `AbstractDatabaseWrapper` with lazy connection caching:
 ```java
 public abstract class AbstractDatabaseWrapper 
         implements ISchemaAwareDatabase, IWrappedResource, IMonitorable, AutoCloseable {
-    // Common fields: database, context, dedicatedConnection, errors, metricsWindowSeconds
+    private Object cachedConnection = null;  // Lazy acquired, smart released
+    private String cachedSchema = null;
+    
+    // Acquire connection only when needed
+    protected Object ensureConnection() { ... }
+    
+    // Release connection during idle periods (e.g., before Thread.sleep)
+    public void releaseConnection() { ... }
+    
     // Common implementations: setSimulationRun(), close(), isHealthy(), getErrors(), etc.
     // Template Method: getMetrics() calls addCustomMetrics() hook
 }
 ```
+
+**Connection Lifecycle:**
+1. **Constructor:** No connection acquired (lazy!)
+2. **First Operation:** `ensureConnection()` acquires and caches connection, sets schema
+3. **Active Work:** Connection remains cached (no overhead)
+4. **Idle/Polling:** Indexer calls `releaseConnection()` before `Thread.sleep`
+5. **Next Operation:** `ensureConnection()` re-acquires connection (schema already cached!)
 
 **Benefits:**
 - ✅ **Code Reduction:** Wrappers go from ~200 to ~80 lines (-60%)
@@ -2635,6 +2872,10 @@ public abstract class AbstractDatabaseWrapper
 - ✅ **Template Method Pattern:** Same as AbstractDatabaseResource (familiar to developers)
 - ✅ **Type Safety:** Final methods prevent accidental overrides
 - ✅ **Maintainability:** Bug fixes in common code benefit all wrappers
+- ✅ **Connection Pool Optimization:** 10-20 pool size sufficient for 100+ indexers
+  - Connections acquired lazily (only when needed)
+  - Released during polling (freed for other indexers)
+  - Cached during active batch processing (no SET SCHEMA overhead)
 
 **Implementation in Phases:**
 - Phase 2.5.1: Introduced with MetadataReaderWrapper
@@ -3272,6 +3513,25 @@ log.debug("Claimed batch: {}", filename);
 log.info("Batch already claimed, skipping");
 log.debug("Marked batch completed: {}", filename);
 ```
+
+## JavaDoc Requirements
+
+All public classes, interfaces, and methods must have comprehensive JavaDoc:
+
+**Required Elements:**
+- Class/Interface purpose
+- Thread safety guarantees
+- Usage examples (for public APIs)
+- Parameter descriptions (@param)
+- Return value descriptions (@return)
+- Exception documentation (@throws)
+- Implementation notes where relevant
+- **Capability mapping (for AbstractDatabaseResource methods):** 
+  - All new `do*()` methods in AbstractDatabaseResource must document which capability interface they belong to using `<strong>Capability:</strong> {@link InterfaceName#methodName()}` in the JavaDoc
+  - **Implementations (e.g., H2Database) should also include minimal JavaDoc with capability link** even with `@Override`, for immediate visibility without navigating to parent class
+  - Example: `/** Implements {@link IMetadataReader#getMetadata(String)}. */` or `/** Implements {@link IBatchCoordinatorReady#tryClaim(String, long, long)}. */`
+
+Examples shown in code sections throughout this specification demonstrate proper JavaDoc structure.
 
 ## Testing Requirements
 

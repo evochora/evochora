@@ -236,18 +236,27 @@ public class BatchAlreadyClaimedException extends Exception {
 
 ## AbstractDatabaseResource Extensions
 
+Add new abstract methods grouped by capability interface:
+
 ```java
 // In AbstractDatabaseResource.java
 
 // Cached table initialization checks
 private final ConcurrentHashMap<String, Boolean> coordinatorBatchesInitialized = new ConcurrentHashMap<>();
 
+// ========================================================================
+// IBatchCoordinator Capability - Batch Coordination
+// ========================================================================
+
 /**
  * Ensures coordinator_batches table exists for the current schema.
  * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinator} (internal - table creation)
+ * <p>
  * Called once per schema via cached check in doTryClaim.
+ * Creates table with composite PRIMARY KEY (indexer_class, batch_filename).
  *
- * @param connection Database connection
+ * @param connection Database connection (with schema already set)
  * @throws Exception if table creation fails
  */
 protected abstract void doEnsureCoordinatorBatchesTable(Object connection) throws Exception;
@@ -255,14 +264,17 @@ protected abstract void doEnsureCoordinatorBatchesTable(Object connection) throw
 /**
  * Attempts to claim a batch atomically.
  * <p>
- * Performs lazy table creation with cached check before INSERT.
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady#tryClaim(String, long, long)}
+ * <p>
+ * Performs lazy table creation with cached check, then atomic INSERT.
+ * Uses composite PRIMARY KEY to prevent duplicate claims by different indexer instances.
  *
- * @param connection Database connection
- * @param indexerClass Fully qualified class name
- * @param batchFilename Batch file name
- * @param tickStart Starting tick
- * @param tickEnd Ending tick
- * @throws BatchAlreadyClaimedException if batch already claimed
+ * @param connection Database connection (with schema already set)
+ * @param indexerClass Fully qualified class name (e.g., "org.evochora.datapipeline.services.indexers.DummyIndexer")
+ * @param batchFilename Batch file name (e.g., "batch_0000000000_0000009990.pb")
+ * @param tickStart Starting tick (parsed from filename)
+ * @param tickEnd Ending tick (parsed from filename)
+ * @throws BatchAlreadyClaimedException if batch already claimed by another indexer instance of same class
  * @throws Exception for other database errors
  */
 protected abstract void doTryClaim(Object connection, String indexerClass, 
@@ -271,30 +283,42 @@ protected abstract void doTryClaim(Object connection, String indexerClass,
 
 /**
  * Marks a batch as completed.
+ * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady#markCompleted(String)}
+ * <p>
+ * Updates status='completed', records completion timestamp.
  *
- * @param connection Database connection
+ * @param connection Database connection (with schema already set)
  * @param indexerClass Fully qualified class name
  * @param batchFilename Batch file name
- * @throws Exception if update fails
+ * @throws Exception if update fails or batch not in 'claimed' state
  */
 protected abstract void doMarkCompleted(Object connection, String indexerClass, 
                                        String batchFilename) throws Exception;
 
 /**
  * Marks a batch as failed.
+ * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady#markFailed(String)}
+ * <p>
+ * Updates status='failed', records completion timestamp.
  *
- * @param connection Database connection
+ * @param connection Database connection (with schema already set)
  * @param indexerClass Fully qualified class name
  * @param batchFilename Batch file name
- * @throws Exception if update fails
+ * @throws Exception if update fails or batch not in 'claimed' state
  */
 protected abstract void doMarkFailed(Object connection, String indexerClass, 
                                     String batchFilename) throws Exception;
 
 /**
  * Gets the maximum tick_end among completed batches.
+ * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady#getMaxCompletedTickEnd()}
+ * <p>
+ * Used for gap detection to determine expected next tick.
  *
- * @param connection Database connection
+ * @param connection Database connection (with schema already set)
  * @param indexerClass Fully qualified class name
  * @return Maximum tick_end, or -1 if no completed batches
  * @throws Exception if query fails
@@ -305,9 +329,16 @@ protected abstract long doGetMaxCompletedTickEnd(Object connection, String index
 
 ## H2Database Implementation
 
+H2Database must implement all new abstract methods for the IBatchCoordinator capability:
+
 ```java
 // In H2Database.java
 
+// ========================================================================
+// IBatchCoordinator Capability - Batch Coordination
+// ========================================================================
+
+/** Creates coordinator_batches table for batch coordination. */
 @Override
 protected void doEnsureCoordinatorBatchesTable(Object connection) throws Exception {
     Connection conn = (Connection) connection;
@@ -336,6 +367,7 @@ protected void doEnsureCoordinatorBatchesTable(Object connection) throws Excepti
     tablesCreated.incrementAndGet();
 }
 
+/** Implements {@link IBatchCoordinatorReady#tryClaim(String, long, long)}. Atomic INSERT with PRIMARY KEY check. */
 @Override
 protected void doTryClaim(Object connection, String indexerClass, 
                          String batchFilename, long tickStart, long tickEnd) 
@@ -377,6 +409,7 @@ protected void doTryClaim(Object connection, String indexerClass,
     }
 }
 
+/** Implements {@link IBatchCoordinatorReady#markCompleted(String)}. Updates status='completed'. */
 @Override
 protected void doMarkCompleted(Object connection, String indexerClass, 
                               String batchFilename) throws Exception {
@@ -401,6 +434,7 @@ protected void doMarkCompleted(Object connection, String indexerClass,
     }
 }
 
+/** Implements {@link IBatchCoordinatorReady#markFailed(String)}. Updates status='failed'. */
 @Override
 protected void doMarkFailed(Object connection, String indexerClass, 
                            String batchFilename) throws Exception {
@@ -425,6 +459,7 @@ protected void doMarkFailed(Object connection, String indexerClass,
     }
 }
 
+/** Implements {@link IBatchCoordinatorReady#getMaxCompletedTickEnd()}. Returns MAX(tick_end) for gap detection. */
 @Override
 protected long doGetMaxCompletedTickEnd(Object connection, String indexerClass) throws Exception {
     Connection conn = (Connection) connection;
@@ -522,7 +557,7 @@ class BatchCoordinatorWrapper extends AbstractDatabaseWrapper
         claimAttempts.incrementAndGet();
         
         try {
-            database.doTryClaim(dedicatedConnection, indexerClass, batchFilename, tickStart, tickEnd);
+            database.doTryClaim(ensureConnection(), indexerClass, batchFilename, tickStart, tickEnd);
             claimSuccesses.incrementAndGet();
             claimLatency.record(System.nanoTime() - startNanos);
             
@@ -546,7 +581,7 @@ class BatchCoordinatorWrapper extends AbstractDatabaseWrapper
         long startNanos = System.nanoTime();
         
         try {
-            database.doMarkCompleted(dedicatedConnection, indexerClass, batchFilename);
+            database.doMarkCompleted(ensureConnection(), indexerClass, batchFilename);
             batchesCompleted.incrementAndGet();
             completeLatency.record(System.nanoTime() - startNanos);
             
@@ -563,7 +598,7 @@ class BatchCoordinatorWrapper extends AbstractDatabaseWrapper
         ensureIndexerClassSet();
         
         try {
-            database.doMarkFailed(dedicatedConnection, indexerClass, batchFilename);
+            database.doMarkFailed(ensureConnection(), indexerClass, batchFilename);
             batchesFailed.incrementAndGet();
             
         } catch (Exception e) {
@@ -579,7 +614,7 @@ class BatchCoordinatorWrapper extends AbstractDatabaseWrapper
         ensureIndexerClassSet();
         
         try {
-            return database.doGetMaxCompletedTickEnd(dedicatedConnection, indexerClass);
+            return database.doGetMaxCompletedTickEnd(ensureConnection(), indexerClass);
             
         } catch (Exception e) {
             coordinationErrors.incrementAndGet();
@@ -590,7 +625,7 @@ class BatchCoordinatorWrapper extends AbstractDatabaseWrapper
     }
     
     // Note: close(), isHealthy(), getErrors(), clearErrors(), getResourceName(), 
-    // getUsageState(), setSimulationRun() are inherited from AbstractDatabaseWrapper
+    // getUsageState(), setSimulationRun(), releaseConnection() are inherited from AbstractDatabaseWrapper
     
     @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {
@@ -607,6 +642,8 @@ class BatchCoordinatorWrapper extends AbstractDatabaseWrapper
         metrics.put("claim_latency_p95_ms", claimLatency.getPercentile(95) / 1_000_000.0);
         metrics.put("claim_latency_p99_ms", claimLatency.getPercentile(99) / 1_000_000.0);
         metrics.put("complete_latency_p95_ms", completeLatency.getPercentile(95) / 1_000_000.0);
+        
+        // Note: connection_cached metric inherited from AbstractDatabaseWrapper
     }
     
     private void ensureIndexerClassSet() {
@@ -696,6 +733,16 @@ public class BatchCoordinationComponent {
      */
     public long getMaxCompletedTickEnd() {
         return coordinator.getMaxCompletedTickEnd();
+    }
+    
+    /**
+     * Releases the database connection.
+     * <p>
+     * Delegates to underlying IBatchCoordinatorReady wrapper.
+     * Call before long idle periods to reduce pool pressure.
+     */
+    public void releaseConnection() {
+        coordinator.releaseConnection();
     }
 }
 ```
@@ -1159,7 +1206,22 @@ metrics.put("ticks_observed", ticksObserved.get());      // O(1)
 
 ## JavaDoc Requirements
 
-All public classes and methods require comprehensive JavaDoc as shown in code examples above.
+All public classes, interfaces, and methods must have comprehensive JavaDoc:
+
+**Required Elements:**
+- Class/Interface purpose
+- Thread safety guarantees
+- Usage examples (for public APIs)
+- Parameter descriptions (@param)
+- Return value descriptions (@return)
+- Exception documentation (@throws)
+- Implementation notes where relevant
+- **Capability mapping (for AbstractDatabaseResource methods):** 
+  - All new `do*()` methods in AbstractDatabaseResource must document which capability interface they belong to using `<strong>Capability:</strong> {@link InterfaceName#methodName()}` in the JavaDoc
+  - **Implementations (e.g., H2Database) should also include minimal JavaDoc with capability link** even with `@Override`, for immediate visibility without navigating to parent class
+  - Example: `/** Implements {@link IBatchCoordinatorReady#tryClaim(String, long, long)}. */`
+
+Examples shown in code sections above demonstrate proper JavaDoc structure.
 
 ## Implementation Checklist
 

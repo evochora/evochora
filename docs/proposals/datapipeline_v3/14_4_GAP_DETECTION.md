@@ -140,16 +140,27 @@ public record GapInfo(
 
 ## AbstractDatabaseResource Extensions
 
+Add new abstract methods grouped by capability interface:
+
 ```java
 // In AbstractDatabaseResource.java
 
 // Cached table initialization check for gaps
 private final ConcurrentHashMap<String, Boolean> coordinatorGapsInitialized = new ConcurrentHashMap<>();
 
+// ========================================================================
+// IBatchCoordinator Capability - Gap Tracking
+// ========================================================================
+
 /**
  * Ensures coordinator_gaps table exists for the current schema.
+ * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady} (internal - table creation)
+ * <p>
+ * Called once per schema via cached check in doRecordGap.
+ * Creates table with PRIMARY KEY (indexer_class, gap_start_tick).
  *
- * @param connection Database connection
+ * @param connection Database connection (with schema already set)
  * @throws Exception if table creation fails
  */
 protected abstract void doEnsureCoordinatorGapsTable(Object connection) throws Exception;
@@ -157,13 +168,16 @@ protected abstract void doEnsureCoordinatorGapsTable(Object connection) throws E
 /**
  * Records a new gap in the database.
  * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady#recordGap(long, long)}
+ * <p>
  * Performs lazy table creation with cached check before INSERT.
+ * Gap represents missing tick range [gapStart, gapEnd).
  *
- * @param connection Database connection
+ * @param connection Database connection (with schema already set)
  * @param indexerClass Fully qualified class name
- * @param gapStart Inclusive start of gap
- * @param gapEnd Exclusive end of gap
- * @throws Exception if insert fails
+ * @param gapStart Inclusive start of gap (multiple of samplingInterval)
+ * @param gapEnd Exclusive end of gap (multiple of samplingInterval)
+ * @throws Exception if insert fails (duplicate gaps are silently ignored via MERGE)
  */
 protected abstract void doRecordGap(Object connection, String indexerClass, 
                                     long gapStart, long gapEnd) throws Exception;
@@ -171,11 +185,13 @@ protected abstract void doRecordGap(Object connection, String indexerClass,
 /**
  * Retrieves the oldest pending gap (lowest gap_start_tick).
  * <p>
- * Used to prioritize filling oldest gaps first.
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady#getOldestPendingGap()}
+ * <p>
+ * Used to prioritize filling oldest gaps first (FIFO gap processing).
  *
- * @param connection Database connection
+ * @param connection Database connection (with schema already set)
  * @param indexerClass Fully qualified class name
- * @return GapInfo or null if no pending gaps
+ * @return GapInfo with startTick and endTick, or null if no pending gaps
  * @throws Exception if query fails
  */
 protected abstract GapInfo doGetOldestPendingGap(Object connection, String indexerClass) 
@@ -183,6 +199,8 @@ protected abstract GapInfo doGetOldestPendingGap(Object connection, String index
 
 /**
  * Splits a gap atomically when a batch is found within it.
+ * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady} (internal - gap splitting)
  * <p>
  * Algorithm:
  * <ol>
@@ -198,12 +216,12 @@ protected abstract GapInfo doGetOldestPendingGap(Object connection, String index
  *   <li>Insert [2000, 3000) - after batch</li>
  * </ul>
  *
- * @param connection Database connection
+ * @param connection Database connection (with schema already set)
  * @param indexerClass Fully qualified class name
- * @param gapStart Original gap start
- * @param batchTickStart Start of found batch
- * @param batchTickEnd End of found batch
- * @throws Exception if split fails
+ * @param gapStart Original gap start tick
+ * @param batchTickStart Start of found batch (inclusive)
+ * @param batchTickEnd End of found batch (exclusive)
+ * @throws Exception if split fails (e.g., gap not found, concurrent modification)
  */
 protected abstract void doSplitGap(Object connection, String indexerClass,
                                    long gapStart, long batchTickStart, long batchTickEnd) 
@@ -212,13 +230,15 @@ protected abstract void doSplitGap(Object connection, String indexerClass,
 /**
  * Marks a gap as permanent (lost data).
  * <p>
+ * <strong>Capability:</strong> {@link IBatchCoordinatorReady#markGapPermanent(long)}
+ * <p>
  * Updates status to 'permanent'. Gap remains in database for observability
- * but is excluded from active search.
+ * but is excluded from active search (WHERE status='pending').
  *
- * @param connection Database connection
+ * @param connection Database connection (with schema already set)
  * @param indexerClass Fully qualified class name
  * @param gapStart Gap start tick
- * @throws Exception if update fails
+ * @throws Exception if update fails (e.g., gap not found)
  */
 protected abstract void doMarkGapPermanent(Object connection, String indexerClass, 
                                           long gapStart) throws Exception;
@@ -226,9 +246,16 @@ protected abstract void doMarkGapPermanent(Object connection, String indexerClas
 
 ## H2Database Implementation
 
+H2Database must implement all new abstract methods for gap tracking:
+
 ```java
 // In H2Database.java
 
+// ========================================================================
+// IBatchCoordinator Capability - Gap Tracking
+// ========================================================================
+
+/** Creates coordinator_gaps table for gap tracking. */
 @Override
 protected void doEnsureCoordinatorGapsTable(Object connection) throws Exception {
     Connection conn = (Connection) connection;
@@ -250,6 +277,7 @@ protected void doEnsureCoordinatorGapsTable(Object connection) throws Exception 
     tablesCreated.incrementAndGet();
 }
 
+/** Implements {@link IBatchCoordinatorReady#recordGap(long, long)}. Inserts gap with status='pending'. */
 @Override
 protected void doRecordGap(Object connection, String indexerClass, 
                           long gapStart, long gapEnd) throws Exception {
@@ -280,6 +308,7 @@ protected void doRecordGap(Object connection, String indexerClass,
     queriesExecuted.incrementAndGet();
 }
 
+/** Implements {@link IBatchCoordinatorReady#getOldestPendingGap()}. Returns oldest gap by gap_start_tick. */
 @Override
 protected GapInfo doGetOldestPendingGap(Object connection, String indexerClass) throws Exception {
     Connection conn = (Connection) connection;
@@ -308,6 +337,7 @@ protected GapInfo doGetOldestPendingGap(Object connection, String indexerClass) 
     return null;
 }
 
+/** Atomically splits a gap when batch found within it. Uses SELECT FOR UPDATE. */
 @Override
 protected void doSplitGap(Object connection, String indexerClass,
                          long gapStart, long batchTickStart, long batchTickEnd) 
@@ -373,6 +403,7 @@ protected void doSplitGap(Object connection, String indexerClass,
     }
 }
 
+/** Implements {@link IBatchCoordinatorReady#markGapPermanent(long)}. Updates status='permanent'. */
 @Override
 protected void doMarkGapPermanent(Object connection, String indexerClass, 
                                  long gapStart) throws Exception {
@@ -1064,7 +1095,22 @@ metrics.put("gaps_detected", gapsDetected.get());        // O(1) - NEW
 
 ## JavaDoc Requirements
 
-All public classes and methods require comprehensive JavaDoc as shown in code examples above.
+All public classes, interfaces, and methods must have comprehensive JavaDoc:
+
+**Required Elements:**
+- Class/Interface purpose
+- Thread safety guarantees
+- Usage examples (for public APIs)
+- Parameter descriptions (@param)
+- Return value descriptions (@return)
+- Exception documentation (@throws)
+- Implementation notes where relevant
+- **Capability mapping (for AbstractDatabaseResource methods):** 
+  - All new `do*()` methods in AbstractDatabaseResource must document which capability interface they belong to using `<strong>Capability:</strong> {@link InterfaceName#methodName()}` in the JavaDoc
+  - **Implementations (e.g., H2Database) should also include minimal JavaDoc with capability link** even with `@Override`, for immediate visibility without navigating to parent class
+  - Example: `/** Implements {@link IBatchCoordinatorReady#recordGap(long, long)}. */`
+
+Examples shown in code sections above demonstrate proper JavaDoc structure.
 
 ## Implementation Checklist
 

@@ -250,6 +250,9 @@ public abstract class AbstractBatchProcessingIndexer extends AbstractIndexer {
                 
                 if (page.batchFiles().isEmpty()) {
                     // No more batches available - poll again later
+                    // Release connections before idle period (reduces pool pressure)
+                    releaseAllConnections();
+                    
                     Thread.sleep(1000);
                     continuationToken = null; // Reset for next iteration
                     continue;
@@ -379,6 +382,21 @@ public abstract class AbstractBatchProcessingIndexer extends AbstractIndexer {
         }
         
         coordinatorReady.markGapPermanent(gap.startTick());
+    }
+    
+    /**
+     * Releases all cached database connections.
+     * <p>
+     * Called before idle periods (Thread.sleep during polling).
+     * Connections will be re-acquired automatically on next operation.
+     */
+    private void releaseAllConnections() {
+        if (coordination != null) {
+            coordination.releaseConnection();
+        }
+        if (metadata != null) {
+            metadata.releaseConnection();
+        }
     }
     
     /**
@@ -826,7 +844,22 @@ metrics.put("organisms_observed", organismsObserved.get()); // O(1)
 
 ## JavaDoc Requirements
 
-All public classes and methods require comprehensive JavaDoc as shown in code examples above.
+All public classes, interfaces, and methods must have comprehensive JavaDoc:
+
+**Required Elements:**
+- Class/Interface purpose
+- Thread safety guarantees
+- Usage examples (for public APIs)
+- Parameter descriptions (@param)
+- Return value descriptions (@return)
+- Exception documentation (@throws)
+- Implementation notes where relevant
+- **Capability mapping (for AbstractDatabaseResource methods):** 
+  - All new `do*()` methods in AbstractDatabaseResource must document which capability interface they belong to using `<strong>Capability:</strong> {@link InterfaceName#methodName()}` in the JavaDoc
+  - **Implementations (e.g., H2Database) should also include minimal JavaDoc with capability link** even with `@Override`, for immediate visibility without navigating to parent class
+  - Example: `/** Implements {@link IBatchCoordinatorReady#markGapPermanent(long)}. */`
+
+Examples shown in code sections above demonstrate proper JavaDoc structure.
 
 ## Implementation Checklist
 

@@ -140,31 +140,46 @@ public class MetadataNotFoundException extends Exception {
 
 ## AbstractDatabaseResource Extensions
 
-Add two new abstract methods:
+Add new abstract methods grouped by capability interface:
 
 ```java
 // In AbstractDatabaseResource.java
 
+// ========================================================================
+// IMetadataReader Capability
+// ========================================================================
+
 /**
  * Retrieves simulation metadata from the database.
+ * <p>
+ * <strong>Capability:</strong> {@link IMetadataReader#getMetadata(String)}
+ * <p>
  * Implementation reads from metadata table in current schema.
+ * Used by indexers to access simulation configuration (e.g., samplingInterval).
  *
- * @param connection Dedicated database connection
+ * @param connection Database connection (with schema already set)
  * @param simulationRunId Simulation run ID (for validation)
  * @return Parsed SimulationMetadata protobuf
- * @throws Exception if metadata doesn't exist or read fails
+ * @throws MetadataNotFoundException if metadata doesn't exist
+ * @throws Exception for other database errors
  */
-protected abstract SimulationMetadata doGetMetadata(Object connection, String simulationRunId) throws Exception;
+protected abstract SimulationMetadata doGetMetadata(Object connection, String simulationRunId) 
+        throws Exception;
 
 /**
  * Checks if metadata exists in the database.
+ * <p>
+ * <strong>Capability:</strong> {@link IMetadataReader#hasMetadata(String)}
+ * <p>
+ * Non-blocking check used for polling scenarios.
  *
- * @param connection Dedicated database connection
+ * @param connection Database connection (with schema already set)
  * @param simulationRunId Simulation run ID
  * @return true if metadata exists, false otherwise
  * @throws Exception if database query fails
  */
-protected abstract boolean doHasMetadata(Object connection, String simulationRunId) throws Exception;
+protected abstract boolean doHasMetadata(Object connection, String simulationRunId) 
+        throws Exception;
 ```
 
 ## AbstractDatabaseWrapper (NEW - Base Class for All Wrappers)
@@ -222,7 +237,10 @@ public abstract class AbstractDatabaseWrapper
     // Core dependencies
     protected final AbstractDatabaseResource database;
     protected final ResourceContext context;
-    protected final Object dedicatedConnection;
+    
+    // Connection caching (lazy acquisition, smart release)
+    private Object cachedConnection = null;
+    private String cachedSchema = null;
     
     // Error tracking (O(1) operations)
     protected final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
@@ -232,7 +250,10 @@ public abstract class AbstractDatabaseWrapper
     protected final int metricsWindowSeconds;
     
     /**
-     * Creates database wrapper with dedicated connection.
+     * Creates database wrapper.
+     * <p>
+     * Connection is acquired lazily on first use (not in constructor).
+     * This reduces connection pool pressure during indexer initialization.
      *
      * @param db Underlying database resource
      * @param context Resource context (service name, usage type)
@@ -245,13 +266,72 @@ public abstract class AbstractDatabaseWrapper
         this.metricsWindowSeconds = db.getOptions().hasPath("metricsWindowSeconds")
             ? db.getOptions().getInt("metricsWindowSeconds")
             : 5;
-        
-        try {
-            this.dedicatedConnection = db.acquireDedicatedConnection();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to acquire database connection for service: " + 
-                                     context.serviceName(), e);
+    }
+    
+    /**
+     * Ensures a valid connection is available.
+     * <p>
+     * Acquires connection lazily on first call and caches it.
+     * Sets schema if not already set.
+     * <p>
+     * Thread-safe for single-threaded indexer use.
+     *
+     * @return Database connection with schema set
+     * @throws RuntimeException if connection acquisition fails
+     */
+    protected Object ensureConnection() {
+        if (cachedConnection == null || isConnectionClosed(cachedConnection)) {
+            try {
+                cachedConnection = database.acquireDedicatedConnection();
+                
+                // Set schema if known
+                if (cachedSchema != null) {
+                    database.doSetSchema(cachedConnection, cachedSchema);
+                }
+                
+                log.debug("Acquired database connection for service: {}", context.serviceName());
+                
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to acquire database connection for service: " + 
+                                         context.serviceName(), e);
+            }
         }
+        return cachedConnection;
+    }
+    
+    /**
+     * Releases the cached connection back to pool.
+     * <p>
+     * Call this before long idle periods (e.g., before Thread.sleep during polling)
+     * to reduce connection pool pressure.
+     * <p>
+     * Connection will be re-acquired automatically on next operation.
+     */
+    public void releaseConnection() {
+        if (cachedConnection != null && cachedConnection instanceof Connection) {
+            try {
+                ((Connection) cachedConnection).close();
+                log.debug("Released database connection for service: {}", context.serviceName());
+            } catch (SQLException e) {
+                log.debug("Failed to release connection (may already be closed): {}", e.getMessage());
+            } finally {
+                cachedConnection = null;
+            }
+        }
+    }
+    
+    /**
+     * Checks if connection is closed.
+     */
+    private boolean isConnectionClosed(Object conn) {
+        if (conn instanceof Connection) {
+            try {
+                return ((Connection) conn).isClosed();
+            } catch (SQLException e) {
+                return true; // Assume closed on error
+            }
+        }
+        return true;
     }
     
     // ========== ISchemaAwareDatabase Implementation (DRY!) ==========
@@ -260,7 +340,13 @@ public abstract class AbstractDatabaseWrapper
     public void setSimulationRun(String simulationRunId) {
         try {
             String schemaName = database.toSchemaName(simulationRunId);
-            database.doSetSchema(dedicatedConnection, schemaName);
+            this.cachedSchema = schemaName;
+            
+            // Set schema on cached connection (if exists)
+            // Otherwise will be set on next ensureConnection()
+            if (cachedConnection != null) {
+                database.doSetSchema(cachedConnection, schemaName);
+            }
         } catch (Exception e) {
             recordError("SET_SCHEMA_FAILED", "Failed to set simulation run", 
                        "RunId: " + simulationRunId + ", Error: " + e.getMessage());
@@ -314,16 +400,13 @@ public abstract class AbstractDatabaseWrapper
      * <p>
      * Private helper method called only by getMetrics().
      * Subclasses should not access this directly - use addCustomMetrics() hook instead.
-     * <p>
-     * Currently only error_count. Future enhancements might add:
-     * - connection_age_seconds
-     * - operations_total
      *
      * @return Map containing base metrics (O(1) operations)
      */
     private Map<String, Number> getBaseMetrics() {
         Map<String, Number> metrics = new LinkedHashMap<>();
         metrics.put("error_count", errors.size());  // O(1)
+        metrics.put("connection_cached", cachedConnection != null ? 1 : 0);  // O(1)
         return metrics;
     }
     
@@ -383,16 +466,7 @@ public abstract class AbstractDatabaseWrapper
     
     @Override
     public void close() {
-        if (dedicatedConnection != null && dedicatedConnection instanceof Connection) {
-            try {
-                ((Connection) dedicatedConnection).close();
-                log.debug("Released database connection for service: {}", context.serviceName());
-            } catch (SQLException e) {
-                log.warn("Failed to close database connection for service: {}", context.serviceName(), e);
-                recordError("CONNECTION_CLOSE_FAILED", "Failed to close connection",
-                           "Service: " + context.serviceName() + ", Error: " + e.getMessage());
-            }
-        }
+        releaseConnection();
     }
 }
 ```
@@ -403,12 +477,26 @@ public abstract class AbstractDatabaseWrapper
 - ✅ **DRY:** Schema setting, error handling, metrics pattern implemented once
 - ✅ **Template Method Pattern:** Same as AbstractDatabaseResource (familiar)
 - ✅ **Type Safety:** Final methods prevent accidental overrides
+- ✅ **Connection Pooling Optimization:** Lazy acquisition + smart release reduces pool pressure
+  - Connections acquired only when needed
+  - Released during idle periods (polling)
+  - 10× fewer connections needed (10-20 pool size for 100+ indexers)
 
 ## H2Database Implementation
+
+H2Database must implement all new abstract methods for the IMetadataReader capability:
 
 ```java
 // In H2Database.java
 
+// ========================================================================
+// IMetadataReader Capability
+// ========================================================================
+
+/**
+ * Implements {@link IMetadataReader#getMetadata(String)}.
+ * Queries metadata table in current schema and deserializes from JSON.
+ */
 @Override
 protected SimulationMetadata doGetMetadata(Object connection, String simulationRunId) throws Exception {
     Connection conn = (Connection) connection;
@@ -432,6 +520,10 @@ protected SimulationMetadata doGetMetadata(Object connection, String simulationR
     return metadata;
 }
 
+/**
+ * Implements {@link IMetadataReader#hasMetadata(String)}.
+ * Checks if metadata exists via COUNT query.
+ */
 @Override
 protected boolean doHasMetadata(Object connection, String simulationRunId) throws Exception {
     Connection conn = (Connection) connection;
@@ -445,6 +537,36 @@ protected boolean doHasMetadata(Object connection, String simulationRunId) throw
     queriesExecuted.incrementAndGet();
     
     return rs.next() && rs.getInt("cnt") > 0;
+}
+
+// NEW: ulimit and resource tracking (Option C)
+@Override
+protected void addCustomMetrics(Map<String, Number> metrics) {
+    // Existing HikariCP metrics
+    if (dataSource != null && !dataSource.isClosed()) {
+        metrics.put("h2_pool_active_connections", dataSource.getHikariPoolMXBean().getActiveConnections());
+        metrics.put("h2_pool_idle_connections", dataSource.getHikariPoolMXBean().getIdleConnections());
+        metrics.put("h2_pool_total_connections", dataSource.getHikariPoolMXBean().getTotalConnections());
+        metrics.put("h2_pool_threads_awaiting", dataSource.getHikariPoolMXBean().getThreadsAwaitingConnection());
+    }
+    
+    // Operating system resource limits (O(1) via MXBean)
+    OperatingSystemMXBean os = ManagementFactory.getOperatingSystemMXBean();
+    
+    if (os instanceof com.sun.management.UnixOperatingSystemMXBean unix) {
+        long openFDs = unix.getOpenFileDescriptorCount();
+        long maxFDs = unix.getMaxFileDescriptorCount();
+        
+        metrics.put("os_open_file_descriptors", openFDs);
+        metrics.put("os_max_file_descriptors", maxFDs);
+        metrics.put("os_fd_usage_percent", (openFDs * 100.0) / maxFDs);
+    }
+    
+    // JVM thread metrics (O(1) via MXBean)
+    ThreadMXBean threads = ManagementFactory.getThreadMXBean();
+    metrics.put("jvm_thread_count", threads.getThreadCount());
+    metrics.put("jvm_daemon_thread_count", threads.getDaemonThreadCount());
+    metrics.put("jvm_peak_thread_count", threads.getPeakThreadCount());
 }
 ```
 
@@ -497,7 +619,7 @@ class MetadataReaderWrapper extends AbstractDatabaseWrapper implements IMetadata
         long startNanos = System.nanoTime();
         
         try {
-            SimulationMetadata metadata = database.doGetMetadata(dedicatedConnection, simulationRunId);
+            SimulationMetadata metadata = database.doGetMetadata(ensureConnection(), simulationRunId);
             metadataReads.incrementAndGet();
             getMetadataLatency.record(System.nanoTime() - startNanos);
             return metadata;
@@ -520,7 +642,7 @@ class MetadataReaderWrapper extends AbstractDatabaseWrapper implements IMetadata
         long startNanos = System.nanoTime();
         
         try {
-            boolean exists = database.doHasMetadata(dedicatedConnection, simulationRunId);
+            boolean exists = database.doHasMetadata(ensureConnection(), simulationRunId);
             hasMetadataLatency.record(System.nanoTime() - startNanos);
             return exists;
             
@@ -533,7 +655,7 @@ class MetadataReaderWrapper extends AbstractDatabaseWrapper implements IMetadata
     }
     
     // Note: close(), isHealthy(), getErrors(), clearErrors(), getResourceName(), 
-    // getUsageState() are inherited from AbstractDatabaseWrapper
+    // getUsageState(), releaseConnection() are inherited from AbstractDatabaseWrapper
     
     @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {
@@ -627,6 +749,8 @@ public class MetadataReadingComponent {
                     );
                 }
                 
+                // Release connection before idle period (reduces pool pressure)
+                metadataReader.releaseConnection();
                 Thread.sleep(pollIntervalMs);
             }
         }
@@ -658,6 +782,16 @@ public class MetadataReadingComponent {
             throw new IllegalStateException("Metadata not loaded - call loadMetadata() first");
         }
         return metadata;
+    }
+    
+    /**
+     * Releases the database connection.
+     * <p>
+     * Delegates to underlying IMetadataReader wrapper.
+     * Call before long idle periods to reduce pool pressure.
+     */
+    public void releaseConnection() {
+        metadataReader.releaseConnection();
     }
 }
 ```
@@ -1112,12 +1246,31 @@ metrics.put("metadata_reads", metadataReads.get());
 metrics.put("metadata_not_found", metadataNotFound.get());
 metrics.put("read_errors", readErrors.get());
 metrics.put("error_count", errors.size());
+metrics.put("connection_cached", cachedConnection != null ? 1 : 0);  // NEW - Connection state
 
 // Latency percentiles - O(windowSeconds × buckets) = O(5 × 11) = O(55) = O(constant)
 metrics.put("get_metadata_latency_p50_ms", getMetadataLatency.getPercentile(50) / 1_000_000.0);
 metrics.put("get_metadata_latency_p95_ms", getMetadataLatency.getPercentile(95) / 1_000_000.0);
 metrics.put("get_metadata_latency_p99_ms", getMetadataLatency.getPercentile(99) / 1_000_000.0);
 metrics.put("get_metadata_latency_avg_ms", getMetadataLatency.getAverage() / 1_000_000.0);
+```
+
+**H2Database Metrics (NEW ulimit tracking):**
+```java
+// HikariCP pool metrics - O(1)
+metrics.put("h2_pool_active_connections", ...);
+metrics.put("h2_pool_idle_connections", ...);
+metrics.put("h2_pool_total_connections", ...);
+
+// Operating system resource limits - O(1) via MXBean
+metrics.put("os_open_file_descriptors", ...);
+metrics.put("os_max_file_descriptors", ...);
+metrics.put("os_fd_usage_percent", ...);
+
+// JVM thread metrics - O(1) via MXBean
+metrics.put("jvm_thread_count", ...);
+metrics.put("jvm_daemon_thread_count", ...);
+metrics.put("jvm_peak_thread_count", ...);
 ```
 
 ### DummyIndexer v1 Metrics
@@ -1146,6 +1299,10 @@ All public classes, interfaces, and methods must have comprehensive JavaDoc:
 - Return value descriptions (@return)
 - Exception documentation (@throws)
 - Implementation notes where relevant
+- **Capability mapping (for AbstractDatabaseResource methods):** 
+  - All new `do*()` methods in AbstractDatabaseResource must document which capability interface they belong to using `<strong>Capability:</strong> {@link InterfaceName#methodName()}` in the JavaDoc
+  - **Implementations (e.g., H2Database) should also include minimal JavaDoc with capability link** even with `@Override`, for immediate visibility without navigating to parent class
+  - Example: `/** Implements {@link IMetadataReader#getMetadata(String)}. */`
 
 **Example:**
 ```java

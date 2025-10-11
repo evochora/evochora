@@ -633,7 +633,22 @@ metrics.put("buffer_size", bufferingComponent.getBufferSize()); // O(1) - NEW
 
 ## JavaDoc Requirements
 
-All public classes and methods require comprehensive JavaDoc as shown in code examples above.
+All public classes, interfaces, and methods must have comprehensive JavaDoc:
+
+**Required Elements:**
+- Class/Interface purpose
+- Thread safety guarantees
+- Usage examples (for public APIs)
+- Parameter descriptions (@param)
+- Return value descriptions (@return)
+- Exception documentation (@throws)
+- Implementation notes where relevant
+- **Capability mapping (for AbstractDatabaseResource methods):** 
+  - All new `do*()` methods in AbstractDatabaseResource must document which capability interface they belong to using `<strong>Capability:</strong> {@link InterfaceName#methodName()}` in the JavaDoc
+  - **Implementations (e.g., H2Database) should also include minimal JavaDoc with capability link** even with `@Override`, for immediate visibility without navigating to parent class
+  - Example: `/** Implements {@link IBatchCoordinatorReady#recordGap(long, long)}. */`
+
+Examples shown in code sections above demonstrate proper JavaDoc structure.
 
 ## Implementation Checklist
 
