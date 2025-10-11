@@ -40,10 +40,12 @@ Upon completion:
 
 - Phase 0: API Foundation (completed) - IResource, IMonitorable interfaces
 - Phase 1.2: Core Resource Implementation (completed) - Resource abstraction patterns
-- Phase 2.2: Storage Resource (completed) - IBatchStorageRead interface with listBatchFiles
+- Phase 2.2: Storage Resource (completed) - IBatchStorageRead interface with listBatchFiles + range queries
 - Phase 2.3: Persistence Service (completed) - Writes batch files with variable sizes
 - Phase 2.4: Database Resource and Metadata Indexer (completed) - Metadata in database, IMetadataWriter
 - SimulationMetadata includes `sampling_interval` field (completed) - Required for gap detection
+- ISchemaAwareDatabase interface (completed) - Base for all schema-aware database capabilities
+- AbstractIndexer schema management (completed) - prepareSchema(), setSchemaForAllDatabaseResources()
 
 ## Architectural Context
 
@@ -144,119 +146,147 @@ Gap detection:
 ### Out-of-Order Batch Arrival
 
 ```
-t=0: PersistenceService-1 claims ticks 0-999, writing...
-     PersistenceService-2 claims ticks 1000-1999, writes fast!
+t=0: PersistenceService-2 writing ticks 1000-1990 (fast!)
+     PersistenceService-1 writing ticks 0-990 (slow)
      
-t=1: Storage has: batch_0000001000_0000001999.pb
+t=1s: Storage has: batch_0000001000_0000001990.pb (samplingInterval=10)
 
-Indexer discovers batch_1000-1999:
-  → hasGapBefore(1000)? YES (batch 0-999 missing)
-  → markGapPending(batch_1000-1999)
-  → Continue processing other batches
+Indexer - Iteration 1:
+  PHASE 1 (Gap Filling): getOldestPendingGap() → null
+  PHASE 2 (New Batches):
+    → listBatchFiles() → ["batch_1000_1990"]
+    → detectAndRecordGap(1000):
+      → maxCompletedTickEnd() = -1
+      → First batch, no gap
+    → processOneBatch(batch_1000_1990)
+      → tryClaim, read, buffer, markCompleted
+      → maxCompleted now = 1990
+    → continuationToken = "batch_1000_1990" (processed)
 
-t=5: Storage has: batch_0000000000_0000000999.pb
-                  batch_0000001000_0000001999.pb
+t=5s: Storage adds: batch_0000000000_0000000990.pb
+                     batch_0000002000_0000002990.pb
 
-Indexer discovers batch_0-999:
-  → hasGapBefore(0)? NO (first batch)
-  → tryClaim → SUCCESS → process
-  → markCompleted(batch_0-999)
-  → releaseGapPendingBatches(999)
-     → Checks: batch_1000-1999 had gap before 1000, now filled!
-     → Update status: 'gap_pending' → 'ready'
-     
+Indexer - Iteration 2:
+  PHASE 1 (Gap Filling): getOldestPendingGap() → null
+  PHASE 2 (New Batches):
+    → listBatchFiles(token="batch_1000_1990") → ["batch_2000_2990"]
+    → detectAndRecordGap(2000):
+      → maxCompletedTickEnd() = 1990
+      → expectedNext = 1990 + 10 = 2000
+      → Gap? 2000 == 2000 → NO
+    → processOneBatch(batch_2000_2990)
+      → tryClaim, read, buffer, markCompleted
+      → maxCompleted now = 2990
+
+Indexer - Iteration 3:
+  PHASE 1 (Gap Filling): getOldestPendingGap() → null
+  PHASE 2 (New Batches):
+    → listBatchFiles(token="batch_2000_2990") → ["batch_3000_3990"]
+    → detectAndRecordGap(3000):
+      → maxCompletedTickEnd() = 2990
+      → expectedNext = 2990 + 10 = 3000
+      → Gap? 3000 == 3000 → NO
+    → processOneBatch...
+
+Indexer - Iteration 3 (batch_3000... later):
+  PHASE 1 (Gap Filling):
+    → getOldestPendingGap() → Gap[0, 990] (was recorded in iteration 1!)
+    → tryFillOldestGap():
+      → listBatchFiles(runId, null, 1, startTick=0, endTick=990)
+      → Storage returns: ["batch_0_990"]
+      → Found batch in gap!
+      → Return "batch_0_990"
+    → gap = Gap[0, 990] (stored before call)
+    → processOneBatch(batch_0_990)
+      → tryClaim, read, buffer, markCompleted
+      → maxCompleted now = 2990 (unchanged, not necessarily sequential!)
+    → splitGapAfterBatch(gap[0, 990], batchStart=0, batchEnd=990)
+      → Gap fully filled! No sub-gaps created.
+      → DELETE gap[0, 990]
+    → Return true (processed gap batch)
+
 Next iteration:
-  → Discovers batch_1000-1999 with status 'ready'
-  → hasGapBefore(1000)? NO (batch 0-999 completed)
-  → tryClaim → SUCCESS → process
+  → PHASE 1: getOldestPendingGap() → null (gap filled!)
+  → PHASE 2: Continue with batch_3000... 
 ```
+
+**Result:** Gap [0, 990] was detected when first batch had tick_start=1000 > 0, then filled when batch_0-990 appeared!
 
 ### Permanent Gap Detection
 
 ```
-t=0s:  Indexer finds batch_1000-1999, marks as gap_pending (first_gap_detection_timestamp set)
-t=5s:  Indexer re-checks, still gap_pending (no warning yet)
-t=60s: Gap persisted beyond gapWarningTimeoutMs (default: 60s)
-       → markGapPermanent(batch_1000-1999)
-       → Status: gap_pending → gap_permanent
-       → logs WARNING (only once!)
-       → permanentGapsDetected counter++
-       
-t=65s: Indexer discovers batch_1000-1999 again
-       → hasGapBefore(1000)? YES (gap_permanent exists)
-       → Skip (no re-check, no re-warning)
-       → Pipeline continues with other batches
+t=0s:  Storage has: batch_2000-2990, batch_3000-3990
+       Indexer processes batch_2000-2990 (first batch!)
+       → detectAndRecordGap(2000):
+         → maxCompleted = -1, batchStart = 2000 > 0
+         → recordGap([0, 1990])  ← Gap before first batch!
+       → coordinator_gaps: [(0, 1990, t=0s, 'pending')]
+
+t=5s:  Indexer Loop - PHASE 1 (Gap Filling):
+       → tryFillOldestGap():
+         → Get gap [0, 1990]
+         → gapAge = 5s < 60s (not permanent yet)
+         → listBatchFiles(runId, null, 1, startTick=0, endTick=1990)
+         → Storage returns: [] (batch_0-990 still not there)
+         → Return null
+       → PHASE 2: Process next batch (batch_3000...)
+
+t=60s: Indexer Loop - PHASE 1:
+       → tryFillOldestGap():
+         → Get gap [0, 1990]
+         → gapAge = 60s >= 60s (timeout!)
+         → markGapPermanent(0)
+           → UPDATE coordinator_gaps SET status='permanent' WHERE gap_start=0
+         → log.warn("Permanent gap: [0, 1990] missing for 60s, marked as permanent")
+         → permanentGapsDetected++
+         → Return null (no processing)
+
+t=65s: Indexer Loop - PHASE 1:
+       → getOldestPendingGap():
+         → SQL: WHERE status='pending'
+         → Gap [0, 1990] has status='permanent' → skipped!
+         → Return null
+       → PHASE 2: Continue with new batches
 ```
 
-**Result:** Gap marked as permanent in DB, warning logged once, batch never processed.
+**Result:** Gap [0, 1990] marked as permanent in DB, warning logged once, never searched again, pipeline continues.
 
 ## Package Structure
 
 ```
 org.evochora.datapipeline.api.resources.database/
-  - ISchemaAwareDatabase.java          # Base interface for schema-aware operations (NEW)
-  - IMetadataWriter.java               # Write metadata (renamed, extends ISchemaAwareDatabase)
-  - IMetadataReader.java               # Read metadata (NEW, extends ISchemaAwareDatabase)
-  - IBatchCoordinator.java             # Batch coordination init (NEW, fluent API)
-  - IBatchCoordinatorReady.java        # Batch coordination ready (NEW, fluent API)
-  - MetadataNotFoundException.java     # Exception for metadata not found (NEW)
-  - BatchAlreadyClaimedException.java  # Exception for duplicate claims (NEW)
+  - ISchemaAwareDatabase.java          # EXISTING - Base interface for schema-aware operations
+  - IMetadataWriter.java               # EXISTING - Write metadata (extends ISchemaAwareDatabase)
+  - IMetadataReader.java               # NEW - Read metadata (extends ISchemaAwareDatabase)
+  - IBatchCoordinator.java             # NEW - Batch coordination init (fluent API)
+  - IBatchCoordinatorReady.java        # NEW - Batch coordination ready (fluent API)
+  - MetadataNotFoundException.java     # NEW - Exception for metadata not found
+  - BatchAlreadyClaimedException.java  # NEW - Exception for duplicate claims
+  - GapInfo.java                       # NEW - Value object for gap information
 
 org.evochora.datapipeline.resources.database/
-  - AbstractDatabaseResource.java      # Base class (extended with do* methods)
-  - H2Database.java                    # H2 implementation (extended with coordination + metadata)
-  - MetadataWriterWrapper.java         # IMetadataWriter wrapper (renamed)
-  - MetadataReaderWrapper.java         # IMetadataReader wrapper (NEW)
-  - BatchCoordinatorWrapper.java       # IBatchCoordinator + Ready wrapper (NEW)
+  - AbstractDatabaseResource.java      # EXISTING - Extended with do* methods for coordination + metadata reading
+  - AbstractDatabaseWrapper.java       # NEW - Base class for all DB wrappers (DRY for common functionality)
+  - H2Database.java                    # EXISTING - Extended with coordination + metadata + gap methods
+  - MetadataWriterWrapper.java         # EXISTING - IMetadataWriter wrapper
+  - MetadataReaderWrapper.java         # NEW - Extends AbstractDatabaseWrapper
+  - BatchCoordinatorWrapper.java       # NEW - Extends AbstractDatabaseWrapper (fluent API)
 
 org.evochora.datapipeline.services.indexers/
-  - AbstractIndexer.java               # Minimal base (storage + run discovery)
-  - AbstractBatchProcessingIndexer.java # Batch processing with component support (NEW)
-  - MetadataIndexer.java               # Metadata indexing (unchanged)
-  - DummyIndexer.java                  # Test indexer with all components (NEW)
+  - AbstractIndexer.java               # EXISTING - Storage + run discovery + schema management (prepareSchema)
+  - AbstractBatchProcessingIndexer.java # NEW - Batch processing loop with component support
+  - MetadataIndexer.java               # EXISTING - Metadata indexing (no changes)
+  - DummyIndexer.java                  # NEW - Test indexer with all components
   └── components/
-      - MetadataReadingComponent.java  # Metadata polling and caching (NEW)
-      - BatchCoordinationComponent.java # Coordination wrapper (NEW)
-      - GapDetectionComponent.java     # Gap detection and handling (NEW)
-      - TickBufferingComponent.java    # Tick buffering logic (NEW)
+      - MetadataReadingComponent.java  # NEW - Metadata polling and caching
+      - BatchCoordinationComponent.java # NEW - Coordination wrapper
+      - GapDetectionComponent.java     # NEW - Gap detection and handling
+      - TickBufferingComponent.java    # NEW - Tick buffering logic
 ```
 
 ## Database Capability Interfaces
 
-### ISchemaAwareDatabase
-
-Base interface for all database capabilities that operate within a simulation run schema:
-
-```java
-/**
- * Base capability for database operations that work within a simulation run schema.
- * <p>
- * All database capabilities that operate on run-specific data extend this interface.
- * The schema is set once per wrapper instance by AbstractIndexer after run discovery.
- * <p>
- * <strong>Lifecycle:</strong>
- * <ol>
- *   <li>AbstractIndexer discovers runId</li>
- *   <li>AbstractIndexer calls setSimulationRun(runId) on ALL ISchemaAwareDatabase resources</li>
- *   <li>All subsequent operations on these wrappers work within the set schema</li>
- * </ol>
- */
-public interface ISchemaAwareDatabase extends IResource {
-    /**
-     * Sets the active database schema for this wrapper's connection.
-     * <p>
-     * Must be called once before any schema-specific operations.
-     * AbstractIndexer calls this automatically for all database resources after run discovery.
-     * <p>
-     * Implementation executes: SET SCHEMA schema_name
-     * 
-     * @param simulationRunId Raw simulation run ID (sanitized internally to schema name)
-     */
-    void setSimulationRun(String simulationRunId);
-}
-```
-
-### IBatchCoordinator
+### IBatchCoordinator (NEW)
 
 ```java
 /**
@@ -619,16 +649,6 @@ protected abstract void doMarkGapPermanent(Object connection, String indexerClas
 // Metadata reading methods (NEW)
 protected abstract SimulationMetadata doGetMetadata(Object connection, String simulationRunId) throws Exception;
 protected abstract boolean doHasMetadata(Object connection, String simulationRunId) throws Exception;
-```
-
-**GapInfo Record:**
-```java
-public record GapInfo(
-    long gapStartTick,
-    long gapEndTick,
-    Instant firstDetected,
-    String status
-) {}
 ```
 
 These methods are called by their respective wrappers (BatchCoordinatorWrapper, MetadataReaderWrapper) and implemented by concrete database classes (H2Database, PostgreSQLDatabase, etc.).
@@ -1057,9 +1077,7 @@ class BatchCoordinatorWrapper implements IBatchCoordinator, IBatchCoordinatorRea
     private final SlidingWindowPercentiles tryClaimLatency;
     private final SlidingWindowPercentiles markCompletedLatency;
     private final SlidingWindowPercentiles markFailedLatency;
-    private final SlidingWindowPercentiles markGapPendingLatency;
-    private final SlidingWindowPercentiles hasGapBeforeLatency;
-    private final SlidingWindowPercentiles releaseGapPendingLatency;
+    private final SlidingWindowPercentiles gapOperationsLatency;
     
     // Error tracking
     private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
@@ -1084,9 +1102,7 @@ class BatchCoordinatorWrapper implements IBatchCoordinator, IBatchCoordinatorRea
         this.tryClaimLatency = new SlidingWindowPercentiles(windowSeconds);
         this.markCompletedLatency = new SlidingWindowPercentiles(windowSeconds);
         this.markFailedLatency = new SlidingWindowPercentiles(windowSeconds);
-        this.markGapPendingLatency = new SlidingWindowPercentiles(windowSeconds);
-        this.hasGapBeforeLatency = new SlidingWindowPercentiles(windowSeconds);
-        this.releaseGapPendingLatency = new SlidingWindowPercentiles(windowSeconds);
+        this.gapOperationsLatency = new SlidingWindowPercentiles(windowSeconds);
     }
     
     @Override
@@ -1169,81 +1185,77 @@ class BatchCoordinatorWrapper implements IBatchCoordinator, IBatchCoordinatorRea
     }
     
     @Override
-    public void markGapPending(String batchFilename, long tickStart, long tickEnd) {
+    public long getMaxCompletedTickEnd() {
         ensureIndexerClassSet();
-        long startNanos = System.nanoTime();
-        
         try {
-            database.doMarkGapPending(dedicatedConnection, indexerClass, batchFilename, tickStart, tickEnd);
-            gapsPending.incrementAndGet();
-            markGapPendingLatency.record(System.nanoTime() - startNanos);
-            
+            return database.doGetMaxCompletedTickEnd(dedicatedConnection, indexerClass);
         } catch (Exception e) {
-            recordError("MARK_GAP_PENDING_FAILED", "Failed to mark batch as gap pending",
-                       "Batch: " + batchFilename + ", Error: " + e.getMessage());
-            throw new RuntimeException("Failed to mark gap pending: " + batchFilename, e);
+            recordError("GET_MAX_TICK_END_FAILED", "Failed to get max completed tick",
+                       "Error: " + e.getMessage());
+            throw new RuntimeException("Failed to get max completed tick", e);
         }
     }
     
     @Override
-    public void markGapPermanent(String batchFilename) {
+    public void recordGap(long gapStart, long gapEnd) {
         ensureIndexerClassSet();
+        long startNanos = System.nanoTime();
         
         try {
-            database.doMarkGapPermanent(dedicatedConnection, indexerClass, batchFilename);
-            // Note: permanentGapsDetected counter is in GapDetectionComponent
+            database.doRecordGap(dedicatedConnection, indexerClass, gapStart, gapEnd);
+            gapsPending.incrementAndGet();
+            gapOperationsLatency.record(System.nanoTime() - startNanos);
+            
+        } catch (Exception e) {
+            recordError("RECORD_GAP_FAILED", "Failed to record gap",
+                       "Gap: [" + gapStart + ", " + gapEnd + "], Error: " + e.getMessage());
+            throw new RuntimeException("Failed to record gap: [" + gapStart + ", " + gapEnd + "]", e);
+        }
+    }
+    
+    @Override
+    public GapInfo getOldestPendingGap() {
+        ensureIndexerClassSet();
+        try {
+            return database.doGetOldestPendingGap(dedicatedConnection, indexerClass);
+        } catch (Exception e) {
+            recordError("GET_OLDEST_GAP_FAILED", "Failed to get oldest pending gap",
+                       "Error: " + e.getMessage());
+            throw new RuntimeException("Failed to get oldest pending gap", e);
+        }
+    }
+    
+    @Override
+    public void splitGap(long oldGapStart, long oldGapEnd, long foundBatchStart, long foundBatchEnd, int samplingInterval) {
+        ensureIndexerClassSet();
+        long startNanos = System.nanoTime();
+        
+        try {
+            database.doSplitGap(dedicatedConnection, indexerClass, oldGapStart, oldGapEnd, 
+                              foundBatchStart, foundBatchEnd, samplingInterval);
+            gapsReleased.incrementAndGet();
+            gapOperationsLatency.record(System.nanoTime() - startNanos);
+            
+        } catch (Exception e) {
+            recordError("SPLIT_GAP_FAILED", "Failed to split gap",
+                       "OldGap: [" + oldGapStart + ", " + oldGapEnd + "], FoundBatch: [" + foundBatchStart + ", " + foundBatchEnd + "]");
+            throw new RuntimeException("Failed to split gap", e);
+        }
+    }
+    
+    @Override
+    public void markGapPermanent(long gapStart) {
+        ensureIndexerClassSet();
+        long startNanos = System.nanoTime();
+        
+        try {
+            database.doMarkGapPermanent(dedicatedConnection, indexerClass, gapStart);
+            gapOperationsLatency.record(System.nanoTime() - startNanos);
             
         } catch (Exception e) {
             recordError("MARK_GAP_PERMANENT_FAILED", "Failed to mark gap as permanent",
-                       "Batch: " + batchFilename + ", Error: " + e.getMessage());
-            throw new RuntimeException("Failed to mark gap permanent: " + batchFilename, e);
-        }
-    }
-    
-    @Override
-    public boolean hasGapBefore(long batchStartTick, int samplingInterval) {
-        ensureIndexerClassSet();
-        long startNanos = System.nanoTime();
-        
-        try {
-            boolean hasGap = database.doHasGapBefore(dedicatedConnection, indexerClass, batchStartTick, samplingInterval);
-            hasGapBeforeLatency.record(System.nanoTime() - startNanos);
-            
-            return hasGap;
-            
-        } catch (Exception e) {
-            recordError("HAS_GAP_BEFORE_FAILED", "Failed to check for gap",
-                       "TickStart: " + batchStartTick + ", Error: " + e.getMessage());
-            throw new RuntimeException("Failed to check gap before tick: " + batchStartTick, e);
-        }
-    }
-    
-    @Override
-    public Instant getGapPendingSince(long batchStartTick) {
-        ensureIndexerClassSet();
-        try {
-            return database.doGetGapPendingSince(dedicatedConnection, indexerClass, batchStartTick);
-        } catch (Exception e) {
-            recordError("GET_GAP_PENDING_SINCE_FAILED", "Failed to get gap pending timestamp",
-                       "TickStart: " + batchStartTick + ", Error: " + e.getMessage());
-            throw new RuntimeException("Failed to get gap pending since: " + batchStartTick, e);
-        }
-    }
-    
-    @Override
-    public void releaseGapPendingBatches(long completedTickEnd, int samplingInterval) {
-        ensureIndexerClassSet();
-        long startNanos = System.nanoTime();
-        
-        try {
-            database.doReleaseGapPendingBatches(dedicatedConnection, indexerClass, completedTickEnd, samplingInterval);
-            gapsReleased.incrementAndGet();
-            releaseGapPendingLatency.record(System.nanoTime() - startNanos);
-            
-        } catch (Exception e) {
-            recordError("RELEASE_GAP_PENDING_FAILED", "Failed to release gap pending batches",
-                       "CompletedTickEnd: " + completedTickEnd + ", Error: " + e.getMessage());
-            throw new RuntimeException("Failed to release gap pending batches", e);
+                       "GapStart: " + gapStart + ", Error: " + e.getMessage());
+            throw new RuntimeException("Failed to mark gap permanent: " + gapStart, e);
         }
     }
     
@@ -1610,20 +1622,24 @@ public class BatchCoordinationComponent {
         coordinator.markFailed(batchFilename, errorMessage);
     }
     
-    public void markGapPending(String batchFilename, long tickStart, long tickEnd) {
-        coordinator.markGapPending(batchFilename, tickStart, tickEnd);
+    public long getMaxCompletedTickEnd() {
+        return coordinator.getMaxCompletedTickEnd();
     }
     
-    public boolean hasGapBefore(long batchStartTick, int samplingInterval) {
-        return coordinator.hasGapBefore(batchStartTick, samplingInterval);
+    public void recordGap(long gapStart, long gapEnd) {
+        coordinator.recordGap(gapStart, gapEnd);
     }
     
-    public Instant getGapPendingSince(long batchStartTick) {
-        return coordinator.getGapPendingSince(batchStartTick);
+    public GapInfo getOldestPendingGap() {
+        return coordinator.getOldestPendingGap();
     }
     
-    public void releaseGapPendingBatches(long completedTickEnd, int samplingInterval) {
-        coordinator.releaseGapPendingBatches(completedTickEnd, samplingInterval);
+    public void splitGap(long oldGapStart, long oldGapEnd, long foundBatchStart, long foundBatchEnd, int samplingInterval) {
+        coordinator.splitGap(oldGapStart, oldGapEnd, foundBatchStart, foundBatchEnd, samplingInterval);
+    }
+    
+    public void markGapPermanent(long gapStart) {
+        coordinator.markGapPermanent(gapStart);
     }
 }
 ```
@@ -1634,62 +1650,137 @@ public class BatchCoordinationComponent {
 /**
  * Component for detecting and handling gaps in batch sequences.
  * <p>
- * Requires MetadataReadingComponent (for samplingInterval) and 
- * BatchCoordinationComponent (for database queries).
+ * Manages gap tracking lifecycle:
+ * <ul>
+ *   <li>Detect gaps when new batches are discovered</li>
+ *   <li>Actively search for batches within known gaps</li>
+ *   <li>Split gaps when batches are found within them</li>
+ *   <li>Mark gaps as permanent after timeout</li>
+ * </ul>
+ * <p>
+ * Requires MetadataReadingComponent (samplingInterval) and BatchCoordinationComponent (database operations).
  */
 public class GapDetectionComponent {
     private static final Logger log = LoggerFactory.getLogger(GapDetectionComponent.class);
     
     private final MetadataReadingComponent metadata;
     private final BatchCoordinationComponent coordination;
+    private final IBatchStorageRead storage;
     private final long gapWarningTimeoutMs;
     private final AtomicLong permanentGapsDetected = new AtomicLong(0);
     
     public GapDetectionComponent(MetadataReadingComponent metadata,
                                 BatchCoordinationComponent coordination,
+                                IBatchStorageRead storage,
                                 long gapWarningTimeoutMs) {
         this.metadata = metadata;
         this.coordination = coordination;
+        this.storage = storage;
         this.gapWarningTimeoutMs = gapWarningTimeoutMs;
     }
     
     /**
-     * Checks if there is a gap before the given batch.
-     * Uses deterministic formula: previousBatch.tick_end + samplingInterval == batchStartTick
+     * Detects gap before a new batch and records it in database.
+     * <p>
+     * Handles two cases:
+     * <ul>
+     *   <li>First batch with tick_start > 0: Record gap [0, tickStart - samplingInterval]</li>
+     *   <li>Subsequent batches: Check if expectedNext != batchStart</li>
+     * </ul>
      */
-    public boolean hasGapBefore(long batchStartTick) {
-        return coordination.hasGapBefore(batchStartTick, metadata.getSamplingInterval());
-    }
-    
-    /**
-     * Marks a batch as gap-pending and checks if the gap has persisted too long.
-     * If timeout exceeded, marks gap as permanent and logs WARNING (only once).
-     */
-    public void handleGap(String batchFilename, long tickStart, long tickEnd) {
-        coordination.markGapPending(batchFilename, tickStart, tickEnd);
+    public void detectAndRecordGap(String runId, long batchStartTick) {
+        long maxCompleted = coordination.getMaxCompletedTickEnd();
+        int samplingInterval = metadata.getSamplingInterval();
         
-        // Check if gap has persisted beyond warning threshold
-        Instant gapSince = coordination.getGapPendingSince(tickStart);
-        if (gapSince != null) {
-            long gapDurationMs = System.currentTimeMillis() - gapSince.toEpochMilli();
-            if (gapDurationMs > gapWarningTimeoutMs) {
-                // Mark as permanent (status: gap_pending → gap_permanent)
-                coordination.markGapPermanent(batchFilename);
-                permanentGapsDetected.incrementAndGet();
+        if (maxCompleted == -1) {
+            // This is the first batch we're processing
+            if (batchStartTick > 0) {
+                // Gap before first batch! (batches from tick 0 are missing)
+                long gapStart = 0;
+                long gapEnd = batchStartTick - samplingInterval;
                 
-                // Log warning ONLY when marking as permanent (not on subsequent checks)
-                log.warn("Permanent gap: batch {} missing for {}s (threshold: {}s), marked as permanent. " +
-                        "Data may be incomplete.",
-                        batchFilename, gapDurationMs / 1000, gapWarningTimeoutMs / 1000);
+                log.debug("Gap before first batch: [{}, {}], first batch starts at {}", 
+                         gapStart, gapEnd, batchStartTick);
+                
+                coordination.recordGap(gapStart, gapEnd);
             }
+            return;
+        }
+        
+        // Check for gap after last completed batch
+        long expectedNext = maxCompleted + samplingInterval;
+        
+        if (batchStartTick != expectedNext) {
+            // Gap detected!
+            long gapStart = expectedNext;
+            long gapEnd = batchStartTick - samplingInterval;
+            
+            log.debug("Gap detected: [{}, {}] before batch starting at {}", 
+                     gapStart, gapEnd, batchStartTick);
+            
+            coordination.recordGap(gapStart, gapEnd);
         }
     }
     
     /**
-     * Releases gap-pending batches that can now be processed after completing a batch.
+     * Tries to fill the oldest pending gap by searching storage.
+     * <p>
+     * @param runId Simulation run ID
+     * @return Filename of found batch, or null if gap still empty
      */
-    public void releaseGaps(long completedTickEnd) {
-        coordination.releaseGapPendingBatches(completedTickEnd, metadata.getSamplingInterval());
+    public String tryFillOldestGap(String runId) throws Exception {
+        GapInfo gap = coordination.getOldestPendingGap();
+        
+        if (gap == null) {
+            return null; // No gaps
+        }
+        
+        // Check timeout
+        long gapAge = System.currentTimeMillis() - gap.firstDetected().toEpochMilli();
+        if (gapAge > gapWarningTimeoutMs) {
+            // Mark as permanent
+            coordination.markGapPermanent(gap.gapStartTick());
+            permanentGapsDetected.incrementAndGet();
+            
+            log.warn("Permanent gap: [{}, {}] missing for {}s (threshold: {}s), marked as permanent. " +
+                    "Data incomplete.",
+                    gap.gapStartTick(), gap.gapEndTick(), gapAge / 1000, gapWarningTimeoutMs / 1000);
+            
+            return null; // Gap is permanent, no filling
+        }
+        
+        // Search for batches within gap range
+        BatchFileListResult result = storage.listBatchFiles(
+            runId + "/",
+            null,
+            1,  // Only need first batch in gap
+            gap.gapStartTick(),
+            gap.gapEndTick()
+        );
+        
+        if (result.getFilenames().isEmpty()) {
+            return null; // Gap still empty
+        }
+        
+        // Found batch in gap!
+        String foundBatch = result.getFilenames().get(0);
+        log.info("Found batch in gap: {} fills part of gap [{}, {}]",
+                foundBatch, gap.gapStartTick(), gap.gapEndTick());
+        
+        return foundBatch;
+    }
+    
+    /**
+     * Splits a gap after processing a batch that was found within it.
+     */
+    public void splitGapAfterBatch(GapInfo gap, long foundBatchStart, long foundBatchEnd) {
+        coordination.splitGap(
+            gap.gapStartTick(),
+            gap.gapEndTick(),
+            foundBatchStart,
+            foundBatchEnd,
+            metadata.getSamplingInterval()
+        );
     }
     
     public long getPermanentGapsDetected() {
@@ -1779,117 +1870,15 @@ public class TickBufferingComponent {
 }
 ```
 
-## AbstractIndexer (Unchanged)
+## AbstractIndexer (Reference)
 
-AbstractIndexer remains minimal - only storage access and run discovery:
+**Note:** AbstractIndexer already exists and provides:
+- Storage access (`IBatchStorageRead`)
+- Run ID discovery (configured or timestamp-based)
+- Schema management (`prepareSchema()` template method, `setSchemaForAllDatabaseResources()`)
+- Batch filename parsing utilities (`parseBatchStartTick()`, `parseBatchEndTick()`)
 
-```java
-public abstract class AbstractIndexer extends AbstractService {
-    
-    protected final IBatchStorageRead storage;
-    protected final Config indexerOptions;
-    private final String configuredRunId;
-    private final int pollIntervalMs;
-    private final int maxPollDurationMs;
-    private final Instant indexerStartTime;
-    
-    protected AbstractIndexer(String name, Config options, Map<String, List<IResource>> resources) {
-        super(name, options, resources);
-        
-        this.storage = getRequiredResource("storage", IBatchStorageRead.class);
-        this.indexerOptions = options;
-        
-        // Run discovery config
-        this.configuredRunId = options.hasPath("runId") ? options.getString("runId") : null;
-        this.pollIntervalMs = options.hasPath("pollIntervalMs") ? options.getInt("pollIntervalMs") : 1000;
-        this.maxPollDurationMs = options.hasPath("maxPollDurationMs") ? options.getInt("maxPollDurationMs") : 300000;
-        this.indexerStartTime = Instant.now();
-    }
-    
-    // Modified: discoverRunId now handles schema preparation
-    protected String discoverRunId() throws Exception {
-        // 1. Discover runId (configured or timestamp-based)
-        String runId = null;
-        
-        if (configuredRunId != null) {
-            runId = configuredRunId;
-            log.info("Using configured runId: {}", runId);
-        } else {
-            // Timestamp-based discovery...
-            runId = discoverFromTimestamp();
-        }
-        
-        if (runId == null) {
-            throw new InterruptedException("Run ID discovery failed");
-        }
-        
-        // 2. Prepare schema (template method hook - default no-op, MetadataIndexer creates schema)
-        prepareSchema(runId);
-        
-        // 3. Set schema for all database resources
-        setSchemaForAllDatabaseResources(runId);
-        
-        return runId;
-    }
-    
-    /**
-     * Template method hook for schema preparation (e.g., schema creation).
-     * This is called by discoverRunId() after the runId is discovered but before
-     * setSchemaForAllDatabaseResources() is called.
-     * <p>
-     * Default implementation does nothing. Override to perform schema setup tasks
-     * (e.g., MetadataIndexer overrides this to create the schema).
-     *
-     * @param runId the simulation run ID
-     * @throws Exception if schema preparation fails
-     */
-    protected void prepareSchema(String runId) throws Exception {
-        // Default: no-op
-    }
-    
-    /**
-     * Sets the schema for all ISchemaAwareDatabase resources.
-     * <p>
-     * Called automatically by discoverRunId() after prepareSchema().
-     * Ensures all database wrappers (coordinator, metadata reader, etc.)
-     * operate within the correct simulation run schema.
-     *
-     * @param runId The simulation run ID
-     */
-    protected void setSchemaForAllDatabaseResources(String runId) {
-        for (List<IResource> resourceList : resources.values()) {
-            for (IResource resource : resourceList) {
-                if (resource instanceof ISchemaAwareDatabase) {
-                    ((ISchemaAwareDatabase) resource).setSimulationRun(runId);
-                    log.debug("Set schema for database resource: {}", resource.getResourceName());
-                }
-            }
-        }
-    }
-    
-    // Utility methods for batch filename parsing
-    protected long parseBatchStartTick(String batchFilename) {
-        String basename = batchFilename.substring(batchFilename.lastIndexOf('/') + 1);
-        String[] parts = basename.split("_");
-        if (parts.length >= 2) {
-            return Long.parseLong(parts[1]);
-        }
-        throw new IllegalArgumentException("Invalid batch filename format: " + batchFilename);
-    }
-    
-    protected long parseBatchEndTick(String batchFilename) {
-        String basename = batchFilename.substring(batchFilename.lastIndexOf('/') + 1);
-        String[] parts = basename.split("_");
-        if (parts.length >= 3) {
-            String endTickStr = parts[2].replaceAll("\\.[^.]+$", "");
-            return Long.parseLong(endTickStr);
-        }
-        throw new IllegalArgumentException("Invalid batch filename format: " + batchFilename);
-    }
-    
-    protected abstract void indexRun(String runId) throws Exception;
-}
-```
+See existing implementation. No changes required for this phase.
 
 ## AbstractBatchProcessingIndexer
 
@@ -1919,6 +1908,9 @@ public abstract class AbstractBatchProcessingIndexer extends AbstractIndexer {
     protected BatchCoordinationComponent coordination;
     protected GapDetectionComponent gapDetection;
     protected TickBufferingComponent buffering;
+    
+    // Pagination state
+    private String continuationToken = null;
     
     protected AbstractBatchProcessingIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
@@ -1958,56 +1950,98 @@ public abstract class AbstractBatchProcessingIndexer extends AbstractIndexer {
     
     /**
      * Process one iteration of batch discovery and claiming.
-     * @return true if any batch was processed, false if no batches available
+     * <p>
+     * Priority: Gap filling → New batches
+     * 
+     * @return true if any batch was processed, false if nothing available
      */
     private boolean processBatchDiscoveryIteration(String runId) throws Exception {
-        // List available batches from storage
-        List<String> availableBatches = storage.listBatchFiles(runId + "/tickdata/", null, 100)
-            .getFilenames();
         
-        for (String batchFilename : availableBatches) {
-            long tickStart = parseBatchStartTick(batchFilename);
-            long tickEnd = parseBatchEndTick(batchFilename);
+        // PHASE 1: Try to fill gaps (priority!)
+        if (gapDetection != null) {
+            String gapBatch = gapDetection.tryFillOldestGap(runId);
             
-            // Gap detection (if component present)
-            if (gapDetection != null && gapDetection.hasGapBefore(tickStart)) {
-                gapDetection.handleGap(batchFilename, tickStart, tickEnd);
-                continue; // Skip gap-pending or gap-permanent batch
-            }
-            
-            // Coordination (if component present) - try to claim
-            if (coordination != null) {
-                if (!coordination.tryClaim(batchFilename, tickStart, tickEnd)) {
-                    continue; // Already claimed by another indexer
-                }
-            }
-            
-            // Read batch
-            List<TickData> ticks = storage.readBatch(batchFilename);
-            
-            // Buffering (if component present)
-            if (buffering != null) {
-                buffering.addTicks(batchFilename, ticks);
+            if (gapBatch != null) {
+                // Found batch in gap!
+                long tickStart = parseBatchStartTick(gapBatch);
+                long tickEnd = parseBatchEndTick(gapBatch);
                 
-                if (buffering.shouldFlush()) {
-                    flushBuffer();
-                }
-            } else {
-                // No buffering - process immediately
-                processBatch(ticks);
+                // Store gap info for splitting later
+                GapInfo gap = coordination.getOldestPendingGap();
                 
-                if (coordination != null) {
-                    coordination.markCompleted(batchFilename);
-                    if (gapDetection != null) {
-                        gapDetection.releaseGaps(tickEnd);
+                // Process the batch
+                if (processOneBatch(gapBatch, tickStart, tickEnd)) {
+                    // Split gap after successful processing
+                    if (gap != null) {
+                        gapDetection.splitGapAfterBatch(gap, tickStart, tickEnd);
                     }
+                    return true; // Return immediately to check for new gaps
                 }
             }
-            
-            return true; // Processed a batch
         }
         
-        return false; // No batches available
+        // PHASE 2: Discover new batches from storage
+        String batchPath = indexerOptions.hasPath("batchPath") 
+            ? indexerOptions.getString("batchPath")
+            : runId + "/";
+        
+        BatchFileListResult result = storage.listBatchFiles(batchPath, continuationToken, 1);
+        
+        if (result.getFilenames().isEmpty()) {
+            return false; // No new batches
+        }
+        
+        String batchFilename = result.getFilenames().get(0);
+        long tickStart = parseBatchStartTick(batchFilename);
+        long tickEnd = parseBatchEndTick(batchFilename);
+        
+        // Detect gaps before new batch (if component present)
+        if (gapDetection != null) {
+            gapDetection.detectAndRecordGap(runId, tickStart);
+        }
+        
+        // Process the batch (even if gap detected!)
+        if (processOneBatch(batchFilename, tickStart, tickEnd)) {
+            // Update continuation token
+            continuationToken = result.isTruncated() ? result.getNextContinuationToken() : null;
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Attempts to process one batch (claim, read, buffer).
+     * @return true if batch was processed, false if already claimed by another indexer
+     */
+    private boolean processOneBatch(String batchFilename, long tickStart, long tickEnd) throws Exception {
+        // Coordination (if component present) - try to claim
+        if (coordination != null) {
+            if (!coordination.tryClaim(batchFilename, tickStart, tickEnd)) {
+                return false; // Already claimed by another indexer
+            }
+        }
+        
+        // Read batch
+        List<TickData> ticks = storage.readBatch(batchFilename);
+        
+        // Buffering (if component present)
+        if (buffering != null) {
+            buffering.addTicks(batchFilename, ticks);
+            
+            if (buffering.shouldFlush()) {
+                flushBuffer();
+            }
+        } else {
+            // No buffering - process immediately
+            processBatch(ticks);
+            
+            if (coordination != null) {
+                coordination.markCompleted(batchFilename);
+            }
+        }
+        
+        return true;
     }
     
     /**
@@ -2111,10 +2145,10 @@ public class DummyIndexer extends AbstractBatchProcessingIndexer implements IMon
             instanceId
         );
         
-        // 3. Gap Detection (depends on metadata + coordination)
+        // 3. Gap Detection (depends on metadata + coordination + storage)
         long gapWarningTimeoutMs = options.hasPath("gapWarningTimeoutMs") 
             ? options.getLong("gapWarningTimeoutMs") : 60000;
-        this.gapDetection = new GapDetectionComponent(metadata, coordination, gapWarningTimeoutMs);
+        this.gapDetection = new GapDetectionComponent(metadata, coordination, storage, gapWarningTimeoutMs);
         
         // 4. Tick Buffering
         int insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 1000;
@@ -2181,22 +2215,7 @@ public class DummyIndexer extends AbstractBatchProcessingIndexer implements IMon
 
 ## Configuration
 
-### Database Resource
-
-```hocon
-mydb {
-  className = "org.evochora.datapipeline.resources.database.H2Database"
-  options {
-    dataDirectory = "${user.home}/evochora/data"
-    maxPoolSize = 10
-    minIdle = 2
-    connectionTimeout = 30000
-    
-    # Performance metrics window size for sliding window calculations (default: 5 seconds)
-    metricsWindowSeconds = 5
-  }
-}
-```
+**Note:** Database resource `index-database` is already configured in `evochora.conf` - no changes needed.
 
 ### DummyIndexer Service
 
@@ -2206,8 +2225,8 @@ dummy-indexer-1 {
   
   resources {
     storage = "storage-read:tick-storage"
-    metadataReader = "db-meta-read:mydb"
-    coordinator = "db-coordinator:mydb"
+    metadataReader = "db-meta-read:index-database"
+    coordinator = "db-coordinator:index-database"
   }
   
   options {
@@ -2218,6 +2237,9 @@ dummy-indexer-1 {
     # Run discovery polling (parallel mode)
     pollIntervalMs = 1000
     maxPollDurationMs = 300000  # 5 minutes
+    
+    # Optional: Override batch path (default: runId + "/")
+    # batchPath = "custom/path/"
     
     # Tick buffering
     insertBatchSize = 5000      # Accumulate 5000 ticks before "processing"
@@ -2233,8 +2255,8 @@ dummy-indexer-2 {
   className = "org.evochora.datapipeline.services.indexers.DummyIndexer"
   resources {
     storage = "storage-read:tick-storage"
-    metadataReader = "db-meta-read:mydb"
-    coordinator = "db-coordinator:mydb"
+    metadataReader = "db-meta-read:index-database"
+    coordinator = "db-coordinator:index-database"
   }
   options {
     pollIntervalMs = 1000
@@ -2251,9 +2273,10 @@ dummy-indexer-2 {
 
 **BatchCoordinatorWrapperTest:**
 - Test atomic claim operations (multiple threads competing)
-- Test markCompleted, markFailed, markGapPending
-- Test hasGapBefore with various scenarios
-- Test releaseGapPendingBatches
+- Test markCompleted, markFailed
+- Test recordGap, getOldestPendingGap
+- Test splitGap with various batch sizes
+- Test markGapPermanent
 - Mock AbstractDatabaseResource
 
 **MetadataReaderWrapperTest:**
@@ -2261,9 +2284,16 @@ dummy-indexer-2 {
 - Test hasMetadata
 - Mock AbstractDatabaseResource
 
-**AbstractIndexerTest:**
-- Test tick buffering (smaller/larger than storage batch size)
-- Test flush timeout behavior
+**Component Tests:**
+- `MetadataReadingComponentTest`: Test polling, timeout, caching
+- `BatchCoordinationComponentTest`: Test fluent API, claim wrapping
+- `GapDetectionComponentTest`: Test gap detection, splitting, permanent marking
+- `TickBufferingComponentTest`: Test buffering, flush triggers
+
+**AbstractBatchProcessingIndexerTest:**
+- Test component composition (null vs non-null components)
+- Test batch loop with/without gaps
+- Test pagination with continuation token
 - Test gap detection logic
 - Test parseBatchStartTick/parseBatchEndTick
 - Mock storage, coordinator, metadataReader
@@ -2325,10 +2355,6 @@ class DummyIndexerIntegrationTest {
     }
     
     @Test
-    @AllowLog(logger = "org.evochora.datapipeline.services.indexers.DummyIndexer",
-              level = INFO, message = "DummyIndexer started: *")
-    @AllowLog(logger = "org.evochora.datapipeline.services.indexers.DummyIndexer",
-              level = INFO, message = "Starting batch processing: *")
     void testSingleIndexer_ProcessesAllBatches() throws Exception {
         // Setup: Create metadata and batch files
         String runId = createTestRun(samplingInterval = 10, numBatches = 5);
@@ -2361,8 +2387,6 @@ class DummyIndexerIntegrationTest {
     }
     
     @Test
-    @AllowLog(logger = "org.evochora.datapipeline.services.indexers.DummyIndexer",
-              level = INFO, message = "*")
     void testCompetingConsumers_NoDuplicateProcessing() throws Exception {
         // Setup: Create metadata and many batch files
         String runId = createTestRun(samplingInterval = 10, numBatches = 100);
@@ -2412,50 +2436,45 @@ class DummyIndexerIntegrationTest {
     }
     
     @Test
-    @AllowLog(logger = "org.evochora.datapipeline.services.indexers.DummyIndexer",
-              level = INFO, message = "*")
-    @AllowLog(logger = "org.evochora.datapipeline.services.indexers.DummyIndexer",
-              level = WARN, message = "Permanent gap detected: *")
     void testGapDetection_TemporaryGap() throws Exception {
-        // Setup: Create metadata and batches with deliberate gap
-        String runId = createTestRun(samplingInterval = 10, numBatches = 5);
-        
-        // Simulate out-of-order arrival: batches 0, 2, 3, 4 (batch 1 missing initially)
-        deleteBatchFile(runId, batchIndex = 1);
+        // Setup: Out-of-order batches (batch 1 arrives late)
+        String runId = createTestRun(samplingInterval = 10);
+        createBatch(runId, tickStart=0, tickEnd=990);
+        createBatch(runId, tickStart=2000, tickEnd=2990);  // Gap! Missing batch 1000-1990
+        createBatch(runId, tickStart=3000, tickEnd=3990);
         
         DummyIndexer indexer = startIndexer(runId);
         
-        // Wait briefly - indexer should mark batch 2+ as gap_pending
-        Thread.sleep(2000);
+        // Wait for initial batches processed
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("batches_processed").intValue() >= 2);
         
-        // Verify batch 0 processed, batch 2+ pending
-        assertEquals(1, queryCompletedBatchCount(runId));
-        assertTrue(queryGapPendingBatchCount(runId) > 0);
+        // Verify gap recorded
+        assertEquals(2, queryCompletedBatchCount(runId));  // batch 0-990, 2000-2990
+        assertEquals(1, queryPendingGapCount(runId));      // Gap [1000, 1990]
         
         // Now "deliver" the missing batch
-        createBatchFile(runId, batchIndex = 1);
+        createBatch(runId, tickStart=1000, tickEnd=1990);
         
-        // Wait for gap to be filled and all batches processed
+        // Wait for gap to be filled
         await().atMost(10, TimeUnit.SECONDS)
-            .until(() -> indexer.getMetrics().get("batches_processed").intValue() == 5);
+            .until(() -> indexer.getMetrics().get("batches_processed").intValue() == 4);
         
         indexer.stop();
         
-        // Verify all batches completed
-        assertEquals(5, queryCompletedBatchCount(runId));
-        assertEquals(0, queryGapPendingBatchCount(runId));
+        // Verify all batches completed, no gaps remaining
+        assertEquals(4, queryCompletedBatchCount(runId));
+        assertEquals(0, queryPendingGapCount(runId));
     }
     
     @Test
-    @AllowLog(logger = "org.evochora.datapipeline.services.indexers.DummyIndexer",
-              level = INFO, message = "*")
-    @ExpectLog(logger = "org.evochora.datapipeline.services.indexers.DummyIndexer",
-               level = WARN, 
-               message = "Permanent gap detected: expected batch at tick * has been missing for * seconds")
+    @ExpectLog(logger = "org.evochora.datapipeline.services.indexers.components.GapDetectionComponent",
+               level = WARN, message = "Permanent gap (data lost): [*, *)")
     void testGapDetection_PermanentGap() throws Exception {
-        // Setup: Batches with permanent gap (batch 1 never arrives)
-        String runId = createTestRun(samplingInterval = 10, numBatches = 3);
-        deleteBatchFile(runId, batchIndex = 1);
+        // Setup: Batches with permanent gap
+        String runId = createTestRun(samplingInterval = 10);
+        createBatch(runId, tickStart=0, tickEnd=990);
+        createBatch(runId, tickStart=3000, tickEnd=3990);  // Gap [1000, 2990] never filled
         
         // Configure short gap warning timeout for test
         Config config = ConfigFactory.parseString("""
@@ -2471,14 +2490,12 @@ class DummyIndexerIntegrationTest {
         
         indexer.stop();
         
-        // Verify: Batch 0 completed, batch 2+ still pending
-        assertEquals(1, queryCompletedBatchCount(runId));
-        assertTrue(queryGapPendingBatchCount(runId) > 0);
+        // Verify: 2 batches completed (0-990, 3000-3990), 1 gap marked permanent
+        assertEquals(2, queryCompletedBatchCount(runId));
+        assertEquals(1, queryPermanentGapCount(runId));  // Gap [1000, 2990]
     }
     
     @Test
-    @AllowLog(logger = "org.evochora.datapipeline.services.indexers.DummyIndexer",
-              level = INFO, message = "*")
     void testTickBuffering_SmallerInsertBatchSize() throws Exception {
         // Storage batches: 1000 ticks each
         // insertBatchSize: 500 ticks
@@ -2502,8 +2519,6 @@ class DummyIndexerIntegrationTest {
     }
     
     @Test
-    @AllowLog(logger = "org.evochora.datapipeline.services.indexers.DummyIndexer",
-              level = INFO, message = "*")
     void testTickBuffering_LargerInsertBatchSize() throws Exception {
         // Storage batches: 1000 ticks each
         // insertBatchSize: 5000 ticks
@@ -2527,8 +2542,6 @@ class DummyIndexerIntegrationTest {
     }
     
     @Test
-    @AllowLog(logger = "org.evochora.datapipeline.services.indexers.DummyIndexer",
-              level = INFO, message = "*")
     void testFlushTimeout_PartialBatch() throws Exception {
         // Small number of batches, long flushTimeout
         // Should flush partial buffer on shutdown
@@ -2562,13 +2575,21 @@ class DummyIndexerIntegrationTest {
     }
     
     private int queryCompletedBatchCount(String runId) {
-        // Query batch_processing table for completed batches
-        // ... implementation ...
+        // Query coordinator_batches table:
+        // SELECT COUNT(*) FROM coordinator_batches 
+        // WHERE indexer_class='DummyIndexer' AND status='completed'
     }
     
-    private int queryGapPendingBatchCount(String runId) {
-        // Query batch_processing table for gap_pending batches
-        // ... implementation ...
+    private int queryPendingGapCount(String runId) {
+        // Query coordinator_gaps table:
+        // SELECT COUNT(*) FROM coordinator_gaps 
+        // WHERE indexer_class='DummyIndexer' AND status='pending'
+    }
+    
+    private int queryPermanentGapCount(String runId) {
+        // Query coordinator_gaps table:
+        // SELECT COUNT(*) FROM coordinator_gaps 
+        // WHERE indexer_class='DummyIndexer' AND status='permanent'
     }
     
     // Test helper subclass that counts processBatch calls
@@ -2586,7 +2607,41 @@ class DummyIndexerIntegrationTest {
 
 ## Architectural Decisions
 
-### 1. Component-Based Architecture
+### 1. AbstractDatabaseWrapper Base Class (DRY)
+
+**Decision:** Introduce `AbstractDatabaseWrapper` as base class for all database capability wrappers.
+
+**Problem:** Without base class, each wrapper (MetadataReaderWrapper, BatchCoordinatorWrapper, etc.) duplicates ~150 lines of identical code:
+- Dedicated connection management
+- Schema setting (`setSimulationRun()` implementation)
+- Error tracking and recording
+- Metrics infrastructure (Template Method Pattern)
+- Resource lifecycle (close, isHealthy, getErrors, etc.)
+
+**Solution:** Extract common functionality into `AbstractDatabaseWrapper`:
+```java
+public abstract class AbstractDatabaseWrapper 
+        implements ISchemaAwareDatabase, IWrappedResource, IMonitorable, AutoCloseable {
+    // Common fields: database, context, dedicatedConnection, errors, metricsWindowSeconds
+    // Common implementations: setSimulationRun(), close(), isHealthy(), getErrors(), etc.
+    // Template Method: getMetrics() calls addCustomMetrics() hook
+}
+```
+
+**Benefits:**
+- ✅ **Code Reduction:** Wrappers go from ~200 to ~80 lines (-60%)
+- ✅ **Consistency:** All wrappers behave identically for common operations
+- ✅ **DRY:** Schema setting, error handling, metrics pattern implemented once
+- ✅ **Template Method Pattern:** Same as AbstractDatabaseResource (familiar to developers)
+- ✅ **Type Safety:** Final methods prevent accidental overrides
+- ✅ **Maintainability:** Bug fixes in common code benefit all wrappers
+
+**Implementation in Phases:**
+- Phase 2.5.1: Introduced with MetadataReaderWrapper
+- Phase 2.5.2: Adopted by BatchCoordinatorWrapper
+- Future: MetadataWriterWrapper will be refactored to use it
+
+### 2. Component-Based Architecture
 
 Composition over inheritance for batch-processing features.
 
@@ -2643,26 +2698,41 @@ hasGap = (batchStartTick != expectedNextStart)
 
 ### 3. Gap Handling Strategy
 
-Three-state gap handling: `gap_pending` → `ready` (backfill) or `gap_permanent` (timeout).
+Separate gap table with interval-based tracking and active gap filling.
 
-**Temporary Gaps (normal):**
-- Mark as `gap_pending` when discovered
-- Poll database for gap closure
-- When filled: `gap_pending` → `ready` → process normally
+**Two Tables:**
+- `coordinator_batches`: Tracks processed batches (claimed/completed/failed)
+- `coordinator_gaps`: Tracks missing tick ranges (pending/permanent)
 
-**Permanent Gaps (data loss):**
-- After `gapWarningTimeoutMs` (default: 60s): `gap_pending` → `gap_permanent`
-- Log WARNING once when marking as permanent
-- Skip in future iterations (never re-check)
-- Increment `permanentGapsDetected` counter
-- Pipeline continues (operational > perfect)
+**Gap Lifecycle:**
+1. **Gap Detection:** When new batch discovered, check if tick range is missing
+   - First batch with tick_start > 0 → record gap [0, tickStart - samplingInterval]
+   - Subsequent batches: gap if batchStart ≠ (maxCompleted + samplingInterval)
+   
+2. **Gap Filling (Priority!):** Before processing new batches, try to fill oldest gap
+   - Query: `getOldestPendingGap()` → Gap[start, end]
+   - Search storage: `listBatchFiles(runId, null, 1, start, end)`
+   - If found: Process batch, split gap into smaller sub-gaps (or delete if filled)
+   
+3. **Gap Splitting:** When batch found partially fills gap
+   - Example: Gap [1009, 2990], found batch [1500, 1800]
+   - DELETE gap [1009, 2990]
+   - INSERT gap [1009, 1490] (before batch, if non-empty)
+   - INSERT gap [1810, 2990] (after batch, if non-empty)
+   - Atomic with SELECT FOR UPDATE locking
+   
+4. **Permanent Gaps:** After timeout (default 60s)
+   - UPDATE status='permanent'
+   - Log WARNING once
+   - Excluded from future gap filling
+   - Pipeline continues
 
 **Benefits:**
-- Non-blocking (indexers process what they can)
-- Automatic backfill when gaps close
-- Clear distinction between temporary and permanent gaps in database
-- No log spam (warning only once per permanent gap)
-- Visible in database for debugging and operations
+- Non-blocking (process new batches while searching for gaps)
+- Efficient (only search within known gap ranges, not entire storage)
+- Backward compatible with pagination (gaps don't depend on continuation token)
+- Scalable (works with variable batch sizes)
+- Observable (gap status visible in database)
 
 ### 4. Tick Buffering
 
@@ -2708,19 +2778,25 @@ if (e.getErrorCode() == 23505) {
 }
 ```
 
-### 8. Composite Primary Key for Multi-Indexer Support
+### 8. Separate Tables for Batches and Gaps
 
-`batch_processing` table uses composite PRIMARY KEY `(indexer_class, batch_filename)`.
+Two coordinator tables instead of overloading one table with mixed purposes.
 
-**Enables:**
-- Multiple indexer types process same batches independently (DummyIndexer, EnvironmentIndexer, etc.)
-- Competing consumers only within same indexer class
-- Each indexer tracks its own progress per batch
+**coordinator_batches:**
+- Tracks which batch files have been processed
+- PRIMARY KEY: (indexer_class, batch_filename)
+- Enables multiple indexer types to process same batches independently
 
-**Implementation:**
-- `indexer_class`: Fully qualified class name from `this.getClass().getName()`
-- Set via fluent API: `coordinator.setIndexerClass(...)` (compile-time enforced)
-- Stored in `BatchCoordinatorWrapper`, passed to all `do*` methods
+**coordinator_gaps:**
+- Tracks missing tick ranges (not individual batches!)
+- PRIMARY KEY: (indexer_class, gap_start_tick)
+- Enables efficient gap search with tick-range queries
+
+**Benefits:**
+- Clean separation of concerns (processed vs. missing)
+- No filename for gaps (they represent ranges, not files)
+- Efficient queries (gaps by tick range, batches by filename)
+- Scalable to variable batch sizes
 
 ### 9. Table Creation Strategy
 
@@ -3128,56 +3204,90 @@ public String toPrometheusFormat() {
 
 ## Logging Strategy
 
+### Principles
+
+**❌ NEVER:**
+- INFO in loops (too noisy - use DEBUG)
+- Multi-line log statements
+- Phase/version prefixes in production code
+- Redundant information already in metrics
+- Log successful operations that metrics track
+
+**✅ ALWAYS:**
+- INFO very sparingly (start/stop, completion summaries only)
+- DEBUG for repetitive operations in loops
+- Single line per event
+- Include essential context (runId, critical values)
+
 ### Log Levels
 
-**DEBUG:** Repetitive operations
+**INFO:**
+- Service lifecycle (start/stop)
+- Processing completed with summary
+- Critical failures
+
+**DEBUG:**
+- Batch claimed/discovered
+- Gap detected/filled
+- Buffer operations
+- Flush triggers
+- Metadata loaded
+
+**WARN:**
+- Permanent gaps (once per gap)
+- Batch failures
+
+**ERROR:**
+- Fatal errors
+- Coordination failures
+
+### Examples
+
 ```java
-log.debug("Claimed batch: {}", batchFilename);
-log.debug("Polling for simulation runs");
-log.debug("Released {} gap-pending batches", count);
+// ✅ GOOD - INFO for completion summary
+log.info("Processing completed: runId={}, ticks={}, cells={}, organisms={}, flushes={}", 
+         runId, ticksProcessed, cellsObserved, organismsObserved, flushCount);
+
+// ✅ GOOD - DEBUG in loop
+log.debug("Claimed batch: {} (ticks {}-{})", filename, tickStart, tickEnd);
+log.debug("Gap detected: [{}, {})", gapStart, gapEnd);
+log.debug("Buffered {} ticks from {}, buffer size: {}", tickCount, filename, bufferSize);
+
+// ✅ GOOD - WARN for permanent gap (once)
+log.warn("Permanent gap (data lost): [{}, {})", gapStart, gapEnd);
+
+// ❌ BAD - INFO in loop
+log.info("Claimed batch: {}", filename);
+log.info("Gap detected before batch: {}", filename);
+
+// ❌ BAD - Multi-line
+log.info("Processing completed:");
+log.info("  - Ticks: {}", ticks);
+log.info("  - Cells: {}", cells);
+
+// ❌ BAD - Phase prefix
+log.debug("Claimed batch: {}", filename);
+
+// ❌ BAD - Redundant (metrics track this)
+log.info("Batch already claimed, skipping");
+log.debug("Marked batch completed: {}", filename);
 ```
-
-**INFO:** Major events and completions
-```java
-log.info("Starting batch processing: runId={}, samplingInterval={}", runId, samplingInterval);
-log.info("Metadata available for runId={}", runId);
-log.info("Flush timeout reached: writing {} ticks", tickBuffer.size());
-```
-
-**WARN:** Permanent gaps and operational issues
-```java
-log.warn("Permanent gap detected: expected batch at tick {} has been missing for {} seconds",
-        expectedTick, gapAgeMs / 1000);
-```
-
-**ERROR:** Fatal issues (but rare in this phase)
-```java
-log.error("Indexer failed: {}", e.getMessage());
-```
-
-### Structured Logging
-
-Always include key context:
-```java
-log.info("Starting batch processing: runId={}, samplingInterval={}, insertBatchSize={}, flushTimeout={}ms",
-        runId, samplingInterval, insertBatchSize, flushTimeoutMs);
-```
-
-### What NOT to Log
-
-- Individual tick processing (too noisy)
-- Detailed cell/organism data (use metrics instead)
-- Gap checks that return false (not noteworthy)
-- Successful claim attempts (use metrics)
 
 ## Testing Requirements
 
-All tests must:
-- Be tagged with `@Tag("unit")` or `@Tag("integration")`
+All tests must follow project standards:
+
+### General Requirements
+- Tag with `@Tag("unit")` or `@Tag("integration")`
 - Use `@ExtendWith(LogWatchExtension.class)`
-- Use `@AllowLog` or `@ExpectLog` for every expected log message
-- Never use `Thread.sleep` - use Awaitility instead
-- Leave no artifacts (in-memory H2, temp directories cleaned)
+- **Log Assertions:**
+  - DEBUG and INFO logs are always allowed - never use `@AllowLog` for these
+  - WARN and ERROR logs MUST be explicitly expected with `@ExpectLog`
+  - Use specific message patterns with wildcards only for variable parts
+  - Example: `@ExpectLog(logger = "...", level = WARN, message = "Permanent gap (data lost): [*, *)")`
+  - **NEVER** use broad patterns like `message = "*"`
+- **Never use `Thread.sleep`** - use Awaitility `await().atMost(...).until(...)` instead
+- Leave no artifacts (in-memory H2, temp directories cleaned in `@AfterEach`)
 - Use UUID-based database names for parallel test execution
 - Verify no connection leaks in `@AfterEach`
 
@@ -3194,12 +3304,20 @@ class MyTest {
     }
     
     @Test
-    @AllowLog(logger = "org.evochora.datapipeline.services.indexers.DummyIndexer",
-              level = INFO, message = "Starting batch processing: *")
-    void testSomething() {
-        // Use Awaitility instead of Thread.sleep
+    void testNormalOperation() {
+        // Use Awaitility instead of Thread.sleep - NO Thread.sleep EVER!
         await().atMost(10, TimeUnit.SECONDS)
             .until(() -> someCondition());
+        
+        // DEBUG and INFO logs don't need @AllowLog or @ExpectLog
+    }
+    
+    @Test
+    @ExpectLog(logger = "org.evochora.MyService",
+               level = WARN, message = "Something went wrong: runId=*")
+    void testWarning() {
+        // WARN and ERROR must use @ExpectLog with specific message pattern
+        // Wildcards only for variable parts (runId, filenames, etc.)
     }
 }
 ```
@@ -3220,7 +3338,7 @@ public class EnvironmentIndexer extends AbstractBatchProcessingIndexer {
         // Same components as DummyIndexer
         this.metadata = new MetadataReadingComponent(...);
         this.coordination = new BatchCoordinationComponent(rawCoordinator, this.getClass().getName(), ...);
-        this.gapDetection = new GapDetectionComponent(metadata, coordination, ...);
+        this.gapDetection = new GapDetectionComponent(metadata, coordination, storage, ...);
         this.buffering = new TickBufferingComponent(...);
         
         // Additional: database for writes

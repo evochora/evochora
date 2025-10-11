@@ -133,6 +133,11 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
 
         try (Stream<Path> stream = Files.walk(searchDir.toPath())) {
             List<String> allFiles = stream
+                    // Filter .tmp files BEFORE checking isRegularFile to avoid race conditions
+                    .filter(p -> {
+                        String pathStr = p.toString();
+                        return !pathStr.contains("/.tmp") && !pathStr.endsWith(".tmp");
+                    })
                     .filter(Files::isRegularFile)
                     .map(p -> rootPath.relativize(p))
                     .map(Path::toString)
@@ -145,8 +150,6 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
                         }
                         return true;
                     })
-                    .filter(path -> !path.contains("/.tmp"))
-                    .filter(path -> !path.endsWith(".tmp"))
                     .filter(path -> {
                         // Apply tick filtering if specified
                         if (startTick == null && endTick == null) {

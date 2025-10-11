@@ -573,12 +573,12 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     /**
      * Returns the base metrics tracked by AbstractBatchStorageResource.
      * <p>
-     * This method is final and cannot be overridden. Subclasses should use
-     * {@link #addCustomMetrics(Map)} to add their own metrics.
+     * Private helper method called only by getMetrics().
+     * Subclasses should not access this directly - use addCustomMetrics() hook instead.
      *
      * @return Map containing base metrics in the order they should be reported
      */
-    protected final Map<String, Number> getBaseMetrics() {
+    private Map<String, Number> getBaseMetrics() {
         Map<String, Number> metrics = new LinkedHashMap<>();
         // Cumulative metrics
         metrics.put("write_operations", writeOperations.get());

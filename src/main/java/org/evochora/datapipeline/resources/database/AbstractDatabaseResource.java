@@ -102,7 +102,15 @@ public abstract class AbstractDatabaseResource extends AbstractResource
         return metrics;
     }
 
-    protected final Map<String, Number> getBaseMetrics() {
+    /**
+     * Returns base metrics tracked by all database resources.
+     * <p>
+     * Private helper method called only by getMetrics().
+     * Subclasses should not access this directly - use addCustomMetrics() hook instead.
+     *
+     * @return Map containing base metrics (O(1) operations)
+     */
+    private Map<String, Number> getBaseMetrics() {
         Map<String, Number> metrics = new LinkedHashMap<>();
         metrics.put("queries_executed", queriesExecuted.get());
         metrics.put("rows_inserted", rowsInserted.get());
