@@ -112,8 +112,9 @@ public abstract class AbstractBatchProcessingIndexer extends AbstractIndexer {
     protected GapDetectionComponent gapDetection;
     protected TickBufferingComponent buffering;
     
-    // Resources
+    // Resources (for connection management)
     protected IBatchStorageRead storage;
+    protected IMetadataReader metadataReader;
     protected IBatchCoordinatorReady coordinatorReady;
     
     // Configuration
@@ -139,7 +140,7 @@ public abstract class AbstractBatchProcessingIndexer extends AbstractIndexer {
      */
     protected void initializeComponents() {
         // Metadata reading
-        IMetadataReader metadataReader = getRequiredResource(IMetadataReader.class, "db-meta-read");
+        this.metadataReader = getRequiredResource("metadata", IMetadataReader.class);
         int pollIntervalMs = getOptions().hasPath("pollIntervalMs") 
             ? getOptions().getInt("pollIntervalMs") : 1000;
         int maxPollDurationMs = getOptions().hasPath("maxPollDurationMs") 
@@ -148,7 +149,7 @@ public abstract class AbstractBatchProcessingIndexer extends AbstractIndexer {
         this.metadata = new MetadataReadingComponent(metadataReader, pollIntervalMs, maxPollDurationMs);
         
         // Batch coordination
-        IBatchCoordinator coordinator = getRequiredResource(IBatchCoordinator.class, "db-coordinator");
+        IBatchCoordinator coordinator = getRequiredResource("coordinator", IBatchCoordinator.class);
         this.coordinatorReady = coordinator.setIndexerClass(this.getClass().getName());
         this.coordination = new BatchCoordinationComponent(coordinatorReady);
         
@@ -391,11 +392,11 @@ public abstract class AbstractBatchProcessingIndexer extends AbstractIndexer {
      * Connections will be re-acquired automatically on next operation.
      */
     private void releaseAllConnections() {
-        if (coordination != null) {
-            coordination.releaseConnection();
+        if (coordinatorReady != null) {
+            coordinatorReady.close();
         }
-        if (metadata != null) {
-            metadata.releaseConnection();
+        if (metadataReader != null) {
+            metadataReader.close();
         }
     }
     
@@ -532,11 +533,16 @@ dummy-indexer {
   
   resources {
     storage = "storage-read:tick-storage"
-    metadataReader = "db-meta-read:index-database"
+    metadata = "db-meta-read:index-database"
     coordinator = "db-coordinator:index-database"
   }
   
   options {
+    # Inherits from central services.runId (if set)
+    # If services.runId not set → automatic discovery from storage
+    # Can be overridden here for indexer-specific post-mortem mode
+    runId = ${?pipeline.services.runId}
+    
     # Metadata polling
     pollIntervalMs = 1000
     maxPollDurationMs = 300000

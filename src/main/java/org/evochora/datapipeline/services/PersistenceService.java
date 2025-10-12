@@ -5,22 +5,16 @@ import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
-import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
-import org.evochora.datapipeline.api.services.IService.State;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -43,7 +37,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * <strong>Thread Safety:</strong> Each instance runs in its own thread. No synchronization
  * needed between instances - queue handles distribution, idempotency tracker is thread-safe.
  */
-public class PersistenceService extends AbstractService implements IMonitorable {
+public class PersistenceService extends AbstractService {
 
     // Required resources
     private final IInputQueueResource<TickData> inputQueue;
@@ -67,9 +61,6 @@ public class PersistenceService extends AbstractService implements IMonitorable 
     private final AtomicLong batchesFailed = new AtomicLong(0);
     private final AtomicLong duplicateTicksDetected = new AtomicLong(0);
     private final AtomicInteger currentBatchSize = new AtomicInteger(0);
-
-    // Error tracking
-    private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
 
     public PersistenceService(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
@@ -141,7 +132,7 @@ public class PersistenceService extends AbstractService implements IMonitorable 
             } catch (InterruptedException e) {
                 // Shutdown signal received during drain
                 if (!batch.isEmpty()) {
-                    log.info("Shutdown requested, completing batch of {} ticks with {}s timeout",
+                    log.debug("Interrupted during drain, completing batch of {} ticks with {}s timeout",
                         batch.size(), shutdownBatchTimeoutSeconds);
                     completeShutdownBatchWithTimeout(batch);
                 }
@@ -160,13 +151,12 @@ public class PersistenceService extends AbstractService implements IMonitorable 
 
         // Check for empty or null simulationRunId
         if (firstSimRunId == null || firstSimRunId.isEmpty()) {
-            log.error("Batch contains tick with empty or null simulationRunId");
-            errors.add(new OperationalError(
-                Instant.now(),
+            log.warn("Batch contains tick with empty or null simulationRunId, sending to DLQ");
+            recordError(
                 "INVALID_SIMULATION_RUN_ID",
                 "Batch contains tick with empty or null simulationRunId",
                 String.format("Batch size: %d", batch.size())
-            ));
+            );
             sendToDLQ(batch, "Empty or null simulationRunId", 0,
                 new IllegalStateException("Empty or null simulationRunId"));
             batchesFailed.incrementAndGet();
@@ -176,14 +166,13 @@ public class PersistenceService extends AbstractService implements IMonitorable 
         String lastSimRunId = batch.get(batch.size() - 1).getSimulationRunId();
 
         if (!firstSimRunId.equals(lastSimRunId)) {
-            log.error("Batch consistency violation: first tick simulationRunId='{}', last tick simulationRunId='{}'",
+            log.warn("Batch consistency violation: first='{}', last='{}', sending to DLQ",
                 firstSimRunId, lastSimRunId);
-            errors.add(new OperationalError(
-                Instant.now(),
+            recordError(
                 "BATCH_CONSISTENCY_VIOLATION",
                 "Batch contains mixed simulationRunIds",
                 String.format("First: %s, Last: %s, Batch size: %d", firstSimRunId, lastSimRunId, batch.size())
-            ));
+            );
             sendToDLQ(batch, "Batch contains mixed simulationRunIds", 0,
                 new IllegalStateException("Mixed simulationRunIds"));
             batchesFailed.incrementAndGet();
@@ -269,22 +258,22 @@ public class PersistenceService extends AbstractService implements IMonitorable 
                 attempt++;
 
                 if (attempt <= maxRetries) {
-                    log.warn("Failed to write batch [ticks {}-{}] (attempt {}/{}): {}, retrying in {}ms",
+                    log.debug("Failed to write batch [ticks {}-{}] (attempt {}/{}): {}, retrying in {}ms",
                         firstTick, lastTick, attempt, maxRetries, e.getMessage(), backoff);
 
                     try {
                         Thread.sleep(backoff);
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
-                        log.info("Interrupted during retry backoff, aborting retries");
+                        log.debug("Interrupted during retry backoff, aborting retries");
                         break;
                     }
 
                     // Exponential backoff with cap to prevent overflow
                     backoff = Math.min(backoff * 2, 60000); // Max 60 seconds
                 } else {
-                    log.error("Failed to write batch [ticks {}-{}] after {} retries: {}",
-                        firstTick, lastTick, maxRetries, e.getMessage());
+                    log.warn("Failed to write batch [ticks {}-{}] after {} retries, sending to DLQ",
+                        firstTick, lastTick, maxRetries);
                 }
             }
         }
@@ -292,19 +281,23 @@ public class PersistenceService extends AbstractService implements IMonitorable 
         // All retries exhausted - record error
         String errorDetails = String.format("Batch: [ticks %d-%d], Retries: %d, Exception: %s",
             firstTick, lastTick, maxRetries, lastException != null ? lastException.getMessage() : "Unknown");
-        errors.add(new OperationalError(
-            Instant.now(),
+        recordError(
             "BATCH_WRITE_FAILED",
             "Failed to write batch after all retries",
             errorDetails
-        ));
+        );
         sendToDLQ(batch, lastException != null ? lastException.getMessage() : "Unknown error", attempt - 1, lastException);
         batchesFailed.incrementAndGet();
     }
 
     private void sendToDLQ(List<TickData> batch, String errorMessage, int retryAttempts, Exception exception) {
         if (dlq == null) {
-            log.error("Failed batch has no DLQ configured, data will be lost: {} ticks", batch.size());
+            log.warn("Failed batch has no DLQ configured, data will be lost: {} ticks", batch.size());
+            recordError(
+                "DLQ_NOT_CONFIGURED",
+                "Failed batch lost - no DLQ configured",
+                String.format("Batch size: %d ticks", batch.size())
+            );
             return;
         }
 
@@ -354,23 +347,21 @@ public class PersistenceService extends AbstractService implements IMonitorable 
             if (dlq.offer(dlqMessage)) {
                 log.info("Sent failed batch to DLQ: {} ticks ({}:{})", batch.size(), simulationRunId, startTick);
             } else {
-                log.error("DLQ is full, failed batch lost: {} ticks", batch.size());
-                errors.add(new OperationalError(
-                    Instant.now(),
+                log.warn("DLQ is full, failed batch lost: {} ticks", batch.size());
+                recordError(
                     "DLQ_FULL",
                     "Dead letter queue is full, failed batch lost",
                     String.format("Batch size: %d ticks, SimulationRunId: %s, StartTick: %d", batch.size(), simulationRunId, startTick)
-                ));
+                );
             }
 
         } catch (Exception e) {
-            log.error("Failed to send batch to DLQ", e);
-            errors.add(new OperationalError(
-                Instant.now(),
+            log.warn("Failed to send batch to DLQ");
+            recordError(
                 "DLQ_SEND_FAILED",
                 "Failed to send batch to dead letter queue",
                 String.format("Batch size: %d ticks, Exception: %s", batch.size(), e.getMessage())
-            ));
+            );
         }
     }
 
@@ -396,7 +387,7 @@ public class PersistenceService extends AbstractService implements IMonitorable 
                 processBatch(batch);
                 log.info("Successfully completed shutdown batch of {} ticks", batch.size());
             } catch (Exception ex) {
-                log.error("Failed to complete shutdown batch of {} ticks", batch.size(), ex);
+                log.warn("Failed to complete shutdown batch of {} ticks", batch.size());
             }
         });
 
@@ -406,22 +397,20 @@ public class PersistenceService extends AbstractService implements IMonitorable 
             log.warn("Shutdown batch write exceeded {}s timeout, {} ticks may be lost (tmp file remains)",
                 shutdownBatchTimeoutSeconds, batch.size());
             future.cancel(true);
-            errors.add(new OperationalError(
-                Instant.now(),
+            recordError(
                 "SHUTDOWN_BATCH_TIMEOUT",
                 "Shutdown batch write exceeded timeout",
                 String.format("Timeout: %ds, Batch size: %d ticks", shutdownBatchTimeoutSeconds, batch.size())
-            ));
+            );
         } catch (java.util.concurrent.ExecutionException e) {
-            log.error("Error during shutdown batch completion", e.getCause());
-            errors.add(new OperationalError(
-                Instant.now(),
+            log.warn("Error during shutdown batch completion");
+            recordError(
                 "SHUTDOWN_BATCH_ERROR",
                 "Error during shutdown batch write",
-                String.format("Batch size: %d ticks, Exception: %s", batch.size(), e.getCause().getMessage())
-            ));
+                String.format("Batch size: %d ticks, Exception: %s", batch.size(), e.getCause() != null ? e.getCause().getMessage() : "Unknown")
+            );
         } catch (InterruptedException e) {
-            log.warn("Interrupted while waiting for shutdown batch completion");
+            log.debug("Interrupted while waiting for shutdown batch completion");
             future.cancel(true);
         } finally {
             executor.shutdownNow();
@@ -433,29 +422,14 @@ public class PersistenceService extends AbstractService implements IMonitorable 
     }
 
     @Override
-    public Map<String, Number> getMetrics() {
-        return Map.of(
-            "batches_written", batchesWritten.get(),
-            "ticks_written", ticksWritten.get(),
-            "bytes_written", bytesWritten.get(),
-            "batches_failed", batchesFailed.get(),
-            "duplicate_ticks_detected", duplicateTicksDetected.get(),
-            "current_batch_size", currentBatchSize.get()
-        );
-    }
-
-    @Override
-    public boolean isHealthy() {
-        return getCurrentState() != State.ERROR;
-    }
-
-    @Override
-    public List<OperationalError> getErrors() {
-        return new ArrayList<>(errors);
-    }
-
-    @Override
-    public void clearErrors() {
-        errors.clear();
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);
+        
+        metrics.put("batches_written", batchesWritten.get());
+        metrics.put("ticks_written", ticksWritten.get());
+        metrics.put("bytes_written", bytesWritten.get());
+        metrics.put("batches_failed", batchesFailed.get());
+        metrics.put("duplicate_ticks_detected", duplicateTicksDetected.get());
+        metrics.put("current_batch_size", currentBatchSize.get());
     }
 }

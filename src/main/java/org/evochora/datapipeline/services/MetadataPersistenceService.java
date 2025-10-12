@@ -4,20 +4,15 @@ import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
-import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
-import org.evochora.datapipeline.api.services.IService.State;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -60,7 +55,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * }
  * </pre>
  */
-public class MetadataPersistenceService extends AbstractService implements IMonitorable {
+public class MetadataPersistenceService extends AbstractService {
 
     // Required resources
     private final IInputQueueResource<SimulationMetadata> inputQueue;
@@ -77,9 +72,6 @@ public class MetadataPersistenceService extends AbstractService implements IMoni
     private final AtomicLong metadataWritten = new AtomicLong(0);
     private final AtomicLong metadataFailed = new AtomicLong(0);
     private final AtomicLong bytesWritten = new AtomicLong(0);
-
-    // Error tracking
-    private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
 
     /**
      * Creates a new MetadataPersistenceService.
@@ -143,13 +135,12 @@ public class MetadataPersistenceService extends AbstractService implements IMoni
 
         // Validate simulation run ID
         if (metadata.getSimulationRunId() == null || metadata.getSimulationRunId().isEmpty()) {
-            log.error("Metadata contains empty or null simulationRunId");
-            errors.add(new OperationalError(
-                Instant.now(),
+            log.warn("Metadata contains empty or null simulationRunId, sending to DLQ");
+            recordError(
                 "INVALID_SIMULATION_RUN_ID",
                 "Metadata contains empty or null simulationRunId",
                 "Cannot persist metadata without valid simulation run ID"
-            ));
+            );
             sendToDLQ(metadata, "Empty or null simulationRunId",
                 new IllegalStateException("Empty or null simulationRunId"));
             metadataFailed.incrementAndGet();
@@ -193,21 +184,21 @@ public class MetadataPersistenceService extends AbstractService implements IMoni
                 attempt++;
 
                 if (attempt <= maxRetries) {
-                    log.warn("Failed to write metadata {} (attempt {}/{}): {}, retrying in {}ms",
+                    log.debug("Failed to write metadata {} (attempt {}/{}): {}, retrying in {}ms",
                         key, attempt, maxRetries, e.getMessage(), backoff);
 
                     try {
                         Thread.sleep(backoff);
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
-                        log.info("Interrupted during retry backoff, aborting retries");
+                        log.debug("Interrupted during retry backoff, aborting retries");
                         break;
                     }
 
                     // Exponential backoff with cap to prevent overflow
                     backoff = Math.min(backoff * 2, 60000); // Max 60 seconds
                 } else {
-                    log.error("Failed to write metadata {} after {} retries: {}", key, maxRetries, e.getMessage());
+                    log.warn("Failed to write metadata {} after {} retries, sending to DLQ", key, maxRetries);
                 }
             }
         }
@@ -215,12 +206,11 @@ public class MetadataPersistenceService extends AbstractService implements IMoni
         // All retries exhausted - record error
         String errorDetails = String.format("Key: %s, Retries: %d, Exception: %s",
             key, maxRetries, lastException != null ? lastException.getMessage() : "Unknown");
-        errors.add(new OperationalError(
-            Instant.now(),
+        recordError(
             "METADATA_WRITE_FAILED",
             "Failed to write metadata after all retries",
             errorDetails
-        ));
+        );
         sendToDLQ(metadata, lastException != null ? lastException.getMessage() : "Unknown error", lastException);
         metadataFailed.incrementAndGet();
     }
@@ -253,8 +243,13 @@ public class MetadataPersistenceService extends AbstractService implements IMoni
      */
     private void sendToDLQ(SimulationMetadata metadata, String errorMessage, Exception exception) {
         if (dlq == null) {
-            log.error("Failed metadata has no DLQ configured, data will be lost: simulation {}",
+            log.warn("Failed metadata has no DLQ configured, data will be lost: simulation {}",
                 metadata.getSimulationRunId());
+            recordError(
+                "DLQ_NOT_CONFIGURED",
+                "Failed metadata lost - no DLQ configured",
+                String.format("SimulationRunId: %s", metadata.getSimulationRunId())
+            );
             return;
         }
 
@@ -295,48 +290,31 @@ public class MetadataPersistenceService extends AbstractService implements IMoni
             if (dlq.offer(dlqMessage)) {
                 log.info("Sent failed metadata to DLQ for simulation {}", simulationRunId);
             } else {
-                log.error("DLQ is full, failed metadata lost for simulation {}", simulationRunId);
-                errors.add(new OperationalError(
-                    Instant.now(),
+                log.warn("DLQ is full, failed metadata lost for simulation {}", simulationRunId);
+                recordError(
                     "DLQ_FULL",
                     "Dead letter queue is full, failed metadata lost",
                     String.format("SimulationRunId: %s", simulationRunId)
-                ));
+                );
             }
 
         } catch (Exception e) {
-            log.error("Failed to send metadata to DLQ", e);
-            errors.add(new OperationalError(
-                Instant.now(),
+            log.warn("Failed to send metadata to DLQ");
+            recordError(
                 "DLQ_SEND_FAILED",
                 "Failed to send metadata to dead letter queue",
                 String.format("SimulationRunId: %s, Exception: %s",
                     metadata.getSimulationRunId(), e.getMessage())
-            ));
+            );
         }
     }
 
     @Override
-    public Map<String, Number> getMetrics() {
-        return Map.of(
-            "metadata_written", metadataWritten.get(),
-            "metadata_failed", metadataFailed.get(),
-            "bytes_written", bytesWritten.get()
-        );
-    }
-
-    @Override
-    public boolean isHealthy() {
-        return getCurrentState() != State.ERROR;
-    }
-
-    @Override
-    public List<OperationalError> getErrors() {
-        return new ArrayList<>(errors);
-    }
-
-    @Override
-    public void clearErrors() {
-        errors.clear();
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);
+        
+        metrics.put("metadata_written", metadataWritten.get());
+        metrics.put("metadata_failed", metadataFailed.get());
+        metrics.put("bytes_written", bytesWritten.get());
     }
 }

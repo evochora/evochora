@@ -196,9 +196,9 @@ class PersistenceServiceTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Batch consistency violation: first tick simulationRunId=.*")
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*PersistenceService.*",
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
+               messagePattern = "Batch consistency violation: first=.*, last=.*, sending to DLQ")
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
                messagePattern = "Failed batch has no DLQ configured, data will be lost: .*")
     void testBatchConsistencyViolation() throws Exception {
         service = new PersistenceService("test-persistence", config, resources);
@@ -230,8 +230,8 @@ class PersistenceServiceTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Batch contains tick with empty or null simulationRunId")
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
+               messagePattern = "Batch contains tick with empty or null simulationRunId, sending to DLQ")
     void testEmptySimulationRunIdValidation() throws Exception {
         resources.put("dlq", Collections.singletonList(mockDLQ));
         service = new PersistenceService("test-persistence", config, resources);
@@ -271,8 +271,8 @@ class PersistenceServiceTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Batch contains tick with empty or null simulationRunId")
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
+               messagePattern = "Batch contains tick with empty or null simulationRunId, sending to DLQ")
     void testNullSimulationRunIdValidation() throws Exception {
         resources.put("dlq", Collections.singletonList(mockDLQ));
         service = new PersistenceService("test-persistence", config, resources);
@@ -396,9 +396,7 @@ class PersistenceServiceTest {
 
     @Test
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed to write batch .* \\(attempt .*\\): .*, retrying in .*ms", occurrences = -1)
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed to write batch .* after .* retries: .*")
+               messagePattern = "Failed to write batch .* after .* retries, sending to DLQ")
     void testDLQHandlingAfterAllRetriesExhausted() throws Exception {
         // Use faster retry backoff to speed up test (10ms vs 100ms base)
         Config fastRetryConfig = ConfigFactory.parseMap(Map.of(
@@ -441,10 +439,8 @@ class PersistenceServiceTest {
 
     @Test
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed to write batch .* \\(attempt .*\\): .*, retrying in .*ms", occurrences = -1)
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed to write batch .* after .* retries: .*")
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*PersistenceService.*",
+               messagePattern = "Failed to write batch .* after .* retries, sending to DLQ")
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
                messagePattern = "Failed batch has no DLQ configured, data will be lost: .*")
     void testDLQHandlingWhenNotConfigured() throws Exception {
         service = new PersistenceService("test-persistence", config, resources);
@@ -564,9 +560,9 @@ class PersistenceServiceTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Batch consistency violation: first tick simulationRunId=.*")
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*PersistenceService.*",
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
+               messagePattern = "Batch consistency violation: first=.*, last=.*, sending to DLQ")
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
                messagePattern = "Failed batch has no DLQ configured, data will be lost: .*")
     void testErrorTrackingAndClearing() throws Exception {
         service = new PersistenceService("test-persistence", config, resources);
@@ -583,13 +579,14 @@ class PersistenceServiceTest {
 
         service.start();
 
-        // Wait for error to be recorded
+        // Wait for errors to be recorded
         await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> !service.getErrors().isEmpty());
+            .until(() -> service.getErrors().size() >= 2);
 
-        // Verify error was recorded
-        assertEquals(1, service.getErrors().size());
+        // Verify errors were recorded (2 errors: batch violation + DLQ not configured)
+        assertEquals(2, service.getErrors().size());
         assertEquals("BATCH_CONSISTENCY_VIOLATION", service.getErrors().get(0).errorType());
+        assertEquals("DLQ_NOT_CONFIGURED", service.getErrors().get(1).errorType());
         // Details should contain "First: sim-123, Last: sim-456, Batch size: 2"
         assertTrue(service.getErrors().get(0).details().contains("First:"));
         assertTrue(service.getErrors().get(0).details().contains("Last:"));
@@ -604,10 +601,10 @@ class PersistenceServiceTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Batch contains tick with empty or null simulationRunId")
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Batch consistency violation: first tick simulationRunId=.*")
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
+               messagePattern = "Batch contains tick with empty or null simulationRunId, sending to DLQ")
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
+               messagePattern = "Batch consistency violation: first=.*, last=.*, sending to DLQ")
     void testMultipleErrorsAccumulate() throws Exception {
         resources.put("dlq", Collections.singletonList(mockDLQ));
         service = new PersistenceService("test-persistence", config, resources);
@@ -646,8 +643,8 @@ class PersistenceServiceTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Batch contains tick with empty or null simulationRunId")
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
+               messagePattern = "Batch contains tick with empty or null simulationRunId, sending to DLQ")
     void testErrorDetailsContainUsefulInformation() throws Exception {
         resources.put("dlq", Collections.singletonList(mockDLQ));
         service = new PersistenceService("test-persistence", config, resources);
@@ -746,9 +743,7 @@ class PersistenceServiceTest {
 
     @Test
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed to write batch .* \\(attempt .*\\): .*, retrying in .*ms", occurrences = -1)
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed to write batch .* after .* retries: .*")
+               messagePattern = "Failed to write batch .* after .* retries, sending to DLQ")
     void testRetryBackoffCap() throws Exception {
         // Configure with high maxRetries to test exponential backoff
         Config highRetryConfig = ConfigFactory.parseMap(Map.of(

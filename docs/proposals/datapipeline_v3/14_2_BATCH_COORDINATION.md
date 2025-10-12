@@ -156,10 +156,13 @@ package org.evochora.datapipeline.api.resources.database;
  * All methods automatically use the indexer class set via
  * {@link IBatchCoordinator#setIndexerClass(String)}.
  * <p>
+ * Implements {@link AutoCloseable} to enable try-with-resources pattern for
+ * automatic connection cleanup.
+ * <p>
  * <strong>Thread Safety:</strong> Safe for single-threaded indexer use.
  * Not designed for concurrent access from multiple threads.
  */
-public interface IBatchCoordinatorReady {
+public interface IBatchCoordinatorReady extends AutoCloseable {
     
     /**
      * Attempts to claim a batch for processing.
@@ -206,6 +209,9 @@ public interface IBatchCoordinatorReady {
      * @return Maximum tick_end, or -1 if no completed batches
      */
     long getMaxCompletedTickEnd();
+    
+    @Override
+    void close();
 }
 ```
 
@@ -625,7 +631,7 @@ class BatchCoordinatorWrapper extends AbstractDatabaseWrapper
     }
     
     // Note: close(), isHealthy(), getErrors(), clearErrors(), getResourceName(), 
-    // getUsageState(), setSimulationRun(), releaseConnection() are inherited from AbstractDatabaseWrapper
+    // getUsageState(), setSimulationRun(), releaseConnection() inherited from AbstractDatabaseWrapper
     
     @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {
@@ -735,17 +741,10 @@ public class BatchCoordinationComponent {
         return coordinator.getMaxCompletedTickEnd();
     }
     
-    /**
-     * Releases the database connection.
-     * <p>
-     * Delegates to underlying IBatchCoordinatorReady wrapper.
-     * Call before long idle periods to reduce pool pressure.
-     */
-    public void releaseConnection() {
-        coordinator.releaseConnection();
-    }
 }
 ```
+
+**Note:** Connection cleanup is handled automatically via try-with-resources in DummyIndexer (see indexRun() implementation below).
 
 ## DummyIndexer v2 Implementation
 
@@ -787,10 +786,16 @@ import java.util.concurrent.atomic.AtomicLong;
 public class DummyIndexer extends AbstractIndexer implements IMonitorable {
     private static final Logger log = LoggerFactory.getLogger(DummyIndexer.class);
     
+    // Resources (for try-with-resources cleanup)
+    private final IMetadataReader metadataReader;
+    private final IBatchCoordinatorReady coordinator;
+    
+    // Components
     private final MetadataReadingComponent metadataComponent;
     private final BatchCoordinationComponent coordinationComponent;
     private final IBatchStorageRead storage;
     
+    // Metrics
     private final AtomicLong runsProcessed = new AtomicLong(0);
     private final AtomicLong batchesClaimed = new AtomicLong(0);
     private final AtomicLong batchesProcessed = new AtomicLong(0);
@@ -799,39 +804,42 @@ public class DummyIndexer extends AbstractIndexer implements IMonitorable {
     public DummyIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         
-        // Setup metadata reading component (Phase 2.5.1)
-        IMetadataReader metadataReader = getRequiredResource(IMetadataReader.class, "db-meta-read");
+        // Setup metadata reader (Phase 2.5.1)
+        this.metadataReader = getRequiredResource("metadata", IMetadataReader.class);
         int pollIntervalMs = options.hasPath("pollIntervalMs") ? options.getInt("pollIntervalMs") : 1000;
         int maxPollDurationMs = options.hasPath("maxPollDurationMs") ? options.getInt("maxPollDurationMs") : 300000;
         
         this.metadataComponent = new MetadataReadingComponent(metadataReader, pollIntervalMs, maxPollDurationMs);
         
-        // Setup batch coordination component (Phase 2.5.2)
-        IBatchCoordinator coordinator = getRequiredResource(IBatchCoordinator.class, "db-coordinator");
-        IBatchCoordinatorReady coordinatorReady = coordinator.setIndexerClass(this.getClass().getName());
-        this.coordinationComponent = new BatchCoordinationComponent(coordinatorReady);
+        // Setup batch coordinator (Phase 2.5.2)
+        IBatchCoordinator coord = getRequiredResource("coordinator", IBatchCoordinator.class);
+        this.coordinator = coord.setIndexerClass(this.getClass().getName());
+        this.coordinationComponent = new BatchCoordinationComponent(coordinator);
         
         // Storage for batch discovery
-        this.storage = getRequiredResource(IBatchStorageRead.class, "storage");
+        this.storage = getRequiredResource("storage", IBatchStorageRead.class);
         
         log.info("DummyIndexer v2 initialized (metadata + batch coordination)");
     }
     
     @Override
     protected void indexRun(String runId) throws Exception {
-        // Load metadata (polls until available)
-        metadataComponent.loadMetadata(runId);
-        
-        log.debug("Metadata available: runId={}, samplingInterval={}", 
-                 runId, metadataComponent.getSamplingInterval());
-        
-        runsProcessed.incrementAndGet();
-        
-        // Process batches
-        processBatches(runId);
-        
-        log.info("Batch processing completed: runId={}, batchesClaimed={}, batchesProcessed={}", 
-                 runId, batchesClaimed.get(), batchesProcessed.get());
+        // Use try-with-resources for automatic connection cleanup
+        try (IMetadataReader reader = metadataReader; IBatchCoordinatorReady coord = coordinator) {
+            // Load metadata (polls until available)
+            metadataComponent.loadMetadata(runId);
+            
+            log.debug("Metadata available: runId={}, samplingInterval={}", 
+                     runId, metadataComponent.getSamplingInterval());
+            
+            runsProcessed.incrementAndGet();
+            
+            // Process batches
+            processBatches(runId);
+            
+            log.info("Batch processing completed: runId={}, batchesClaimed={}, batchesProcessed={}", 
+                     runId, batchesClaimed.get(), batchesProcessed.get());
+        }  // AutoCloseable.close() releases all connections
     }
     
     private void processBatches(String runId) throws Exception {
@@ -931,13 +939,15 @@ dummy-indexer {
   
   resources {
     storage = "storage-read:tick-storage"
-    metadataReader = "db-meta-read:index-database"
+    metadata = "db-meta-read:index-database"
     coordinator = "db-coordinator:index-database"  # NEW in Phase 2.5.2
   }
   
   options {
-    # Optional: Specific run to index
-    # runId = "20251006143025-550e8400-e29b-41d4-a716-446655440000"
+    # Inherits from central services.runId (if set)
+    # If services.runId not set → automatic discovery from storage
+    # Can be overridden here for indexer-specific post-mortem mode
+    runId = ${?pipeline.services.runId}
     
     # Metadata polling
     pollIntervalMs = 1000

@@ -298,7 +298,7 @@ org.evochora.datapipeline.services.indexers/
  * <p>
  * <strong>Usage Pattern:</strong>
  * <pre>
- * IBatchCoordinatorReady coordinator = getRequiredResource(IBatchCoordinator.class, "db-coordinator")
+ * IBatchCoordinatorReady coordinator = getRequiredResource("coordinator", IBatchCoordinator.class)
  *     .setIndexerClass(this.getClass().getName());
  * coordinator.tryClaim(...);  // Now usable
  * </pre>
@@ -2348,13 +2348,13 @@ public class DummyIndexer extends AbstractBatchProcessingIndexer implements IMon
         // Setup ALL components for full infrastructure testing
         
         // 1. Metadata Reading
-        IMetadataReader metadataReader = getRequiredResource(IMetadataReader.class, "db-meta-read");
+        IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
         int pollIntervalMs = options.hasPath("pollIntervalMs") ? options.getInt("pollIntervalMs") : 1000;
         int maxPollDurationMs = options.hasPath("maxPollDurationMs") ? options.getInt("maxPollDurationMs") : 300000;
         this.metadata = new MetadataReadingComponent(metadataReader, pollIntervalMs, maxPollDurationMs);
         
         // 2. Batch Coordination (with fluent API for compile-time safety)
-        IBatchCoordinator rawCoordinator = getRequiredResource(IBatchCoordinator.class, "db-coordinator");
+        IBatchCoordinator rawCoordinator = getRequiredResource("coordinator", IBatchCoordinator.class);
         String instanceId = name + "-" + Thread.currentThread().getId();
         this.coordination = new BatchCoordinationComponent(
             rawCoordinator,
@@ -2442,14 +2442,15 @@ dummy-indexer-1 {
   
   resources {
     storage = "storage-read:tick-storage"
-    metadataReader = "db-meta-read:index-database"
+    metadata = "db-meta-read:index-database"
     coordinator = "db-coordinator:index-database"
   }
   
   options {
-    # Optional: Specific run to index (post-mortem mode)
-    # If not set, uses timestamp-based discovery (parallel mode)
-    # runId = "20251006143025-550e8400-e29b-41d4-a716-446655440000"
+    # Inherits from central services.runId (if set)
+    # If services.runId not set → automatic discovery from storage
+    # Can be overridden here for indexer-specific post-mortem mode
+    runId = ${?pipeline.services.runId}
     
     # Run discovery polling (parallel mode)
     pollIntervalMs = 1000
@@ -2472,7 +2473,7 @@ dummy-indexer-2 {
   className = "org.evochora.datapipeline.services.indexers.DummyIndexer"
   resources {
     storage = "storage-read:tick-storage"
-    metadataReader = "db-meta-read:index-database"
+    metadata = "db-meta-read:index-database"
     coordinator = "db-coordinator:index-database"
   }
   options {

@@ -63,7 +63,7 @@ class MetadataIndexerTest {
         // Assert
         await().atMost(5, TimeUnit.SECONDS).until(() -> indexer.getCurrentState() == IService.State.STOPPED);
 
-        verify(mockDatabase).createSimulationRun(testRunId);
+        // Schema creation now handled transparently by AbstractDatabaseWrapper.setSimulationRun()
         verify(mockDatabase).setSimulationRun(testRunId);
         verify(mockDatabase).insertMetadata(metadata);
         assertEquals(1L, indexer.getMetrics().get("metadata_indexed"));
@@ -72,7 +72,7 @@ class MetadataIndexerTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*Failed to discover run.*")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*Indexing timeout for run:.*")
     void pollingTimeout_entersErrorState() throws Exception {
         // Arrange
         Config config = ConfigFactory.parseString("runId = \"" + testRunId + "\", metadataFileMaxPollDurationMs = 50");
@@ -92,7 +92,7 @@ class MetadataIndexerTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*Failed to discover run.*")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*Indexing timeout for run:.*")
     void errorTracking_recordsErrorsOnTimeout() throws Exception {
         // Setup: Storage that always throws IOException (simulates file not found)
         when(mockStorage.readMessage(anyString(), any())).thenThrow(new IOException("File not found"));
@@ -104,26 +104,19 @@ class MetadataIndexerTest {
         
         MetadataIndexer indexer = new MetadataIndexer("test-indexer", indexerConfig, resources);
         
-        // Start indexer - should timeout and record error
+        // Start indexer - should timeout and enter ERROR state
         indexer.start();
         await().atMost(5, TimeUnit.SECONDS).until(() -> indexer.getCurrentState() == IService.State.ERROR);
         
-        // Verify error was recorded
-        List<OperationalError> errors = indexer.getErrors();
-        assertFalse(errors.isEmpty(), "Should have recorded at least one error");
+        // Verify service is in ERROR state
+        assertEquals(IService.State.ERROR, indexer.getCurrentState());
         
-        OperationalError error = errors.get(0);
-        assertEquals("METADATA_FILE_TIMEOUT", error.errorType());
-        assertTrue(error.message().contains("Metadata file did not appear"));
-        assertTrue(error.details().contains("test-run-123/metadata.pb"));
+        // Verify metrics (fatal errors increment failed counter)
+        assertEquals(0L, indexer.getMetrics().get("metadata_indexed"));
+        assertEquals(1L, indexer.getMetrics().get("metadata_failed"));
         
-        // Verify error count in metrics
-        assertEquals(1, indexer.getMetrics().get("error_count").intValue());
-        
-        // Verify clearErrors works
-        indexer.clearErrors();
-        assertTrue(indexer.getErrors().isEmpty(), "Errors should be cleared");
-        assertEquals(0, indexer.getMetrics().get("error_count").intValue());
+        // Fatal errors do NOT use recordError() - error collection should be empty
+        assertTrue(indexer.getErrors().isEmpty(), "Fatal errors should not be in error collection");
     }
 
     @Test
@@ -138,9 +131,6 @@ class MetadataIndexerTest {
                 .setSamplingInterval(1)
                 .build();
         when(mockStorage.readMessage(eq(testRunId + "/metadata.pb"), any())).thenReturn(metadata);
-        
-        // Mock: createSimulationRun succeeds, but insertMetadata fails
-        doNothing().when(mockDatabase).createSimulationRun(anyString());
         doThrow(new RuntimeException("Database write failed"))
                 .when(mockDatabase).insertMetadata(any());
         
@@ -148,14 +138,15 @@ class MetadataIndexerTest {
         indexer.start();
         await().atMost(5, TimeUnit.SECONDS).until(() -> indexer.getCurrentState() == IService.State.ERROR);
         
-        // Verify error was recorded
-        List<OperationalError> errors = indexer.getErrors();
-        assertFalse(errors.isEmpty(), "Should have recorded database error");
+        // Verify service is in ERROR state
+        assertEquals(IService.State.ERROR, indexer.getCurrentState());
         
-        OperationalError error = errors.get(errors.size() - 1);  // Get last error
-        assertEquals("METADATA_INDEXING_FAILED", error.errorType());
-        assertTrue(error.message().contains("Failed to index metadata"));
-        assertTrue(error.details().contains("RuntimeException"));
+        // Verify metrics (fatal errors increment failed counter)
+        assertEquals(0L, indexer.getMetrics().get("metadata_indexed"));
+        assertEquals(1L, indexer.getMetrics().get("metadata_failed"));
+        
+        // Fatal errors do NOT use recordError() - error collection should be empty
+        assertTrue(indexer.getErrors().isEmpty(), "Fatal errors should not be in error collection");
     }
 
     @Test
@@ -177,7 +168,7 @@ class MetadataIndexerTest {
 
         assertEquals(0L, indexer.getMetrics().get("metadata_indexed"));
         assertEquals(1L, indexer.getMetrics().get("metadata_failed"));
-        verify(mockDatabase).createSimulationRun(testRunId);
+        // Schema creation now handled transparently by AbstractDatabaseWrapper.setSimulationRun()
         verify(mockDatabase).setSimulationRun(testRunId);
     }
 }

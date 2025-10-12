@@ -33,14 +33,21 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
         lc.addTurboFilter(filter);
         store.put("filter", filter);
         store.put("rules", rules);
+        // Events are already empty in a new filter, but clearEvents() ensures clean state
+        filter.clearEvents();
     }
 
     @Override
     public void beforeEach(ExtensionContext context) {
-        // Don't create a new filter - just update the existing one with method-level rules
+        // Clear events from previous test FIRST to ensure clean slate
+        // Then update rules for current test method
         ExtensionContext.Store store = context.getStore(ExtensionContext.Namespace.create(STORE_NAMESPACE));
         TestScopedTurboFilter filter = store.get("filter", TestScopedTurboFilter.class);
         if (filter != null) {
+            // CRITICAL: Clear events BEFORE updating rules to ensure proper isolation
+            filter.clearEvents();
+            
+            // Now update rules for the new test method
             ValidationRules methodRules = resolveRules(context);
             filter.updateRules(methodRules);
         }
@@ -89,8 +96,8 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
                 throw new AssertionError(sb.toString());
             }
 
-            // Clear events for next test but keep filter active
-            filter.clearEvents();
+            // NOTE: Events are NOT cleared here - they will be cleared in beforeEach() of the next test
+            // This ensures proper isolation and prevents race conditions between tests
         }
     }
 

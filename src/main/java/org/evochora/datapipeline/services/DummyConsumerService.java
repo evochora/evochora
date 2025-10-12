@@ -3,9 +3,7 @@ package org.evochora.datapipeline.services;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.contracts.SystemContracts.DummyMessage;
-import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
 import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
@@ -13,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +40,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * @param <T> The type of messages consumed from the input queue
  */
-public class DummyConsumerService<T> extends AbstractService implements IMonitorable {
+public class DummyConsumerService<T> extends AbstractService {
 
     private static final Logger logger = LoggerFactory.getLogger(DummyConsumerService.class);
 
@@ -60,7 +57,6 @@ public class DummyConsumerService<T> extends AbstractService implements IMonitor
     private final AtomicLong messagesDuplicate = new AtomicLong(0);
     private final AtomicLong messagesRetried = new AtomicLong(0);
     private final AtomicLong messagesSentToDLQ = new AtomicLong(0);
-    private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
     private final ConcurrentLinkedDeque<Long> messageTimestamps = new ConcurrentLinkedDeque<>();
     private final Map<Integer, RetryInfo> retryTracker = new HashMap<>();
 
@@ -150,7 +146,7 @@ public class DummyConsumerService<T> extends AbstractService implements IMonitor
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                logger.info("Consumer service interrupted while waiting for message.");
+                logger.debug("Consumer service interrupted while waiting for message");
                 break;
             } catch (Exception e) {
                 handleProcessingError(message, e);
@@ -204,17 +200,15 @@ public class DummyConsumerService<T> extends AbstractService implements IMonitor
      * @param error   The exception that occurred.
      */
     private void handleProcessingError(T message, Exception error) {
-        OperationalError opError = new OperationalError(Instant.now(), "PROCESSING_ERROR",
-                "Error processing message", error.getMessage());
-        errors.add(opError);
-
         if (message == null) {
-            logger.error("Error receiving message from queue", error);
+            logger.warn("Error receiving message from queue");
+            recordError("PROCESSING_ERROR", "Error receiving message from queue", "null message");
             return;
         }
 
         int messageId = extractMessageId(message);
-        logger.warn("Failed to process message ID={}: {}", messageId, error.getMessage());
+        logger.warn("Failed to process message ID={}", messageId);
+        recordError("PROCESSING_ERROR", "Error processing message", String.format("Message ID: %d", messageId));
 
         // Track retry attempts
         RetryInfo retryInfo = retryTracker.computeIfAbsent(messageId, k -> new RetryInfo());
@@ -231,7 +225,7 @@ public class DummyConsumerService<T> extends AbstractService implements IMonitor
         } else {
             // Will retry on next poll
             messagesRetried.incrementAndGet();
-            logger.info("Message ID={} will be retried (attempt {}/{})",
+            logger.debug("Message ID={} will be retried (attempt {}/{})",
                     messageId, retryInfo.attemptCount, maxRetries);
         }
     }
@@ -247,7 +241,8 @@ public class DummyConsumerService<T> extends AbstractService implements IMonitor
     private void sendToDeadLetterQueue(T message, RetryInfo retryInfo, Exception error) {
         if (deadLetterQueue == null) {
             int messageId = extractMessageId(message);
-            logger.error("Message ID={} exceeded retry limit but no DLQ configured. Message will be lost.", messageId);
+            logger.warn("Message ID={} exceeded retry limit but no DLQ configured, message will be lost", messageId);
+            recordError("DLQ_NOT_CONFIGURED", "Message lost - no DLQ configured", String.format("Message ID: %d", messageId));
             return;
         }
 
@@ -290,20 +285,19 @@ public class DummyConsumerService<T> extends AbstractService implements IMonitor
 
         } catch (Exception dlqError) {
             int messageId = extractMessageId(message);
-            logger.error("CRITICAL: Failed to send message ID={} to Dead Letter Queue: {}. Message may be lost!",
-                    messageId, dlqError.getMessage(), dlqError);
-            errors.add(new OperationalError(
-                Instant.now(),
+            logger.warn("Failed to send message ID={} to Dead Letter Queue, message may be lost", messageId);
+            recordError(
                 "DLQ_SEND_FAILED",
                 "Failed to send message to Dead Letter Queue",
-                String.format("Message ID=%d, Error: %s", messageId, dlqError.getMessage())
-            ));
+                String.format("Message ID=%d", messageId)
+            );
         }
     }
 
     @Override
-    public Map<String, Number> getMetrics() {
-        Map<String, Number> metrics = new HashMap<>();
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);
+        
         metrics.put("messages_received", messagesReceived.get());
         metrics.put("messages_duplicate", messagesDuplicate.get());
         metrics.put("messages_retried", messagesRetried.get());
@@ -311,23 +305,6 @@ public class DummyConsumerService<T> extends AbstractService implements IMonitor
         metrics.put("messages_in_retry", retryTracker.size());
         metrics.put("idempotency_tracker_size", idempotencyTracker != null ? idempotencyTracker.size() : 0);
         metrics.put("throughput_per_sec", calculateThroughput());
-        return metrics;
-    }
-
-    @Override
-    public List<OperationalError> getErrors() {
-        // Return an immutable copy to ensure thread safety
-        return Collections.unmodifiableList(List.copyOf(errors));
-    }
-
-    @Override
-    public void clearErrors() {
-        errors.clear();
-    }
-
-    @Override
-    public boolean isHealthy() {
-        return getCurrentState() != State.ERROR;
     }
 
     private double calculateThroughput() {

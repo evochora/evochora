@@ -99,7 +99,10 @@ public class H2Database extends AbstractDatabaseResource {
     }
 
     /**
-     * Converts a simulation run ID to a valid H2 schema name.
+     * Converts simulation run ID to H2-compliant schema name.
+     * <p>
+     * <strong>Visibility:</strong> Package-private to allow testing while preventing external usage.
+     * SQL schema names are internal implementation details.
      * <p>
      * Sanitization rules:
      * <ul>
@@ -119,8 +122,7 @@ public class H2Database extends AbstractDatabaseResource {
      * @return Sanitized schema name in uppercase
      * @throws IllegalArgumentException if runId is null, empty, or results in name exceeding 256 chars
      */
-    @Override
-    protected String toSchemaName(String simulationRunId) {
+    String toSchemaName(String simulationRunId) {
         if (simulationRunId == null || simulationRunId.isEmpty()) {
             throw new IllegalArgumentException("Simulation run ID cannot be null or empty");
         }
@@ -142,22 +144,37 @@ public class H2Database extends AbstractDatabaseResource {
     }
 
     @Override
-    protected void doSetSchema(Object connection, String schemaName) throws Exception {
-        ((Connection) connection).createStatement().execute("SET SCHEMA " + schemaName);
+    protected void doSetSchema(Object connection, String runId) throws Exception {
+        String schemaName = toSchemaName(runId);
+        ((Connection) connection).createStatement().execute("SET SCHEMA \"" + schemaName + "\"");
     }
 
     @Override
-    protected void doCreateSchema(Object connection, String schemaName) throws Exception {
+    protected void doCreateSchema(Object connection, String runId) throws Exception {
         Connection conn = (Connection) connection;
-        conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS " + schemaName);
-        conn.commit();
+        String schemaName = toSchemaName(runId);
+        
+        try {
+            conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS \"" + schemaName + "\"");
+            conn.commit();
+        } catch (SQLException e) {
+            // Workaround for H2 bug in version 2.2.224:
+            // "CREATE SCHEMA IF NOT EXISTS" can fail with "object already exists"
+            // when multiple connections create the same schema concurrently
+            if (e.getMessage() != null && e.getMessage().contains("object already exists")) {
+                // Expected in parallel scenarios - schema created by another connection
+                conn.rollback();  // Clean up failed transaction
+            } else {
+                throw e;  // Unexpected SQL error
+            }
+        }
     }
 
     @Override
     protected void doInsertMetadata(Object connection, SimulationMetadata metadata) throws Exception {
         Connection conn = (Connection) connection;
         try {
-            conn.createStatement().execute("CREATE TABLE IF NOT EXISTS metadata (\"key\" VARCHAR PRIMARY KEY, \"value\" JSON)");
+            conn.createStatement().execute("CREATE TABLE IF NOT EXISTS metadata (\"key\" VARCHAR PRIMARY KEY, \"value\" TEXT)");
             
             Gson gson = new Gson();
             Map<String, String> kvPairs = new HashMap<>();
@@ -200,6 +217,79 @@ public class H2Database extends AbstractDatabaseResource {
         }
     }
 
+    // ========================================================================
+    // IMetadataReader Capability
+    // ========================================================================
+
+    /**
+     * Implements {@link org.evochora.datapipeline.api.resources.database.IMetadataReader#getMetadata(String)}.
+     * Queries metadata table in current schema and deserializes from JSON.
+     */
+    @Override
+    protected SimulationMetadata doGetMetadata(Object connection, String simulationRunId) throws Exception {
+        Connection conn = (Connection) connection;
+        
+        try {
+            // Query metadata table (schema already set by ensureConnection)
+            PreparedStatement stmt = conn.prepareStatement(
+                "SELECT \"value\" FROM metadata WHERE \"key\" = ?"
+            );
+            stmt.setString(1, "full_metadata");
+            ResultSet rs = stmt.executeQuery();
+            
+            queriesExecuted.incrementAndGet();
+            
+            if (!rs.next()) {
+                throw new org.evochora.datapipeline.api.resources.database.MetadataNotFoundException(
+                    "Metadata not found for run: " + simulationRunId
+                );
+            }
+            
+            String json = rs.getString("value");
+            SimulationMetadata metadata = ProtobufConverter.fromJson(json, SimulationMetadata.class);
+            
+            return metadata;
+            
+        } catch (SQLException e) {
+            // Table doesn't exist yet (MetadataIndexer hasn't run or is still running)
+            if (e.getErrorCode() == 42104 || e.getErrorCode() == 42102 || (e.getMessage().contains("Table") && e.getMessage().contains("not found"))) {
+                throw new org.evochora.datapipeline.api.resources.database.MetadataNotFoundException(
+                    "Metadata table not yet created for run: " + simulationRunId
+                );
+            }
+            throw e; // Other SQL errors
+        }
+    }
+
+    /**
+     * Implements {@link org.evochora.datapipeline.api.resources.database.IMetadataReader#hasMetadata(String)}.
+     * Checks if metadata exists via COUNT query.
+     */
+    @Override
+    protected boolean doHasMetadata(Object connection, String simulationRunId) throws Exception {
+        Connection conn = (Connection) connection;
+        
+        try {
+            // Query metadata existence (schema already set by ensureConnection)
+            PreparedStatement stmt = conn.prepareStatement(
+                "SELECT COUNT(*) as cnt FROM metadata WHERE \"key\" = ?"
+            );
+            stmt.setString(1, "full_metadata");
+            ResultSet rs = stmt.executeQuery();
+            
+            queriesExecuted.incrementAndGet();
+            
+            return rs.next() && rs.getInt("cnt") > 0;
+            
+        } catch (SQLException e) {
+            // Table doesn't exist yet - metadata not available
+            if (e.getErrorCode() == 42104 || e.getMessage().contains("Table") && e.getMessage().contains("not found")) {
+                return false;
+            }
+            throw e; // Other SQL errors
+        }
+    }
+
     /**
      * Adds H2-specific metrics via Template Method Pattern hook.
      * <p>
@@ -224,7 +314,31 @@ public class H2Database extends AbstractDatabaseResource {
             metrics.put("h2_pool_idle_connections", dataSource.getHikariPoolMXBean().getIdleConnections());
             metrics.put("h2_pool_total_connections", dataSource.getHikariPoolMXBean().getTotalConnections());
             metrics.put("h2_pool_threads_awaiting", dataSource.getHikariPoolMXBean().getThreadsAwaitingConnection());
+        }
+        
+        // Operating system resource limits (O(1) via MXBean)
+        java.lang.management.OperatingSystemMXBean os = 
+            java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+        
+        if (os instanceof com.sun.management.UnixOperatingSystemMXBean) {
+            com.sun.management.UnixOperatingSystemMXBean unix = 
+                (com.sun.management.UnixOperatingSystemMXBean) os;
+            long openFDs = unix.getOpenFileDescriptorCount();
+            long maxFDs = unix.getMaxFileDescriptorCount();
             
+            metrics.put("os_open_file_descriptors", openFDs);
+            metrics.put("os_max_file_descriptors", maxFDs);
+            metrics.put("os_fd_usage_percent", maxFDs > 0 ? (openFDs * 100.0) / maxFDs : 0.0);
+        }
+        
+        // JVM thread metrics (O(1) via MXBean)
+        java.lang.management.ThreadMXBean threads = 
+            java.lang.management.ManagementFactory.getThreadMXBean();
+        metrics.put("jvm_thread_count", threads.getThreadCount());
+        metrics.put("jvm_daemon_thread_count", threads.getDaemonThreadCount());
+        metrics.put("jvm_peak_thread_count", threads.getPeakThreadCount());
+        
+        if (dataSource != null && !dataSource.isClosed()) {
             // H2 cache size (fast query in INFORMATION_SCHEMA, acceptable during metrics read)
             try (Connection conn = dataSource.getConnection();
                  Statement stmt = conn.createStatement();

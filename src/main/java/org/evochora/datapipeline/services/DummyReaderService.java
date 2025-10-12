@@ -1,17 +1,12 @@
 package org.evochora.datapipeline.services;
 
 import com.typesafe.config.Config;
-import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.resources.OperationalError;
 
 import java.io.IOException;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -22,7 +17,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Test service that reads and validates TickData batches from storage using the batch API.
  * Used for integration testing of storage resources.
  */
-public class DummyReaderService extends AbstractService implements IMonitorable {
+public class DummyReaderService extends AbstractService {
     private final IBatchStorageRead storage;
     private final String keyPrefix;
     private final int intervalMs;
@@ -34,7 +29,6 @@ public class DummyReaderService extends AbstractService implements IMonitorable 
     private final AtomicLong validationErrors = new AtomicLong(0);
     private final AtomicLong readErrors = new AtomicLong(0);
     private final Set<String> processedFiles = ConcurrentHashMap.newKeySet();
-    private final List<OperationalError> errors = Collections.synchronizedList(new ArrayList<>());
 
     // Track expected tick range for validation
     private long minTickSeen = Long.MAX_VALUE;
@@ -111,14 +105,13 @@ public class DummyReaderService extends AbstractService implements IMonitorable 
                             log.debug("Read batch {} with {} ticks", filename, ticks.size());
 
                         } catch (IOException e) {
-                            log.error("Failed to read batch {}", filename, e);
+                            log.warn("Failed to read batch {}", filename);
                             readErrors.incrementAndGet();
-                            errors.add(new OperationalError(
-                                Instant.now(),
+                            recordError(
                                 "READ_BATCH_ERROR",
-                                "Failed to read batch " + filename,
-                                e.getMessage()
-                            ));
+                                "Failed to read batch",
+                                String.format("Filename: %s", filename)
+                            );
                         }
                     }
 
@@ -131,14 +124,13 @@ public class DummyReaderService extends AbstractService implements IMonitorable 
                 }
 
             } catch (IOException e) {
-                log.error("Failed to list batch files", e);
+                log.warn("Failed to list batch files");
                 readErrors.incrementAndGet();
-                errors.add(new OperationalError(
-                    Instant.now(),
+                recordError(
                     "LIST_FILES_ERROR",
                     "Failed to list batch files",
-                    e.getMessage()
-                ));
+                    String.format("Key prefix: %s", keyPrefix)
+                );
             }
 
             Thread.sleep(intervalMs);
@@ -146,32 +138,14 @@ public class DummyReaderService extends AbstractService implements IMonitorable 
     }
 
     @Override
-    public Map<String, Number> getMetrics() {
-        return Map.of(
-            "messages_read", totalMessagesRead.get(),
-            "bytes_read", totalBytesRead.get(),
-            "read_operations", readOperations.get(),
-            "validation_errors", validationErrors.get(),
-            "read_errors", readErrors.get(),
-            "files_processed", processedFiles.size()
-        );
-    }
-
-    @Override
-    public boolean isHealthy() {
-        return errors.isEmpty();
-    }
-
-    @Override
-    public List<OperationalError> getErrors() {
-        synchronized (errors) {
-            return new ArrayList<>(errors);
-        }
-    }
-
-    @Override
-    public void clearErrors() {
-        errors.clear();
-        readErrors.set(0);
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);
+        
+        metrics.put("messages_read", totalMessagesRead.get());
+        metrics.put("bytes_read", totalBytesRead.get());
+        metrics.put("read_operations", readOperations.get());
+        metrics.put("validation_errors", validationErrors.get());
+        metrics.put("read_errors", readErrors.get());
+        metrics.put("files_processed", processedFiles.size());
     }
 }

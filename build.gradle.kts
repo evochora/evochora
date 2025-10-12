@@ -83,8 +83,6 @@ tasks.named<JavaExec>("run") {
     standardInput = System.`in`
 }
 
-// Der runServer Task wurde entfernt - verwende stattdessen: ./gradlew run
-
 tasks.register<Jar>("cliJar") {
     archiveClassifier.set("cli")
     manifest {

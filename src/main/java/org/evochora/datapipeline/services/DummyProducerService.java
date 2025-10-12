@@ -2,16 +2,11 @@ package org.evochora.datapipeline.services;
 
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.SystemContracts.DummyMessage;
-import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Instant;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -29,7 +24,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li><b>metricsWindowSeconds</b>: Time window in seconds for throughput calculation (default: 5).</li>
  * </ul>
  */
-public class DummyProducerService extends AbstractService implements IMonitorable {
+public class DummyProducerService extends AbstractService {
 
     private static final Logger logger = LoggerFactory.getLogger(DummyProducerService.class);
 
@@ -40,7 +35,6 @@ public class DummyProducerService extends AbstractService implements IMonitorabl
     private final int metricsWindowSeconds;
 
     private final AtomicLong messagesSent = new AtomicLong(0);
-    private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
     private final ConcurrentLinkedDeque<Long> messageTimestamps = new ConcurrentLinkedDeque<>();
 
     public DummyProducerService(String name, Config options, Map<String, List<IResource>> resources) {
@@ -72,12 +66,11 @@ public class DummyProducerService extends AbstractService implements IMonitorabl
                 messageCounter++;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                logger.warn("Producer interrupted while sending message.");
+                logger.debug("Producer interrupted while sending message");
                 break;
             } catch (Exception e) {
-                OperationalError error = new OperationalError(Instant.now(), "SEND_ERROR", "Failed to send message", e.getMessage());
-                errors.add(error);
-                logger.warn("Failed to send message: {}", e.getMessage());
+                logger.warn("Failed to send message");
+                recordError("SEND_ERROR", "Failed to send message", String.format("Message counter: %d", messageCounter));
             }
 
             if (intervalMs > 0) {
@@ -90,27 +83,11 @@ public class DummyProducerService extends AbstractService implements IMonitorabl
     }
 
     @Override
-    public Map<String, Number> getMetrics() {
-        Map<String, Number> metrics = new HashMap<>();
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);
+        
         metrics.put("messages_sent", messagesSent.get());
         metrics.put("throughput_per_sec", calculateThroughput());
-        return metrics;
-    }
-
-    @Override
-    public List<OperationalError> getErrors() {
-        // Return an immutable copy to ensure thread safety
-        return Collections.unmodifiableList(List.copyOf(errors));
-    }
-
-    @Override
-    public void clearErrors() {
-        errors.clear();
-    }
-
-    @Override
-    public boolean isHealthy() {
-        return getCurrentState() != State.ERROR;
     }
 
     private double calculateThroughput() {

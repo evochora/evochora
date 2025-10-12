@@ -4,6 +4,7 @@ import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.*;
 import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
+import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
 import org.evochora.datapipeline.resources.AbstractResource;
 
 import java.time.Instant;
@@ -36,20 +37,55 @@ public abstract class AbstractDatabaseResource extends AbstractResource
         String usageType = context.usageType();
         return switch (usageType) {
             case "db-meta-write" -> new MetadataWriterWrapper(this, context);
+            case "db-meta-read" -> new MetadataReaderWrapper(this, context);
             default -> throw new IllegalArgumentException(
-                    "Unknown database usage type: " + usageType + ". Supported: database-metadata");
+                    "Unknown database usage type: " + usageType + ". Supported: db-meta-write, db-meta-read");
         };
     }
 
     protected abstract Object acquireDedicatedConnection() throws Exception;
 
-    protected abstract String toSchemaName(String simulationRunId);
-
     protected abstract void doInsertMetadata(Object connection, SimulationMetadata metadata) throws Exception;
 
-    protected abstract void doSetSchema(Object connection, String schemaName) throws Exception;
+    protected abstract void doSetSchema(Object connection, String runId) throws Exception;
 
-    protected abstract void doCreateSchema(Object connection, String schemaName) throws Exception;
+    protected abstract void doCreateSchema(Object connection, String runId) throws Exception;
+
+    // ========================================================================
+    // IMetadataReader Capability
+    // ========================================================================
+
+    /**
+     * Retrieves simulation metadata from the database.
+     * <p>
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IMetadataReader#getMetadata(String)}
+     * <p>
+     * Implementation reads from metadata table in current schema.
+     * Used by indexers to access simulation configuration (e.g., samplingInterval).
+     *
+     * @param connection Database connection (with schema already set)
+     * @param simulationRunId Simulation run ID (for validation)
+     * @return Parsed SimulationMetadata protobuf
+     * @throws MetadataNotFoundException if metadata doesn't exist
+     * @throws Exception for other database errors
+     */
+    protected abstract SimulationMetadata doGetMetadata(Object connection, String simulationRunId) 
+            throws Exception;
+
+    /**
+     * Checks if metadata exists in the database.
+     * <p>
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IMetadataReader#hasMetadata(String)}
+     * <p>
+     * Non-blocking check used for polling scenarios.
+     *
+     * @param connection Database connection (with schema already set)
+     * @param simulationRunId Simulation run ID
+     * @return true if metadata exists, false otherwise
+     * @throws Exception if database query fails
+     */
+    protected abstract boolean doHasMetadata(Object connection, String simulationRunId) 
+            throws Exception;
 
     @Override
     public void setSimulationRun(String simulationRunId) {

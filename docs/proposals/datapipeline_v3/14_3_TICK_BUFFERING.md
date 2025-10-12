@@ -219,13 +219,20 @@ import java.util.concurrent.atomic.AtomicLong;
 public class DummyIndexer extends AbstractIndexer implements IMonitorable {
     private static final Logger log = LoggerFactory.getLogger(DummyIndexer.class);
     
+    // Resources (for try-with-resources cleanup)
+    private final IMetadataReader metadataReader;
+    private final IBatchCoordinatorReady coordinator;
+    
+    // Components
     private final MetadataReadingComponent metadataComponent;
     private final BatchCoordinationComponent coordinationComponent;
     private final TickBufferingComponent bufferingComponent;
     private final IBatchStorageRead storage;
     
+    // Config
     private final int insertBatchSize;
     
+    // Metrics
     private final AtomicLong runsProcessed = new AtomicLong(0);
     private final AtomicLong batchesClaimed = new AtomicLong(0);
     private final AtomicLong batchesProcessed = new AtomicLong(0);
@@ -236,17 +243,17 @@ public class DummyIndexer extends AbstractIndexer implements IMonitorable {
     public DummyIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         
-        // Setup metadata reading component (Phase 2.5.1)
-        IMetadataReader metadataReader = getRequiredResource(IMetadataReader.class, "db-meta-read");
+        // Setup metadata reader (Phase 2.5.1)
+        this.metadataReader = getRequiredResource("metadata", IMetadataReader.class);
         int pollIntervalMs = options.hasPath("pollIntervalMs") ? options.getInt("pollIntervalMs") : 1000;
         int maxPollDurationMs = options.hasPath("maxPollDurationMs") ? options.getInt("maxPollDurationMs") : 300000;
         
         this.metadataComponent = new MetadataReadingComponent(metadataReader, pollIntervalMs, maxPollDurationMs);
         
-        // Setup batch coordination component (Phase 2.5.2)
-        IBatchCoordinator coordinator = getRequiredResource(IBatchCoordinator.class, "db-coordinator");
-        IBatchCoordinatorReady coordinatorReady = coordinator.setIndexerClass(this.getClass().getName());
-        this.coordinationComponent = new BatchCoordinationComponent(coordinatorReady);
+        // Setup batch coordinator (Phase 2.5.2)
+        IBatchCoordinator coord = getRequiredResource("coordinator", IBatchCoordinator.class);
+        this.coordinator = coord.setIndexerClass(this.getClass().getName());
+        this.coordinationComponent = new BatchCoordinationComponent(coordinator);
         
         // Setup tick buffering component (Phase 2.5.3)
         this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 1000;
@@ -259,27 +266,30 @@ public class DummyIndexer extends AbstractIndexer implements IMonitorable {
         );
         
         // Storage for batch discovery
-        this.storage = getRequiredResource(IBatchStorageRead.class, "storage");
+        this.storage = getRequiredResource("storage", IBatchStorageRead.class);
     }
     
     @Override
     protected void indexRun(String runId) throws Exception {
-        // Load metadata (polls until available)
-        metadataComponent.loadMetadata(runId);
-        
-        log.debug("Metadata available: runId={}, samplingInterval={}", 
-                 runId, metadataComponent.getSamplingInterval());
-        
-        runsProcessed.incrementAndGet();
-        
-        // Process batches
-        processBatches(runId);
-        
-        // Flush any remaining buffered ticks
-        bufferingComponent.flush();
-        
-        log.info("Batch processing completed: runId={}, batches={}, flushes={}", 
-                 runId, batchesProcessed.get(), flushCount.get());
+        // Use try-with-resources for automatic connection cleanup
+        try (IMetadataReader reader = metadataReader; IBatchCoordinatorReady coord = coordinator) {
+            // Load metadata (polls until available)
+            metadataComponent.loadMetadata(runId);
+            
+            log.debug("Metadata available: runId={}, samplingInterval={}", 
+                     runId, metadataComponent.getSamplingInterval());
+            
+            runsProcessed.incrementAndGet();
+            
+            // Process batches
+            processBatches(runId);
+            
+            // Flush any remaining buffered ticks
+            bufferingComponent.flush();
+            
+            log.info("Batch processing completed: runId={}, batches={}, flushes={}", 
+                     runId, batchesProcessed.get(), flushCount.get());
+        }  // AutoCloseable.close() releases all connections
     }
     
     private void processBatches(String runId) throws Exception {
@@ -391,11 +401,16 @@ dummy-indexer {
   
   resources {
     storage = "storage-read:tick-storage"
-    metadataReader = "db-meta-read:index-database"
+    metadata = "db-meta-read:index-database"
     coordinator = "db-coordinator:index-database"
   }
   
   options {
+    # Inherits from central services.runId (if set)
+    # If services.runId not set → automatic discovery from storage
+    # Can be overridden here for indexer-specific post-mortem mode
+    runId = ${?pipeline.services.runId}
+    
     # Metadata polling
     pollIntervalMs = 1000
     maxPollDurationMs = 300000

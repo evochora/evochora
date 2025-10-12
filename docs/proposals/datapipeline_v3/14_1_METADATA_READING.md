@@ -240,7 +240,7 @@ public abstract class AbstractDatabaseWrapper
     
     // Connection caching (lazy acquisition, smart release)
     private Object cachedConnection = null;
-    private String cachedSchema = null;
+    private String cachedRunId = null;
     
     // Error tracking (O(1) operations)
     protected final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
@@ -283,13 +283,13 @@ public abstract class AbstractDatabaseWrapper
         if (cachedConnection == null || isConnectionClosed(cachedConnection)) {
             try {
                 cachedConnection = database.acquireDedicatedConnection();
-                
-                // Set schema if known
-                if (cachedSchema != null) {
-                    database.doSetSchema(cachedConnection, cachedSchema);
-                }
-                
                 log.debug("Acquired database connection for service: {}", context.serviceName());
+                
+                // If schema was previously set, restore it on new connection
+                if (cachedRunId != null) {
+                    database.doCreateSchema(cachedConnection, cachedRunId);
+                    database.doSetSchema(cachedConnection, cachedRunId);
+                }
                 
             } catch (Exception e) {
                 throw new RuntimeException("Failed to acquire database connection for service: " + 
@@ -339,18 +339,22 @@ public abstract class AbstractDatabaseWrapper
     @Override
     public void setSimulationRun(String simulationRunId) {
         try {
-            String schemaName = database.toSchemaName(simulationRunId);
-            this.cachedSchema = schemaName;
+            // Step 1: Ensure connection exists (without schema - cachedRunId still null)
+            Object conn = ensureConnection();
             
-            // Set schema on cached connection (if exists)
-            // Otherwise will be set on next ensureConnection()
-            if (cachedConnection != null) {
-                database.doSetSchema(cachedConnection, schemaName);
-            }
+            // Step 2: Create schema if not exists (idempotent, prevents race conditions)
+            database.doCreateSchema(conn, simulationRunId);
+            
+            // Step 3: Set schema on connection
+            database.doSetSchema(conn, simulationRunId);
+            
+            // Step 4: Cache runId for future connection re-acquisition
+            this.cachedRunId = simulationRunId;
+            
         } catch (Exception e) {
             recordError("SET_SCHEMA_FAILED", "Failed to set simulation run", 
                        "RunId: " + simulationRunId + ", Error: " + e.getMessage());
-            throw new RuntimeException("Failed to set schema: " + simulationRunId, e);
+            throw new RuntimeException("Failed to set schema for run-id: " + simulationRunId, e);
         }
     }
     
@@ -783,18 +787,10 @@ public class MetadataReadingComponent {
         }
         return metadata;
     }
-    
-    /**
-     * Releases the database connection.
-     * <p>
-     * Delegates to underlying IMetadataReader wrapper.
-     * Call before long idle periods to reduce pool pressure.
-     */
-    public void releaseConnection() {
-        metadataReader.releaseConnection();
-    }
 }
 ```
+
+**Note:** Connection release during polling (before `Thread.sleep`) happens internally in `loadMetadata()`. Final cleanup is handled automatically via try-with-resources in DummyIndexer's `indexRun()` method.
 
 ## DummyIndexer v1 Implementation
 
@@ -830,17 +826,18 @@ import java.util.concurrent.atomic.AtomicLong;
  * <strong>Purpose:</strong> Validate metadata reading capability before adding
  * batch coordination and processing.
  */
-public class DummyIndexer extends AbstractIndexer implements IMonitorable {
+public class DummyIndexer extends AbstractIndexer {
     private static final Logger log = LoggerFactory.getLogger(DummyIndexer.class);
     
+    private final IMetadataReader metadataReader;
     private final MetadataReadingComponent metadataComponent;
     private final AtomicLong runsProcessed = new AtomicLong(0);
     
     public DummyIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         
-        // Setup metadata reading component
-        IMetadataReader metadataReader = getRequiredResource(IMetadataReader.class, "db-meta-read");
+        // Setup metadata reader and component
+        this.metadataReader = getRequiredResource("metadata", IMetadataReader.class);
         int pollIntervalMs = options.hasPath("pollIntervalMs") ? options.getInt("pollIntervalMs") : 1000;
         int maxPollDurationMs = options.hasPath("maxPollDurationMs") ? options.getInt("maxPollDurationMs") : 300000;
         
@@ -849,38 +846,24 @@ public class DummyIndexer extends AbstractIndexer implements IMonitorable {
     
     @Override
     protected void indexRun(String runId) throws Exception {
-        log.info("Starting metadata reading for run: {}", runId);
-        
-        // Load metadata (polls until available)
-        metadataComponent.loadMetadata(runId);
-        
-        runsProcessed.incrementAndGet();
-        
-        log.info("Successfully read metadata for run: {}", runId);
-        
-        // Phase 2.5.1: Stop after metadata (no batch processing yet)
+        // Use try-with-resources for automatic connection cleanup
+        try (IMetadataReader reader = metadataReader) {
+            log.info("Starting metadata reading for run: {}", runId);
+            
+            // Load metadata (polls until available)
+            metadataComponent.loadMetadata(runId);
+            
+            runsProcessed.incrementAndGet();
+            
+            log.info("Successfully read metadata for run: {}", runId);
+            
+            // Phase 2.5.1: Stop after metadata (no batch processing yet)
+        }  // AutoCloseable.close() releases connection
     }
     
     @Override
-    public Map<String, Number> getMetrics() {
-        return Map.of(
-            "runs_processed", runsProcessed.get()
-        );
-    }
-    
-    @Override
-    public boolean isHealthy() {
-        return getCurrentState() != State.ERROR;
-    }
-    
-    @Override
-    public List<OperationalError> getErrors() {
-        return Collections.emptyList(); // DummyIndexer v1 doesn't track errors (parent does)
-    }
-    
-    @Override
-    public void clearErrors() {
-        // No-op
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        metrics.put("runs_processed", runsProcessed.get());
     }
 }
 ```
@@ -897,12 +880,14 @@ dummy-indexer {
   
   resources {
     storage = "storage-read:tick-storage"
-    metadataReader = "db-meta-read:index-database"  # NEW in Phase 2.5.1
+    metadata = "db-meta-read:index-database"  # NEW in Phase 2.5.1
   }
   
   options {
-    # Optional: Specific run to index (post-mortem mode)
-    # runId = "20251006143025-550e8400-e29b-41d4-a716-446655440000"
+    # Inherits from central services.runId (if set)
+    # If services.runId not set → automatic discovery from storage
+    # Can be overridden here for indexer-specific post-mortem mode
+    runId = ${?pipeline.services.runId}
     
     # Run discovery and metadata polling
     pollIntervalMs = 1000
@@ -1079,7 +1064,7 @@ class DummyIndexerV1IntegrationTest {
         DummyIndexer indexer = new DummyIndexer("test-indexer", config,
             Map.of(
                 "storage", List.of(testStorage),
-                "metadataReader", List.of(testDatabase)
+                "metadata", List.of(testDatabase)
             ));
         
         // Start indexer
@@ -1106,7 +1091,7 @@ class DummyIndexerV1IntegrationTest {
         DummyIndexer indexer = new DummyIndexer("test-indexer", config,
             Map.of(
                 "storage", List.of(testStorage),
-                "metadataReader", List.of(testDatabase)
+                "metadata", List.of(testDatabase)
             ));
         
         // Start indexer (metadata doesn't exist yet)
@@ -1142,7 +1127,7 @@ class DummyIndexerV1IntegrationTest {
         DummyIndexer indexer = new DummyIndexer("test-indexer", config,
             Map.of(
                 "storage", List.of(testStorage),
-                "metadataReader", List.of(testDatabase)
+                "metadata", List.of(testDatabase)
             ));
         
         indexer.start();

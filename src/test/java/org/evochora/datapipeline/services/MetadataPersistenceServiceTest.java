@@ -201,7 +201,7 @@ class MetadataPersistenceServiceTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*MetadataPersistenceService.*",
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
                messagePattern = ".*empty or null simulationRunId.*")
     void testEmptySimulationRunId() throws Exception {
         resources.put("dlq", Collections.singletonList(mockDLQ));
@@ -235,7 +235,7 @@ class MetadataPersistenceServiceTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*MetadataPersistenceService.*",
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
                messagePattern = ".*empty or null simulationRunId.*")
     void testNullSimulationRunId() throws Exception {
         resources.put("dlq", Collections.singletonList(mockDLQ));
@@ -291,9 +291,8 @@ class MetadataPersistenceServiceTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
-    @AllowLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*")
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*MetadataPersistenceService.*",
-               messagePattern = ".*Failed to write metadata .* after .* retries.*")
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
+               messagePattern = ".*Failed to write metadata .* after .* retries, sending to DLQ")
     void testAllRetriesExhausted() throws Exception {
         resources.put("dlq", Collections.singletonList(mockDLQ));
         service = new MetadataPersistenceService("test-metadata-persistence", config, resources);
@@ -325,9 +324,8 @@ class MetadataPersistenceServiceTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
-    @AllowLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*")
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*MetadataPersistenceService.*",
-               messagePattern = ".*Failed to write metadata .* after .* retries.*")
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
+               messagePattern = ".*Failed to write metadata .* after .* retries, sending to DLQ")
     void testDLQWithConfiguredQueue() throws Exception {
         resources.put("dlq", Collections.singletonList(mockDLQ));
         service = new MetadataPersistenceService("test-metadata-persistence", config, resources);
@@ -356,8 +354,7 @@ class MetadataPersistenceServiceTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
-    @AllowLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*")
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*MetadataPersistenceService.*",
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
                messagePattern = ".*Failed metadata has no DLQ configured.*")
     void testDLQNotConfigured() throws Exception {
         // No DLQ in resources
@@ -379,8 +376,7 @@ class MetadataPersistenceServiceTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
-    @AllowLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*")
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*MetadataPersistenceService.*",
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
                messagePattern = ".*DLQ is full.*")
     void testDLQFull() throws Exception {
         resources.put("dlq", Collections.singletonList(mockDLQ));

@@ -55,7 +55,6 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     private final long startTimeMs;
     private final AtomicLong currentTick = new AtomicLong(-1);
     private final AtomicLong messagesSent = new AtomicLong(0);
-    private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
     private long lastMetricTime = System.currentTimeMillis();
     private long lastTickCount = 0;
     private double ticksPerSecond = 0.0;
@@ -156,16 +155,8 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
             metadataOutput.put(buildMetadataMessage());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.error("Interrupted while sending metadata, service will not start.", e);
-            errors.add(new OperationalError(
-                Instant.now(),
-                "METADATA_SEND_INTERRUPTED",
-                "Interrupted while sending initial metadata",
-                e.getMessage()
-            ));
-            // We were interrupted before the loop even started, so we exit.
-            // The service state will be handled by the AbstractService's runService method.
-            return;
+            log.debug("Interrupted while sending initial metadata during shutdown");
+            throw e; // Let AbstractService handle it as normal shutdown
         }
 
         while ((getCurrentState() == State.RUNNING || getCurrentState() == State.PAUSED)
@@ -181,8 +172,14 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
                     try {
                         strategyWithConfig.strategy().distributeEnergy(simulation.getEnvironment(), tick);
                     } catch (Exception ex) {
-                        log.warn("Energy strategy '{}' execution failed: {}",
-                                strategyWithConfig.strategy().getClass().getSimpleName(), ex.getMessage());
+                        log.warn("Energy strategy '{}' failed at tick {}", 
+                                strategyWithConfig.strategy().getClass().getSimpleName(), tick);
+                        recordError(
+                            "ENERGY_STRATEGY_FAILED",
+                            "Energy distribution strategy failed",
+                            String.format("Strategy: %s, Tick: %d", 
+                                strategyWithConfig.strategy().getClass().getSimpleName(), tick)
+                        );
                     }
                 }
             }
@@ -196,8 +193,8 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
                     log.debug("Interrupted while sending tick data for tick {} during shutdown", tick);
                     throw e; // Re-throw to exit cleanly
                 } catch (Exception e) {
-                    log.error("Failed to capture or send tick data for tick {}", tick, e);
-                    errors.add(new OperationalError(Instant.now(), "SEND_ERROR", "Failed to send tick data", e.getMessage()));
+                    log.warn("Failed to capture or send tick data for tick {}", tick);
+                    recordError("SEND_ERROR", "Failed to send tick data", String.format("Tick: %d", tick));
                 }
             }
 
@@ -211,8 +208,9 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     }
 
     @Override
-    public Map<String, Number> getMetrics() {
-        Map<String, Number> metrics = new HashMap<>();
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);
+        
         long now = System.currentTimeMillis();
         long windowMs = metricsWindowSeconds * 1000L;
         if (now - lastMetricTime > windowMs) {
@@ -224,22 +222,14 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         // Take snapshot to avoid ConcurrentModificationException when simulation thread modifies list
         List<Organism> organismsSnapshot = new ArrayList<>(simulation.getOrganisms());
 
+        // Add SimulationEngine-specific metrics
         metrics.put("current_tick", currentTick.get());
         metrics.put("organisms_alive", organismsSnapshot.stream().filter(o -> !o.isDead()).count());
         metrics.put("organisms_total", (long) organismsSnapshot.size());
         metrics.put("messages_sent", messagesSent.get());
         metrics.put("sampling_interval", samplingInterval);
         metrics.put("ticks_per_second", ticksPerSecond);
-        metrics.put("error_count", errors.size());
-        return metrics;
     }
-
-    @Override
-    public List<OperationalError> getErrors() { return new ArrayList<>(errors); }
-    @Override
-    public void clearErrors() { errors.clear(); }
-    @Override
-    public boolean isHealthy() { return getCurrentState() != State.ERROR; }
 
     private boolean shouldAutoPause(long tick) { return pauseTicks.contains(tick); }
 

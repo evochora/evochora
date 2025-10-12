@@ -60,7 +60,7 @@ public abstract class AbstractIndexer extends AbstractService {
 
                     Thread.sleep(pollIntervalMs);
                 } catch (IOException e) {
-                    log.warn("Error listing run IDs from storage, retrying: {}", e.getMessage());
+                    log.debug("Error listing run IDs from storage, retrying: {}", e.getMessage());
                     Thread.sleep(pollIntervalMs);
                 }
             }
@@ -74,6 +74,7 @@ public abstract class AbstractIndexer extends AbstractService {
         try {
             prepareSchema(runId);
         } catch (Exception e) {
+            log.error("Failed to prepare schema for run: {}", runId);
             throw new RuntimeException("Failed to prepare schema for run: " + runId, e);
         }
         
@@ -124,19 +125,34 @@ public abstract class AbstractIndexer extends AbstractService {
 
     @Override
     protected void run() throws InterruptedException {
+        String runId = null;
+        
+        // Phase 1: Discover run ID
         try {
-            String runId = discoverRunId();
-            indexRun(runId);
+            runId = discoverRunId();
         } catch (InterruptedException e) {
-            // Normal during shutdown - re-throw to signal clean termination
-            log.info("Indexing interrupted during shutdown");
+            log.debug("Run discovery interrupted during shutdown");
             throw e;
         } catch (TimeoutException e) {
-            log.error("Failed to discover run: {}", e.getMessage());
-            throw new RuntimeException(e); // Error state
+            log.error("Run discovery timeout after {}ms", maxPollDurationMs);
+            throw new RuntimeException("Run discovery timeout", e);  // Fatal → ERROR state
         } catch (Exception e) {
-            log.error("Indexing failed: {}", e.getMessage(), e);
-            throw new RuntimeException(e); // Error state
+            log.error("Failed to discover run: {}", e.getMessage());
+            throw new RuntimeException("Run discovery failed", e);  // Fatal → ERROR state
+        }
+        
+        // Phase 2: Index the run
+        try {
+            indexRun(runId);
+        } catch (InterruptedException e) {
+            log.debug("Indexing interrupted during shutdown for run: {}", runId);
+            throw e;
+        } catch (TimeoutException e) {
+            log.error("Indexing timeout for run: {}", runId);
+            throw new RuntimeException("Indexing timeout", e);  // Fatal → ERROR state
+        } catch (Exception e) {
+            log.error("Indexing failed for run: {}", runId);
+            throw new RuntimeException("Indexing failed", e);  // Fatal → ERROR state
         }
     }
 }

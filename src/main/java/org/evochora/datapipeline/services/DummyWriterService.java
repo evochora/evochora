@@ -1,16 +1,12 @@
 package org.evochora.datapipeline.services;
 
 import com.typesafe.config.Config;
-import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.resources.OperationalError;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -19,7 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Test service that writes dummy TickData batches to storage using the batch API.
  * Used for integration testing of storage resources.
  */
-public class DummyWriterService extends AbstractService implements IMonitorable {
+public class DummyWriterService extends AbstractService {
     private final IBatchStorageWrite storage;
     private final int intervalMs;
     private final int messagesPerWrite;
@@ -30,7 +26,6 @@ public class DummyWriterService extends AbstractService implements IMonitorable 
     private final AtomicLong totalBytesWritten = new AtomicLong(0);
     private final AtomicLong writeOperations = new AtomicLong(0);
     private final AtomicLong writeErrors = new AtomicLong(0);
-    private final List<OperationalError> errors = Collections.synchronizedList(new ArrayList<>());
     private long currentTick = 0;
 
     public DummyWriterService(String name, Config options, Map<String, List<IResource>> resources) {
@@ -73,14 +68,13 @@ public class DummyWriterService extends AbstractService implements IMonitorable 
                     filename, batch.size(), firstTick, lastTick);
 
             } catch (IOException e) {
-                log.error("Failed to write batch (ticks {}-{})", firstTick, lastTick, e);
+                log.warn("Failed to write batch (ticks {}-{})", firstTick, lastTick);
                 writeErrors.incrementAndGet();
-                errors.add(new OperationalError(
-                    Instant.now(),
+                recordError(
                     "WRITE_BATCH_ERROR",
-                    "Failed to write batch (ticks " + firstTick + "-" + lastTick + ")",
-                    e.getMessage()
-                ));
+                    "Failed to write batch",
+                    String.format("Ticks: %d-%d", firstTick, lastTick)
+                );
             }
 
             writeCount++;
@@ -97,30 +91,12 @@ public class DummyWriterService extends AbstractService implements IMonitorable 
     }
 
     @Override
-    public Map<String, Number> getMetrics() {
-        return Map.of(
-            "messages_written", totalMessagesWritten.get(),
-            "bytes_written", totalBytesWritten.get(),
-            "write_operations", writeOperations.get(),
-            "write_errors", writeErrors.get()
-        );
-    }
-
-    @Override
-    public boolean isHealthy() {
-        return errors.isEmpty();
-    }
-
-    @Override
-    public List<OperationalError> getErrors() {
-        synchronized (errors) {
-            return new ArrayList<>(errors);
-        }
-    }
-
-    @Override
-    public void clearErrors() {
-        errors.clear();
-        writeErrors.set(0);
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);
+        
+        metrics.put("messages_written", totalMessagesWritten.get());
+        metrics.put("bytes_written", totalBytesWritten.get());
+        metrics.put("write_operations", writeOperations.get());
+        metrics.put("write_errors", writeErrors.get());
     }
 }
