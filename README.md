@@ -1,196 +1,186 @@
-# Evochora Simulation
+# Evochora
 
-Evochora is a digital playground for simulating the evolution of simple, programmable organisms in an n-dimensional environment. It provides a custom assembly language that allows organisms to interact with their environment, reproduce, and compete for resources.
+**A collaborative platform for research into the foundational physics of digital evolution.**
 
-## Project Purpose
+Evochora is an open-source artificial life simulation designed to investigate the fundamental prerequisites for open-ended evolution. Unlike traditional systems with fixed, hard-coded "physics," Evochora provides a rich, n-dimensional environment where the rules governing evolution are themselves objects of scientific inquiry. Organisms are embodied agents that must navigate their world, actively forage for energy, and solve the mechanical, metabolic, and ecological challenges of self-replication—all using a low-level assembly language, making their behaviors fully evolvable.
 
-The primary goal of this project is to create a flexible and extensible simulation environment for exploring concepts of artificial life and evolution. It allows users to design organisms with custom behaviors and observe how they adapt and evolve over generations.
+The platform is architected for scalability: simulations can run on a single machine for initial experiments or be deployed in a distributed cloud environment for massive-scale, long-duration evolutionary studies. By making the "laws" of the digital universe modular and extensible, Evochora invites the scientific community to collaboratively explore what properties an environment must possess for complex innovation to emerge.
 
-## Architecture Overview
+## Key Features
 
-The simulation is built in Java and consists of several key components:
+- **N-Dimensional Spatial Worlds**: Configurable grid size and dimensionality (2D to n-D), bounded or toroidal topology
+- **Embodied Agency**: Organisms navigate via instruction pointers (IP) and data pointers (DPs), enforcing locality and immobility
+- **Rich Virtual Machine**: Versatile registers, three distinct stacks (data, call, location), and a complete assembly language
+- **Intrinsic Selection Pressure**: Survival requires active energy foraging; every instruction costs energy
+- **Extensible Physics**: Pluggable systems for energy distribution, mutation models, and more
+- **Full Determinism**: Reproducible experiments via fixed random seeds and deterministic conflict resolution
+- **Scalable Architecture**: In-memory execution → persistent storage → indexing → web-based debugging
+- **Cloud-Ready**: Designed to scale from single-machine prototyping to distributed cloud deployments
 
--   **World**: An n-dimensional grid where organisms live and interact. It contains energy sources and other symbols that organisms can manipulate.
--   **Organism**: An entity with a simple CPU, registers, and a program written in a custom assembly language. Organisms can move, execute instructions, and reproduce.
--   **Assembler**: A multi-pass assembler that translates human-readable assembly code into machine code that organisms can execute. It supports macros, routines, and labels.
--   **Simulation**: The main engine that manages the environment, orchestrates organism actions, and advances the simulation tick by tick.
--   **UI**: A JavaFX-based graphical user interface for visualizing the simulation, inspecting organisms, and controlling the simulation flow.
+## Quick Start
 
-## How to Build & Test
+### Prerequisites
 
-The project uses Gradle for building and managing dependencies.
+- Java 21
+- Gradle (wrapper included)
 
--   **Build the project**:
-    ```bash
-    ./gradlew build
-    ```
--   **Run the tests**:
-    ```bash
-    ./gradlew test
-    ```
--   **Run the simulation**:
-    ```bash
-    ./gradlew run
-    ```
--   **Compile assembly files**:
-    ```bash
-    ./gradlew compile -Pfile="example.s"
-    ```
+### Build & Run
 
-## Configuration
-
-### `--config` Parameter
-You can specify a custom configuration file when starting the CLI:
-
-**Interactive mode (CLI interface):**
 ```bash
-# Use custom config file with Gradle
-./gradlew run --args="--config my-config.jsonc"
+# Build the project
+./gradlew build
 
-# Use custom config file with JAR
-java -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar --config my-config.jsonc
+# Create executable JAR
+./gradlew jar
+
+# Start the simulation node
+./gradlew run --args="node run"
+
+# Or use custom configuration
+./gradlew run --args="--config evochora.conf node run"
 ```
 
-**Important notes:**
-- `--config` only works in interactive mode (when no other commands are specified)
-- If the specified config file is not found, the CLI will log an ERROR and continue with the fallback configuration
-- If the config file has invalid JSON syntax, the CLI will log an ERROR with the line number and continue with the fallback configuration
-- The fallback configuration includes basic logging setup (INFO for CLI/ServiceManager, WARN for others)
+### Compile Assembly Code
 
-## Log Level Configuration
-
-You can control logging verbosity when running the CLI or compiling assembly files using System Properties:
-
-### Basic Log Level Control
-
-**Set default log level for all services:**
 ```bash
-./gradlew run -Dlog.level=DEBUG
-./gradlew run -Dlog.level=INFO
-./gradlew run -Dlog.level=WARN
-./gradlew run -Dlog.level=ERROR
-./gradlew run -Dlog.level=TRACE
+# Option 1: Gradle task
+./gradlew compile -Pfile="assembly/examples/simple.s"
+
+# Option 2: Gradle run with args
+./gradlew run --args="compile --file=assembly/examples/simple.s"
+
+# Option 3: Standalone JAR
+java -jar build/libs/evochora.jar compile --file=assembly/examples/simple.s
 ```
 
-**Set specific logger levels:**
-```bash
-# Different levels for different services (use full Java class names)
-./gradlew run -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -Dlog.org.evochora.server.indexer.DebugIndexer=TRACE -Dlog.org.evochora.server.http.DebugServer=WARN
+### HTTP API
 
-# Combine default and specific settings
-./gradlew run -Dlog.level=INFO -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -Dlog.org.evochora.server.persistence.PersistenceService=WARN
-```
+When the node is running, it exposes a REST API at `http://localhost:8080`:
 
-**For compilation with debug output:**
-```bash
-./gradlew compile -Pfile="assembly/primordial/main.s" -Dlog.level=DEBUG
-```
+**Pipeline Control:**
+- `GET /api/pipeline/status` - Overall pipeline status
+- `POST /api/pipeline/start|stop|pause|resume` - Control all services
 
-**For JAR execution:**
-```bash
-# Build the CLI JAR first
-./gradlew cliJar
+**Service Control:**
+- `GET /api/pipeline/service/{name}/status` - Service-specific status
+- `POST /api/pipeline/service/{name}/start|stop|pause|resume` - Control individual service
 
-# Run with log level configuration
-java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar
-
-# Run with custom config file
-java -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar --config my-config.jsonc
-
-# Compile assembly with JAR and debug logging
-java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar compile assembly/primordial/main.s
-```
-
-### Available Log Levels
-
-- `TRACE` - Most verbose, shows all operations and internal details
-- `DEBUG` - Detailed debugging information for development
-- `INFO` - General information messages (default)
-- `WARN` - Warning messages only
-- `ERROR` - Error messages only
-
-### Available Loggers
-
-**For System Properties (use full Java class names):**
-- `log.org.evochora.server.engine.SimulationEngine` - Simulation engine logging
-- `log.org.evochora.server.persistence.PersistenceService` - Persistence service logging  
-- `log.org.evochora.server.indexer.DebugIndexer` - Debug indexer logging
-- `log.org.evochora.server.http.DebugServer` - Web debug server logging
-- `log.org.evochora.server.ServiceManager` - CLI interface logging
-
-**For CLI commands (use short aliases):**
-- `sim` - Simulation engine logging
-- `persist` - Persistence service logging  
-- `indexer` - Debug indexer logging
-- `web` - Web debug server logging
-- `cli` - CLI interface logging
-
-### How It Works
-
-1. **System Properties override** config.jsonc settings
-2. **`log.level`** sets the default level for all loggers
-3. **`log.<logger>`** sets specific logger levels
-4. **Fallback to config.jsonc** if no System Properties are set
-
-### Example Usage
-
-**Gradle execution:**
-```bash
-# Start with debug logging for troubleshooting
-./gradlew run -Dlog.level=DEBUG
-
-# Detailed simulation logging with quiet other services
-./gradlew run -Dlog.level=WARN -Dlog.org.evochora.server.engine.SimulationEngine=TRACE
-
-# Compile with debug output to see compilation details
-./gradlew compile -Pfile="assembly/test/main.s" -Dlog.level=DEBUG
-
-# Mixed logging levels for different services
-./gradlew run -Dlog.level=INFO -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -Dlog.org.evochora.server.indexer.DebugIndexer=TRACE -Dlog.org.evochora.server.http.DebugServer=ERROR
-```
-
-**JAR execution:**
-```bash
-# Build the CLI JAR first
-./gradlew cliJar
-
-# Start with debug logging
-java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar
-
-# Start with custom config file
-java -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar --config my-config.jsonc
-
-# Mixed logging levels (use full Java class names)
-java -Dlog.level=INFO -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -Dlog.org.evochora.server.indexer.DebugIndexer=TRACE -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar
-
-# Compile assembly with debug output using JAR
-java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar compile assembly/test/main.s
-```
-
-You can also change log levels at runtime using the `loglevel` command within the CLI. See [docs/CLI_USAGE.md](docs/CLI_USAGE.md) for more details.
+See [docs/CLI_USAGE.md](docs/CLI_USAGE.md) for complete API documentation.
 
 ## Documentation
 
--   **Javadoc**: Detailed documentation for all public APIs can be generated by running `./gradlew javadoc`. The output will be in `build/docs/javadoc/`.
--   **Assembler Specification**: For a complete guide to the assembly language, including syntax, directives, and the full instruction set, please see [docs/ASSEMBLY_SPEC.md](ASSEMBLY_SPEC.md).
--   **Assembly Compile System**: For information on how to compile assembly files and use the system with AI assistants, see [docs/ASSEMBLY_COMPILE_USAGE.md](docs/ASSEMBLY_COMPILE_USAGE.md).
+- **[Assembly Language Specification](docs/ASSEMBLY_SPEC.md)** - Complete instruction set, syntax, and directives
+- **[CLI Usage Guide](docs/CLI_USAGE.md)** - Command-line interface and HTTP API reference
+- **[Assembly Compile Usage](docs/ASSEMBLY_COMPILE_USAGE.md)** - Compiler usage and integration with AI tools
 
-## vNext Highlights & Migration
+## Architecture Overview
 
-What’s new:
-- Stack-based S-variants: ADDS, SUBS, MULS, DIVS, MODS, ANDS, ORS, XORS, NADS, NOTS, SHLS, SHRS.
-- Stack ops: DUP, SWAP, DROP, ROT.
-- Separate Return-Stack (RS) for CALL/RET + configurable limits (DS_MAX_DEPTH/RS_MAX_DEPTH).
-- PROC-local registers (PRs) with automatic save/restore across CALL/RET.
-- SCAN/SEEK variants: SCNI (imm vec), SCNS (stack vec), SEKS (stack vec); alias SCNR -> SCAN.
-- Includes: signature-deduplicating `.INCLUDE`, forced `.INCLUDE_STRICT`.
-- Procs: `.PROC/.ENDP`, `.EXPORT`, `.REQUIRE`, `.IMPORT` with validation.
+Evochora is built on three core principles:
 
-Migration tips:
-- Prefer S-variants to reduce boilerplate PUSH/POP.
-- Replace direct register SCAN/SEEK where convenient: use SCNI/SCNS/SEKS; SCNR works as alias for SCAN.
-- For reusable code, use `.INCLUDE`; use `.INCLUDE_STRICT` only when a fresh instance is required.
-- Declare libraries as `.PROC` with `.EXPORT`; call-sites use `.IMPORT LIB.NAME AS ALIAS`.
-- Watch DS/RS depth in programs that recurse or use deep stacks; tune via Config.
+**1. Embodied Agency**  
+Organisms are not abstract computational entities but embodied agents with:
+- An **Instruction Pointer (IP)** that executes CODE molecules
+- **Data Pointers (DPs)** that serve as "limbs" for world interaction
+- A rich internal state (registers, stacks) providing a low-level toolkit for evolution
 
-Examples: see docs/examples/phase8_examples.s
+**2. Metabolic Economy**  
+Survival requires active resource management:
+- Every instruction costs energy (deducted from internal Energy Register)
+- ENERGY molecules must be foraged using DPs
+- STRUCTURE molecules act as obstacles, costing additional energy
+- Death occurs when energy reaches zero
+
+**3. Extensible Physics**  
+Core systems are modular and pluggable:
+- Energy distribution models (random, geyser-based, custom)
+- Mutation models (background radiation, replication errors, genomic rearrangements)
+- Future: Digital chemistry, inter-organism communication, and more
+
+## Research Avenues
+
+Evochora is designed to address fundamental questions in artificial life:
+
+- **Primordial Organisms**: Designing viable ancestors that solve the replication/energy/space trilemma
+- **Mutation Models**: Exploring how different mutation regimes influence evolutionary trajectories
+- **Emergence of Sociality**: Investigating cooperation, communication, and the evolution of multicellularity
+- **Digital Chemistry**: Moving beyond single-resource worlds to complex metabolic networks
+- **Open-Ended Evolution**: Identifying the fundamental prerequisites for sustained innovation
+
+See our [scientific paper](docs/SCIENTIFIC_OVERVIEW.md) for a detailed research agenda.
+
+## Project Status & Roadmap
+
+**Current Status**: Functional platform with stable VM, compiler, data pipeline, and a working primordial organism capable of sustainable replication.
+
+**Immediate Roadmap**:
+1. ✅ Core VM and assembly language implementation
+2. ✅ Data pipeline with persistence and indexing
+3. ✅ **Viable primordial organism** (functional and replicating!)
+4. 🔄 **Conduct "Experiment Null"** (first long-duration simulation - in progress)
+5. 📋 Implement pluggable mutation system
+6. 📋 Multi-threaded simulation engine
+7. 📋 Cloud-native deployment architecture
+
+**Long-Term Vision**:
+- Inter-organism communication primitives
+- Digital chemistry with configurable reaction tables
+- Higher-dimensional visualization tools
+- Statistical analysis services for population dynamics
+
+## Contributing
+
+We welcome contributions of all kinds:
+
+- **Scientific Discussion**: Share ideas about the "laws" of our digital universe
+- **Code Contributions**: Help build the platform (VM, compiler, data pipeline, analysis tools)
+- **Primordial Design**: Design and test ancestral organisms
+- **Documentation**: Improve docs, write tutorials, create examples
+- **Testing**: Report bugs, write tests, improve reproducibility
+
+**TODO**: Detailed contributing guidelines coming soon. For now:
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Follow code style in [AGENTS.md](AGENTS.md)
+4. Write tests (see Testing Guidelines in AGENTS.md)
+5. Submit a pull request
+
+## Community
+
+- **Source Code**: [GitHub Repository](https://github.com/yourusername/evochora) *(TODO: Add actual link)*
+- **Issue Tracker**: [GitHub Issues](https://github.com/yourusername/evochora/issues) *(TODO: Add actual link)*
+- **Discussions**: [GitHub Discussions](https://github.com/yourusername/evochora/discussions) *(TODO: Add actual link)*
+- **Chat**: [Discord Server](https://discord.gg/yourinvite) *(TODO: Add actual link)*
+- **Live Demo**: [Web Debugger](https://demo.evochora.org) *(TODO: Add actual link)*
+
+## License
+
+This project is open-source and available under one of the following licenses (to be decided):
+- [MIT License](https://opensource.org/licenses/MIT)
+- [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+- [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.en.html)
+
+**TODO**: Final license selection pending discussion.
+
+## Citation
+
+If you use Evochora in your research, please cite:
+
+```bibtex
+@article{evochora2025,
+  title={Evochora: A Collaborative Platform for Research into the Foundational Physics of Digital Evolution},
+  author={[Authors]},
+  journal={[Journal]},
+  year={2025},
+  note={In preparation}
+}
+```
+
+**TODO**: Update citation once published.
+
+## Acknowledgments
+
+This project builds on decades of artificial life research, including seminal work on Tierra (Ray, 1991), Avida (Ofria & Wilke, 2004), and the broader A-Life community's investigations into open-ended evolution.
+
+---
+
+**Note**: Evochora is in active development. Some features described in documentation may be planned but not yet implemented. See our [roadmap](#project-status--roadmap) for current status.

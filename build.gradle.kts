@@ -83,8 +83,8 @@ tasks.named<JavaExec>("run") {
     standardInput = System.`in`
 }
 
-tasks.register<Jar>("cliJar") {
-    archiveClassifier.set("cli")
+tasks.named<Jar>("jar") {
+    archiveVersion.set("")
     manifest {
         attributes["Main-Class"] = "org.evochora.cli.CommandLineInterface"
     }
@@ -93,7 +93,7 @@ tasks.register<Jar>("cliJar") {
     doFirst {
         // This will be used when running the jar
         println("To run without SLF4J warnings, use:")
-        println("java -Dslf4j.replay.warn=false -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar")
+        println("java -Dslf4j.replay.warn=false -jar build/libs/evochora.jar")
     }
     
     from(sourceSets.main.get().output)
@@ -101,31 +101,29 @@ tasks.register<Jar>("cliJar") {
         config.map { if (it.isDirectory) it else zipTree(it) }
     })
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    dependsOn(tasks.jar)
 }
 
-// Compile Task - Temporarily disabled after archiving datapipeline
+// Compile Task - Compiles assembly files to ProgramArtifact JSON
 tasks.register<JavaExec>("compile") {
     group = "application"
-    description = "Compile assembly file to ProgramArtifact JSON (temporarily disabled)"
-    // TODO: Re-implement compile functionality in new datapipeline
-    mainClass.set("org.evochora.cli.TemporaryCommandLineInterface")
+    description = "Compile assembly file to ProgramArtifact JSON"
+    mainClass.set("org.evochora.cli.CommandLineInterface")
     classpath = sourceSets.main.get().runtimeClasspath
-    
-    args("compile")
     
     doFirst {
         val file = project.findProperty("file")?.toString()
         if (file != null) {
-            args(file)
+            val compileArgs = mutableListOf("compile", "--file=$file")
             
             // Add environment properties if specified
             val env = project.findProperty("env")?.toString()
             if (env != null) {
-                args("--env=$env")
+                compileArgs.add("--env=$env")
             }
+            
+            args(compileArgs)
         } else {
-            throw GradleException("File parameter required. Use: ./gradlew compile --file=<path> [--env=<dimensions>[:<toroidal>]]")
+            throw GradleException("File parameter required. Use: ./gradlew compile -Pfile=<path> [-Penv=<dimensions>[:<toroidal>]]")
         }
     }
 }

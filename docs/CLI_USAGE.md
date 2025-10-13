@@ -1,283 +1,136 @@
 # Evochora CLI Usage Guide
 
 ## Overview
-The Evochora CLI provides a simple interface to control the simulation pipeline services. The new implementation features robust auto-pause logic and clear service lifecycle management.
+The Evochora CLI provides the main entry point for running the simulation node and compiling assembly files.
+
+## Available Commands
+
+### Show Help
+```bash
+# Show all available commands
+./gradlew run --args="--help"
+
+# Show help for specific command
+./gradlew run --args="help node"
+./gradlew run --args="help compile"
+```
+
+### Start Simulation Node
+```bash
+# Start the node with default configuration
+./gradlew run --args="node run"
+
+# Start with custom configuration file
+./gradlew run --args="--config my-config.conf node run"
+```
+
+The node will:
+- Load the configuration from the specified file (or `evochora.conf` by default)
+- Start all configured services (simulation engine, persistence, indexers, etc.)
+- Expose the HTTP API for monitoring and control
+- Run until interrupted (Ctrl+C)
+
+### Compile Assembly Files
+```bash
+# Basic compilation
+./gradlew run --args="compile --file=assembly/examples/simple.s"
+
+# With custom environment
+./gradlew run --args="compile --file=assembly/examples/simple.s --env=200x200:flat"
+```
+
+See `ASSEMBLY_COMPILE_USAGE.md` for detailed compilation documentation.
 
 ## Configuration
 
-### `--config` Parameter
-You can specify a custom configuration file when starting the CLI:
+### Custom Configuration File
+You can specify a custom configuration file using the `--config` parameter:
 
-**Interactive mode (CLI interface):**
 ```bash
-# Use custom config file
-./gradlew run --args="--config my-config.jsonc"
-
-# Use JAR with custom config
-java -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar --config my-config.jsonc
-```
-
-**Batch mode (compile commands):**
-```bash
-# --config is NOT supported in batch mode
-./gradlew run --args="compile assembly/test/main.s"  # OK
-./gradlew run --args="--config my-config.jsonc compile assembly/test/main.s"  # ERROR
+./gradlew run --args="--config my-config.conf node run"
 ```
 
 **Important notes:**
-- `--config` only works in interactive mode (when no other commands are specified)
-- If the specified config file is not found, the CLI will log an ERROR and continue with the fallback configuration
-- If the config file has invalid JSON syntax, the CLI will log an ERROR with the line number and continue with the fallback configuration
-- The fallback configuration includes basic logging setup (INFO for CLI/ServiceManager, WARN for others)
+- The `--config` parameter must come **before** the command (e.g., before `node run`)
+- If the file is not found, the CLI will log an ERROR and use fallback configuration
+- If the file has invalid syntax, the CLI will log an ERROR with details and use fallback configuration
+- Default configuration file: `evochora.conf` in the project root
 
-## Commands
+### Configuration File Format
+The configuration file uses HOCON format (`.conf` extension). See `evochora.conf` for a complete example.
 
-### `start [service]`
-- **`start`** - Start all services in the correct order (simulation → persistence → indexer → debug server)
-- **`start simulation`** - Start only the simulation engine
-- **`start persistence`** - Start only the persistence service
-- **`start indexer`** - Start only the debug indexer
-- **`start server`** - Start only the debug server
+## HTTP API for Pipeline Control
 
-### `pause [service]`
-- **`pause`** - Pause all running services
-- **`pause simulation`** - Pause only the simulation engine
-- **`pause persistence`** - Pause only the persistence service
-- **`pause indexer`** - Pause only the debug indexer
-- **`pause server`** - Stop the debug server
+When the node is running, it exposes a REST API for controlling and monitoring the data pipeline.
 
-### `resume [service]`
-- **`resume`** - Resume all paused services
-- **`resume simulation`** - Resume only the simulation engine
-- **`resume persistence`** - Resume only the persistence service
-- **`resume indexer`** - Resume only the debug indexer
-- **`resume server`** - Start the debug server
+### Pipeline-wide Control
+- `GET /api/pipeline/status` - Get overall pipeline status
+- `POST /api/pipeline/start` - Start all services
+- `POST /api/pipeline/stop` - Stop all services
+- `POST /api/pipeline/restart` - Restart all services
+- `POST /api/pipeline/pause` - Pause all services
+- `POST /api/pipeline/resume` - Resume all services
 
-### `status`
-Display the current status of all services, including:
-- **started** - Service is running and processing data
-- **paused** - Service is manually paused by user
-- **auto-paused** - Service automatically paused due to no work available
-- **stopped** - Service is not running
+### Individual Service Control
+- `GET /api/pipeline/service/{serviceName}/status` - Get service status
+- `POST /api/pipeline/service/{serviceName}/start` - Start specific service
+- `POST /api/pipeline/service/{serviceName}/stop` - Stop specific service
+- `POST /api/pipeline/service/{serviceName}/restart` - Restart specific service
+- `POST /api/pipeline/service/{serviceName}/pause` - Pause specific service
+- `POST /api/pipeline/service/{serviceName}/resume` - Resume specific service
 
-### `loglevel [logger] [level]`
-Control logging verbosity for debugging and monitoring:
-
-- **`loglevel`** - Show current log levels for all loggers
-- **`loglevel [level]`** - Set default log level for all loggers (TRACE, DEBUG, INFO, WARN, ERROR)
-- **`loglevel [logger] [level]`** - Set log level for specific logger
-- **`loglevel reset`** - Reset all log levels to config.jsonc values
-
-**Available loggers:**
-- `sim` - Simulation engine
-- `persist` - Persistence service  
-- `indexer` - Debug indexer
-- `web` - Web debug server
-- `cli` - CLI interface
-
-**Available levels:**
-- `TRACE` - Most verbose, shows all operations
-- `DEBUG` - Detailed debugging information
-- `INFO` - General information messages
-- `WARN` - Warning messages only
-- `ERROR` - Error messages only
-
-**Examples:**
-```
->>> loglevel DEBUG          # Set all loggers to DEBUG
->>> loglevel sim TRACE      # Set simulation engine to TRACE
->>> loglevel indexer WARN   # Set indexer to WARN only
->>> loglevel reset          # Reset to config.jsonc values
-```
-
-### `exit` or `quit`
-Gracefully shutdown all services and exit the CLI.
-
-## Auto-Pause Logic
-
-### How it works:
-1. **Persistence Service**: Automatically pauses when no ticks are available in the queue, checks every second for new work
-2. **Debug Indexer**: Automatically pauses when no new ticks are available to process, checks every second for new work
-3. **Simulation Engine**: Never auto-pauses (always runs when started unless manually paused)
-
-### Auto-pause vs Manual Pause:
-- **Auto-pause**: Services automatically pause when idle and resume when work becomes available
-- **Manual Pause**: Services pause and stay paused until manually resumed by the user
-
-### Important Behavior:
-- **Auto-paused services** will automatically wake up when new work becomes available
-- **Manually paused services** will NOT automatically wake up, even if work is available
-- **Manual pause takes precedence** over auto-pause - once manually paused, a service stays paused until explicitly resumed
-
-### Database Handling:
-- **Auto-pause**: Database connections remain open for quick resume
-- **Manual Pause**: Database connections are cleanly closed with WAL checkpointing to ensure data integrity
-- **Batch Completion**: When pausing (auto or manual), services complete their current batch before entering pause mode
-
-### Data Integrity:
-- **WAL Checkpointing**: When manually pausing, all pending changes in Write-Ahead Log (WAL) are checkpointed to the main database
-- **SHM Cleanup**: Shared memory files are properly synchronized before closing
-- **Batch Flushing**: Any incomplete batches are executed and committed before pausing
-- **Full WAL Checkpoint**: `PRAGMA wal_checkpoint(FULL)` ensures all WAL changes are written to the main SQLite database
-- **WAL File Closure**: Both PersistenceService and DebugIndexer properly close WAL files to prevent file locking issues
-- **WAL Mode Disable**: `PRAGMA journal_mode=DELETE` ensures WAL mode is properly disabled before closing
-- **Multiple Database WAL Closure**: DebugIndexer closes WAL files from both debug database and raw database connections
-
-### Manual Pause Process:
-1. **Complete Current Batch**: Service finishes processing the current batch of data
-2. **Execute Pending Batches**: Any incomplete batches are executed and committed
-3. **WAL Checkpoint**: `PRAGMA wal_checkpoint(FULL)` writes all WAL changes to main database
-4. **WAL Mode Disable**: `PRAGMA journal_mode=DELETE` disables WAL mode to close WAL files
-5. **Raw Database WAL Closure**: Close WAL files from any open raw database connections
-6. **WAL File Closure**: WAL and SHM files are properly closed to release file handles
-7. **Database Close**: Connection is cleanly closed with all changes safely persisted
-8. **Service Paused**: Service enters paused state with data integrity guaranteed
-
-## Service Dependencies
-
-Services have dependencies and must be started in order:
-1. **Simulation Engine** - Generates simulation ticks
-2. **Persistence Service** - Requires simulation engine to be running
-3. **Debug Indexer** - Requires persistence service to be running
-4. **Debug Server** - Requires indexer to be running
-
-## Example Usage
-
+### Example API Usage
 ```bash
-# Start the entire pipeline
->>> start
+# Get pipeline status
+curl http://localhost:8080/api/pipeline/status
 
-# Check status
->>> status
-
-# Pause simulation (persistence and indexer will auto-pause when idle)
->>> pause simulation
-
-# Resume everything
->>> resume
+# Start all services
+curl -X POST http://localhost:8080/api/pipeline/start
 
 # Pause specific service
->>> pause indexer
+curl -X POST http://localhost:8080/api/pipeline/service/simulation/pause
 
-# Start specific service
->>> start indexer
-
-# Exit
->>> exit
+# Get specific service status
+curl http://localhost:8080/api/pipeline/service/simulation/status
 ```
 
-## Command Line Log Level Configuration
+## Running with JAR
 
-You can also set log levels directly when starting the CLI via Gradle, which overrides the config.jsonc settings:
+You can also build a standalone JAR and run it without Gradle:
 
-### System Properties for Log Levels
-
-**Default log level for all loggers:**
 ```bash
-./gradlew run -Dlog.level=DEBUG
-./gradlew run -Dlog.level=INFO
-./gradlew run -Dlog.level=WARN
-./gradlew run -Dlog.level=ERROR
-./gradlew run -Dlog.level=TRACE
+# Build the JAR
+./gradlew jar
+
+# Run the node
+java -jar build/libs/evochora.jar node run
+
+# Run with custom config
+java -jar build/libs/evochora.jar --config my-config.conf node run
+
+# Compile assembly
+java -jar build/libs/evochora.jar compile --file=assembly/examples/simple.s
 ```
 
-**Specific logger configuration:**
-```bash
-# Set specific loggers to different levels (use full Java class names)
-./gradlew run -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -Dlog.org.evochora.server.indexer.DebugIndexer=TRACE -Dlog.org.evochora.server.http.DebugServer=WARN
+## Exit Codes
 
-# Combine default and specific settings
-./gradlew run -Dlog.level=INFO -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -Dlog.org.evochora.server.persistence.PersistenceService=WARN
-```
-
-**For compilation tasks:**
-```bash
-./gradlew compile -Pfile="assembly/test/main.s" -Dlog.level=DEBUG
-```
-
-**For JAR execution:**
-```bash
-# Build the CLI JAR first
-./gradlew cliJar
-
-# Run with log level configuration
-java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar
-
-# Run with custom config file
-java -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar --config my-config.jsonc
-
-# Run with specific logger configuration (use full Java class names)
-java -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar
-
-# Compile assembly with JAR and debug logging
-java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar compile assembly/test/main.s
-```
-
-### How Command Line Override Works
-
-1. **System Properties take precedence** over config.jsonc settings
-2. **`log.level`** sets the default level for all loggers
-3. **`log.<logger>`** sets specific logger levels (e.g., `log.sim`, `log.persist`, `log.indexer`, `log.web`, `log.cli`)
-4. **Fallback to config.jsonc** if no System Properties are set
-
-### Available Logger Names
-
-**For System Properties (use full Java class names):**
-- `log.org.evochora.server.engine.SimulationEngine` - Simulation engine logging
-- `log.org.evochora.server.persistence.PersistenceService` - Persistence service logging  
-- `log.org.evochora.server.indexer.DebugIndexer` - Debug indexer logging
-- `log.org.evochora.server.http.DebugServer` - Web debug server logging
-- `log.org.evochora.server.ServiceManager` - CLI interface logging
-
-**For CLI commands (use short aliases):**
-- `sim` - Simulation engine logging
-- `persist` - Persistence service logging  
-- `indexer` - Debug indexer logging
-- `web` - Web debug server logging
-- `cli` - CLI interface logging
-
-### Example Commands
-
-**Gradle execution:**
-```bash
-# Start CLI with debug logging for all services
-./gradlew run -Dlog.level=DEBUG
-
-# Start with detailed simulation logging but quiet other services
-./gradlew run -Dlog.level=WARN -Dlog.org.evochora.server.engine.SimulationEngine=TRACE
-
-# Compile assembly with debug output
-./gradlew compile -Pfile="assembly/primordial/main.s" -Dlog.level=DEBUG
-
-# Start with mixed logging levels (use full Java class names)
-./gradlew run -Dlog.level=INFO -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -Dlog.org.evochora.server.indexer.DebugIndexer=TRACE -Dlog.org.evochora.server.http.DebugServer=ERROR
-```
-
-**JAR execution:**
-```bash
-# Build the CLI JAR first
-./gradlew cliJar
-
-# Start CLI with debug logging
-java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar
-
-# Start with custom config file
-java -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar --config my-config.jsonc
-
-# Start with mixed logging levels (use full Java class names)
-java -Dlog.level=INFO -Dlog.org.evochora.server.engine.SimulationEngine=DEBUG -Dlog.org.evochora.server.indexer.DebugIndexer=TRACE -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar
-
-# Compile assembly with debug output using JAR
-java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar compile assembly/primordial/main.s
-
-# Compile with specific environment and debug logging
-java -Dlog.level=DEBUG -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar compile assembly/test/main.s --env=2000x2000:flat
-```
+- `0` - Success
+- `1` - Command error (invalid arguments, compilation error, etc.)
+- `2` - System error (file not found, configuration error, etc.)
 
 ## Troubleshooting
 
-- If a service fails to start, check that its dependencies are running
-- Use `status` to see the current state of all services
-- Services in "auto-paused" state will automatically resume when work becomes available
-- Manually paused services require explicit resume commands
-- Use `loglevel` command or System Properties to increase logging verbosity for debugging
+### Node doesn't start
+- Check that the configuration file exists and is valid
+- Check that required ports (e.g., 8080 for HTTP API) are not already in use
+- Check the logs for error messages
+
+### Compilation fails
+- Verify the assembly file exists
+- Check for syntax errors in the assembly code
+- See `ASSEMBLY_SPEC.md` for assembly language documentation
+
+### Configuration errors
+- Verify the configuration file uses valid HOCON syntax
+- Check that all required configuration keys are present
+- See `evochora.conf` for a complete configuration example

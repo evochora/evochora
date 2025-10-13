@@ -5,9 +5,11 @@ The Evochora project includes a working assembly compilation system that allows 
 
 ## Usage
 
-### Gradle Task (Recommended)
+The compiler can be invoked in three equivalent ways:
+
+### Option 1: Gradle Task (convenient for quick compilation)
 ```bash
-# Basic compilation (uses default 1000x1000:toroidal)
+# Basic compilation (uses default 100x100:toroidal)
 ./gradlew compile -Pfile="path/to/assembly.s"
 
 # With custom environment
@@ -15,13 +17,24 @@ The Evochora project includes a working assembly compilation system that allows 
 ./gradlew compile -Pfile="path/to/assembly.s" -Penv="1000x1000x100:toroidal"
 ```
 
-### JAR (Alternative)
+### Option 2: Gradle run with args (flexible)
+```bash
+# Basic compilation
+./gradlew run --args="compile --file=path/to/assembly.s"
+
+# With custom environment
+./gradlew run --args="compile --file=path/to/assembly.s --env=2000x2000:flat"
+./gradlew run --args="compile --file=path/to/assembly.s --env=1000x1000x100:toroidal"
+```
+
+### Option 3: JAR (standalone, no Gradle required)
 ```bash
 # Build the JAR first
-./gradlew cliJar
+./gradlew jar
 
 # Then use it
-java -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar compile path/to/assembly.s --env=2000x2000:flat
+java -jar build/libs/evochora.jar compile --file=path/to/assembly.s
+java -jar build/libs/evochora.jar compile --file=path/to/assembly.s --env=2000x2000:flat
 ```
 
 ## Environment Parameters
@@ -32,7 +45,7 @@ java -jar build/libs/evochora-1.0-SNAPSHOT-cli.jar compile path/to/assembly.s --
 - `toroidal`: Optional, `toroidal` (default) or `flat`
 
 ### Examples
-- `1000x1000` → 1000x1000 world, toroidal
+- `100x100` → 100x100 world, toroidal (default)
 - `2000x2000:flat` → 2000x2000 world, flat
 - `1000x1000x100:toroidal` → 3D world, toroidal
 
