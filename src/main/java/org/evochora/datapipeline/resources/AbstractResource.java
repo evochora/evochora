@@ -71,15 +71,50 @@ public abstract class AbstractResource implements IResource, IMonitorable {
     /**
      * Records an operational error for tracking and monitoring.
      * <p>
-     * Use this method to track transient errors that don't prevent the resource
-     * from functioning but may indicate problems. These errors affect the resource's
-     * health status ({@link #isHealthy()}).
+     * <strong>IMPORTANT:</strong> Use this method ONLY for transient errors where the resource
+     * continues functioning. For fatal errors that prevent operation, log and throw an exception instead.
+     * <p>
+     * Use this method to track transient errors that don't prevent the resource from functioning
+     * but may indicate problems. These errors affect the resource's health status ({@link #isHealthy()}).
      * <p>
      * The error collection is bounded by {@link #getMaxErrors()} to prevent unbounded
      * memory growth. When the limit is exceeded, the oldest errors are automatically removed.
      * <p>
-     * <strong>IMPORTANT:</strong> Use this method ONLY for transient errors where the resource
-     * continues functioning. For fatal errors that prevent operation, log and throw an exception instead.
+     * <strong>Error Handling Guidelines for Resources:</strong>
+     * <p>
+     * <strong>1. Transient Errors</strong> (resource continues functioning):
+     * <ul>
+     *   <li>Use: {@code log.warn("message", args)} - NO exception parameter</li>
+     *   <li>Use: {@link #recordError(String, String, String)} to track</li>
+     *   <li>May throw exception if caller needs to handle it (e.g., SQLException in database)</li>
+     *   <li>Example: SQL constraint violation, dropped DLQ message, temporary connection issue</li>
+     * </ul>
+     * 
+     * <strong>2. Fatal Errors</strong> (resource cannot continue):
+     * <ul>
+     *   <li>Use: {@code log.error("message with context", args)} - NO exception parameter</li>
+     *   <li>Do NOT use recordError() - resource is broken anyway</li>
+     *   <li>Throw exception - caller handles it</li>
+     *   <li>Example: Cannot initialize connection pool, schema creation failed, storage not accessible</li>
+     * </ul>
+     * 
+     * <strong>3. Normal Shutdown/Interruption:</strong>
+     * <ul>
+     *   <li>Use: {@code log.debug("message with context", args)} - provides context for debugging</li>
+     *   <li>Do NOT use recordError() - this is not an error</li>
+     *   <li>Re-throw InterruptedException if applicable</li>
+     *   <li>Example: Connection closed during shutdown, resource cleanup interrupted</li>
+     * </ul>
+     * 
+     * <strong>4. Retry Logic:</strong>
+     * <ul>
+     *   <li>During retry attempts: {@code log.debug()} - only for developer debugging</li>
+     *   <li>After all retries exhausted: Follow transient or fatal error rules above</li>
+     *   <li>Example: {@code catch(IOException e) { log.debug("Retry {}/{}", attempt, max); }}</li>
+     * </ul>
+     * 
+     * <strong>Stack Traces:</strong> Exception stack traces should be logged at DEBUG level
+     * separately if needed. Resources should never log exceptions with {@code log.error(..., e)}.
      *
      * @param code    Error code for categorization (e.g., "CONNECTION_FAILED", "READ_ERROR")
      * @param message Human-readable error message

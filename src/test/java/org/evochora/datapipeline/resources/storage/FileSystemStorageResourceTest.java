@@ -1,11 +1,8 @@
 package org.evochora.datapipeline.resources.storage;
 
-import com.google.protobuf.InvalidProtocolBufferException;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
-import org.evochora.datapipeline.api.resources.storage.MessageReader;
-import org.evochora.datapipeline.api.resources.storage.MessageWriter;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,7 +15,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
