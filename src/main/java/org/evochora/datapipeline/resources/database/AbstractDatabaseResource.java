@@ -7,26 +7,22 @@ import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
 import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
 import org.evochora.datapipeline.resources.AbstractResource;
 
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Abstract base class for database resources.
+ * <p>
+ * Inherits IMonitorable infrastructure from {@link AbstractResource} including
+ * error tracking, health checks, and metrics collection.
  */
 public abstract class AbstractDatabaseResource extends AbstractResource
-        implements IMetadataWriter, IContextualResource, IMonitorable {
+        implements IMetadataWriter, IContextualResource {
 
     protected final AtomicLong queriesExecuted = new AtomicLong(0);
     protected final AtomicLong rowsInserted = new AtomicLong(0);
     protected final AtomicLong writeErrors = new AtomicLong(0);
     protected final AtomicLong readErrors = new AtomicLong(0);
-    protected final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
-    private static final int MAX_ERRORS = 100;
 
     protected AbstractDatabaseResource(String name, Config options) {
         super(name, options);
@@ -107,57 +103,22 @@ public abstract class AbstractDatabaseResource extends AbstractResource
         throw new UnsupportedOperationException("This operation must be called on a wrapped resource.");
     }
 
-    protected void recordError(String code, String message, String details) {
-        errors.add(new OperationalError(Instant.now(), code, message, details));
-        while (errors.size() > MAX_ERRORS) {
-            errors.pollFirst();
-        }
-    }
-
-    @Override
-    public boolean isHealthy() {
-        // A resource is healthy if it has no errors.
-        // Concrete implementations can add more specific checks.
-        return errors.isEmpty();
-    }
-
-    @Override
-    public List<OperationalError> getErrors() {
-        return new ArrayList<>(errors);
-    }
-
-    @Override
-    public void clearErrors() {
-        errors.clear();
-    }
-
-    @Override
-    public final Map<String, Number> getMetrics() {
-        Map<String, Number> metrics = getBaseMetrics();
-        addCustomMetrics(metrics);
-        return metrics;
-    }
-
     /**
-     * Returns base metrics tracked by all database resources.
+     * Adds database-specific metrics to the provided map.
      * <p>
-     * Private helper method called only by getMetrics().
-     * Subclasses should not access this directly - use addCustomMetrics() hook instead.
+     * This override adds counters tracked by all database resources.
+     * Subclasses should call {@code super.addCustomMetrics(metrics)} to include these.
      *
-     * @return Map containing base metrics (O(1) operations)
+     * @param metrics Mutable map to add metrics to (already contains base error_count from AbstractResource)
      */
-    private Map<String, Number> getBaseMetrics() {
-        Map<String, Number> metrics = new LinkedHashMap<>();
+    @Override
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);  // Include parent metrics
+        
         metrics.put("queries_executed", queriesExecuted.get());
         metrics.put("rows_inserted", rowsInserted.get());
         metrics.put("write_errors", writeErrors.get());
         metrics.put("read_errors", readErrors.get());
-        metrics.put("error_count", errors.size());
-        return metrics;
-    }
-
-    protected void addCustomMetrics(Map<String, Number> metrics) {
-        // Default implementation does nothing.
     }
 
     @Override

@@ -5,10 +5,7 @@ import com.google.protobuf.Parser;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IContextualResource;
-import org.evochora.datapipeline.api.resources.IMonitorable;
-import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
@@ -46,11 +43,12 @@ import java.util.stream.Collectors;
  * </ul>
  * <p>
  * Subclasses only need to implement low-level I/O primitives for their specific
- * storage backend (filesystem, S3, etc.). Monitoring is inherited, with a hook
- * method {@link #addCustomMetrics(Map)} for implementation-specific metrics.
+ * storage backend (filesystem, S3, etc.). Inherits IMonitorable infrastructure
+ * from {@link AbstractResource}, with a hook method {@link #addCustomMetrics(Map)}
+ * for implementation-specific metrics.
  */
 public abstract class AbstractBatchStorageResource extends AbstractResource
-    implements IBatchStorageWrite, IBatchStorageRead, IMonitorable, IContextualResource {
+    implements IBatchStorageWrite, IBatchStorageRead, IContextualResource {
 
     private static final Logger log = LoggerFactory.getLogger(AbstractBatchStorageResource.class);
 
@@ -66,8 +64,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     protected final java.util.concurrent.atomic.AtomicLong bytesRead = new java.util.concurrent.atomic.AtomicLong(0);
     protected final java.util.concurrent.atomic.AtomicLong writeErrors = new java.util.concurrent.atomic.AtomicLong(0);
     protected final java.util.concurrent.atomic.AtomicLong readErrors = new java.util.concurrent.atomic.AtomicLong(0);
-    protected final List<org.evochora.datapipeline.api.resources.OperationalError> errors =
-        java.util.Collections.synchronizedList(new ArrayList<>());
 
     // Performance metrics (sliding window using unified utils)
     private final SlidingWindowCounter writeOpsCounter;
@@ -542,44 +538,34 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         };
     }
 
-    // ===== IMonitorable implementation =====
-
     /**
-     * Returns metrics for this storage resource.
+     * Adds storage-specific metrics to the provided map.
      * <p>
-     * This implementation returns base metrics tracked by all storage implementations,
-     * then calls {@link #addCustomMetrics(Map)} to allow subclasses to add
-     * implementation-specific metrics.
+     * This override adds counters and performance metrics tracked by all storage resources.
+     * Subclasses should call {@code super.addCustomMetrics(metrics)} to include these.
      * <p>
-     * Base metrics included:
+     * Added metrics:
      * <ul>
-     *   <li>write_operations - number of write calls</li>
-     *   <li>read_operations - number of read calls</li>
-     *   <li>bytes_written - total bytes written</li>
-     *   <li>bytes_read - total bytes read</li>
-     *   <li>write_errors - number of write errors</li>
-     *   <li>read_errors - number of read errors</li>
+     *   <li>write_operations - cumulative write count</li>
+     *   <li>read_operations - cumulative read count</li>
+     *   <li>bytes_written - cumulative bytes written</li>
+     *   <li>bytes_read - cumulative bytes read</li>
+     *   <li>write_errors - cumulative write errors</li>
+     *   <li>read_errors - cumulative read errors</li>
+     *   <li>writes_per_sec - sliding window write rate (O(1))</li>
+     *   <li>reads_per_sec - sliding window read rate (O(1))</li>
+     *   <li>write_bytes_per_sec - sliding window write throughput (O(1))</li>
+     *   <li>read_bytes_per_sec - sliding window read throughput (O(1))</li>
+     *   <li>write_latency_ms - sliding window average write latency (O(1))</li>
+     *   <li>read_latency_ms - sliding window average read latency (O(1))</li>
      * </ul>
      *
-     * @return Map of metric names to their current values
+     * @param metrics Mutable map to add metrics to (already contains base error_count from AbstractResource)
      */
     @Override
-    public final Map<String, Number> getMetrics() {
-        Map<String, Number> metrics = getBaseMetrics();
-        addCustomMetrics(metrics);
-        return metrics;
-    }
-
-    /**
-     * Returns the base metrics tracked by AbstractBatchStorageResource.
-     * <p>
-     * Private helper method called only by getMetrics().
-     * Subclasses should not access this directly - use addCustomMetrics() hook instead.
-     *
-     * @return Map containing base metrics in the order they should be reported
-     */
-    private Map<String, Number> getBaseMetrics() {
-        Map<String, Number> metrics = new LinkedHashMap<>();
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);  // Include parent metrics
+        
         // Cumulative metrics
         metrics.put("write_operations", writeOperations.get());
         metrics.put("read_operations", readOperations.get());
@@ -587,69 +573,26 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         metrics.put("bytes_read", bytesRead.get());
         metrics.put("write_errors", writeErrors.get());
         metrics.put("read_errors", readErrors.get());
-        // Performance metrics (sliding window using unified utils)
+        
+        // Performance metrics (sliding window using unified utils - O(1))
         metrics.put("writes_per_sec", writeOpsCounter.getRate());
         metrics.put("reads_per_sec", readOpsCounter.getRate());
         metrics.put("write_bytes_per_sec", writeBytesCounter.getRate());
         metrics.put("read_bytes_per_sec", readBytesCounter.getRate());
         metrics.put("write_latency_ms", writeLatencyTracker.getAverage() / 1_000_000.0);
         metrics.put("read_latency_ms", readLatencyTracker.getAverage() / 1_000_000.0);
-        return metrics;
     }
 
     /**
-     * Hook method for subclasses to add implementation-specific metrics.
+     * Clears operational errors and resets error counters.
      * <p>
-     * The default implementation does nothing. Subclasses should override this method
-     * to add their own metrics to the provided map.
-     * <p>
-     * Example:
-     * <pre>
-     * &#64;Override
-     * protected void addCustomMetrics(Map&lt;String, Number&gt; metrics) {
-     *     metrics.put("disk_available_bytes", rootDirectory.getUsableSpace());
-     *     metrics.put("s3_put_requests", s3PutRequests.get());
-     * }
-     * </pre>
-     *
-     * @param metrics Mutable map to add custom metrics to (already contains base metrics)
-     */
-    protected void addCustomMetrics(Map<String, Number> metrics) {
-        // Default: no custom metrics
-    }
-
-    /**
-     * Returns the list of operational errors.
-     * <p>
-     * Implementation of {@link IMonitorable#getErrors()}.
-     */
-    @Override
-    public List<OperationalError> getErrors() {
-        synchronized (errors) {
-            return new ArrayList<>(errors);
-        }
-    }
-
-    /**
-     * Clears all operational errors and resets error counters.
-     * <p>
-     * Implementation of {@link IMonitorable#clearErrors()}.
+     * Extends AbstractResource's clearErrors() to also reset storage-specific error counters.
      */
     @Override
     public void clearErrors() {
-        errors.clear();
+        super.clearErrors();  // Clear errors collection in AbstractResource
         writeErrors.set(0);
         readErrors.set(0);
-    }
-
-    /**
-     * Returns whether the storage is healthy (no errors).
-     * <p>
-     * Implementation of {@link IMonitorable#isHealthy()}.
-     */
-    @Override
-    public boolean isHealthy() {
-        return errors.isEmpty();
     }
 
     // ===== IContextualResource implementation =====

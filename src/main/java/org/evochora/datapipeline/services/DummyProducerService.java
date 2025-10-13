@@ -4,12 +4,12 @@ import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.SystemContracts.DummyMessage;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
+import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -35,7 +35,7 @@ public class DummyProducerService extends AbstractService {
     private final int metricsWindowSeconds;
 
     private final AtomicLong messagesSent = new AtomicLong(0);
-    private final ConcurrentLinkedDeque<Long> messageTimestamps = new ConcurrentLinkedDeque<>();
+    private final SlidingWindowCounter throughputCounter;
 
     public DummyProducerService(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
@@ -43,6 +43,7 @@ public class DummyProducerService extends AbstractService {
         this.messagePrefix = options.hasPath("messagePrefix") ? options.getString("messagePrefix") : "Message";
         this.maxMessages = options.hasPath("maxMessages") ? options.getLong("maxMessages") : -1L;
         this.metricsWindowSeconds = options.hasPath("metricsWindowSeconds") ? options.getInt("metricsWindowSeconds") : 5;
+        this.throughputCounter = new SlidingWindowCounter(metricsWindowSeconds);
     }
 
     @Override
@@ -61,7 +62,7 @@ public class DummyProducerService extends AbstractService {
             try {
                 outputQueue.put(message);
                 messagesSent.incrementAndGet();
-                messageTimestamps.add(System.currentTimeMillis());
+                throughputCounter.recordCount();
                 logger.debug("Sent message: {}", message.getContent());
                 messageCounter++;
             } catch (InterruptedException e) {
@@ -87,14 +88,6 @@ public class DummyProducerService extends AbstractService {
         super.addCustomMetrics(metrics);
         
         metrics.put("messages_sent", messagesSent.get());
-        metrics.put("throughput_per_sec", calculateThroughput());
-    }
-
-    private double calculateThroughput() {
-        long now = System.currentTimeMillis();
-        long windowStart = now - (metricsWindowSeconds * 1000L);
-        messageTimestamps.removeIf(timestamp -> timestamp < windowStart);
-        if (metricsWindowSeconds == 0) return 0;
-        return (double) messageTimestamps.size() / metricsWindowSeconds;
+        metrics.put("throughput_per_sec", throughputCounter.getRate());
     }
 }

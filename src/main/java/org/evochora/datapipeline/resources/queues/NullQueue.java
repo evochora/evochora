@@ -52,27 +52,15 @@ public class NullQueue<T> extends AbstractResource implements IContextualResourc
         };
     }
 
-    // IMonitorable implementation
     @Override
-    public Map<String, Number> getMetrics() {
-        return Map.of(
-            "messages_discarded", messageCount.get()
-        );
-    }
-
-    @Override
-    public List<OperationalError> getErrors() {
-        return Collections.emptyList();
-    }
-
-    @Override
-    public void clearErrors() {
-        // No errors to clear
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);  // Include parent metrics
+        metrics.put("messages_discarded", messageCount.get());
     }
 
     @Override
     public boolean isHealthy() {
-        return true;
+        return true;  // NullQueue is always healthy (never fails)
     }
 
     // IOutputQueueResource implementation - discard all data instantly

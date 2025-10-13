@@ -16,12 +16,21 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Test service that reads and validates TickData batches from storage using the batch API.
  * Used for integration testing of storage resources.
+ * 
+ * <h3>Configuration Options:</h3>
+ * <ul>
+ *   <li><b>keyPrefix</b>: Prefix for filtering files (default: "test").</li>
+ *   <li><b>intervalMs</b>: Milliseconds between polling cycles (default: 1000).</li>
+ *   <li><b>validateData</b>: Enable data validation (default: true).</li>
+ *   <li><b>maxFiles</b>: Maximum files to process, -1 for unlimited (default: -1).</li>
+ * </ul>
  */
 public class DummyReaderService extends AbstractService {
     private final IBatchStorageRead storage;
     private final String keyPrefix;
     private final int intervalMs;
     private final boolean validateData;
+    private final int maxFiles;
 
     private final AtomicLong totalMessagesRead = new AtomicLong(0);
     private final AtomicLong totalBytesRead = new AtomicLong(0);
@@ -40,11 +49,15 @@ public class DummyReaderService extends AbstractService {
         this.keyPrefix = options.hasPath("keyPrefix") ? options.getString("keyPrefix") : "test";
         this.intervalMs = options.hasPath("intervalMs") ? options.getInt("intervalMs") : 1000;
         this.validateData = options.hasPath("validateData") ? options.getBoolean("validateData") : true;
+        this.maxFiles = options.hasPath("maxFiles") ? options.getInt("maxFiles") : -1;
     }
 
     @Override
     protected void run() throws InterruptedException {
-        while (!Thread.currentThread().isInterrupted()) {
+        int filesProcessed = 0;
+        
+        while (!Thread.currentThread().isInterrupted() 
+               && (maxFiles == -1 || filesProcessed < maxFiles)) {
             checkPause();
 
             try {
@@ -60,6 +73,11 @@ public class DummyReaderService extends AbstractService {
                     BatchFileListResult result = storage.listBatchFiles(keyPrefix + "_run/", continuationToken, 100);
 
                     for (String filename : result.getFilenames()) {
+                        // Check if max files limit reached
+                        if (maxFiles != -1 && filesProcessed >= maxFiles) {
+                            break;
+                        }
+                        
                         // Skip already processed files
                         if (processedFiles.contains(filename)) {
                             continue;
@@ -101,6 +119,7 @@ public class DummyReaderService extends AbstractService {
                             readOperations.incrementAndGet();
                             processedFiles.add(filename);
                             filesFoundThisIteration++;
+                            filesProcessed++;
 
                             log.debug("Read batch {} with {} ticks", filename, ticks.size());
 
@@ -113,6 +132,11 @@ public class DummyReaderService extends AbstractService {
                                 String.format("Filename: %s", filename)
                             );
                         }
+                    }
+                    
+                    // Break pagination if max files limit reached
+                    if (maxFiles != -1 && filesProcessed >= maxFiles) {
+                        break;
                     }
 
                     continuationToken = result.getNextContinuationToken();
@@ -134,6 +158,10 @@ public class DummyReaderService extends AbstractService {
             }
 
             Thread.sleep(intervalMs);
+        }
+        
+        if (maxFiles != -1 && filesProcessed >= maxFiles) {
+            log.info("Reached max file limit of {}. Stopping service.", maxFiles);
         }
     }
 

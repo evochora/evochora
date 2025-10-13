@@ -207,6 +207,8 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
 
     @Override
     protected void addCustomMetrics(java.util.Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);  // Include parent metrics from AbstractBatchStorageResource
+        
         // Add filesystem-specific capacity metrics
         long totalSpace = rootDirectory.getTotalSpace();
         long usableSpace = rootDirectory.getUsableSpace();

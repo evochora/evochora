@@ -57,7 +57,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * @param <K> The type of the idempotency key.
  */
-public class InMemoryIdempotencyTracker<K> extends AbstractResource implements IIdempotencyTracker<K>, IMonitorable {
+public class InMemoryIdempotencyTracker<K> extends AbstractResource implements IIdempotencyTracker<K> {
 
     // Dual-index structure for high-performance idempotency tracking
     private final ConcurrentHashMap<K, Long> keyToTimestamp;  // Key → epoch millis (precise expiration)
@@ -303,46 +303,12 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
         return Duration.ofMillis(ttlMillis);
     }
 
-    /**
-     * {@inheritDoc}
-     * Returns metrics for monitoring the idempotency tracker.
-     * All metrics are calculated with O(1) operations for negligible performance impact.
-     */
     @Override
-    public Map<String, Number> getMetrics() {
-        return Map.of(
-                "total_checks", totalChecks.get(),
-                "total_duplicates_detected", totalDuplicates.get(),
-                "tracked_keys", size()
-        );
-    }
-
-    /**
-     * {@inheritDoc}
-     * Idempotency trackers do not track operational errors.
-     */
-    @Override
-    public List<OperationalError> getErrors() {
-        return Collections.emptyList();
-    }
-
-    /**
-     * {@inheritDoc}
-     * No-op since idempotency trackers do not track errors.
-     */
-    @Override
-    public void clearErrors() {
-        // No errors to clear
-    }
-
-    /**
-     * {@inheritDoc}
-     * Idempotency tracker is considered healthy if it hasn't grown excessively large.
-     */
-    @Override
-    public boolean isHealthy() {
-        // Consider unhealthy if we have more than 10M keys (potential memory issue)
-        return size() < 10_000_000;
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);  // Include parent metrics
+        metrics.put("total_checks", totalChecks.get());
+        metrics.put("total_duplicates_detected", totalDuplicates.get());
+        metrics.put("tracked_keys", size());
     }
 
     @Override

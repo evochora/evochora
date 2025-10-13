@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
  * <ul>
  *   <li>Dedicated connection management (acquire, close)</li>
  *   <li>Schema setting (setSimulationRun implementation)</li>
- *   <li>Error tracking and recording</li>
+ *   <li>Error tracking and recording (inherited from AbstractResource)</li>
  *   <li>Base metrics infrastructure (Template Method Pattern)</li>
  *   <li>Resource lifecycle (IMonitorable, IWrappedResource, AutoCloseable)</li>
  * </ul>
@@ -35,8 +35,8 @@ import java.util.concurrent.ConcurrentLinkedDeque;
  * <p>
  * <strong>Design Pattern:</strong> Template Method Pattern (same as AbstractDatabaseResource)
  */
-public abstract class AbstractDatabaseWrapper 
-        implements ISchemaAwareDatabase, IWrappedResource, IMonitorable, AutoCloseable {
+public abstract class AbstractDatabaseWrapper extends org.evochora.datapipeline.resources.AbstractResource
+        implements ISchemaAwareDatabase, IWrappedResource, AutoCloseable {
     
     private static final Logger log = LoggerFactory.getLogger(AbstractDatabaseWrapper.class);
     
@@ -47,10 +47,6 @@ public abstract class AbstractDatabaseWrapper
     // Connection caching (lazy acquisition, smart release)
     private Object cachedConnection = null;
     private String cachedRunId = null;
-    
-    // Error tracking (O(1) operations)
-    protected final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
-    protected static final int MAX_ERRORS = 100;
     
     // Metrics window config (inherited from database resource)
     protected final int metricsWindowSeconds;
@@ -65,6 +61,7 @@ public abstract class AbstractDatabaseWrapper
      * @param context Resource context (service name, usage type)
      */
     protected AbstractDatabaseWrapper(AbstractDatabaseResource db, ResourceContext context) {
+        super(db.getResourceName() + "-" + context.usageType(), db.getOptions());
         this.database = db;
         this.context = context;
         
@@ -158,69 +155,24 @@ public abstract class AbstractDatabaseWrapper
             this.cachedRunId = simulationRunId;
             
         } catch (Exception e) {
+            log.warn("Failed to set schema for run: {}", simulationRunId);
             recordError("SET_SCHEMA_FAILED", "Failed to set simulation run", 
                        "RunId: " + simulationRunId + ", Error: " + e.getMessage());
             throw new RuntimeException("Failed to set schema for run-id: " + simulationRunId, e);
         }
     }
     
-    // ========== Error Handling (DRY!) ==========
-    
     /**
-     * Records an operational error.
+     * Adds database wrapper-specific metrics to the provided map.
      * <p>
-     * Maintains a bounded queue of recent errors (max 100).
-     * O(1) operation.
-     *
-     * @param code Error code (e.g., "GET_METADATA_FAILED")
-     * @param message Human-readable error message
-     * @param details Additional context (runId, parameters, etc.)
-     */
-    protected void recordError(String code, String message, String details) {
-        errors.add(new OperationalError(Instant.now(), code, message, details));
-        
-        // Bounded queue - remove oldest if exceeds limit
-        while (errors.size() > MAX_ERRORS) {
-            errors.pollFirst();
-        }
-    }
-    
-    // ========== IMonitorable Implementation (Template Method Pattern) ==========
-    
-    /**
-     * Returns all metrics for this wrapper.
+     * This override adds base wrapper metrics that all database wrappers track.
+     * Subclasses should call {@code super.addCustomMetrics(metrics)} to include these.
      * <p>
-     * Uses Template Method Pattern (same as AbstractDatabaseResource):
-     * <ol>
-     *   <li>Collects base metrics (error_count)</li>
-     *   <li>Calls {@link #addCustomMetrics(Map)} hook for subclass-specific metrics</li>
-     * </ol>
+     * Added metrics:
+     * <ul>
+     *   <li>connection_cached - 1 if connection is cached, 0 otherwise (O(1))</li>
+     * </ul>
      * <p>
-     * Subclasses should NOT override this method. Use {@link #addCustomMetrics(Map)} instead.
-     */
-    @Override
-    public final Map<String, Number> getMetrics() {
-        Map<String, Number> metrics = getBaseMetrics();
-        addCustomMetrics(metrics);
-        return metrics;
-    }
-    
-    /**
-     * Returns base metrics tracked by all database wrappers.
-     * <p>
-     * Private helper method called only by getMetrics().
-     * Subclasses should not access this directly - use addCustomMetrics() hook instead.
-     *
-     * @return Map containing base metrics (O(1) operations)
-     */
-    private Map<String, Number> getBaseMetrics() {
-        Map<String, Number> metrics = new LinkedHashMap<>();
-        metrics.put("error_count", errors.size());  // O(1)
-        metrics.put("connection_cached", cachedConnection != null ? 1 : 0);  // O(1)
-        return metrics;
-    }
-    
-    /**
      * Hook for subclasses to add implementation-specific metrics.
      * <p>
      * Example:
@@ -239,25 +191,29 @@ public abstract class AbstractDatabaseWrapper
      *   <li>{@link org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles} for latencies</li>
      * </ul>
      *
-     * @param metrics Mutable map to add custom metrics to (already contains base metrics)
+     * @param metrics Mutable map to add custom metrics to (already contains base error_count from AbstractResource)
      */
+    @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {
-        // Default: no custom metrics
+        super.addCustomMetrics(metrics);  // Include parent metrics (error_count)
+        metrics.put("connection_cached", cachedConnection != null ? 1 : 0);  // O(1)
     }
     
+    /**
+     * Checks health of this wrapper and the underlying database.
+     * <p>
+     * Wrapper is unhealthy if it has errors (e.g., schema setting failures)
+     * OR if the underlying database is unhealthy.
+     */
     @Override
     public boolean isHealthy() {
+        // Check own errors first (from AbstractResource)
+        if (!super.isHealthy()) {
+            return false;
+        }
+        
+        // Then check delegate (database) health
         return database.isHealthy();
-    }
-    
-    @Override
-    public List<OperationalError> getErrors() {
-        return new ArrayList<>(errors);
-    }
-    
-    @Override
-    public void clearErrors() {
-        errors.clear();
     }
     
     // ========== IWrappedResource Implementation (DRY!) ==========

@@ -15,6 +15,7 @@ import org.evochora.datapipeline.resources.queues.wrappers.DirectInputQueueWrapp
 import org.evochora.datapipeline.resources.queues.wrappers.DirectOutputQueueWrapper;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueConsumer;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueProducer;
+import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
@@ -39,15 +39,14 @@ import java.util.function.Predicate;
  *
  * @param <T> The type of elements held in this queue.
  */
-public class InMemoryBlockingQueue<T> extends AbstractResource implements IContextualResource, IMonitorable, IInputQueueResource<T>, IOutputQueueResource<T> {
+public class InMemoryBlockingQueue<T> extends AbstractResource implements IContextualResource, IInputQueueResource<T>, IOutputQueueResource<T> {
 
     private static final Logger log = LoggerFactory.getLogger(InMemoryBlockingQueue.class);
     private final ArrayBlockingQueue<TimestampedObject<T>> queue;
     private final int capacity;
     private final int metricsWindowSeconds;
     private final boolean disableTimestamps;
-    private final List<OperationalError> errors = Collections.synchronizedList(new java.util.ArrayList<>());
-    private final ConcurrentHashMap<Long, Instant> timestamps = new ConcurrentHashMap<>();
+    private final SlidingWindowCounter throughputCounter;
 
     // Lock to ensure drainTo(with timeout) is atomic across competing consumers
     // This GUARANTEES non-overlapping consecutive batch ranges
@@ -83,6 +82,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
                 throw new IllegalArgumentException("coalescingDelayMs cannot be negative for resource '" + name + "'.");
             }
             this.queue = new ArrayBlockingQueue<>(capacity);
+            this.throughputCounter = new SlidingWindowCounter(metricsWindowSeconds);
         } catch (ConfigException e) {
             throw new IllegalArgumentException("Invalid configuration for InMemoryBlockingQueue '" + name + "'", e);
         }
@@ -103,7 +103,9 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
             }
             // Directly use the underlying non-blocking queue's offer method.
             if (this.queue.offer(new TimestampedObject<>(element))) {
-                timestamps.put(System.nanoTime(), Instant.now());
+                if (!disableTimestamps) {
+                    throughputCounter.recordCount();
+                }
                 count++;
             } else {
                 // Queue is full, stop trying to add more.
@@ -164,63 +166,25 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
         };
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
-    public Map<String, Number> getMetrics() {
-        return Map.of(
-                "capacity", capacity,
-                "current_size", queue.size(),
-                "throughput_per_sec", calculateThroughput(this.metricsWindowSeconds)
-        );
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);  // Include parent metrics
+        metrics.put("capacity", capacity);
+        metrics.put("current_size", queue.size());
+        metrics.put("throughput_per_sec", calculateThroughput(this.metricsWindowSeconds));
     }
 
     /**
      * Calculates the throughput of messages in the queue over a given time window.
      * This method is public to allow wrappers to access it for monitoring.
+     * <p>
+     * This is an O(1) operation using {@link SlidingWindowCounter}.
      *
-     * @param window The time window in seconds to calculate throughput for.
+     * @param window The time window in seconds (ignored, uses configured metricsWindowSeconds).
      * @return The calculated throughput in messages per second.
      */
     public double calculateThroughput(int window) {
-        Instant windowStart = Instant.now().minusSeconds(window);
-        long count = timestamps.values().stream().filter(t -> t.isAfter(windowStart)).count();
-        return (double) count / window;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public List<OperationalError> getErrors() {
-        return Collections.unmodifiableList(errors);
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void clearErrors() {
-        errors.clear();
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public boolean isHealthy() {
-        return true;
-    }
-
-    /**
-     * Adds an operational error to the resource's error list.
-     * This method is intended for use by wrappers to report errors.
-     *
-     * @param error The operational error to add.
-     */
-    public void addError(OperationalError error) {
-        errors.add(error);
+        return throughputCounter.getRate();
     }
 
     /**
@@ -230,7 +194,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
      * @param filter A predicate to select which errors to remove.
      */
     public void clearErrors(Predicate<OperationalError> filter) {
-        errors.removeIf(filter);
+        clearErrorsIf(filter);
     }
 
     /**
@@ -251,7 +215,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
         TimestampedObject<T> tsObject = queue.poll();
         if (tsObject != null) {
             if (!disableTimestamps && tsObject.timestamp != null) {
-                timestamps.put(System.nanoTime(), tsObject.timestamp);
+                throughputCounter.recordCount();
             }
             return Optional.of(tsObject.object);
         }
@@ -266,7 +230,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     public T take() throws InterruptedException {
         TimestampedObject<T> tsObject = queue.take();
         if (!disableTimestamps && tsObject.timestamp != null) {
-            timestamps.put(System.nanoTime(), tsObject.timestamp);
+            throughputCounter.recordCount();
         }
         return tsObject.object;
     }
@@ -280,7 +244,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
         TimestampedObject<T> tsObject = queue.poll(timeout, unit);
         if (tsObject != null) {
             if (!disableTimestamps && tsObject.timestamp != null) {
-                timestamps.put(System.nanoTime(), tsObject.timestamp);
+                throughputCounter.recordCount();
             }
             return Optional.of(tsObject.object);
         }
@@ -298,12 +262,11 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
         int count = queue.drainTo(drainedObjects, maxElements);
 
         if (count > 0 && !disableTimestamps) {
-            Instant now = Instant.now();
             for (TimestampedObject<T> tsObject : drainedObjects) {
                 collection.add(tsObject.object);
-                // Record a timestamp for each drained object to contribute to throughput metrics.
+                // Record a count for each drained object to contribute to throughput metrics.
                 if (tsObject.timestamp != null) {
-                    timestamps.put(System.nanoTime(), now);
+                    throughputCounter.recordCount();
                 }
             }
         } else if (count > 0) {
@@ -373,8 +336,8 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     @Override
     public boolean offer(T element) {
         boolean success = queue.offer(new TimestampedObject<>(element));
-        if (success) {
-            timestamps.put(System.nanoTime(), Instant.now());
+        if (success && !disableTimestamps) {
+            throughputCounter.recordCount();
         }
         return success;
     }
@@ -387,7 +350,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     public void put(T element) throws InterruptedException {
         queue.put(new TimestampedObject<>(element, disableTimestamps));
         if (!disableTimestamps) {
-            timestamps.put(System.nanoTime(), Instant.now());
+            throughputCounter.recordCount();
         }
     }
 
@@ -398,8 +361,8 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     @Override
     public boolean offer(T element, long timeout, TimeUnit unit) throws InterruptedException {
         boolean success = queue.offer(new TimestampedObject<>(element), timeout, unit);
-        if (success) {
-            timestamps.put(System.nanoTime(), Instant.now());
+        if (success && !disableTimestamps) {
+            throughputCounter.recordCount();
         }
         return success;
     }

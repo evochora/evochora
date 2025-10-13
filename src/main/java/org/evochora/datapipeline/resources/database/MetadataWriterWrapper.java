@@ -49,6 +49,7 @@ public class MetadataWriterWrapper extends AbstractDatabaseWrapper implements IM
             insertMetadataLatency.record(System.nanoTime() - startNanos);
         } catch (Exception e) {
             operationErrors.incrementAndGet();
+            log.warn("Failed to insert metadata for run: {}", metadata.getSimulationRunId());
             recordError("INSERT_METADATA_FAILED", "Failed to insert metadata",
                        "RunId: " + metadata.getSimulationRunId() + ", Error: " + e.getMessage());
             throw new RuntimeException("Failed to insert metadata: " + metadata.getSimulationRunId(), e);
@@ -60,6 +61,8 @@ public class MetadataWriterWrapper extends AbstractDatabaseWrapper implements IM
 
     @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);  // Include parent metrics from AbstractDatabaseWrapper
+        
         // Counters - O(1)
         metrics.put("metadata_inserts", metadataInserts.get());
         metrics.put("operation_errors", operationErrors.get());

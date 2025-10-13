@@ -7,6 +7,8 @@ import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.resources.AbstractResource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -33,8 +35,10 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * @param <T> The type of the original message contained in the DeadLetterMessage.
  */
-public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDeadLetterQueueResource<T>, IMonitorable {
+public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDeadLetterQueueResource<T> {
 
+    private static final Logger log = LoggerFactory.getLogger(InMemoryDeadLetterQueue.class);
+    
     private final InMemoryBlockingQueue<SystemContracts.DeadLetterMessage> delegate;
     private final String primaryQueueName;
     private final long capacityLimit;
@@ -101,10 +105,10 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
         }
         if (dropped > 0) {
             droppedMessageCount.addAndGet(dropped);
-            // Log a warning - in a real system, this should trigger alerts
-            System.err.println("WARNING: Dead Letter Queue '" + getResourceName() +
-                    "' dropped " + dropped + " messages due to capacity limits. " +
-                    "Total dropped: " + droppedMessageCount.get());
+            log.warn("Dead Letter Queue '{}' dropped {} messages due to capacity, total dropped: {}",
+                getResourceName(), dropped, droppedMessageCount.get());
+            recordError("MESSAGES_DROPPED", "DLQ capacity exceeded, messages dropped",
+                String.format("Dropped: %d, Total dropped: %d", dropped, droppedMessageCount.get()));
         }
         return offered;
     }
@@ -116,10 +120,10 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
             totalReceived.incrementAndGet();
         } else {
             droppedMessageCount.incrementAndGet();
-            System.err.println("WARNING: Dead Letter Queue '" + getResourceName() +
-                    "' dropped a message due to capacity limits. " +
-                    "Total dropped: " + droppedMessageCount.get() +
-                    " - Message: " + element);
+            log.warn("Dead Letter Queue '{}' dropped message due to capacity, total dropped: {}",
+                getResourceName(), droppedMessageCount.get());
+            recordError("MESSAGE_DROPPED", "DLQ capacity exceeded, message dropped",
+                String.format("Total dropped: %d", droppedMessageCount.get()));
         }
         return success;
     }
@@ -146,9 +150,10 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
             totalReceived.incrementAndGet();
         } else {
             droppedMessageCount.incrementAndGet();
-            System.err.println("WARNING: Dead Letter Queue '" + getResourceName() +
-                    "' failed to accept message within timeout. " +
-                    "Total dropped: " + droppedMessageCount.get());
+            log.warn("Dead Letter Queue '{}' failed to accept message within timeout, total dropped: {}",
+                getResourceName(), droppedMessageCount.get());
+            recordError("MESSAGE_DROPPED_TIMEOUT", "DLQ failed to accept message within timeout",
+                String.format("Total dropped: %d", droppedMessageCount.get()));
         }
         return success;
     }
@@ -176,40 +181,11 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
         }
     }
 
-    /**
-     * {@inheritDoc}
-     * Returns metrics for monitoring the Dead Letter Queue.
-     * All metrics are calculated with O(1) operations for negligible performance impact.
-     */
     @Override
-    public Map<String, Number> getMetrics() {
-        return Map.of(
-                "total_messages_received", totalReceived.get(),
-                "dropped_messages", droppedMessageCount.get()
-        );
-    }
-
-    /**
-     * {@inheritDoc}
-     * Delegates error tracking to the underlying queue implementation.
-     */
-    @Override
-    public List<OperationalError> getErrors() {
-        if (delegate instanceof IMonitorable) {
-            return ((IMonitorable) delegate).getErrors();
-        }
-        return Collections.emptyList();
-    }
-
-    /**
-     * {@inheritDoc}
-     * Delegates error clearing to the underlying queue implementation.
-     */
-    @Override
-    public void clearErrors() {
-        if (delegate instanceof IMonitorable) {
-            ((IMonitorable) delegate).clearErrors();
-        }
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);  // Include parent metrics
+        metrics.put("total_messages_received", totalReceived.get());
+        metrics.put("dropped_messages", droppedMessageCount.get());
     }
 
     /**

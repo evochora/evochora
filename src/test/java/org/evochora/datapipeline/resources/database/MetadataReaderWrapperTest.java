@@ -5,6 +5,8 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
+import org.evochora.junit.extensions.logging.ExpectLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -103,6 +105,7 @@ class MetadataReaderWrapperTest {
     }
     
     @Test
+    @ExpectLog(level = LogLevel.WARN, messagePattern = "Failed to read metadata.*")
     void getMetadata_databaseError_wrapsException() throws Exception {
         // Given: Mock throws generic exception
         when(mockDatabase.doGetMetadata(any(), eq("error-run")))
@@ -156,6 +159,7 @@ class MetadataReaderWrapperTest {
     }
     
     @Test
+    @ExpectLog(level = LogLevel.WARN, messagePattern = "Failed to check metadata.*")
     void hasMetadata_databaseError_returnsFalse() throws Exception {
         // Given: Mock throws exception
         when(mockDatabase.doHasMetadata(any(), eq("error-run")))

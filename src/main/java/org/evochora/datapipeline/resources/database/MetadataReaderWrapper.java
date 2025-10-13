@@ -55,6 +55,7 @@ class MetadataReaderWrapper extends AbstractDatabaseWrapper implements IMetadata
             
         } catch (Exception e) {
             readErrors.incrementAndGet();
+            log.warn("Failed to read metadata for run: {}", simulationRunId);
             recordError("GET_METADATA_FAILED", "Failed to read metadata",
                        "RunId: " + simulationRunId + ", Error: " + e.getMessage());
             throw new RuntimeException("Failed to read metadata: " + simulationRunId, e);
@@ -72,6 +73,7 @@ class MetadataReaderWrapper extends AbstractDatabaseWrapper implements IMetadata
             
         } catch (Exception e) {
             readErrors.incrementAndGet();
+            log.warn("Failed to check metadata existence for run: {}", simulationRunId);
             recordError("HAS_METADATA_FAILED", "Failed to check metadata existence",
                        "RunId: " + simulationRunId + ", Error: " + e.getMessage());
             return false; // Assume not present on error
@@ -83,6 +85,8 @@ class MetadataReaderWrapper extends AbstractDatabaseWrapper implements IMetadata
     
     @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);  // Include parent metrics from AbstractDatabaseWrapper
+        
         // Counters - O(1)
         metrics.put("metadata_reads", metadataReads.get());
         metrics.put("metadata_not_found", metadataNotFound.get());

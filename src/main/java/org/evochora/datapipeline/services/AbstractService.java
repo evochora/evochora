@@ -37,8 +37,11 @@ public abstract class AbstractService implements IService, IMonitorable {
      * Collection of operational errors that occurred during service execution.
      * These are transient errors that don't stop the service but may affect data quality.
      * Limited to MAX_ERRORS to prevent unbounded memory growth.
+     * <p>
+     * Private to enforce use of {@link #recordError(String, String, String)} method.
+     * Subclasses must not access this directly.
      */
-    protected final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
+    private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
     
     /**
      * Maximum number of errors to keep in memory. When exceeded, oldest errors are removed.

@@ -25,13 +25,12 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * @param <T> The type of elements sent to the queue.
  */
-public class MonitoredQueueProducer<T> extends AbstractResource implements IOutputQueueResource<T>, IWrappedResource, IMonitorable {
+public class MonitoredQueueProducer<T> extends AbstractResource implements IOutputQueueResource<T>, IWrappedResource {
 
     private final IOutputQueueResource<T> delegate;
     private final ResourceContext context;
     private final AtomicLong messagesSent = new AtomicLong(0);
     private final SlidingWindowCounter throughputCounter;
-    private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
 
     /**
      * Constructs a new MonitoredQueueProducer.
@@ -84,7 +83,8 @@ public class MonitoredQueueProducer<T> extends AbstractResource implements IOutp
             }
             return count;
         } catch (Exception e) {
-            errors.add(new OperationalError(Instant.now(), "OFFER_ALL_ERROR", "Error offering elements to queue", e.getMessage()));
+            recordError("OFFER_ALL_ERROR", "Error offering elements to queue", 
+                String.format("Service: %s, Queue: %s, Error: %s", context.serviceName(), delegate.getResourceName(), e.getMessage()));
             throw e;
         }
     }
@@ -102,7 +102,8 @@ public class MonitoredQueueProducer<T> extends AbstractResource implements IOutp
             }
             return success;
         } catch (Exception e) {
-            errors.add(new OperationalError(Instant.now(), "OFFER_ERROR", "Error offering element to queue", e.getMessage()));
+            recordError("OFFER_ERROR", "Error offering element to queue", 
+                String.format("Service: %s, Queue: %s, Error: %s", context.serviceName(), delegate.getResourceName(), e.getMessage()));
             throw e;
         }
     }
@@ -119,7 +120,8 @@ public class MonitoredQueueProducer<T> extends AbstractResource implements IOutp
         } catch (InterruptedException e) {
             throw e;
         } catch (Exception e) {
-            errors.add(new OperationalError(Instant.now(), "PUT_ERROR", "Error putting element to queue", e.getMessage()));
+            recordError("PUT_ERROR", "Error putting element to queue", 
+                String.format("Service: %s, Queue: %s, Error: %s", context.serviceName(), delegate.getResourceName(), e.getMessage()));
             throw e;
         }
     }
@@ -139,7 +141,8 @@ public class MonitoredQueueProducer<T> extends AbstractResource implements IOutp
         } catch (InterruptedException e) {
             throw e;
         } catch (Exception e) {
-            errors.add(new OperationalError(Instant.now(), "OFFER_TIMEOUT_ERROR", "Error offering element to queue with timeout", e.getMessage()));
+            recordError("OFFER_TIMEOUT_ERROR", "Error offering element to queue with timeout", 
+                String.format("Service: %s, Queue: %s, Error: %s", context.serviceName(), delegate.getResourceName(), e.getMessage()));
             throw e;
         }
     }
@@ -157,60 +160,36 @@ public class MonitoredQueueProducer<T> extends AbstractResource implements IOutp
         } catch (InterruptedException e) {
             throw e;
         } catch (Exception e) {
-            errors.add(new OperationalError(Instant.now(), "PUT_ALL_ERROR", "Error putting elements to queue", e.getMessage()));
+            recordError("PUT_ALL_ERROR", "Error putting elements to queue", 
+                String.format("Service: %s, Queue: %s, Error: %s", context.serviceName(), delegate.getResourceName(), e.getMessage()));
             throw e;
         }
     }
 
-    /**
-     * {@inheritDoc}
-     * This implementation provides metrics specific to this producer context, calculated independently
-     * of the underlying resource.
-     */
     @Override
-    public Map<String, Number> getMetrics() {
-        return Map.of(
-                "messages_sent", messagesSent.get(),
-                "throughput_per_sec", throughputCounter.getRate()
-        );
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);  // Include parent metrics
+        metrics.put("messages_sent", messagesSent.get());
+        metrics.put("throughput_per_sec", throughputCounter.getRate());
     }
 
     /**
-     * {@inheritDoc}
-     * This implementation returns errors tracked by this wrapper, providing proper isolation
-     * from the underlying resource's error tracking.
-     */
-    @Override
-    public List<OperationalError> getErrors() {
-        return Collections.unmodifiableList(List.copyOf(errors));
-    }
-
-    /**
-     * {@inheritDoc}
-     * This implementation clears only the errors tracked by this wrapper.
-     */
-    @Override
-    public void clearErrors() {
-        errors.clear();
-    }
-
-    /**
-     * {@inheritDoc}
-     * This implementation checks health based on the error rate in this wrapper.
-     * If the delegate implements {@link IMonitorable}, we also consider its health status.
+     * Checks health of this wrapper and the underlying delegate.
+     * <p>
+     * Wrapper is unhealthy if it has errors OR if the delegate is unhealthy.
      */
     @Override
     public boolean isHealthy() {
-        // Consider unhealthy if we have many recent errors
-        if (errors.size() > 100) {
+        // Check own errors first (from AbstractResource)
+        if (!super.isHealthy()) {
             return false;
         }
-
-        // If delegate is monitorable, also check its health
+        
+        // Then check delegate health if available
         if (delegate instanceof IMonitorable) {
             return ((IMonitorable) delegate).isHealthy();
         }
-
+        
         return true;
     }
 

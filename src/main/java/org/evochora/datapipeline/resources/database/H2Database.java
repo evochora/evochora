@@ -212,6 +212,8 @@ public class H2Database extends AbstractDatabaseResource {
             } catch (SQLException re) {
                 log.warn("Rollback failed", re);
             }
+            writeErrors.incrementAndGet();
+            log.warn("Failed to insert metadata");
             recordError("INSERT_METADATA_FAILED", "Failed to insert metadata", "Error: " + e.getMessage());
             throw e;
         }
@@ -305,6 +307,8 @@ public class H2Database extends AbstractDatabaseResource {
      */
     @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);  // Include parent metrics from AbstractDatabaseResource
+        
         // Disk write rate (O(1) via SlidingWindowCounter)
         metrics.put("h2_disk_writes_per_sec", diskWritesCounter.getRate());
         

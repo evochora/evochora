@@ -7,6 +7,7 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
 import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
+import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,7 +15,6 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -57,7 +57,7 @@ public class DummyConsumerService<T> extends AbstractService {
     private final AtomicLong messagesDuplicate = new AtomicLong(0);
     private final AtomicLong messagesRetried = new AtomicLong(0);
     private final AtomicLong messagesSentToDLQ = new AtomicLong(0);
-    private final ConcurrentLinkedDeque<Long> messageTimestamps = new ConcurrentLinkedDeque<>();
+    private final SlidingWindowCounter throughputCounter;
     private final Map<Integer, RetryInfo> retryTracker = new HashMap<>();
 
     public DummyConsumerService(String name, Config options, Map<String, List<IResource>> resources) {
@@ -67,6 +67,7 @@ public class DummyConsumerService<T> extends AbstractService {
         this.maxMessages = options.hasPath("maxMessages") ? options.getLong("maxMessages") : -1L;
         this.metricsWindowSeconds = options.hasPath("metricsWindowSeconds") ? options.getInt("metricsWindowSeconds") : 5;
         this.maxRetries = options.hasPath("maxRetries") ? options.getInt("maxRetries") : 3;
+        this.throughputCounter = new SlidingWindowCounter(metricsWindowSeconds);
 
         // Get required resources
         this.inputQueue = getRequiredResource("input", IInputQueueResource.class);
@@ -175,7 +176,7 @@ public class DummyConsumerService<T> extends AbstractService {
      * @throws Exception if processing fails.
      */
     protected void processMessage(T message) throws Exception {
-        messageTimestamps.add(System.currentTimeMillis());
+        throughputCounter.recordCount();
 
         if (logReceivedMessages) {
             int messageId = extractMessageId(message);
@@ -304,14 +305,6 @@ public class DummyConsumerService<T> extends AbstractService {
         metrics.put("messages_sent_to_dlq", messagesSentToDLQ.get());
         metrics.put("messages_in_retry", retryTracker.size());
         metrics.put("idempotency_tracker_size", idempotencyTracker != null ? idempotencyTracker.size() : 0);
-        metrics.put("throughput_per_sec", calculateThroughput());
-    }
-
-    private double calculateThroughput() {
-        long now = System.currentTimeMillis();
-        long windowStart = now - (metricsWindowSeconds * 1000L);
-        messageTimestamps.removeIf(timestamp -> timestamp < windowStart);
-        if (metricsWindowSeconds == 0) return 0;
-        return (double) messageTimestamps.size() / metricsWindowSeconds;
+        metrics.put("throughput_per_sec", throughputCounter.getRate());
     }
 }
