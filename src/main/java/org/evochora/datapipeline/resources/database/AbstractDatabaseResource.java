@@ -29,7 +29,7 @@ public abstract class AbstractDatabaseResource extends AbstractResource
     }
 
     @Override
-    public IWrappedResource getWrappedResource(ResourceContext context) {
+    public final IWrappedResource getWrappedResource(ResourceContext context) {
         String usageType = context.usageType();
         return switch (usageType) {
             case "db-meta-write" -> new MetadataWriterWrapper(this, context);
