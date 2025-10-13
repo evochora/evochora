@@ -615,7 +615,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * @throws IllegalArgumentException if usageType is null or not supported
      */
     @Override
-    public IWrappedResource getWrappedResource(ResourceContext context) {
+    public final IWrappedResource getWrappedResource(ResourceContext context) {
         if (context.usageType() == null) {
             throw new IllegalArgumentException(String.format(
                 "Storage resource '%s' requires a usageType in the binding URI. " +
