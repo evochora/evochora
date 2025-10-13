@@ -451,17 +451,17 @@ After these 8 steps, the system will be:
 - Uses existing DeadLetterMessage from system_contracts.proto
 - Integrates with Phase 2.1 output (SimulationEngine queue outputs)
 
-#### Phase 2.4: Database Resource and Metadata Indexer 
-**Status:** Architecture defined, ready for implementation
-- Database resource abstraction with capability-based interfaces (IMetadataDatabase)
-- AbstractDatabaseResource with connection pooling, wrapper creation, and monitoring
-- H2Database implementation with HikariCP (in-memory and file-based modes)
-- MetadataDatabaseWrapper with dedicated connection per indexer instance
-- AbstractIndexer base class with run discovery (configured runId vs. timestamp-based)
-- MetadataIndexer service: reads metadata.pb from storage, creates schema-per-run, writes to database
-- Schema-per-run design (sim_timestamp_uuid) for complete isolation
-- IBatchStorageRead.listRunIds(Instant) for timestamp-based run discovery
-- Integration tests with in-memory H2, LogWatch extension, no artifacts
+#### Phase 2.4: Database Resource and Metadata Indexer ✅ COMPLETED
+**Status:** Implemented and functional
+- ✅ Database resource abstraction with capability-based interfaces (IMetadataDatabase)
+- ✅ AbstractDatabaseResource with connection pooling, wrapper creation, and monitoring
+- ✅ H2Database implementation with HikariCP (in-memory and file-based modes)
+- ✅ MetadataDatabaseWrapper with dedicated connection per indexer instance
+- ✅ AbstractIndexer base class with run discovery (configured runId vs. timestamp-based)
+- ✅ MetadataIndexer service: reads metadata.pb from storage, creates schema-per-run, writes to database
+- ✅ Schema-per-run design (sim_timestamp_uuid) for complete isolation
+- ✅ IBatchStorageRead.listRunIds(Instant) for timestamp-based run discovery
+- ✅ Integration tests with in-memory H2, LogWatch extension, no artifacts
 
 **Documentation:** See `13_DATABASE_AND_METADATAINDEXER.md` for complete architecture specification.
 
@@ -478,20 +478,77 @@ After these 8 steps, the system will be:
 - Uses Phase 2.0 contracts (SimulationMetadata)
 - Future indexers (organism, environment) will use same patterns
 
-#### Phase 2.5: Organism and Environment Indexers
-**Status:** Architecture pending
-- Family of specialized indexers reading tick batches from storage
-- Each indexer focuses on specific data aspects (organisms, environment/cells, etc.)
-- Database-coordinated competing consumers (check "batch already indexed?" before processing)
-- Uses IBatchStorageRead for streaming batch processing (O(1) memory)
-- Capability interfaces: IOrganismDatabase, IEnvironmentDatabase
-- Can run concurrently with persistence or batch process after completion
-- Schema created by MetadataIndexer (Phase 2.4), indexers write to organism/cell tables
+#### Phase 2.5: Indexer Foundation (Topic-Based Architecture)
+**Status:** Open
+
+This phase implements a topic-based pub/sub architecture for indexer coordination, replacing storage polling with instant notification delivery.
+
+**Overview:** See `14_2_INDEXER_FOUNDATION.md` for complete multi-phase implementation plan.
+
+**Sub-Phases:**
+
+##### Phase 2.5.1: Topic Infrastructure
+**Documentation:** `14_2_1_TOPIC_INFRASTRUCTURE.md`
+- Topic API interfaces: `ITopicWriter<T>`, `ITopicReader<T>` (Protobuf-only, type-safe)
+- `TopicMessage<T>` wrapper with metadata (timestamp, messageId, consumerGroup)
+- Protobuf contracts: `BatchInfo`, `MetadataInfo`
+- `AbstractTopicResource<T>` with Template Method pattern (createReaderDelegate, createWriterDelegate)
+- `AbstractTopicDelegate<P>` for type-safe parent access
+- `ChronicleTopicResource<T>` with Chronicle Queue backend
+- Inner class delegates: `ChronicleWriter`, `ChronicleReader`
+- Multi-writer safety via internal queue, consumer groups for competing consumers
+- O(1) monitoring with `SlidingWindowCounter`
+
+##### Phase 2.5.2: Metadata Notification (Write)
+**Documentation:** `14_2_2_METADATA_NOTIFICATION_WRITE.md` (TBD)
+- `MetadataPersistenceService` publishes metadata availability to `metadata-topic`
+- After successful `storage.writeMessage()`, send `MetadataInfo` notification
+- Topic writer binding: `ITopicWriter<MetadataInfo>`
+
+##### Phase 2.5.3: Metadata Notification (Read)
+**Documentation:** `14_2_3_METADATA_NOTIFICATION_READ.md` (TBD)
+- `MetadataIndexer` consumes from `metadata-topic` instead of storage polling
+- Consumer group: `"metadata-indexer"`
+- Blocking receive (no polling delays)
+- Topic reader binding: `ITopicReader<MetadataInfo>`
+
+##### Phase 2.5.4: Batch Notification (Write)
+**Documentation:** `14_2_4_BATCH_NOTIFICATION_WRITE.md` (TBD)
+- `PersistenceService` publishes batch availability to `batch-topic`
+- After successful `storage.writeBatch()`, send `BatchInfo` notification
+- Topic writer binding: `ITopicWriter<BatchInfo>`
+
+##### Phase 2.5.5: DummyIndexer Topic Read + Loop
+**Documentation:** `14_2_5_DUMMYINDEXER_TOPIC_LOOP.md` (TBD)
+- `DummyIndexer` reads from `batch-topic` in continuous loop
+- Consumer group: `"dummy-indexer"`
+- Log-only processing (no storage read, no buffering yet)
+- `indexRun()` becomes: `while (!interrupted) { receive() → LOG → ack() }`
+
+##### Phase 2.5.6: Tick Buffering
+**Documentation:** `14_2_6_TICK_BUFFERING.md` (TBD)
+- `DummyIndexer` reads actual batch data from storage
+- `TickBufferingComponent` for incomplete tick handling
+- Buffer ticks, flush when complete tick received
+- DEBUG logs for buffered/flushed ticks
+
+##### Phase 2.5.7: Idempotency + DLQ
+**Documentation:** `14_2_7_IDEMPOTENCY_DLQ.md` (TBD)
+- `IdempotencyComponent` for duplicate detection
+- `IDeadLetterQueueResource` binding for failed batches
+- Error handling: retry → DLQ → continue (resilient loop)
+- Exactly-once processing semantics
+
+**Key Features:**
+- ✅ Instant notification (blocking receive, no polling)
+- ✅ Reliable delivery (Topic guarantees)
+- ✅ Competing consumers via Consumer Groups (built-in)
+- ✅ At-least-once delivery + Idempotency = Exactly-once semantics
 
 **Dependencies:**
 - Requires Phase 2.4 (Database Resource, MetadataIndexer) implementation complete
-- Uses Phase 2.0 contracts (TickData)
-- Requires metadata indexing complete (schema and environment config available)
+- Uses Phase 2.0 contracts (TickData, SimulationMetadata)
+- Uses Phase 2.2 Storage Resource for batch data reads
 
 ### Phase 3: Production Resources
 - Cloud storage resources (S3, GCS)
@@ -499,11 +556,25 @@ After these 8 steps, the system will be:
 - Queue resources (SQS, Kafka)
 - Metrics export and observability
 
-### Phase 4: Analysis & Web API
-- Complete family of specialized IndexerServices (types determined based on experience)
-- Competing consumers scaling for high-throughput indexers
-- Batch processing capability (IndexerServices reading from archived storage)
+### Phase 3: Additional Indexers
+**Status:** Architecture pending
+- EnvironmentIndexer: Indexes cell/environment data from batches
+- OrganismIndexer: Indexes organism lifecycle and state data
+- Capability interfaces: `IEnvironmentDatabase`, `IOrganismDatabase`
+- Uses same topic-based architecture as Phase 2.5
+- Consumer groups for competing consumers within each indexer type
+- Can run concurrently with persistence or batch process after completion
+
+### Phase 4: Production Resources & Cloud Support
+- Cloud storage resources (S3, GCS)
+- Cloud topic resources (Kafka, Kinesis, SQS)
+- Database resources (PostgreSQL, Cassandra)
+- Metrics export and observability (Prometheus, Grafana)
+- Distributed deployment patterns
+
+### Phase 5: Analysis & Web API
 - HttpApiServer with REST endpoints
+- Query optimization for web client
 - Performance optimization and production hardening
 
 This design ensures maximum simulation performance while providing enterprise-grade reliability, observability, and operational flexibility.
