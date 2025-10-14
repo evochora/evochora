@@ -1,6 +1,6 @@
 # Phase 2.5.1: Metadata Reading Capability
 
-**Part of:** [14_BATCH_COORDINATION_AND_DUMMYINDEXER.md](./14_BATCH_COORDINATION_AND_DUMMYINDEXER.md)
+**Part of:** [14_BATCH_COORDINATION_AND_DUMMYINDEXER.md](../delined_or_outdated/datapipeline_v3/14_BATCH_COORDINATION_AND_DUMMYINDEXER.md)
 
 **Status:** Ready for implementation
 

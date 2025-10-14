@@ -61,20 +61,9 @@ Upon completion:
 
 ## Architectural Context
 
-### Problem: Why Topics Replace Batch Discovery
+### Topic-Based Architecture
 
-**Old Approach (Complex):**
-```
-PersistenceService → Storage.writeBatch()
-                         ↓
-Indexer → POLL Storage.listBatchFiles() every 1s
-       → Parse filenames, detect gaps
-       → coordinator_batches table (claim, status)
-       → coordinator_gaps table (track missing ranges)
-       → Gap filling logic (search storage by tick range)
-```
-
-**New Approach (Simple):**
+**Data Flow:**
 ```
 PersistenceService → Storage.writeBatch()
                   → Topic.send(BatchInfo{filename, ticks})
@@ -85,10 +74,9 @@ Indexer → Topic.receive() [BLOCKING, no polling!]
        → Topic.ack()
 ```
 
-**Benefits:**
-- ✅ No polling delays (instant notification)
-- ✅ No gap detection logic (Topic guarantees delivery)
-- ✅ No database coordination tables
+**Key Features:**
+- ✅ Instant notification (blocking receive)
+- ✅ Reliable delivery (Topic guarantees)
 - ✅ Competing consumers via Consumer Groups (built-in)
 - ✅ At-least-once delivery + Idempotency = Exactly-once semantics
 
@@ -1843,19 +1831,16 @@ Delegates follow the same naming pattern as storage wrappers:
 
 This ensures unique names for metrics and error tracking.
 
-## Migration Path
+## Implementation Path
 
-**From:** Complex batch discovery with `coordinator_batches`, `coordinator_gaps`, polling, gap detection
-
-**To:** Simple topic notifications with at-least-once delivery + idempotency
+**Approach:** Topic-based notifications with at-least-once delivery + idempotency
 
 **Steps:**
 1. This phase: Implement topic infrastructure
-2. Future phases: Migrate services to use topics
+2. Future phases: Integrate services with topics
 3. Future phases: Add idempotency checks for exactly-once semantics
-4. Future phases: Remove old batch discovery logic
 
-**No backward compatibility needed** - this is a complete architectural shift.
+**No backward compatibility needed** - this is a new implementation.
 
 ## Success Metrics
 
