@@ -16,11 +16,11 @@ Implement a Topic-based pub/sub resource abstraction with Chronicle Queue backen
    - Delegate lifecycle management
    - `AbstractTopicDelegate<P extends AbstractTopicResource<?>>` inner base class (type-safe parent access)
 5. `ChronicleTopicResource<T extends Message>` implementation with:
-   - Single-writer Chronicle Queue (via internal `InMemoryBlockingQueue`)
+   - Single-writer Chronicle Queue (via internal `BlockingQueue<TopicEnvelope>`)
    - Consumer Groups for competing consumers (via Chronicle Tailers)
    - At-least-once delivery semantics
    - Message acknowledgment
-   - Inner class delegates: `ChronicleWriter`, `ChronicleReader` (extend `AbstractTopicDelegate`)
+   - Inner class delegates: `ChronicleTopicWriterDelegate`, `ChronicleTopicReaderDelegate` (extend abstract delegate classes)
 6. O(1) monitoring metrics (`SlidingWindowCounter` for throughput)
 7. Integration tests for single/multi-writer/reader scenarios
 
@@ -39,8 +39,8 @@ Upon completion:
 3. `AbstractTopicDelegate<P extends AbstractTopicResource<?>>` base class for type-safe parent access (extends `AbstractResource`)
 4. Delegates extend `AbstractTopicDelegate` and implement `ITopicReader`/`ITopicWriter` + `IWrappedResource`
 5. `ChronicleTopicResource<T extends Message>` extends `AbstractTopicResource` and implements `AutoCloseable`
-6. Inner class delegates: `ChronicleWriter<T>`, `ChronicleReader<T>` extend `AbstractTopicDelegate<ChronicleTopicResource<T>>`
-7. Multi-writer safety via internal `InMemoryBlockingQueue` → single Chronicle writer thread
+6. Inner class delegates: `ChronicleTopicWriterDelegate<T>`, `ChronicleTopicReaderDelegate<T>` extend abstract delegate classes
+7. Multi-writer safety via internal `BlockingQueue<TopicEnvelope>` → single Chronicle writer thread
 8. Consumer Groups ensure each message consumed by ONE consumer per group
 9. `TopicMessage<T extends Message>` includes: payload, timestamp, messageId, consumerGroup
 10. Protobuf contracts: `BatchInfo` (runId, storageKey, tickStart, tickEnd), `MetadataInfo` (runId, storageKey)
@@ -48,7 +48,7 @@ Upon completion:
 12. Readers: blocking `receive()`, timeout-based `poll(timeout, unit)`, `ack(TopicMessage)`
 13. O(1) monitoring: `SlidingWindowCounter` for throughput, aggregate + per-delegate metrics
 14. Type-safe delegate-parent access (no casts, direct field access like `parent.messagesPublished.incrementAndGet()`)
-15. Consumer group validation in `createReaderDelegate()` (no double-validation in delegate constructor)
+15. Consumer group validation (defense-in-depth: both in `createReaderDelegate()` and delegate constructor)
 16. Tests verify: single writer/reader, multi-writer (queue coalescing), multi-reader (consumer groups)
 17. All tests pass with proper cleanup (Chronicle Queue directories)
 
@@ -56,7 +56,7 @@ Upon completion:
 
 - Phase 0: API Foundation (completed) - `IResource`, `IMonitorable`
 - Phase 1.2: Core Resource Implementation (completed) - `AbstractResource`, `IContextualResource`
-- Phase 1.3: Queue Resource (completed) - `InMemoryBlockingQueue` (for internal multi-writer queue)
+- Phase 1.3: Queue Resource (completed) - Now using `java.util.concurrent.BlockingQueue` for internal multi-writer queue
 - Chronicle Queue v5.x dependency (will be added to `build.gradle.kts` in this phase)
 
 ## Architectural Context
@@ -89,7 +89,7 @@ Indexer → Topic.receive() [BLOCKING, no polling!]
 
 **2. `batch-topic`** (BatchInfo messages)
 - Writers: Multiple `PersistenceService` instances (competing producers)
-- Readers: Multiple `DummyIndexer` / `EnvironmentIndexer` instances (competing consumers)
+- Readers: Multiple `DummyIndexer` instances (competing consumers)
 - Message: `{runId, storageKey="runId/batch_xxx.pb", tickStart, tickEnd, writtenAtMs}`
 
 ### Chronicle Queue Architecture
@@ -99,13 +99,13 @@ Chronicle Queue requires a single writer per queue. To support multiple `Persist
 
 ```
 PersistenceService-1 ┐
-PersistenceService-2 ├─→ InMemoryBlockingQueue ──→ Single Chronicle Writer Thread
+PersistenceService-2 ├─→ BlockingQueue<TopicEnvelope> ──→ Single Chronicle Writer Thread
 PersistenceService-3 ┘
 ```
 
 **Implementation:**
-- `ChronicleTopicResource` creates an internal `InMemoryBlockingQueue<T>`
-- Each `ChronicleWriter` delegate writes to this queue
+- `ChronicleTopicResource` creates an internal `BlockingQueue<TopicEnvelope>` (Java standard library)
+- Each `ChronicleTopicWriterDelegate` writes to this queue
 - A dedicated background thread drains the queue and writes to Chronicle Queue
 - This ensures single-writer safety
 
@@ -119,7 +119,7 @@ PersistenceService-3 ┘
 
 **Queue Wrappers (Separate Classes):**
 ```
-InMemoryBlockingQueue (Resource)
+InMemoryBlockingQueue (Resource, used for service-to-service communication)
     ↓
 MonitoredQueueConsumer (Wrapper, separate file, extends AbstractResource)
 ```
@@ -130,8 +130,8 @@ AbstractTopicResource (Abstract Resource)
     ↓
 ChronicleTopicResource (Concrete Resource)
     ↓
-ChronicleReader (Delegate, inner class, extends AbstractTopicDelegate<ChronicleTopicResource>)
-ChronicleWriter (Delegate, inner class, extends AbstractTopicDelegate<ChronicleTopicResource>)
+ChronicleTopicReaderDelegate (Inner class, extends AbstractTopicDelegateReader<ChronicleTopicResource, T, Long>)
+ChronicleTopicWriterDelegate (Inner class, extends AbstractTopicDelegateWriter<ChronicleTopicResource, T>)
 ```
 
 **Why Inner Classes for Topics?**
@@ -159,8 +159,26 @@ syntax = "proto3";
 
 package org.evochora.datapipeline.api.contracts;
 
+import "google/protobuf/any.proto";
+
 option java_package = "org.evochora.datapipeline.api.contracts";
 option java_outer_classname = "NotificationContracts";
+
+/**
+ * Envelope for all topic messages.
+ * Wraps the actual payload (BatchInfo, MetadataInfo) with metadata for idempotency
+ * and debugging. This ensures consistent messageId across all consumer groups.
+ */
+message TopicEnvelope {
+  /** Unique message identifier, generated once by the writer. */
+  string message_id = 1;
+  
+  /** Unix timestamp (milliseconds) when the message was written to the topic. */
+  int64 timestamp = 2;
+  
+  /** The actual payload (BatchInfo or MetadataInfo), type-safe via Any. */
+  google.protobuf.Any payload = 3;
+}
 
 /**
  * Notification that a batch file has been written to storage.
@@ -300,8 +318,9 @@ import java.util.concurrent.TimeUnit;
  * <strong>Usage Type:</strong> {@code topic-read}
  *
  * @param <T> The type of messages to read (must be a Protobuf {@link Message}).
+ * @param <ACK> The type of acknowledgment token (implementation-specific, e.g., {@code Long} for Chronicle Queue).
  */
-public interface ITopicReader<T extends Message> extends IResource {
+public interface ITopicReader<T extends Message, ACK> extends IResource {
     
     /**
      * Receives a message from the topic, waiting if necessary until a message is available.
@@ -314,7 +333,7 @@ public interface ITopicReader<T extends Message> extends IResource {
      * @return The next message from the topic, wrapped in {@link TopicMessage}.
      * @throws InterruptedException if interrupted while waiting.
      */
-    TopicMessage<T> receive() throws InterruptedException;
+    TopicMessage<T, ACK> receive() throws InterruptedException;
     
     /**
      * Receives a message from the topic, waiting up to the specified time for a message to be available.
@@ -330,7 +349,7 @@ public interface ITopicReader<T extends Message> extends IResource {
      * @throws InterruptedException if interrupted while waiting.
      * @throws NullPointerException if unit is null.
      */
-    Optional<TopicMessage<T>> poll(long timeout, TimeUnit unit) throws InterruptedException;
+    Optional<TopicMessage<T, ACK>> poll(long timeout, TimeUnit unit) throws InterruptedException;
     
     /**
      * Acknowledges that a message has been successfully processed.
@@ -344,7 +363,7 @@ public interface ITopicReader<T extends Message> extends IResource {
      * @param message The message to acknowledge (must not be null).
      * @throws NullPointerException if message is null.
      */
-    void ack(TopicMessage<T> message);
+    void ack(TopicMessage<T, ACK> message);
 }
 ```
 
@@ -366,16 +385,25 @@ import java.util.Objects;
  * {@link #consumerGroup()}. This is the recommended way to access the consumer group
  * information, as {@link ITopicReader} does not expose it directly (it's an
  * implementation detail set at delegate creation time).
+ * <p>
+ * <strong>Type Safety:</strong> The acknowledgment token type ({@code ACK}) is determined
+ * by the specific topic implementation, ensuring compile-time type safety:
+ * <ul>
+ *   <li>Chronicle Queue: {@code TopicMessage<BatchInfo, Long>}</li>
+ *   <li>Kafka: {@code TopicMessage<BatchInfo, KafkaOffset>}</li>
+ *   <li>SQS: {@code TopicMessage<BatchInfo, String>}</li>
+ * </ul>
  *
  * @param <T> The type of the message payload (must be a Protobuf {@link Message}).
+ * @param <ACK> The type of the acknowledgment token (implementation-specific).
  */
-public final class TopicMessage<T extends Message> {
+public final class TopicMessage<T extends Message, ACK> {
     
     private final T payload;
     private final long timestamp;
     private final String messageId;
     private final String consumerGroup;
-    private final long index; // Chronicle Queue index for ack
+    private final ACK acknowledgeToken;
     
     /**
      * Creates a new TopicMessage.
@@ -384,14 +412,14 @@ public final class TopicMessage<T extends Message> {
      * @param timestamp Unix timestamp in milliseconds when message was written.
      * @param messageId Unique identifier for this message.
      * @param consumerGroup Consumer group this message was read from.
-     * @param index Internal index for acknowledgment (Chronicle Queue index).
+     * @param acknowledgeToken Implementation-specific token for acknowledgment (e.g., Chronicle Queue index, Kafka offset, SQS receipt handle).
      */
-    public TopicMessage(T payload, long timestamp, String messageId, String consumerGroup, long index) {
+    public TopicMessage(T payload, long timestamp, String messageId, String consumerGroup, ACK acknowledgeToken) {
         this.payload = Objects.requireNonNull(payload, "payload cannot be null");
         this.timestamp = timestamp;
         this.messageId = Objects.requireNonNull(messageId, "messageId cannot be null");
         this.consumerGroup = Objects.requireNonNull(consumerGroup, "consumerGroup cannot be null");
-        this.index = index;
+        this.acknowledgeToken = acknowledgeToken;
     }
     
     /**
@@ -436,14 +464,22 @@ public final class TopicMessage<T extends Message> {
     }
     
     /**
-     * Gets the internal index for acknowledgment.
+     * Gets the implementation-specific acknowledgment token.
      * <p>
-     * This is package-private as it's only used internally by the topic implementation.
+     * This token is used by {@link ITopicReader#ack(TopicMessage)} to acknowledge
+     * the message. The type and semantics are implementation-specific:
+     * <ul>
+     *   <li>Chronicle Queue: {@code Long} (queue index)</li>
+     *   <li>Kafka: Custom offset object</li>
+     *   <li>SQS: {@code String} (receipt handle)</li>
+     * </ul>
+     * <p>
+     * Package-private as it's only used internally by the topic implementation.
      *
-     * @return The Chronicle Queue index.
+     * @return The acknowledgment token.
      */
-    long index() {
-        return index;
+    ACK acknowledgeToken() {
+        return acknowledgeToken;
     }
     
     @Override
@@ -452,19 +488,46 @@ public final class TopicMessage<T extends Message> {
             messageId, consumerGroup, timestamp, payload.getClass().getSimpleName());
     }
     
+    /**
+     * Compares this TopicMessage to another based on semantic equality.
+     * <p>
+     * Two TopicMessage instances are considered equal if they have the same {@code messageId}
+     * and {@code consumerGroup}, regardless of their {@code acknowledgeToken}, {@code timestamp},
+     * or {@code payload} content.
+     * <p>
+     * <strong>Rationale:</strong>
+     * <ul>
+     *   <li>Messages with the same ID represent the same logical message, even if redelivered</li>
+     *   <li>The {@code acknowledgeToken} is excluded because it's delivery-specific metadata</li>
+     *   <li>This enables correct behavior when messages are accidentally used in collections</li>
+     *   <li>Example: Redelivery of message "abc-123" is semantically equal to original delivery</li>
+     * </ul>
+     * <p>
+     * <strong>Note:</strong> Each delivery is still a distinct object with its own {@code acknowledgeToken}.
+     * Calling {@code ack()} on different deliveries of the same message will acknowledge different positions.
+     *
+     * @param o The object to compare.
+     * @return {@code true} if messageId and consumerGroup are equal, {@code false} otherwise.
+     */
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof TopicMessage<?> that)) return false;
-        return timestamp == that.timestamp &&
-               index == that.index &&
-               Objects.equals(messageId, that.messageId) &&
+        if (!(o instanceof TopicMessage<?, ?> that)) return false;
+        return messageId.equals(that.messageId) &&
                Objects.equals(consumerGroup, that.consumerGroup);
     }
     
+    /**
+     * Returns a hash code based on {@code messageId} and {@code consumerGroup}.
+     * <p>
+     * Consistent with {@link #equals(Object)}, this hash code excludes {@code acknowledgeToken},
+     * {@code timestamp}, and {@code payload} to ensure semantic equality.
+     *
+     * @return Hash code based on messageId and consumerGroup.
+     */
     @Override
     public int hashCode() {
-        return Objects.hash(messageId, consumerGroup, timestamp, index);
+        return Objects.hash(messageId, consumerGroup);
     }
 }
 ```
@@ -526,8 +589,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * to provide technology-specific readers and writers (Chronicle, Kafka, etc.).
  *
  * @param <T> The message type (must be a Protobuf {@link Message}).
+ * @param <ACK> The acknowledgment token type (implementation-specific, e.g., {@code Long} for Chronicle Queue).
  */
-public abstract class AbstractTopicResource<T extends Message> extends AbstractResource implements IContextualResource, AutoCloseable {
+public abstract class AbstractTopicResource<T extends Message, ACK> extends AbstractResource implements IContextualResource, AutoCloseable {
     
     private static final Logger log = LoggerFactory.getLogger(AbstractTopicResource.class);
     
@@ -566,7 +630,7 @@ public abstract class AbstractTopicResource<T extends Message> extends AbstractR
      * @return The reader delegate.
      * @throws IllegalArgumentException if consumerGroup parameter is missing or invalid.
      */
-    protected abstract ITopicReader<T> createReaderDelegate(ResourceContext context);
+    protected abstract ITopicReader<T, ACK> createReaderDelegate(ResourceContext context);
     
     /**
      * Creates a writer delegate for the specified context.
@@ -613,6 +677,70 @@ public abstract class AbstractTopicResource<T extends Message> extends AbstractR
         return delegate;
     }
     
+    /**
+     * Returns the current state of the topic resource for a specific usage context.
+     * <p>
+     * This method is {@code final} to enforce abstraction and ensure the configuration
+     * remains independent of the underlying implementation (Chronicle, Kafka, etc.).
+     * <p>
+     * <strong>Supported Usage Types:</strong>
+     * <ul>
+     *   <li>{@code "topic-write"}: Check if the topic is ready to accept new messages</li>
+     *   <li>{@code "topic-read"}: Check if the topic is ready to provide messages</li>
+     * </ul>
+     * <p>
+     * Subclasses implement {@link #getWriteUsageState()} and {@link #getReadUsageState()}
+     * to provide implementation-specific logic while maintaining abstract usage types.
+     * <p>
+     * <strong>Implements:</strong> {@link IResource#getUsageState(String)}
+     *
+     * @param usageType The usage type ({@code "topic-write"} or {@code "topic-read"}).
+     * @return The current usage state (ACTIVE, WAITING, or FAILED).
+     * @throws IllegalArgumentException if usageType is null or unsupported.
+     */
+    @Override
+    public final UsageState getUsageState(String usageType) {
+        if (usageType == null) {
+            throw new IllegalArgumentException("UsageType cannot be null for topic '" + getResourceName() + "'");
+        }
+        
+        return switch (usageType) {
+            case "topic-write" -> getWriteUsageState();
+            case "topic-read" -> getReadUsageState();
+            default -> throw new IllegalArgumentException(String.format(
+                "Unsupported usage type '%s' for topic resource '%s'. Supported: topic-write, topic-read",
+                usageType, getResourceName()));
+        };
+    }
+    
+    /**
+     * Template method for subclasses to provide their specific logic for determining
+     * the write usage state.
+     * <p>
+     * This method is called by {@link #getUsageState(String)} when the usage type is
+     * {@code "topic-write"}. Implementations should check if the topic is ready to
+     * accept new messages (e.g., internal queue not full, writer thread running).
+     * <p>
+     * <strong>Thread Safety:</strong> This method may be called concurrently by multiple threads.
+     *
+     * @return The current write usage state (ACTIVE, WAITING, or FAILED).
+     */
+    protected abstract UsageState getWriteUsageState();
+    
+    /**
+     * Template method for subclasses to provide their specific logic for determining
+     * the read usage state.
+     * <p>
+     * This method is called by {@link #getUsageState(String)} when the usage type is
+     * {@code "topic-read"}. Implementations should check if the topic is ready to
+     * provide messages (e.g., tailers operational, queue accessible).
+     * <p>
+     * <strong>Thread Safety:</strong> This method may be called concurrently by multiple threads.
+     *
+     * @return The current read usage state (ACTIVE, WAITING, or FAILED).
+     */
+    protected abstract UsageState getReadUsageState();
+    
     @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {
         super.addCustomMetrics(metrics);
@@ -652,7 +780,7 @@ public abstract class AbstractTopicResource<T extends Message> extends AbstractR
      * <p>
      * <strong>Type Safety:</strong>
      * The generic parameter {@code P extends AbstractTopicResource<?>} allows delegates to access
-     * parent-specific methods and fields without unsafe casts. For example, a {@code ChronicleReader}
+     * parent-specific methods and fields without unsafe casts. For example, a {@code ChronicleTopicReaderDelegate}
      * extends {@code AbstractTopicDelegate<ChronicleTopicResource>} and can directly access
      * {@code parent.messagesReceived.incrementAndGet()} without casting.
      * <p>
@@ -676,7 +804,7 @@ public abstract class AbstractTopicResource<T extends Message> extends AbstractR
      *
      * @param <P> The parent resource type (must extend {@link AbstractTopicResource}).
      */
-    protected abstract static class AbstractTopicDelegate<P extends AbstractTopicResource<?>> extends AbstractResource implements AutoCloseable {
+    protected abstract static class AbstractTopicDelegate<P extends AbstractTopicResource<?, ?>> extends AbstractResource implements AutoCloseable {
         
         protected final P parent;
         protected final ResourceContext context;
@@ -719,6 +847,382 @@ public abstract class AbstractTopicResource<T extends Message> extends AbstractR
         @Override
         public abstract void close() throws Exception;
     }
+    
+    // ========================================================================
+    //    Shared Types
+    // ========================================================================
+    
+    /**
+     * Container for a received envelope with its acknowledgment token.
+     * <p>
+     * This record combines a {@link TopicEnvelope} (containing messageId, timestamp, payload)
+     * with an implementation-specific acknowledgment token. It's returned by reader delegates'
+     * {@code receiveEnvelope()} method and used by parent resources to ensure the envelope
+     * and its acknowledgment token stay together.
+     * <p>
+     * <strong>Usage:</strong>
+     * <ul>
+     *   <li>Chronicle Queue: {@code ReceivedEnvelope<Long>} (index as acknowledgment token)</li>
+     *   <li>Kafka: {@code ReceivedEnvelope<KafkaOffset>} (offset as acknowledgment token)</li>
+     *   <li>SQS: {@code ReceivedEnvelope<String>} (receipt handle as acknowledgment token)</li>
+     * </ul>
+     *
+     * @param envelope The Protobuf envelope containing the message.
+     * @param acknowledgeToken The implementation-specific acknowledgment token.
+     * @param <ACK> The type of the acknowledgment token.
+     */
+    protected record ReceivedEnvelope<ACK>(TopicEnvelope envelope, ACK acknowledgeToken) {}
+    
+    // ========================================================================
+    //    Abstract Writer Delegate (Template Method for envelope wrapping)
+    // ========================================================================
+    
+    /**
+     * Abstract base class for topic writer delegates with automatic envelope wrapping.
+     * <p>
+     * This class implements the {@link ITopicWriter#send(Object)} method as a template method
+     * that automatically wraps the payload in a {@link TopicEnvelope} with generated messageId
+     * and timestamp. Concrete implementations only need to implement {@link #sendEnvelope(TopicEnvelope)}.
+     * <p>
+     * <strong>Envelope Wrapping:</strong>
+     * <ul>
+     *   <li>messageId: Generated using {@link java.util.UUID#randomUUID()}</li>
+     *   <li>timestamp: Current system time in milliseconds</li>
+     *   <li>payload: Packed using {@link com.google.protobuf.Any#pack(com.google.protobuf.Message)}</li>
+     * </ul>
+     * <p>
+     * This ensures consistent messageId across all consumer groups, which is essential for
+     * idempotency tracking.
+     *
+     * @param <P> The parent resource type (must extend {@link AbstractTopicResource}).
+     * @param <T> The message type (must be a Protobuf {@link Message}).
+     */
+    protected abstract static class AbstractTopicDelegateWriter<P extends AbstractTopicResource<T, ?>, T extends Message> 
+            extends AbstractTopicDelegate<P> implements ITopicWriter<T> {
+        
+        /**
+         * Creates a new AbstractTopicDelegateWriter.
+         *
+         * @param parent The parent topic resource.
+         * @param context The resource context.
+         */
+        protected AbstractTopicDelegateWriter(P parent, ResourceContext context) {
+            super(parent, context);
+        }
+        
+        /**
+         * Sends a message to the topic (Template Method).
+         * <p>
+         * This method automatically wraps the payload in a {@link TopicEnvelope} with generated
+         * messageId and timestamp, then delegates to {@link #sendEnvelope(TopicEnvelope)}.
+         * <p>
+         * Concrete implementations (e.g., ChronicleTopicWriterDelegate) only see the envelope, never the raw payload.
+         * <p>
+         * Implements: {@link ITopicWriter#send(Object)}
+         *
+         * @param message The message to send (must not be null).
+         * @throws InterruptedException if interrupted while waiting for internal resources.
+         * @throws NullPointerException if message is null.
+         */
+        @Override
+        public final void send(T message) throws InterruptedException {
+            if (message == null) {
+                throw new NullPointerException("message cannot be null");
+            }
+            
+            // Wrap in envelope with generated metadata
+            String messageId = java.util.UUID.randomUUID().toString();
+            long timestamp = System.currentTimeMillis();
+            com.google.protobuf.Any any = com.google.protobuf.Any.pack(message);
+            
+            TopicEnvelope envelope = TopicEnvelope.newBuilder()
+                .setMessageId(messageId)
+                .setTimestamp(timestamp)
+                .setPayload(any)
+                .build();
+            
+            // Delegate to concrete implementation
+            sendEnvelope(envelope);
+        }
+        
+        /**
+         * Sends the wrapped envelope to the underlying topic implementation.
+         * <p>
+         * Concrete implementations (Chronicle, Kafka, etc.) implement this method to handle
+         * the actual sending. The envelope is already wrapped and ready to be serialized.
+         *
+         * @param envelope The wrapped message envelope.
+         * @throws InterruptedException if interrupted while sending.
+         */
+        protected abstract void sendEnvelope(TopicEnvelope envelope) throws InterruptedException;
+        
+        /**
+         * Returns the usage state for this writer delegate.
+         * <p>
+         * This method is {@code final} to enforce that writer delegates only respond to
+         * {@code "topic-write"} usage type queries, maintaining abstraction.
+         * <p>
+         * <strong>Implements:</strong> {@link IResource#getUsageState(String)}
+         *
+         * @param usageType The usage type (must be {@code "topic-write"}).
+         * @return The current write usage state from the parent resource.
+         * @throws IllegalArgumentException if usageType is not {@code "topic-write"}.
+         */
+        @Override
+        public final UsageState getUsageState(String usageType) {
+            if (!"topic-write".equals(usageType)) {
+                throw new IllegalArgumentException(String.format(
+                    "Writer delegate '%s' only supports 'topic-write', got: '%s'",
+                    getResourceName(), usageType));
+            }
+            return parent.getUsageState("topic-write");
+        }
+    }
+    
+    // ========================================================================
+    //    Abstract Reader Delegate (Template Method for envelope unwrapping)
+    // ========================================================================
+    
+    /**
+     * Abstract base class for topic reader delegates with automatic envelope unwrapping.
+     * <p>
+     * This class implements the {@link ITopicReader#receive()} and {@link ITopicReader#poll(long, TimeUnit)}
+     * methods as template methods that automatically unwrap the {@link TopicEnvelope} and extract the payload.
+     * Concrete implementations only need to implement {@link #receiveEnvelope(long, TimeUnit)}.
+     * <p>
+     * <strong>Envelope Unwrapping:</strong>
+     * <ul>
+     *   <li>messageId: Extracted from envelope</li>
+     *   <li>timestamp: Extracted from envelope</li>
+     *   <li>payload: Unpacked from {@link com.google.protobuf.Any} using {@link com.google.protobuf.Any#unpack(Class)}</li>
+     *   <li>acknowledgeToken: Passed through from {@link ReceivedEnvelope}</li>
+     * </ul>
+     * <p>
+     * This ensures consistent messageId across all consumer groups, which is essential for
+     * idempotency tracking.
+     *
+     * @param <P> The parent resource type (must extend {@link AbstractTopicResource}).
+     * @param <T> The message type (must be a Protobuf {@link Message}).
+     * @param <ACK> The acknowledgment token type (implementation-specific).
+     */
+    protected abstract static class AbstractTopicDelegateReader<P extends AbstractTopicResource<T, ACK>, T extends Message, ACK>
+            extends AbstractTopicDelegate<P> implements ITopicReader<T, ACK> {
+        
+        /**
+         * Creates a new AbstractTopicDelegateReader.
+         * <p>
+         * <strong>Consumer Group Validation:</strong>
+         * This constructor validates that a non-blank {@code consumerGroup} parameter is present
+         * in the context. While {@code createReaderDelegate()} should validate this, this check
+         * provides defense-in-depth against direct instantiation bypassing the factory method.
+         *
+         * @param parent The parent topic resource.
+         * @param context The resource context (must contain 'consumerGroup' parameter).
+         * @throws IllegalArgumentException if consumerGroup parameter is missing or blank.
+         */
+        protected AbstractTopicDelegateReader(P parent, ResourceContext context) {
+            super(parent, context);
+            
+            // Validate consumerGroup for readers
+            if (this.consumerGroup == null || this.consumerGroup.isBlank()) {
+                throw new IllegalArgumentException(String.format(
+                    "Topic reader requires non-blank 'consumerGroup' parameter. " +
+                    "Resource: '%s', Service: '%s'. " +
+                    "Expected URI format: 'topic-read:%s?consumerGroup=my-group'",
+                    parent.getResourceName(), context.serviceName(), parent.getResourceName()
+                ));
+            }
+        }
+        
+        /**
+         * Receives a message from the topic (blocking, Template Method).
+         * <p>
+         * This method delegates to {@link #receiveEnvelope(long, TimeUnit)} with no timeout,
+         * then automatically unwraps the envelope and returns a {@link TopicMessage}.
+         * <p>
+         * Concrete implementations (e.g., ChronicleTopicReaderDelegate) only deal with envelopes, never with unwrapping.
+         * <p>
+         * Implements: {@link ITopicReader#receive()}
+         *
+         * @return The received message with metadata.
+         * @throws InterruptedException if interrupted while waiting.
+         */
+        @Override
+        public final TopicMessage<T, ACK> receive() throws InterruptedException {
+            ReceivedEnvelope<ACK> received = receiveEnvelope(0, null);  // Blocking, no timeout
+            if (received == null) {
+                throw new IllegalStateException("receiveEnvelope() returned null in blocking mode");
+            }
+            return unwrapEnvelope(received);
+        }
+        
+        /**
+         * Polls for a message from the topic (non-blocking with timeout, Template Method).
+         * <p>
+         * This method delegates to {@link #receiveEnvelope(long, TimeUnit)}, then automatically
+         * unwraps the envelope if one was received.
+         * <p>
+         * Concrete implementations (e.g., ChronicleTopicReaderDelegate) only deal with envelopes, never with unwrapping.
+         * <p>
+         * Implements: {@link ITopicReader#poll(long, TimeUnit)}
+         *
+         * @param timeout The maximum time to wait.
+         * @param unit The time unit of the timeout.
+         * @return The received message, or empty if timeout elapsed.
+         * @throws InterruptedException if interrupted while waiting.
+         */
+        @Override
+        public final Optional<TopicMessage<T, ACK>> poll(long timeout, TimeUnit unit) throws InterruptedException {
+            ReceivedEnvelope<ACK> received = receiveEnvelope(timeout, unit);
+            if (received == null) {
+                return Optional.empty();
+            }
+            return Optional.of(unwrapEnvelope(received));
+        }
+        
+        /**
+         * Acknowledges a message (Template Method).
+         * <p>
+         * This method delegates to {@link #acknowledgeMessage(Object)} for implementation-specific
+         * acknowledgment, then updates aggregate metrics.
+         * <p>
+         * Implements: {@link ITopicReader#ack(TopicMessage)}
+         *
+         * @param message The message to acknowledge.
+         */
+        @Override
+        public void ack(TopicMessage<T, ACK> message) {
+            // Delegate to implementation-specific acknowledgment
+            acknowledgeMessage(message.acknowledgeToken());
+            
+            // Track aggregate metrics
+            parent.messagesAcknowledged.incrementAndGet();
+            log.debug("Acknowledged message {} from topic '{}' for consumer group '{}'",
+                message.messageId(), parent.getResourceName(), message.consumerGroup());
+        }
+        
+        /**
+         * Acknowledges a message using the implementation-specific acknowledgment token.
+         * <p>
+         * Concrete implementations (Chronicle, Kafka, etc.) implement this method to handle
+         * the actual acknowledgment. For Chronicle Queue, this is implicit (tailer position
+         * advances on read). For Kafka, this would call {@code consumer.commitSync()}.
+         * For SQS, this would delete the message using the receipt handle.
+         *
+         * @param acknowledgeToken The implementation-specific acknowledgment token.
+         */
+        protected abstract void acknowledgeMessage(ACK acknowledgeToken);
+        
+        /**
+         * Returns the usage state for this reader delegate.
+         * <p>
+         * This method is {@code final} to enforce that reader delegates only respond to
+         * {@code "topic-read"} usage type queries, maintaining abstraction.
+         * <p>
+         * <strong>Implements:</strong> {@link IResource#getUsageState(String)}
+         *
+         * @param usageType The usage type (must be {@code "topic-read"}).
+         * @return The current read usage state from the parent resource.
+         * @throws IllegalArgumentException if usageType is not {@code "topic-read"}.
+         */
+        @Override
+        public final UsageState getUsageState(String usageType) {
+            if (!"topic-read".equals(usageType)) {
+                throw new IllegalArgumentException(String.format(
+                    "Reader delegate '%s' only supports 'topic-read', got: '%s'",
+                    getResourceName(), usageType));
+            }
+            return parent.getUsageState("topic-read");
+        }
+        
+        /**
+         * Receives a wrapped envelope with acknowledgment token from the underlying topic implementation.
+         * <p>
+         * Concrete implementations (Chronicle, Kafka, etc.) implement this method to handle
+         * the actual receiving. They should return a {@link ReceivedEnvelope} containing both
+         * the {@link TopicEnvelope} and the implementation-specific acknowledgment token.
+         * <p>
+         * <strong>Timeout Handling:</strong>
+         * <ul>
+         *   <li>If {@code timeout == 0 && unit == null}: Block indefinitely</li>
+         *   <li>If {@code timeout > 0 && unit != null}: Block for specified timeout</li>
+         *   <li>Return {@code null} if timeout elapsed without receiving a message</li>
+         * </ul>
+         *
+         * @param timeout The maximum time to wait (0 for blocking mode).
+         * @param unit The time unit of the timeout (null for blocking mode).
+         * @return The received envelope with acknowledgment token, or null if timeout elapsed.
+         * @throws InterruptedException if interrupted while receiving.
+         */
+        protected abstract ReceivedEnvelope<ACK> receiveEnvelope(long timeout, TimeUnit unit) throws InterruptedException;
+        
+        /**
+         * Unwraps a {@link ReceivedEnvelope} into a {@link TopicMessage}.
+         * <p>
+         * This method extracts messageId, timestamp, acknowledgment token, and unpacks the payload from
+         * {@link com.google.protobuf.Any} using dynamic type resolution.
+         * <p>
+         * <strong>Type Resolution Strategy:</strong>
+         * The concrete message type is determined dynamically from the {@code google.protobuf.Any} type URL,
+         * eliminating the need for topics to declare their payload type statically. This makes topics
+         * truly type-agnostic and allows the same topic infrastructure to carry any Protobuf message type.
+         * <p>
+         * <strong>Process:</strong>
+         * <ol>
+         *   <li>Extract type URL from {@code Any} (e.g., "type.googleapis.com/org.evochora...BatchInfo")</li>
+         *   <li>Parse the fully qualified class name from the URL path</li>
+         *   <li>Load the message class dynamically via reflection</li>
+         *   <li>Unpack the {@code Any} payload using the loaded class</li>
+         *   <li>Cast to {@code T} (type-safe due to Protobuf's type URL guarantee)</li>
+         * </ol>
+         *
+         * @param received The received envelope with acknowledgment token.
+         * @return The unwrapped message with metadata.
+         * @throws IllegalStateException if payload cannot be unpacked or the message class cannot be loaded.
+         */
+        private TopicMessage<T, ACK> unwrapEnvelope(ReceivedEnvelope<ACK> received) {
+            try {
+                TopicEnvelope envelope = received.envelope();
+                com.google.protobuf.Any anyPayload = envelope.getPayload();
+                
+                // Extract the fully qualified class name from the type URL
+                // Format: "type.googleapis.com/org.evochora.datapipeline.api.contracts.BatchInfo"
+                String typeUrl = anyPayload.getTypeUrl();
+                String className = typeUrl.substring(typeUrl.lastIndexOf('/') + 1);
+                
+                // Dynamically load the message class
+                @SuppressWarnings("unchecked")
+                Class<? extends Message> messageClass = (Class<? extends Message>) Class.forName(className);
+                
+                // Unpack the payload
+                @SuppressWarnings("unchecked")
+                T payload = (T) anyPayload.unpack(messageClass);
+                
+                return new TopicMessage<>(
+                    payload,
+                    envelope.getTimestamp(),
+                    envelope.getMessageId(),
+                    consumerGroup,  // From AbstractTopicDelegate
+                    received.acknowledgeToken()
+                );
+                
+            } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+                String error = String.format(
+                    "Failed to unpack payload from envelope %s for topic '%s': %s",
+                    received.envelope().getMessageId(), parent.getResourceName(), e.getMessage()
+                );
+                log.error(error);
+                throw new IllegalStateException(error, e);
+            } catch (ClassNotFoundException e) {
+                String error = String.format(
+                    "Failed to load message class from envelope %s for topic '%s': type URL '%s'",
+                    received.envelope().getMessageId(), parent.getResourceName(), received.envelope().getPayload().getTypeUrl()
+                );
+                log.error(error);
+                throw new IllegalStateException(error, e);
+            }
+        }
+    }
 }
 ```
 
@@ -742,7 +1246,6 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
-import org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -754,7 +1257,9 @@ import java.nio.file.Paths;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -764,7 +1269,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>
  * <strong>Key Features:</strong>
  * <ul>
- *   <li>Single-writer Chronicle Queue (enforced via internal {@link InMemoryBlockingQueue})</li>
+ *   <li>Single-writer Chronicle Queue (enforced via internal {@link BlockingQueue})</li>
  *   <li>Multiple independent consumer groups (each with own Tailer)</li>
  *   <li>At-least-once delivery semantics</li>
  *   <li>Ordered message delivery within a writer</li>
@@ -774,7 +1279,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * <strong>Multi-Writer Support:</strong>
  * Chronicle Queue requires a single writer. To support multiple {@link ITopicWriter} instances:
  * <ol>
- *   <li>All writers send to an internal {@link InMemoryBlockingQueue}</li>
+ *   <li>All writers send to an internal {@link BlockingQueue}</li>
  *   <li>A dedicated background thread drains the queue and writes to Chronicle Queue</li>
  *   <li>This ensures single-writer safety while allowing concurrent writers</li>
  * </ol>
@@ -786,7 +1291,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>
  * <strong>Lifecycle:</strong>
  * Extends {@link AbstractTopicResource} and implements template methods to create
- * delegate instances (ChronicleWriter, ChronicleReader as inner classes).
+ * delegate instances (ChronicleTopicWriterDelegate, ChronicleTopicReaderDelegate as inner classes).
  * The background writer thread is started on first write and stopped when the resource closes.
  * <p>
  * <strong>Storage:</strong>
@@ -794,14 +1299,17 @@ import java.util.concurrent.atomic.AtomicLong;
  * Old queue files are cleaned up based on {@code retentionDays} (default: 7 days).
  * <p>
  * <strong>Thread Safety:</strong> All methods are thread-safe.
+ * <p>
+ * <strong>Acknowledgment Token Type:</strong>
+ * Uses {@code Long} as the acknowledgment token type, representing the Chronicle Queue index.
+ * This enables type-safe acknowledgment: {@code TopicMessage<BatchInfo, Long>}.
  *
  * @param <T> The type of messages (must be a Protobuf {@link Message}).
  */
-public class ChronicleTopicResource<T extends Message> extends AbstractTopicResource<T> {
+public class ChronicleTopicResource<T extends Message> extends AbstractTopicResource<T, Long> {
     
     private static final Logger log = LoggerFactory.getLogger(ChronicleTopicResource.class);
     
-    private final Class<T> messageType;
     private final Path queueDirectory;
     private final int retentionDays;
     private final int internalQueueCapacity;
@@ -813,7 +1321,7 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
     private final Map<String, ExcerptTailer> tailers = new ConcurrentHashMap<>();
     
     // Multi-writer support
-    private final InMemoryBlockingQueue<T> internalQueue;
+    private final BlockingQueue<TopicEnvelope> internalQueue;
     private final Thread writerThread;
     private final AtomicBoolean writerThreadRunning = new AtomicBoolean(false);
     
@@ -824,9 +1332,13 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
     /**
      * Creates a new ChronicleTopicResource.
      * <p>
+     * <strong>Type Agnostic:</strong>
+     * This resource does not require a {@code messageType} configuration. The concrete message type
+     * is determined dynamically from the {@code google.protobuf.Any} type URL when messages are read.
+     * This makes the same topic infrastructure usable for any Protobuf message type.
+     * <p>
      * <strong>Configuration Options:</strong>
      * <ul>
-     *   <li>{@code messageType} (required): Fully qualified class name of the Protobuf message type</li>
      *   <li>{@code queueDirectory} (optional): Path to Chronicle Queue directory (default: {@code data/topics/{name}})</li>
      *   <li>{@code retentionDays} (optional): Days to retain old queue files (default: 7)</li>
      *   <li>{@code internalQueueCapacity} (optional): Capacity of internal multi-writer queue (default: 10000)</li>
@@ -835,9 +1347,8 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
      *
      * @param name The resource name.
      * @param options The configuration options.
-     * @throws IllegalArgumentException if configuration is invalid or messageType cannot be loaded.
+     * @throws IllegalArgumentException if configuration is invalid.
      */
-    @SuppressWarnings("unchecked")
     public ChronicleTopicResource(String name, Config options) {
         super(name, options);
         
@@ -850,18 +1361,6 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
         Config finalConfig = options.withFallback(defaults);
         
         try {
-            // Load message type class
-            String messageTypeName = finalConfig.getString("messageType");
-            Class<?> rawClass = Class.forName(messageTypeName);
-            
-            // Validate it's a Message subclass
-            if (!Message.class.isAssignableFrom(rawClass)) {
-                throw new IllegalArgumentException("messageType must be a Protobuf Message: " + messageTypeName);
-            }
-            
-            // Type-safe cast with validation
-            this.messageType = (Class<T>) rawClass;
-            
             this.queueDirectory = Paths.get(finalConfig.getString("queueDirectory"));
             this.retentionDays = finalConfig.getInt("retentionDays");
             this.internalQueueCapacity = finalConfig.getInt("internalQueueCapacity");
@@ -871,7 +1370,7 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
             if (retentionDays < 1) {
                 throw new IllegalArgumentException("retentionDays must be >= 1 for topic '" + name + "'");
             }
-            if (internalQueueCapacity < 100) {
+            if (internalQueueCapacity < 1) {
                 throw new IllegalArgumentException("internalQueueCapacity must be >= 100 for topic '" + name + "'");
             }
             if (metricsWindowSeconds < 1) {
@@ -886,12 +1385,7 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
             this.appender = queue.acquireAppender();
             
             // Create internal queue for multi-writer support
-            Config queueConfig = ConfigFactory.parseMap(Map.of(
-                "capacity", internalQueueCapacity,
-                "metricsWindowSeconds", metricsWindowSeconds,
-                "disableTimestamps", false
-            ));
-            this.internalQueue = new InMemoryBlockingQueue<>(name + "-internal", queueConfig);
+            this.internalQueue = new LinkedBlockingQueue<>(internalQueueCapacity);
             
             // Start background writer thread
             this.writerThread = new Thread(this::runWriterThread, name + "-writer");
@@ -906,8 +1400,6 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
             
         } catch (ConfigException e) {
             throw new IllegalArgumentException("Invalid configuration for ChronicleTopicResource '" + name + "'", e);
-        } catch (ClassNotFoundException e) {
-            throw new IllegalArgumentException("Cannot load messageType class for topic '" + name + "'", e);
         } catch (IOException e) {
             throw new IllegalArgumentException("Cannot create queue directory for topic '" + name + "'", e);
         }
@@ -927,12 +1419,12 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
                 "Example: 'topic-read:%s?consumerGroup=my-group'",
                 getResourceName(), getResourceName()));
         }
-        return new ChronicleReader(this, context);
+        return new ChronicleTopicReaderDelegate(this, context);
     }
     
     @Override
     protected ITopicWriter<T> createWriterDelegate(ResourceContext context) {
-        return new ChronicleWriter(this, context);
+        return new ChronicleTopicWriterDelegate(this, context);
     }
     
     // ========================================================================
@@ -942,7 +1434,7 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
     /**
      * Starts the background writer thread if not already running.
      * <p>
-     * Package-private, called by {@link ChronicleWriter} delegates.
+     * Package-private, called by {@link ChronicleTopicWriterDelegate} delegates.
      */
     void startWriterThread() {
         if (!writerThreadRunning.get() && !writerThread.isAlive()) {
@@ -953,26 +1445,28 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
     /**
      * Gets the internal queue for writing messages.
      * <p>
-     * Package-private, used by {@link ChronicleWriter} delegates.
+     * Private, used by {@link ChronicleTopicWriterDelegate} delegates (inner class can access private members).
      *
      * @return The internal queue.
      */
-    InMemoryBlockingQueue<T> getInternalQueue() {
+    private BlockingQueue<TopicEnvelope> getInternalQueue() {
         return internalQueue;
     }
     
     /**
-     * Reads a message from the Chronicle Queue for the specified consumer group.
+     * Reads a {@link TopicEnvelope} with Chronicle Queue index from the specified consumer group.
      * <p>
-     * Package-private, used by {@link ChronicleReader} delegates.
+     * Private, used by {@link ChronicleTopicReaderDelegate} delegates (inner class can access private members).
+     * Returns both the envelope (containing messageId, timestamp, payload) and the Chronicle Queue
+     * index together as a {@link ReceivedEnvelope} to ensure they match.
      *
      * @param consumerGroup The consumer group name.
      * @param timeout Timeout duration.
      * @param unit Timeout unit.
-     * @return The deserialized message, or null if timeout elapsed.
+     * @return The deserialized envelope with index, or null if timeout elapsed.
      * @throws InterruptedException if interrupted while waiting.
      */
-    T readMessagePayload(String consumerGroup, long timeout, TimeUnit unit) throws InterruptedException {
+    private ReceivedEnvelope<Long> readEnvelopeWithIndex(String consumerGroup, long timeout, TimeUnit unit) throws InterruptedException {
         ExcerptTailer tailer = tailers.computeIfAbsent(consumerGroup, cg -> {
             log.debug("Creating Chronicle Tailer for consumer group '{}' in topic '{}'", cg, getResourceName());
             return queue.createTailer(cg);
@@ -980,39 +1474,41 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
         
         long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
         
-        // TODO: Chronicle API limitation - cannot return from readBytes() lambda
-        // Actual implementation needs ThreadLocal or AtomicReference workaround
-        // For spec purposes, showing the pattern
+        // Chronicle API workaround: use AtomicReference to return value from readBytes() lambda
+        AtomicReference<ReceivedEnvelope<Long>> receivedRef = new AtomicReference<>();
         
         while (System.nanoTime() < deadlineNanos) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new InterruptedException("Interrupted while reading from topic '" + getResourceName() + "'");
             }
             
-            // Simplified for spec - actual implementation needs workaround for Chronicle API
+            // Read from Chronicle Queue using lambda
             boolean hasMessage = tailer.readBytes(b -> {
                 try {
+                    // Get Chronicle Queue index BEFORE deserializing (tailer will advance after read)
+                    long currentIndex = tailer.index();
+                    
                     int length = b.readInt();
                     byte[] bytes = new byte[length];
                     b.read(bytes);
                     
-                    // Deserialize using Protobuf
-                    T message = (T) messageType.getMethod("parseFrom", byte[].class).invoke(null, (Object) bytes);
+                    // Deserialize TopicEnvelope using Protobuf
+                    TopicEnvelope envelope = TopicEnvelope.parseFrom(bytes);
                     
-                    log.debug("Read message from Chronicle Queue for consumer group '{}' in topic '{}'", 
-                        consumerGroup, getResourceName());
+                    // Store both envelope and index together in ReceivedEnvelope
+                    receivedRef.set(new ReceivedEnvelope<>(envelope, currentIndex));
                     
-                    // TODO: Return message (requires workaround)
+                    log.debug("Read envelope {} at index {} from Chronicle Queue for consumer group '{}' in topic '{}'", 
+                        envelope.getMessageId(), currentIndex, consumerGroup, getResourceName());
                     
                 } catch (Exception e) {
-                    log.warn("Failed to deserialize message from Chronicle Queue for topic '{}'", getResourceName());
-                    recordError("DESERIALIZATION_ERROR", "Failed to deserialize message", e.getMessage());
+                    log.warn("Failed to deserialize envelope from Chronicle Queue for topic '{}'", getResourceName());
+                    recordError("DESERIALIZATION_ERROR", "Failed to deserialize envelope", e.getMessage());
                 }
             });
             
             if (hasMessage) {
-                // TODO: Return actual message
-                return null;
+                return receivedRef.get();  // Return ReceivedEnvelope from AtomicReference
             }
             
             // Sleep briefly before retrying
@@ -1025,7 +1521,7 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
     /**
      * Records a write operation for throughput tracking.
      * <p>
-     * Package-private, called by {@link ChronicleWriter} delegates.
+     * Package-private, called by {@link ChronicleTopicWriterDelegate} delegates.
      */
     void recordWrite() {
         writeThroughput.recordCount();
@@ -1034,7 +1530,7 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
     /**
      * Records a read operation for throughput tracking.
      * <p>
-     * Package-private, called by {@link ChronicleReader} delegates.
+     * Package-private, called by {@link ChronicleTopicReaderDelegate} delegates.
      */
     void recordRead() {
         readThroughput.recordCount();
@@ -1057,22 +1553,22 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
         try {
             while (!Thread.currentThread().isInterrupted()) {
                 try {
-                    // Block waiting for messages (1 second timeout to check interrupt)
-                    T message = internalQueue.take();
+                    // Block waiting for messages
+                    TopicEnvelope envelope = internalQueue.take();
                     
                     // Write to Chronicle Queue
                     appender.writeBytes(b -> {
                         try {
-                            byte[] bytes = message.toByteArray();
+                            byte[] bytes = envelope.toByteArray();
                             b.writeInt(bytes.length);
                             b.write(bytes);
                         } catch (Exception e) {
-                            log.warn("Failed to serialize message to Chronicle Queue for topic '{}'", getResourceName());
-                            recordError("SERIALIZATION_ERROR", "Failed to serialize message", e.getMessage());
+                            log.warn("Failed to serialize envelope to Chronicle Queue for topic '{}'", getResourceName());
+                            recordError("SERIALIZATION_ERROR", "Failed to serialize envelope", e.getMessage());
                         }
                     });
                     
-                    log.debug("Wrote message to Chronicle Queue for topic '{}'", getResourceName());
+                    log.debug("Wrote envelope {} to Chronicle Queue for topic '{}'", envelope.getMessageId(), getResourceName());
                     
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -1086,23 +1582,52 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
     }
     
     // ========================================================================
-    //    Metrics & State
+    //    Template Method Implementations (from AbstractTopicResource)
     // ========================================================================
     
+    /**
+     * Returns the write usage state by checking the internal queue capacity.
+     * <p>
+     * The write state depends on the internal queue's remaining capacity:
+     * <ul>
+     *   <li>{@code ACTIVE}: Queue has space for more messages (remaining capacity > 0)</li>
+     *   <li>{@code WAITING}: Queue is full (remaining capacity == 0, writer would block)</li>
+     * </ul>
+     * <p>
+     * Uses {@link BlockingQueue#remainingCapacity()} to check available space.
+     * <p>
+     * <strong>Implements:</strong> {@link AbstractTopicResource#getWriteUsageState()}
+     *
+     * @return The current write usage state.
+     */
     @Override
-    public UsageState getUsageState(String usageType) {
-        if (usageType == null) {
-            throw new IllegalArgumentException("Topic resource '" + getResourceName() + "' requires a non-null usageType");
-        }
+    protected UsageState getWriteUsageState() {
+        int remaining = internalQueue.remainingCapacity();
         
-        return switch (usageType) {
-            case "topic-write" -> internalQueue.getUsageState("queue-out"); // Writer writes to internal queue
-            case "topic-read" -> UsageState.ACTIVE; // Chronicle Queue is always readable
-            default -> throw new IllegalArgumentException(String.format(
-                "Unknown usageType '%s' for topic resource '%s'. Supported: topic-write, topic-read",
-                usageType, getResourceName()));
-        };
+        if (remaining == 0) {
+            return UsageState.WAITING;  // Queue full - writer would block
+        } else {
+            return UsageState.ACTIVE;   // Has capacity available
+        }
     }
+    
+    /**
+     * Returns the read usage state for Chronicle Queue.
+     * <p>
+     * Chronicle Queue is always readable (it never "blocks" on empty - tailers simply wait).
+     * <p>
+     * <strong>Implements:</strong> {@link AbstractTopicResource#getReadUsageState()}
+     *
+     * @return Always {@code ACTIVE}.
+     */
+    @Override
+    protected UsageState getReadUsageState() {
+        return UsageState.ACTIVE;
+    }
+    
+    // ========================================================================
+    //    Metrics
+    // ========================================================================
     
     @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {
@@ -1111,7 +1636,7 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
         // Chronicle-specific metrics
         metrics.put("write_throughput_per_sec", writeThroughput.getRate());
         metrics.put("read_throughput_per_sec", readThroughput.getRate());
-        metrics.put("internal_queue_size", internalQueue.getMetrics().get("current_size"));
+        metrics.put("internal_queue_size", internalQueue.size());  // LinkedBlockingQueue.size() is O(1)
         metrics.put("consumer_groups", tailers.size());
         metrics.put("writer_thread_running", writerThreadRunning.get() ? 1 : 0);
     }
@@ -1173,65 +1698,56 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
      * Chronicle Queue writer delegate.
      * <p>
      * Private inner class - encapsulated within {@link ChronicleTopicResource}.
-     * Extends {@link AbstractTopicDelegate} to inherit error tracking, metrics infrastructure,
+     * Extends {@link AbstractTopicDelegateWriter} to inherit envelope wrapping, error tracking, metrics infrastructure,
      * and type-safe parent access.
      * <p>
      * <strong>Behavior:</strong>
      * <ul>
-     *   <li>Writes to parent's internal {@link InMemoryBlockingQueue}</li>
+     *   <li>Writes to parent's internal {@link BlockingQueue}</li>
      *   <li>Background writer thread drains queue and writes to Chronicle Queue</li>
      *   <li>Tracks per-service metrics (messages_sent, messages_failed)</li>
-     *   <li>Updates parent's aggregate metrics (messagesPublished) via type-safe access</li>
+     *   <li>Updates parent's aggregate metrics (messagesPublished) via type-safe parent access</li>
      * </ul>
      */
-    private static class ChronicleWriter<T extends Message> extends AbstractTopicDelegate<ChronicleTopicResource<T>> implements ITopicWriter<T>, IWrappedResource {
+    private static class ChronicleTopicWriterDelegate<T extends Message> extends AbstractTopicDelegateWriter<ChronicleTopicResource<T>, T> implements IWrappedResource {
         
         // Per-writer metrics
         private final AtomicLong messagesSent = new AtomicLong(0);
         private final AtomicLong messagesFailed = new AtomicLong(0);
         
         /**
-         * Creates a new ChronicleWriter delegate.
+         * Creates a new ChronicleTopicWriterDelegate.
          *
          * @param parent The parent Chronicle topic resource.
          * @param context The resource context.
          */
-        private ChronicleWriter(ChronicleTopicResource<T> parent, ResourceContext context) {
+        private ChronicleTopicWriterDelegate(ChronicleTopicResource<T> parent, ResourceContext context) {
             super(parent, context);
             
             // Start the background writer thread if not already running
             parent.startWriterThread();
             
-            log.debug("ChronicleWriter delegate created: resource='{}', service='{}', port='{}'",
+            log.debug("ChronicleTopicWriterDelegate created: resource='{}', service='{}', port='{}'",
                 getResourceName(), context.serviceName(), context.portName());
         }
         
         @Override
-        public void send(T message) throws InterruptedException {
-            if (message == null) {
-                throw new NullPointerException("message cannot be null");
-            }
-            
+        protected void sendEnvelope(TopicEnvelope envelope) throws InterruptedException {
             try {
-                parent.getInternalQueue().put(message);
+                parent.getInternalQueue().put(envelope);
                 messagesSent.incrementAndGet();
                 parent.messagesPublished.incrementAndGet();  // ✅ Type-safe access!
                 parent.recordWrite();
                 
-                log.debug("Sent message to topic '{}' from service '{}'", 
-                    parent.getResourceName(), context.serviceName());
+                log.debug("Sent message {} to topic '{}' from service '{}'", 
+                    envelope.getMessageId(), parent.getResourceName(), context.serviceName());
                     
             } catch (InterruptedException e) {
                 messagesFailed.incrementAndGet();
-                log.debug("Interrupted while sending message to topic '{}' from service '{}'",
-                    parent.getResourceName(), context.serviceName());
+                log.debug("Interrupted while sending message {} to topic '{}' from service '{}'",
+                    envelope.getMessageId(), parent.getResourceName(), context.serviceName());
                 throw e;
             }
-        }
-        
-        @Override
-        public UsageState getUsageState(String usageType) {
-            return parent.getUsageState("topic-write");
         }
         
         @Override
@@ -1244,7 +1760,7 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
         
         @Override
         public void close() throws Exception {
-            log.debug("Closing ChronicleWriter delegate for service '{}'", context.serviceName());
+            log.debug("Closing ChronicleTopicWriterDelegate for service '{}'", context.serviceName());
             // No cleanup needed - parent manages Chronicle Queue lifecycle
         }
     }
@@ -1253,8 +1769,8 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
      * Chronicle Queue reader delegate.
      * <p>
      * Private inner class - encapsulated within {@link ChronicleTopicResource}.
-     * Extends {@link AbstractTopicDelegate} to inherit error tracking, metrics infrastructure,
-     * and type-safe parent access.
+     * Extends {@link AbstractTopicDelegateReader} to inherit envelope unwrapping, error tracking, 
+     * metrics infrastructure, and type-safe parent access.
      * <p>
      * <strong>Consumer Group:</strong>
      * Each reader delegate instance is bound to a specific consumer group (from URI parameter).
@@ -1264,12 +1780,13 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
      * <strong>Behavior:</strong>
      * <ul>
      *   <li>Reads from parent's Chronicle Queue using consumer-group-specific Tailer</li>
-     *   <li>Wraps raw messages in {@link TopicMessage} with metadata</li>
+     *   <li>Returns {@link ReceivedEnvelope} with Chronicle Queue index as acknowledgment token</li>
+     *   <li>Envelope unwrapping happens in abstract layer (transparent to this class)</li>
      *   <li>Tracks per-service metrics (messages_received, messages_acknowledged, read_errors)</li>
      *   <li>Updates parent's aggregate metrics (messagesReceived, messagesAcknowledged) via type-safe access</li>
      * </ul>
      */
-    private static class ChronicleReader<T extends Message> extends AbstractTopicDelegate<ChronicleTopicResource<T>> implements ITopicReader<T>, IWrappedResource {
+    private static class ChronicleTopicReaderDelegate<T extends Message> extends AbstractTopicDelegateReader<ChronicleTopicResource<T>, T, Long> implements IWrappedResource {
         
         // Per-reader metrics
         private final AtomicLong messagesReceived = new AtomicLong(0);
@@ -1277,89 +1794,99 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
         private final AtomicLong readErrors = new AtomicLong(0);
         
         /**
-         * Creates a new ChronicleReader delegate.
+         * Creates a new ChronicleTopicReaderDelegate.
          * <p>
-         * Consumer group is extracted from {@code context.parameters().get("consumerGroup")}
-         * by the parent {@link AbstractTopicDelegate} constructor. Validation is already done
-         * in {@link ChronicleTopicResource#createReaderDelegate(ResourceContext)}.
+         * Consumer group is extracted and validated by {@link AbstractTopicDelegateReader}.
+         * Validation occurs at two levels (defense-in-depth):
+         * <ol>
+         *   <li>{@link ChronicleTopicResource#createReaderDelegate(ResourceContext)} validates before construction</li>
+         *   <li>{@link AbstractTopicDelegateReader} constructor validates after extraction</li>
+         * </ol>
          *
          * @param parent The parent Chronicle topic resource.
-         * @param context The resource context (consumerGroup parameter already validated).
+         * @param context The resource context (must contain 'consumerGroup' parameter).
          */
-        private ChronicleReader(ChronicleTopicResource<T> parent, ResourceContext context) {
-            super(parent, context);
+        private ChronicleTopicReaderDelegate(ChronicleTopicResource<T> parent, ResourceContext context) {
+            super(parent, context);  // Calls AbstractTopicDelegateReader, which validates consumerGroup
             
-            log.debug("ChronicleReader delegate created: resource='{}', service='{}', port='{}', consumerGroup='{}'",
+            log.debug("ChronicleTopicReaderDelegate created: resource='{}', service='{}', port='{}', consumerGroup='{}'",
                 getResourceName(), context.serviceName(), context.portName(), this.consumerGroup);
         }
         
+        /**
+         * Receives an envelope with Chronicle Queue index from the parent resource.
+         * <p>
+         * This method is called by the abstract layer's {@code receive()} and {@code poll()} methods.
+         * It delegates to {@link ChronicleTopicResource#readEnvelopeWithIndex(String, long, TimeUnit)}
+         * to read both the {@link TopicEnvelope} and Chronicle Queue index together.
+         * <p>
+         * The abstract layer ({@link AbstractTopicDelegateReader}) handles envelope unwrapping.
+         *
+         * @param timeout The maximum time to wait (0 for blocking mode).
+         * @param unit The time unit of the timeout (null for blocking mode).
+         * @return The received envelope with Chronicle Queue index, or null if timeout elapsed.
+         * @throws InterruptedException if interrupted while receiving.
+         */
         @Override
-        public TopicMessage<T> receive() throws InterruptedException {
-            // Block indefinitely (use timeout + loop to check interrupt)
-            while (!Thread.currentThread().isInterrupted()) {
-                Optional<TopicMessage<T>> message = poll(1, TimeUnit.SECONDS);
-                if (message.isPresent()) {
-                    return message.get();
-                }
-            }
-            throw new InterruptedException("Interrupted while receiving from topic '" + parent.getResourceName() + "'");
-        }
-        
-        @Override
-        public Optional<TopicMessage<T>> poll(long timeout, TimeUnit unit) throws InterruptedException {
-            if (unit == null) {
-                throw new NullPointerException("unit cannot be null");
-            }
-            
+        protected ReceivedEnvelope<Long> receiveEnvelope(long timeout, TimeUnit unit) throws InterruptedException {
             try {
-                T payload = parent.readMessagePayload(consumerGroup, timeout, unit);
-                if (payload == null) {
-                    return Optional.empty(); // Timeout
+                // Read envelope with index from Chronicle Queue (both values together)
+                ReceivedEnvelope<Long> received = parent.readEnvelopeWithIndex(consumerGroup, timeout, unit);
+                if (received == null) {
+                    return null; // Timeout
                 }
                 
-                // Wrap in TopicMessage
-                long timestamp = System.currentTimeMillis();
-                String messageId = java.util.UUID.randomUUID().toString();
-                long index = 0; // TODO: Get actual Chronicle Queue index from readMessagePayload
-                
-                TopicMessage<T> message = new TopicMessage<>(payload, timestamp, messageId, consumerGroup, index);
                 messagesReceived.incrementAndGet();
                 parent.messagesReceived.incrementAndGet();  // ✅ Type-safe access!
                 parent.recordRead();
                 
-                log.debug("Received message from topic '{}' for consumer group '{}' in service '{}'",
+                log.debug("Received envelope {} at index {} from topic '{}' for consumer group '{}' in service '{}'",
+                    received.envelope().getMessageId(), received.acknowledgeToken(), 
                     parent.getResourceName(), consumerGroup, context.serviceName());
                 
-                return Optional.of(message);
+                return received;
                 
+            } catch (InterruptedException e) {
+                log.debug("Interrupted while reading envelope from topic '{}' for consumer group '{}' in service '{}'",
+                    parent.getResourceName(), consumerGroup, context.serviceName());
+                throw e;  // Re-throw interruption
             } catch (Exception e) {
                 readErrors.incrementAndGet();
-                recordError("READ_ERROR", 
-                    "Error reading from topic for consumer group '" + consumerGroup + "'", 
-                    "Service: " + context.serviceName() + ", Error: " + e.getMessage());
-                log.warn("Error reading from topic '{}' for consumer group '{}' in service '{}'",
+                log.error("Error reading envelope from topic '{}' for consumer group '{}' in service '{}'",
                     parent.getResourceName(), consumerGroup, context.serviceName());
                 throw e;
             }
         }
         
+        /**
+         * Acknowledges a message using the Chronicle Queue index.
+         * <p>
+         * <strong>Chronicle Queue Limitation:</strong> Chronicle Queue does not support explicit commit.
+         * The tailer position advances on read (in {@code receiveEnvelope()}), NOT on acknowledgment.
+         * This means acknowledgment is <strong>implicit</strong> and happens during message reception.
+         * <p>
+         * <strong>Impact:</strong> If the service crashes between {@code receive()} and {@code ack()},
+         * the message is <strong>LOST</strong> (not redelivered), violating at-least-once semantics.
+         *
+         * @param index The Chronicle Queue index (unused, as acknowledgment is implicit).
+         */
         @Override
-        public void ack(TopicMessage<T> message) {
-            if (message == null) {
-                throw new NullPointerException("message cannot be null");
-            }
+        protected void acknowledgeMessage(Long index) {
+            // TODO: Chronicle Queue does not support explicit commit.
+            // The tailer position advances on read (in receiveEnvelope()), NOT on ack().
+            // This means if the service crashes between receive() and ack(), the message is LOST.
+            // For true at-least-once semantics in production, consider:
+            // 1. External position tracking (DB-based commit log)
+            // 2. Migration to Kafka/Kinesis for production use
+            // 3. Accept Chronicle as "best-effort" for development/testing only
             
-            // For Chronicle Queue, acknowledgment is implicit (Tailer position advances on read)
+            // Chronicle Queue: Acknowledgment is implicit (Tailer position advances on read)
+            // This method is a no-op, but we implement it for API compliance.
+            
             messagesAcknowledged.incrementAndGet();
-            parent.messagesAcknowledged.incrementAndGet();  // ✅ Type-safe access!
             
-            log.debug("Acknowledged message {} from topic '{}' for consumer group '{}' in service '{}'",
-                message.messageId(), parent.getResourceName(), consumerGroup, context.serviceName());
-        }
-        
-        @Override
-        public UsageState getUsageState(String usageType) {
-            return parent.getUsageState("topic-read");
+            log.debug("Acknowledged message at index {} from topic '{}' for consumer group '{}' in service '{}' (implicit)",
+                index, parent.getResourceName(), consumerGroup, context.serviceName());
         }
         
         @Override
@@ -1373,7 +1900,7 @@ public class ChronicleTopicResource<T extends Message> extends AbstractTopicReso
         
         @Override
         public void close() throws Exception {
-            log.debug("Closing ChronicleReader delegate for service '{}', consumerGroup '{}'", 
+            log.debug("Closing ChronicleTopicReaderDelegate for service '{}', consumerGroup '{}'", 
                 context.serviceName(), consumerGroup);
             // No cleanup needed - parent manages Chronicle Tailer lifecycle
         }
@@ -1395,7 +1922,6 @@ resources {
   metadata-topic {
     className = "org.evochora.datapipeline.resources.topics.ChronicleTopicResource"
     options {
-      messageType = "org.evochora.datapipeline.api.contracts.NotificationContracts$MetadataInfo"
       queueDirectory = "data/topics/metadata"
       retentionDays = 7
       internalQueueCapacity = 1000  # Lower capacity for metadata (low volume)
@@ -1407,7 +1933,6 @@ resources {
   batch-topic {
     className = "org.evochora.datapipeline.resources.topics.ChronicleTopicResource"
     options {
-      messageType = "org.evochora.datapipeline.api.contracts.NotificationContracts$BatchInfo"
       queueDirectory = "data/topics/batches"
       retentionDays = 7
       internalQueueCapacity = 10000  # Higher capacity for batches (high volume)
@@ -1497,8 +2022,8 @@ dependencies {
 - `constructor_InvalidMetricsWindowSeconds_ThrowsException`: Rejects metricsWindowSeconds < 1
 - `getUsageState_TopicWrite_DelegatesToInternalQueue`: Verifies writer state
 - `getUsageState_TopicRead_ReturnsActive`: Verifies reader state always active
-- `createWriterDelegate_ReturnsChronicleWriter`: Verifies writer delegate creation
-- `createReaderDelegate_WithConsumerGroup_ReturnsChronicleReader`: Verifies reader delegate creation
+- `createWriterDelegate_ReturnsChronicleTopicWriterDelegate`: Verifies writer delegate creation
+- `createReaderDelegate_WithConsumerGroup_ReturnsChronicleTopicReaderDelegate`: Verifies reader delegate creation
 - `createReaderDelegate_WithoutConsumerGroup_ThrowsException`: Requires consumerGroup parameter
 - `createReaderDelegate_EmptyConsumerGroup_ThrowsException`: Rejects blank consumerGroup
 - `getWrappedResource_InvalidUsageType_ThrowsException`: Rejects unknown usage types
@@ -1508,9 +2033,9 @@ dependencies {
 
 **Cleanup:** Delete Chronicle Queue directory in `@AfterEach`
 
-#### 2. ChronicleWriterDelegateTest
+#### 2. ChronicleTopicWriterDelegateTest
 
-**Purpose:** Unit tests for `ChronicleWriter` inner class (via public API)
+**Purpose:** Unit tests for `ChronicleTopicWriterDelegate` inner class (via public API)
 
 **Tests:**
 - `send_ValidMessage_Success`: Send succeeds and increments both delegate metrics (messages_sent) and parent aggregate metrics (messagesPublished)
@@ -1524,9 +2049,9 @@ dependencies {
 
 **Cleanup:** Delete Chronicle Queue directory in `@AfterEach`
 
-#### 3. ChronicleReaderDelegateTest
+#### 3. ChronicleTopicReaderDelegateTest
 
-**Purpose:** Unit tests for `ChronicleReader` inner class (via public API)
+**Purpose:** Unit tests for `ChronicleTopicReaderDelegate` inner class (via public API)
 
 **Tests:**
 - `receive_MessageAvailable_ReturnsMessage`: Blocking receive succeeds
@@ -1634,7 +2159,6 @@ class ChronicleTopicIntegrationTest {
         // Arrange
         queueDirectory = Paths.get("target/test-queues/single-writer-reader-" + System.currentTimeMillis());
         Config config = ConfigFactory.parseMap(Map.of(
-            "messageType", "org.evochora.datapipeline.api.contracts.NotificationContracts$BatchInfo",
             "queueDirectory", queueDirectory.toString(),
             "retentionDays", 7,
             "internalQueueCapacity", 1000,
@@ -1732,8 +2256,8 @@ class ChronicleTopicIntegrationTest {
 ```
 INFO  ChronicleTopicResource '{}' initialized: directory={}, retention={}d, internalQueueCapacity={}, metricsWindow={}s
 DEBUG Writer thread started for topic '{}'
-DEBUG ChronicleWriter delegate created: resource='{}', service='{}', port='{}'
-DEBUG ChronicleReader delegate created: resource='{}', service='{}', port='{}', consumerGroup='{}'
+DEBUG ChronicleTopicWriterDelegate created: resource='{}', service='{}', port='{}'
+DEBUG ChronicleTopicReaderDelegate created: resource='{}', service='{}', port='{}', consumerGroup='{}'
 DEBUG Sent message to topic '{}' from service '{}'
 DEBUG Wrote message to Chronicle Queue for topic '{}'
 DEBUG Read message from Chronicle Queue for consumer group '{}' in topic '{}'
@@ -1741,8 +2265,8 @@ DEBUG Received message from topic '{}' for consumer group '{}' in service '{}'
 DEBUG Acknowledged message {} from topic '{}' for consumer group '{}' in service '{}'
 DEBUG Interrupted while sending message to topic '{}' from service '{}'
 DEBUG Closing ChronicleTopicResource '{}'
-DEBUG Closing ChronicleWriter delegate for service '{}'
-DEBUG Closing ChronicleReader delegate for service '{}', consumerGroup '{}'
+DEBUG Closing ChronicleTopicWriterDelegate for service '{}'
+DEBUG Closing ChronicleTopicReaderDelegate for service '{}', consumerGroup '{}'
 DEBUG Error closing tailer for topic '{}': {}
 WARN  Failed to serialize message to Chronicle Queue for topic '{}'
 WARN  Failed to deserialize message from Chronicle Queue for topic '{}'
@@ -1802,17 +2326,25 @@ void send(T message) throws InterruptedException;
 
 ### Chronicle Queue API Limitation
 
-The current Chronicle Queue API has a limitation where messages cannot be directly returned from the `readBytes()` lambda. The spec shows this limitation with a `TODO` comment in `readMessagePayload()`. The actual implementation will use one of these workarounds:
+The Chronicle Queue API does not allow directly returning values from the `readBytes()` lambda.
+This spec uses the **AtomicReference Pattern** as the workaround (see `ChronicleTopicResource.readEnvelopeWithIndex()`, line ~1478):
 
-1. **ThreadLocal Pattern:** Store deserialized message in ThreadLocal, retrieve after `readBytes()`
-2. **AtomicReference Pattern:** Use AtomicReference to pass message out of lambda
-3. **Custom Chronicle Wire:** Implement custom Wire for more control
+```java
+AtomicReference<ReceivedEnvelope<Long>> receivedRef = new AtomicReference<>();
 
-This limitation does not affect the API design—only the internal implementation.
+boolean hasMessage = tailer.readBytes(b -> {
+    // Deserialize envelope and extract Chronicle Queue index
+    receivedRef.set(new ReceivedEnvelope<>(envelope, currentIndex));
+});
+
+return receivedRef.get();  // Retrieve from AtomicReference
+```
+
+This pattern is simple, thread-safe, and has negligible performance overhead. The limitation does not affect the public API design—it's purely an internal implementation detail.
 
 ### Multi-Writer Safety
 
-Chronicle Queue's single-writer requirement is handled transparently via the internal `InMemoryBlockingQueue`. Services can use multiple `ITopicWriter` delegates concurrently without needing to know about this internal detail.
+Chronicle Queue's single-writer requirement is handled transparently via the internal `BlockingQueue<TopicEnvelope>` (Java standard library). Services can use multiple `ITopicWriter` delegates concurrently without needing to know about this internal detail.
 
 ### Consumer Group Semantics
 
