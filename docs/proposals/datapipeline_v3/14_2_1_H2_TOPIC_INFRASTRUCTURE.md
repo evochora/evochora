@@ -5,8 +5,8 @@
 **Depends On:** Phase 2.4 (Metadata Indexer)
 
 **Recent Changes:**
-- ✅ **Centralized Tables:** Single `topic_messages` and `consumer_group_acks` tables for all topics (no schema explosion!)
-- ✅ **Unlimited Scalability:** Add topics without creating new tables - `topic_name` column provides logical partitioning
+- ✅ **Shared Table Structure per Run:** Each simulation run has its own schema with `topic_messages` and `topic_consumer_group_acks` tables (no per-topic tables!)
+- ✅ **Unlimited Topics per Run:** Add topics without creating new tables - `topic_name` column provides logical partitioning within each run's schema
 - ✅ **Shared Trigger:** Single H2 trigger routes notifications by `topic_name` to correct queue
 - ✅ **Composite Indexes:** All indexes include `topic_name` for partition-like performance
 - ✅ **HikariCP Integration:** Added connection pooling following `H2Database` pattern
@@ -19,6 +19,15 @@
 - ✅ **Protobuf Contracts:** Fixed BatchInfo and MetadataInfo to match Chronicle spec (simulation_run_id, storage_key, written_at_ms)
 - ✅ **Schema Management:** Added `ISimulationRunAwareTopic` interface and `H2SchemaUtil` for per-run schema isolation
 - ✅ **H2SchemaUtil:** Centralized H2 schema operations (name sanitization, creation with bug workaround, switching)
+- ✅ **H2-Compatible Indexes:** Fixed partial index syntax (H2 doesn't support `WHERE` clauses) - now using composite indexes with `claimed_by` column
+- ✅ **MERGE for ACK:** Replaced MySQL `ON DUPLICATE KEY UPDATE` with H2's `MERGE` statement - idempotent, no exception handling needed
+- ✅ **Table Naming:** Renamed `consumer_group_acks` to `topic_consumer_group_acks` for consistent `topic_` prefix (avoids collisions with indexer tables)
+- ✅ **Transaction Mode Management:** Fixed schema setup to save/restore autoCommit mode - prevents conflicts between H2SchemaUtil (manual) and delegate operations (auto/explicit)
+- ✅ **Terminology Clarification:** Corrected "Centralized Tables" → "Shared Table Structure per Run" - tables are per-schema (per-run), NOT global across all runs
+- ✅ **Lazy Trigger Registration:** Fixed run isolation bug - trigger now registered with schema-qualified key (`topicName:schemaName`) to prevent cross-run notification leakage
+- ✅ **AutoCloseable Delegates:** Topic delegates implement `AutoCloseable` for flexible resource management - supports both long-lived (performance) and try-with-resources (safety) patterns
+- ✅ **Claim Version (Stale ACK Prevention):** Added `claim_version` column to prevent duplicate processing after stuck message reassignment - ensures at-most-once semantics within consumer group
+- ✅ **Explicit Auto-Commit:** Writer delegate explicitly sets `autoCommit=true` in constructor for defensive programming (no assumptions about HikariCP defaults)
 
 ---
 
@@ -26,15 +35,16 @@
 
 This specification defines a **H2 database-based topic infrastructure** as an alternative to Chronicle Queue for the in-process data pipeline. Unlike Chronicle Queue, H2 provides:
 
-- **Centralized tables** - Single `topic_messages` and `consumer_group_acks` tables for all topics (no schema explosion!)
-- **Unlimited scalability** - Add topics without creating new tables or indexes
+- **Per-run schema isolation** - Each simulation run has its own schema (like `H2Database`), ensuring complete data isolation
+- **Shared table structure** - Within each run's schema: single `topic_messages` and `topic_consumer_group_acks` tables for all topics (no per-topic tables!)
+- **Unlimited topics per run** - Add topics without creating new tables or indexes within a run's schema
 - **Atomic claim-based delivery** - `UPDATE...RETURNING` prevents race conditions (single SQL statement!)
 - **Multi-writer support** - No internal queue or writer thread needed (H2 MVCC)
 - **HikariCP connection pooling** - Efficient connection management with system-wide limits
 - **PreparedStatement pooling** - Reuse SQL statements per delegate (~30-50% performance gain)
 - **Event-driven delivery** - H2 triggers provide instant notifications (no polling!)
 - **Explicit acknowledgment** - SQL-based ACK via junction table (not DELETE)
-- **Consumer groups** - Proper isolation via `consumer_group_acks` junction table
+- **Consumer groups** - Proper isolation via `topic_consumer_group_acks` junction table
 - **Competing consumers** - `FOR UPDATE SKIP LOCKED` for automatic load balancing
 - **Permanent storage** - Messages never deleted (enables historical replay)
 - **In-flight tracking** - `claimed_by` column identifies messages being processed
@@ -186,7 +196,7 @@ Service ← ITopicReader.receive()
 Service → ITopicReader.ack(TopicMessage)
         → AbstractTopicDelegateReader.ack()
         → H2TopicReaderDelegate.acknowledgeMessage(rowId)
-        → SQL INSERT INTO consumer_group_acks (consumer_group, message_id)
+        → SQL INSERT INTO topic_consumer_group_acks (consumer_group, message_id)
         → SQL UPDATE topic_messages SET claimed_by = NULL [release claim]
 ```
 
@@ -300,6 +310,8 @@ claimTimeout = 300  # Seconds (5 minutes), 0 = disabled
 - **`claimTimeout > 0`:** Messages claimed longer than timeout are automatically reassigned to next consumer
 - **`claimTimeout = 0`:** Automatic reassignment disabled (manual intervention required)
 - **Idempotency:** Services MUST be idempotent (message may be processed multiple times)
+- **At-Most-Once Guarantee:** Claim version prevents duplicate processing within a consumer group
+- **Stale ACK Detection:** If consumer freezes (GC pause) and message is reassigned, original consumer's ACK is rejected
 - **Logging:** Reassignment triggers WARN log + error recording
 - **Metric:** `stuck_messages_reassigned` (O(1) AtomicLong) tracks reassignment count
 
@@ -312,9 +324,9 @@ Automatic cleanup background jobs (e.g., periodic reset task) are **NOT** includ
 
 ---
 
-## 6. Database Schema
+## 6. Database Schema (Per Simulation Run)
 
-### 6.1 Centralized Topic Messages Table (Shared by All Topics)
+### 6.1 Topic Messages Table (Shared by All Topics in Run's Schema)
 
 ```sql
 CREATE TABLE IF NOT EXISTS topic_messages (
@@ -325,14 +337,15 @@ CREATE TABLE IF NOT EXISTS topic_messages (
     envelope BINARY NOT NULL,
     claimed_by VARCHAR(255),
     claimed_at TIMESTAMP,
+    claim_version INT DEFAULT 0,  -- Prevents stale ACK after reassignment
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     -- Composite unique constraint (topic + message)
     UNIQUE KEY uk_topic_message (topic_name, message_id),
     
     -- Performance indexes (all include topic_name for partition-like behavior)
-    INDEX idx_topic_unclaimed (topic_name, id) WHERE claimed_by IS NULL,
-    INDEX idx_topic_claimed (topic_name, claimed_at) WHERE claimed_by IS NOT NULL,
+    INDEX idx_topic_unclaimed (topic_name, claimed_by, id),
+    INDEX idx_topic_claimed (topic_name, claimed_by, claimed_at),
     INDEX idx_topic_claim_status (topic_name, claimed_by, claimed_at)
 );
 ```
@@ -345,23 +358,28 @@ CREATE TABLE IF NOT EXISTS topic_messages (
 - `envelope`: Serialized TopicEnvelope (Protobuf binary)
 - `claimed_by`: Consumer ID that claimed this message (NULL = available, non-NULL = in-flight)
 - `claimed_at`: Timestamp when message was claimed (for stuck message detection)
+- `claim_version`: Incremented on each claim (prevents stale ACK after reassignment)
 - `created_at`: Database timestamp for debugging
 
 **Design Notes:**
-- **Centralized Table:** Single table for all topics (no schema explosion, unlimited scalability)
+- **Per-Run Isolation:** Table exists in each simulation run's schema (e.g., `SIM_20251006_UUID.topic_messages`)
+- **Shared Structure:** Single table structure for all topics within a run (no per-topic tables!)
 - **Logical Partitioning:** `topic_name` column enables topic-specific queries with composite indexes
+- **Run Data Isolation:** Different runs have completely separate tables in different schemas - no data mixing
 - **Atomic Claim:** Messages are claimed atomically during `receive()` to prevent double-processing
 - **No consumer_group column:** Each group tracks acknowledgments independently via junction table
-- **Performance Indexes:**
-  - `idx_topic_unclaimed` - Composite partial index for unclaimed messages per topic
-  - `idx_topic_claimed` - Composite partial index for stuck message detection per topic
-  - `idx_topic_claim_status` - Composite index for efficient claim status queries per topic
-- **Scalability:** Supports unlimited topics without creating new tables
+- **Performance Indexes (H2-Compatible):**
+  - `idx_topic_unclaimed (topic_name, claimed_by, id)` - Unclaimed messages per topic
+  - `idx_topic_claimed (topic_name, claimed_by, claimed_at)` - Stuck message detection per topic
+  - `idx_topic_claim_status (topic_name, claimed_by, claimed_at)` - Efficient claim status queries
+  - **Note:** H2 does NOT support partial indexes with `WHERE` clauses (PostgreSQL feature)
+  - **Solution:** Include `claimed_by` as indexed column - H2 optimizer uses this for `IS NULL`/`IS NOT NULL` predicates
+- **Scalability:** Supports unlimited topics per run without creating new tables
 
-### 6.2 Centralized Consumer Group Acknowledgments Table (Shared by All Topics)
+### 6.2 Consumer Group Acknowledgments Table (Shared by All Topics in Run's Schema)
 
 ```sql
-CREATE TABLE IF NOT EXISTS consumer_group_acks (
+CREATE TABLE IF NOT EXISTS topic_consumer_group_acks (
     topic_name VARCHAR(255) NOT NULL,
     consumer_group VARCHAR(255) NOT NULL,
     message_id VARCHAR(255) NOT NULL,
@@ -406,7 +424,7 @@ SET claimed_by = ?, claimed_at = CURRENT_TIMESTAMP
 WHERE id = (
     SELECT tm2.id 
     FROM topic_messages tm2
-    LEFT JOIN consumer_group_acks cga 
+    LEFT JOIN topic_consumer_group_acks cga 
         ON tm2.topic_name = cga.topic_name 
         AND tm2.message_id = cga.message_id 
         AND cga.consumer_group = ?
@@ -418,7 +436,7 @@ WHERE id = (
     LIMIT 1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, message_id, envelope;
+RETURNING id, message_id, envelope, claim_version;
 ```
 
 **Key Features:**
@@ -432,15 +450,16 @@ RETURNING id, message_id, envelope;
 
 **Acknowledge:**
 ```sql
--- Step 1: Mark as acknowledged for this consumer group
-INSERT INTO consumer_group_acks (topic_name, consumer_group, message_id) 
-VALUES (?, ?, ?)
-ON DUPLICATE KEY UPDATE acknowledged_at = CURRENT_TIMESTAMP;
+-- Step 1: Mark as acknowledged for this consumer group (idempotent via MERGE)
+MERGE INTO topic_consumer_group_acks (topic_name, consumer_group, message_id)
+KEY(topic_name, consumer_group, message_id)
+VALUES (?, ?, ?);
 
--- Step 2: Release claim (makes message available for other consumer groups)
+-- Step 2: Release claim WITH VERSION CHECK (prevents stale ACK after reassignment)
 UPDATE topic_messages 
 SET claimed_by = NULL, claimed_at = NULL 
-WHERE id = ?;
+WHERE id = ? AND claim_version = ?;
+-- If 0 rows updated: claim was stale (message was reassigned), ACK rejected
 ```
 
 **Note:** Messages are never deleted. They remain in the database permanently, allowing:
@@ -554,11 +573,17 @@ import org.evochora.datapipeline.api.resources.IResource;
  * <strong>Simulation Run Awareness:</strong> Extends {@link ISimulationRunAwareTopic} to support
  * run-specific isolation. Call {@link #setSimulationRun(String)} before sending messages.
  * <p>
- * <strong>Implements:</strong> {@link IResource}, {@link ISimulationRunAwareTopic}
+ * <strong>Resource Management:</strong> Implements {@link AutoCloseable} to support both:
+ * <ul>
+ *   <li>Long-lived pattern: Create once, use many times, close manually (best performance)</li>
+ *   <li>Try-with-resources pattern: Auto-cleanup per operation (best safety)</li>
+ * </ul>
+ * <p>
+ * <strong>Implements:</strong> {@link IResource}, {@link ISimulationRunAwareTopic}, {@link AutoCloseable}
  *
  * @param <T> The message type (must be a Protobuf {@link Message}).
  */
-public interface ITopicWriter<T extends Message> extends IResource, ISimulationRunAwareTopic {
+public interface ITopicWriter<T extends Message> extends IResource, ISimulationRunAwareTopic, AutoCloseable {
     
     /**
      * Sends a message to the topic.
@@ -578,6 +603,37 @@ public interface ITopicWriter<T extends Message> extends IResource, ISimulationR
      * @throws NullPointerException if message is null.
      */
     void send(T message) throws InterruptedException;
+    
+    /**
+     * Releases resources held by this writer.
+     * <p>
+     * <strong>Implementation Notes:</strong>
+     * <ul>
+     *   <li>H2: Returns database connection and PreparedStatements to HikariCP pool</li>
+     *   <li>Chronicle: Stops writer thread and releases queue reference</li>
+     * </ul>
+     * <p>
+     * <strong>Idempotency:</strong> Calling close() multiple times is safe (no-op).
+     * <p>
+     * <strong>Usage Patterns:</strong>
+     * <pre>
+     * // Pattern 1: Long-lived (best performance - recommended for services)
+     * ITopicWriter writer = topic.createWriterDelegate();
+     * writer.setSimulationRun(runId);
+     * while (running) {
+     *     writer.send(message);  // Fast! PreparedStatement cached
+     * }
+     * writer.close();  // Manual cleanup
+     * 
+     * // Pattern 2: Try-with-resources (best safety - for one-off operations)
+     * try (ITopicWriter writer = topic.createWriterDelegate()) {
+     *     writer.setSimulationRun(runId);
+     *     writer.send(message);
+     * }  // Auto cleanup
+     * </pre>
+     */
+    @Override
+    void close();
 }
 ```
 
@@ -616,12 +672,18 @@ import java.util.concurrent.TimeUnit;
  * <strong>Thread Safety:</strong> Implementations MUST be thread-safe for a single reader.
  * Multiple readers in the same consumer group MAY conflict (implementation-specific).
  * <p>
- * <strong>Implements:</strong> {@link IResource}, {@link ISimulationRunAwareTopic}
+ * <strong>Resource Management:</strong> Implements {@link AutoCloseable} to support both:
+ * <ul>
+ *   <li>Long-lived pattern: Create once, use many times, close manually (best performance)</li>
+ *   <li>Try-with-resources pattern: Auto-cleanup per operation (best safety)</li>
+ * </ul>
+ * <p>
+ * <strong>Implements:</strong> {@link IResource}, {@link ISimulationRunAwareTopic}, {@link AutoCloseable}
  *
  * @param <T> The message type (must be a Protobuf {@link Message}).
  * @param <ACK> The acknowledgment token type (implementation-specific).
  */
-public interface ITopicReader<T extends Message, ACK> extends IResource, ISimulationRunAwareTopic {
+public interface ITopicReader<T extends Message, ACK> extends IResource, ISimulationRunAwareTopic, AutoCloseable {
     
     /**
      * Receives the next message, blocking indefinitely until one is available.
@@ -670,6 +732,43 @@ public interface ITopicReader<T extends Message, ACK> extends IResource, ISimula
      * @throws NullPointerException if message is null.
      */
     void ack(TopicMessage<T, ACK> message);
+    
+    /**
+     * Releases resources held by this reader.
+     * <p>
+     * <strong>Implementation Notes:</strong>
+     * <ul>
+     *   <li>H2: Returns database connection to HikariCP pool</li>
+     *   <li>Chronicle: Closes tailer and releases queue reference</li>
+     * </ul>
+     * <p>
+     * <strong>Idempotency:</strong> Calling close() multiple times is safe (no-op).
+     * <p>
+     * <strong>Usage Patterns:</strong>
+     * <pre>
+     * // Pattern 1: Long-lived (best performance)
+     * ITopicReader reader = topic.createReaderDelegate();
+     * reader.setSimulationRun(runId);
+     * while (running) {
+     *     TopicMessage msg = reader.receive();
+     *     process(msg);
+     *     reader.ack(msg);
+     * }
+     * reader.close();  // Manual cleanup
+     * 
+     * // Pattern 2: Try-with-resources (best safety)
+     * while (running) {
+     *     try (ITopicReader reader = topic.createReaderDelegate()) {
+     *         reader.setSimulationRun(runId);
+     *         TopicMessage msg = reader.receive();
+     *         process(msg);
+     *         reader.ack(msg);
+     *     }  // Auto cleanup
+     * }
+     * </pre>
+     */
+    @Override
+    void close();
 }
 ```
 
@@ -731,10 +830,34 @@ public final class TopicMessage<T extends Message, ACK> {
         this.acknowledgeToken = acknowledgeToken;
     }
     
+    /**
+     * Returns the message payload.
+     *
+     * @return The Protobuf message payload.
+     */
     public T payload() { return payload; }
+    
+    /**
+     * Returns the message timestamp.
+     *
+     * @return Unix timestamp in milliseconds when the message was written.
+     */
     public long timestamp() { return timestamp; }
+    
+    /**
+     * Returns the unique message identifier.
+     *
+     * @return The UUID-based message ID.
+     */
     public String messageId() { return messageId; }
+    
+    /**
+     * Returns the consumer group that read this message.
+     *
+     * @return The consumer group name.
+     */
     public String consumerGroup() { return consumerGroup; }
+    
     ACK acknowledgeToken() { return acknowledgeToken; }
     
     @Override
@@ -1473,8 +1596,11 @@ public abstract class AbstractTopicDelegateReader<P extends AbstractTopicResourc
             
             // Extract the fully qualified class name from the type URL
             // Format: "type.googleapis.com/org.evochora.datapipeline.api.contracts.BatchInfo"
+            // Extract everything after the FIRST '/' to get full package.ClassName
             String typeUrl = anyPayload.getTypeUrl();
-            String className = typeUrl.substring(typeUrl.lastIndexOf('/') + 1);
+            String className = typeUrl.contains("/") 
+                ? typeUrl.substring(typeUrl.indexOf('/') + 1)  // Full path after first '/'
+                : typeUrl;  // Fallback if no domain prefix
             
             // Dynamically load the message class
             @SuppressWarnings("unchecked")
@@ -1632,7 +1758,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * @param <T> The message type (must be a Protobuf {@link Message}).
  */
-public class H2TopicResource<T extends Message> extends AbstractTopicResource<T, Long> implements AutoCloseable {
+public class H2TopicResource<T extends Message> extends AbstractTopicResource<T, AckToken> implements AutoCloseable {
     
     private static final Logger log = LoggerFactory.getLogger(H2TopicResource.class);
     
@@ -1643,9 +1769,13 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     private final SlidingWindowCounter readThroughput;
     private final AtomicLong stuckMessagesReassigned;  // O(1) metric for reassignments
     
+    // Lazy trigger registration (schema-aware for run isolation)
+    private volatile String currentSchemaName = null;  // Current registered schema (null = not registered)
+    private final Object triggerLock = new Object();   // Synchronization for trigger registration
+    
     // Centralized table names (shared by all topics)
     private static final String MESSAGES_TABLE = "topic_messages";
-    private static final String ACKS_TABLE = "consumer_group_acks";
+    private static final String ACKS_TABLE = "topic_consumer_group_acks";
     
     /**
      * Creates a new H2TopicResource with HikariCP connection pooling.
@@ -1712,8 +1842,8 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
             // Initialize notification queue for event-driven message delivery
             this.messageNotifications = new LinkedBlockingQueue<>();
             
-            // Register H2 trigger for instant notifications on INSERT (topic-specific)
-            registerInsertTrigger();
+            // Note: Trigger registration is LAZY - happens in ensureTriggerRegistered()
+            // when first delegate calls setSimulationRun(). This ensures schema is known.
             
             this.writeThroughput = new SlidingWindowCounter(60, TimeUnit.SECONDS);
             this.readThroughput = new SlidingWindowCounter(60, TimeUnit.SECONDS);
@@ -1724,6 +1854,62 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
         } catch (Exception e) {
             log.error("Failed to initialize H2 topic resource '{}'", name);
             throw new RuntimeException("H2 topic initialization failed: " + name, e);
+        }
+    }
+    
+    /**
+     * Ensures the H2 trigger is registered for the given simulation run (lazy registration).
+     * <p>
+     * This method is called by delegates during {@code onSimulationRunSet()}. It registers
+     * the trigger only once per schema, using a schema-qualified registry key for run isolation.
+     * <p>
+     * <strong>Thread Safety:</strong>
+     * Multiple delegates may call this concurrently. The method uses double-check locking
+     * to ensure the trigger is registered exactly once per schema.
+     * <p>
+     * <strong>Run Isolation:</strong>
+     * Different simulation runs use different schemas (e.g., {@code SIM_RUN1}, {@code SIM_RUN2}).
+     * The trigger registry key includes both topic name AND schema name to prevent cross-run
+     * notification leakage.
+     *
+     * @param simulationRunId The simulation run ID (used to derive schema name).
+     * @throws RuntimeException if trigger registration fails.
+     */
+    void ensureTriggerRegistered(String simulationRunId) {
+        String schemaName = H2SchemaUtil.toSchemaName(simulationRunId);
+        
+        // Fast path: already registered for this schema
+        if (schemaName.equals(currentSchemaName)) {
+            return;
+        }
+        
+        synchronized (triggerLock) {
+            // Double-check: another thread may have registered while we waited
+            if (schemaName.equals(currentSchemaName)) {
+                return;
+            }
+            
+            // Deregister old schema (if switching runs - unlikely but safe)
+            if (currentSchemaName != null) {
+                H2InsertTrigger.deregisterNotificationQueue(getResourceName(), currentSchemaName);
+                log.debug("Deregistered trigger for topic '{}' from old schema '{}'", 
+                    getResourceName(), currentSchemaName);
+            }
+            
+            // Register for new schema
+            try {
+                registerInsertTrigger(schemaName);
+                currentSchemaName = schemaName;
+                log.debug("Registered trigger for topic '{}' in schema '{}'", 
+                    getResourceName(), schemaName);
+            } catch (SQLException e) {
+                String msg = String.format(
+                    "Failed to register H2 trigger for topic '%s' in schema '%s'",
+                    getResourceName(), schemaName
+                );
+                log.error(msg);
+                throw new RuntimeException(msg, e);
+            }
         }
     }
     
@@ -1740,11 +1926,16 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
      * </pre>
      * Instead of polling every 100ms, readers use {@code BlockingQueue.take()} which blocks
      * efficiently until a notification arrives.
+     * <p>
+     * <strong>Run Isolation:</strong>
+     * The notification queue is registered with a schema-qualified key ({@code topicName:schemaName})
+     * to ensure different simulation runs don't interfere with each other.
      *
+     * @param schemaName The H2 schema name (e.g., "SIM_20251006_UUID").
      * @throws SQLException if trigger creation fails.
      */
-    private void registerInsertTrigger() throws SQLException {
-        // With centralized table, we use a single trigger for all topics
+    private void registerInsertTrigger(String schemaName) throws SQLException {
+        // With shared table structure, we use a single trigger for all topics
         // The trigger reads topic_name from the inserted row and routes to the correct queue
         String triggerName = "topic_messages_notify_trigger";
         String triggerSql = String.format("""
@@ -1759,11 +1950,11 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
             stmt.execute(triggerSql);
         }
         
-        // Register this topic's notification queue with the trigger (static registry by topic name)
-        H2InsertTrigger.registerNotificationQueue(getResourceName(), messageNotifications);
+        // Register this topic's notification queue with schema-qualified key for run isolation
+        H2InsertTrigger.registerNotificationQueue(getResourceName(), schemaName, messageNotifications);
         
-        log.debug("Registered H2 trigger '{}' for topic '{}' (event-driven notifications)", 
-            triggerName, getResourceName());
+        log.debug("Registered H2 trigger '{}' for topic '{}' in schema '{}' (event-driven notifications)", 
+            triggerName, getResourceName(), schemaName);
     }
     
     /**
@@ -1788,18 +1979,19 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
                 envelope BINARY NOT NULL,
                 claimed_by VARCHAR(255),
                 claimed_at TIMESTAMP,
+                claim_version INT DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 
                 UNIQUE KEY uk_topic_message (topic_name, message_id),
-                INDEX idx_topic_unclaimed (topic_name, id) WHERE claimed_by IS NULL,
-                INDEX idx_topic_claimed (topic_name, claimed_at) WHERE claimed_by IS NOT NULL,
+                INDEX idx_topic_unclaimed (topic_name, claimed_by, id),
+                INDEX idx_topic_claimed (topic_name, claimed_by, claimed_at),
                 INDEX idx_topic_claim_status (topic_name, claimed_by, claimed_at)
             )
             """;
         
         // Create centralized consumer group acknowledgments table (shared by all topics)
         String createAcksSql = """
-            CREATE TABLE IF NOT EXISTS consumer_group_acks (
+            CREATE TABLE IF NOT EXISTS topic_consumer_group_acks (
                 topic_name VARCHAR(255) NOT NULL,
                 consumer_group VARCHAR(255) NOT NULL,
                 message_id VARCHAR(255) NOT NULL,
@@ -1844,8 +2036,8 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {
         super.addCustomMetrics(metrics);
-        metrics.put("write_throughput_per_minute", writeThroughput.getCount());
-        metrics.put("read_throughput_per_minute", readThroughput.getCount());
+        metrics.put("messages_written_per_sec", writeThroughput.getRate());
+        metrics.put("messages_read_per_sec", readThroughput.getRate());
         metrics.put("stuck_messages_reassigned", stuckMessagesReassigned.get());
         
         // HikariCP connection pool metrics (same as H2Database)
@@ -1913,7 +2105,7 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
      * Records a write operation for metrics (package-private for delegate access).
      */
     void recordWrite() {
-        writeThroughput.increment();
+        writeThroughput.recordCount();
         messagesPublished.incrementAndGet();
     }
     
@@ -1931,7 +2123,7 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
      * Records a read operation for metrics (package-private for delegate access).
      */
     void recordRead() {
-        readThroughput.increment();
+        readThroughput.recordCount();
         messagesReceived.incrementAndGet();
     }
     
@@ -1946,12 +2138,16 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     public void close() throws Exception {
         super.close();  // Close all delegates
         
-        // Deregister trigger notification queue
-        H2InsertTrigger.deregisterNotificationQueue(getResourceName());
+        // Deregister trigger notification queue (only if it was registered)
+        if (currentSchemaName != null) {
+            H2InsertTrigger.deregisterNotificationQueue(getResourceName(), currentSchemaName);
+            log.debug("Deregistered trigger for topic '{}' from schema '{}'", 
+                getResourceName(), currentSchemaName);
+        }
         
-        // Note: We do NOT drop the centralized trigger here, as other topics may still be using it
-        // The trigger is shared by all topics and should only be dropped when the last topic closes
-        // (or when the database is shut down)
+        // Note: We do NOT drop the shared trigger here, as other topics may still be using it
+        // The trigger is shared by all topics in the schema and should only be dropped when
+        // the schema is dropped (or when the database is shut down)
         
         // Close HikariCP pool
         if (dataSource != null && !dataSource.isClosed()) {
@@ -2021,33 +2217,41 @@ public class H2InsertTrigger implements Trigger {
     
     private static final Logger log = LoggerFactory.getLogger(H2InsertTrigger.class);
     
-    // Static registry: topicName → notification queue
-    // With centralized table, we route by topic name instead of table name
+    // Static registry: "topicName:schemaName" → notification queue
+    // Schema-qualified key ensures run isolation (different runs = different schemas)
     private static final Map<String, BlockingQueue<Long>> notificationQueues = new ConcurrentHashMap<>();
     
     /**
-     * Registers a notification queue for a specific topic.
+     * Registers a notification queue for a specific topic in a specific schema.
      * <p>
      * Called by {@link H2TopicResource} during initialization.
+     * <p>
+     * <strong>Run Isolation:</strong>
+     * The key includes both topic name AND schema name to ensure that different
+     * simulation runs (which use different schemas) have separate notification queues.
      *
      * @param topicName The topic name (resource name).
+     * @param schemaName The H2 schema name (e.g., "SIM_20251006_UUID").
      * @param queue The notification queue.
      */
-    public static void registerNotificationQueue(String topicName, BlockingQueue<Long> queue) {
-        notificationQueues.put(topicName, queue);
-        log.debug("Registered notification queue for topic '{}'", topicName);
+    public static void registerNotificationQueue(String topicName, String schemaName, BlockingQueue<Long> queue) {
+        String key = topicName + ":" + schemaName;
+        notificationQueues.put(key, queue);
+        log.debug("Registered notification queue for topic '{}' in schema '{}'", topicName, schemaName);
     }
     
     /**
-     * Deregisters a notification queue for a specific topic.
+     * Deregisters a notification queue for a specific topic in a specific schema.
      * <p>
      * Called by {@link H2TopicResource} during shutdown.
      *
      * @param topicName The topic name (resource name).
+     * @param schemaName The H2 schema name (e.g., "SIM_20251006_UUID").
      */
-    public static void deregisterNotificationQueue(String topicName) {
-        notificationQueues.remove(topicName);
-        log.debug("Deregistered notification queue for topic '{}'", topicName);
+    public static void deregisterNotificationQueue(String topicName, String schemaName) {
+        String key = topicName + ":" + schemaName;
+        notificationQueues.remove(key);
+        log.debug("Deregistered notification queue for topic '{}' in schema '{}'", topicName, schemaName);
     }
     
     @Override
@@ -2061,20 +2265,24 @@ public class H2InsertTrigger implements Trigger {
     @Override
     public void fire(Connection conn, Object[] oldRow, Object[] newRow) throws SQLException {
         if (newRow != null && newRow.length > 1) {
-            // Centralized table schema: id, topic_name, message_id, timestamp, envelope, ...
+            // Shared table schema: id, topic_name, message_id, timestamp, envelope, ...
             Long messageId = (Long) newRow[0];      // Column 0: id (BIGINT AUTO_INCREMENT)
             String topicName = (String) newRow[1];  // Column 1: topic_name (VARCHAR)
             
-            // Look up the notification queue for this specific topic
-            BlockingQueue<Long> queue = notificationQueues.get(topicName);
+            // Get current schema for run isolation
+            String schemaName = conn.getSchema();
+            String key = topicName + ":" + schemaName;
+            
+            // Look up the notification queue for this specific topic in this specific schema
+            BlockingQueue<Long> queue = notificationQueues.get(key);
             
             if (queue != null) {
                 boolean offered = queue.offer(messageId);
                 
                 if (!offered) {
                     // Queue full - should not happen with unbounded LinkedBlockingQueue
-                    log.warn("Notification queue full for topic '{}', message ID {} not notified", 
-                        topicName, messageId);
+                    log.warn("Notification queue full for topic '{}' in schema '{}', message ID {} not notified", 
+                        topicName, schemaName, messageId);
                 }
             } else {
                 // No queue registered for this topic - may happen during shutdown
@@ -2164,6 +2372,10 @@ public class H2TopicWriterDelegate<T extends Message> extends AbstractTopicDeleg
             // Obtain connection from HikariCP pool (held for delegate lifetime)
             this.connection = parent.getConnection();
             
+            // Explicitly set auto-commit mode for single-statement INSERTs (defensive programming)
+            // HikariCP defaults to true, but we verify to ensure atomic writes work correctly
+            connection.setAutoCommit(true);
+            
             // Prepare INSERT statement once (reused for all writes)
             // Uses centralized table with topic_name column
             String sql = String.format(
@@ -2184,14 +2396,30 @@ public class H2TopicWriterDelegate<T extends Message> extends AbstractTopicDeleg
     @Override
     protected void onSimulationRunSet(String simulationRunId) {
         try {
-            // Create schema if it doesn't exist (safe for concurrent calls, H2 bug workaround included)
-            H2SchemaUtil.createSchemaIfNotExists(connection, simulationRunId);
+            // H2SchemaUtil expects manual commit mode, but writer uses auto-commit for INSERTs
+            // Save current mode, switch to manual for schema operations, then restore
+            boolean wasAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);  // Switch to manual for schema creation
             
-            // Switch to the schema for this simulation run
-            H2SchemaUtil.setSchema(connection, simulationRunId);
+            try {
+                // Create schema if it doesn't exist (safe for concurrent calls, H2 bug workaround included)
+                H2SchemaUtil.createSchemaIfNotExists(connection, simulationRunId);
+                
+                // Switch to the schema for this simulation run
+                H2SchemaUtil.setSchema(connection, simulationRunId);
+                
+                connection.setAutoCommit(wasAutoCommit);  // Restore original mode
+                
+                log.debug("H2 topic writer '{}' switched to schema for run: {}", 
+                    parent.getResourceName(), simulationRunId);
+                    
+            } catch (SQLException schemaError) {
+                connection.setAutoCommit(wasAutoCommit);  // Restore on error
+                throw schemaError;
+            }
             
-            log.debug("H2 topic writer '{}' switched to schema for run: {}", 
-                parent.getResourceName(), simulationRunId);
+            // Ensure parent has trigger registered for this schema (lazy, thread-safe)
+            parent.ensureTriggerRegistered(simulationRunId);
                 
         } catch (SQLException e) {
             String msg = String.format(
@@ -2208,7 +2436,7 @@ public class H2TopicWriterDelegate<T extends Message> extends AbstractTopicDeleg
     protected void sendEnvelope(TopicEnvelope envelope) throws InterruptedException {
         try {
             // Note: No explicit transaction management needed here.
-            // Single INSERT is atomic (ACID guarantee). Connection is in auto-commit mode (default).
+            // Single INSERT is atomic (ACID guarantee). Connection is in auto-commit mode (set in constructor).
             // If executeUpdate() throws SQLException, message is NOT committed (auto-rollback).
             // recordWrite() is just a counter increment and cannot fail.
             
@@ -2280,7 +2508,7 @@ import java.util.concurrent.TimeUnit;
  * <strong>Consumer Group Logic (Junction Table):</strong>
  * <ul>
  *   <li>Messages are read from {@code topic_messages} table</li>
- *   <li>Acknowledgments tracked in {@code consumer_group_acks} table</li>
+ *   <li>Acknowledgments tracked in {@code topic_consumer_group_acks} table</li>
  *   <li>Each consumer group sees only messages NOT in their acks table</li>
  *   <li>Acknowledgment by one group does NOT affect other groups</li>
  * </ul>
@@ -2290,7 +2518,7 @@ import java.util.concurrent.TimeUnit;
  * to automatically distribute work without coordination overhead.
  * <p>
  * <strong>Acknowledgment:</strong>
- * Acknowledged messages are recorded in {@code consumer_group_acks} table.
+ * Acknowledged messages are recorded in {@code topic_consumer_group_acks} table.
  * Messages remain in {@code topic_messages} permanently (no deletion).
  * <p>
  * <strong>PreparedStatement Pooling:</strong>
@@ -2303,7 +2531,7 @@ import java.util.concurrent.TimeUnit;
  *
  * @param <T> The message type.
  */
-public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDelegateReader<H2TopicResource<T>, T, Long> {
+public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDelegateReader<H2TopicResource<T>, T, AckToken> {
     
     private static final Logger log = LoggerFactory.getLogger(H2TopicReaderDelegate.class);
     
@@ -2336,12 +2564,14 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
             if (claimTimeout > 0) {
                 String sqlWithTimeout = String.format("""
                     UPDATE %s tm
-                    SET claimed_by = ?, claimed_at = CURRENT_TIMESTAMP
+                    SET claimed_by = ?, 
+                        claimed_at = CURRENT_TIMESTAMP,
+                        claim_version = claim_version + 1
                     WHERE id = (
                         SELECT tm2.id 
                         FROM %s tm2
                         LEFT JOIN %s cga 
-                            ON tm2.topic_name = cga.topic_name
+                            ON tm2.topic_name = cga.topic_name 
                             AND tm2.message_id = cga.message_id 
                             AND cga.consumer_group = ?
                         WHERE cga.message_id IS NULL
@@ -2355,7 +2585,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
                         LIMIT 1
                         FOR UPDATE SKIP LOCKED
                     )
-                    RETURNING id, message_id, envelope, claimed_by AS previous_claim
+                    RETURNING id, message_id, envelope, claimed_by AS previous_claim, claim_version
                     """, parent.getMessagesTable(), parent.getMessagesTable(), parent.getAcksTable(), claimTimeout);
                 this.readStatementWithTimeout = connection.prepareStatement(sqlWithTimeout);
             } else {
@@ -2363,38 +2593,41 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
             }
             
             // Prepare READ statement WITHOUT stuck message reassignment (claimTimeout = 0)
-            String sqlNoTimeout = String.format("""
-                UPDATE %s tm
-                SET claimed_by = ?, claimed_at = CURRENT_TIMESTAMP
-                WHERE id = (
-                    SELECT tm2.id 
-                    FROM %s tm2
-                    LEFT JOIN %s cga 
-                        ON tm2.topic_name = cga.topic_name
-                        AND tm2.message_id = cga.message_id 
-                        AND cga.consumer_group = ?
-                    WHERE cga.message_id IS NULL
-                    AND tm2.topic_name = ?
-                    AND tm2.claimed_by IS NULL
-                    AND tm2.id > ?
-                    ORDER BY tm2.id 
-                    LIMIT 1
-                    FOR UPDATE SKIP LOCKED
-                )
-                RETURNING id, message_id, envelope, NULL AS previous_claim
-                """, parent.getMessagesTable(), parent.getMessagesTable(), parent.getAcksTable());
+                String sqlNoTimeout = String.format("""
+                    UPDATE %s tm
+                    SET claimed_by = ?, 
+                        claimed_at = CURRENT_TIMESTAMP,
+                        claim_version = claim_version + 1
+                    WHERE id = (
+                        SELECT tm2.id 
+                        FROM %s tm2
+                        LEFT JOIN %s cga 
+                            ON tm2.topic_name = cga.topic_name 
+                            AND tm2.message_id = cga.message_id 
+                            AND cga.consumer_group = ?
+                        WHERE cga.message_id IS NULL
+                        AND tm2.topic_name = ?
+                        AND tm2.claimed_by IS NULL
+                        AND tm2.id > ?
+                        ORDER BY tm2.id 
+                        LIMIT 1
+                        FOR UPDATE SKIP LOCKED
+                    )
+                    RETURNING id, message_id, envelope, NULL AS previous_claim, claim_version
+                    """, parent.getMessagesTable(), parent.getMessagesTable(), parent.getAcksTable());
             this.readStatementNoTimeout = connection.prepareStatement(sqlNoTimeout);
             
-            // Prepare ACK INSERT statement (once, reused for all ACKs)
-            String ackInsertSql = String.format(
-                "INSERT INTO %s (topic_name, consumer_group, message_id) VALUES (?, ?, ?)",
+            // Prepare ACK MERGE statement (once, reused for all ACKs)
+            // MERGE is idempotent - handles both new acknowledgments and duplicates gracefully
+            String ackMergeSql = String.format(
+                "MERGE INTO %s (topic_name, consumer_group, message_id) KEY(topic_name, consumer_group, message_id) VALUES (?, ?, ?)",
                 parent.getAcksTable()
             );
-            this.ackInsertStatement = connection.prepareStatement(ackInsertSql);
+            this.ackInsertStatement = connection.prepareStatement(ackMergeSql);
             
-            // Prepare ACK RELEASE statement (once, reused for all ACKs)
+            // Prepare ACK RELEASE statement WITH VERSION CHECK (once, reused for all ACKs)
             String ackReleaseSql = String.format(
-                "UPDATE %s SET claimed_by = NULL, claimed_at = NULL WHERE id = ?",
+                "UPDATE %s SET claimed_by = NULL, claimed_at = NULL WHERE id = ? AND claim_version = ?",
                 parent.getMessagesTable()
             );
             this.ackReleaseStatement = connection.prepareStatement(ackReleaseSql);
@@ -2411,14 +2644,30 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
     @Override
     protected void onSimulationRunSet(String simulationRunId) {
         try {
-            // Create schema if it doesn't exist (safe for concurrent calls, H2 bug workaround included)
-            H2SchemaUtil.createSchemaIfNotExists(connection, simulationRunId);
+            // H2SchemaUtil expects manual commit mode, but reader uses explicit transactions for ACK
+            // Save current mode, switch to manual for schema operations, then restore
+            boolean wasAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);  // Switch to manual for schema creation
             
-            // Switch to the schema for this simulation run
-            H2SchemaUtil.setSchema(connection, simulationRunId);
+            try {
+                // Create schema if it doesn't exist (safe for concurrent calls, H2 bug workaround included)
+                H2SchemaUtil.createSchemaIfNotExists(connection, simulationRunId);
+                
+                // Switch to the schema for this simulation run
+                H2SchemaUtil.setSchema(connection, simulationRunId);
+                
+                connection.setAutoCommit(wasAutoCommit);  // Restore original mode
+                
+                log.debug("H2 topic reader '{}' (consumerGroup='{}') switched to schema for run: {}", 
+                    parent.getResourceName(), consumerGroup, simulationRunId);
+                    
+            } catch (SQLException schemaError) {
+                connection.setAutoCommit(wasAutoCommit);  // Restore on error
+                throw schemaError;
+            }
             
-            log.debug("H2 topic reader '{}' (consumerGroup='{}') switched to schema for run: {}", 
-                parent.getResourceName(), consumerGroup, simulationRunId);
+            // Ensure parent has trigger registered for this schema (lazy, thread-safe)
+            parent.ensureTriggerRegistered(simulationRunId);
                 
         } catch (SQLException e) {
             String msg = String.format(
@@ -2503,6 +2752,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
                     String messageId = rs.getString("message_id");
                     byte[] envelopeBytes = rs.getBytes("envelope");
                     String previousClaim = rs.getString("previous_claim");
+                    int claimVersion = rs.getInt("claim_version");
                     
                     TopicEnvelope envelope = TopicEnvelope.parseFrom(envelopeBytes);
                     
@@ -2511,19 +2761,20 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
                     
                     // Check if this was a stuck message reassignment
                     if (previousClaim != null && !previousClaim.equals(consumerId)) {
-                        log.warn("Reassigned stuck message from topic '{}': messageId={}, previousClaim={}, newConsumer={}, timeout={}s", 
-                            parent.getResourceName(), messageId, previousClaim, consumerId, claimTimeout);
+                        log.warn("Reassigned stuck message from topic '{}': messageId={}, previousClaim={}, newConsumer={}, claimVersion={}, timeout={}s", 
+                            parent.getResourceName(), messageId, previousClaim, consumerId, claimVersion, claimTimeout);
                         recordError("STUCK_MESSAGE_REASSIGNED", "Message claim timeout expired", 
                             "Topic: " + parent.getResourceName() + ", MessageId: " + messageId + 
-                            ", PreviousClaim: " + previousClaim + ", Timeout: " + claimTimeout + "s");
+                            ", PreviousClaim: " + previousClaim + ", ClaimVersion: " + claimVersion + ", Timeout: " + claimTimeout + "s");
                         parent.recordStuckMessageReassignment();
                     } else {
-                        log.debug("Claimed message from topic '{}': messageId={}, consumerId={}", 
-                            parent.getResourceName(), messageId, consumerId);
+                        log.debug("Claimed message from topic '{}': messageId={}, consumerId={}, claimVersion={}", 
+                            parent.getResourceName(), messageId, consumerId, claimVersion);
                     }
                     
-                    // ACK token is the row ID (used to release claim and insert ACK)
-                    return new ReceivedEnvelope<>(envelope, id);
+                    // ACK token contains row ID and claim version (for stale ACK detection)
+                    AckToken ackToken = new AckToken(id, claimVersion);
+                    return new ReceivedEnvelope<>(envelope, ackToken);
                 }
             }
         } catch (SQLException e) {
@@ -2540,7 +2791,10 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
     }
     
     @Override
-    protected void acknowledgeMessage(Long rowId) {
+    protected void acknowledgeMessage(AckToken token) {
+        long rowId = token.rowId();
+        int claimVersion = token.claimVersion();
+        
         // Note: We already have message_id from tryReadMessage(), but H2TopicReaderDelegate
         // doesn't store it (only ACK token is passed). We need to look it up from rowId.
         // Alternative design: Change ReceivedEnvelope to include message_id, but this breaks
@@ -2577,7 +2831,8 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
                 return;
             }
             
-            // Step 2: INSERT into consumer_group_acks (marks as acknowledged for THIS group only)
+            // Step 2: MERGE into topic_consumer_group_acks (marks as acknowledged for THIS group only)
+            // MERGE is idempotent - handles both new acknowledgments and duplicates gracefully
             // Reuse prepared statement for performance
             try {
                 ackInsertStatement.setString(1, parent.getResourceName());  // topic_name
@@ -2589,39 +2844,44 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
                     parent.getResourceName(), messageId, consumerGroup);
                 
             } catch (SQLException e) {
-                // H2 doesn't support ON DUPLICATE KEY UPDATE, so we might get a constraint violation
-                if (e.getErrorCode() == 23505) {  // Duplicate key - already acknowledged
-                    log.debug("Message already acknowledged in topic '{}': messageId={}, consumerGroup={}", 
-                        parent.getResourceName(), messageId, consumerGroup);
-                    connection.rollback();
-                    connection.setAutoCommit(true);
-                    return;
-                } else {
-                    connection.rollback();
-                    connection.setAutoCommit(true);
-                    log.warn("Failed to acknowledge message in topic '{}': messageId={}, consumerGroup={}", 
-                        parent.getResourceName(), messageId, consumerGroup);
-                    recordError("ACK_FAILED", "Failed to insert into consumer_group_acks", 
-                        "Topic: " + parent.getResourceName() + ", MessageId: " + messageId + ", ConsumerGroup: " + consumerGroup);
-                    return;
-                }
+                connection.rollback();
+                connection.setAutoCommit(true);
+                log.warn("Failed to acknowledge message in topic '{}': messageId={}, consumerGroup={}", 
+                    parent.getResourceName(), messageId, consumerGroup);
+                recordError("ACK_FAILED", "Failed to merge into topic_consumer_group_acks", 
+                    "Topic: " + parent.getResourceName() + ", MessageId: " + messageId + ", ConsumerGroup: " + consumerGroup);
+                return;
             }
             
             // Step 3: Release claim (makes message available for other consumer groups)
+            // CRITICAL: claim_version check prevents stale ACK (message was reassigned after timeout)
             // Reuse prepared statement for performance
             try {
                 ackReleaseStatement.setLong(1, rowId);
-                ackReleaseStatement.executeUpdate();
+                ackReleaseStatement.setInt(2, claimVersion);
+                int rowsUpdated = ackReleaseStatement.executeUpdate();
                 
-                log.debug("Released claim for message in topic '{}': rowId={}", parent.getResourceName(), rowId);
+                // Stale ACK Detection: If rowsUpdated == 0, claim_version mismatched
+                if (rowsUpdated == 0) {
+                    connection.rollback();
+                    connection.setAutoCommit(true);
+                    log.warn("Rejected stale ACK for topic '{}': rowId={}, claimVersion={} (message was reassigned)", 
+                        parent.getResourceName(), rowId, claimVersion);
+                    recordError("STALE_ACK_REJECTED", "Claim version mismatch", 
+                        "Topic: " + parent.getResourceName() + ", RowId: " + rowId + ", ClaimVersion: " + claimVersion);
+                    return;
+                }
+                
+                log.debug("Released claim for message in topic '{}': rowId={}, claimVersion={}", 
+                    parent.getResourceName(), rowId, claimVersion);
                 
             } catch (SQLException e) {
                 connection.rollback();
                 connection.setAutoCommit(true);
-                log.warn("Failed to release claim for message in topic '{}': rowId={}", 
-                    parent.getResourceName(), rowId);
+                log.warn("Failed to release claim for message in topic '{}': rowId={}, claimVersion={}", 
+                    parent.getResourceName(), rowId, claimVersion);
                 recordError("RELEASE_CLAIM_FAILED", "Failed to clear claimed_by", 
-                    "Topic: " + parent.getResourceName() + ", RowId: " + rowId);
+                    "Topic: " + parent.getResourceName() + ", RowId: " + rowId + ", ClaimVersion: " + claimVersion);
                 return;
             }
             
@@ -2642,10 +2902,10 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
             } catch (SQLException rollbackEx) {
                 log.warn("Failed to rollback transaction for topic '{}'", parent.getResourceName());
             }
-            log.warn("Transaction failed for acknowledgment in topic '{}': rowId={}", 
-                parent.getResourceName(), rowId);
+            log.warn("Transaction failed for acknowledgment in topic '{}': rowId={}, claimVersion={}", 
+                parent.getResourceName(), rowId, claimVersion);
             recordError("ACK_TRANSACTION_FAILED", "Transaction rollback", 
-                "Topic: " + parent.getResourceName() + ", RowId: " + rowId);
+                "Topic: " + parent.getResourceName() + ", RowId: " + rowId + ", ClaimVersion: " + claimVersion);
         }
     }
     
@@ -2770,6 +3030,23 @@ evochora {
 @ExtendWith(LogWatchExtension.class)
 class H2TopicResourceTest {
     
+    @AfterEach
+    void cleanup() throws Exception {
+        // Delete all H2 test databases (MUST NOT leave artifacts!)
+        Path testDataDir = Paths.get("./test-data");
+        if (Files.exists(testDataDir)) {
+            Files.walk(testDataDir)
+                .sorted(Comparator.reverseOrder())
+                .forEach(path -> {
+                    try {
+                        Files.delete(path);
+                    } catch (IOException e) {
+                        // Ignore - best effort cleanup
+                    }
+                });
+        }
+    }
+    
     @Test
     @DisplayName("Should write and read message through H2 topic")
     void shouldWriteAndReadMessage() throws Exception {
@@ -2782,7 +3059,7 @@ class H2TopicResourceTest {
             Map.of("consumerGroup", "test-group"));
         
         ITopicWriter<BatchInfo> writer = topic.createWriterDelegate(writerContext);
-        ITopicReader<BatchInfo, Long> reader = topic.createReaderDelegate(readerContext);
+        ITopicReader<BatchInfo, AckToken> reader = topic.createReaderDelegate(readerContext);
         
         BatchInfo message = BatchInfo.newBuilder()
             .setSimulationRunId("20251014-143025-550e8400")
@@ -2794,13 +3071,15 @@ class H2TopicResourceTest {
         
         // When
         writer.send(message);
-        TopicMessage<BatchInfo, Long> received = reader.poll(1, TimeUnit.SECONDS);
+        TopicMessage<BatchInfo, AckToken> received = reader.poll(1, TimeUnit.SECONDS);
         
         // Then
         assertThat(received).isNotNull();
         assertThat(received.payload()).isEqualTo(message);
         assertThat(received.consumerGroup()).isEqualTo("test-group");
-        assertThat(received.acknowledgeToken()).isGreaterThan(0L);
+        assertThat(received.acknowledgeToken()).isNotNull();
+        assertThat(received.acknowledgeToken().rowId()).isGreaterThan(0L);
+        assertThat(received.acknowledgeToken().claimVersion()).isEqualTo(1);
         
         // Cleanup
         reader.ack(received);
@@ -2821,8 +3100,8 @@ class H2TopicResourceTest {
             Map.of("consumerGroup", "group-b"));
         
         ITopicWriter<BatchInfo> writer = topic.createWriterDelegate(writerContext);
-        ITopicReader<BatchInfo, Long> readerA = topic.createReaderDelegate(readerContextA);
-        ITopicReader<BatchInfo, Long> readerB = topic.createReaderDelegate(readerContextB);
+        ITopicReader<BatchInfo, AckToken> readerA = topic.createReaderDelegate(readerContextA);
+        ITopicReader<BatchInfo, AckToken> readerB = topic.createReaderDelegate(readerContextB);
         
         BatchInfo message = BatchInfo.newBuilder()
             .setSimulationRunId("20251014-143025-550e8400")
@@ -2835,8 +3114,8 @@ class H2TopicResourceTest {
         // When
         writer.send(message);
         
-        TopicMessage<BatchInfo, Long> receivedA = readerA.poll(1, TimeUnit.SECONDS);
-        TopicMessage<BatchInfo, Long> receivedB = readerB.poll(1, TimeUnit.SECONDS);
+        TopicMessage<BatchInfo, AckToken> receivedA = readerA.poll(1, TimeUnit.SECONDS);
+        TopicMessage<BatchInfo, AckToken> receivedB = readerB.poll(1, TimeUnit.SECONDS);
         
         // Then - Both groups receive the message
         assertThat(receivedA).isNotNull();
@@ -2882,9 +3161,9 @@ class H2TopicResourceTest {
         ResourceContext readerContext = new ResourceContext("TestService", "topic-read", 
             Map.of("consumerGroup", "indexers"));
         
-        ITopicReader<BatchInfo, Long> reader1 = topic.createReaderDelegate(readerContext);
-        ITopicReader<BatchInfo, Long> reader2 = topic.createReaderDelegate(readerContext);
-        ITopicReader<BatchInfo, Long> reader3 = topic.createReaderDelegate(readerContext);
+        ITopicReader<BatchInfo, AckToken> reader1 = topic.createReaderDelegate(readerContext);
+        ITopicReader<BatchInfo, AckToken> reader2 = topic.createReaderDelegate(readerContext);
+        ITopicReader<BatchInfo, AckToken> reader3 = topic.createReaderDelegate(readerContext);
         
         // When - All readers compete for messages
         Set<Long> processedIds = ConcurrentHashMap.newKeySet();
@@ -2905,10 +3184,10 @@ class H2TopicResourceTest {
         topic.close();
     }
     
-    private void consumeMessages(ITopicReader<BatchInfo, Long> reader, Set<Long> processedIds, CountDownLatch latch) {
+    private void consumeMessages(ITopicReader<BatchInfo, AckToken> reader, Set<Long> processedIds, CountDownLatch latch) {
         try {
             while (latch.getCount() > 0) {
-                TopicMessage<BatchInfo, Long> msg = reader.poll(100, TimeUnit.MILLISECONDS);
+                TopicMessage<BatchInfo, AckToken> msg = reader.poll(100, TimeUnit.MILLISECONDS);
                 if (msg != null) {
                     processedIds.add(msg.payload().getTickStart());
                     reader.ack(msg);
@@ -2939,7 +3218,7 @@ class H2TopicResourceTest {
             Map.of("consumerGroup", "test-group"));
         
         ITopicWriter<BatchInfo> writer = topic.createWriterDelegate(writerContext);
-        ITopicReader<BatchInfo, Long> reader = topic.createReaderDelegate(readerContext);
+        ITopicReader<BatchInfo, AckToken> reader = topic.createReaderDelegate(readerContext);
         
         BatchInfo message = BatchInfo.newBuilder()
             .setSimulationRunId("20251014-143025-550e8400")
@@ -2949,28 +3228,39 @@ class H2TopicResourceTest {
             .setWrittenAtMs(System.currentTimeMillis())
             .build();
         
-        // When - Write message in background thread
-        CompletableFuture<Void> writeFuture = CompletableFuture.runAsync(() -> {
+        // When - Start reader in background thread (blocking on receive)
+        CountDownLatch readerReady = new CountDownLatch(1);
+        AtomicReference<TopicMessage<BatchInfo, AckToken>> receivedRef = new AtomicReference<>();
+        AtomicLong elapsedRef = new AtomicLong(0);
+        
+        CompletableFuture<Void> readerFuture = CompletableFuture.runAsync(() -> {
             try {
-                Thread.sleep(100);  // Small delay to ensure reader is waiting
-                writer.send(message);
+                readerReady.countDown();  // Signal that reader is ready
+                long startTime = System.currentTimeMillis();
+                TopicMessage<BatchInfo, AckToken> received = reader.receive();  // Blocking wait
+                elapsedRef.set(System.currentTimeMillis() - startTime);
+                receivedRef.set(received);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         });
         
-        // Measure time until message received (should be instant via trigger, not 100ms polling)
-        long startTime = System.currentTimeMillis();
-        TopicMessage<BatchInfo, Long> received = reader.receive();  // Blocking wait
-        long elapsed = System.currentTimeMillis() - startTime;
+        // Wait for reader to be ready, then write message
+        await().atMost(1, TimeUnit.SECONDS).until(() -> readerReady.getCount() == 0);
+        long writeTime = System.currentTimeMillis();
+        writer.send(message);
         
-        // Then - Message received almost instantly (not after 100ms polling delay)
+        // Wait for reader to receive message
+        await().atMost(1, TimeUnit.SECONDS).until(() -> receivedRef.get() != null);
+        readerFuture.join();
+        
+        // Then - Message received almost instantly via trigger (not polling)
+        TopicMessage<BatchInfo, AckToken> received = receivedRef.get();
         assertThat(received).isNotNull();
-        assertThat(received.payload().getSimulationId()).isEqualTo(555);
-        assertThat(elapsed).isLessThan(200);  // Should be ~100ms (write delay) + instant notification
+        assertThat(received.payload().getSimulationRunId()).isEqualTo("20251014-143025-550e8400");
+        assertThat(elapsedRef.get()).isLessThan(100);  // Instant notification (no polling delay)
         
         reader.ack(received);
-        writeFuture.join();
         topic.close();
     }
     
@@ -2986,22 +3276,25 @@ class H2TopicResourceTest {
             Map.of("consumerGroup", "test-group"));
         
         ITopicWriter<BatchInfo> writer = topic.createWriterDelegate(writerContext);
-        ITopicReader<BatchInfo, Long> reader = topic.createReaderDelegate(readerContext);
+        ITopicReader<BatchInfo, AckToken> reader = topic.createReaderDelegate(readerContext);
         
         BatchInfo message = BatchInfo.newBuilder()
-            .setSimulationId(789)
-            .setBatchId(123)
+            .setSimulationRunId("test-run-789")
+            .setStorageKey("test-run-789/batch_0000000000_0000000100.pb")
+            .setTickStart(0)
+            .setTickEnd(100)
+            .setWrittenAtMs(System.currentTimeMillis())
             .build();
         
         // When - Message written with google.protobuf.Any
         writer.send(message);
-        TopicMessage<BatchInfo, Long> received = reader.poll(1, TimeUnit.SECONDS);
+        TopicMessage<BatchInfo, AckToken> received = reader.poll(1, TimeUnit.SECONDS);
         
         // Then - Type correctly resolved from type URL
         assertThat(received).isNotNull();
         assertThat(received.payload()).isInstanceOf(BatchInfo.class);
-        assertThat(received.payload().getSimulationId()).isEqualTo(789);
-        assertThat(received.payload().getBatchId()).isEqualTo(123);
+        assertThat(received.payload().getSimulationRunId()).isEqualTo("test-run-789");
+        assertThat(received.payload().getStorageKey()).isEqualTo("test-run-789/batch_0000000000_0000000100.pb");
         
         reader.ack(received);
         topic.close();
@@ -3018,6 +3311,23 @@ class H2TopicResourceTest {
 @ExtendWith(LogWatchExtension.class)
 class H2TopicIntegrationTest {
     
+    @AfterEach
+    void cleanup() throws Exception {
+        // Delete all H2 test databases (MUST NOT leave artifacts!)
+        Path testDataDir = Paths.get("./test-data");
+        if (Files.exists(testDataDir)) {
+            Files.walk(testDataDir)
+                .sorted(Comparator.reverseOrder())
+                .forEach(path -> {
+                    try {
+                        Files.delete(path);
+                    } catch (IOException e) {
+                        // Ignore - best effort cleanup
+                    }
+                });
+        }
+    }
+    
     @Test
     @DisplayName("Should persist messages across topic restarts")
     void shouldPersistMessagesAcrossRestarts() throws Exception {
@@ -3029,8 +3339,11 @@ class H2TopicIntegrationTest {
         ITopicWriter<BatchInfo> writer = topic1.createWriterDelegate(writerContext);
         
         BatchInfo message = BatchInfo.newBuilder()
-            .setSimulationId(999)
-            .setBatchId(111)
+            .setSimulationRunId("test-run-999")
+            .setStorageKey("test-run-999/batch_0000000000_0000000100.pb")
+            .setTickStart(0)
+            .setTickEnd(100)
+            .setWrittenAtMs(System.currentTimeMillis())
             .build();
         
         // When - Write message and close topic
@@ -3041,12 +3354,12 @@ class H2TopicIntegrationTest {
         H2TopicResource<BatchInfo> topic2 = new H2TopicResource<>("test-topic", config);
         ResourceContext readerContext = new ResourceContext("TestService", "topic-read", 
             Map.of("consumerGroup", "test-group"));
-        ITopicReader<BatchInfo, Long> reader = topic2.createReaderDelegate(readerContext);
+        ITopicReader<BatchInfo, AckToken> reader = topic2.createReaderDelegate(readerContext);
         
-        TopicMessage<BatchInfo, Long> received = reader.poll(1, TimeUnit.SECONDS);
+        TopicMessage<BatchInfo, AckToken> received = reader.poll(1, TimeUnit.SECONDS);
         
         assertThat(received).isNotNull();
-        assertThat(received.payload().getSimulationId()).isEqualTo(999);
+        assertThat(received.payload().getSimulationRunId()).isEqualTo("test-run-999");
         
         reader.ack(received);
         topic2.close();
@@ -3064,16 +3377,22 @@ class H2TopicIntegrationTest {
         
         // Write 3 messages
         for (int i = 1; i <= 3; i++) {
-            writer.send(BatchInfo.newBuilder().setSimulationId(i).build());
+            writer.send(BatchInfo.newBuilder()
+                .setSimulationRunId("test-run-" + i)
+                .setStorageKey(String.format("test-run-%d/batch_0000000000_0000000100.pb", i))
+                .setTickStart(0)
+                .setTickEnd(100)
+                .setWrittenAtMs(System.currentTimeMillis())
+                .build());
         }
         
         // Group A processes all messages
         ResourceContext readerContextA = new ResourceContext("TestService", "topic-read", 
             Map.of("consumerGroup", "group-a"));
-        ITopicReader<BatchInfo, Long> readerA = topic.createReaderDelegate(readerContextA);
+        ITopicReader<BatchInfo, AckToken> readerA = topic.createReaderDelegate(readerContextA);
         
         for (int i = 0; i < 3; i++) {
-            TopicMessage<BatchInfo, Long> msg = readerA.poll(1, TimeUnit.SECONDS);
+            TopicMessage<BatchInfo, AckToken> msg = readerA.poll(1, TimeUnit.SECONDS);
             assertThat(msg).isNotNull();
             readerA.ack(msg);
         }
@@ -3081,18 +3400,18 @@ class H2TopicIntegrationTest {
         // When - New consumer group B joins AFTER group A finished
         ResourceContext readerContextB = new ResourceContext("TestService", "topic-read", 
             Map.of("consumerGroup", "group-b"));
-        ITopicReader<BatchInfo, Long> readerB = topic.createReaderDelegate(readerContextB);
+        ITopicReader<BatchInfo, AckToken> readerB = topic.createReaderDelegate(readerContextB);
         
         // Then - Group B can still process all historical messages
-        Set<Long> processedIds = new HashSet<>();
+        Set<String> processedIds = new HashSet<>();
         for (int i = 0; i < 3; i++) {
-            TopicMessage<BatchInfo, Long> msg = readerB.poll(1, TimeUnit.SECONDS);
+            TopicMessage<BatchInfo, AckToken> msg = readerB.poll(1, TimeUnit.SECONDS);
             assertThat(msg).isNotNull();
-            processedIds.add(msg.payload().getSimulationId());
+            processedIds.add(msg.payload().getSimulationRunId());
             readerB.ack(msg);
         }
         
-        assertThat(processedIds).containsExactlyInAnyOrder(1L, 2L, 3L);
+        assertThat(processedIds).containsExactlyInAnyOrder("test-run-1", "test-run-2", "test-run-3");
         
         topic.close();
     }
@@ -3115,14 +3434,20 @@ class H2TopicIntegrationTest {
             Map.of("consumerGroup", "test-group"));
         
         ITopicWriter<BatchInfo> writer = topic.createWriterDelegate(writerContext);
-        ITopicReader<BatchInfo, Long> reader1 = topic.createReaderDelegate(reader1Context);
-        ITopicReader<BatchInfo, Long> reader2 = topic.createReaderDelegate(reader2Context);
+        ITopicReader<BatchInfo, AckToken> reader1 = topic.createReaderDelegate(reader1Context);
+        ITopicReader<BatchInfo, AckToken> reader2 = topic.createReaderDelegate(reader2Context);
         
         // When - Reader1 claims message but NEVER acknowledges it
-        BatchInfo message = BatchInfo.newBuilder().setSimulationId(999).setBatchId(111).build();
+        BatchInfo message = BatchInfo.newBuilder()
+            .setSimulationRunId("20251014-143025-550e8400")
+            .setStorageKey("20251014-143025-550e8400/batch_0000000000_0000000100.pb")
+            .setTickStart(0)
+            .setTickEnd(100)
+            .setWrittenAtMs(System.currentTimeMillis())
+            .build();
         writer.send(message);
         
-        TopicMessage<BatchInfo, Long> claimed = reader1.poll(1, TimeUnit.SECONDS);
+        TopicMessage<BatchInfo, AckToken> claimed = reader1.poll(1, TimeUnit.SECONDS);
         assertThat(claimed).isNotNull();
         // Deliberately DO NOT call reader1.ack(claimed) - simulate consumer crash!
         
@@ -3130,9 +3455,9 @@ class H2TopicIntegrationTest {
         Thread.sleep(2500);
         
         // Then - Reader2 should be able to claim the stuck message
-        TopicMessage<BatchInfo, Long> reassigned = reader2.poll(1, TimeUnit.SECONDS);
+        TopicMessage<BatchInfo, AckToken> reassigned = reader2.poll(1, TimeUnit.SECONDS);
         assertThat(reassigned).isNotNull();
-        assertThat(reassigned.payload().getSimulationId()).isEqualTo(999);
+        assertThat(reassigned.payload()).isEqualTo(message);
         
         // Verify stuck message reassignment metric was incremented
         Map<String, Number> metrics = topic.getMetrics();
@@ -3140,6 +3465,72 @@ class H2TopicIntegrationTest {
         
         // Cleanup
         reader2.ack(reassigned);
+        topic.close();
+    }
+    
+    @Test
+    @DisplayName("Should reject stale ACK after message was reassigned")
+    @ExpectLog(level = ExpectLog.Level.WARN, messagePattern = "Rejected stale ACK.*")
+    void shouldRejectStaleAckAfterReassignment() throws Exception {
+        // Given - Topic with 1-second claim timeout
+        Config config = ConfigFactory.parseString("""
+            dbPath = "./test-data/h2-topic-stale-ack"
+            claimTimeout = 1
+            """);
+        H2TopicResource<BatchInfo> topic = new H2TopicResource<>("test-topic", config);
+        
+        ResourceContext writerContext = new ResourceContext("TestService", "topic-write", Map.of());
+        ResourceContext reader1Context = new ResourceContext("TestService", "topic-read", 
+            Map.of("consumerGroup", "test-group"));
+        ResourceContext reader2Context = new ResourceContext("TestService", "topic-read", 
+            Map.of("consumerGroup", "test-group"));
+        
+        ITopicWriter<BatchInfo> writer = topic.createWriterDelegate(writerContext);
+        ITopicReader<BatchInfo, AckToken> reader1 = topic.createReaderDelegate(reader1Context);
+        ITopicReader<BatchInfo, AckToken> reader2 = topic.createReaderDelegate(reader2Context);
+        
+        // When - Reader1 claims message
+        BatchInfo message = BatchInfo.newBuilder()
+            .setSimulationRunId("20251014-143025-550e8400")
+            .setStorageKey("20251014-143025-550e8400/batch_0000000000_0000000100.pb")
+            .setTickStart(0)
+            .setTickEnd(100)
+            .setWrittenAtMs(System.currentTimeMillis())
+            .build();
+        writer.send(message);
+        
+        TopicMessage<BatchInfo, AckToken> claimed = reader1.poll(1, TimeUnit.SECONDS);
+        assertThat(claimed).isNotNull();
+        assertThat(claimed.acknowledgeToken().claimVersion()).isEqualTo(1);  // First claim
+        
+        // Simulate Reader1 freeze (GC pause) - DO NOT ACK yet
+        // Wait for timeout to expire (message gets reassigned)
+        await().atMost(2, TimeUnit.SECONDS).pollDelay(1500, TimeUnit.MILLISECONDS).until(() -> true);
+        
+        // Reader2 claims the reassigned message
+        TopicMessage<BatchInfo, AckToken> reassigned = reader2.poll(1, TimeUnit.SECONDS);
+        assertThat(reassigned).isNotNull();
+        assertThat(reassigned.acknowledgeToken().claimVersion()).isEqualTo(2);  // Second claim (incremented!)
+        assertThat(reassigned.payload()).isEqualTo(message);
+        
+        // Reader2 successfully ACKs
+        reader2.ack(reassigned);  // This succeeds (claim_version = 2 matches)
+        
+        // Then - Reader1 "wakes up" and tries to ACK with stale token (claim_version = 1)
+        reader1.ack(claimed);  // This should be REJECTED (claim_version mismatch: 1 vs 2)
+        
+        // Verify error was recorded (STALE_ACK_REJECTED)
+        Map<String, Number> metrics = topic.getMetrics();
+        assertThat(metrics.get("error_count")).isGreaterThan(0);
+        
+        // Verify message is not re-readable (already ACKed by reader2)
+        TopicMessage<BatchInfo, AckToken> shouldBeNull = reader1.poll(100, TimeUnit.MILLISECONDS);
+        assertThat(shouldBeNull).isNull();
+        
+        // Verify stuck message reassignment metric was incremented
+        assertThat(metrics.get("stuck_messages_reassigned")).isEqualTo(1L);
+        
+        // Cleanup
         topic.close();
     }
     
@@ -3160,23 +3551,29 @@ class H2TopicIntegrationTest {
             Map.of("consumerGroup", "test-group"));
         
         ITopicWriter<BatchInfo> writer = topic.createWriterDelegate(writerContext);
-        ITopicReader<BatchInfo, Long> reader1 = topic.createReaderDelegate(reader1Context);
-        ITopicReader<BatchInfo, Long> reader2 = topic.createReaderDelegate(reader2Context);
+        ITopicReader<BatchInfo, AckToken> reader1 = topic.createReaderDelegate(reader1Context);
+        ITopicReader<BatchInfo, AckToken> reader2 = topic.createReaderDelegate(reader2Context);
         
         // When - Reader1 claims message but never acknowledges
-        BatchInfo message = BatchInfo.newBuilder().setSimulationId(999).setBatchId(111).build();
+        BatchInfo message = BatchInfo.newBuilder()
+            .setSimulationRunId("test-run-999")
+            .setStorageKey("test-run-999/batch_0000000000_0000000100.pb")
+            .setTickStart(0)
+            .setTickEnd(100)
+            .setWrittenAtMs(System.currentTimeMillis())
+            .build();
         writer.send(message);
         
-        TopicMessage<BatchInfo, Long> claimed = reader1.poll(1, TimeUnit.SECONDS);
+        TopicMessage<BatchInfo, AckToken> claimed = reader1.poll(1, TimeUnit.SECONDS);
         assertThat(claimed).isNotNull();
         // DO NOT ack - simulate crash
         
-        // Wait (even longer than if timeout was enabled)
-        Thread.sleep(5000);
-        
         // Then - Reader2 should NOT be able to claim (timeout disabled)
-        TopicMessage<BatchInfo, Long> notReassigned = reader2.poll(1, TimeUnit.SECONDS);
-        assertThat(notReassigned).isNull();  // No message available!
+        // Use Awaitility to verify message stays claimed (no reassignment)
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+            TopicMessage<BatchInfo, AckToken> notReassigned = reader2.poll(100, TimeUnit.MILLISECONDS);
+            assertThat(notReassigned).isNull();
+        });  // No message available!
         
         // Verify NO stuck message reassignment occurred
         Map<String, Number> metrics = topic.getMetrics();
@@ -3241,8 +3638,9 @@ log.info("Message:\n  ID: {}\n  Group: {}", id, group);  // DON'T DO THIS
 - `messages_published` - Total messages written across all writers
 - `messages_received` - Total messages read across all readers
 - `messages_acknowledged` - Total messages acknowledged
-- `write_throughput_per_minute` - SlidingWindowCounter (60s)
-- `read_throughput_per_minute` - SlidingWindowCounter (60s)
+- `messages_written_per_sec` - Average rate (SlidingWindowCounter with 60s window)
+- `messages_read_per_sec` - Average rate (SlidingWindowCounter with 60s window)
+- `stuck_messages_reassigned` - Count of messages reassigned after claim timeout
 
 ### 14.2 Delegate Metrics (per service)
 
@@ -3269,7 +3667,10 @@ log.info("Message:\n  ID: {}\n  Group: {}", id, group);  // DON'T DO THIS
    - Eliminates SQL parsing overhead on every operation (~30-50% performance gain)
    - Connection and statements held for delegate lifetime, returned to pool on close
 
-3. **Atomic Claim-Based Delivery:** `UPDATE...RETURNING` prevents race conditions (single SQL statement!)
+3. **Atomic Claim-Based Delivery with Version Check:** 
+   - `UPDATE...RETURNING` with `claim_version` increment prevents race conditions
+   - Version check on ACK ensures at-most-once semantics within consumer group
+   - Stale ACKs (after reassignment) are rejected with WARN log and error recording
 
 4. **Stuck Message Reassignment:** Configurable `claimTimeout` automatically reassigns stuck messages (idempotency required!)
 
@@ -3283,7 +3684,7 @@ log.info("Message:\n  ID: {}\n  Group: {}", id, group);  // DON'T DO THIS
 
 9. **Direct SQL:** No internal queue or writer thread needed (H2 MVCC + HikariCP handle concurrency)
 
-10. **Junction Table:** Proper consumer group isolation via `consumer_group_acks` table
+10. **Junction Table:** Proper consumer group isolation via `topic_consumer_group_acks` table
 
 11. **Competing Consumers:** `FOR UPDATE SKIP LOCKED` for automatic load balancing
 
@@ -3296,17 +3697,21 @@ log.info("Message:\n  ID: {}\n  Group: {}", id, group);  // DON'T DO THIS
 15. **Single Validation Point:** Consumer group validation occurs only in `AbstractTopicDelegateReader` constructor to avoid DRY violation and ensure consistent error messages across all implementations (H2, Chronicle, Kafka)
 
 16. **Transaction Management:**
-   - **Writer:** Auto-commit mode (single INSERT is atomic, no explicit transaction needed)
+   - **Writer:** Auto-commit mode explicitly set in constructor (defensive programming, no HikariCP default assumptions)
+   - **Single INSERT is atomic:** No explicit transaction needed (ACID guarantee)
    - **Reader ACK:** Explicit transaction (3 SQL statements must be atomic: SELECT + INSERT + UPDATE)
    - Ensures all-or-nothing semantics for acknowledgment (no partial ACKs)
 
-17. **Centralized Tables:**
-   - **Single `topic_messages` table** for all topics (no per-topic tables)
-   - **Single `consumer_group_acks` table** for all topics and consumer groups
-   - **`topic_name` column** provides logical partitioning within shared tables
+17. **Shared Table Structure per Run (Not Cross-Run Centralization):**
+   - **Per-run schema isolation:** Each simulation run has its own schema (e.g., `SIM_20251006_UUID`)
+   - **Within each run's schema:**
+     - **Single `topic_messages` table** for all topics in that run (no per-topic tables)
+     - **Single `topic_consumer_group_acks` table** for all topics and consumer groups in that run
+   - **`topic_name` column** provides logical partitioning within each run's tables
    - **Composite indexes** include `topic_name` for partition-like performance
-   - **Unlimited scalability:** Add topics without schema changes or new tables
-   - **Shared trigger:** Single H2 trigger routes notifications by `topic_name`
+   - **Unlimited topics per run:** Add topics without schema changes or new tables
+   - **Shared trigger per run:** Single H2 trigger routes notifications by `topic_name`
+   - **Data isolation:** Run 1's messages are in `SIM_RUN1.topic_messages`, Run 2's in `SIM_RUN2.topic_messages` - completely separate!
 
 18. **Schema Management (Simulation Run Isolation):**
    - **`ISimulationRunAwareTopic` interface:** Topic-specific interface for run-aware resources
@@ -3317,14 +3722,33 @@ log.info("Message:\n  ID: {}\n  Group: {}", id, group);  // DON'T DO THIS
    - **Delegate lifecycle:** Schema set once during `setSimulationRun()`, before any read/write operations
    - **Consistent with H2Database:** Same schema naming and management logic across all H2 resources
 
+19. **Resource Management (AutoCloseable Delegates):**
+   - **Hybrid Pattern:** Delegates implement `AutoCloseable` to support both long-lived and try-with-resources patterns
+   - **Long-lived (Recommended for Services):**
+     - Create delegate once, use many times, close manually
+     - Connection and PreparedStatements cached for delegate lifetime
+     - Best performance: ~30-50% faster than connection-per-operation
+     - Use case: PersistenceService, IndexerServices (continuous operation)
+   - **Try-with-resources (Recommended for One-off Operations):**
+     - Auto-cleanup per operation, no manual close() needed
+     - Best safety: No connection leaks, even on exceptions
+     - Performance overhead: ~1-2ms per operation (connection acquisition)
+     - Use case: CLI tools, admin scripts, testing
+   - **Performance Context:**
+     - Topic message processing: ~0.5ms (0.1% of total batch processing time)
+     - Even with 10x overhead (5ms), still negligible compared to storage I/O (~100ms) and DB inserts (~500ms)
+     - Long-lived pattern recommended for services, but overhead is acceptable for safety-critical scenarios
+
 ### 15.2 Performance Optimizations
 
 **Query Optimization:**
-- **LEFT JOIN vs NOT IN:** LEFT JOIN allows index usage on `consumer_group_acks.message_id`
-- **Composite Index:** `idx_claim_status (claimed_by, claimed_at)` enables efficient OR-condition filtering
-- **Partial Indexes:** 
-  - `idx_unclaimed` for fast unclaimed message lookup
-  - `idx_claimed_at` for stuck message timeout checks
+- **LEFT JOIN vs NOT IN:** LEFT JOIN allows index usage on `topic_consumer_group_acks.message_id`
+- **Composite Indexes (H2-Compatible):**
+  - `idx_topic_unclaimed (topic_name, claimed_by, id)` - Fast unclaimed message lookup
+  - `idx_topic_claimed (topic_name, claimed_by, claimed_at)` - Stuck message timeout checks
+  - `idx_topic_claim_status (topic_name, claimed_by, claimed_at)` - OR-condition filtering
+  - **Note:** H2 does NOT support partial indexes with `WHERE` clauses (PostgreSQL-only feature)
+  - **Solution:** Include `claimed_by` as first indexed column - H2 optimizer efficiently uses these for `IS NULL` / `IS NOT NULL` predicates
 
 **Performance Characteristics:**
 - **Read Query:** O(log n) with indexes (was O(n) with NOT IN full table scan)
@@ -3370,7 +3794,7 @@ To switch from H2 to Kafka/SQS:
 - [ ] **Transaction Management:** Writer uses auto-commit mode (single INSERT is atomic)
 - [ ] **Transaction Management:** Reader ACK uses explicit transaction (SELECT + INSERT + UPDATE atomic)
 - [ ] **Transaction Rollback:** ACK failures trigger rollback and restore auto-commit mode
-- [ ] H2TopicResource initializes `topic_messages` (with claimed_by/claimed_at) and `consumer_group_acks` tables correctly
+- [ ] H2TopicResource initializes `topic_messages` (with claimed_by/claimed_at) and `topic_consumer_group_acks` tables correctly
 - [ ] **Performance indexes created:** `idx_claimed_at`, `idx_claim_status` (composite), `idx_unclaimed`
 - [ ] **LEFT JOIN query:** Reader uses LEFT JOIN instead of NOT IN for better performance
 - [ ] H2 trigger created and registered correctly for event-driven notifications
@@ -3388,7 +3812,7 @@ To switch from H2 to Kafka/SQS:
 - [ ] Consumer groups receive messages independently (pub/sub isolation test)
 - [ ] Multiple consumers in same group compete correctly (competing consumers test)
 - [ ] `FOR UPDATE SKIP LOCKED` distributes load automatically
-- [ ] Acknowledgment inserts into `consumer_group_acks` table (not DELETE from messages)
+- [ ] Acknowledgment inserts into `topic_consumer_group_acks` table (not DELETE from messages)
 - [ ] Messages remain in database after acknowledgment (permanent storage test)
 - [ ] New consumer groups can process historical messages (replay test)
 - [ ] Messages persist across topic restarts (persistence test)
@@ -3493,6 +3917,610 @@ dependencies {
 - ⚠️ **Edge Cases:** Notification might not yield message (competing consumer took it) → Retry logic handles this
 
 **Verdict:** The benefits far outweigh the minimal overhead. Event-driven architecture is the correct choice for H2TopicResource.
+
+---
+
+## 20. Implementation Plan
+
+### 20.1 Overview
+
+**Strategy:** Bottom-Up + Test-First Development
+
+**Principles:**
+1. ✅ Compilable after every step - No broken builds
+2. ✅ Testable as early as possible - Unit tests before integration tests
+3. ✅ Incremental - Small, verifiable steps
+4. ✅ Independently executable - Each phase can be tested in isolation
+
+**Estimated Time:** 1-2 days (with comprehensive tests)
+
+---
+
+### 20.2 Phase 1: Foundation (Interfaces & Core Types)
+
+**Goal:** Compilable skeleton without logic
+
+#### Step 1.1: ISimulationRunAwareTopic Interface
+```bash
+./gradlew compileJava
+```
+
+**Files:**
+- Create: `api/resources/topics/ISimulationRunAwareTopic.java`
+
+**Verification:**
+- ✅ Compiles successfully
+
+---
+
+#### Step 1.2: ITopicWriter & ITopicReader Interfaces
+```bash
+./gradlew compileJava
+```
+
+**Files:**
+- Create: `api/resources/topics/ITopicWriter.java`
+- Create: `api/resources/topics/ITopicReader.java`
+- Both extend `ISimulationRunAwareTopic + AutoCloseable`
+
+**Verification:**
+- ✅ Compiles successfully
+
+---
+
+#### Step 1.3: TopicMessage Value Class
+```bash
+./gradlew compileJava
+```
+
+**Files:**
+- Create: `api/resources/topics/TopicMessage.java`
+- With all getters (including JavaDoc!)
+
+**Verification:**
+- ✅ Compiles successfully
+
+---
+
+#### Step 1.4: Protobuf Contracts
+```bash
+./gradlew generateProto compileJava
+```
+
+**Files:**
+- Extend: `notification_contracts.proto`
+- Add: `TopicEnvelope`, `BatchInfo`, `MetadataInfo`
+
+**Verification:**
+- ✅ Protobuf generated + compiles
+
+**✅ Checkpoint 1:** All interfaces + value classes compile
+
+---
+
+### 20.3 Phase 2: Abstract Base Classes (Template Methods)
+
+**Goal:** Reusable logic without backend specifics
+
+#### Step 2.1: ReceivedEnvelope Record
+```bash
+./gradlew compileJava
+```
+
+**Files:**
+- Create: `resources/topics/ReceivedEnvelope.java`
+- Simple `record ReceivedEnvelope<ACK>(TopicEnvelope envelope, ACK ackToken)`
+
+**Verification:**
+- ✅ Compiles
+
+---
+
+#### Step 2.2: AbstractTopicResource (Skeleton)
+```bash
+./gradlew compileJava
+```
+
+**Files:**
+- Create: `resources/topics/AbstractTopicResource.java`
+- Fields + constructor + abstract methods ONLY
+- NO implementation yet
+
+**Verification:**
+- ✅ Compiles (abstract class)
+
+---
+
+#### Step 2.3: AbstractTopicDelegate (Skeleton)
+```bash
+./gradlew compileJava
+```
+
+**Files:**
+- Create: `resources/topics/AbstractTopicDelegate.java`
+- Constructor + `getWrappedResource()` only
+
+**Verification:**
+- ✅ Compiles
+
+---
+
+#### Step 2.4: AbstractTopicDelegateWriter (Template Method)
+```bash
+./gradlew compileJava
+```
+
+**Files:**
+- Create: `resources/topics/AbstractTopicDelegateWriter.java`
+- Implement: `send()` → `wrapMessage()` → `sendEnvelope()`
+- `sendEnvelope()` = abstract
+
+**Verification:**
+- ✅ Compiles
+
+---
+
+#### Step 2.5: AbstractTopicDelegateReader (Template Method)
+```bash
+./gradlew compileJava
+```
+
+**Files:**
+- Create: `resources/topics/AbstractTopicDelegateReader.java`
+- Implement: `receive()` / `poll()` / `ack()`
+- Template methods: `receiveEnvelope()`, `acknowledgeMessage()` = abstract
+- `unwrapEnvelope()` with dynamic type resolution
+
+**Verification:**
+- ✅ Compiles
+
+**✅ Checkpoint 2:** All abstract classes compile + template methods defined
+
+---
+
+### 20.4 Phase 3: H2 Schema Utilities
+
+**Goal:** Schema management independently testable
+
+#### Step 3.1: H2SchemaUtil (Unit Testable!)
+```bash
+./gradlew test --tests '*H2SchemaUtilTest'
+```
+
+**Files:**
+- Create: `utils/H2SchemaUtil.java`
+  - `toSchemaName()`
+  - `createSchemaIfNotExists()`
+  - `setSchema()`
+- Create: `H2SchemaUtilTest.java` (in-memory H2)
+
+**Tests:**
+- `shouldSanitizeSchemaName()`
+- `shouldCreateSchemaIfNotExists()`
+- `shouldSwitchSchema()`
+
+**Verification:**
+- ✅ All tests pass (< 0.2s each)
+
+**✅ Checkpoint 3:** Schema utils tested with in-memory H2
+
+---
+
+### 20.5 Phase 4: H2TopicResource (Core Infrastructure)
+
+**Goal:** Resource without delegates, but with trigger
+
+#### Step 4.1: H2TopicResource (Minimal)
+```bash
+./gradlew compileJava
+```
+
+**Files:**
+- Create: `resources/topics/H2TopicResource.java`
+- Constructor + HikariCP setup
+- `createTables()` implementation
+- NO delegates yet
+
+**Verification:**
+- ✅ Compiles
+
+---
+
+#### Step 4.2: H2InsertTrigger (Event-Driven)
+```bash
+./gradlew compileJava
+```
+
+**Files:**
+- Create: `resources/topics/H2InsertTrigger.java`
+- Trigger with `notificationQueues` registry
+- `registerNotificationQueue()` / `deregisterNotificationQueue()`
+
+**Verification:**
+- ✅ Compiles
+
+---
+
+#### Step 4.3: H2TopicResource Tests (Unit)
+```bash
+./gradlew test --tests '*H2TopicResourceTest.shouldInitializeDatabase'
+```
+
+**Files:**
+- Create: `H2TopicResourceTest.java`
+
+**Tests:**
+- `shouldInitializeDatabase()`
+  - Tables exist
+  - Indexes exist
+  - Trigger registered
+
+**Verification:**
+- ✅ Setup works (no messages yet!)
+
+**✅ Checkpoint 4:** H2 database + trigger works (without messages)
+
+---
+
+### 20.6 Phase 5: H2 Writer (Send Messages)
+
+**Goal:** Write messages + verify
+
+#### Step 5.1: H2TopicWriterDelegate
+```bash
+./gradlew compileJava
+```
+
+**Files:**
+- Create: `resources/topics/H2TopicWriterDelegate.java`
+- Implement: `sendEnvelope()`
+- With PreparedStatement pooling
+
+**Verification:**
+- ✅ Compiles
+
+---
+
+#### Step 5.2: H2TopicResource.createWriterDelegate()
+```bash
+./gradlew compileJava
+```
+
+**Files:**
+- Implement factory method in `H2TopicResource.java`
+
+**Verification:**
+- ✅ Compiles
+
+---
+
+#### Step 5.3: Writer Tests (Unit)
+```bash
+./gradlew test --tests '*H2TopicResourceTest.shouldWriteMessage'
+```
+
+**Tests:**
+- `shouldWriteMessage()`
+  - Message in DB
+  - Metrics updated
+  - Trigger fired (queue not empty)
+
+**Verification:**
+- ✅ Test passes
+
+**✅ Checkpoint 5:** Writer works, messages visible in DB
+
+---
+
+### 20.7 Phase 6: H2 Reader (Read Messages)
+
+**Goal:** Read messages without ACK
+
+#### Step 6.1: H2TopicReaderDelegate (Claim Only)
+```bash
+./gradlew compileJava
+```
+
+**Files:**
+- Create: `resources/topics/H2TopicReaderDelegate.java`
+- Implement: `receiveEnvelope()` (with claim)
+- `acknowledgeMessage()` = empty stub (TODO)
+
+**Verification:**
+- ✅ Compiles
+
+---
+
+#### Step 6.2: H2TopicResource.createReaderDelegate()
+```bash
+./gradlew compileJava
+```
+
+**Files:**
+- Implement factory method in `H2TopicResource.java`
+
+**Verification:**
+- ✅ Compiles
+
+---
+
+#### Step 6.3: Reader Tests (Claim Only)
+```bash
+./gradlew test --tests '*H2TopicResourceTest.shouldReadMessage'
+```
+
+**Tests:**
+- `shouldReadMessage()`
+  - Message readable
+  - `claimed_by` set
+  - `claim_version` = 1
+
+**Verification:**
+- ✅ Test passes
+
+**✅ Checkpoint 6:** Reader can claim messages (but not ACK yet)
+
+---
+
+### 20.8 Phase 7: Acknowledgment (Complete Workflow)
+
+**Goal:** Full message lifecycle
+
+#### Step 7.1: H2TopicReaderDelegate.acknowledgeMessage()
+```bash
+./gradlew compileJava
+```
+
+**Files:**
+- Implement full ACK (3 SQL statements) in `H2TopicReaderDelegate.java`
+- With transaction management
+- With stale ACK detection
+
+**Verification:**
+- ✅ Compiles
+
+---
+
+#### Step 7.2: ACK Tests (Unit)
+```bash
+./gradlew test --tests '*H2TopicResourceTest.shouldAcknowledgeMessage'
+```
+
+**Tests:**
+- `shouldAcknowledgeMessage()`
+  - Message in `topic_consumer_group_acks`
+  - `claimed_by` = NULL (released)
+  - Metrics updated
+
+**Verification:**
+- ✅ Test passes
+
+---
+
+#### Step 7.3: End-to-End Test
+```bash
+./gradlew test --tests '*H2TopicResourceTest.shouldWriteAndReadMessage'
+```
+
+**Tests:**
+- `shouldWriteAndReadMessage()`
+  - Write → Read → ACK → No longer readable
+
+**Verification:**
+- ✅ Full lifecycle works
+
+**✅ Checkpoint 7:** Complete message lifecycle functional
+
+---
+
+### 20.9 Phase 8: Consumer Groups (Pub/Sub)
+
+**Goal:** Multiple consumer groups independently
+
+#### Step 8.1: Consumer Group Tests
+```bash
+./gradlew test --tests '*H2TopicResourceTest.shouldSupportMultipleConsumerGroups'
+```
+
+**Tests:**
+- Both groups receive message
+- ACK from group A doesn't affect group B
+
+**Verification:**
+- ✅ Test passes
+
+**✅ Checkpoint 8:** Consumer groups isolated
+
+---
+
+### 20.10 Phase 9: Competing Consumers (Load Balancing)
+
+**Goal:** `FOR UPDATE SKIP LOCKED` works
+
+#### Step 9.1: Competing Consumer Tests
+```bash
+./gradlew test --tests '*H2TopicResourceTest.shouldHandleCompetingConsumers'
+```
+
+**Tests:**
+- 10 messages, 3 readers, all messages exactly once
+
+**Verification:**
+- ✅ Test passes
+
+**✅ Checkpoint 9:** Load balancing functional
+
+---
+
+### 20.11 Phase 10: Stuck Message Reassignment
+
+**Goal:** Timeout + claim version
+
+#### Step 10.1: Reassignment Tests
+```bash
+./gradlew test --tests '*H2TopicResourceTest.shouldReassignStuckMessages'
+```
+
+**Tests:**
+- Message reassignable after timeout
+- Metric `stuck_messages_reassigned` incremented
+
+**Verification:**
+- ✅ Test passes
+
+---
+
+#### Step 10.2: Stale ACK Tests
+```bash
+./gradlew test --tests '*H2TopicResourceTest.shouldRejectStaleAckAfterReassignment'
+```
+
+**Tests:**
+- Old consumer cannot ACK
+- `STALE_ACK_REJECTED` error
+
+**Verification:**
+- ✅ Test passes
+
+**✅ Checkpoint 10:** Stuck message handling works
+
+---
+
+### 20.12 Phase 11: Schema Isolation (Simulation Runs)
+
+**Goal:** Each run has own schema
+
+#### Step 11.1: Schema Tests
+```bash
+./gradlew test --tests '*H2TopicResourceTest.shouldIsolateSimulationRuns'
+```
+
+**Tests:**
+- Run1 sees only own messages
+- Trigger registry per schema
+
+**Verification:**
+- ✅ Test passes
+
+**✅ Checkpoint 11:** Run isolation functional
+
+---
+
+### 20.13 Phase 12: Integration Tests
+
+**Goal:** Persistence, historical replay
+
+#### Step 12.1: Persistence Test
+```bash
+./gradlew test --tests '*H2TopicIntegrationTest.shouldPersistMessagesAcrossRestarts'
+```
+
+**Tests:**
+- Write → Close → Reopen → Read
+
+**Verification:**
+- ✅ Test passes
+
+---
+
+#### Step 12.2: Historical Replay Test
+```bash
+./gradlew test --tests '*H2TopicIntegrationTest.shouldAllowNewConsumerGroupsToProcessHistoricalMessages'
+```
+
+**Tests:**
+- Group A processes all
+- Group B joins later, still processes all
+
+**Verification:**
+- ✅ Test passes
+
+**✅ Checkpoint 12:** All integration tests pass
+
+---
+
+### 20.14 Phase 13: Performance & Cleanup
+
+#### Step 13.1: Performance Tests
+```bash
+./gradlew test --tests '*H2TopicPerformanceTest'
+```
+
+**Tests:**
+- 1000 messages write < 1s
+- Competing consumers load balance
+
+**Verification:**
+- ✅ Performance acceptable
+
+---
+
+#### Step 13.2: Final Review
+```bash
+./gradlew clean build
+```
+
+**Verification:**
+- ✅ All tests pass
+- ✅ No warnings
+- ✅ JaCoCo coverage > 60%
+
+**✅ Final Checkpoint:** Production-ready!
+
+---
+
+### 20.15 Test Execution Order (Fast Feedback)
+
+```bash
+# Phase 1-4: Foundation (fast, no I/O)
+./gradlew test --tests '*H2SchemaUtilTest'
+
+# Phase 5-7: Core Workflow
+./gradlew test --tests '*H2TopicResourceTest.shouldWriteMessage'
+./gradlew test --tests '*H2TopicResourceTest.shouldReadMessage'
+./gradlew test --tests '*H2TopicResourceTest.shouldWriteAndReadMessage'
+
+# Phase 8-11: Advanced Features
+./gradlew test --tests '*H2TopicResourceTest.shouldSupport*'
+./gradlew test --tests '*H2TopicResourceTest.shouldHandle*'
+./gradlew test --tests '*H2TopicResourceTest.shouldReassign*'
+./gradlew test --tests '*H2TopicResourceTest.shouldReject*'
+
+# Phase 12: Integration
+./gradlew test --tests '*H2TopicIntegrationTest'
+
+# Final: Everything
+./gradlew clean build
+```
+
+---
+
+### 20.16 Benefits of This Strategy
+
+1. ✅ **Compiles after every step** - No "broken build" state
+2. ✅ **Unit tests first** - Fast feedback (< 0.2s per test)
+3. ✅ **Integration tests later** - Only when unit tests pass
+4. ✅ **Incremental** - Each phase builds on previous
+5. ✅ **Independent** - Parallel development possible (e.g., Writer + Reader)
+6. ✅ **Early detection** - Errors caught immediately, not at the end
+
+---
+
+### 20.17 Parallel Development Opportunities
+
+**Team Size 2:**
+- Developer A: Phases 1-4 (Foundation + Infrastructure)
+- Developer B: Phase 3 (H2SchemaUtil) in parallel
+
+**Team Size 3:**
+- Developer A: Phases 1-2 (Interfaces + Abstract Classes)
+- Developer B: Phases 3-4 (Schema Utils + H2TopicResource)
+- Developer C: Write tests ahead of implementation
+
+**Solo Development:**
+- Follow phases sequentially
+- Frequent commits after each checkpoint
+- Run tests continuously
 
 ---
 

@@ -1187,8 +1187,11 @@ public abstract class AbstractTopicResource<T extends Message, ACK> extends Abst
                 
                 // Extract the fully qualified class name from the type URL
                 // Format: "type.googleapis.com/org.evochora.datapipeline.api.contracts.BatchInfo"
+                // Extract everything after the FIRST '/' to get full package.ClassName
                 String typeUrl = anyPayload.getTypeUrl();
-                String className = typeUrl.substring(typeUrl.lastIndexOf('/') + 1);
+                String className = typeUrl.contains("/") 
+                    ? typeUrl.substring(typeUrl.indexOf('/') + 1)  // Full path after first '/'
+                    : typeUrl;  // Fallback if no domain prefix
                 
                 // Dynamically load the message class
                 @SuppressWarnings("unchecked")
