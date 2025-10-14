@@ -5,6 +5,7 @@ import com.typesafe.config.Config;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.datapipeline.utils.PathExpansion;
 import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
@@ -102,72 +103,25 @@ public class H2Database extends AbstractDatabaseResource {
      * Converts simulation run ID to H2-compliant schema name.
      * <p>
      * <strong>Visibility:</strong> Package-private to allow testing while preventing external usage.
-     * SQL schema names are internal implementation details.
      * <p>
-     * Sanitization rules:
-     * <ul>
-     *   <li>Prepends "sim_" prefix</li>
-     *   <li>Replaces all non-alphanumeric characters with underscore</li>
-     *   <li>Converts to uppercase (H2 stores identifiers in uppercase)</li>
-     *   <li>Validates length (H2 identifier limit: 256 characters)</li>
-     * </ul>
-     * <p>
-     * Example:
-     * <pre>
-     * 20251006143025-550e8400-e29b-41d4-a716-446655440000
-     * → SIM_20251006143025_550E8400_E29B_41D4_A716_446655440000
-     * </pre>
+     * <strong>Implementation:</strong> Delegates to {@link H2SchemaUtil#toSchemaName(String)}.
      *
      * @param simulationRunId Raw simulation run ID
      * @return Sanitized schema name in uppercase
      * @throws IllegalArgumentException if runId is null, empty, or results in name exceeding 256 chars
      */
     String toSchemaName(String simulationRunId) {
-        if (simulationRunId == null || simulationRunId.isEmpty()) {
-            throw new IllegalArgumentException("Simulation run ID cannot be null or empty");
-        }
-        
-        // Sanitize: replace all non-alphanumeric characters with underscore
-        String sanitized = "sim_" + simulationRunId.replaceAll("[^a-zA-Z0-9]", "_");
-        
-        // Validate length (H2 identifier limit is 256 chars)
-        if (sanitized.length() > 256) {
-            throw new IllegalArgumentException(
-                "Schema name too long (" + sanitized.length() + " chars, max 256). " +
-                "RunId: " + simulationRunId.substring(0, Math.min(50, simulationRunId.length())) + "..."
-            );
-        }
-        
-        // H2 is case-insensitive and stores identifiers in uppercase
-        // Return uppercase for consistency with H2's internal representation
-        return sanitized.toUpperCase();
+        return H2SchemaUtil.toSchemaName(simulationRunId);
     }
 
     @Override
     protected void doSetSchema(Object connection, String runId) throws Exception {
-        String schemaName = toSchemaName(runId);
-        ((Connection) connection).createStatement().execute("SET SCHEMA \"" + schemaName + "\"");
+        H2SchemaUtil.setSchema((Connection) connection, runId);
     }
 
     @Override
     protected void doCreateSchema(Object connection, String runId) throws Exception {
-        Connection conn = (Connection) connection;
-        String schemaName = toSchemaName(runId);
-        
-        try {
-            conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS \"" + schemaName + "\"");
-            conn.commit();
-        } catch (SQLException e) {
-            // Workaround for H2 bug in version 2.2.224:
-            // "CREATE SCHEMA IF NOT EXISTS" can fail with "object already exists"
-            // when multiple connections create the same schema concurrently
-            if (e.getMessage() != null && e.getMessage().contains("object already exists")) {
-                // Expected in parallel scenarios - schema created by another connection
-                conn.rollback();  // Clean up failed transaction
-            } else {
-                throw e;  // Unexpected SQL error
-            }
-        }
+        H2SchemaUtil.createSchemaIfNotExists((Connection) connection, runId);
     }
 
     @Override
