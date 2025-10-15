@@ -5,12 +5,12 @@
 **Depends On:** Phase 2.4 (Metadata Indexer)
 
 **Recent Changes:**
-- ✅ **Shared Table Structure per Run:** Each simulation run has its own schema with `topic_messages` and `topic_consumer_group_acks` tables (no per-topic tables!)
+- ✅ **Shared Table Structure per Run:** Each simulation run has its own schema with `topic_messages` and `topic_consumer_group` tables (no per-topic tables!)
 - ✅ **Unlimited Topics per Run:** Add topics without creating new tables - `topic_name` column provides logical partitioning within each run's schema
 - ✅ **Shared Trigger:** Single H2 trigger routes notifications by `topic_name` to correct queue
 - ✅ **Composite Indexes:** All indexes include `topic_name` for partition-like performance
 - ✅ **HikariCP Integration:** Added connection pooling following `H2Database` pattern
-- ✅ **PreparedStatement Pooling:** Delegates prepare SQL statements once for ~30-50% performance gain
+- ✅ **PreparedStatement Pooling:** Delegates prepare SQL statements once (lazy initialization after schema switch)
 - ✅ **System-wide Connection Limits:** `maxPoolSize` config enforces resource limits across all topics
 - ✅ **HikariCP Metrics:** Connection pool metrics exposed via MXBean (active/idle/total/awaiting)
 - ✅ **Delegate Lifecycle:** Connections and PreparedStatements held for delegate lifetime, returned to pool on close
@@ -19,15 +19,18 @@
 - ✅ **Protobuf Contracts:** Fixed BatchInfo and MetadataInfo to match Chronicle spec (simulation_run_id, storage_key, written_at_ms)
 - ✅ **Schema Management:** Added `ISimulationRunAwareTopic` interface and `H2SchemaUtil` for per-run schema isolation
 - ✅ **H2SchemaUtil:** Centralized H2 schema operations (name sanitization, creation with bug workaround, switching)
-- ✅ **H2-Compatible Indexes:** Fixed partial index syntax (H2 doesn't support `WHERE` clauses) - now using composite indexes with `claimed_by` column
-- ✅ **MERGE for ACK:** Replaced MySQL `ON DUPLICATE KEY UPDATE` with H2's `MERGE` statement - idempotent, no exception handling needed
-- ✅ **Table Naming:** Renamed `consumer_group_acks` to `topic_consumer_group_acks` for consistent `topic_` prefix (avoids collisions with indexer tables)
+- ✅ **H2-Compatible Indexes:** Fixed partial index syntax (H2 doesn't support `WHERE` clauses) - now using composite indexes
+- ✅ **Table Naming:** Renamed `consumer_group_acks` to `topic_consumer_group` for consistent `topic_` prefix (avoids collisions with indexer tables)
 - ✅ **Transaction Mode Management:** Fixed schema setup to save/restore autoCommit mode - prevents conflicts between H2SchemaUtil (manual) and delegate operations (auto/explicit)
 - ✅ **Terminology Clarification:** Corrected "Centralized Tables" → "Shared Table Structure per Run" - tables are per-schema (per-run), NOT global across all runs
 - ✅ **Lazy Trigger Registration:** Fixed run isolation bug - trigger now registered with schema-qualified key (`topicName:schemaName`) to prevent cross-run notification leakage
 - ✅ **AutoCloseable Delegates:** Topic delegates implement `AutoCloseable` for flexible resource management - supports both long-lived (performance) and try-with-resources (safety) patterns
-- ✅ **Claim Version (Stale ACK Prevention):** Added `claim_version` column to prevent duplicate processing after stuck message reassignment - ensures at-most-once semantics within consumer group
+- ✅ **Claim Version (Stale ACK Prevention):** Added `claim_version` column in `topic_consumer_group` to prevent duplicate processing after stuck message reassignment - ensures at-most-once semantics within consumer group
 - ✅ **Explicit Auto-Commit:** Writer delegate explicitly sets `autoCommit=true` in constructor for defensive programming (no assumptions about HikariCP defaults)
+- ✅ **Atomic Claim Algorithm:** Replaced `atomic INSERT/UPDATE` with `INSERT`/conditional `UPDATE` loop over candidates (up to 10) - prevents Pub/Sub blocking, supports true multi-consumer-group semantics
+- ✅ **Claim Conflict Ratio Metric:** Added O(1) sliding window metric (default 5s) to track failed claim attempts vs total attempts - helps identify contention
+- ✅ **Idempotent setSimulationRun():** Prevents redundant schema setup calls and throws `IllegalStateException` if run ID is changed after being set
+- ✅ **Performance Profiling:** Identified bottlenecks - HikariCP init (~2.7s, one-time), first send/ack (~85ms/18ms, PreparedStatement compilation), subsequent calls (<10ms)
 
 ---
 
@@ -36,18 +39,18 @@
 This specification defines a **H2 database-based topic infrastructure** as an alternative to Chronicle Queue for the in-process data pipeline. Unlike Chronicle Queue, H2 provides:
 
 - **Per-run schema isolation** - Each simulation run has its own schema (like `H2Database`), ensuring complete data isolation
-- **Shared table structure** - Within each run's schema: single `topic_messages` and `topic_consumer_group_acks` tables for all topics (no per-topic tables!)
+- **Shared table structure** - Within each run's schema: single `topic_messages` and `topic_consumer_group` tables for all topics (no per-topic tables!)
 - **Unlimited topics per run** - Add topics without creating new tables or indexes within a run's schema
-- **Atomic claim-based delivery** - `UPDATE...RETURNING` prevents race conditions (single SQL statement!)
+- **Atomic claim-based delivery** - `INSERT`/conditional `UPDATE` loop over candidates prevents race conditions
 - **Multi-writer support** - No internal queue or writer thread needed (H2 MVCC)
 - **HikariCP connection pooling** - Efficient connection management with system-wide limits
-- **PreparedStatement pooling** - Reuse SQL statements per delegate (~30-50% performance gain)
+- **PreparedStatement pooling** - Reuse SQL statements per delegate (lazy initialization after schema switch)
 - **Event-driven delivery** - H2 triggers provide instant notifications (no polling!)
 - **Explicit acknowledgment** - SQL-based ACK via junction table (not DELETE)
-- **Consumer groups** - Proper isolation via `topic_consumer_group_acks` junction table
-- **Competing consumers** - `FOR UPDATE SKIP LOCKED` for automatic load balancing
+- **Consumer groups** - Proper isolation via `topic_consumer_group` junction table with per-group claim state
+- **Competing consumers** - Atomic `INSERT`/`UPDATE` for automatic load balancing within consumer groups
 - **Permanent storage** - Messages never deleted (enables historical replay)
-- **In-flight tracking** - `claimed_by` column identifies messages being processed
+- **In-flight tracking** - `claimed_by`, `claimed_at`, `claim_version` columns identify messages being processed
 - **Debuggability** - Direct SQL query access
 - **Simplicity** - Standard JDBC operations, no API limitations
 
@@ -159,12 +162,12 @@ src/main/proto/org/evochora/datapipeline/api/contracts/
 | Aspect | Chronicle Queue | H2 Database |
 |--------|----------------|-------------|
 | **Writers** | Single-writer (needs internal queue) | Multi-writer (H2 MVCC) |
-| **Message Delivery** | Tailer advance (implicit lock) | Atomic claim (`UPDATE...RETURNING`) |
-| **Race Conditions** | Possible (tailer + ACK not atomic) | Impossible (single SQL statement) |
-| **Acknowledgment** | Implicit (tailer advance) | Explicit (INSERT into junction table) |
+| **Message Delivery** | Tailer advance (implicit lock) | Atomic claim (INSERT/UPDATE loop) |
+| **Race Conditions** | Possible (tailer + ACK not atomic) | Prevented (atomic INSERT/UPDATE per group) |
+| **Acknowledgment** | Implicit (tailer advance) | Explicit (UPDATE in junction table) |
 | **Consumer Groups** | Tailer per group (complex) | Junction table (simple SQL) |
-| **Competing Consumers** | Manual coordination | `FOR UPDATE SKIP LOCKED` (automatic) |
-| **In-Flight Tracking** | None | `claimed_by` column |
+| **Competing Consumers** | Manual coordination | Atomic INSERT/UPDATE (automatic) |
+| **In-Flight Tracking** | None | `claimed_by`, `claimed_at`, `claim_version` in junction table |
 | **Message Retention** | Configurable | Permanent (never deleted) |
 | **API** | Custom (readBytes lambda) | Standard JDBC |
 | **Debugging** | Binary files | SQL queries |
@@ -186,18 +189,18 @@ Service ← ITopicReader.receive()
         ← AbstractTopicDelegateReader.receive() [unwraps envelope]
         ← H2TopicReaderDelegate.receiveEnvelope()
         ← BlockingQueue.take() [waits for H2 trigger notification]
-        ← SQL UPDATE...RETURNING [ATOMIC: claim + read in single statement!]
-           WHERE claimed_by IS NULL AND consumer_group filter
-           FOR UPDATE SKIP LOCKED
+        ← H2TopicReaderDelegate.tryReadMessage()
+           ← SELECT up to 10 candidates (LEFT JOIN topic_consumer_group)
+           ← For each candidate: INSERT or conditional UPDATE
+           ← Return first successfully claimed message
 ```
 
 **Acknowledgment Path (with Claim Release):**
 ```
 Service → ITopicReader.ack(TopicMessage)
         → AbstractTopicDelegateReader.ack()
-        → H2TopicReaderDelegate.acknowledgeMessage(rowId)
-        → SQL INSERT INTO topic_consumer_group_acks (consumer_group, message_id)
-        → SQL UPDATE topic_messages SET claimed_by = NULL [release claim]
+        → H2TopicReaderDelegate.acknowledgeMessage(AckToken)
+        → SQL UPDATE topic_consumer_group SET acknowledged_at = NOW() WHERE claim_version = ?
 ```
 
 ---
@@ -251,52 +254,52 @@ Instead of polling the database every 100ms, H2TopicResource uses **H2 database 
 
 **Competing Consumers:**
 - Trigger fires → ALL readers in queue receive notification
-- Each reader tries `SELECT ... FOR UPDATE SKIP LOCKED`
-- First reader locks message → Others skip and wait for next notification
+- Each reader tries `SELECT` (up to 10 candidates) then `INSERT`/`UPDATE` loop
+- First reader to successfully INSERT/UPDATE claims message → Others try next candidate
 - This is correct behavior (automatic load distribution)
 
 **Consumer Group Filtering:**
 - Trigger notifies about ALL new messages
-- Reader SQL filters by consumer group (NOT IN acknowledged messages)
-- If message not for this group → Reader waits for next notification
-- Small retry loop with 100ms timeout handles this case
+- Reader SQL filters by consumer group (LEFT JOIN to topic_consumer_group)
+- Only selects messages that are: not acknowledged AND (not claimed OR claim expired)
+- If no messages available → Reader waits for next notification
 
 ### 5.4 Stuck Message Detection and Recovery
 
 **What are "Stuck Messages"?**
 
-Messages that have been claimed (`claimed_by IS NOT NULL`) but not acknowledged for an extended period. This can happen if:
+Messages that have been claimed in `topic_consumer_group` (`claimed_by IS NOT NULL`) but not acknowledged for an extended period. This can happen if:
 - Consumer crashes after `receive()` but before `ack()`
 - Consumer hangs indefinitely
 - Application terminated ungracefully
 
 **Detection Query:**
 ```sql
--- Find messages claimed more than 5 minutes ago
-SELECT id, message_id, claimed_by, claimed_at
-FROM topic_messages
-WHERE claimed_by IS NOT NULL
-AND claimed_at < CURRENT_TIMESTAMP - INTERVAL 5 MINUTE;
+-- Find messages claimed more than 5 minutes ago (per consumer group)
+SELECT tm.id, tm.message_id, cg.claimed_by, cg.claimed_at, cg.consumer_group
+FROM topic_messages tm
+JOIN topic_consumer_group cg ON tm.topic_name = cg.topic_name AND tm.message_id = cg.message_id
+WHERE cg.claimed_by IS NOT NULL
+AND cg.acknowledged_at IS NULL
+AND cg.claimed_at < DATEADD('SECOND', -300, CURRENT_TIMESTAMP);
 ```
 
 **Recovery Options:**
 
-1. **Automatic Reset (Optional Background Job):**
-```sql
--- Reset stuck claims (makes messages available again)
-UPDATE topic_messages
-SET claimed_by = NULL, claimed_at = NULL
-WHERE claimed_by IS NOT NULL
-AND claimed_at < CURRENT_TIMESTAMP - INTERVAL 5 MINUTE;
-```
+1. **Automatic Reassignment (Built-in):**
+- Reader's `SELECT` query automatically includes expired claims
+- Next reader to call `receive()` will take over the message via conditional `UPDATE`
+- `claim_version` is incremented to prevent stale ACKs
 
 2. **Manual Intervention:**
 ```sql
 -- Admin query to inspect stuck messages
-SELECT * FROM topic_messages WHERE claimed_by IS NOT NULL;
+SELECT * FROM topic_consumer_group WHERE claimed_by IS NOT NULL AND acknowledged_at IS NULL;
 
--- Release specific stuck message
-UPDATE topic_messages SET claimed_by = NULL, claimed_at = NULL WHERE id = ?;
+-- Force release specific stuck message (reset claim)
+UPDATE topic_consumer_group 
+SET claimed_by = NULL, claimed_at = NULL 
+WHERE topic_name = ? AND consumer_group = ? AND message_id = ?;
 ```
 
 **Automatic Reassignment (Configurable Timeout):**
@@ -334,31 +337,23 @@ CREATE TABLE IF NOT EXISTS topic_messages (
     topic_name VARCHAR(255) NOT NULL,
     message_id VARCHAR(255) NOT NULL,
     timestamp BIGINT NOT NULL,
-    envelope BINARY NOT NULL,
-    claimed_by VARCHAR(255),
-    claimed_at TIMESTAMP,
-    claim_version INT DEFAULT 0,  -- Prevents stale ACK after reassignment
+    envelope BLOB NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     -- Composite unique constraint (topic + message)
     CONSTRAINT uk_topic_message UNIQUE (topic_name, message_id)
 );
 
--- Performance indexes (H2 requires separate CREATE INDEX statements)
-CREATE INDEX IF NOT EXISTS idx_topic_unclaimed ON topic_messages (topic_name, claimed_by, id);
-CREATE INDEX IF NOT EXISTS idx_topic_claimed ON topic_messages (topic_name, claimed_by, claimed_at);
-CREATE INDEX IF NOT EXISTS idx_topic_claim_status ON topic_messages (topic_name, claimed_by, claimed_at);
+-- Performance index for topic-based queries
+CREATE INDEX IF NOT EXISTS idx_topic_messages ON topic_messages (topic_name, id);
 ```
 
 **Column Descriptions:**
-- `id`: Auto-incrementing sequence number (used as ACK token for internal tracking)
+- `id`: Auto-incrementing sequence number (used as ACK token rowId for internal tracking)
 - `topic_name`: Name of the topic this message belongs to (enables logical partitioning)
 - `message_id`: UUID from TopicEnvelope (unique per topic, for idempotency)
 - `timestamp`: Unix timestamp from TopicEnvelope
-- `envelope`: Serialized TopicEnvelope (Protobuf binary)
-- `claimed_by`: Consumer ID that claimed this message (NULL = available, non-NULL = in-flight)
-- `claimed_at`: Timestamp when message was claimed (for stuck message detection)
-- `claim_version`: Incremented on each claim (prevents stale ACK after reassignment)
+- `envelope`: Serialized TopicEnvelope (Protobuf binary, BLOB type for H2 compatibility)
 - `created_at`: Database timestamp for debugging
 
 **Design Notes:**
@@ -366,45 +361,47 @@ CREATE INDEX IF NOT EXISTS idx_topic_claim_status ON topic_messages (topic_name,
 - **Shared Structure:** Single table structure for all topics within a run (no per-topic tables!)
 - **Logical Partitioning:** `topic_name` column enables topic-specific queries with composite indexes
 - **Run Data Isolation:** Different runs have completely separate tables in different schemas - no data mixing
-- **Atomic Claim:** Messages are claimed atomically during `receive()` to prevent double-processing
-- **No consumer_group column:** Each group tracks acknowledgments independently via junction table
-- **Performance Indexes (H2-Compatible):**
-  - `idx_topic_unclaimed (topic_name, claimed_by, id)` - Unclaimed messages per topic
-  - `idx_topic_claimed (topic_name, claimed_by, claimed_at)` - Stuck message detection per topic
-  - `idx_topic_claim_status (topic_name, claimed_by, claimed_at)` - Efficient claim status queries
-  - **Note:** H2 does NOT support partial indexes with `WHERE` clauses (PostgreSQL feature)
-  - **Solution:** Include `claimed_by` as indexed column - H2 optimizer uses this for `IS NULL`/`IS NOT NULL` predicates
+- **No Claim State:** This table only stores message payloads - claim/ack state is in `topic_consumer_group`
+- **Permanent Storage:** Messages are NEVER deleted (enables historical replay)
 - **Scalability:** Supports unlimited topics per run without creating new tables
 
-### 6.2 Consumer Group Acknowledgments Table (Shared by All Topics in Run's Schema)
+### 6.2 Consumer Group State Table (Shared by All Topics in Run's Schema)
 
 ```sql
-CREATE TABLE IF NOT EXISTS topic_consumer_group_acks (
+CREATE TABLE IF NOT EXISTS topic_consumer_group (
     topic_name VARCHAR(255) NOT NULL,
     consumer_group VARCHAR(255) NOT NULL,
     message_id VARCHAR(255) NOT NULL,
-    acknowledged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    claimed_by VARCHAR(255),
+    claimed_at TIMESTAMP,
+    claim_version INT DEFAULT 1,
+    acknowledged_at TIMESTAMP,
     
     -- Composite primary key (topic + consumer group + message)
     PRIMARY KEY (topic_name, consumer_group, message_id)
 );
 
--- Performance index for consumer group filtering
-CREATE INDEX IF NOT EXISTS idx_topic_group_acks ON topic_consumer_group_acks (topic_name, consumer_group, message_id);
+-- Performance indexes for claim and acknowledgment queries
+CREATE INDEX IF NOT EXISTS idx_topic_group_claimed ON topic_consumer_group (topic_name, claimed_by, id);
+CREATE INDEX IF NOT EXISTS idx_topic_group_claim_time ON topic_consumer_group (topic_name, claimed_by, claimed_at);
 ```
 
 **Column Descriptions:**
-- `topic_name`: Name of the topic this acknowledgment belongs to
-- `consumer_group`: Name of the consumer group that acknowledged the message
+- `topic_name`: Name of the topic this entry belongs to
+- `consumer_group`: Name of the consumer group
 - `message_id`: Reference to `topic_messages.message_id`
-- `acknowledged_at`: Timestamp when the message was acknowledged by this group
+- `claimed_by`: Service name that claimed this message for this consumer group (NULL = available)
+- `claimed_at`: Timestamp when message was claimed (for stuck message detection)
+- `claim_version`: Incremented on each claim (prevents stale ACK after reassignment)
+- `acknowledged_at`: Timestamp when acknowledged by this group (NULL = not yet acknowledged)
 
 **Design Rationale:**
-- **Centralized Table:** Single table for all topics and consumer groups (no schema explosion)
+- **Per-Group State:** Each consumer group tracks its own claim/ack state independently
 - **Pub/Sub:** Each consumer group receives all messages independently per topic
-- **Competing Consumers:** Multiple consumers within the same group compete for messages
+- **Competing Consumers:** Multiple consumers within the same group compete via atomic `INSERT`/`UPDATE`
 - **No Data Loss:** Acknowledgment by one group does not affect other groups
-- **Persistence:** Messages remain in database forever (no automatic cleanup)
+- **Stale ACK Prevention:** `claim_version` ensures ACKs from timed-out consumers are rejected
+- **Permanent Storage:** Rows are never deleted (enables historical replay and new consumer groups)
 - **Scalability:** Supports unlimited topics and consumer groups without creating new tables
 
 ### 6.4 Read and Acknowledgment Strategy (Claim-Based)
@@ -415,50 +412,62 @@ INSERT INTO topic_messages (topic_name, message_id, timestamp, envelope)
 VALUES (?, ?, ?, ?);
 ```
 
-**Read (Atomic Claim with UPDATE...RETURNING):**
+**Read (Two-Step: SELECT Candidates + Atomic Claim Loop):**
 ```sql
--- Atomically claim and read the next available message in ONE statement
--- Uses LEFT JOIN instead of NOT IN for better performance
-UPDATE topic_messages tm
-SET claimed_by = ?, claimed_at = CURRENT_TIMESTAMP
-WHERE id = (
-    SELECT tm2.id 
-    FROM topic_messages tm2
-    LEFT JOIN topic_consumer_group_acks cga 
-        ON tm2.topic_name = cga.topic_name 
-        AND tm2.message_id = cga.message_id 
-        AND cga.consumer_group = ?
-    WHERE cga.message_id IS NULL  -- Not acknowledged by this group
-    AND tm2.topic_name = ?        -- Filter by topic
-    AND tm2.claimed_by IS NULL    -- Only unclaimed messages
-    AND tm2.id > ?                -- Pagination for efficiency
-    ORDER BY tm2.id 
-    LIMIT 1
-    FOR UPDATE SKIP LOCKED
+-- Step 1: SELECT up to 10 candidate messages (no locking!)
+SELECT tm.id, tm.message_id, tm.envelope
+FROM topic_messages tm
+LEFT JOIN topic_consumer_group cg 
+    ON tm.topic_name = cg.topic_name 
+    AND tm.message_id = cg.message_id 
+    AND cg.consumer_group = ?
+WHERE tm.topic_name = ?
+AND (
+    cg.message_id IS NULL  -- Never seen by this group
+    OR (cg.acknowledged_at IS NULL  -- Not acknowledged yet
+        AND (cg.claimed_at IS NULL  -- Not claimed
+             OR cg.claimed_at < DATEADD('SECOND', -?, CURRENT_TIMESTAMP)  -- Or claim expired
+        )
+    )
 )
-RETURNING id, message_id, envelope, claim_version;
+ORDER BY tm.id
+LIMIT 10;
+
+-- Step 2: For each candidate, try atomic claim via INSERT (new) or UPDATE (takeover)
+-- Option A: Try INSERT first (new message for this group)
+INSERT INTO topic_consumer_group (topic_name, consumer_group, message_id, claimed_by, claimed_at, claim_version)
+VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, 1);
+
+-- Option B: If INSERT fails (duplicate key), try conditional UPDATE (takeover expired claim)
+UPDATE topic_consumer_group
+SET claimed_by = ?, claimed_at = CURRENT_TIMESTAMP, claim_version = claim_version + 1
+WHERE topic_name = ? AND consumer_group = ? AND message_id = ?
+AND acknowledged_at IS NULL
+AND (claimed_at IS NULL OR claimed_at < DATEADD('SECOND', -?, CURRENT_TIMESTAMP));
+
+-- If either INSERT or UPDATE succeeds: message claimed! Return it.
+-- If both fail: try next candidate.
 ```
 
 **Key Features:**
-- ✅ **Atomic Claim:** `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED)` prevents race conditions
-- ✅ **No Transaction Needed:** `UPDATE...RETURNING` is a single atomic statement
-- ✅ **Topic Isolation:** `WHERE tm2.topic_name = ?` ensures each topic is independent
-- ✅ **Consumer Group Filtering:** `LEFT JOIN ... WHERE cga.message_id IS NULL` (better performance than `NOT IN`)
-- ✅ **Competing Consumers:** `FOR UPDATE SKIP LOCKED` allows multiple consumers to skip locked/claimed rows
-- ✅ **In-Flight Tracking:** `claimed_by` identifies which consumer is processing the message
-- ✅ **Performance Optimized:** Composite indexes on `(topic_name, claimed_by, claimed_at)` enable efficient queries
+- ✅ **No Table Locking:** `SELECT` without `FOR UPDATE` allows true Pub/Sub (multiple groups can read same message)
+- ✅ **Atomic Claim:** `INSERT` or conditional `UPDATE` is atomic per consumer group
+- ✅ **Topic Isolation:** `WHERE tm.topic_name = ?` ensures each topic is independent
+- ✅ **Consumer Group Filtering:** `LEFT JOIN` with precise `WHERE` clause only returns claimable messages
+- ✅ **Competing Consumers:** Multiple consumers try to `INSERT`/`UPDATE` - only one succeeds per message per group
+- ✅ **Batch Candidates:** `LIMIT 10` reduces retries under high contention
+- ✅ **Performance Optimized:** Composite indexes on `(topic_name, claimed_by, id)` and `(topic_name, claimed_by, claimed_at)`
 
 **Acknowledge:**
 ```sql
--- Step 1: Mark as acknowledged for this consumer group (idempotent via MERGE)
-MERGE INTO topic_consumer_group_acks (topic_name, consumer_group, message_id)
-KEY(topic_name, consumer_group, message_id)
-VALUES (?, ?, ?);
+-- Step 1: Get message_id from rowId (lightweight SELECT by primary key)
+SELECT message_id FROM topic_messages WHERE id = ?;
 
--- Step 2: Release claim WITH VERSION CHECK (prevents stale ACK after reassignment)
-UPDATE topic_messages 
-SET claimed_by = NULL, claimed_at = NULL 
-WHERE id = ? AND claim_version = ?;
+-- Step 2: Mark as acknowledged WITH VERSION CHECK (prevents stale ACK)
+UPDATE topic_consumer_group
+SET acknowledged_at = CURRENT_TIMESTAMP
+WHERE topic_name = ? AND consumer_group = ? AND message_id = ?
+AND claim_version = ?;
 -- If 0 rows updated: claim was stale (message was reassigned), ACK rejected
 ```
 
@@ -473,17 +482,22 @@ WHERE id = ? AND claim_version = ?;
 The event-driven architecture requires an H2 trigger to be created:
 
 ```sql
-CREATE TRIGGER IF NOT EXISTS topic_messages_<name>_notify_trigger
-AFTER INSERT ON topic_messages_<name>
+CREATE TRIGGER IF NOT EXISTS topic_messages_notify_trigger
+AFTER INSERT ON topic_messages
 FOR EACH ROW
 CALL "org.evochora.datapipeline.resources.topics.H2InsertTrigger";
 ```
 
 **Trigger Lifecycle:**
-1. Created during `H2TopicResource` initialization
-2. Registered with static notification queue map
+1. Created during `H2TopicResource.setSimulationRun()` (lazy, per-schema)
+2. Registered with static notification queue map using schema-qualified key (`topicName:schemaName`)
 3. Fires on every INSERT (pushes message ID to queue)
-4. Deregistered and dropped during `H2TopicResource.close()`
+4. Deregistered and dropped during `H2TopicResource.close()` via `H2SchemaUtil.cleanupRunSchema()`
+
+**Schema Isolation:**
+- Each simulation run's schema has its own trigger instance
+- Trigger registration uses `topicName:schemaName` key to prevent cross-run notification leakage
+- Multiple topics in same schema share the same trigger (single `topic_messages` table)
 
 ---
 
@@ -1679,7 +1693,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li><strong>Connection Pooling:</strong> HikariCP for efficient connection management</li>
  *   <li><strong>Explicit ACK:</strong> Junction table tracks acknowledgments per consumer group</li>
  *   <li><strong>Consumer Groups:</strong> Junction table ensures proper isolation</li>
- *   <li><strong>Competing Consumers:</strong> FOR UPDATE SKIP LOCKED for automatic load balancing</li>
+ *   <li><strong>Competing Consumers:</strong> atomic INSERT/UPDATE for automatic load balancing</li>
  *   <li><strong>Permanent Storage:</strong> Messages never deleted (historical replay support)</li>
  *   <li><strong>Type Agnostic:</strong> Dynamic type resolution from google.protobuf.Any (no config needed)</li>
  *   <li><strong>Simplicity:</strong> Standard JDBC, no API limitations</li>
@@ -1741,7 +1755,7 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     
     // Centralized table names (shared by all topics)
     private static final String MESSAGES_TABLE = "topic_messages";
-    private static final String ACKS_TABLE = "topic_consumer_group_acks";
+    private static final String ACKS_TABLE = "topic_consumer_group";
     
     /**
      * Creates a new H2TopicResource with HikariCP connection pooling.
@@ -1942,48 +1956,45 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
                 topic_name VARCHAR(255) NOT NULL,
                 message_id VARCHAR(255) NOT NULL,
                 timestamp BIGINT NOT NULL,
-                envelope BINARY NOT NULL,
-                claimed_by VARCHAR(255),
-                claimed_at TIMESTAMP,
-                claim_version INT DEFAULT 0,
+                envelope BLOB NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 
                 CONSTRAINT uk_topic_message UNIQUE (topic_name, message_id)
             )
             """;
         
-        // Create indexes for messages table (H2 requires separate CREATE INDEX statements)
-        String createIndexUnclaimed = 
-            "CREATE INDEX IF NOT EXISTS idx_topic_unclaimed ON topic_messages (topic_name, claimed_by, id)";
-        String createIndexClaimed = 
-            "CREATE INDEX IF NOT EXISTS idx_topic_claimed ON topic_messages (topic_name, claimed_by, claimed_at)";
-        String createIndexClaimStatus = 
-            "CREATE INDEX IF NOT EXISTS idx_topic_claim_status ON topic_messages (topic_name, claimed_by, claimed_at)";
+        // Create index for messages table (H2 requires separate CREATE INDEX statements)
+        String createIndexMessages = 
+            "CREATE INDEX IF NOT EXISTS idx_topic_messages ON topic_messages (topic_name, id)";
         
-        // Create centralized consumer group acknowledgments table (shared by all topics)
-        String createAcksSql = """
-            CREATE TABLE IF NOT EXISTS topic_consumer_group_acks (
+        // Create centralized consumer group state table (shared by all topics)
+        String createConsumerGroupSql = """
+            CREATE TABLE IF NOT EXISTS topic_consumer_group (
                 topic_name VARCHAR(255) NOT NULL,
                 consumer_group VARCHAR(255) NOT NULL,
                 message_id VARCHAR(255) NOT NULL,
-                acknowledged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                claimed_by VARCHAR(255),
+                claimed_at TIMESTAMP,
+                claim_version INT DEFAULT 1,
+                acknowledged_at TIMESTAMP,
                 
                 PRIMARY KEY (topic_name, consumer_group, message_id)
             )
             """;
         
-        // Create index for acks table
-        String createIndexGroupAcks = 
-            "CREATE INDEX IF NOT EXISTS idx_topic_group_acks ON topic_consumer_group_acks (topic_name, consumer_group, message_id)";
+        // Create indexes for consumer group table
+        String createIndexGroupClaimed = 
+            "CREATE INDEX IF NOT EXISTS idx_topic_group_claimed ON topic_consumer_group (topic_name, claimed_by, id)";
+        String createIndexGroupClaimTime = 
+            "CREATE INDEX IF NOT EXISTS idx_topic_group_claim_time ON topic_consumer_group (topic_name, claimed_by, claimed_at)";
         
         try (Connection conn = dataSource.getConnection();
              Statement stmt = conn.createStatement()) {
             stmt.execute(createMessagesSql);
-            stmt.execute(createIndexUnclaimed);
-            stmt.execute(createIndexClaimed);
-            stmt.execute(createIndexClaimStatus);
-            stmt.execute(createAcksSql);
-            stmt.execute(createIndexGroupAcks);
+            stmt.execute(createIndexMessages);
+            stmt.execute(createConsumerGroupSql);
+            stmt.execute(createIndexGroupClaimed);
+            stmt.execute(createIndexGroupClaimTime);
             log.debug("Initialized centralized topic tables for resource '{}'", getResourceName());
         }
     }
@@ -2486,17 +2497,17 @@ import java.util.concurrent.TimeUnit;
  * <strong>Consumer Group Logic (Junction Table):</strong>
  * <ul>
  *   <li>Messages are read from {@code topic_messages} table</li>
- *   <li>Acknowledgments tracked in {@code topic_consumer_group_acks} table</li>
+ *   <li>Acknowledgments tracked in {@code topic_consumer_group} table</li>
  *   <li>Each consumer group sees only messages NOT in their acks table</li>
  *   <li>Acknowledgment by one group does NOT affect other groups</li>
  * </ul>
  * <p>
  * <strong>Competing Consumers:</strong>
- * Multiple consumers in the same consumer group use {@code FOR UPDATE SKIP LOCKED}
+ * Multiple consumers in the same consumer group use {@code atomic INSERT/UPDATE}
  * to automatically distribute work without coordination overhead.
  * <p>
  * <strong>Acknowledgment:</strong>
- * Acknowledged messages are recorded in {@code topic_consumer_group_acks} table.
+ * Acknowledged messages are recorded in {@code topic_consumer_group} table.
  * Messages remain in {@code topic_messages} permanently (no deletion).
  * <p>
  * <strong>PreparedStatement Pooling:</strong>
@@ -2561,7 +2572,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
                         AND tm2.id > ?
                         ORDER BY tm2.id 
                         LIMIT 1
-                        FOR UPDATE SKIP LOCKED
+                        atomic INSERT/UPDATE
                     )
                     RETURNING id, message_id, envelope, claimed_by AS previous_claim, claim_version
                     """, parent.getMessagesTable(), parent.getMessagesTable(), parent.getAcksTable(), claimTimeout);
@@ -2589,7 +2600,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
                         AND tm2.id > ?
                         ORDER BY tm2.id 
                         LIMIT 1
-                        FOR UPDATE SKIP LOCKED
+                        atomic INSERT/UPDATE
                     )
                     RETURNING id, message_id, envelope, NULL AS previous_claim, claim_version
                     """, parent.getMessagesTable(), parent.getMessagesTable(), parent.getAcksTable());
@@ -2673,7 +2684,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
         
         // Notification received - try to read the message
         // Note: The notified message might not be for this consumer group (already ACKed),
-        // or might be consumed by a competing consumer in the same group (FOR UPDATE SKIP LOCKED).
+        // or might be consumed by a competing consumer in the same group (atomic INSERT/UPDATE).
         // In such cases, we retry waiting for the next notification.
         
         while (notificationId != null) {
@@ -2693,11 +2704,11 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
     /**
      * Attempts to read and claim the next message from the database atomically.
      * <p>
-     * Uses {@code UPDATE...RETURNING} with claim-based approach to ensure:
+     * Uses {@code SELECT + INSERT/UPDATE} with claim-based approach to ensure:
      * <ul>
      *   <li>Atomic claim - prevents race conditions (single SQL statement!)</li>
      *   <li>Only messages NOT acknowledged by this consumer group are returned</li>
-     *   <li>Multiple consumers in same group compete via FOR UPDATE SKIP LOCKED</li>
+     *   <li>Multiple consumers in same group compete via atomic INSERT/UPDATE</li>
      *   <li>No data loss - each group processes all messages independently</li>
      * </ul>
      * <p>
@@ -2757,7 +2768,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
             }
         } catch (SQLException e) {
             log.warn("Failed to claim message from topic '{}': consumerGroup={}", parent.getResourceName(), consumerGroup);
-            recordError("CLAIM_FAILED", "SQL UPDATE...RETURNING failed", 
+            recordError("CLAIM_FAILED", "SQL SELECT + INSERT/UPDATE failed", 
                 "Topic: " + parent.getResourceName() + ", ConsumerGroup: " + consumerGroup);
         } catch (InvalidProtocolBufferException e) {
             log.warn("Failed to parse envelope from topic '{}': consumerGroup={}", parent.getResourceName(), consumerGroup);
@@ -2809,7 +2820,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
                 return;
             }
             
-            // Step 2: MERGE into topic_consumer_group_acks (marks as acknowledged for THIS group only)
+            // Step 2: MERGE into topic_consumer_group (marks as acknowledged for THIS group only)
             // MERGE is idempotent - handles both new acknowledgments and duplicates gracefully
             // Reuse prepared statement for performance
             try {
@@ -2826,7 +2837,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
                 connection.setAutoCommit(true);
                 log.warn("Failed to acknowledge message in topic '{}': messageId={}, consumerGroup={}", 
                     parent.getResourceName(), messageId, consumerGroup);
-                recordError("ACK_FAILED", "Failed to merge into topic_consumer_group_acks", 
+                recordError("ACK_FAILED", "Failed to merge into topic_consumer_group", 
                     "Topic: " + parent.getResourceName() + ", MessageId: " + messageId + ", ConsumerGroup: " + consumerGroup);
                 return;
             }
@@ -3613,19 +3624,27 @@ log.info("Message:\n  ID: {}\n  Group: {}", id, group);  // DON'T DO THIS
 
 ### 14.1 Aggregate Metrics (AbstractTopicResource)
 
-- `messages_published` - Total messages written across all writers
-- `messages_received` - Total messages read across all readers
-- `messages_acknowledged` - Total messages acknowledged
-- `messages_written_per_sec` - Average rate (SlidingWindowCounter with 60s window)
-- `messages_read_per_sec` - Average rate (SlidingWindowCounter with 60s window)
-- `stuck_messages_reassigned` - Count of messages reassigned after claim timeout
+- `messages_published` - Total messages written across all writers (AtomicLong)
+- `messages_received` - Total messages read across all readers (AtomicLong)
+- `messages_acknowledged` - Total messages acknowledged (AtomicLong)
+- `write_throughput_per_sec` - Write rate (SlidingWindowCounter with configurable window, default 60s)
+- `read_throughput_per_sec` - Read rate (SlidingWindowCounter with configurable window, default 60s)
+- `stuck_messages_reassigned` - Count of messages reassigned after claim timeout (AtomicLong, H2-specific)
 
 ### 14.2 Delegate Metrics (per service)
 
-- `parent_messages_published` - Reference to parent aggregate
-- `parent_messages_received` - Reference to parent aggregate
-- `parent_messages_acknowledged` - Reference to parent aggregate
-- `error_count` - Delegate-specific errors
+**Writer Delegates (AbstractTopicDelegateWriter):**
+- `messages_sent` - Messages sent by this delegate (AtomicLong)
+- `write_throughput_per_sec` - Write rate for this delegate (SlidingWindowCounter)
+- `write_errors` - Write errors (H2-specific, AtomicLong)
+
+**Reader Delegates (AbstractTopicDelegateReader):**
+- `messages_received` - Messages received by this delegate (AtomicLong)
+- `read_throughput_per_sec` - Read rate for this delegate (SlidingWindowCounter)
+- `read_errors` - Read errors (H2-specific, AtomicLong)
+- `ack_errors` - ACK errors (H2-specific, AtomicLong)
+- `stale_acks_rejected` - Stale ACKs rejected (H2-specific, AtomicLong)
+- `claim_conflict_ratio` - Ratio of failed claim attempts to total attempts (O(1), sliding window, default 5s, H2-specific)
 
 ---
 
@@ -3640,13 +3659,14 @@ log.info("Message:\n  ID: {}\n  Group: {}", id, group);  // DON'T DO THIS
    - Each delegate holds one connection for its lifetime
 
 2. **PreparedStatement Pooling:**
-   - Each delegate prepares SQL statements ONCE during construction
-   - Writer: 1 statement (INSERT), Reader: 2-4 statements (SELECT/UPDATE, INSERT ACK, RELEASE)
-   - Eliminates SQL parsing overhead on every operation (~30-50% performance gain)
+   - Each delegate prepares SQL statements ONCE after schema is set (lazy initialization in `onSimulationRunSet()`)
+   - Writer: 1 statement (INSERT), Reader: 4 statements (SELECT, INSERT claim, UPDATE claim, ACK)
+   - Eliminates SQL parsing overhead on every operation (first call ~85ms, subsequent <5ms)
    - Connection and statements held for delegate lifetime, returned to pool on close
 
 3. **Atomic Claim-Based Delivery with Version Check:** 
-   - `UPDATE...RETURNING` with `claim_version` increment prevents race conditions
+   - Two-step algorithm: `SELECT` up to 10 candidates (no locking), then `INSERT`/conditional `UPDATE` loop
+   - `claim_version` increment on each claim prevents stale ACKs
    - Version check on ACK ensures at-most-once semantics within consumer group
    - Stale ACKs (after reassignment) are rejected with WARN log and error recording
 
@@ -3662,11 +3682,11 @@ log.info("Message:\n  ID: {}\n  Group: {}", id, group);  // DON'T DO THIS
 
 9. **Direct SQL:** No internal queue or writer thread needed (H2 MVCC + HikariCP handle concurrency)
 
-10. **Junction Table:** Proper consumer group isolation via `topic_consumer_group_acks` table
+10. **Junction Table:** Proper consumer group isolation via `topic_consumer_group` table with per-group claim/ack state
 
-11. **Competing Consumers:** `FOR UPDATE SKIP LOCKED` for automatic load balancing
+11. **Competing Consumers:** Atomic `INSERT`/conditional `UPDATE` for automatic load balancing within consumer groups
 
-12. **In-Flight Tracking:** `claimed_by` and `claimed_at` columns for stuck message detection and reassignment
+12. **In-Flight Tracking:** `claimed_by`, `claimed_at`, and `claim_version` columns in `topic_consumer_group` for stuck message detection and reassignment
 
 13. **Permanent Storage:** Messages never deleted (enables historical replay and new consumer groups)
 
@@ -3677,18 +3697,19 @@ log.info("Message:\n  ID: {}\n  Group: {}", id, group);  // DON'T DO THIS
 16. **Transaction Management:**
    - **Writer:** Auto-commit mode explicitly set in constructor (defensive programming, no HikariCP default assumptions)
    - **Single INSERT is atomic:** No explicit transaction needed (ACID guarantee)
-   - **Reader ACK:** Explicit transaction (3 SQL statements must be atomic: SELECT + INSERT + UPDATE)
+   - **Reader Claim:** No transaction - `SELECT` (no locking), then atomic `INSERT` or conditional `UPDATE` per candidate
+   - **Reader ACK:** Explicit transaction (2 SQL statements must be atomic: SELECT message_id + UPDATE with version check)
    - Ensures all-or-nothing semantics for acknowledgment (no partial ACKs)
 
 17. **Shared Table Structure per Run (Not Cross-Run Centralization):**
    - **Per-run schema isolation:** Each simulation run has its own schema (e.g., `SIM_20251006_UUID`)
    - **Within each run's schema:**
      - **Single `topic_messages` table** for all topics in that run (no per-topic tables)
-     - **Single `topic_consumer_group_acks` table** for all topics and consumer groups in that run
+     - **Single `topic_consumer_group` table** for all topics and consumer groups in that run
    - **`topic_name` column** provides logical partitioning within each run's tables
    - **Composite indexes** include `topic_name` for partition-like performance
    - **Unlimited topics per run:** Add topics without schema changes or new tables
-   - **Shared trigger per run:** Single H2 trigger routes notifications by `topic_name`
+   - **Shared trigger per run:** Single H2 trigger routes notifications by `topic_name` (schema-qualified key)
    - **Data isolation:** Run 1's messages are in `SIM_RUN1.topic_messages`, Run 2's in `SIM_RUN2.topic_messages` - completely separate!
 
 18. **Schema Management (Simulation Run Isolation):**
@@ -3720,7 +3741,7 @@ log.info("Message:\n  ID: {}\n  Group: {}", id, group);  // DON'T DO THIS
 ### 15.2 Performance Optimizations
 
 **Query Optimization:**
-- **LEFT JOIN vs NOT IN:** LEFT JOIN allows index usage on `topic_consumer_group_acks.message_id`
+- **LEFT JOIN vs NOT IN:** LEFT JOIN allows index usage on `topic_consumer_group.message_id`
 - **Composite Indexes (H2-Compatible):**
   - `idx_topic_unclaimed (topic_name, claimed_by, id)` - Fast unclaimed message lookup
   - `idx_topic_claimed (topic_name, claimed_by, claimed_at)` - Stuck message timeout checks
@@ -3772,13 +3793,13 @@ To switch from H2 to Kafka/SQS:
 - [ ] **Transaction Management:** Writer uses auto-commit mode (single INSERT is atomic)
 - [ ] **Transaction Management:** Reader ACK uses explicit transaction (SELECT + INSERT + UPDATE atomic)
 - [ ] **Transaction Rollback:** ACK failures trigger rollback and restore auto-commit mode
-- [ ] H2TopicResource initializes `topic_messages` (with claimed_by/claimed_at) and `topic_consumer_group_acks` tables correctly
+- [ ] H2TopicResource initializes `topic_messages` (with claimed_by/claimed_at) and `topic_consumer_group` tables correctly
 - [ ] **Performance indexes created:** `idx_claimed_at`, `idx_claim_status` (composite), `idx_unclaimed`
 - [ ] **LEFT JOIN query:** Reader uses LEFT JOIN instead of NOT IN for better performance
 - [ ] H2 trigger created and registered correctly for event-driven notifications
 - [ ] Writers can send messages concurrently (multi-writer test)
 - [ ] Readers receive instant notifications via H2 trigger (no polling delay)
-- [ ] **Atomic claim:** `UPDATE...RETURNING` prevents race conditions (no duplicate processing!)
+- [ ] **Atomic claim:** `SELECT + INSERT/UPDATE` prevents race conditions (no duplicate processing!)
 - [ ] **Claimed messages** are marked with `claimed_by` and `claimed_at`
 - [ ] **Claim release:** `ack()` clears `claimed_by` to make message available for other groups
 - [ ] **Stuck message reassignment:** `claimTimeout > 0` enables automatic reassignment
@@ -3789,8 +3810,8 @@ To switch from H2 to Kafka/SQS:
 - [ ] Readers receive messages in order (FIFO test)
 - [ ] Consumer groups receive messages independently (pub/sub isolation test)
 - [ ] Multiple consumers in same group compete correctly (competing consumers test)
-- [ ] `FOR UPDATE SKIP LOCKED` distributes load automatically
-- [ ] Acknowledgment inserts into `topic_consumer_group_acks` table (not DELETE from messages)
+- [ ] `atomic INSERT/UPDATE` distributes load automatically
+- [ ] Acknowledgment inserts into `topic_consumer_group` table (not DELETE from messages)
 - [ ] Messages remain in database after acknowledgment (permanent storage test)
 - [ ] New consumer groups can process historical messages (replay test)
 - [ ] Messages persist across topic restarts (persistence test)
@@ -3836,12 +3857,12 @@ dependencies {
 | **Connection Management** | Single connection | HikariCP pool (system-wide limits) |
 | **PreparedStatement** | N/A (binary protocol) | Pooled per delegate (~30-50% faster) |
 | **Writers** | Single (needs workaround) | Multi (H2 MVCC + HikariCP) |
-| **Message Delivery** | Polling (queue drain loop) | Atomic Claim (`UPDATE...RETURNING`) |
+| **Message Delivery** | Polling (queue drain loop) | Atomic Claim (`SELECT + INSERT/UPDATE`) |
 | **Race Conditions** | Possible (read + ACK not atomic) | Impossible (single SQL statement) |
 | **Latency** | Ultra-fast (μs) | Instant notification (ms) |
 | **Complexity** | High (inner classes, thread) | Low (separate files, JDBC, triggers) |
 | **Consumer Groups** | Tailer per group (complex) | Junction table (simple SQL) |
-| **Competing Consumers** | Manual coordination needed | `FOR UPDATE SKIP LOCKED` (automatic) |
+| **Competing Consumers** | Manual coordination needed | `atomic INSERT/UPDATE` (automatic) |
 | **ACK** | Implicit (tailer advance) | Explicit (INSERT into acks table + release claim) |
 | **In-Flight Tracking** | None | `claimed_by` column |
 | **Message Retention** | Configurable | Permanent (never deleted) |
@@ -3880,7 +3901,7 @@ dependencies {
 
 2. **Competing Consumers Synergy:**
    - Trigger notifies ALL readers in queue
-   - `FOR UPDATE SKIP LOCKED` distributes messages automatically
+   - `atomic INSERT/UPDATE` distributes messages automatically
    - No coordination overhead
 
 3. **Simplicity:**
@@ -4266,7 +4287,7 @@ dependencies {
 
 **Tests:**
 - `shouldAcknowledgeMessage()`
-  - Message in `topic_consumer_group_acks`
+  - Message in `topic_consumer_group`
   - `claimed_by` = NULL (released)
   - Metrics updated
 
@@ -4313,7 +4334,7 @@ dependencies {
 
 ### 20.10 Phase 9: Competing Consumers (Load Balancing)
 
-**Goal:** `FOR UPDATE SKIP LOCKED` works
+**Goal:** `atomic INSERT/UPDATE` works
 
 #### Step 9.1: Competing Consumer Tests
 ```bash

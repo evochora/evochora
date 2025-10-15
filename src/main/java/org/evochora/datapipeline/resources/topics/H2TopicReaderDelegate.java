@@ -2,6 +2,8 @@ package org.evochora.datapipeline.resources.topics;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
@@ -55,8 +57,8 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
     private static final Logger log = LoggerFactory.getLogger(H2TopicReaderDelegate.class);
     
     private final Connection connection;
-    private PreparedStatement readStatementWithTimeout;       // Lazy init after schema switch
-    private PreparedStatement readStatementNoTimeout;         // Lazy init after schema switch
+    private final String serviceName;  // Service name from config (used in claimed_by)
+    private PreparedStatement readStatementWithTimeout;       // SELECT candidates (lazy init after schema switch)
     private PreparedStatement insertClaimStatement;           // INSERT new claim (first time)
     private PreparedStatement updateClaimStatement;           // UPDATE existing claim (reassignment)
     private PreparedStatement ackStatement;                   // Mark as acknowledged
@@ -67,6 +69,10 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
     private final AtomicLong readErrors = new AtomicLong(0);
     private final AtomicLong ackErrors = new AtomicLong(0);
     private final AtomicLong staleAcksRejected = new AtomicLong(0);
+    
+    // Claim conflict tracking (O(1) metrics)
+    private final SlidingWindowCounter claimAttemptsWindow;
+    private final SlidingWindowCounter claimConflictsWindow;
     // Note: readThroughput is now inherited from AbstractTopicDelegateReader
     
     /**
@@ -89,13 +95,24 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
             // Obtain connection from HikariCP pool (held for delegate lifetime)
             this.connection = parent.getConnection();
             
+            // Store service name (used for claimed_by column)
+            this.serviceName = context.serviceName();
+            
             // Store claim timeout for lazy PreparedStatement initialization
             this.claimTimeout = parent.getClaimTimeoutSeconds();
             
+            // Initialize claim conflict tracking with configurable window (default: 5 seconds)
+            Config options = parent.getOptions();
+            int conflictWindowSeconds = options.hasPath("claimConflictWindowSeconds") 
+                ? options.getInt("claimConflictWindowSeconds") 
+                : 5;
+            this.claimAttemptsWindow = new SlidingWindowCounter(conflictWindowSeconds);
+            this.claimConflictsWindow = new SlidingWindowCounter(conflictWindowSeconds);
+            
             // Note: PreparedStatements will be created in onSimulationRunSet() after schema switch
             
-            log.debug("Created H2 reader delegate for topic '{}', consumerGroup='{}', claimTimeout={}s",
-                parent.getResourceName(), consumerGroup, claimTimeout);
+            log.debug("Created H2 reader delegate for topic '{}', consumerGroup='{}', claimTimeout={}s, conflictWindow={}s",
+                parent.getResourceName(), consumerGroup, claimTimeout, conflictWindowSeconds);
             
         } catch (Exception e) {
             log.error("Failed to create H2 reader delegate for topic '{}'", parent.getResourceName());
@@ -111,32 +128,9 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
             
             // Now prepare all SQL statements (schema is set, tables exist)
             
-            // SELECT with timeout (stuck message reassignment)
-            if (claimTimeout > 0) {
-                String sqlWithTimeout = String.format("""
-                    SELECT tm.id, tm.message_id, tm.envelope, cg.claimed_by AS previous_claim, cg.claim_version
-                    FROM %s tm
-                    LEFT JOIN %s cg 
-                        ON tm.topic_name = cg.topic_name 
-                        AND tm.message_id = cg.message_id 
-                        AND cg.consumer_group = ?
-                    WHERE tm.topic_name = ?
-                    AND (
-                        cg.message_id IS NULL
-                        OR (cg.acknowledged_at IS NULL 
-                            AND (cg.claimed_by IS NULL 
-                                 OR cg.claimed_at < DATEADD('SECOND', -%d, CURRENT_TIMESTAMP)))
-                    )
-                    ORDER BY tm.id 
-                    LIMIT 1
-                    FOR UPDATE SKIP LOCKED
-                    """, parent.getMessagesTable(), parent.getConsumerGroupTable(), claimTimeout);
-                this.readStatementWithTimeout = connection.prepareStatement(sqlWithTimeout);
-            }
-            
-            // SELECT without timeout
-            String sqlNoTimeout = String.format("""
-                SELECT tm.id, tm.message_id, tm.envelope, cg.claimed_by AS previous_claim, cg.claim_version
+            // SELECT candidate messages (no locking, race-safe claim via INSERT/UPDATE)
+            String sql = String.format("""
+                SELECT tm.id, tm.message_id, tm.envelope
                 FROM %s tm
                 LEFT JOIN %s cg 
                     ON tm.topic_name = cg.topic_name 
@@ -145,13 +139,16 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
                 WHERE tm.topic_name = ?
                 AND (
                     cg.message_id IS NULL
-                    OR (cg.acknowledged_at IS NULL AND cg.claimed_by IS NULL)
+                    OR (cg.acknowledged_at IS NULL
+                        AND (cg.claimed_at IS NULL
+                             OR cg.claimed_at < DATEADD('SECOND', -?, CURRENT_TIMESTAMP)
+                        )
+                    )
                 )
-                ORDER BY tm.id 
-                LIMIT 1
-                FOR UPDATE SKIP LOCKED
+                ORDER BY tm.id
+                LIMIT 10
                 """, parent.getMessagesTable(), parent.getConsumerGroupTable());
-            this.readStatementNoTimeout = connection.prepareStatement(sqlNoTimeout);
+            this.readStatementWithTimeout = connection.prepareStatement(sql);
             
             // INSERT to claim message (first time this group sees this message)
             String insertClaimSql = String.format("""
@@ -160,7 +157,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
                 """, parent.getConsumerGroupTable());
             this.insertClaimStatement = connection.prepareStatement(insertClaimSql);
             
-            // UPDATE to reclaim message (stuck message reassignment)
+            // UPDATE to reclaim message (conditional takeover - only if expired and not acked)
             String updateClaimSql = String.format("""
                 UPDATE %s
                 SET claimed_by = ?,
@@ -170,6 +167,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
                 AND consumer_group = ?
                 AND message_id = ?
                 AND acknowledged_at IS NULL
+                AND (claimed_at IS NULL OR claimed_at < DATEADD('SECOND', -?, CURRENT_TIMESTAMP))
                 """, parent.getConsumerGroupTable());
             this.updateClaimStatement = connection.prepareStatement(updateClaimSql);
             
@@ -235,122 +233,121 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
      * @return The received envelope with AckToken, or null if no message available.
      */
     private ReceivedEnvelope<AckToken> tryReadMessage() {
-        // Generate unique consumer ID for this delegate instance
-        String consumerId = parent.getResourceName() + ":" + consumerGroup + ":" + System.currentTimeMillis();
         int claimTimeout = parent.getClaimTimeoutSeconds();
         
-        // Select appropriate prepared statement based on claimTimeout
-        PreparedStatement stmt = (claimTimeout > 0) ? readStatementWithTimeout : readStatementNoTimeout;
+        // Use same statement for both (timeout is always in WHERE clause, just with 0 or actual value)
+        PreparedStatement stmt = readStatementWithTimeout;
         
         try {
-            // Start transaction (SELECT FOR UPDATE requires a transaction to hold the lock)
-            connection.setAutoCommit(false);
+            // Step 1: SELECT candidate messages (up to 10)
+            stmt.setString(1, consumerGroup);                    // consumer_group filter in JOIN
+            stmt.setString(2, parent.getResourceName());         // topic_name filter
+            stmt.setInt(3, claimTimeout > 0 ? claimTimeout : Integer.MAX_VALUE);  // timeout (or very large value if disabled)
             
-            try {
-                // Step 1: SELECT FOR UPDATE (locks the row until commit/rollback)
-                stmt.setString(1, consumerGroup);               // consumer_group filter
-                stmt.setString(2, parent.getResourceName());    // topic_name filter
-                
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (rs.next()) {
-                        long id = rs.getLong("id");
-                        String messageId = rs.getString("message_id");
-                        byte[] envelopeBytes = rs.getBytes("envelope");
-                        String previousClaim = rs.getString("previous_claim");
-                        int currentClaimVersion = rs.getInt("claim_version");  // 0 if NULL (new entry)
-                        
-                        // Step 2: Claim the message in consumer group table
-                        // Try INSERT first (new message for this group), fallback to UPDATE (reassignment)
-                        boolean claimed = false;
-                        int newClaimVersion = 1;
-                        
-                        try {
-                            // Try INSERT (first time this group sees this message)
-                            insertClaimStatement.setString(1, parent.getResourceName());  // topic_name
-                            insertClaimStatement.setString(2, consumerGroup);             // consumer_group
-                            insertClaimStatement.setString(3, messageId);                 // message_id
-                            insertClaimStatement.setString(4, consumerId);                // claimed_by
-                            insertClaimStatement.executeUpdate();
+            try (ResultSet rs = stmt.executeQuery()) {
+                // Try to claim each candidate until one succeeds
+                while (rs.next()) {
+                    long rowId = rs.getLong("id");
+                    String messageId = rs.getString("message_id");
+                    byte[] envelopeBytes = rs.getBytes("envelope");
+                    
+                    // Track claim attempt (O(1) metric)
+                    claimAttemptsWindow.recordCount();
+                    
+                    // Step 2: Try to claim this message atomically
+                    boolean claimed = false;
+                    int newClaimVersion = 1;
+                    boolean isReassignment = false;
+                    
+                    try {
+                        // Try INSERT first (new claim for this consumer group)
+                        insertClaimStatement.setString(1, parent.getResourceName());  // topic_name
+                        insertClaimStatement.setString(2, consumerGroup);             // consumer_group
+                        insertClaimStatement.setString(3, messageId);                 // message_id
+                        insertClaimStatement.setString(4, serviceName);               // claimed_by
+                        int rowsInserted = insertClaimStatement.executeUpdate();
+                        if (rowsInserted > 0) {
                             claimed = true;
                             newClaimVersion = 1;
-                        } catch (SQLException insertEx) {
-                            // Duplicate key - entry exists, use UPDATE instead
-                            if (insertEx.getErrorCode() == 23505) {  // H2 duplicate key error
-                                updateClaimStatement.setString(1, consumerId);                // claimed_by
-                                updateClaimStatement.setString(2, parent.getResourceName());  // topic_name
-                                updateClaimStatement.setString(3, consumerGroup);             // consumer_group
-                                updateClaimStatement.setString(4, messageId);                 // message_id
-                                int rowsUpdated = updateClaimStatement.executeUpdate();
-                                if (rowsUpdated > 0) {
-                                    claimed = true;
-                                    newClaimVersion = currentClaimVersion + 1;
+                        }
+                    } catch (SQLException insertEx) {
+                        // Row exists - try conditional UPDATE (takeover if expired)
+                        if (insertEx.getErrorCode() == 23505) {  // H2 duplicate key error
+                            updateClaimStatement.setString(1, serviceName);               // claimed_by
+                            updateClaimStatement.setString(2, parent.getResourceName());  // topic_name
+                            updateClaimStatement.setString(3, consumerGroup);             // consumer_group
+                            updateClaimStatement.setString(4, messageId);                 // message_id
+                            updateClaimStatement.setInt(5, claimTimeout > 0 ? claimTimeout : Integer.MAX_VALUE);  // timeout
+                            int rowsUpdated = updateClaimStatement.executeUpdate();
+                            if (rowsUpdated > 0) {
+                                claimed = true;
+                                isReassignment = true;
+                                // Fetch new claim_version
+                                try (PreparedStatement versionStmt = connection.prepareStatement(
+                                    "SELECT claim_version FROM " + parent.getConsumerGroupTable() + 
+                                    " WHERE topic_name = ? AND consumer_group = ? AND message_id = ?")) {
+                                    versionStmt.setString(1, parent.getResourceName());
+                                    versionStmt.setString(2, consumerGroup);
+                                    versionStmt.setString(3, messageId);
+                                    try (ResultSet versionRs = versionStmt.executeQuery()) {
+                                        if (versionRs.next()) {
+                                            newClaimVersion = versionRs.getInt("claim_version");
+                                        }
+                                    }
                                 }
-                            } else {
-                                throw insertEx;  // Unexpected SQL error
                             }
-                        }
-                        
-                        if (!claimed) {
-                            // Failed to claim (shouldn't happen with FOR UPDATE SKIP LOCKED)
-                            connection.rollback();
-                            connection.setAutoCommit(true);
-                            log.warn("Failed to claim message in topic '{}': messageId={}", 
-                                parent.getResourceName(), messageId);
-                            return null;
-                        }
-                        
-                        // Commit transaction (releases lock)
-                        connection.commit();
-                        connection.setAutoCommit(true);
-                        
-                        // Parse envelope
-                        TopicEnvelope envelope = TopicEnvelope.parseFrom(envelopeBytes);
-                        
-                        // Track metrics (O(1) operations, cannot fail)
-                        parent.recordRead();  // Parent's aggregate counter + throughput
-                        // Note: messagesReceived + readThroughput are tracked by AbstractTopicDelegateReader in receive() method
-                        
-                        // Check if this was a stuck message reassignment
-                        if (previousClaim != null && !previousClaim.equals(consumerId)) {
-                            log.warn("Reassigned stuck message from topic '{}': messageId={}, previousClaim={}, newConsumer={}, claimVersion={}, timeout={}s", 
-                                parent.getResourceName(), messageId, previousClaim, consumerId, newClaimVersion, claimTimeout);
-                            recordError("STUCK_MESSAGE_REASSIGNED", "Message claim timeout expired", 
-                                "Topic: " + parent.getResourceName() + ", MessageId: " + messageId + 
-                                ", PreviousClaim: " + previousClaim + ", ClaimVersion: " + newClaimVersion + ", Timeout: " + claimTimeout + "s");
-                            parent.recordStuckMessageReassignment();
                         } else {
-                            log.debug("Claimed message from topic '{}': messageId={}, consumerId={}, claimVersion={}", 
-                                parent.getResourceName(), messageId, consumerId, newClaimVersion);
+                            throw insertEx;  // Unexpected SQL error
                         }
-                        
-                        // ACK token contains message ID and claim version (for stale ACK detection)
-                        AckToken ackToken = new AckToken(id, newClaimVersion);
-                        return new ReceivedEnvelope<>(envelope, ackToken);
-                    } else {
-                        // No message available - rollback and restore auto-commit
-                        connection.rollback();
-                        connection.setAutoCommit(true);
                     }
+                    
+                    if (!claimed) {
+                        // Failed to claim this candidate - try next one
+                        claimConflictsWindow.recordCount();
+                        log.debug("Failed to claim candidate message in topic '{}': messageId={} (already claimed or acked)", 
+                            parent.getResourceName(), messageId);
+                        continue;  // Try next candidate
+                    }
+                    
+                    // Successfully claimed! Parse and return
+                    TopicEnvelope envelope = TopicEnvelope.parseFrom(envelopeBytes);
+                    
+                    // Track metrics
+                    parent.recordRead();
+                    
+                    // Log reassignment if applicable
+                    if (isReassignment) {
+                        log.warn("Reassigned stuck message from topic '{}': messageId={}, serviceName={}, claimVersion={}, timeout={}s", 
+                            parent.getResourceName(), messageId, serviceName, newClaimVersion, claimTimeout);
+                        recordError("STUCK_MESSAGE_REASSIGNED", "Message claim timeout expired", 
+                            "Topic: " + parent.getResourceName() + ", MessageId: " + messageId + 
+                            ", ClaimVersion: " + newClaimVersion + ", Timeout: " + claimTimeout + "s");
+                        parent.recordStuckMessageReassignment();
+                    } else {
+                        log.debug("Claimed message from topic '{}': messageId={}, serviceName={}, claimVersion={}", 
+                            parent.getResourceName(), messageId, serviceName, newClaimVersion);
+                    }
+                    
+                    // Return with ACK token
+                    AckToken ackToken = new AckToken(rowId, newClaimVersion);
+                    return new ReceivedEnvelope<>(envelope, ackToken);
                 }
-            } catch (Exception e) {
-                // Rollback on any error
-                connection.rollback();
-                connection.setAutoCommit(true);
-                throw e;  // Re-throw to outer catch block
             }
         } catch (SQLException e) {
-            readErrors.incrementAndGet();  // Track errors
-            log.warn("Failed to claim message from topic '{}': consumerGroup={}", parent.getResourceName(), consumerGroup);
-            recordError("CLAIM_FAILED", "SQL transaction failed (SELECT FOR UPDATE + UPDATE)", 
+            readErrors.incrementAndGet();
+            log.warn("Failed to query/claim message from topic '{}': consumerGroup={}", 
+                parent.getResourceName(), consumerGroup);
+            recordError("CLAIM_FAILED", "SQL error during claim attempt", 
                 "Topic: " + parent.getResourceName() + ", ConsumerGroup: " + consumerGroup);
         } catch (InvalidProtocolBufferException e) {
-            readErrors.incrementAndGet();  // Track errors
-            log.warn("Failed to parse envelope from topic '{}': consumerGroup={}", parent.getResourceName(), consumerGroup);
+            readErrors.incrementAndGet();
+            log.warn("Failed to parse envelope from topic '{}': consumerGroup={}", 
+                parent.getResourceName(), consumerGroup);
             recordError("PARSE_FAILED", "Protobuf parse failed", 
                 "Topic: " + parent.getResourceName() + ", ConsumerGroup: " + consumerGroup);
         }
         
-        return null;
+        return null;  // No message available or all claims failed
     }
     
     @Override
@@ -449,10 +446,21 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
     protected void addCustomMetrics(Map<String, Number> metrics) {
         super.addCustomMetrics(metrics);  // Includes parent + abstract delegate metrics (including delegate_read_throughput_per_sec)
         
-        // H2-specific metrics (errors only, throughput is in abstract)
+        // H2-specific error metrics
         metrics.put("delegate_read_errors", readErrors.get());
         metrics.put("delegate_ack_errors", ackErrors.get());
         metrics.put("delegate_stale_acks_rejected", staleAcksRejected.get());
+        
+        // Claim conflict metrics (O(1) calculation)
+        long attemptsInWindow = claimAttemptsWindow.getWindowSum();
+        long conflictsInWindow = claimConflictsWindow.getWindowSum();
+        double conflictRatio = attemptsInWindow > 0 
+            ? (double) conflictsInWindow / attemptsInWindow 
+            : 0.0;
+        
+        metrics.put("claim_attempts_in_window", attemptsInWindow);
+        metrics.put("claim_conflicts_in_window", conflictsInWindow);
+        metrics.put("claim_conflict_ratio", conflictRatio);
     }
     
     @Override
@@ -471,9 +479,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
             if (readStatementWithTimeout == null || readStatementWithTimeout.isClosed()) {
                 return UsageState.FAILED;
             }
-            if (readStatementNoTimeout == null || readStatementNoTimeout.isClosed()) {
-                return UsageState.FAILED;
-            }
+            // Note: readStatementNoTimeout was removed (only readStatementWithTimeout is used now)
             if (insertClaimStatement == null || insertClaimStatement.isClosed()) {
                 return UsageState.FAILED;
             }
@@ -501,9 +507,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
         if (readStatementWithTimeout != null && !readStatementWithTimeout.isClosed()) {
             readStatementWithTimeout.close();
         }
-        if (readStatementNoTimeout != null && !readStatementNoTimeout.isClosed()) {
-            readStatementNoTimeout.close();
-        }
+        // Note: readStatementNoTimeout was removed (only readStatementWithTimeout is used now)
         if (insertClaimStatement != null && !insertClaimStatement.isClosed()) {
             insertClaimStatement.close();
         }

@@ -18,8 +18,20 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -343,6 +355,326 @@ class H2TopicIntegrationTest {
         // Verify stale ACK counter (this is a delegate-level metric)
         if (reader1 instanceof H2TopicReaderDelegate delegate) {
             assertThat(delegate.getMetrics().get("delegate_stale_acks_rejected")).isEqualTo(1L);
+        }
+    }
+    
+    @Test
+    @DisplayName("Should receive instant notifications via H2 trigger (event-driven)")
+    void shouldReceiveInstantNotifications() throws Exception {
+        // Given - Setup topic with trigger-based notification
+        Config config = ConfigFactory.parseString("dbPath = \"mem:h2-trigger-test\"");
+        this.topic = new H2TopicResource<>("trigger-test-topic", config);
+        this.topic.setSimulationRun("RUN-TRIGGER-001");
+        
+        @SuppressWarnings("unchecked")
+        ITopicWriter<BatchInfo> writer = (ITopicWriter<BatchInfo>) this.topic.getWrappedResource(
+            new ResourceContext("writer-service", "writer-port", "topic-write", "trigger-test-topic", Map.of()));
+        
+        @SuppressWarnings("unchecked")
+        ITopicReader<BatchInfo, AckToken> reader = (ITopicReader<BatchInfo, AckToken>) this.topic.getWrappedResource(
+            new ResourceContext("reader-service", "reader-port", "topic-read", "trigger-test-topic", Map.of("consumerGroup", "trigger-group")));
+        
+        BatchInfo message = BatchInfo.newBuilder()
+            .setSimulationRunId("RUN-TRIGGER-001")
+            .setStorageKey("/data/batch_001.parquet")
+            .setTickStart(0)
+            .setTickEnd(100)
+            .setWrittenAtMs(System.currentTimeMillis())
+            .build();
+        
+        // When - Start reader in background thread (blocking on receive)
+        CountDownLatch readerReady = new CountDownLatch(1);
+        AtomicReference<TopicMessage<BatchInfo, AckToken>> receivedRef = new AtomicReference<>();
+        AtomicLong elapsedRef = new AtomicLong(0);
+        
+        CompletableFuture<Void> readerFuture = CompletableFuture.runAsync(() -> {
+            try {
+                readerReady.countDown();  // Signal that reader is ready
+                long startTime = System.currentTimeMillis();
+                TopicMessage<BatchInfo, AckToken> received = reader.receive();  // Blocking wait
+                elapsedRef.set(System.currentTimeMillis() - startTime);
+                receivedRef.set(received);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        
+        // Wait for reader to be ready, then write message
+        await().atMost(2, TimeUnit.SECONDS).until(() -> readerReady.getCount() == 0);
+        writer.send(message);
+        
+        // Wait for reader to receive message
+        await().atMost(5, TimeUnit.SECONDS).until(() -> receivedRef.get() != null);
+        readerFuture.join();
+        
+        // Then - Message received via trigger (event-driven, not polling)
+        TopicMessage<BatchInfo, AckToken> received = receivedRef.get();
+        assertThat(received).isNotNull();
+        assertThat(received.payload().getSimulationRunId()).isEqualTo("RUN-TRIGGER-001");
+        assertThat(received.payload().getStorageKey()).isEqualTo("/data/batch_001.parquet");
+        
+        // Trigger notification should be reasonably fast (< 1 second)
+        // Note: Timing can vary on slow CI machines, but should be much faster than polling (which would be 100ms+ per poll)
+        assertThat(elapsedRef.get()).isLessThan(1000L);
+        
+        reader.ack(received);
+    }
+    
+    @Test
+    @DisplayName("Should dynamically resolve message types from google.protobuf.Any")
+    void shouldDynamicallyResolveMessageTypes() throws Exception {
+        // Given - Setup topic
+        Config config = ConfigFactory.parseString("dbPath = \"mem:h2-types-test\"");
+        this.topic = new H2TopicResource<>("types-test-topic", config);
+        this.topic.setSimulationRun("RUN-TYPES-001");
+        
+        @SuppressWarnings("unchecked")
+        ITopicWriter<BatchInfo> writer = (ITopicWriter<BatchInfo>) this.topic.getWrappedResource(
+            new ResourceContext("writer-service", "writer-port", "topic-write", "types-test-topic", Map.of()));
+        
+        @SuppressWarnings("unchecked")
+        ITopicReader<BatchInfo, AckToken> reader = (ITopicReader<BatchInfo, AckToken>) this.topic.getWrappedResource(
+            new ResourceContext("reader-service", "reader-port", "topic-read", "types-test-topic", Map.of("consumerGroup", "types-group")));
+        
+        BatchInfo message = BatchInfo.newBuilder()
+            .setSimulationRunId("test-run-789")
+            .setStorageKey("test-run-789/batch_0000000000_0000000100.pb")
+            .setTickStart(0)
+            .setTickEnd(100)
+            .setWrittenAtMs(System.currentTimeMillis())
+            .build();
+        
+        // When - Message written with google.protobuf.Any (internally wrapped in TopicEnvelope)
+        writer.send(message);
+        var received = reader.poll(5, TimeUnit.SECONDS);
+        
+        // Then - Type correctly resolved from type URL in google.protobuf.Any
+        assertThat(received).isNotNull();
+        assertThat(received.payload()).isInstanceOf(BatchInfo.class);
+        assertThat(received.payload().getSimulationRunId()).isEqualTo("test-run-789");
+        assertThat(received.payload().getStorageKey()).isEqualTo("test-run-789/batch_0000000000_0000000100.pb");
+        assertThat(received.payload().getTickStart()).isEqualTo(0L);
+        assertThat(received.payload().getTickEnd()).isEqualTo(100L);
+        
+        reader.ack(received);
+    }
+    
+    @Test
+    @DisplayName("Should allow new consumer groups to process historical messages")
+    void shouldAllowNewConsumerGroupsToProcessHistoricalMessages() throws Exception {
+        // Given - Setup topic and write 3 messages
+        Config config = ConfigFactory.parseString("dbPath = \"mem:h2-replay-test\"");
+        this.topic = new H2TopicResource<>("replay-test-topic", config);
+        this.topic.setSimulationRun("RUN-REPLAY-001");
+        
+        @SuppressWarnings("unchecked")
+        ITopicWriter<BatchInfo> writer = (ITopicWriter<BatchInfo>) this.topic.getWrappedResource(
+            new ResourceContext("writer-service", "writer-port", "topic-write", "replay-test-topic", Map.of()));
+        
+        // Write 3 messages
+        for (int i = 1; i <= 3; i++) {
+            writer.send(BatchInfo.newBuilder()
+                .setSimulationRunId("test-run-" + i)
+                .setStorageKey(String.format("test-run-%d/batch_0000000000_0000000100.pb", i))
+                .setTickStart(i * 100L)
+                .setTickEnd((i + 1) * 100L)
+                .setWrittenAtMs(System.currentTimeMillis())
+                .build());
+        }
+        
+        // Group A processes all messages
+        @SuppressWarnings("unchecked")
+        ITopicReader<BatchInfo, AckToken> readerA = (ITopicReader<BatchInfo, AckToken>) this.topic.getWrappedResource(
+            new ResourceContext("reader-a-service", "reader-port", "topic-read", "replay-test-topic", Map.of("consumerGroup", "group-a")));
+        
+        for (int i = 0; i < 3; i++) {
+            var msg = readerA.poll(5, TimeUnit.SECONDS);
+            assertThat(msg).isNotNull();
+            readerA.ack(msg);
+        }
+        
+        // Verify group A has no more messages
+        assertThat(readerA.poll(100, TimeUnit.MILLISECONDS)).isNull();
+        
+        // When - New consumer group B joins AFTER group A finished
+        @SuppressWarnings("unchecked")
+        ITopicReader<BatchInfo, AckToken> readerB = (ITopicReader<BatchInfo, AckToken>) this.topic.getWrappedResource(
+            new ResourceContext("reader-b-service", "reader-port", "topic-read", "replay-test-topic", Map.of("consumerGroup", "group-b")));
+        
+        // Then - Group B can still process all historical messages (replay functionality)
+        Set<String> processedIds = new HashSet<>();
+        Set<Long> processedTicks = new HashSet<>();
+        
+        for (int i = 0; i < 3; i++) {
+            var msg = readerB.poll(5, TimeUnit.SECONDS);
+            assertThat(msg).isNotNull();
+            processedIds.add(msg.payload().getSimulationRunId());
+            processedTicks.add(msg.payload().getTickStart());
+            readerB.ack(msg);
+        }
+        
+        // Verify all 3 historical messages were processed by group B
+        assertThat(processedIds).containsExactlyInAnyOrder("test-run-1", "test-run-2", "test-run-3");
+        assertThat(processedTicks).containsExactlyInAnyOrder(100L, 200L, 300L);
+        
+        // Verify group B has no more messages
+        assertThat(readerB.poll(100, TimeUnit.MILLISECONDS)).isNull();
+    }
+    
+    @Test
+    @DisplayName("Should handle concurrent writes and reads from multiple threads (stress test)")
+    void shouldHandleConcurrentWritesAndReads() throws Exception {
+        // Given - Setup topic
+        Config config = ConfigFactory.parseString("dbPath = \"mem:h2-concurrent-test\"");
+        this.topic = new H2TopicResource<>("concurrent-test-topic", config);
+        this.topic.setSimulationRun("RUN-CONCURRENT-001");
+        
+        // Create 3 writer delegates (simulating parallel persistence services)
+        List<ITopicWriter<BatchInfo>> writers = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            @SuppressWarnings("unchecked")
+            ITopicWriter<BatchInfo> writer = (ITopicWriter<BatchInfo>) this.topic.getWrappedResource(
+                new ResourceContext("writer-service-" + i, "writer-port", "topic-write", "concurrent-test-topic", Map.of()));
+            writers.add(writer);
+        }
+        
+        // When - Phase 1: 3 writers each write 10 messages concurrently
+        ExecutorService writeExecutor = Executors.newFixedThreadPool(3);
+        CountDownLatch writeLatch = new CountDownLatch(30); // 3 writers × 10 messages
+        AtomicInteger writeErrors = new AtomicInteger(0);
+        
+        for (int writerIdx = 0; writerIdx < 3; writerIdx++) {
+            final int writerId = writerIdx;
+            final ITopicWriter<BatchInfo> writer = writers.get(writerId);
+            
+            writeExecutor.submit(() -> {
+                try {
+                    for (int msgIdx = 0; msgIdx < 10; msgIdx++) {
+                        BatchInfo message = BatchInfo.newBuilder()
+                            .setSimulationRunId("RUN-CONCURRENT-001")
+                            .setStorageKey(String.format("writer_%d/batch_%03d.parquet", writerId, msgIdx))
+                            .setTickStart(writerId * 1000L + msgIdx * 100L)
+                            .setTickEnd(writerId * 1000L + (msgIdx + 1) * 100L)
+                            .setWrittenAtMs(System.currentTimeMillis())
+                            .build();
+                        
+                        writer.send(message);
+                        writeLatch.countDown();
+                    }
+                } catch (Exception e) {
+                    writeErrors.incrementAndGet();
+                    e.printStackTrace();
+                }
+            });
+        }
+        
+        // Wait for all writes to complete
+        await().atMost(10, TimeUnit.SECONDS).until(() -> writeLatch.getCount() == 0);
+        writeExecutor.shutdown();
+        assertThat(writeExecutor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        
+        // Verify no write errors
+        assertThat(writeErrors.get()).isEqualTo(0);
+        
+        // Then - Phase 2: Create 2 consumer groups with 2 readers each (4 readers total)
+        // Group A: 2 competing consumers
+        @SuppressWarnings("unchecked")
+        ITopicReader<BatchInfo, AckToken> readerA1 = (ITopicReader<BatchInfo, AckToken>) this.topic.getWrappedResource(
+            new ResourceContext("reader-a1-service", "reader-port", "topic-read", "concurrent-test-topic", Map.of("consumerGroup", "group-a")));
+        
+        @SuppressWarnings("unchecked")
+        ITopicReader<BatchInfo, AckToken> readerA2 = (ITopicReader<BatchInfo, AckToken>) this.topic.getWrappedResource(
+            new ResourceContext("reader-a2-service", "reader-port", "topic-read", "concurrent-test-topic", Map.of("consumerGroup", "group-a")));
+        
+        // Group B: 2 competing consumers
+        @SuppressWarnings("unchecked")
+        ITopicReader<BatchInfo, AckToken> readerB1 = (ITopicReader<BatchInfo, AckToken>) this.topic.getWrappedResource(
+            new ResourceContext("reader-b1-service", "reader-port", "topic-read", "concurrent-test-topic", Map.of("consumerGroup", "group-b")));
+        
+        @SuppressWarnings("unchecked")
+        ITopicReader<BatchInfo, AckToken> readerB2 = (ITopicReader<BatchInfo, AckToken>) this.topic.getWrappedResource(
+            new ResourceContext("reader-b2-service", "reader-port", "topic-read", "concurrent-test-topic", Map.of("consumerGroup", "group-b")));
+        
+        // Phase 3: All 4 readers consume messages concurrently
+        ExecutorService readExecutor = Executors.newFixedThreadPool(4);
+        
+        // Track messages per consumer group (ensure no duplicates within group)
+        Set<String> groupAMessages = ConcurrentHashMap.newKeySet();
+        Set<String> groupBMessages = ConcurrentHashMap.newKeySet();
+        
+        // Track total reads (should be 60: 30 for group A + 30 for group B)
+        CountDownLatch readLatch = new CountDownLatch(60);
+        AtomicInteger readErrors = new AtomicInteger(0);
+        
+        // Reader A1 (group-a)
+        readExecutor.submit(() -> consumeMessages(readerA1, groupAMessages, readLatch, readErrors));
+        
+        // Reader A2 (group-a)
+        readExecutor.submit(() -> consumeMessages(readerA2, groupAMessages, readLatch, readErrors));
+        
+        // Reader B1 (group-b)
+        readExecutor.submit(() -> consumeMessages(readerB1, groupBMessages, readLatch, readErrors));
+        
+        // Reader B2 (group-b)
+        readExecutor.submit(() -> consumeMessages(readerB2, groupBMessages, readLatch, readErrors));
+        
+        // Wait for all reads to complete (60 total: 30 + 30)
+        await().atMost(15, TimeUnit.SECONDS).until(() -> readLatch.getCount() == 0);
+        readExecutor.shutdownNow(); // Stop readers
+        assertThat(readExecutor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        
+        // Verify no read errors
+        assertThat(readErrors.get()).isEqualTo(0);
+        
+        // Verify pub/sub: Both groups received all 30 messages
+        assertThat(groupAMessages).hasSize(30);
+        assertThat(groupBMessages).hasSize(30);
+        
+        // Verify both groups processed the SAME 30 messages (pub/sub pattern!)
+        // Union of both sets should still be 30 unique messages (they overlap completely)
+        Set<String> allUniqueMessages = new HashSet<>();
+        allUniqueMessages.addAll(groupAMessages);
+        allUniqueMessages.addAll(groupBMessages);
+        assertThat(allUniqueMessages).hasSize(30); // Same 30 messages in both groups
+        
+        // Verify metrics: 30 writes, 60 reads (30 per group), 60 acks
+        Map<String, Number> metrics = this.topic.getMetrics();
+        assertThat(metrics.get("messages_published")).isEqualTo(30L);
+        assertThat(metrics.get("messages_received")).isEqualTo(60L);
+        assertThat(metrics.get("messages_acknowledged")).isEqualTo(60L);
+    }
+    
+    /**
+     * Helper method: Consumer thread that reads and ACKs messages.
+     * Thread-safe for concurrent execution.
+     */
+    private void consumeMessages(
+            ITopicReader<BatchInfo, AckToken> reader,
+            Set<String> processedKeys,
+            CountDownLatch latch,
+            AtomicInteger errors) {
+        try {
+            while (latch.getCount() > 0) {
+                var msg = reader.poll(200, TimeUnit.MILLISECONDS);
+                if (msg != null) {
+                    // Track message (detect duplicates within consumer group)
+                    boolean added = processedKeys.add(msg.payload().getStorageKey());
+                    if (!added) {
+                        // Duplicate detected! This should NEVER happen within a consumer group
+                        errors.incrementAndGet();
+                        System.err.println("DUPLICATE MESSAGE DETECTED: " + msg.payload().getStorageKey());
+                    }
+                    
+                    // Acknowledge message
+                    reader.ack(msg);
+                    latch.countDown();
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt(); // Restore interrupt status
+        } catch (Exception e) {
+            errors.incrementAndGet();
+            e.printStackTrace();
         }
     }
 }
