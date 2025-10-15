@@ -341,13 +341,13 @@ CREATE TABLE IF NOT EXISTS topic_messages (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     -- Composite unique constraint (topic + message)
-    UNIQUE KEY uk_topic_message (topic_name, message_id),
-    
-    -- Performance indexes (all include topic_name for partition-like behavior)
-    INDEX idx_topic_unclaimed (topic_name, claimed_by, id),
-    INDEX idx_topic_claimed (topic_name, claimed_by, claimed_at),
-    INDEX idx_topic_claim_status (topic_name, claimed_by, claimed_at)
+    CONSTRAINT uk_topic_message UNIQUE (topic_name, message_id)
 );
+
+-- Performance indexes (H2 requires separate CREATE INDEX statements)
+CREATE INDEX IF NOT EXISTS idx_topic_unclaimed ON topic_messages (topic_name, claimed_by, id);
+CREATE INDEX IF NOT EXISTS idx_topic_claimed ON topic_messages (topic_name, claimed_by, claimed_at);
+CREATE INDEX IF NOT EXISTS idx_topic_claim_status ON topic_messages (topic_name, claimed_by, claimed_at);
 ```
 
 **Column Descriptions:**
@@ -386,11 +386,11 @@ CREATE TABLE IF NOT EXISTS topic_consumer_group_acks (
     acknowledged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     -- Composite primary key (topic + consumer group + message)
-    PRIMARY KEY (topic_name, consumer_group, message_id),
-    
-    -- Performance index for consumer group filtering
-    INDEX idx_topic_consumer (topic_name, consumer_group, message_id)
+    PRIMARY KEY (topic_name, consumer_group, message_id)
 );
+
+-- Performance index for consumer group filtering
+CREATE INDEX IF NOT EXISTS idx_topic_group_acks ON topic_consumer_group_acks (topic_name, consumer_group, message_id);
 ```
 
 **Column Descriptions:**
@@ -858,7 +858,27 @@ public final class TopicMessage<T extends Message, ACK> {
      */
     public String consumerGroup() { return consumerGroup; }
     
-    ACK acknowledgeToken() { return acknowledgeToken; }
+    /**
+     * Returns the acknowledgment token for this message.
+     * <p>
+     * <strong>VISIBILITY WARNING:</strong>
+     * This method is {@code public} only because {@link org.evochora.datapipeline.resources.topics.AbstractTopicDelegateReader}
+     * resides in a different package (implementation package vs. API package).
+     * <p>
+     * <strong>DO NOT USE THIS METHOD DIRECTLY IN CLIENT CODE!</strong>
+     * The acknowledgment token is an internal implementation detail. Services should only call
+     * {@link ITopicReader#ack(TopicMessage)}, which uses this token internally.
+     * <p>
+     * This token is implementation-specific and opaque:
+     * <ul>
+     *   <li>H2: {@code AckToken(rowId, claimVersion)}</li>
+     *   <li>Chronicle: {@code Long} (tailer index)</li>
+     *   <li>Kafka: {@code Long} (offset)</li>
+     * </ul>
+     *
+     * @return The acknowledgment token (for internal use by topic delegates only).
+     */
+    public ACK acknowledgeToken() { return acknowledgeToken; }
     
     @Override
     public boolean equals(Object o) {
@@ -1160,6 +1180,7 @@ package org.evochora.datapipeline.resources.topics;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.topics.ISimulationRunAwareTopic;
 import org.evochora.datapipeline.resources.AbstractResource;
 
 import java.util.Map;
@@ -1185,13 +1206,24 @@ import java.util.Map;
  * <strong>Consumer Group (Readers Only):</strong>
  * Reader delegates extract the consumer group from {@code context.parameters().get("consumerGroup")}.
  * Writer delegates do not use consumer groups.
+ * <p>
+ * <strong>Simulation Run Awareness:</strong>
+ * Implements {@link ISimulationRunAwareTopic} to store the simulation run ID and provide
+ * access to subclasses via {@link #getSimulationRunId()}. Subclasses can override
+ * {@link #onSimulationRunSet(String)} to perform run-specific initialization.
  *
  * @param <P> The parent topic resource type.
  */
-public abstract class AbstractTopicDelegate<P extends AbstractTopicResource<?, ?>> extends AbstractResource implements IWrappedResource, AutoCloseable {
+public abstract class AbstractTopicDelegate<P extends AbstractTopicResource<?, ?>> extends AbstractResource implements IWrappedResource, ISimulationRunAwareTopic, AutoCloseable {
     
     protected final P parent;
     protected final String consumerGroup;  // Only used by readers
+    
+    /**
+     * The simulation run ID for this delegate.
+     * Set via {@link #setSimulationRun(String)} before sending/reading messages.
+     */
+    private String simulationRunId;
     
     /**
      * Creates a new topic delegate.
@@ -1206,89 +1238,6 @@ public abstract class AbstractTopicDelegate<P extends AbstractTopicResource<?, ?
     }
     
     @Override
-    public final AbstractResource getWrappedResource() {
-        return parent;
-    }
-    
-    @Override
-    protected void addCustomMetrics(Map<String, Number> metrics) {
-        super.addCustomMetrics(metrics);
-        
-        // Include parent's aggregate metrics (type-safe access!)
-        metrics.put("parent_messages_published", parent.messagesPublished.get());
-        metrics.put("parent_messages_received", parent.messagesReceived.get());
-        metrics.put("parent_messages_acknowledged", parent.messagesAcknowledged.get());
-    }
-}
-```
-
-### 9.3 AbstractTopicDelegateWriter
-
-**File:** `src/main/java/org/evochora/datapipeline/resources/topics/AbstractTopicDelegateWriter.java`
-
-```java
-package org.evochora.datapipeline.resources.topics;
-
-import com.google.protobuf.Any;
-import com.google.protobuf.Message;
-import org.evochora.datapipeline.api.contracts.NotificationContracts.TopicEnvelope;
-import org.evochora.datapipeline.api.resources.ResourceContext;
-import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
-
-import java.util.UUID;
-
-/**
- * Abstract base class for topic writer delegates.
- * <p>
- * This class implements the {@link ITopicWriter#send(Message)} method to automatically
- * wrap the payload in a {@link TopicEnvelope} before delegating to the concrete implementation.
- * <p>
- * <strong>Message Wrapping:</strong>
- * The {@code send()} method is {@code final} to enforce the following flow:
- * <ol>
- *   <li>Generate unique {@code messageId} (UUID)</li>
- *   <li>Capture current {@code timestamp} (System.currentTimeMillis())</li>
- *   <li>Wrap payload in {@link TopicEnvelope} using {@code google.protobuf.Any}</li>
- *   <li>Delegate to {@link #sendEnvelope(TopicEnvelope)} for technology-specific writing</li>
- * </ol>
- * <p>
- * <strong>Simulation Run Awareness:</strong>
- * Implements {@link ISimulationRunAwareTopic} to store the simulation run ID and provide
- * access to subclasses via {@link #getSimulationRunId()}. Subclasses (e.g., H2TopicWriterDelegate)
- * can override {@link #onSimulationRunSet(String)} to perform initialization.
- * <p>
- * <strong>Subclass Responsibilities:</strong>
- * <ul>
- *   <li>Implement {@link #sendEnvelope(TopicEnvelope)} to write the envelope to the underlying topic</li>
- *   <li>Optionally override {@link #onSimulationRunSet(String)} for run-specific setup</li>
- * </ul>
- * <p>
- * <strong>Thread Safety:</strong>
- * Subclasses MUST implement {@code sendEnvelope} to be thread-safe for concurrent writers.
- *
- * @param <P> The parent topic resource type.
- * @param <T> The message type.
- */
-public abstract class AbstractTopicDelegateWriter<P extends AbstractTopicResource<T, ?>, T extends Message> 
-    extends AbstractTopicDelegate<P> implements ITopicWriter<T> {
-    
-    /**
-     * The simulation run ID for this writer.
-     * Set via {@link #setSimulationRun(String)} before sending messages.
-     */
-    private String simulationRunId;
-    
-    /**
-     * Creates a new writer delegate.
-     *
-     * @param parent The parent topic resource.
-     * @param context The resource context.
-     */
-    protected AbstractTopicDelegateWriter(P parent, ResourceContext context) {
-        super(parent, context);
-    }
-    
-    @Override
     public final void setSimulationRun(String simulationRunId) {
         if (simulationRunId == null || simulationRunId.isBlank()) {
             throw new IllegalArgumentException("Simulation run ID must not be null or blank");
@@ -1298,7 +1247,7 @@ public abstract class AbstractTopicDelegateWriter<P extends AbstractTopicResourc
     }
     
     /**
-     * Returns the simulation run ID for this writer.
+     * Returns the simulation run ID for this delegate.
      * <p>
      * Subclasses can use this to access the run ID for schema selection, path construction, etc.
      *
@@ -1326,37 +1275,92 @@ public abstract class AbstractTopicDelegateWriter<P extends AbstractTopicResourc
         // Default: no-op (subclasses override as needed)
     }
     
-    /**
-     * Sends a message to the topic.
-     * <p>
-     * This method is {@code final} to enforce automatic {@link TopicEnvelope} wrapping.
-     * The wrapped envelope is then passed to {@link #sendEnvelope(TopicEnvelope)}.
-     *
-     * @param message The message to send (must not be null).
-     * @throws InterruptedException if interrupted while waiting.
-     */
-    @Override
-    public final void send(T message) throws InterruptedException {
-        if (message == null) {
-            throw new NullPointerException("Message cannot be null");
-        }
-        
-        TopicEnvelope envelope = wrapMessage(message);
-        sendEnvelope(envelope);
+    public final AbstractResource getWrappedResource() {
+        return parent;
     }
     
+    @Override
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);
+        
+        // Include parent's aggregate metrics (type-safe access!)
+        metrics.put("parent_messages_published", parent.messagesPublished.get());
+        metrics.put("parent_messages_received", parent.messagesReceived.get());
+        metrics.put("parent_messages_acknowledged", parent.messagesAcknowledged.get());
+    }
+}
+```
+
+### 9.3 AbstractTopicDelegateWriter
+
+**File:** `src/main/java/org/evochora/datapipeline/resources/topics/AbstractTopicDelegateWriter.java`
+
+```java
+package org.evochora.datapipeline.resources.topics;
+
+import com.google.protobuf.Any;
+import com.google.protobuf.Message;
+import org.evochora.datapipeline.api.contracts.TopicEnvelope;
+import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
+
+import java.util.UUID;
+
+/**
+ * Abstract base class for topic writer delegates.
+ * <p>
+ * This class implements the {@link ITopicWriter#send(Message)} method to automatically
+ * wrap the payload in a {@link TopicEnvelope} before delegating to the concrete implementation.
+ * <p>
+ * <strong>Message Wrapping:</strong>
+ * The {@code send()} method is {@code final} to enforce the following flow:
+ * <ol>
+ *   <li>Generate unique {@code messageId} (UUID)</li>
+ *   <li>Capture current {@code timestamp} (System.currentTimeMillis())</li>
+ *   <li>Wrap payload in {@link TopicEnvelope} using {@code google.protobuf.Any}</li>
+ *   <li>Delegate to {@link #sendEnvelope(TopicEnvelope)} for technology-specific writing</li>
+ * </ol>
+ * <p>
+ * <strong>Subclass Responsibilities:</strong>
+ * <ul>
+ *   <li>Implement {@link #sendEnvelope(TopicEnvelope)} to write the envelope to the underlying topic</li>
+ *   <li>Optionally override {@link #onSimulationRunSet(String)} for run-specific setup (inherited from {@link AbstractTopicDelegate})</li>
+ * </ul>
+ * <p>
+ * <strong>Thread Safety:</strong>
+ * Subclasses MUST implement {@code sendEnvelope} to be thread-safe for concurrent writers.
+ *
+ * @param <P> The parent topic resource type.
+ * @param <T> The message type.
+ */
+public abstract class AbstractTopicDelegateWriter<P extends AbstractTopicResource<T, ?>, T extends Message> 
+    extends AbstractTopicDelegate<P> implements ITopicWriter<T> {
+    
     /**
-     * Wraps a message in a TopicEnvelope with unique messageId and timestamp.
+     * Creates a new writer delegate.
      *
-     * @param message The message to wrap.
-     * @return The wrapped envelope.
+     * @param parent The parent topic resource.
+     * @param context The resource context.
      */
-    private TopicEnvelope wrapMessage(T message) {
-        return TopicEnvelope.newBuilder()
+    protected AbstractTopicDelegateWriter(P parent, ResourceContext context) {
+        super(parent, context);
+    }
+    
+    @Override
+    public final void send(T message) throws InterruptedException {
+        if (getSimulationRunId() == null) {
+            throw new IllegalStateException("setSimulationRun() must be called before sending messages");
+        }
+        
+        // Wrap message in envelope
+        TopicEnvelope envelope = TopicEnvelope.newBuilder()
             .setMessageId(UUID.randomUUID().toString())
             .setTimestamp(System.currentTimeMillis())
             .setPayload(Any.pack(message))
             .build();
+        
+        // Delegate to concrete implementation
+        sendEnvelope(envelope);
     }
     
     /**
@@ -1397,7 +1401,7 @@ package org.evochora.datapipeline.resources.topics;
 import com.google.protobuf.Any;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
-import org.evochora.datapipeline.api.contracts.NotificationContracts.TopicEnvelope;
+import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
@@ -1424,16 +1428,11 @@ import java.util.concurrent.TimeUnit;
  * <strong>Consumer Group Validation:</strong>
  * The consumer group is validated in the constructor (defense-in-depth).
  * <p>
- * <strong>Simulation Run Awareness:</strong>
- * Implements {@link ISimulationRunAwareTopic} to store the simulation run ID and provide
- * access to subclasses via {@link #getSimulationRunId()}. Subclasses (e.g., H2TopicReaderDelegate)
- * can override {@link #onSimulationRunSet(String)} to perform initialization.
- * <p>
  * <strong>Subclass Responsibilities:</strong>
  * <ul>
  *   <li>Implement {@link #receiveEnvelope(long, TimeUnit)} to read from the underlying topic</li>
  *   <li>Implement {@link #acknowledgeMessage(Object)} for technology-specific acknowledgment</li>
- *   <li>Optionally override {@link #onSimulationRunSet(String)} for run-specific setup</li>
+ *   <li>Optionally override {@link #onSimulationRunSet(String)} for run-specific setup (inherited from {@link AbstractTopicDelegate})</li>
  * </ul>
  *
  * @param <P> The parent topic resource type.
@@ -1444,12 +1443,6 @@ public abstract class AbstractTopicDelegateReader<P extends AbstractTopicResourc
     extends AbstractTopicDelegate<P> implements ITopicReader<T, ACK> {
     
     private static final Logger log = LoggerFactory.getLogger(AbstractTopicDelegateReader.class);
-    
-    /**
-     * The simulation run ID for this reader.
-     * Set via {@link #setSimulationRun(String)} before reading messages.
-     */
-    private String simulationRunId;
     
     /**
      * Creates a new reader delegate.
@@ -1472,44 +1465,6 @@ public abstract class AbstractTopicDelegateReader<P extends AbstractTopicResourc
                 "Expected format: 'topic-read:%s?consumerGroup=<group-name>'", 
                 parent.getResourceName()));
         }
-    }
-    
-    @Override
-    public final void setSimulationRun(String simulationRunId) {
-        if (simulationRunId == null || simulationRunId.isBlank()) {
-            throw new IllegalArgumentException("Simulation run ID must not be null or blank");
-        }
-        this.simulationRunId = simulationRunId;
-        onSimulationRunSet(simulationRunId);
-    }
-    
-    /**
-     * Returns the simulation run ID for this reader.
-     * <p>
-     * Subclasses can use this to access the run ID for schema selection, path construction, etc.
-     *
-     * @return The simulation run ID, or null if not yet set.
-     */
-    protected final String getSimulationRunId() {
-        return simulationRunId;
-    }
-    
-    /**
-     * Template method called after {@link #setSimulationRun(String)} is invoked.
-     * <p>
-     * Subclasses can override this to perform run-specific initialization:
-     * <ul>
-     *   <li>H2: Set database schema to run-specific schema</li>
-     *   <li>Chronicle: Open run-specific queue directory</li>
-     *   <li>Kafka: Subscribe to run-specific topic partition</li>
-     * </ul>
-     * <p>
-     * Default implementation is a no-op.
-     *
-     * @param simulationRunId The simulation run ID (never null or blank).
-     */
-    protected void onSimulationRunSet(String simulationRunId) {
-        // Default: no-op (subclasses override as needed)
     }
     
     @Override
@@ -1649,22 +1604,33 @@ public abstract class AbstractTopicDelegateReader<P extends AbstractTopicResourc
 ```java
 package org.evochora.datapipeline.resources.topics;
 
-import org.evochora.datapipeline.api.contracts.NotificationContracts.TopicEnvelope;
+import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 
 /**
- * Container for a received TopicEnvelope and its implementation-specific acknowledgment token.
+ * Internal envelope for passing messages from concrete implementations to abstract readers.
  * <p>
- * This record is used internally by {@link AbstractTopicDelegateReader} to pass both
- * the envelope and the acknowledgment token from the concrete implementation
- * (e.g., {@link H2TopicReaderDelegate}) to the abstract unwrapping layer.
+ * This record bridges the gap between technology-specific reading logic and the abstract
+ * {@link org.evochora.datapipeline.api.resources.topics.TopicMessage} that is returned to clients.
  * <p>
- * <strong>Examples:</strong>
+ * <strong>Purpose:</strong>
+ * Concrete reader delegates (H2TopicReaderDelegate, ChronicleTopicReaderDelegate) use this to return:
  * <ul>
- *   <li>H2: {@code ReceivedEnvelope<Long>} where {@code acknowledgeToken} is the row ID</li>
- *   <li>Chronicle: {@code ReceivedEnvelope<Long>} where {@code acknowledgeToken} is the queue index</li>
- *   <li>Kafka: {@code ReceivedEnvelope<KafkaOffset>} where {@code acknowledgeToken} is the offset</li>
+ *   <li>The raw {@link TopicEnvelope} (contains Protobuf Any payload)</li>
+ *   <li>An implementation-specific acknowledgment token (row ID, tailer index, offset, etc.)</li>
+ * </ul>
+ * <p>
+ * The abstract {@link AbstractTopicDelegateReader} then unwraps the envelope and creates a
+ * {@link org.evochora.datapipeline.api.resources.topics.TopicMessage} with the typed payload.
+ * <p>
+ * <strong>Implementation Examples:</strong>
+ * <ul>
+ *   <li>H2: {@code ReceivedEnvelope<AckToken>} where {@code acknowledgeToken} is AckToken(rowId, claimVersion)</li>
+ *   <li>Chronicle: {@code ReceivedEnvelope<Long>} where {@code acknowledgeToken} is the tailer index</li>
+ *   <li>Kafka: {@code ReceivedEnvelope<Long>} where {@code acknowledgeToken} is the offset</li>
  * </ul>
  *
+ * @param envelope The wrapped Protobuf envelope (contains message_id, timestamp, Any payload).
+ * @param acknowledgeToken Implementation-specific token for acknowledgment.
  * @param <ACK> The acknowledgment token type.
  */
 public record ReceivedEnvelope<ACK>(TopicEnvelope envelope, ACK acknowledgeToken) {
@@ -1982,12 +1948,17 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
                 claim_version INT DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 
-                UNIQUE KEY uk_topic_message (topic_name, message_id),
-                INDEX idx_topic_unclaimed (topic_name, claimed_by, id),
-                INDEX idx_topic_claimed (topic_name, claimed_by, claimed_at),
-                INDEX idx_topic_claim_status (topic_name, claimed_by, claimed_at)
+                CONSTRAINT uk_topic_message UNIQUE (topic_name, message_id)
             )
             """;
+        
+        // Create indexes for messages table (H2 requires separate CREATE INDEX statements)
+        String createIndexUnclaimed = 
+            "CREATE INDEX IF NOT EXISTS idx_topic_unclaimed ON topic_messages (topic_name, claimed_by, id)";
+        String createIndexClaimed = 
+            "CREATE INDEX IF NOT EXISTS idx_topic_claimed ON topic_messages (topic_name, claimed_by, claimed_at)";
+        String createIndexClaimStatus = 
+            "CREATE INDEX IF NOT EXISTS idx_topic_claim_status ON topic_messages (topic_name, claimed_by, claimed_at)";
         
         // Create centralized consumer group acknowledgments table (shared by all topics)
         String createAcksSql = """
@@ -1997,16 +1968,23 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
                 message_id VARCHAR(255) NOT NULL,
                 acknowledged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 
-                PRIMARY KEY (topic_name, consumer_group, message_id),
-                INDEX idx_topic_consumer (topic_name, consumer_group, message_id)
+                PRIMARY KEY (topic_name, consumer_group, message_id)
             )
             """;
+        
+        // Create index for acks table
+        String createIndexGroupAcks = 
+            "CREATE INDEX IF NOT EXISTS idx_topic_group_acks ON topic_consumer_group_acks (topic_name, consumer_group, message_id)";
         
         try (Connection conn = dataSource.getConnection();
              Statement stmt = conn.createStatement()) {
             stmt.execute(createMessagesSql);
+            stmt.execute(createIndexUnclaimed);
+            stmt.execute(createIndexClaimed);
+            stmt.execute(createIndexClaimStatus);
             stmt.execute(createAcksSql);
-            log.debug("Initialized centralized topic tables (shared by all topics)");
+            stmt.execute(createIndexGroupAcks);
+            log.debug("Initialized centralized topic tables for resource '{}'", getResourceName());
         }
     }
     
@@ -2313,7 +2291,7 @@ public class H2InsertTrigger implements Trigger {
 package org.evochora.datapipeline.resources.topics;
 
 import com.google.protobuf.Message;
-import org.evochora.datapipeline.api.contracts.NotificationContracts.TopicEnvelope;
+import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.slf4j.Logger;
@@ -2487,7 +2465,7 @@ package org.evochora.datapipeline.resources.topics;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
-import org.evochora.datapipeline.api.contracts.NotificationContracts.TopicEnvelope;
+import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.slf4j.Logger;

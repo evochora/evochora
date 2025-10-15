@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package org.evochora.datapipeline.api.contracts;
+
+import "google/protobuf/any.proto";
+
+option java_multiple_files = true;
+option java_package = "org.evochora.datapipeline.api.contracts";
+
+// ============================================================================
+// Topic Envelope (wraps all topic messages)
+// ============================================================================
+
+// Generic envelope for all topic messages.
+// Uses google.protobuf.Any to support multiple message types (BatchInfo, MetadataInfo, etc.)
+message TopicEnvelope {
+  // Unique identifier for this message (UUID format)
+  // Used for idempotency and duplicate detection
+  string message_id = 1;
+
+  // Unix timestamp in milliseconds when message was created
+  int64 timestamp = 2;
+
+  // The actual message payload (BatchInfo, MetadataInfo, etc.)
+  // Type is encoded in the Any type_url field
+  google.protobuf.Any payload = 3;
+}
+
+// ============================================================================
+// Batch Notification (PersistenceService → Indexers)
+// ============================================================================
+
+// Notification that a batch of tick data has been written to storage.
+// Sent from PersistenceService to batch-topic, consumed by indexers.
+message BatchInfo {
+  // Simulation run identifier (matches SimulationMetadata.simulation_run_id)
+  string simulation_run_id = 1;
+
+  // Storage key where batch was written (path or object key)
+  // Example: "20251014-143025-550e8400/batch_0000000000_0000000100.pb"
+  string storage_key = 2;
+
+  // First tick number in this batch (inclusive)
+  int64 tick_start = 3;
+
+  // Last tick number in this batch (inclusive)
+  int64 tick_end = 4;
+
+  // Unix timestamp in milliseconds when batch was written to storage
+  int64 written_at_ms = 5;
+}
+
+// ============================================================================
+// Metadata Notification (MetadataPersistenceService → Indexers)
+// ============================================================================
+
+// Notification that simulation metadata has been written to storage.
+// Sent from MetadataPersistenceService to metadata-topic, consumed by MetadataIndexer.
+message MetadataInfo {
+  // Simulation run identifier (matches SimulationMetadata.simulation_run_id)
+  string simulation_run_id = 1;
+
+  // Storage key where metadata was written (path or object key)
+  // Example: "20251014-143025-550e8400/metadata.pb"
+  string storage_key = 2;
+
+  // Unix timestamp in milliseconds when metadata was written to storage
+  int64 written_at_ms = 3;
+}
+
