@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -71,13 +72,12 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     private volatile String currentSchemaName = null;  // Current registered schema (null = not registered)
     private final Object triggerLock = new Object();   // Synchronization for trigger registration
     
-    // Lazy table/trigger initialization
-    private volatile boolean tablesInitialized = false; // Lazy table creation flag
-    private final Object initLock = new Object();       // Synchronization for table creation
+    // Synchronization for schema setup
+    private final Object initLock = new Object();
     
     // Centralized table names (shared by all topics)
     private static final String MESSAGES_TABLE = "topic_messages";
-    private static final String ACKS_TABLE = "topic_consumer_group_acks";
+    private static final String CONSUMER_GROUP_TABLE = "topic_consumer_group";
     
     /**
      * Creates a new H2TopicResource with HikariCP connection pooling.
@@ -180,12 +180,12 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     }
     
     /**
-     * Returns the acks table name.
+     * Returns the consumer group tracking table name.
      *
-     * @return "topic_consumer_group_acks"
+     * @return "topic_consumer_group"
      */
-    protected String getAcksTable() {
-        return ACKS_TABLE;
+    protected String getConsumerGroupTable() {
+        return CONSUMER_GROUP_TABLE;
     }
     
     /**
@@ -265,6 +265,7 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
      */
     private void createTablesInSchema(Connection connection) throws SQLException {
         // Create centralized messages table (shared by all topics)
+        // This table only stores message payloads, no claim/ack state
         String createMessagesSql = """
             CREATE TABLE IF NOT EXISTS topic_messages (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -272,47 +273,45 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
                 message_id VARCHAR(255) NOT NULL,
                 timestamp BIGINT NOT NULL,
                 envelope BLOB NOT NULL,
-                claimed_by VARCHAR(255),
-                claimed_at TIMESTAMP,
-                claim_version INT DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 
                 CONSTRAINT uk_topic_message UNIQUE (topic_name, message_id)
             )
             """;
         
-        // Create indexes for messages table (H2 requires separate CREATE INDEX statements)
-        String createIndexUnclaimed = 
-            "CREATE INDEX IF NOT EXISTS idx_topic_unclaimed ON topic_messages (topic_name, claimed_by, id)";
-        String createIndexClaimed = 
-            "CREATE INDEX IF NOT EXISTS idx_topic_claimed ON topic_messages (topic_name, claimed_by, claimed_at)";
-        String createIndexClaimStatus = 
-            "CREATE INDEX IF NOT EXISTS idx_topic_claim_status ON topic_messages (topic_name, claimed_by, claimed_at)";
+        // Create index for messages table
+        String createIndexMessages = 
+            "CREATE INDEX IF NOT EXISTS idx_topic_messages ON topic_messages (topic_name, id)";
         
-        // Create centralized consumer group acknowledgments table (shared by all topics)
-        String createAcksSql = """
-            CREATE TABLE IF NOT EXISTS topic_consumer_group_acks (
+        // Create centralized consumer group tracking table (shared by all topics)
+        // Each consumer group has its own claim/ack state for each message
+        String createConsumerGroupSql = """
+            CREATE TABLE IF NOT EXISTS topic_consumer_group (
                 topic_name VARCHAR(255) NOT NULL,
                 consumer_group VARCHAR(255) NOT NULL,
                 message_id VARCHAR(255) NOT NULL,
-                acknowledged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                claimed_by VARCHAR(255),
+                claimed_at TIMESTAMP,
+                claim_version INT DEFAULT 0,
+                acknowledged_at TIMESTAMP,
                 
                 PRIMARY KEY (topic_name, consumer_group, message_id)
             )
             """;
         
-        // Create index for acks table
-        String createIndexGroupAcks = 
-            "CREATE INDEX IF NOT EXISTS idx_topic_group_acks ON topic_consumer_group_acks (topic_name, consumer_group, message_id)";
+        // Create indexes for consumer group table (optimized for queries)
+        String createIndexUnclaimed = 
+            "CREATE INDEX IF NOT EXISTS idx_consumer_group_unclaimed ON topic_consumer_group (topic_name, consumer_group, claimed_by, message_id)";
+        String createIndexClaimed = 
+            "CREATE INDEX IF NOT EXISTS idx_consumer_group_claimed ON topic_consumer_group (topic_name, consumer_group, claimed_at)";
         
         // Execute all CREATE statements (connection already provided by H2SchemaUtil.setupRunSchema)
         try (Statement stmt = connection.createStatement()) {
             stmt.execute(createMessagesSql);
+            stmt.execute(createIndexMessages);
+            stmt.execute(createConsumerGroupSql);
             stmt.execute(createIndexUnclaimed);
             stmt.execute(createIndexClaimed);
-            stmt.execute(createIndexClaimStatus);
-            stmt.execute(createAcksSql);
-            stmt.execute(createIndexGroupAcks);
             log.debug("Created centralized topic tables for resource '{}'", getResourceName());
         }
     }
@@ -397,20 +396,19 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     }
     
     @Override
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);  // Includes aggregate metrics from AbstractTopicResource
+        
+        // H2-specific metrics
+        metrics.put("stuck_messages_reassigned", stuckMessagesReassigned.get());
+    }
+    
+    @Override
     protected void onSimulationRunSet(String simulationRunId) {
         synchronized (initLock) {
-            // Idempotent: skip if already setup for this run
-            if (this.tablesInitialized) {
-                log.debug("Schema already setup for run: {}", simulationRunId);
-                return;
-            }
-            
-            this.tablesInitialized = false;  // Reset for new run
-            
             try (Connection conn = getConnection()) {
-                // ONE-SHOT: Schema + Tables + Trigger
+                // Setup schema + tables + trigger for this run (called only once, guaranteed by AbstractTopicResource)
                 H2SchemaUtil.setupRunSchema(conn, simulationRunId, this::setupSchemaResources);
-                this.tablesInitialized = true;
                 
                 log.info("H2 topic '{}' setup complete for run: {}", getResourceName(), simulationRunId);
                 

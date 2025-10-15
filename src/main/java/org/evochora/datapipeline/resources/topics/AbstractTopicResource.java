@@ -256,6 +256,19 @@ public abstract class AbstractTopicResource<T extends Message, ACK> extends Abst
             throw new IllegalArgumentException("Simulation run ID must not be null or blank");
         }
         
+        // Idempotent: skip if already set to the same run ID
+        if (this.simulationRunId != null) {
+            if (this.simulationRunId.equals(simulationRunId)) {
+                log.debug("Simulation run '{}' already set for topic '{}'", simulationRunId, getResourceName());
+                return;
+            } else {
+                throw new IllegalStateException(String.format(
+                    "Cannot change simulation run ID from '%s' to '%s' for topic '%s'. " +
+                    "Run ID is immutable once set.",
+                    this.simulationRunId, simulationRunId, getResourceName()));
+            }
+        }
+        
         this.simulationRunId = simulationRunId;
         
         // Template method: Let subclass perform technology-specific setup
