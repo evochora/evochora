@@ -63,19 +63,23 @@ class H2TopicIntegrationTest {
     @Test
     @DisplayName("Should write and read message end-to-end")
     void shouldWriteAndReadMessage() throws Exception {
-        // Given - Setup topic with simulation run
+        // Given - Setup topic
         Config config = ConfigFactory.parseString("dbPath = \"mem:h2-e2e\"");
         this.topic = new H2TopicResource<>("batch-topic", config);
         
-        // Create writer and reader
-        ITopicWriter<BatchInfo> writer = this.topic.createWriterDelegate(
+        // Create writer and reader FIRST (before setSimulationRun)
+        // Use getWrappedResource() (proper API) instead of createWriterDelegate() (template method)
+        @SuppressWarnings("unchecked")
+        ITopicWriter<BatchInfo> writer = (ITopicWriter<BatchInfo>) this.topic.getWrappedResource(
             new ResourceContext("writer-service", "writer-port", "topic-write", "batch-topic", Map.of()));
-        var reader = this.topic.createReaderDelegate(
+        
+        @SuppressWarnings("unchecked")
+        ITopicReader<BatchInfo, AckToken> reader = (ITopicReader<BatchInfo, AckToken>) this.topic.getWrappedResource(
             new ResourceContext("reader-service", "reader-port", "topic-read", "batch-topic", Map.of("consumerGroup", "test-consumer-group")));
         
-        // Set simulation run for schema isolation
-        writer.setSimulationRun("SIM_20250101_TEST");
-        reader.setSimulationRun("SIM_20250101_TEST");
+        // Set simulation run (creates schema + tables, propagates to delegates)
+        String simulationRunId = "20250101-TEST-RUN";
+        this.topic.setSimulationRun(simulationRunId);
         
         // Create test message
         BatchInfo message = BatchInfo.newBuilder()
@@ -111,9 +115,9 @@ class H2TopicIntegrationTest {
         // Verify metrics
         assertThat(this.topic.getMetrics()).containsKeys(
             "messages_published", "messages_received", "messages_acknowledged");
-        assertThat(this.topic.getMetrics().get("messages_published")).isEqualTo(1);
-        assertThat(this.topic.getMetrics().get("messages_received")).isEqualTo(1);
-        assertThat(this.topic.getMetrics().get("messages_acknowledged")).isEqualTo(1);
+        assertThat(this.topic.getMetrics().get("messages_published")).isEqualTo(1L);
+        assertThat(this.topic.getMetrics().get("messages_received")).isEqualTo(1L);
+        assertThat(this.topic.getMetrics().get("messages_acknowledged")).isEqualTo(1L);
     }
 }
 

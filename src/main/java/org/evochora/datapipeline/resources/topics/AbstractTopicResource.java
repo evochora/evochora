@@ -5,6 +5,7 @@ import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.resources.IContextualResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.topics.ISimulationRunAwareTopic;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.resources.AbstractResource;
@@ -45,6 +46,12 @@ import java.util.concurrent.atomic.AtomicLong;
  * The parent resource maintains aggregate metrics (messagesPublished, messagesReceived, messagesAcknowledged)
  * across ALL delegates. Individual delegates also track their own per-service metrics.
  * <p>
+ * <strong>Simulation Run Awareness:</strong>
+ * This class implements {@link ISimulationRunAwareTopic} and automatically propagates the simulation run ID
+ * to all delegates when {@link #setSimulationRun(String)} is called. Subclasses can override
+ * {@link #onSimulationRunSet(String)} to perform technology-specific setup (e.g., schema creation for H2,
+ * queue directory creation for Chronicle).
+ * <p>
  * <strong>Subclass Responsibilities:</strong>
  * Implement {@link #createReaderDelegate(ResourceContext)} and {@link #createWriterDelegate(ResourceContext)}
  * to provide technology-specific readers and writers (H2, Chronicle, Kafka, etc.).
@@ -52,12 +59,15 @@ import java.util.concurrent.atomic.AtomicLong;
  * @param <T> The message type (must be a Protobuf {@link Message}).
  * @param <ACK> The acknowledgment token type (implementation-specific, e.g., {@code Long} for H2/Chronicle).
  */
-public abstract class AbstractTopicResource<T extends Message, ACK> extends AbstractResource implements IContextualResource, AutoCloseable {
+public abstract class AbstractTopicResource<T extends Message, ACK> extends AbstractResource implements IContextualResource, ISimulationRunAwareTopic, AutoCloseable {
     
     private static final Logger log = LoggerFactory.getLogger(AbstractTopicResource.class);
     
     // Delegate lifecycle management
     protected final Set<AutoCloseable> activeDelegates = ConcurrentHashMap.newKeySet();
+    
+    // Simulation run awareness
+    private volatile String simulationRunId = null;
     
     // Aggregate metrics (across ALL delegates/services)
     protected final AtomicLong messagesPublished = new AtomicLong(0);
@@ -141,8 +151,17 @@ public abstract class AbstractTopicResource<T extends Message, ACK> extends Abst
             activeDelegates.add((AutoCloseable) delegate);
         }
         
-        log.debug("Created delegate for topic '{}': type={}, service={}",
-            getResourceName(), context.usageType(), context.serviceName());
+        // Auto-inherit simulation run ID if parent already has it set
+        // This supports both orderings:
+        // 1) setSimulationRun() → createDelegate() → auto-inherit
+        // 2) createDelegate() → setSimulationRun() → propagate (handled in setSimulationRun)
+        if (simulationRunId != null && delegate instanceof ISimulationRunAwareTopic aware) {
+            aware.setSimulationRun(simulationRunId);
+        }
+        
+        log.debug("Created delegate for topic '{}': type={}, service={}, runId={}",
+            getResourceName(), context.usageType(), context.serviceName(), 
+            simulationRunId != null ? simulationRunId : "not-set");
         
         return delegate;
     }
@@ -220,6 +239,75 @@ public abstract class AbstractTopicResource<T extends Message, ACK> extends Abst
      */
     protected void recordAcknowledge() {
         messagesAcknowledged.incrementAndGet();
+    }
+    
+    /**
+     * Returns the current simulation run ID, or null if not yet set.
+     *
+     * @return The simulation run ID, or null.
+     */
+    public final String getSimulationRunId() {
+        return simulationRunId;
+    }
+    
+    @Override
+    public final void setSimulationRun(String simulationRunId) {
+        if (simulationRunId == null || simulationRunId.isBlank()) {
+            throw new IllegalArgumentException("Simulation run ID must not be null or blank");
+        }
+        
+        this.simulationRunId = simulationRunId;
+        
+        // Template method: Let subclass perform technology-specific setup
+        onSimulationRunSet(simulationRunId);
+        
+        // Propagate run-ID to all existing delegates (created before setSimulationRun was called)
+        propagateSimulationRunToDelegates(simulationRunId);
+        
+        log.debug("Simulation run '{}' set for topic '{}'", simulationRunId, getResourceName());
+    }
+    
+    /**
+     * Template method called after simulation run ID is set.
+     * <p>
+     * Subclasses should override this to perform technology-specific setup:
+     * <ul>
+     *   <li><strong>H2:</strong> Create schema, tables, and register triggers</li>
+     *   <li><strong>Chronicle:</strong> Create run-specific queue directory</li>
+     *   <li><strong>Kafka:</strong> Create run-specific topic partitions</li>
+     * </ul>
+     * <p>
+     * <strong>Note:</strong> This method is called BEFORE delegates are notified, so subclasses
+     * can prepare the infrastructure (schema, directories, etc.) that delegates will need.
+     *
+     * @param simulationRunId The simulation run ID.
+     */
+    protected void onSimulationRunSet(String simulationRunId) {
+        // Default: no-op. Subclasses override for technology-specific setup.
+    }
+    
+    /**
+     * Propagates the simulation run ID to all existing delegates.
+     * <p>
+     * This is necessary because delegates are created by the ServiceManager BEFORE
+     * the service calls setSimulationRun() on the parent resource. Each delegate
+     * needs to be notified so it can switch its connection/state to the correct run.
+     *
+     * @param simulationRunId The simulation run ID to propagate.
+     */
+    private void propagateSimulationRunToDelegates(String simulationRunId) {
+        int delegateCount = 0;
+        for (AutoCloseable delegate : activeDelegates) {
+            if (delegate instanceof ISimulationRunAwareTopic aware) {
+                aware.setSimulationRun(simulationRunId);
+                delegateCount++;
+            }
+        }
+        
+        if (delegateCount > 0) {
+            log.debug("Propagated simulation run '{}' to {} delegate(s) for topic '{}'",
+                simulationRunId, delegateCount, getResourceName());
+        }
     }
     
     @Override

@@ -5,8 +5,10 @@ import com.typesafe.config.Config;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.topics.ISimulationRunAwareTopic;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
+import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.PathExpansion;
 import org.slf4j.Logger;
@@ -68,6 +70,10 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     // Lazy trigger registration (schema-aware for run isolation)
     private volatile String currentSchemaName = null;  // Current registered schema (null = not registered)
     private final Object triggerLock = new Object();   // Synchronization for trigger registration
+    
+    // Lazy table/trigger initialization
+    private volatile boolean tablesInitialized = false; // Lazy table creation flag
+    private final Object initLock = new Object();       // Synchronization for table creation
     
     // Centralized table names (shared by all topics)
     private static final String MESSAGES_TABLE = "topic_messages";
@@ -134,8 +140,7 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
             this.dataSource = new HikariDataSource(hikariConfig);
             log.info("H2 topic '{}' connected: {}", name, jdbcUrl);
             
-            // Initialize centralized tables (shared by all topics)
-            initializeCentralizedTables();
+            // Note: Tables are created LAZY in setSimulationRun() for schema isolation
             
             // Initialize notification queue for event-driven message delivery
             this.messageNotifications = new LinkedBlockingQueue<>();
@@ -212,7 +217,39 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     }
     
     /**
-     * Initializes the centralized tables for topic messages and acknowledgments.
+     * Setup callback for H2SchemaUtil: creates tables and registers trigger.
+     * <p>
+     * This method performs ALL schema-specific setup:
+     * <ul>
+     *   <li>Creates centralized topic tables ({@code topic_messages}, {@code topic_consumer_group_acks})</li>
+     *   <li>Creates all necessary indexes</li>
+     *   <li>Registers H2 insert trigger for event-driven notifications</li>
+     * </ul>
+     * <p>
+     * <strong>Thread Safety:</strong>
+     * This method is called from {@link #setSimulationRun(String)} within a synchronized block.
+     * <p>
+     * <strong>Callback for H2SchemaUtil:</strong>
+     * This method is passed as a {@link org.evochora.datapipeline.utils.H2SchemaUtil.SchemaSetupCallback}
+     * callback to {@link org.evochora.datapipeline.utils.H2SchemaUtil#setupRunSchema}.
+     *
+     * @param connection The database connection (already switched to target schema).
+     * @param schemaName The sanitized schema name (provided by H2SchemaUtil).
+     * @throws SQLException if setup fails.
+     */
+    private void setupSchemaResources(Connection connection, String schemaName) throws SQLException {
+        // Create tables
+        createTablesInSchema(connection);
+        
+        // Register trigger (now that schema and tables exist)
+        registerInsertTrigger(connection, schemaName);
+        
+        // Store schema name for cleanup
+        this.currentSchemaName = schemaName;
+    }
+    
+    /**
+     * Creates centralized tables for topic messages and acknowledgments in the current schema.
      * <p>
      * <strong>Centralized Design (Shared Table Structure per Run):</strong>
      * Creates two shared tables in the current schema that are used by ALL topics in this simulation run:
@@ -222,18 +259,11 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
      * </ul>
      * <p>
      * The {@code topic_name} column enables logical partitioning within these shared tables.
-     * <p>
-     * <strong>Schema Isolation:</strong>
-     * Tables are created in the schema corresponding to the current simulation run.
-     * Different runs have completely separate tables in different schemas.
-     * <p>
-     * <strong>Thread Safety:</strong>
-     * This method is called from the constructor (single-threaded initialization).
-     * SQL uses {@code CREATE IF NOT EXISTS} for idempotency.
      *
+     * @param connection The database connection (already switched to target schema).
      * @throws SQLException if table creation fails.
      */
-    private void initializeCentralizedTables() throws SQLException {
+    private void createTablesInSchema(Connection connection) throws SQLException {
         // Create centralized messages table (shared by all topics)
         String createMessagesSql = """
             CREATE TABLE IF NOT EXISTS topic_messages (
@@ -241,7 +271,7 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
                 topic_name VARCHAR(255) NOT NULL,
                 message_id VARCHAR(255) NOT NULL,
                 timestamp BIGINT NOT NULL,
-                envelope BINARY NOT NULL,
+                envelope BLOB NOT NULL,
                 claimed_by VARCHAR(255),
                 claimed_at TIMESTAMP,
                 claim_version INT DEFAULT 0,
@@ -275,73 +305,18 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
         String createIndexGroupAcks = 
             "CREATE INDEX IF NOT EXISTS idx_topic_group_acks ON topic_consumer_group_acks (topic_name, consumer_group, message_id)";
         
-        try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement()) {
+        // Execute all CREATE statements (connection already provided by H2SchemaUtil.setupRunSchema)
+        try (Statement stmt = connection.createStatement()) {
             stmt.execute(createMessagesSql);
             stmt.execute(createIndexUnclaimed);
             stmt.execute(createIndexClaimed);
             stmt.execute(createIndexClaimStatus);
             stmt.execute(createAcksSql);
             stmt.execute(createIndexGroupAcks);
-            log.debug("Initialized centralized topic tables for resource '{}'", getResourceName());
+            log.debug("Created centralized topic tables for resource '{}'", getResourceName());
         }
     }
     
-    /**
-     * Ensures the H2 trigger is registered for the given simulation run (lazy registration).
-     * <p>
-     * This method is called by delegates during {@code onSimulationRunSet()}. It registers
-     * the trigger only once per schema, using a schema-qualified registry key for run isolation.
-     * <p>
-     * <strong>Thread Safety:</strong>
-     * Multiple delegates may call this concurrently. The method uses double-check locking
-     * to ensure the trigger is registered exactly once per schema.
-     * <p>
-     * <strong>Run Isolation:</strong>
-     * Different simulation runs use different schemas (e.g., {@code SIM_RUN1}, {@code SIM_RUN2}).
-     * The trigger registry key includes both topic name AND schema name to prevent cross-run
-     * notification leakage.
-     *
-     * @param simulationRunId The simulation run ID (used to derive schema name).
-     * @throws RuntimeException if trigger registration fails.
-     */
-    void ensureTriggerRegistered(String simulationRunId) {
-        String schemaName = org.evochora.datapipeline.utils.H2SchemaUtil.toSchemaName(simulationRunId);
-        
-        // Fast path: already registered for this schema
-        if (schemaName.equals(currentSchemaName)) {
-            return;
-        }
-        
-        synchronized (triggerLock) {
-            // Double-check: another thread may have registered while we waited
-            if (schemaName.equals(currentSchemaName)) {
-                return;
-            }
-            
-            // Deregister old schema (if switching runs - unlikely but safe)
-            if (currentSchemaName != null) {
-                H2InsertTrigger.deregisterNotificationQueue(getResourceName(), currentSchemaName);
-                log.debug("Deregistered trigger for topic '{}' from old schema '{}'", 
-                    getResourceName(), currentSchemaName);
-            }
-            
-            // Register for new schema
-            try {
-                registerInsertTrigger(schemaName);
-                currentSchemaName = schemaName;
-                log.debug("Registered trigger for topic '{}' in schema '{}'", 
-                    getResourceName(), schemaName);
-            } catch (SQLException e) {
-                String msg = String.format(
-                    "Failed to register H2 trigger for topic '%s' in schema '%s'",
-                    getResourceName(), schemaName
-                );
-                log.error(msg);
-                throw new RuntimeException(msg, e);
-            }
-        }
-    }
     
     /**
      * Registers an H2 trigger to provide instant notifications on message INSERT.
@@ -361,10 +336,11 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
      * The notification queue is registered with a schema-qualified key ({@code topicName:schemaName})
      * to ensure different simulation runs don't interfere with each other.
      *
+     * @param connection The database connection (already switched to target schema).
      * @param schemaName The H2 schema name (e.g., "SIM_20251006_UUID").
      * @throws SQLException if trigger creation fails.
      */
-    private void registerInsertTrigger(String schemaName) throws SQLException {
+    private void registerInsertTrigger(Connection connection, String schemaName) throws SQLException {
         // With shared table structure, we use a single trigger for all topics
         // The trigger reads topic_name from the inserted row and routes to the correct queue
         String triggerName = "topic_messages_notify_trigger";
@@ -375,8 +351,7 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
             CALL "org.evochora.datapipeline.resources.topics.H2InsertTrigger"
             """, triggerName, MESSAGES_TABLE);
         
-        try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement()) {
+        try (Statement stmt = connection.createStatement()) {
             stmt.execute(triggerSql);
         }
         
@@ -422,20 +397,63 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     }
     
     @Override
+    protected void onSimulationRunSet(String simulationRunId) {
+        synchronized (initLock) {
+            // Idempotent: skip if already setup for this run
+            if (this.tablesInitialized) {
+                log.debug("Schema already setup for run: {}", simulationRunId);
+                return;
+            }
+            
+            this.tablesInitialized = false;  // Reset for new run
+            
+            try (Connection conn = getConnection()) {
+                // ONE-SHOT: Schema + Tables + Trigger
+                H2SchemaUtil.setupRunSchema(conn, simulationRunId, this::setupSchemaResources);
+                this.tablesInitialized = true;
+                
+                log.info("H2 topic '{}' setup complete for run: {}", getResourceName(), simulationRunId);
+                
+            } catch (SQLException e) {
+                log.error("Failed to setup schema for topic '{}', run: {}", getResourceName(), simulationRunId);
+                recordError("SCHEMA_SETUP_FAILED", "Schema setup failed", 
+                    "Topic: " + getResourceName() + ", Run: " + simulationRunId);
+                throw new RuntimeException("Failed to setup schema for run: " + simulationRunId, e);
+            }
+        }
+    }
+    
+    @Override
     public void close() throws Exception {
         super.close();  // Close all delegates
         
-        // Deregister trigger if registered
-        if (currentSchemaName != null) {
-            H2InsertTrigger.deregisterNotificationQueue(getResourceName(), currentSchemaName);
-            log.debug("Deregistered trigger for topic '{}' from schema '{}'", 
-                getResourceName(), currentSchemaName);
+        // Cleanup schema resources (trigger deregistration)
+        if (getSimulationRunId() != null) {
+            try (Connection conn = getConnection()) {
+                H2SchemaUtil.cleanupRunSchema(conn, getSimulationRunId(), this::cleanupSchemaResources);
+            } catch (SQLException e) {
+                log.warn("Failed to cleanup schema for topic '{}', run: {}", getResourceName(), getSimulationRunId());
+            }
         }
         
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
             log.info("H2 topic resource '{}' closed", getResourceName());
         }
+    }
+    
+    /**
+     * Cleanup callback for H2SchemaUtil: deregisters trigger.
+     * <p>
+     * This method is called during {@link #close()} to cleanup schema-specific resources.
+     *
+     * @param connection The database connection.
+     * @param schemaName The sanitized schema name (provided by H2SchemaUtil).
+     * @throws SQLException if cleanup fails.
+     */
+    private void cleanupSchemaResources(Connection connection, String schemaName) throws SQLException {
+        H2InsertTrigger.deregisterNotificationQueue(getResourceName(), schemaName);
+        log.debug("Deregistered trigger for topic '{}' from schema '{}'", getResourceName(), schemaName);
     }
 }
 

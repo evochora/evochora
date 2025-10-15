@@ -54,12 +54,14 @@ public final class H2SchemaUtil {
      * 20251006143025-550e8400-e29b-41d4-a716-446655440000
      * → SIM_20251006143025_550E8400_E29B_41D4_A716_446655440000
      * </pre>
+     * <p>
+     * <strong>Visibility:</strong> Package-private. Use {@link #setupRunSchema} for schema setup.
      *
      * @param simulationRunId Raw simulation run ID (must not be null or empty).
      * @return Sanitized schema name in uppercase.
      * @throws IllegalArgumentException if runId is null, empty, or results in name exceeding 256 chars.
      */
-    public static String toSchemaName(String simulationRunId) {
+    static String toSchemaName(String simulationRunId) {
         if (simulationRunId == null || simulationRunId.isEmpty()) {
             throw new IllegalArgumentException("Simulation run ID cannot be null or empty");
         }
@@ -91,12 +93,14 @@ public final class H2SchemaUtil {
      * <strong>Transaction Handling:</strong>
      * This method commits on success and rolls back on failure. The connection should
      * be in manual commit mode (autoCommit=false).
+     * <p>
+     * <strong>Visibility:</strong> Package-private. Use {@link #setupRunSchema} for schema setup.
      *
      * @param connection H2 JDBC connection (must be in manual commit mode).
      * @param simulationRunId Raw simulation run ID.
      * @throws SQLException if schema creation fails (excluding the known H2 bug).
      */
-    public static void createSchemaIfNotExists(Connection connection, String simulationRunId) throws SQLException {
+    static void createSchemaIfNotExists(Connection connection, String simulationRunId) throws SQLException {
         String schemaName = toSchemaName(simulationRunId);
         
         try {
@@ -122,8 +126,14 @@ public final class H2SchemaUtil {
      * <p>
      * All subsequent SQL statements on this connection will execute in the specified schema.
      * <p>
-     * <strong>Note:</strong> This does NOT create the schema. Call {@link #createSchemaIfNotExists(Connection, String)}
-     * first if the schema might not exist.
+     * <strong>Note:</strong> This does NOT create the schema. The schema must already exist
+     * (e.g., created by {@link #setupRunSchema}).
+     * <p>
+     * <strong>Use Cases:</strong>
+     * <ul>
+     *   <li>Topic delegates switching their own connection to a run-specific schema</li>
+     *   <li>Database resources switching to a schema after it was created</li>
+     * </ul>
      *
      * @param connection H2 JDBC connection.
      * @param simulationRunId Raw simulation run ID.
@@ -133,6 +143,179 @@ public final class H2SchemaUtil {
         String schemaName = toSchemaName(simulationRunId);
         connection.createStatement().execute("SET SCHEMA \"" + schemaName + "\"");
         log.debug("Set H2 schema to: {}", schemaName);
+    }
+    
+    /**
+     * Performs a complete schema setup: creates schema, switches to it, and executes table creation.
+     * <p>
+     * This method is atomic - either all steps succeed (commit), or none do (rollback).
+     * It combines {@link #createSchemaIfNotExists}, {@link #setSchema}, and custom table creation
+     * into one transaction-safe operation.
+     * <p>
+     * <strong>Transaction Management:</strong>
+     * This method manages transactions internally:
+     * <ul>
+     *   <li>Saves the current auto-commit state</li>
+     *   <li>Disables auto-commit for the duration of setup</li>
+     *   <li>Commits on success</li>
+     *   <li>Rolls back on error</li>
+     *   <li>Restores the original auto-commit state</li>
+     * </ul>
+     * <p>
+     * <strong>Usage Example:</strong>
+     * <pre>{@code
+     * try (Connection conn = dataSource.getConnection()) {
+     *     String schemaName = H2SchemaUtil.setupRunSchema(conn, "SIM_20250101_UUID", this::createTables);
+     *     log.info("Setup complete for schema: {}", schemaName);
+     * }
+     * 
+     * private void createTables(Connection conn) throws SQLException {
+     *     try (Statement stmt = conn.createStatement()) {
+     *         stmt.execute("CREATE TABLE IF NOT EXISTS my_table (id BIGINT PRIMARY KEY)");
+     *     }
+     * }
+     * }</pre>
+     *
+     * @param connection The database connection (must not be null).
+     * @param simulationRunId The simulation run ID (used as schema name).
+     * @param callback Callback to create tables and setup resources in the schema (must not be null).
+     * @throws SQLException if schema creation, table creation, or transaction management fails.
+     * @throws NullPointerException if connection or callback is null.
+     */
+    public static void setupRunSchema(
+        Connection connection,
+        String simulationRunId,
+        SchemaSetupCallback callback
+    ) throws SQLException {
+        
+        if (connection == null) {
+            throw new NullPointerException("Connection cannot be null");
+        }
+        if (callback == null) {
+            throw new NullPointerException("Callback cannot be null");
+        }
+        
+        boolean wasAutoCommit = connection.getAutoCommit();
+        
+        try {
+            // Start transaction
+            connection.setAutoCommit(false);
+            
+            log.debug("Setting up schema for run: {}", simulationRunId);
+            
+            // Step 1: Create schema (if not exists)
+            createSchemaIfNotExists(connection, simulationRunId);
+            
+            // Step 2: Switch to schema
+            setSchema(connection, simulationRunId);
+            
+            // Step 3: Execute caller's setup logic (tables + triggers)
+            String schemaName = toSchemaName(simulationRunId);
+            callback.setup(connection, schemaName);
+            
+            // Commit transaction
+            connection.commit();
+            
+            log.debug("Schema setup complete for run: {}", simulationRunId);
+            
+        } catch (Exception e) {
+            // Rollback on any error
+            try {
+                connection.rollback();
+                log.warn("Schema setup failed for run: {}, rolled back", simulationRunId);
+            } catch (SQLException rollbackEx) {
+                log.error("Failed to rollback after schema setup error for run: {}", simulationRunId);
+            }
+            throw new SQLException("Schema setup failed for run: " + simulationRunId, e);
+        } finally {
+            // Restore original auto-commit state
+            try {
+                connection.setAutoCommit(wasAutoCommit);
+            } catch (SQLException e) {
+                log.warn("Failed to restore auto-commit state after schema setup for run: {}", simulationRunId);
+            }
+        }
+    }
+    
+    /**
+     * Performs schema cleanup: deregisters triggers and performs cleanup operations.
+     * <p>
+     * This method provides a consistent way to cleanup schema-specific resources.
+     * While it currently may not perform SQL operations, it provides a connection
+     * for future extensibility (e.g., DROP TRIGGER, DROP SCHEMA).
+     * <p>
+     * <strong>Usage Example:</strong>
+     * <pre>{@code
+     * try (Connection conn = dataSource.getConnection()) {
+     *     H2SchemaUtil.cleanupRunSchema(conn, "SIM_20250101_UUID",
+     *         (connection, schemaName) -> {
+     *             H2InsertTrigger.deregisterNotificationQueue(topicName, schemaName);
+     *         });
+     * }
+     * }</pre>
+     *
+     * @param connection The database connection (must not be null).
+     * @param simulationRunId The simulation run ID (used as schema name).
+     * @param callback Callback to perform cleanup operations (must not be null).
+     * @throws SQLException if cleanup fails.
+     * @throws NullPointerException if connection or callback is null.
+     */
+    public static void cleanupRunSchema(
+        Connection connection,
+        String simulationRunId,
+        SchemaCleanupCallback callback
+    ) throws SQLException {
+        
+        if (connection == null) {
+            throw new NullPointerException("Connection cannot be null");
+        }
+        if (callback == null) {
+            throw new NullPointerException("Callback cannot be null");
+        }
+        
+        log.debug("Cleaning up schema for run: {}", simulationRunId);
+        
+        String schemaName = toSchemaName(simulationRunId);
+        callback.cleanup(connection, schemaName);
+        
+        log.debug("Schema cleanup complete for run: {}", simulationRunId);
+    }
+    
+    /**
+     * Functional interface for schema setup callbacks.
+     * <p>
+     * Implementations should create all necessary tables, indexes, constraints,
+     * and register triggers/listeners in the current schema.
+     * Use {@code CREATE TABLE IF NOT EXISTS} for idempotency.
+     */
+    @FunctionalInterface
+    public interface SchemaSetupCallback {
+        /**
+         * Performs setup operations in the current schema.
+         *
+         * @param connection The database connection (already switched to target schema).
+         * @param schemaName The sanitized schema name (uppercase, H2-compliant).
+         * @throws SQLException if setup fails.
+         */
+        void setup(Connection connection, String schemaName) throws SQLException;
+    }
+    
+    /**
+     * Functional interface for schema cleanup callbacks.
+     * <p>
+     * Implementations should deregister triggers/listeners, drop objects,
+     * or perform other cleanup operations.
+     */
+    @FunctionalInterface
+    public interface SchemaCleanupCallback {
+        /**
+         * Performs cleanup operations for a schema.
+         *
+         * @param connection The database connection.
+         * @param schemaName The sanitized schema name (uppercase, H2-compliant).
+         * @throws SQLException if cleanup fails.
+         */
+        void cleanup(Connection connection, String schemaName) throws SQLException;
     }
 }
 

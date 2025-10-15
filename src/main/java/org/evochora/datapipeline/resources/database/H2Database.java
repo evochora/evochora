@@ -99,20 +99,6 @@ public class H2Database extends AbstractDatabaseResource {
         return conn;
     }
 
-    /**
-     * Converts simulation run ID to H2-compliant schema name.
-     * <p>
-     * <strong>Visibility:</strong> Package-private to allow testing while preventing external usage.
-     * <p>
-     * <strong>Implementation:</strong> Delegates to {@link H2SchemaUtil#toSchemaName(String)}.
-     *
-     * @param simulationRunId Raw simulation run ID
-     * @return Sanitized schema name in uppercase
-     * @throws IllegalArgumentException if runId is null, empty, or results in name exceeding 256 chars
-     */
-    String toSchemaName(String simulationRunId) {
-        return H2SchemaUtil.toSchemaName(simulationRunId);
-    }
 
     @Override
     protected void doSetSchema(Object connection, String runId) throws Exception {
@@ -121,7 +107,12 @@ public class H2Database extends AbstractDatabaseResource {
 
     @Override
     protected void doCreateSchema(Object connection, String runId) throws Exception {
-        H2SchemaUtil.createSchemaIfNotExists((Connection) connection, runId);
+        // Use setupRunSchema with empty callback to create schema without setting it up
+        // This allows us to use the public API even though createSchemaIfNotExists is package-private
+        H2SchemaUtil.setupRunSchema((Connection) connection, runId, (conn, schemaName) -> {
+            // Empty - we only want schema creation, not table setup
+            // Tables are created later in doInsertMetadata()
+        });
     }
 
     @Override

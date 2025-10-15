@@ -57,7 +57,7 @@ public class H2TopicWriterDelegate<T extends Message> extends AbstractTopicDeleg
     private static final Logger log = LoggerFactory.getLogger(H2TopicWriterDelegate.class);
     
     private final Connection connection;
-    private final PreparedStatement insertStatement;
+    private PreparedStatement insertStatement;  // Lazy init after schema switch
     
     // H2-specific metrics (in addition to abstract delegate metrics)
     private final AtomicLong writeErrors = new AtomicLong(0);
@@ -84,16 +84,9 @@ public class H2TopicWriterDelegate<T extends Message> extends AbstractTopicDeleg
             // HikariCP defaults to true, but we verify to ensure atomic writes work correctly
             connection.setAutoCommit(true);
             
-            // Prepare INSERT statement once (reused for all writes)
-            // Uses centralized table with topic_name column
-            String sql = String.format(
-                "INSERT INTO %s (topic_name, message_id, timestamp, envelope) VALUES (?, ?, ?, ?)",
-                parent.getMessagesTable()
-            );
-            this.insertStatement = connection.prepareStatement(sql);
+            // Note: PreparedStatement will be created in onSimulationRunSet() after schema switch
             
-            log.debug("Created H2 writer delegate for topic '{}' with PreparedStatement pooling",
-                parent.getResourceName());
+            log.debug("Created H2 writer delegate for topic '{}'", parent.getResourceName());
             
         } catch (SQLException e) {
             log.error("Failed to create H2 writer delegate for topic '{}'", parent.getResourceName());
@@ -104,38 +97,26 @@ public class H2TopicWriterDelegate<T extends Message> extends AbstractTopicDeleg
     @Override
     protected void onSimulationRunSet(String simulationRunId) {
         try {
-            // H2SchemaUtil expects manual commit mode, but writer uses auto-commit for INSERTs
-            // Save current mode, switch to manual for schema operations, then restore
-            boolean wasAutoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);  // Switch to manual for schema creation
+            // Switch this delegate's connection to the correct schema
+            H2SchemaUtil.setSchema(connection, simulationRunId);
             
-            try {
-                // Create schema if it doesn't exist (safe for concurrent calls, H2 bug workaround included)
-                H2SchemaUtil.createSchemaIfNotExists(connection, simulationRunId);
-                
-                // Switch to the schema for this simulation run
-                H2SchemaUtil.setSchema(connection, simulationRunId);
-                
-                connection.setAutoCommit(wasAutoCommit);  // Restore original mode
-                
-                log.debug("H2 topic writer '{}' switched to schema for run: {}", 
-                    parent.getResourceName(), simulationRunId);
-                    
-            } catch (SQLException schemaError) {
-                connection.setAutoCommit(wasAutoCommit);  // Restore on error
-                throw schemaError;
-            }
+            // Now prepare INSERT statement (schema is set, tables exist)
+            String sql = String.format(
+                "INSERT INTO %s (topic_name, message_id, timestamp, envelope) VALUES (?, ?, ?, ?)",
+                parent.getMessagesTable()
+            );
+            this.insertStatement = connection.prepareStatement(sql);
             
-            // Ensure parent has trigger registered for this schema (lazy, thread-safe)
-            parent.ensureTriggerRegistered(simulationRunId);
+            log.debug("H2 topic writer '{}' prepared for run: {}", 
+                parent.getResourceName(), simulationRunId);
                 
         } catch (SQLException e) {
             String msg = String.format(
-                "Failed to set H2 schema for simulation run '%s' in topic writer '%s'",
+                "Failed to prepare writer for simulation run '%s' in topic '%s'",
                 simulationRunId, parent.getResourceName()
             );
             log.error(msg);
-            recordError("SCHEMA_SETUP_FAILED", msg, "SQLException: " + e.getMessage());
+            recordError("WRITER_SETUP_FAILED", msg, "SQLException: " + e.getMessage());
             throw new RuntimeException(msg, e);
         }
     }
@@ -211,9 +192,15 @@ public class H2TopicWriterDelegate<T extends Message> extends AbstractTopicDeleg
     public void close() throws Exception {
         log.debug("Closing H2 writer delegate for topic '{}'", parent.getResourceName());
         
-        // Close PreparedStatement
-        if (insertStatement != null && !insertStatement.isClosed()) {
-            insertStatement.close();
+        // Close PreparedStatement (may be null if setSimulationRun was never called)
+        if (insertStatement != null) {
+            try {
+                if (!insertStatement.isClosed()) {
+                    insertStatement.close();
+                }
+            } catch (SQLException e) {
+                log.warn("Failed to close PreparedStatement for topic '{}'", parent.getResourceName());
+            }
         }
         
         // Return connection to HikariCP pool

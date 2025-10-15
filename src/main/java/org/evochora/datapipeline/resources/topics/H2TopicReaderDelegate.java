@@ -55,11 +55,13 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
     private static final Logger log = LoggerFactory.getLogger(H2TopicReaderDelegate.class);
     
     private final Connection connection;
-    private final PreparedStatement readStatementWithTimeout;
-    private final PreparedStatement readStatementNoTimeout;
-    private final PreparedStatement ackInsertStatement;
-    private final PreparedStatement ackReleaseStatement;
+    private PreparedStatement readStatementWithTimeout;       // Lazy init after schema switch
+    private PreparedStatement readStatementNoTimeout;         // Lazy init after schema switch
+    private PreparedStatement updateClaimStatement;           // Lazy init after schema switch
+    private PreparedStatement ackInsertStatement;             // Lazy init after schema switch
+    private PreparedStatement ackReleaseStatement;            // Lazy init after schema switch
     private final BlockingQueue<Long> notificationQueue;
+    private final int claimTimeout;  // Store for lazy init
     
     // H2-specific metrics (in addition to abstract delegate metrics)
     private final AtomicLong readErrors = new AtomicLong(0);
@@ -87,76 +89,10 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
             // Obtain connection from HikariCP pool (held for delegate lifetime)
             this.connection = parent.getConnection();
             
-            int claimTimeout = parent.getClaimTimeoutSeconds();
+            // Store claim timeout for lazy PreparedStatement initialization
+            this.claimTimeout = parent.getClaimTimeoutSeconds();
             
-            // Prepare READ statement WITH stuck message reassignment (claimTimeout > 0)
-            if (claimTimeout > 0) {
-                String sqlWithTimeout = String.format("""
-                    UPDATE %s tm
-                    SET claimed_by = ?, 
-                        claimed_at = CURRENT_TIMESTAMP,
-                        claim_version = claim_version + 1
-                    WHERE id = (
-                        SELECT tm2.id 
-                        FROM %s tm2
-                        LEFT JOIN %s cga 
-                            ON tm2.topic_name = cga.topic_name 
-                            AND tm2.message_id = cga.message_id 
-                            AND cga.consumer_group = ?
-                        WHERE cga.message_id IS NULL
-                        AND tm2.topic_name = ?
-                        AND (
-                            tm2.claimed_by IS NULL 
-                            OR tm2.claimed_at < DATEADD('SECOND', -%d, CURRENT_TIMESTAMP)
-                        )
-                        ORDER BY tm2.id 
-                        LIMIT 1
-                        FOR UPDATE SKIP LOCKED
-                    )
-                    RETURNING id, message_id, envelope, claimed_by AS previous_claim, claim_version
-                    """, parent.getMessagesTable(), parent.getMessagesTable(), parent.getAcksTable(), claimTimeout);
-                this.readStatementWithTimeout = connection.prepareStatement(sqlWithTimeout);
-            } else {
-                this.readStatementWithTimeout = null;
-            }
-            
-            // Prepare READ statement WITHOUT stuck message reassignment (always needed)
-            String sqlNoTimeout = String.format("""
-                UPDATE %s tm
-                SET claimed_by = ?, 
-                    claimed_at = CURRENT_TIMESTAMP,
-                    claim_version = claim_version + 1
-                WHERE id = (
-                    SELECT tm2.id 
-                    FROM %s tm2
-                    LEFT JOIN %s cga 
-                        ON tm2.topic_name = cga.topic_name 
-                        AND tm2.message_id = cga.message_id 
-                        AND cga.consumer_group = ?
-                    WHERE cga.message_id IS NULL
-                    AND tm2.topic_name = ?
-                    AND tm2.claimed_by IS NULL
-                    ORDER BY tm2.id 
-                    LIMIT 1
-                    FOR UPDATE SKIP LOCKED
-                )
-                RETURNING id, message_id, envelope, NULL AS previous_claim, claim_version
-                """, parent.getMessagesTable(), parent.getMessagesTable(), parent.getAcksTable());
-            this.readStatementNoTimeout = connection.prepareStatement(sqlNoTimeout);
-            
-            // Prepare ACK MERGE statement (idempotent)
-            String ackMergeSql = String.format(
-                "MERGE INTO %s (topic_name, consumer_group, message_id) KEY(topic_name, consumer_group, message_id) VALUES (?, ?, ?)",
-                parent.getAcksTable()
-            );
-            this.ackInsertStatement = connection.prepareStatement(ackMergeSql);
-            
-            // Prepare ACK RELEASE statement WITH VERSION CHECK
-            String ackReleaseSql = String.format(
-                "UPDATE %s SET claimed_by = NULL, claimed_at = NULL WHERE id = ? AND claim_version = ?",
-                parent.getMessagesTable()
-            );
-            this.ackReleaseStatement = connection.prepareStatement(ackReleaseSql);
+            // Note: PreparedStatements will be created in onSimulationRunSet() after schema switch
             
             log.debug("Created H2 reader delegate for topic '{}', consumerGroup='{}', claimTimeout={}s",
                 parent.getResourceName(), consumerGroup, claimTimeout);
@@ -170,33 +106,84 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
     @Override
     protected void onSimulationRunSet(String simulationRunId) {
         try {
-            // Same schema setup as writer
-            boolean wasAutoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);
+            // Switch this delegate's connection to the correct schema
+            H2SchemaUtil.setSchema(connection, simulationRunId);
             
-            try {
-                H2SchemaUtil.createSchemaIfNotExists(connection, simulationRunId);
-                H2SchemaUtil.setSchema(connection, simulationRunId);
-                connection.setAutoCommit(wasAutoCommit);
-                
-                log.debug("H2 topic reader '{}' (group='{}') switched to schema for run: {}",
-                    parent.getResourceName(), consumerGroup, simulationRunId);
-                    
-            } catch (SQLException schemaError) {
-                connection.setAutoCommit(wasAutoCommit);
-                throw schemaError;
+            // Now prepare all SQL statements (schema is set, tables exist)
+            
+            // SELECT with timeout (stuck message reassignment)
+            if (claimTimeout > 0) {
+                String sqlWithTimeout = String.format("""
+                    SELECT tm.id, tm.message_id, tm.envelope, tm.claimed_by AS previous_claim, tm.claim_version
+                    FROM %s tm
+                    LEFT JOIN %s cga 
+                        ON tm.topic_name = cga.topic_name 
+                        AND tm.message_id = cga.message_id 
+                        AND cga.consumer_group = ?
+                    WHERE cga.message_id IS NULL
+                    AND tm.topic_name = ?
+                    AND (
+                        tm.claimed_by IS NULL 
+                        OR tm.claimed_at < DATEADD('SECOND', -%d, CURRENT_TIMESTAMP)
+                    )
+                    ORDER BY tm.id 
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED
+                    """, parent.getMessagesTable(), parent.getAcksTable(), claimTimeout);
+                this.readStatementWithTimeout = connection.prepareStatement(sqlWithTimeout);
             }
             
-            // Ensure parent has trigger registered for this schema
-            parent.ensureTriggerRegistered(simulationRunId);
+            // SELECT without timeout
+            String sqlNoTimeout = String.format("""
+                SELECT tm.id, tm.message_id, tm.envelope, NULL AS previous_claim, tm.claim_version
+                FROM %s tm
+                LEFT JOIN %s cga 
+                    ON tm.topic_name = cga.topic_name 
+                    AND tm.message_id = cga.message_id 
+                    AND cga.consumer_group = ?
+                WHERE cga.message_id IS NULL
+                AND tm.topic_name = ?
+                AND tm.claimed_by IS NULL
+                ORDER BY tm.id 
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+                """, parent.getMessagesTable(), parent.getAcksTable());
+            this.readStatementNoTimeout = connection.prepareStatement(sqlNoTimeout);
+            
+            // UPDATE to claim message
+            String updateClaimSql = String.format("""
+                UPDATE %s
+                SET claimed_by = ?, 
+                    claimed_at = CURRENT_TIMESTAMP,
+                    claim_version = claim_version + 1
+                WHERE id = ?
+                """, parent.getMessagesTable());
+            this.updateClaimStatement = connection.prepareStatement(updateClaimSql);
+            
+            // MERGE for ACK
+            String ackMergeSql = String.format(
+                "MERGE INTO %s (topic_name, consumer_group, message_id) KEY(topic_name, consumer_group, message_id) VALUES (?, ?, ?)",
+                parent.getAcksTable()
+            );
+            this.ackInsertStatement = connection.prepareStatement(ackMergeSql);
+            
+            // UPDATE to release claim on ACK
+            String ackReleaseSql = String.format(
+                "UPDATE %s SET claimed_by = NULL, claimed_at = NULL WHERE id = ? AND claim_version = ?",
+                parent.getMessagesTable()
+            );
+            this.ackReleaseStatement = connection.prepareStatement(ackReleaseSql);
+            
+            log.debug("H2 topic reader '{}' (group='{}') prepared for run: {}", 
+                parent.getResourceName(), consumerGroup, simulationRunId);
                 
         } catch (SQLException e) {
             String msg = String.format(
-                "Failed to set H2 schema for simulation run '%s' in topic reader '%s'",
+                "Failed to prepare reader for simulation run '%s' in topic '%s'",
                 simulationRunId, parent.getResourceName()
             );
             log.error(msg);
-            recordError("SCHEMA_SETUP_FAILED", msg, "SQLException: " + e.getMessage());
+            recordError("READER_SETUP_FAILED", msg, "SQLException: " + e.getMessage());
             throw new RuntimeException(msg, e);
         }
     }
@@ -243,47 +230,70 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
         PreparedStatement stmt = (claimTimeout > 0) ? readStatementWithTimeout : readStatementNoTimeout;
         
         try {
-            // Reuse PreparedStatement (no SQL parsing overhead!)
-            stmt.setString(1, consumerId);                  // claimed_by
-            stmt.setString(2, consumerGroup);               // consumer_group filter
-            stmt.setString(3, parent.getResourceName());    // topic_name filter
+            // Start transaction (SELECT FOR UPDATE requires a transaction to hold the lock)
+            connection.setAutoCommit(false);
             
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    long id = rs.getLong("id");
-                    String messageId = rs.getString("message_id");
-                    byte[] envelopeBytes = rs.getBytes("envelope");
-                    String previousClaim = rs.getString("previous_claim");
-                    int claimVersion = rs.getInt("claim_version");
-                    
-                    TopicEnvelope envelope = TopicEnvelope.parseFrom(envelopeBytes);
-                    
-                    // Track metrics (O(1) operations, cannot fail)
-                    parent.recordRead();  // Parent's aggregate counter + throughput
-                    // Note: messagesReceived + readThroughput are tracked by AbstractTopicDelegateReader in receive() method
-                    
-                    // Check if this was a stuck message reassignment
-                    if (previousClaim != null && !previousClaim.equals(consumerId)) {
-                        log.warn("Reassigned stuck message from topic '{}': messageId={}, previousClaim={}, newConsumer={}, claimVersion={}, timeout={}s", 
-                            parent.getResourceName(), messageId, previousClaim, consumerId, claimVersion, claimTimeout);
-                        recordError("STUCK_MESSAGE_REASSIGNED", "Message claim timeout expired", 
-                            "Topic: " + parent.getResourceName() + ", MessageId: " + messageId + 
-                            ", PreviousClaim: " + previousClaim + ", ClaimVersion: " + claimVersion + ", Timeout: " + claimTimeout + "s");
-                        parent.recordStuckMessageReassignment();
+            try {
+                // Step 1: SELECT FOR UPDATE (locks the row until commit/rollback)
+                stmt.setString(1, consumerGroup);               // consumer_group filter
+                stmt.setString(2, parent.getResourceName());    // topic_name filter
+                
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        long id = rs.getLong("id");
+                        String messageId = rs.getString("message_id");
+                        byte[] envelopeBytes = rs.getBytes("envelope");
+                        String previousClaim = rs.getString("previous_claim");
+                        int claimVersion = rs.getInt("claim_version");
+                        
+                        // Step 2: UPDATE to claim the message (row is locked by SELECT FOR UPDATE)
+                        updateClaimStatement.setString(1, consumerId);
+                        updateClaimStatement.setLong(2, id);
+                        updateClaimStatement.executeUpdate();
+                        
+                        // Commit transaction (releases lock)
+                        connection.commit();
+                        connection.setAutoCommit(true);
+                        
+                        // Parse envelope
+                        TopicEnvelope envelope = TopicEnvelope.parseFrom(envelopeBytes);
+                        
+                        // Track metrics (O(1) operations, cannot fail)
+                        parent.recordRead();  // Parent's aggregate counter + throughput
+                        // Note: messagesReceived + readThroughput are tracked by AbstractTopicDelegateReader in receive() method
+                        
+                        // Check if this was a stuck message reassignment
+                        if (previousClaim != null && !previousClaim.equals(consumerId)) {
+                            log.warn("Reassigned stuck message from topic '{}': messageId={}, previousClaim={}, newConsumer={}, claimVersion={}, timeout={}s", 
+                                parent.getResourceName(), messageId, previousClaim, consumerId, claimVersion + 1, claimTimeout);
+                            recordError("STUCK_MESSAGE_REASSIGNED", "Message claim timeout expired", 
+                                "Topic: " + parent.getResourceName() + ", MessageId: " + messageId + 
+                                ", PreviousClaim: " + previousClaim + ", ClaimVersion: " + (claimVersion + 1) + ", Timeout: " + claimTimeout + "s");
+                            parent.recordStuckMessageReassignment();
+                        } else {
+                            log.debug("Claimed message from topic '{}': messageId={}, consumerId={}, claimVersion={}", 
+                                parent.getResourceName(), messageId, consumerId, claimVersion + 1);
+                        }
+                        
+                        // ACK token contains row ID and NEW claim version (incremented by UPDATE)
+                        AckToken ackToken = new AckToken(id, claimVersion + 1);
+                        return new ReceivedEnvelope<>(envelope, ackToken);
                     } else {
-                        log.debug("Claimed message from topic '{}': messageId={}, consumerId={}, claimVersion={}", 
-                            parent.getResourceName(), messageId, consumerId, claimVersion);
+                        // No message available - rollback and restore auto-commit
+                        connection.rollback();
+                        connection.setAutoCommit(true);
                     }
-                    
-                    // ACK token contains row ID and claim version (for stale ACK detection)
-                    AckToken ackToken = new AckToken(id, claimVersion);
-                    return new ReceivedEnvelope<>(envelope, ackToken);
                 }
+            } catch (Exception e) {
+                // Rollback on any error
+                connection.rollback();
+                connection.setAutoCommit(true);
+                throw e;  // Re-throw to outer catch block
             }
         } catch (SQLException e) {
             readErrors.incrementAndGet();  // Track errors
             log.warn("Failed to claim message from topic '{}': consumerGroup={}", parent.getResourceName(), consumerGroup);
-            recordError("CLAIM_FAILED", "SQL UPDATE...RETURNING failed", 
+            recordError("CLAIM_FAILED", "SQL transaction failed (SELECT FOR UPDATE + UPDATE)", 
                 "Topic: " + parent.getResourceName() + ", ConsumerGroup: " + consumerGroup);
         } catch (InvalidProtocolBufferException e) {
             readErrors.incrementAndGet();  // Track errors
@@ -457,6 +467,9 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
         }
         if (readStatementNoTimeout != null && !readStatementNoTimeout.isClosed()) {
             readStatementNoTimeout.close();
+        }
+        if (updateClaimStatement != null && !updateClaimStatement.isClosed()) {
+            updateClaimStatement.close();
         }
         if (ackInsertStatement != null && !ackInsertStatement.isClosed()) {
             ackInsertStatement.close();
