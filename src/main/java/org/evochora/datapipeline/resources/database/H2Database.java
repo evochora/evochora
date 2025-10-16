@@ -78,18 +78,15 @@ public class H2Database extends AbstractDatabaseResource {
     }
 
     private String getJdbcUrl(Config options) {
-        if (options.hasPath("jdbcUrl")) {
-            return options.getString("jdbcUrl");
+        if (!options.hasPath("jdbcUrl")) {
+            throw new IllegalArgumentException("'jdbcUrl' must be configured for H2Database.");
         }
-        if (!options.hasPath("dataDirectory")) {
-            throw new IllegalArgumentException("Either 'jdbcUrl' or 'dataDirectory' must be configured for H2Database.");
+        String jdbcUrl = options.getString("jdbcUrl");
+        String expandedUrl = PathExpansion.expandPath(jdbcUrl);
+        if (!jdbcUrl.equals(expandedUrl)) {
+            log.debug("Expanded jdbcUrl: '{}' -> '{}'", jdbcUrl, expandedUrl);
         }
-        String dataDir = options.getString("dataDirectory");
-        String expandedPath = PathExpansion.expandPath(dataDir);
-        if (!dataDir.equals(expandedPath)) {
-            log.debug("Expanded dataDirectory: '{}' -> '{}'", dataDir, expandedPath);
-        }
-        return "jdbc:h2:" + expandedPath + "/evochora;MODE=PostgreSQL";
+        return expandedUrl;
     }
 
     @Override

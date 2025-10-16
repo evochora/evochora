@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.services.indexers;
 
 import com.typesafe.config.Config;
+import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IMetadataReader;
 import org.evochora.datapipeline.services.indexers.components.MetadataReadingComponent;
@@ -24,8 +25,13 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>
  * <strong>Purpose:</strong> Validate metadata reading capability before adding
  * batch coordination and processing.
+ * <p>
+ * <strong>Note:</strong> DummyIndexer will later be migrated to use BatchInfo from topic
+ * instead of polling the database. Currently uses BatchInfo as message type.
+ *
+ * @param <ACK> The acknowledgment token type (implementation-specific, e.g., H2's AckToken)
  */
-public class DummyIndexer extends AbstractIndexer {
+public class DummyIndexer<ACK> extends AbstractIndexer<BatchInfo, ACK> {
     private static final Logger log = LoggerFactory.getLogger(DummyIndexer.class);
     
     private final IMetadataReader metadataReader;

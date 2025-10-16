@@ -1,25 +1,35 @@
 package org.evochora.datapipeline.services.indexers;
 
 import com.typesafe.config.Config;
+import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
+import org.evochora.datapipeline.api.resources.topics.ITopicReader;
+import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * An indexer service responsible for reading simulation metadata from storage
- * and writing it to a database.
+ * An indexer service responsible for indexing simulation metadata to the database.
+ * <p>
+ * This service subscribes to the metadata-topic and receives instant notifications
+ * when metadata is written to storage by MetadataPersistenceService. This eliminates
+ * the need for polling and enables event-driven metadata indexing.
+ * <p>
+ * <strong>One-Shot Pattern:</strong> Processes a single metadata notification and stops.
+ *
+ * @param <ACK> The acknowledgment token type (implementation-specific, e.g., H2's AckToken)
  */
-public class MetadataIndexer extends AbstractIndexer {
+public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
 
     private final IMetadataWriter database;
-    private final int metadataFilePollIntervalMs;
-    private final int metadataFileMaxPollDurationMs;
+    private final int topicPollTimeoutMs;
     
     // Metrics
     private final AtomicLong metadataIndexed = new AtomicLong(0);
@@ -28,19 +38,33 @@ public class MetadataIndexer extends AbstractIndexer {
     public MetadataIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.database = getRequiredResource("database", IMetadataWriter.class);
-        this.metadataFilePollIntervalMs = options.hasPath("metadataFilePollIntervalMs") ? options.getInt("metadataFilePollIntervalMs") : 1000;
-        this.metadataFileMaxPollDurationMs = options.hasPath("metadataFileMaxPollDurationMs") ? options.getInt("metadataFileMaxPollDurationMs") : 60000;
+        this.topicPollTimeoutMs = options.hasPath("topicPollTimeoutMs") 
+            ? options.getInt("topicPollTimeoutMs") 
+            : 30000;  // Default: 30 seconds
     }
 
     @Override
     protected void indexRun(String runId) throws Exception {
-        log.info("Indexing metadata for run: {}", runId);
-        String metadataKey = runId + "/metadata.pb";
+        log.info("Waiting for metadata notification for run: {} (timeout: {}ms)", runId, topicPollTimeoutMs);
         
-        SimulationMetadata metadata = pollForMetadataFile(metadataKey);
+        // Note: topic.setSimulationRun() already called by AbstractIndexer.discoverRunId()
         
-        // Use try-with-resources to ensure connection is released
-        // Note: prepareSchema() and setSchema() already called by AbstractIndexer.discoverRunId()
+        // Poll for metadata notification with timeout
+        var message = topic.poll(topicPollTimeoutMs, TimeUnit.MILLISECONDS);
+        
+        if (message == null) {
+            metadataFailed.incrementAndGet();
+            log.error("Metadata notification did not arrive within {}ms for run: {}", topicPollTimeoutMs, runId);
+            throw new TimeoutException("Metadata notification timeout after " + topicPollTimeoutMs + "ms");
+        }
+        
+        MetadataInfo info = message.payload();
+        log.info("Received metadata notification, reading from storage: {}", info.getStorageKey());
+        
+        // Read metadata from storage
+        SimulationMetadata metadata = storage.readMessage(info.getStorageKey(), SimulationMetadata.parser());
+        
+        // Index metadata to database
         try (IMetadataWriter db = database) {
             db.insertMetadata(metadata);
             metadataIndexed.incrementAndGet();
@@ -48,29 +72,12 @@ public class MetadataIndexer extends AbstractIndexer {
         } catch (Exception e) {
             metadataFailed.incrementAndGet();
             log.error("Failed to index metadata for run: {}", runId);
-            throw e;  // Fatal error → let AbstractService handle ERROR state
-        }
-    }
-
-    private SimulationMetadata pollForMetadataFile(String key) throws InterruptedException, TimeoutException, IOException {
-        log.debug("Polling for metadata file: {}", key);
-        long startTime = System.currentTimeMillis();
-
-        while (!Thread.currentThread().isInterrupted()) {
-            try {
-                return storage.readMessage(key, SimulationMetadata.parser());
-            } catch (IOException e) {
-                if (System.currentTimeMillis() - startTime > metadataFileMaxPollDurationMs) {
-                    metadataFailed.incrementAndGet();
-                    log.error("Metadata file did not appear within {}ms: {}", metadataFileMaxPollDurationMs, key);
-                    throw new TimeoutException("Metadata file did not appear within " + metadataFileMaxPollDurationMs + "ms: " + key);
-                }
-                Thread.sleep(metadataFilePollIntervalMs);
-            }
+            throw e;
         }
         
-        log.debug("Interrupted while polling for metadata file: {}", key);
-        throw new InterruptedException("Metadata polling interrupted.");
+        // Acknowledge message after successful processing
+        topic.ack(message);
+        log.debug("Acknowledged metadata notification for {}", info.getStorageKey());
     }
 
     @Override
@@ -79,14 +86,5 @@ public class MetadataIndexer extends AbstractIndexer {
         
         metrics.put("metadata_indexed", metadataIndexed.get());
         metrics.put("metadata_failed", metadataFailed.get());
-    }
-
-    /**
-     * MetadataIndexer uses a lower error limit (100 instead of default 10000)
-     * since it's a short-lived service that processes a single metadata file.
-     */
-    @Override
-    protected int getMaxErrors() {
-        return 100;
     }
 }

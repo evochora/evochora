@@ -5,6 +5,7 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -13,8 +14,10 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -34,12 +37,27 @@ class FileSystemStorageResourceTest {
 
     private FileSystemStorageResource storage;
     private Config config;
+    private final List<Path> createdDirectories = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
         Map<String, String> configMap = Map.of("rootDirectory", tempDir.toAbsolutePath().toString());
         config = ConfigFactory.parseMap(configMap);
         storage = new FileSystemStorageResource("test-storage", config);
+    }
+    
+    @AfterEach
+    void tearDown() throws IOException {
+        // Clean up directories created by variable expansion tests
+        for (Path dir : createdDirectories) {
+            if (Files.exists(dir)) {
+                Files.walk(dir)
+                    .sorted(Comparator.reverseOrder())
+                    .map(Path::toFile)
+                    .forEach(File::delete);
+            }
+        }
+        createdDirectories.clear();
     }
 
     private TickData createTick(long tickNumber) {
@@ -144,6 +162,9 @@ class FileSystemStorageResourceTest {
         String javaTmpDir = System.getProperty("java.io.tmpdir");
         assertNotNull(javaTmpDir, "java.io.tmpdir system property should be defined");
 
+        Path testDir = Path.of(javaTmpDir, "evochora-test-sysprop");
+        createdDirectories.add(testDir);
+        
         Map<String, String> configMap = Map.of("rootDirectory", "${java.io.tmpdir}/evochora-test-sysprop");
         Config config = ConfigFactory.parseMap(configMap);
 
@@ -154,7 +175,11 @@ class FileSystemStorageResourceTest {
     @Test
     void testVariableExpansion_EnvironmentVariable() {
         // Set a custom environment-like variable via system properties for testing
-        System.setProperty("TEST_EVOCHORA_DIR", System.getProperty("java.io.tmpdir") + "/evochora-test-env");
+        String testDirPath = System.getProperty("java.io.tmpdir") + "/evochora-test-env";
+        System.setProperty("TEST_EVOCHORA_DIR", testDirPath);
+        
+        Path testDir = Path.of(testDirPath);
+        createdDirectories.add(testDir);
 
         try {
             Map<String, String> configMap = Map.of("rootDirectory", "${TEST_EVOCHORA_DIR}");
@@ -171,6 +196,9 @@ class FileSystemStorageResourceTest {
     void testVariableExpansion_MultipleVariables() {
         String javaTmpDir = System.getProperty("java.io.tmpdir");
         System.setProperty("test.project", "evochora-multi-var-test");
+        
+        Path testDir = Path.of(javaTmpDir, "evochora-multi-var-test");
+        createdDirectories.add(testDir);
 
         try {
             Map<String, String> configMap = Map.of("rootDirectory", "${java.io.tmpdir}/${test.project}/data");
@@ -238,6 +266,9 @@ class FileSystemStorageResourceTest {
         String javaTmpDir = System.getProperty("java.io.tmpdir");
         assertNotNull(javaTmpDir, "java.io.tmpdir should be defined");
 
+        Path testDir = Path.of(javaTmpDir, "evochora-test");
+        createdDirectories.add(testDir);
+        
         Map<String, String> configMap = Map.of("rootDirectory", "${java.io.tmpdir}/evochora-test");
         Config config = ConfigFactory.parseMap(configMap);
 

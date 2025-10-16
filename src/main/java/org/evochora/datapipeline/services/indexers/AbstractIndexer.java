@@ -1,9 +1,12 @@
 package org.evochora.datapipeline.services.indexers;
 
+import com.google.protobuf.Message;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.topics.ISimulationRunAwareTopic;
+import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.services.AbstractService;
 
 import java.io.IOException;
@@ -14,10 +17,23 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * An abstract base class for indexer services that process data from a simulation run.
+ * <p>
+ * All indexers subscribe to a topic for event-driven notification and read data from storage.
+ * This eliminates polling and enables instant processing when new data is available.
+ * <p>
+ * <strong>Resources:</strong>
+ * <ul>
+ *   <li>{@code storage} - Required: Storage backend for reading data files</li>
+ *   <li>{@code topic} - Required: Topic for receiving notifications (must be named "topic")</li>
+ * </ul>
+ *
+ * @param <T> The message type read from the topic (e.g., MetadataInfo, BatchInfo)
+ * @param <ACK> The acknowledgment token type (implementation-specific, e.g., H2's AckToken)
  */
-public abstract class AbstractIndexer extends AbstractService {
+public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractService {
 
     protected final IBatchStorageRead storage;
+    protected final ITopicReader<T, ACK> topic;
     protected final Config indexerOptions;
 
     private final String configuredRunId;
@@ -28,6 +44,7 @@ public abstract class AbstractIndexer extends AbstractService {
     protected AbstractIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.storage = getRequiredResource("storage", IBatchStorageRead.class);
+        this.topic = getRequiredResource("topic", ITopicReader.class);
         this.indexerOptions = options;
         this.configuredRunId = options.hasPath("runId") ? options.getString("runId") : null;
         this.pollIntervalMs = options.hasPath("pollIntervalMs") ? options.getInt("pollIntervalMs") : 1000;
@@ -100,11 +117,14 @@ public abstract class AbstractIndexer extends AbstractService {
     }
 
     /**
-     * Sets the schema for all ISchemaAwareDatabase resources of this indexer.
+     * Sets the schema for all schema-aware resources of this indexer.
      * <p>
      * Called automatically by discoverRunId() after prepareSchema().
-     * Iterates through this indexer's resources and calls setSimulationRun() on all
-     * ISchemaAwareDatabase instances (coordinator, metadata reader, etc.).
+     * Iterates through this indexer's resources and calls setSimulationRun() on:
+     * <ul>
+     *   <li>{@link ISchemaAwareDatabase} instances (coordinator, metadata reader, etc.)</li>
+     *   <li>{@link ISimulationRunAwareTopic} instances (topic readers)</li>
+     * </ul>
      * <p>
      * Each indexer instance only sets schema for its own resources, not for other indexers.
      *
@@ -116,6 +136,10 @@ public abstract class AbstractIndexer extends AbstractService {
                 if (resource instanceof ISchemaAwareDatabase) {
                     ((ISchemaAwareDatabase) resource).setSimulationRun(runId);
                     log.debug("Set schema for database resource: {}", resource.getResourceName());
+                }
+                if (resource instanceof ISimulationRunAwareTopic) {
+                    ((ISimulationRunAwareTopic) resource).setSimulationRun(runId);
+                    log.debug("Set simulation run for topic resource: {}", resource.getResourceName());
                 }
             }
         }

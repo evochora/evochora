@@ -2,12 +2,14 @@ package org.evochora.datapipeline.services;
 
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
+import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
+import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -16,13 +18,15 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * One-shot service that persists a single SimulationMetadata message to storage.
+ * One-shot service that persists a single SimulationMetadata message to storage
+ * and publishes a notification to the metadata topic.
  * <p>
  * MetadataPersistenceService follows the one-shot pattern:
  * <ul>
  *   <li>Starts at simulation initialization</li>
  *   <li>Blocks waiting for the single metadata message from SimulationEngine</li>
  *   <li>Persists message to storage with retry logic and DLQ support</li>
+ *   <li>Publishes MetadataInfo notification to topic for event-driven indexing</li>
  *   <li>Stops itself after successful processing (thread terminates)</li>
  * </ul>
  * <p>
@@ -30,6 +34,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * <ul>
  *   <li>Retry logic with exponential backoff for transient failures</li>
  *   <li>Dead letter queue support for unrecoverable failures</li>
+ *   <li>Topic notification for instant indexing (no polling)</li>
  *   <li>Graceful shutdown handling</li>
  * </ul>
  * <p>
@@ -46,6 +51,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *   resources {
  *     input = "queue-in:context-data"
  *     storage = "storage-write:tick-storage"
+ *     topic = "topic-write:metadata-topic"
  *     dlq = "queue-out:persistence-dlq"
  *   }
  *   options {
@@ -60,6 +66,7 @@ public class MetadataPersistenceService extends AbstractService {
     // Required resources
     private final IInputQueueResource<SimulationMetadata> inputQueue;
     private final IBatchStorageWrite storage;
+    private final ITopicWriter<MetadataInfo> topic;
 
     // Optional resources
     private final IOutputQueueResource<SystemContracts.DeadLetterMessage> dlq;
@@ -88,6 +95,7 @@ public class MetadataPersistenceService extends AbstractService {
         // Required resources
         this.inputQueue = getRequiredResource("input", IInputQueueResource.class);
         this.storage = getRequiredResource("storage", IBatchStorageWrite.class);
+        this.topic = getRequiredResource("topic", ITopicWriter.class);
 
         // Optional resources
         this.dlq = getOptionalResource("dlq", IOutputQueueResource.class).orElse(null);
@@ -163,8 +171,9 @@ public class MetadataPersistenceService extends AbstractService {
      *
      * @param key storage key for the metadata file
      * @param metadata the simulation metadata to persist
+     * @throws InterruptedException if interrupted while sending topic notification
      */
-    private void writeMetadataWithRetry(String key, SimulationMetadata metadata) {
+    private void writeMetadataWithRetry(String key, SimulationMetadata metadata) throws InterruptedException {
         int attempt = 0;
         int backoff = retryBackoffMs;
         Exception lastException = null;
@@ -173,10 +182,21 @@ public class MetadataPersistenceService extends AbstractService {
             try {
                 writeMetadata(key, metadata);
 
-                // Success
+                // Success - setup topic with run ID before sending
+                topic.setSimulationRun(metadata.getSimulationRunId());
                 metadataWritten.incrementAndGet();
                 bytesWritten.addAndGet(metadata.getSerializedSize());
                 log.debug("Successfully wrote metadata to {}", key);
+                
+                // Send topic notification (REQUIRED - must succeed after storage write)
+                try {
+                    sendTopicNotification(key, metadata);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    log.debug("Interrupted while sending topic notification");
+                    throw ie;
+                }
+                
                 return;
 
             } catch (IOException e) {
@@ -232,6 +252,27 @@ public class MetadataPersistenceService extends AbstractService {
      */
     private void writeMetadata(String key, SimulationMetadata metadata) throws IOException {
         storage.writeMessage(key, metadata);
+    }
+
+    /**
+     * Sends a metadata notification to the topic after successful storage write.
+     * <p>
+     * This notification enables event-driven metadata indexing - MetadataIndexer
+     * subscribes to the topic and reads from storage only when notified.
+     *
+     * @param key storage key where metadata was written
+     * @param metadata the simulation metadata that was persisted
+     * @throws InterruptedException if interrupted while sending notification
+     */
+    private void sendTopicNotification(String key, SimulationMetadata metadata) throws InterruptedException {
+        MetadataInfo info = MetadataInfo.newBuilder()
+            .setSimulationRunId(metadata.getSimulationRunId())
+            .setStorageKey(key)
+            .setWrittenAtMs(System.currentTimeMillis())
+            .build();
+        
+        topic.send(info);
+        log.debug("Sent metadata notification for {}", key);
     }
 
     /**

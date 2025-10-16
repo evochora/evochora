@@ -6,12 +6,15 @@ package org.evochora.datapipeline.services.indexers;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
+import org.evochora.datapipeline.resources.topics.H2TopicResource;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +46,7 @@ class MetadataIndexerIntegrationTest {
 
     private H2Database testDatabase;
     private FileSystemStorageResource testStorage;
+    private H2TopicResource testTopic;
     private Path tempStorageDir;
     private String dbUrl;
     private String dbUsername;
@@ -63,10 +67,23 @@ class MetadataIndexerIntegrationTest {
             "password = \"" + dbPassword + "\""
         );
         testDatabase = new H2Database("test-db", dbConfig);
+        
+        // Create H2 topic for metadata notifications
+        String topicJdbcUrl = "jdbc:h2:mem:test-metadata-topic-" + UUID.randomUUID();
+        Config topicConfig = ConfigFactory.parseString(
+            "jdbcUrl = \"" + topicJdbcUrl + "\"\n" +
+            "username = \"sa\"\n" +
+            "password = \"\"\n" +
+            "claimTimeout = 300"
+        );
+        testTopic = new H2TopicResource("metadata-topic", topicConfig);
     }
 
     @AfterEach
-    void tearDown() throws IOException {
+    void tearDown() throws Exception {
+        if (testTopic != null) {
+            testTopic.close();
+        }
         if (testDatabase != null) {
             // Verify no connection leaks before shutting down
             Map<String, Number> metrics = testDatabase.getMetrics();
@@ -85,14 +102,37 @@ class MetadataIndexerIntegrationTest {
     void testMetadataIndexing_PostMortemMode() throws Exception {
         String runId = "20250101120000-" + UUID.randomUUID();
         SimulationMetadata metadata = createTestMetadata(runId);
-        testStorage.writeMessage(runId + "/metadata.pb", metadata);
+        String storageKey = runId + "/metadata.pb";
+        
+        // Write metadata to storage (simulates MetadataPersistenceService)
+        testStorage.writeMessage(storageKey, metadata);
+        
+        // Send notification to topic (simulates MetadataPersistenceService)
+        ResourceContext topicWriterContext = new ResourceContext("test-persistence", "topic", "topic-write", "metadata-topic", Collections.emptyMap());
+        @SuppressWarnings("unchecked")
+        ITopicWriter<MetadataInfo> topicWriter = (ITopicWriter<MetadataInfo>) testTopic.getWrappedResource(topicWriterContext);
+        topicWriter.setSimulationRun(runId);
+        
+        MetadataInfo notification = MetadataInfo.newBuilder()
+            .setSimulationRunId(runId)
+            .setStorageKey(storageKey)
+            .setWrittenAtMs(System.currentTimeMillis())
+            .build();
+        topicWriter.send(notification);
 
-        // Manually wrap the database resource, simulating what the ServiceManager does.
+        // Manually wrap resources for indexer
         ResourceContext dbContext = new ResourceContext("test-indexer", "database", "db-meta-write", "test-db", Collections.emptyMap());
         IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
+        
+        ResourceContext topicReaderContext = new ResourceContext("test-indexer", "topic", "topic-read", "metadata-topic", Map.of("consumerGroup", "metadata"));
+        IResource wrappedTopic = testTopic.getWrappedResource(topicReaderContext);
 
         Config indexerConfig = ConfigFactory.parseString("runId = \"" + runId + "\"");
-        Map<String, List<IResource>> resources = Map.of("storage", List.of(testStorage), "database", List.of(wrappedDatabase));
+        Map<String, List<IResource>> resources = Map.of(
+            "storage", List.of(testStorage), 
+            "database", List.of(wrappedDatabase),
+            "topic", List.of(wrappedTopic)
+        );
         MetadataIndexer indexer = new MetadataIndexer("test-indexer", indexerConfig, resources);
 
         indexer.start();
@@ -106,32 +146,51 @@ class MetadataIndexerIntegrationTest {
 
     @Test
     void testMetadataIndexing_ParallelMode() throws Exception {
-        // Manually wrap the database resource.
+        // Manually wrap resources for indexer
         ResourceContext dbContext = new ResourceContext("test-indexer", "database", "db-meta-write", "test-db", Collections.emptyMap());
         IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
+        
+        ResourceContext topicReaderContext = new ResourceContext("test-indexer", "topic", "topic-read", "metadata-topic", Map.of("consumerGroup", "metadata"));
+        IResource wrappedTopic = testTopic.getWrappedResource(topicReaderContext);
 
         Config indexerConfig = ConfigFactory.empty();
-        Map<String, List<IResource>> resources = Map.of("storage", List.of(testStorage), "database", List.of(wrappedDatabase));
+        Map<String, List<IResource>> resources = Map.of(
+            "storage", List.of(testStorage), 
+            "database", List.of(wrappedDatabase),
+            "topic", List.of(wrappedTopic)
+        );
         MetadataIndexer indexer = new MetadataIndexer("test-indexer", indexerConfig, resources);
         indexer.start();
 
-        // Wait for indexer to be running before creating the run (avoid Thread.sleep)
+        // Wait for indexer to be running before creating the run
         await().atMost(2, TimeUnit.SECONDS)
                 .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
 
-        // Generate a runId with a timestamp slightly in the future to guarantee it's discovered.
-        // This avoids a race condition where the truncated (to the second) run timestamp is not
-        // strictly 'after' the indexer's start time (which has millisecond precision).
-        // Use systemDefault timezone to match SimulationEngine and FileSystemStorageResource
+        // Generate a runId with a timestamp slightly in the future to guarantee it's discovered
         Instant runInstant = java.time.Instant.now().plusSeconds(1);
         String timestamp = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSS")
                 .withZone(java.time.ZoneId.systemDefault())
                 .format(runInstant);
         String runId = timestamp + "-" + UUID.randomUUID();
         SimulationMetadata metadata = createTestMetadata(runId);
+        String storageKey = runId + "/metadata.pb";
 
+        // Write metadata to storage (simulates MetadataPersistenceService)
         Files.createDirectories(tempStorageDir.resolve(runId));
-        testStorage.writeMessage(runId + "/metadata.pb", metadata);
+        testStorage.writeMessage(storageKey, metadata);
+        
+        // Send notification to topic (simulates MetadataPersistenceService)
+        ResourceContext topicWriterContext = new ResourceContext("test-persistence", "topic", "topic-write", "metadata-topic", Collections.emptyMap());
+        @SuppressWarnings("unchecked")
+        ITopicWriter<MetadataInfo> topicWriter = (ITopicWriter<MetadataInfo>) testTopic.getWrappedResource(topicWriterContext);
+        topicWriter.setSimulationRun(runId);
+        
+        MetadataInfo notification = MetadataInfo.newBuilder()
+            .setSimulationRunId(runId)
+            .setStorageKey(storageKey)
+            .setWrittenAtMs(System.currentTimeMillis())
+            .build();
+        topicWriter.send(notification);
 
         await().atMost(10, TimeUnit.SECONDS).until(() -> indexer.getCurrentState() == IService.State.STOPPED);
         assertEquals(IService.State.STOPPED, indexer.getCurrentState(), "Indexer should be in STOPPED state.");

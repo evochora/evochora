@@ -1,9 +1,12 @@
 package org.evochora.datapipeline.services.indexers;
 
+import com.google.protobuf.Message;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.services.IService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -31,10 +34,13 @@ class AbstractIndexerTest {
     @Mock
     private IBatchStorageRead mockStorage;
 
+    @Mock
+    private ITopicReader<MetadataInfo, Object> mockTopic;
+
     private Map<String, List<IResource>> resources;
 
     // A concrete implementation for testing the abstract class.
-    private static class TestIndexer extends AbstractIndexer {
+    private static class TestIndexer<T extends Message, ACK> extends AbstractIndexer<T, ACK> {
         private String indexedRunId = null;
 
         protected TestIndexer(String name, Config options, Map<String, List<IResource>> resources) {
@@ -49,13 +55,16 @@ class AbstractIndexerTest {
 
     @BeforeEach
     void setUp() {
-        resources = Map.of("storage", List.of(mockStorage));
+        resources = Map.of(
+            "storage", List.of(mockStorage),
+            "topic", List.of(mockTopic)
+        );
     }
 
     @Test
     void discoverRunId_withConfiguredRunId_returnsConfiguredId() throws InterruptedException, TimeoutException {
         Config config = ConfigFactory.parseString("runId = \"test-run-configured\"");
-        TestIndexer indexer = new TestIndexer("test", config, resources);
+        TestIndexer<MetadataInfo, ?> indexer = new TestIndexer<>("test", config, resources);
 
         String runId = indexer.discoverRunId();
 
@@ -65,7 +74,7 @@ class AbstractIndexerTest {
     @Test
     void discoverRunId_timestampBased_discoversRun() throws IOException, InterruptedException, TimeoutException {
         Config config = ConfigFactory.empty();
-        TestIndexer indexer = new TestIndexer("test", config, resources);
+        TestIndexer<MetadataInfo, ?> indexer = new TestIndexer<>("test", config, resources);
 
         when(mockStorage.listRunIds(any(Instant.class))).thenReturn(List.of("discovered-run-id"));
 
@@ -77,7 +86,7 @@ class AbstractIndexerTest {
     @Test
     void discoverRunId_timestampBased_pollsUntilRunAppears() throws IOException, InterruptedException, TimeoutException {
         Config config = ConfigFactory.parseString("pollIntervalMs = 10");
-        TestIndexer indexer = new TestIndexer("test", config, resources);
+        TestIndexer<MetadataInfo, ?> indexer = new TestIndexer<>("test", config, resources);
 
         when(mockStorage.listRunIds(any(Instant.class)))
                 .thenReturn(Collections.emptyList())
@@ -92,7 +101,7 @@ class AbstractIndexerTest {
     @Test
     void discoverRunId_timestampBased_throwsTimeoutException() throws IOException {
         Config config = ConfigFactory.parseString("maxPollDurationMs = 50, pollIntervalMs = 10");
-        TestIndexer indexer = new TestIndexer("test", config, resources);
+        TestIndexer<MetadataInfo, ?> indexer = new TestIndexer<>("test", config, resources);
 
         when(mockStorage.listRunIds(any(Instant.class))).thenReturn(Collections.emptyList());
 
@@ -102,7 +111,7 @@ class AbstractIndexerTest {
     @Test
     void run_callsIndexRunWithDiscoveredId() {
         Config config = ConfigFactory.parseString("runId = \"test-run-configured\"");
-        TestIndexer indexer = new TestIndexer("test", config, resources);
+        TestIndexer<MetadataInfo, ?> indexer = new TestIndexer<>("test", config, resources);
 
         indexer.start();
 

@@ -222,7 +222,7 @@ public final class H2SchemaUtil {
             // Rollback on any error
             try {
                 connection.rollback();
-                log.warn("Schema setup failed for run: {}, rolled back", simulationRunId);
+                log.warn("Schema setup failed for run: {}, rolled back - Cause: {}", simulationRunId, e.getMessage());
             } catch (SQLException rollbackEx) {
                 log.error("Failed to rollback after schema setup error for run: {}", simulationRunId);
             }

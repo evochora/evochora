@@ -66,6 +66,11 @@ public abstract class AbstractTopicDelegate<P extends AbstractTopicResource<?, ?
             throw new IllegalArgumentException("Simulation run ID must not be null or blank");
         }
         this.simulationRunId = simulationRunId;
+        
+        // CRITICAL: Forward to parent to ensure schema/tables are created
+        // The parent resource is responsible for schema setup, delegates only switch their connections
+        parent.setSimulationRun(simulationRunId);
+        
         onSimulationRunSet(simulationRunId);
     }
     

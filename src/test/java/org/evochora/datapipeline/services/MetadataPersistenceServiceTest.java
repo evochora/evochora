@@ -2,12 +2,14 @@ package org.evochora.datapipeline.services;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
+import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.api.services.IService.State;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.ExpectLog;
@@ -27,8 +29,7 @@ import java.util.Map;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
@@ -47,6 +48,9 @@ class MetadataPersistenceServiceTest {
     private IBatchStorageWrite mockStorage;
 
     @Mock
+    private ITopicWriter<MetadataInfo> mockTopic;
+
+    @Mock
     private IOutputQueueResource<SystemContracts.DeadLetterMessage> mockDLQ;
 
     private MetadataPersistenceService service;
@@ -58,6 +62,7 @@ class MetadataPersistenceServiceTest {
         resources = new HashMap<>();
         resources.put("input", Collections.singletonList(mockInputQueue));
         resources.put("storage", Collections.singletonList(mockStorage));
+        resources.put("topic", Collections.singletonList(mockTopic));
 
         config = ConfigFactory.parseMap(Map.of(
             "maxRetries", 2,
@@ -136,6 +141,18 @@ class MetadataPersistenceServiceTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
+    void testConstructorWithMissingTopicResource() {
+        resources.remove("topic");
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
+            new MetadataPersistenceService("test-metadata-persistence", config, resources);
+        });
+
+        assertTrue(exception.getMessage().contains("Resource port 'topic' is not configured"));
+    }
+
+    @Test
+    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
     void testConstructorWithDefaultConfiguration() {
         Config emptyConfig = ConfigFactory.parseMap(Map.of());
 
@@ -171,6 +188,14 @@ class MetadataPersistenceServiceTest {
 
         // Verify storage was called with correct key and metadata
         verify(mockStorage).writeMessage("sim-123/metadata.pb", metadata);
+
+        // Verify topic notification was sent
+        verify(mockTopic).setSimulationRun(eq("sim-123"));
+        verify(mockTopic).send(argThat(info -> 
+            info.getSimulationRunId().equals("sim-123") &&
+            info.getStorageKey().equals("sim-123/metadata.pb") &&
+            info.getWrittenAtMs() > 0
+        ));
 
         // Verify metrics
         assertEquals(1, service.getMetrics().get("metadata_written").longValue());

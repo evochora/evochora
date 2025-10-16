@@ -59,7 +59,7 @@ class H2TopicIntegrationTest {
     @DisplayName("Should initialize H2 database and create centralized tables")
     void shouldInitializeDatabase() throws Exception {
         // Given - Use in-memory H2 (no filesystem artifacts!)
-        Config config = ConfigFactory.parseString("dbPath = \"mem:h2-topic-init\"");
+        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:mem:h2-topic-init\"");
         
         // When
         this.topic = new H2TopicResource<>("test-topic", config);
@@ -80,7 +80,7 @@ class H2TopicIntegrationTest {
     @DisplayName("Should write and read message end-to-end")
     void shouldWriteAndReadMessage() throws Exception {
         // Given - Setup topic
-        Config config = ConfigFactory.parseString("dbPath = \"mem:h2-e2e\"");
+        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:mem:h2-e2e\"");
         this.topic = new H2TopicResource<>("batch-topic", config);
         
         // Create writer and reader FIRST (before setSimulationRun)
@@ -140,7 +140,7 @@ class H2TopicIntegrationTest {
     @DisplayName("Should support multiple consumer groups (pub/sub pattern)")
     void shouldSupportMultipleConsumerGroups() throws Exception {
         // Given - Setup topic with two consumer groups
-        Config config = ConfigFactory.parseString("dbPath = \"mem:h2-consumer-groups\"");
+        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:mem:h2-consumer-groups\"");
         this.topic = new H2TopicResource<>("test-topic", config);
         
         @SuppressWarnings("unchecked")
@@ -192,7 +192,7 @@ class H2TopicIntegrationTest {
     @DisplayName("Should handle competing consumers (load balancing within consumer group)")
     void shouldHandleCompetingConsumers() throws Exception {
         // Given - Setup topic with two readers in SAME consumer group
-        Config config = ConfigFactory.parseString("dbPath = \"mem:h2-competing\"");
+        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:mem:h2-competing\"");
         this.topic = new H2TopicResource<>("test-topic", config);
         
         @SuppressWarnings("unchecked")
@@ -254,7 +254,7 @@ class H2TopicIntegrationTest {
     @ExpectLog(level = LogLevel.WARN, messagePattern = "Reassigned stuck message.*")
     void shouldReassignStuckMessages() throws Exception {
         // Given - Setup topic with SHORT claim timeout (1 second)
-        Config config = ConfigFactory.parseString("dbPath = \"mem:h2-stuck\"\nclaimTimeout = 1");
+        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:mem:h2-stuck\"\nclaimTimeout = 1");
         this.topic = new H2TopicResource<>("test-topic", config);
         
         @SuppressWarnings("unchecked")
@@ -308,7 +308,7 @@ class H2TopicIntegrationTest {
     @ExpectLog(level = LogLevel.WARN, messagePattern = "Stale ACK rejected.*")
     void shouldRejectStaleAckAfterReassignment() throws Exception {
         // Given - Setup topic with SHORT claim timeout
-        Config config = ConfigFactory.parseString("dbPath = \"mem:h2-stale-ack\"\nclaimTimeout = 1");
+        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:mem:h2-stale-ack\"\nclaimTimeout = 1");
         this.topic = new H2TopicResource<>("test-topic", config);
         
         @SuppressWarnings("unchecked")
@@ -362,7 +362,7 @@ class H2TopicIntegrationTest {
     @DisplayName("Should receive instant notifications via H2 trigger (event-driven)")
     void shouldReceiveInstantNotifications() throws Exception {
         // Given - Setup topic with trigger-based notification
-        Config config = ConfigFactory.parseString("dbPath = \"mem:h2-trigger-test\"");
+        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:mem:h2-trigger-test\"");
         this.topic = new H2TopicResource<>("trigger-test-topic", config);
         this.topic.setSimulationRun("RUN-TRIGGER-001");
         
@@ -424,7 +424,7 @@ class H2TopicIntegrationTest {
     @DisplayName("Should dynamically resolve message types from google.protobuf.Any")
     void shouldDynamicallyResolveMessageTypes() throws Exception {
         // Given - Setup topic
-        Config config = ConfigFactory.parseString("dbPath = \"mem:h2-types-test\"");
+        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:mem:h2-types-test\"");
         this.topic = new H2TopicResource<>("types-test-topic", config);
         this.topic.setSimulationRun("RUN-TYPES-001");
         
@@ -463,7 +463,7 @@ class H2TopicIntegrationTest {
     @DisplayName("Should allow new consumer groups to process historical messages")
     void shouldAllowNewConsumerGroupsToProcessHistoricalMessages() throws Exception {
         // Given - Setup topic and write 3 messages
-        Config config = ConfigFactory.parseString("dbPath = \"mem:h2-replay-test\"");
+        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:mem:h2-replay-test\"");
         this.topic = new H2TopicResource<>("replay-test-topic", config);
         this.topic.setSimulationRun("RUN-REPLAY-001");
         
@@ -525,7 +525,7 @@ class H2TopicIntegrationTest {
     @DisplayName("Should handle concurrent writes and reads from multiple threads (stress test)")
     void shouldHandleConcurrentWritesAndReads() throws Exception {
         // Given - Setup topic
-        Config config = ConfigFactory.parseString("dbPath = \"mem:h2-concurrent-test\"");
+        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:mem:h2-concurrent-test\"");
         this.topic = new H2TopicResource<>("concurrent-test-topic", config);
         this.topic.setSimulationRun("RUN-CONCURRENT-001");
         

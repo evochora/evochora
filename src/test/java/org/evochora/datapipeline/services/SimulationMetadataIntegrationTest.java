@@ -4,15 +4,18 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.ServiceManager;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -20,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 import static org.awaitility.Awaitility.await;
@@ -30,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests the complete pipeline: SimulationEngine → context-data queue → MetadataPersistenceService → Storage.
  */
 @Tag("integration")
+@ExtendWith(LogWatchExtension.class)
 @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
 class SimulationMetadataIntegrationTest {
 
@@ -58,9 +63,22 @@ class SimulationMetadataIntegrationTest {
     }
 
     @AfterEach
-    void tearDown() {
+    void tearDown() throws Exception {
         if (serviceManager != null) {
             serviceManager.stopAll();
+            
+            // Manually close resources that require cleanup (topic, database)
+            serviceManager.getAllResourceStatus().values().forEach(resource -> {
+                try {
+                    if (resource instanceof AutoCloseable) {
+                        ((AutoCloseable) resource).close();
+                    } else if (resource instanceof H2Database) {
+                        ((H2Database) resource).stop();
+                    }
+                } catch (Exception e) {
+                    // Ignore cleanup errors in test teardown
+                }
+            });
         }
     }
 
@@ -200,13 +218,13 @@ class SimulationMetadataIntegrationTest {
 
         serviceManager.startAll();
 
-        // Stop all services before metadata is processed (if possible)
+        // Wait briefly for services to transition to RUNNING state
         // This tests that shutdown doesn't lose the metadata message
-        try {
-            Thread.sleep(10); // Brief pause to allow services to start
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        await().atMost(1, java.util.concurrent.TimeUnit.SECONDS)
+            .until(() -> {
+                var status = serviceManager.getServiceStatus("simulation-engine");
+                return status != null && status.state() == org.evochora.datapipeline.api.services.IService.State.RUNNING;
+            });
 
         serviceManager.stopAll();
 
@@ -218,6 +236,9 @@ class SimulationMetadataIntegrationTest {
     // ========== Helper Methods ==========
 
     private Config createIntegrationConfig() {
+        // Generate unique database name for metadata topic
+        String topicJdbcUrl = "jdbc:h2:mem:test-metadata-topic-" + UUID.randomUUID();
+        
         // Build config using HOCON string to avoid Map.of() size limit
         String hoconConfig = String.format("""
             pipeline {
@@ -245,6 +266,16 @@ class SimulationMetadataIntegrationTest {
                     capacity = 10
                   }
                 }
+
+                metadata-topic {
+                  className = "org.evochora.datapipeline.resources.topics.H2TopicResource"
+                  options {
+                    jdbcUrl = "%s"
+                    username = "sa"
+                    password = ""
+                    claimTimeout = 300
+                  }
+                }
               }
 
               services {
@@ -253,6 +284,7 @@ class SimulationMetadataIntegrationTest {
                   resources {
                     input = "queue-in:context-data"
                     storage = "storage-write:tick-storage"
+                    topic = "topic-write:metadata-topic"
                   }
                   options {
                     maxRetries = 3
@@ -314,6 +346,7 @@ class SimulationMetadataIntegrationTest {
             }
             """,
             tempStorageDir.toAbsolutePath().toString().replace("\\", "/"),
+            topicJdbcUrl,
             programFile.toAbsolutePath().toString().replace("\\", "/")
         );
 

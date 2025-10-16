@@ -2,11 +2,14 @@ package org.evochora.datapipeline.services.indexers;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.topics.ITopicReader;
+import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.ExpectLog;
@@ -40,12 +43,22 @@ class MetadataIndexerTest {
     @Mock
     private IMetadataWriter mockDatabase;
 
+    @Mock
+    private ITopicReader<MetadataInfo, Object> mockTopic;
+
+    @Mock
+    private TopicMessage<MetadataInfo, Object> mockMessage;
+
     private Map<String, List<IResource>> resources;
     private final String testRunId = "test-run-123";
 
     @BeforeEach
     void setUp() {
-        resources = Map.of("storage", List.of(mockStorage), "database", List.of(mockDatabase));
+        resources = Map.of(
+            "storage", List.of(mockStorage), 
+            "database", List.of(mockDatabase),
+            "topic", List.of(mockTopic)
+        );
     }
 
     @Test
@@ -54,6 +67,17 @@ class MetadataIndexerTest {
         // Arrange
         Config config = ConfigFactory.parseString("runId = \"" + testRunId + "\"");
         MetadataIndexer indexer = new MetadataIndexer("test-indexer", config, resources);
+        
+        // Mock topic message with MetadataInfo
+        MetadataInfo info = MetadataInfo.newBuilder()
+            .setSimulationRunId(testRunId)
+            .setStorageKey(testRunId + "/metadata.pb")
+            .setWrittenAtMs(System.currentTimeMillis())
+            .build();
+        when(mockMessage.payload()).thenReturn(info);
+        when(mockTopic.poll(anyLong(), any(TimeUnit.class))).thenReturn(mockMessage);
+        
+        // Mock storage to return metadata
         SimulationMetadata metadata = SimulationMetadata.newBuilder().setSimulationRunId(testRunId).build();
         when(mockStorage.readMessage(eq(testRunId + "/metadata.pb"), any())).thenReturn(metadata);
 
@@ -63,90 +87,18 @@ class MetadataIndexerTest {
         // Assert
         await().atMost(5, TimeUnit.SECONDS).until(() -> indexer.getCurrentState() == IService.State.STOPPED);
 
-        // Schema creation now handled transparently by AbstractDatabaseWrapper.setSimulationRun()
+        // Verify topic operations
+        verify(mockTopic).setSimulationRun(testRunId);
+        verify(mockTopic).poll(eq(30000L), eq(TimeUnit.MILLISECONDS));
+        verify(mockTopic).ack(mockMessage);
+        
+        // Verify database operations
         verify(mockDatabase).setSimulationRun(testRunId);
         verify(mockDatabase).insertMetadata(metadata);
+        
+        // Verify metrics
         assertEquals(1L, indexer.getMetrics().get("metadata_indexed"));
         assertEquals(0L, indexer.getMetrics().get("metadata_failed"));
-    }
-
-    @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*Indexing timeout for run:.*")
-    void pollingTimeout_entersErrorState() throws Exception {
-        // Arrange
-        Config config = ConfigFactory.parseString("runId = \"" + testRunId + "\", metadataFileMaxPollDurationMs = 50");
-        MetadataIndexer indexer = new MetadataIndexer("test-indexer", config, resources);
-        when(mockStorage.readMessage(anyString(), any())).thenThrow(new IOException("File not found"));
-
-        // Act
-        indexer.start();
-
-        // Assert
-        await().atMost(5, TimeUnit.SECONDS).until(() -> indexer.getCurrentState() == IService.State.ERROR);
-
-        assertEquals(0L, indexer.getMetrics().get("metadata_indexed"));
-        assertEquals(1L, indexer.getMetrics().get("metadata_failed"));
-        verify(mockDatabase, never()).insertMetadata(any());
-    }
-
-    @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*Indexing timeout for run:.*")
-    void errorTracking_recordsErrorsOnTimeout() throws Exception {
-        // Setup: Storage that always throws IOException (simulates file not found)
-        when(mockStorage.readMessage(anyString(), any())).thenThrow(new IOException("File not found"));
-        
-        Config indexerConfig = ConfigFactory.parseString("""
-                runId = "test-run-123"
-                metadataFileMaxPollDurationMs = 100
-                """);
-        
-        MetadataIndexer indexer = new MetadataIndexer("test-indexer", indexerConfig, resources);
-        
-        // Start indexer - should timeout and enter ERROR state
-        indexer.start();
-        await().atMost(5, TimeUnit.SECONDS).until(() -> indexer.getCurrentState() == IService.State.ERROR);
-        
-        // Verify service is in ERROR state
-        assertEquals(IService.State.ERROR, indexer.getCurrentState());
-        
-        // Verify metrics (fatal errors increment failed counter)
-        assertEquals(0L, indexer.getMetrics().get("metadata_indexed"));
-        assertEquals(1L, indexer.getMetrics().get("metadata_failed"));
-        
-        // Fatal errors do NOT use recordError() - error collection should be empty
-        assertTrue(indexer.getErrors().isEmpty(), "Fatal errors should not be in error collection");
-    }
-
-    @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*Indexing failed.*")
-    void errorTracking_recordsErrorsOnDatabaseFailure() throws Exception {
-        // Setup: Storage returns metadata, but database throws exception on insertMetadata
-        Config config = ConfigFactory.parseString("runId = \"" + testRunId + "\"");
-        MetadataIndexer indexer = new MetadataIndexer("test-indexer", config, resources);
-        SimulationMetadata metadata = SimulationMetadata.newBuilder()
-                .setSimulationRunId(testRunId)
-                .setSamplingInterval(1)
-                .build();
-        when(mockStorage.readMessage(eq(testRunId + "/metadata.pb"), any())).thenReturn(metadata);
-        doThrow(new RuntimeException("Database write failed"))
-                .when(mockDatabase).insertMetadata(any());
-        
-        // Start indexer - should fail on insertMetadata
-        indexer.start();
-        await().atMost(5, TimeUnit.SECONDS).until(() -> indexer.getCurrentState() == IService.State.ERROR);
-        
-        // Verify service is in ERROR state
-        assertEquals(IService.State.ERROR, indexer.getCurrentState());
-        
-        // Verify metrics (fatal errors increment failed counter)
-        assertEquals(0L, indexer.getMetrics().get("metadata_indexed"));
-        assertEquals(1L, indexer.getMetrics().get("metadata_failed"));
-        
-        // Fatal errors do NOT use recordError() - error collection should be empty
-        assertTrue(indexer.getErrors().isEmpty(), "Fatal errors should not be in error collection");
     }
 
     @Test
@@ -156,8 +108,21 @@ class MetadataIndexerTest {
         // Arrange
         Config config = ConfigFactory.parseString("runId = \"" + testRunId + "\"");
         MetadataIndexer indexer = new MetadataIndexer("test-indexer", config, resources);
+        
+        // Mock topic message with MetadataInfo
+        MetadataInfo info = MetadataInfo.newBuilder()
+            .setSimulationRunId(testRunId)
+            .setStorageKey(testRunId + "/metadata.pb")
+            .setWrittenAtMs(System.currentTimeMillis())
+            .build();
+        when(mockMessage.payload()).thenReturn(info);
+        when(mockTopic.poll(anyLong(), any(TimeUnit.class))).thenReturn(mockMessage);
+        
+        // Mock storage to return metadata
         SimulationMetadata metadata = SimulationMetadata.newBuilder().setSimulationRunId(testRunId).build();
         when(mockStorage.readMessage(eq(testRunId + "/metadata.pb"), any())).thenReturn(metadata);
+        
+        // Mock database to throw error on insert
         doThrow(new RuntimeException("DB error")).when(mockDatabase).insertMetadata(any(SimulationMetadata.class));
 
         // Act
@@ -166,9 +131,75 @@ class MetadataIndexerTest {
         // Assert
         await().atMost(5, TimeUnit.SECONDS).until(() -> indexer.getCurrentState() == IService.State.ERROR);
 
+        // Verify topic operations (ack should not be called on failure)
+        verify(mockTopic).setSimulationRun(testRunId);
+        verify(mockTopic).poll(eq(30000L), eq(TimeUnit.MILLISECONDS));
+        verify(mockTopic, never()).ack(any());
+        
+        // Verify database operations
+        verify(mockDatabase).setSimulationRun(testRunId);
+        verify(mockDatabase).insertMetadata(metadata);
+        
+        // Verify metrics
         assertEquals(0L, indexer.getMetrics().get("metadata_indexed"));
         assertEquals(1L, indexer.getMetrics().get("metadata_failed"));
-        // Schema creation now handled transparently by AbstractDatabaseWrapper.setSimulationRun()
-        verify(mockDatabase).setSimulationRun(testRunId);
+    }
+
+    @Test
+    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*Metadata notification did not arrive.*")
+    void topicPollTimeout_entersErrorState() throws Exception {
+        // Arrange
+        Config config = ConfigFactory.parseString("runId = \"" + testRunId + "\", topicPollTimeoutMs = 100");
+        MetadataIndexer indexer = new MetadataIndexer("test-indexer", config, resources);
+        
+        // Mock topic.poll() to return null (timeout)
+        when(mockTopic.poll(anyLong(), any(TimeUnit.class))).thenReturn(null);
+
+        // Act
+        indexer.start();
+
+        // Assert - wait only slightly longer than the configured timeout
+        await().atMost(500, TimeUnit.MILLISECONDS).until(() -> indexer.getCurrentState() == IService.State.ERROR);
+
+        // Verify topic was polled with correct timeout
+        verify(mockTopic).poll(eq(100L), eq(TimeUnit.MILLISECONDS));
+        
+        // Verify no storage or database operations (failed before receiving message)
+        verify(mockStorage, never()).readMessage(anyString(), any());
+        verify(mockDatabase, never()).insertMetadata(any());
+        
+        // Verify metrics
+        assertEquals(0L, indexer.getMetrics().get("metadata_indexed"));
+        assertEquals(1L, indexer.getMetrics().get("metadata_failed"));
+    }
+
+    @Test
+    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*Metadata notification did not arrive.*")
+    void errorTracking_recordsErrorsOnTimeout() throws Exception {
+        // Arrange: Topic poll returns null (timeout scenario)
+        when(mockTopic.poll(anyLong(), any(TimeUnit.class))).thenReturn(null);
+        
+        Config indexerConfig = ConfigFactory.parseString("""
+                runId = "test-run-123"
+                topicPollTimeoutMs = 50
+                """);
+        
+        MetadataIndexer indexer = new MetadataIndexer("test-indexer", indexerConfig, resources);
+        
+        // Act: Start indexer - should timeout and enter ERROR state
+        indexer.start();
+        await().atMost(300, TimeUnit.MILLISECONDS).until(() -> indexer.getCurrentState() == IService.State.ERROR);
+        
+        // Assert: Verify service is in ERROR state
+        assertEquals(IService.State.ERROR, indexer.getCurrentState());
+        
+        // Verify metrics (fatal errors increment failed counter)
+        assertEquals(0L, indexer.getMetrics().get("metadata_indexed"));
+        assertEquals(1L, indexer.getMetrics().get("metadata_failed"));
+        
+        // Fatal errors do NOT use recordError() - error collection should be empty
+        assertTrue(indexer.getErrors().isEmpty(), "Fatal errors should not be in error collection");
     }
 }

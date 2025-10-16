@@ -2,12 +2,16 @@ package org.evochora.datapipeline.services.indexers;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.api.contracts.BatchInfo;
+import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
+import org.evochora.datapipeline.resources.topics.H2TopicResource;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.ExpectLogs;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -39,10 +43,12 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
-class DummyIndexerV1IntegrationTest {
+class DummyIndexerIntegrationTest {
     
     private H2Database testDatabase;
     private FileSystemStorageResource testStorage;
+    private H2TopicResource testMetadataTopic;
+    private H2TopicResource testBatchTopic;
     private Path tempStorageDir;
     private String dbUrl;
     private String dbUsername;
@@ -67,10 +73,35 @@ class DummyIndexerV1IntegrationTest {
             "password = \"" + dbPassword + "\""
         );
         testDatabase = new H2Database("test-db", dbConfig);
+        
+        // Setup H2 topics for metadata and batch notifications
+        String metadataTopicJdbcUrl = "jdbc:h2:mem:test-metadata-topic-" + UUID.randomUUID();
+        Config metadataTopicConfig = ConfigFactory.parseString(
+            "jdbcUrl = \"" + metadataTopicJdbcUrl + "\"\n" +
+            "username = \"sa\"\n" +
+            "password = \"\"\n" +
+            "claimTimeout = 300"
+        );
+        testMetadataTopic = new H2TopicResource("metadata-topic", metadataTopicConfig);
+        
+        String batchTopicJdbcUrl = "jdbc:h2:mem:test-batch-topic-" + UUID.randomUUID();
+        Config batchTopicConfig = ConfigFactory.parseString(
+            "jdbcUrl = \"" + batchTopicJdbcUrl + "\"\n" +
+            "username = \"sa\"\n" +
+            "password = \"\"\n" +
+            "claimTimeout = 300"
+        );
+        testBatchTopic = new H2TopicResource("batch-topic", batchTopicConfig);
     }
     
     @AfterEach
-    void cleanup() throws IOException {
+    void cleanup() throws Exception {
+        if (testMetadataTopic != null) {
+            testMetadataTopic.close();
+        }
+        if (testBatchTopic != null) {
+            testBatchTopic.close();
+        }
         if (testDatabase != null) {
             // Wait for connections to be released (avoid Thread.sleep)
             await().atMost(2, TimeUnit.SECONDS)
@@ -258,7 +289,21 @@ class DummyIndexerV1IntegrationTest {
     
     private void indexMetadata(String runId, SimulationMetadata metadata) throws Exception {
         // Write metadata file to storage
-        testStorage.writeMessage(runId + "/metadata.pb", metadata);
+        String storageKey = runId + "/metadata.pb";
+        testStorage.writeMessage(storageKey, metadata);
+        
+        // Send notification to metadata topic (simulates MetadataPersistenceService)
+        ResourceContext topicWriterContext = new ResourceContext("test-persistence", "topic", "topic-write", "metadata-topic", Collections.emptyMap());
+        @SuppressWarnings("unchecked")
+        ITopicWriter<MetadataInfo> topicWriter = (ITopicWriter<MetadataInfo>) testMetadataTopic.getWrappedResource(topicWriterContext);
+        topicWriter.setSimulationRun(runId);
+        
+        MetadataInfo notification = MetadataInfo.newBuilder()
+            .setSimulationRunId(runId)
+            .setStorageKey(storageKey)
+            .setWrittenAtMs(System.currentTimeMillis())
+            .build();
+        topicWriter.send(notification);
         
         // Use MetadataIndexer to index it into database
         ResourceContext dbContext = new ResourceContext(
@@ -270,10 +315,14 @@ class DummyIndexerV1IntegrationTest {
         );
         IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
         
+        ResourceContext topicReaderContext = new ResourceContext("metadata-indexer", "topic", "topic-read", "metadata-topic", Map.of("consumerGroup", "metadata"));
+        IResource wrappedTopic = testMetadataTopic.getWrappedResource(topicReaderContext);
+        
         Config indexerConfig = ConfigFactory.parseString("runId = \"" + runId + "\"");
         Map<String, List<IResource>> resources = Map.of(
             "storage", List.of(testStorage),
-            "database", List.of(wrappedDatabase)
+            "database", List.of(wrappedDatabase),
+            "topic", List.of(wrappedTopic)
         );
         
         MetadataIndexer metadataIndexer = new MetadataIndexer("metadata-indexer", indexerConfig, resources);
@@ -305,9 +354,14 @@ class DummyIndexerV1IntegrationTest {
         );
         IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
         
+        // Wrap batch topic for reading BatchInfo notifications
+        ResourceContext topicReaderContext = new ResourceContext(name, "topic", "topic-read", "batch-topic", Map.of("consumerGroup", "dummy"));
+        IResource wrappedTopic = testBatchTopic.getWrappedResource(topicReaderContext);
+        
         Map<String, List<IResource>> resources = Map.of(
             "storage", List.of(testStorage),
-            "metadata", List.of(wrappedDatabase)  // Port name must match getRequiredResource() call
+            "metadata", List.of(wrappedDatabase),  // Port name must match getRequiredResource() call
+            "topic", List.of(wrappedTopic)
         );
         
         return new DummyIndexer(name, config, resources);

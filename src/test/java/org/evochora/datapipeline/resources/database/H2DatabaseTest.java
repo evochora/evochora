@@ -77,38 +77,26 @@ class H2DatabaseTest {
     }
 
     @Test
-    void testJdbcUrl_DataDirectoryWithoutVariables() {
-        // When dataDirectory is provided without variables, it should construct JDBC URL
-        tempDbDirectory = Paths.get(System.getProperty("java.io.tmpdir"), "h2-test-" + UUID.randomUUID());
-        Config config = ConfigFactory.parseString("dataDirectory = \"" + tempDbDirectory.toString().replace("\\", "/") + "\"");
-        
-        H2Database db = new H2Database("test", config);
-        
-        // Database should be created successfully
-        assertNotNull(db);
-        db.stop();
-    }
-
-    @Test
-    void testJdbcUrl_DataDirectoryWithVariables() {
-        // When dataDirectory contains variables, they should be expanded
+    void testJdbcUrl_WithVariableExpansion() {
+        // When jdbcUrl contains variables, they should be expanded
         String tmpDir = System.getProperty("java.io.tmpdir");
         System.setProperty("test.db.dir", tmpDir);
-        String uniqueDir = "h2-test-" + UUID.randomUUID();
-        tempDbDirectory = Paths.get(tmpDir, uniqueDir);
-        Config config = ConfigFactory.parseString("dataDirectory = \"${test.db.dir}/" + uniqueDir + "\"");
+        String uniqueDb = "h2-test-" + UUID.randomUUID();
+        // Note: Don't set tempDbDirectory - H2 files in /tmp will be cleaned up automatically
+        // Setting it to /tmp would cause cleanup to fail on systemd-private directories
+        
+        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:${test.db.dir}/" + uniqueDb + ";MODE=PostgreSQL\"");
         
         H2Database db = new H2Database("test", config);
         
-        // Database should be created successfully with expanded path
         assertNotNull(db);
         db.stop();
         System.clearProperty("test.db.dir");
     }
 
     @Test
-    void testJdbcUrl_NeitherJdbcUrlNorDataDirectory() {
-        // When neither jdbcUrl nor dataDirectory is provided, it should throw exception
+    void testJdbcUrl_MissingConfiguration() {
+        // When jdbcUrl is not provided, it should throw exception
         Config config = ConfigFactory.parseString("maxPoolSize = 5");
         
         IllegalArgumentException exception = assertThrows(
@@ -116,31 +104,14 @@ class H2DatabaseTest {
             () -> new H2Database("test", config)
         );
         
-        assertTrue(exception.getMessage().contains("Either 'jdbcUrl' or 'dataDirectory' must be configured"));
+        assertTrue(exception.getMessage().contains("'jdbcUrl' must be configured"));
     }
 
     @Test
-    void testJdbcUrl_JdbcUrlTakesPrecedenceOverDataDirectory() {
-        // When both are provided, jdbcUrl should take precedence
-        String expectedUrl = "jdbc:h2:mem:priority-test;MODE=PostgreSQL";
+    void testJdbcUrl_WithUndefinedVariable() {
+        // When jdbcUrl contains undefined variable, it should throw exception
         Config config = ConfigFactory.parseString(
-            "jdbcUrl = \"" + expectedUrl + "\"\n" +
-            "dataDirectory = \"/this/should/be/ignored\""
-        );
-        
-        H2Database db = new H2Database("test", config);
-        
-        // Should use jdbcUrl, not dataDirectory
-        // (dataDirectory would fail if actually used because it's not absolute/valid)
-        assertNotNull(db);
-        db.stop();
-    }
-
-    @Test
-    void testJdbcUrl_DataDirectoryWithUndefinedVariable() {
-        // When dataDirectory contains undefined variable, it should throw exception
-        Config config = ConfigFactory.parseString(
-            "dataDirectory = \"${this_var_does_not_exist_9999}/data\""
+            "jdbcUrl = \"jdbc:h2:${this_var_does_not_exist_9999}/data;MODE=PostgreSQL\""
         );
         
         IllegalArgumentException exception = assertThrows(
