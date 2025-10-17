@@ -579,7 +579,7 @@ services:
 
 ## Additional Notes
 
-### Ring Buffer Optimization (v3.0+)
+### Ring Buffer Optimization
 The `InMemoryIdempotencyTracker` uses a Ring Buffer + HashSet design that provides:
 - **50% memory savings** compared to previous LinkedHashSet implementation
 - **Guaranteed memory bounds** (no growth beyond `maxKeys`)
@@ -594,6 +594,102 @@ This optimization is already active in your deployment—no configuration change
 The H2 database cache is limited to 512 MB by default via the `CACHE_SIZE=524288` parameter in the JDBC URL. This prevents unbounded cache growth while maintaining good query performance.
 
 If you experience high database load or slow queries, you can increase this value, but be aware it will increase heap usage proportionally.
+
+---
+
+## Disk Storage Requirements
+
+Beyond heap memory, you also need to plan for **persistent storage** (tick data files and database).
+
+### Raw Tick Data Storage (FileSystemStorageResource / S3)
+
+PersistenceService writes tick data to storage as compressed batch files.
+
+**Formula:**
+```
+Storage_GB = (total_ticks × TickData_size_MB × (1 - compression_ratio)) / 1024
+
+Where:
+  total_ticks = Number of simulation ticks to store
+  TickData_size_MB = (100 + (occupied_cells × 16) + (organism_count × 2632)) / 1,048,576
+  compression_ratio = Compression effectiveness (typically 0.90 - 0.95 for zstd level 3)
+```
+
+**Example Calculations:**
+
+| Organisms | Occupied Cells | TickData Size | 1M Ticks (Uncompressed) | 1M Ticks (Compressed 90%) |
+|-----------|----------------|---------------|-------------------------|---------------------------|
+| 4 | 10,000 | 0.16 MB | 160 GB | **16 GB** |
+| 100 | 250,000 | 4.1 MB | 4.1 TB | **410 GB** |
+| 400 | 1,000,000 | 16.3 MB | 16.3 TB | **1.63 TB** |
+
+**Notes:**
+- Compression is **highly effective** for simulation data (90-95% reduction typical)
+- Zstd level 3 (default) provides excellent compression with minimal CPU overhead
+- Storage grows linearly with tick count
+- For long-running simulations: 1B ticks × 16.3 MB = **1.63 PB compressed** (400 organisms)
+
+---
+
+### Index Database Storage (H2 / PostgreSQL)
+
+The database stores metadata about batches, organisms, and ticks for efficient querying.
+
+**Tables and Approximate Sizes:**
+
+**SimulationMetadata (per run):**
+```
+Size ≈ 10-100 KB  (configuration, initial state, programs)
+```
+
+**BatchMetadata (per batch):**
+```
+Records = total_ticks / batchSize
+Size per record ≈ 200 bytes  (runId, storageKey, tickStart, tickEnd, timestamps)
+
+Example: 1M ticks, batchSize=1000:
+  Records = 1,000,000 / 1,000 = 1,000 batches
+  Size = 1,000 × 200 bytes = 200 KB
+```
+
+**OrganismMetadata (per organism ever created):**
+```
+Size per record ≈ 500 bytes  (organismId, parentId, birthTick, programId, etc.)
+
+Example: 400 organisms:
+  Size = 400 × 500 bytes = 200 KB
+```
+
+**TickIndex (future - not yet implemented):**
+```
+Records = total_ticks
+Size per record ≈ 100 bytes  (tick number, batch reference, timestamps)
+
+Example: 1M ticks:
+  Size = 1,000,000 × 100 bytes = 100 MB
+```
+
+**Total Database Size (rough estimate):**
+```
+DB_Size_MB = (total_ticks / batchSize × 0.2) + (organism_count × 0.5) + (total_ticks × 0.1)
+           = (batches × 0.2 KB) + (organisms × 0.5 KB) + (ticks × 0.1 KB)
+
+Example: 1M ticks, 400 organisms, batchSize=1000:
+  DB_Size_MB = (1000 × 0.2) + (400 × 0.5) + (1,000,000 × 0.1) / 1024
+             = 0.2 + 0.2 + 97.7
+             ≈ 98 MB
+
+Example: 1B ticks, 400 organisms, batchSize=1000:
+  DB_Size_MB = (1,000,000 × 0.2) + (400 × 0.5) + (1,000,000,000 × 0.1) / 1024
+             = 200 + 0.2 + 97,656
+             ≈ 98 GB
+```
+
+**Notes:**
+- Database is **much smaller** than raw tick storage (metadata only, not full state)
+- Database size scales linearly with tick count
+- H2 database file grows dynamically (no pre-allocation needed)
+- For cloud databases (PostgreSQL/MySQL), plan for similar storage sizes
 
 ---
 
