@@ -219,42 +219,33 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
 
 ### Phase 14.2.4: Batch Notification (Write)
 
-**Status:** Ready for implementation
+**Status:** ✅ Completed
 
 **Goal:** `PersistenceService` publishes batch availability to `batch-topic`.
 
-**Changes:**
-- Add `ITopicWriter<BatchInfo>` resource binding
-- After successful `storage.writeBatch()`, send BatchInfo notification
-- Include: runId, storageKey, tickStart, tickEnd, writtenAtMs
-
 **Implementation:**
-```java
-public class PersistenceService extends AbstractService {
-    private final ITopicWriter<BatchInfo> batchTopic;
-    
-    private void writeBatchWithRetry(...) {
-        // Write to storage
-        storage.writeBatch(key, batch);
-        
-        // Send notification
-        BatchInfo notification = BatchInfo.newBuilder()
-            .setSimulationRunId(runId)
-            .setStorageKey(key)
-            .setTickStart(tickStart)
-            .setTickEnd(tickEnd)
-            .setWrittenAtMs(System.currentTimeMillis())
-            .build();
-        
-        batchTopic.send(notification);
-    }
-}
-```
+- `ITopicWriter<BatchInfo>` added as **optional** resource (warns if not configured)
+- After successful `storage.writeBatch()`, sends BatchInfo notification to topic
+- Topic initialized with `setSimulationRun()` on first batch
+- Notification includes: `simulation_run_id`, `storage_key`, `tick_start`, `tick_end`, `written_at_ms`
+- Metrics added: `notifications_sent`, `notifications_failed`
+
+**Thread Safety:**
+- Fixed race condition in `AbstractTopicResource.setSimulationRun()` with `synchronized` block
+- Multiple `PersistenceService` instances can safely share same `batch-topic`
+- All topics share same H2 database (partitioned by `topic_name` column)
+
+**Testing:**
+- Unit tests verify notification sending, retry logic, and error handling
+- Integration test `PersistenceServiceBatchNotificationIntegrationTest`:
+  - Single instance: verifies end-to-end batch notification flow
+  - Multiple instances: verifies thread-safe concurrent topic access
 
 **Deliverables:**
-- Updated `PersistenceService`
-- Configuration changes (`resources.batch-out = "topic-write:batch-topic"`)
-- Integration tests
+- ✅ Updated `PersistenceService` with optional topic support
+- ✅ Configuration updated (`evochora.conf` includes `topic = "topic-write:batch-topic"`)
+- ✅ Unit tests (4 tests in `PersistenceServiceTest`)
+- ✅ Integration tests (2 tests in `PersistenceServiceBatchNotificationIntegrationTest`)
 
 ---
 

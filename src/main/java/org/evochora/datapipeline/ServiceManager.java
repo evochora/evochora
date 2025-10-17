@@ -209,6 +209,41 @@ public class ServiceManager implements IMonitorable {
                 })
                 .collect(Collectors.toList());
         applyToAllServices(this::stopService, actuallyStoppable);
+        
+        // Close all resources after all services have stopped
+        closeAllResources();
+    }
+    
+    /**
+     * Closes all resources to ensure clean shutdown.
+     * <p>
+     * This method is called after all services have been stopped to ensure that
+     * resources (especially databases) are properly closed and data is flushed.
+     * With DB_CLOSE_ON_EXIT=FALSE, H2 will not close automatically, so we must
+     * explicitly close all resources here.
+     * <p>
+     * Resources that implement {@link AutoCloseable} (H2Database, H2TopicResource)
+     * will close their own wrappers before shutting down connection pools.
+     * Other resources (e.g., in-memory queues) do not require explicit shutdown.
+     */
+    private void closeAllResources() {
+        log.info("Closing all resources...");
+        
+        for (Map.Entry<String, IResource> entry : resources.entrySet()) {
+            String resourceName = entry.getKey();
+            IResource resource = entry.getValue();
+            
+            if (resource instanceof AutoCloseable) {
+                try {
+                    ((AutoCloseable) resource).close();
+                    log.info("Closed resource: {}", resourceName);
+                } catch (Exception e) {
+                    log.error("Failed to close resource '{}': {}", resourceName, e.getMessage());
+                }
+            } else {
+                log.debug("Resource '{}' does not implement AutoCloseable, skipping", resourceName);
+            }
+        }
     }
 
     public void pauseAll() {
@@ -240,7 +275,7 @@ public class ServiceManager implements IMonitorable {
         }
 
         try {
-            log.info("Creating a new instance for service '{}'.", name);
+            log.debug("Creating a new instance for service '{}'.", name);
 
             // Step 1: Create wrapped resources ONCE and store them for both injection and bindings
             List<PendingBinding> pendingBindings = pendingBindingsMap.getOrDefault(name, Collections.emptyList());
@@ -396,7 +431,7 @@ public class ServiceManager implements IMonitorable {
             // Wait for up to 5 seconds for the service to stop.
             for (int i = 0; i < 100; i++) {
                 if (service.getCurrentState() == IService.State.STOPPED) {
-                    log.info("Service '{}' has stopped.", serviceName);
+                    log.debug("Service '{}' has stopped.", serviceName);
                     return; // Exit successfully
                 }
                 Thread.sleep(50);

@@ -31,6 +31,11 @@
   <logger name="org.eclipse.jetty.util" level="OFF" additivity="false"/>
   <logger name="org.eclipse.jetty.io" level="OFF" additivity="false"/>
   <logger name="org.eclipse.jetty.http" level="OFF" additivity="false"/>
+  
+  <!-- Suppress HikariCP verbose logging (use WARN to show only errors) -->
+  <logger name="com.zaxxer.hikari" level="WARN" additivity="false"/>
+  <logger name="com.zaxxer.hikari.HikariDataSource" level="WARN" additivity="false"/>
+  <logger name="com.zaxxer.hikari.pool.HikariPool" level="WARN" additivity="false"/>
 
 <!-- Evochora-spezifische Logger - Level wird zur Laufzeit konfiguriert -->
   <logger name="org.evochora" additivity="false">

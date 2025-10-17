@@ -2,6 +2,7 @@ package org.evochora.datapipeline.services;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
@@ -9,10 +10,12 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
+import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.api.services.IService.State;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -38,7 +41,8 @@ import static org.mockito.Mockito.*;
  * Tests cover batch processing, deduplication, retry logic, DLQ handling, and configuration validation.
  */
 @Tag("unit")
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, LogWatchExtension.class})
+@AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
 class PersistenceServiceTest {
 
     @Mock
@@ -46,6 +50,9 @@ class PersistenceServiceTest {
     
     @Mock
     private IBatchStorageWrite mockStorage;
+
+    @Mock
+    private ITopicWriter<BatchInfo> mockBatchTopic;
 
     @Mock
     private IOutputQueueResource<SystemContracts.DeadLetterMessage> mockDLQ;
@@ -62,6 +69,7 @@ class PersistenceServiceTest {
         resources = new HashMap<>();
         resources.put("input", Collections.singletonList(mockInputQueue));
         resources.put("storage", Collections.singletonList(mockStorage));
+        // topic is optional - add it per test as needed
         
         config = ConfigFactory.parseMap(Map.of(
             "maxBatchSize", 100,
@@ -795,6 +803,163 @@ class PersistenceServiceTest {
         verify(mockDLQ).offer(any(SystemContracts.DeadLetterMessage.class));
 
         // Service stops itself due to InterruptedException, no need to call stop()
+    }
+
+    @Test
+    void shouldSendBatchNotificationAfterSuccessfulWrite() throws Exception {
+        // Given
+        resources.put("topic", Collections.singletonList(mockBatchTopic));
+        service = new PersistenceService("test-persistence", config, resources);
+        List<TickData> batch = createTestBatch("run-123", 0, 99);
+        
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenAnswer(invocation -> {
+                List<TickData> target = invocation.getArgument(0);
+                target.addAll(batch);
+                return batch.size();
+            })
+            .thenReturn(0); // Then return 0 to prevent infinite loop
+            
+        when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
+            .thenReturn("run-123/batch_0000000000000000000_0000000000000000099.pb.zst");
+        
+        // When
+        service.start();
+        await().atMost(2, TimeUnit.SECONDS)
+            .until(() -> service.getMetrics().get("batches_written").longValue() == 1);
+        service.stop();
+        
+        // Then
+        verify(mockStorage).writeBatch(anyList(), eq(0L), eq(99L));
+        verify(mockBatchTopic).send(argThat(notification -> 
+            notification.getSimulationRunId().equals("run-123") &&
+            notification.getStorageKey().equals("run-123/batch_0000000000000000000_0000000000000000099.pb.zst") &&
+            notification.getTickStart() == 0 &&
+            notification.getTickEnd() == 99 &&
+            notification.getWrittenAtMs() > 0
+        ));
+        
+        assertEquals(1, service.getMetrics().get("batches_written").longValue());
+        assertEquals(1, service.getMetrics().get("notifications_sent").longValue());
+        assertEquals(0, service.getMetrics().get("notifications_failed").longValue());
+    }
+
+    @Test
+    @ExpectLog(level = LogLevel.WARN, messagePattern = "Failed batch has no DLQ configured, data will be lost: 100 ticks")
+    void shouldRetryBatchIfTopicFails() throws Exception {
+        // Given
+        resources.put("topic", Collections.singletonList(mockBatchTopic));
+        List<TickData> batch = createTestBatch("run-123", 0, 99);
+        
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenAnswer(invocation -> {
+                List<TickData> target = invocation.getArgument(0);
+                target.addAll(batch);
+                return batch.size();
+            })
+            .thenReturn(0);
+            
+        when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
+            .thenReturn("run-123/batch_0000000000000000000_0000000000000000099.pb.zst");
+        
+        // Topic always fails (InterruptedException)
+        doThrow(new InterruptedException("Topic unavailable"))
+            .when(mockBatchTopic).send(any(BatchInfo.class));
+        
+        service = new PersistenceService("test-persistence", config, resources);
+        
+        // When
+        service.start();
+        await().atMost(2, TimeUnit.SECONDS)
+            .until(() -> service.getMetrics().get("batches_failed").longValue() == 1);
+        
+        // Service stops itself due to InterruptedException
+        
+        // Then - Storage was called once, topic was called once, then interrupted
+        verify(mockStorage, times(1)).writeBatch(anyList(), eq(0L), eq(99L));
+        verify(mockBatchTopic, times(1)).send(any(BatchInfo.class));
+        
+        assertEquals(0, service.getMetrics().get("batches_written").longValue());
+        assertEquals(0, service.getMetrics().get("notifications_sent").longValue());
+        assertEquals(1, service.getMetrics().get("notifications_failed").longValue());
+        assertEquals(1, service.getMetrics().get("batches_failed").longValue());
+    }
+
+    @Test
+    @ExpectLog(level = LogLevel.WARN, messagePattern = "Failed to write batch or send notification \\[ticks 0-99\\] after 2 retries, sending to DLQ")
+    @ExpectLog(level = LogLevel.WARN, messagePattern = "Failed batch has no DLQ configured, data will be lost: 100 ticks")
+    void shouldNotSendNotificationIfStorageWriteFails() throws Exception {
+        // Given
+        List<TickData> batch = createTestBatch("run-123", 0, 99);
+        
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenAnswer(invocation -> {
+                List<TickData> target = invocation.getArgument(0);
+                target.addAll(batch);
+                return batch.size();
+            })
+            .thenReturn(0);
+            
+        // Storage always fails
+        when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
+            .thenThrow(new IOException("Storage unavailable"));
+        
+        service = new PersistenceService("test-persistence", config, resources);
+        
+        // When
+        service.start();
+        await().atMost(2, TimeUnit.SECONDS)
+            .until(() -> service.getMetrics().get("batches_failed").longValue() == 1);
+        service.stop();
+        
+        // Then - Topic was never called because storage failed
+        verify(mockStorage, times(3)).writeBatch(anyList(), eq(0L), eq(99L)); // 1 + 2 retries
+        verify(mockBatchTopic, never()).send(any(BatchInfo.class));
+        
+        assertEquals(0, service.getMetrics().get("batches_written").longValue());
+        assertEquals(0, service.getMetrics().get("notifications_sent").longValue());
+        assertEquals(0, service.getMetrics().get("notifications_failed").longValue());
+        assertEquals(1, service.getMetrics().get("batches_failed").longValue());
+    }
+
+    @Test
+    void shouldIncludeCorrectBatchInfoFields() throws Exception {
+        // Given
+        resources.put("topic", Collections.singletonList(mockBatchTopic));
+        service = new PersistenceService("test-persistence", config, resources);
+        List<TickData> batch = createTestBatch("run-abc-def", 1000, 1099);
+        
+        long beforeWrite = System.currentTimeMillis();
+        
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenAnswer(invocation -> {
+                List<TickData> target = invocation.getArgument(0);
+                target.addAll(batch);
+                return batch.size();
+            })
+            .thenReturn(0);
+            
+        when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
+            .thenReturn("run-abc-def/batch_0000000000000001000_0000000000000001099.pb.zst");
+        
+        // When
+        service.start();
+        await().atMost(2, TimeUnit.SECONDS)
+            .until(() -> service.getMetrics().get("batches_written").longValue() == 1);
+        service.stop();
+        
+        long afterWrite = System.currentTimeMillis();
+        
+        // Then
+        verify(mockBatchTopic).send(argThat(notification -> {
+            assertEquals("run-abc-def", notification.getSimulationRunId());
+            assertEquals("run-abc-def/batch_0000000000000001000_0000000000000001099.pb.zst", notification.getStorageKey());
+            assertEquals(1000, notification.getTickStart());
+            assertEquals(1099, notification.getTickEnd());
+            assertTrue(notification.getWrittenAtMs() >= beforeWrite);
+            assertTrue(notification.getWrittenAtMs() <= afterWrite);
+            return true;
+        }));
     }
 
     // Helper methods

@@ -2,18 +2,16 @@ package org.evochora.datapipeline.services.indexers;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.contracts.BatchInfo;
-import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
-import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
-import org.evochora.datapipeline.resources.topics.H2TopicResource;
+import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.ExpectLogs;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,12 +41,11 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
+@AllowLog(level = LogLevel.WARN, messagePattern = ".*initialized WITHOUT topic.*")
 class DummyIndexerIntegrationTest {
     
     private H2Database testDatabase;
     private FileSystemStorageResource testStorage;
-    private H2TopicResource testMetadataTopic;
-    private H2TopicResource testBatchTopic;
     private Path tempStorageDir;
     private String dbUrl;
     private String dbUsername;
@@ -73,35 +70,10 @@ class DummyIndexerIntegrationTest {
             "password = \"" + dbPassword + "\""
         );
         testDatabase = new H2Database("test-db", dbConfig);
-        
-        // Setup H2 topics for metadata and batch notifications
-        String metadataTopicJdbcUrl = "jdbc:h2:mem:test-metadata-topic-" + UUID.randomUUID();
-        Config metadataTopicConfig = ConfigFactory.parseString(
-            "jdbcUrl = \"" + metadataTopicJdbcUrl + "\"\n" +
-            "username = \"sa\"\n" +
-            "password = \"\"\n" +
-            "claimTimeout = 300"
-        );
-        testMetadataTopic = new H2TopicResource("metadata-topic", metadataTopicConfig);
-        
-        String batchTopicJdbcUrl = "jdbc:h2:mem:test-batch-topic-" + UUID.randomUUID();
-        Config batchTopicConfig = ConfigFactory.parseString(
-            "jdbcUrl = \"" + batchTopicJdbcUrl + "\"\n" +
-            "username = \"sa\"\n" +
-            "password = \"\"\n" +
-            "claimTimeout = 300"
-        );
-        testBatchTopic = new H2TopicResource("batch-topic", batchTopicConfig);
     }
     
     @AfterEach
     void cleanup() throws Exception {
-        if (testMetadataTopic != null) {
-            testMetadataTopic.close();
-        }
-        if (testBatchTopic != null) {
-            testBatchTopic.close();
-        }
         if (testDatabase != null) {
             // Wait for connections to be released (avoid Thread.sleep)
             await().atMost(2, TimeUnit.SECONDS)
@@ -118,7 +90,7 @@ class DummyIndexerIntegrationTest {
             assertEquals(0, activeConnections != null ? activeConnections.intValue() : 0,
                 "Connection leak detected! Active connections should be 0 after test completion");
             
-            testDatabase.stop();
+            testDatabase.close();
         }
         
         // Cleanup temp directory
@@ -292,22 +264,9 @@ class DummyIndexerIntegrationTest {
         String storageKey = runId + "/metadata.pb";
         testStorage.writeMessage(storageKey, metadata);
         
-        // Send notification to metadata topic (simulates MetadataPersistenceService)
-        ResourceContext topicWriterContext = new ResourceContext("test-persistence", "topic", "topic-write", "metadata-topic", Collections.emptyMap());
-        @SuppressWarnings("unchecked")
-        ITopicWriter<MetadataInfo> topicWriter = (ITopicWriter<MetadataInfo>) testMetadataTopic.getWrappedResource(topicWriterContext);
-        topicWriter.setSimulationRun(runId);
-        
-        MetadataInfo notification = MetadataInfo.newBuilder()
-            .setSimulationRunId(runId)
-            .setStorageKey(storageKey)
-            .setWrittenAtMs(System.currentTimeMillis())
-            .build();
-        topicWriter.send(notification);
-        
-        // Use MetadataIndexer to index it into database
+        // Write metadata directly to database (bypassing MetadataIndexer/Topic for simplicity)
         ResourceContext dbContext = new ResourceContext(
-            "metadata-indexer",
+            "test-indexer",
             "database",
             "db-meta-write",
             "test-db",
@@ -315,32 +274,13 @@ class DummyIndexerIntegrationTest {
         );
         IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
         
-        ResourceContext topicReaderContext = new ResourceContext("metadata-indexer", "topic", "topic-read", "metadata-topic", Map.of("consumerGroup", "metadata"));
-        IResource wrappedTopic = testMetadataTopic.getWrappedResource(topicReaderContext);
-        
-        Config indexerConfig = ConfigFactory.parseString("runId = \"" + runId + "\"");
-        Map<String, List<IResource>> resources = Map.of(
-            "storage", List.of(testStorage),
-            "database", List.of(wrappedDatabase),
-            "topic", List.of(wrappedTopic)
-        );
-        
-        MetadataIndexer metadataIndexer = new MetadataIndexer("metadata-indexer", indexerConfig, resources);
-        metadataIndexer.start();
-        
-        // Wait for metadata indexing to complete
-        await().atMost(10, TimeUnit.SECONDS)
-            .until(() -> metadataIndexer.getCurrentState() == IService.State.STOPPED);
-        
-        assertEquals(IService.State.STOPPED, metadataIndexer.getCurrentState(),
-            "MetadataIndexer should complete successfully");
-        
-        // Verify metadata was actually indexed (not just stopped due to error)
-        Map<String, Number> metrics = metadataIndexer.getMetrics();
-        assertEquals(1, metrics.get("metadata_indexed").intValue(),
-            "MetadataIndexer should have indexed exactly 1 metadata");
-        assertEquals(0, metrics.get("metadata_failed").intValue(),
-            "MetadataIndexer should have 0 failures");
+        if (wrappedDatabase instanceof org.evochora.datapipeline.api.resources.database.IMetadataWriter metadataWriter) {
+            metadataWriter.setSimulationRun(runId);
+            metadataWriter.insertMetadata(metadata);
+            metadataWriter.close();
+        } else {
+            throw new IllegalStateException("Expected IMetadataWriter but got: " + wrappedDatabase.getClass());
+        }
     }
     
     private DummyIndexer createDummyIndexer(String name, Config config) {
@@ -354,14 +294,9 @@ class DummyIndexerIntegrationTest {
         );
         IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
         
-        // Wrap batch topic for reading BatchInfo notifications
-        ResourceContext topicReaderContext = new ResourceContext(name, "topic", "topic-read", "batch-topic", Map.of("consumerGroup", "dummy"));
-        IResource wrappedTopic = testBatchTopic.getWrappedResource(topicReaderContext);
-        
         Map<String, List<IResource>> resources = Map.of(
             "storage", List.of(testStorage),
-            "metadata", List.of(wrappedDatabase),  // Port name must match getRequiredResource() call
-            "topic", List.of(wrappedTopic)
+            "metadata", List.of(wrappedDatabase)  // Port name must match getRequiredResource() call
         );
         
         return new DummyIndexer(name, config, resources);

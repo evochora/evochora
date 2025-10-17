@@ -1,19 +1,19 @@
 package org.evochora.datapipeline.resources.idempotency;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 
-import java.time.Duration;
-
 import static org.junit.jupiter.api.Assertions.*;
 
+@Tag("unit")
 public class InMemoryIdempotencyTrackerTest {
 
     private InMemoryIdempotencyTracker<Integer> tracker;
 
     @BeforeEach
     void setUp() {
-        tracker = new InMemoryIdempotencyTracker<>(Duration.ofSeconds(5));
+        tracker = new InMemoryIdempotencyTracker<>(1000);  // 1000 keys max
     }
 
     @Test
@@ -83,45 +83,75 @@ public class InMemoryIdempotencyTrackerTest {
     }
 
     @Test
-    void testTTL_expiredKeysAreRemoved() throws InterruptedException {
-        InMemoryIdempotencyTracker<Integer> shortTTLTracker =
-                new InMemoryIdempotencyTracker<>(Duration.ofMillis(100));
+    void testFIFO_eviction_oldestKeysRemoved() {
+        InMemoryIdempotencyTracker<Integer> smallTracker = new InMemoryIdempotencyTracker<>(10);
 
-        shortTTLTracker.markProcessed(1);
-        assertTrue(shortTTLTracker.isProcessed(1));
-
-        Thread.sleep(150); // Wait for TTL to expire
-
-        assertFalse(shortTTLTracker.isProcessed(1), "Expired key should return false");
-    }
-
-    @Test
-    void testCheckAndMarkProcessed_expiredKey_returnsTrue() throws InterruptedException {
-        InMemoryIdempotencyTracker<Integer> shortTTLTracker =
-                new InMemoryIdempotencyTracker<>(Duration.ofMillis(100));
-
-        shortTTLTracker.checkAndMarkProcessed(1);
-        Thread.sleep(150);
-
-        // Expired key should be treated as new
-        boolean result = shortTTLTracker.checkAndMarkProcessed(1);
-        assertTrue(result, "Expired key should be processed as new");
-    }
-
-    @Test
-    void testCleanup_removesOldEntries() throws InterruptedException {
-        InMemoryIdempotencyTracker<Integer> shortTTLTracker =
-                new InMemoryIdempotencyTracker<>(Duration.ofMillis(100));
-
-        for (int i = 0; i < 100; i++) {
-            shortTTLTracker.markProcessed(i);
+        // Fill to capacity
+        for (int i = 0; i < 10; i++) {
+            smallTracker.markProcessed(i);
         }
-        assertEquals(100L, shortTTLTracker.size());
+        assertEquals(10L, smallTracker.size());
+        assertTrue(smallTracker.isProcessed(0), "Oldest key (0) should still be present");
 
-        Thread.sleep(150);
-        shortTTLTracker.cleanup();
+        // Add one more - should evict key 0
+        smallTracker.markProcessed(10);
+        assertEquals(10L, smallTracker.size(), "Size should remain at max capacity");
+        assertFalse(smallTracker.isProcessed(0), "Oldest key (0) should be evicted");
+        assertTrue(smallTracker.isProcessed(10), "New key (10) should be present");
+        assertTrue(smallTracker.isProcessed(1), "Key (1) should still be present");
+    }
 
-        assertEquals(0L, shortTTLTracker.size(), "All expired entries should be removed");
+    @Test
+    void testFIFO_eviction_multipleOldestRemoved() {
+        InMemoryIdempotencyTracker<Integer> smallTracker = new InMemoryIdempotencyTracker<>(5);
+
+        // Fill to capacity: 0, 1, 2, 3, 4
+        for (int i = 0; i < 5; i++) {
+            smallTracker.markProcessed(i);
+        }
+
+        // Add 3 more: should evict 0, 1, 2
+        for (int i = 5; i < 8; i++) {
+            smallTracker.markProcessed(i);
+        }
+
+        assertEquals(5L, smallTracker.size());
+        assertFalse(smallTracker.isProcessed(0));
+        assertFalse(smallTracker.isProcessed(1));
+        assertFalse(smallTracker.isProcessed(2));
+        assertTrue(smallTracker.isProcessed(3));
+        assertTrue(smallTracker.isProcessed(7));
+    }
+
+    @Test
+    void testCheckAndMarkProcessed_afterEviction_treatsAsNew() {
+        InMemoryIdempotencyTracker<Integer> smallTracker = new InMemoryIdempotencyTracker<>(5);
+
+        // Fill to capacity and evict key 0
+        for (int i = 0; i < 6; i++) {
+            smallTracker.checkAndMarkProcessed(i);
+        }
+
+        // Key 0 was evicted - should be treated as new
+        boolean result = smallTracker.checkAndMarkProcessed(0);
+        assertTrue(result, "Evicted key should be treated as new");
+    }
+
+    @Test
+    void testEvictionMetrics_trackCorrectly() {
+        InMemoryIdempotencyTracker<Integer> smallTracker = new InMemoryIdempotencyTracker<>(10);
+
+        // Fill to capacity - no evictions yet
+        for (int i = 0; i < 10; i++) {
+            smallTracker.markProcessed(i);
+        }
+        assertEquals(0L, smallTracker.getTotalEvictions());
+
+        // Add 5 more - should trigger 5 evictions
+        for (int i = 10; i < 15; i++) {
+            smallTracker.markProcessed(i);
+        }
+        assertEquals(5L, smallTracker.getTotalEvictions());
     }
 
     @Test
@@ -150,8 +180,7 @@ public class InMemoryIdempotencyTrackerTest {
 
     @Test
     void testDifferentKeyTypes_String() {
-        InMemoryIdempotencyTracker<String> stringTracker =
-                new InMemoryIdempotencyTracker<>(Duration.ofSeconds(5));
+        InMemoryIdempotencyTracker<String> stringTracker = new InMemoryIdempotencyTracker<>(1000);
 
         assertTrue(stringTracker.checkAndMarkProcessed("msg-001"));
         assertFalse(stringTracker.checkAndMarkProcessed("msg-001"));
@@ -159,17 +188,8 @@ public class InMemoryIdempotencyTrackerTest {
     }
 
     @Test
-    void testAutomaticCleanup_triggersAfterThreshold() {
-        InMemoryIdempotencyTracker<Integer> autoCleanupTracker =
-                new InMemoryIdempotencyTracker<>(Duration.ofMillis(1), 10, 60);
-
-        // Add more than cleanup threshold
-        for (int i = 0; i < 15; i++) {
-            autoCleanupTracker.markProcessed(i);
-        }
-
-        // Cleanup should have been triggered automatically
-        // Size might be smaller due to expired entries being cleaned
-        assertTrue(autoCleanupTracker.size() <= 15);
+    void testMaxKeysConfiguration() {
+        InMemoryIdempotencyTracker<Integer> customTracker = new InMemoryIdempotencyTracker<>(100);
+        assertEquals(100, customTracker.getMaxKeys());
     }
 }

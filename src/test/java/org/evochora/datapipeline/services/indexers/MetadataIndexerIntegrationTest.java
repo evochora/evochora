@@ -91,7 +91,7 @@ class MetadataIndexerIntegrationTest {
             assertEquals(0, activeConnections != null ? activeConnections.intValue() : 0,
                     "Connection leak detected! Active connections should be 0 after test completion");
             
-            testDatabase.stop();
+            testDatabase.close();
         }
         if (tempStorageDir != null) {
             Files.walk(tempStorageDir).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(java.io.File::delete);

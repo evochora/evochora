@@ -13,12 +13,14 @@ import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -41,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests the complete pipeline: SimulationEngine → Queue → PersistenceService → Storage.
  */
 @Tag("integration")
+@ExtendWith(LogWatchExtension.class)
 @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|PersistenceService|ServiceManager|FileSystemStorageResource|InMemoryIdempotencyTracker).*")
 class SimulationToPersistenceIntegrationTest {
 
@@ -77,6 +80,7 @@ class SimulationToPersistenceIntegrationTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|PersistenceService|ServiceManager|FileSystemStorageResource).*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testEndToEndPersistence() {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
@@ -97,6 +101,7 @@ class SimulationToPersistenceIntegrationTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|PersistenceService|ServiceManager|FileSystemStorageResource|InMemoryIdempotencyTracker).*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testMultiplePersistenceInstances() {
         Config config = createMultiInstanceConfig();
         serviceManager = new ServiceManager(config);
@@ -142,6 +147,7 @@ class SimulationToPersistenceIntegrationTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|PersistenceService|ServiceManager|FileSystemStorageResource).*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testGracefulShutdown() {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);

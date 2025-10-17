@@ -44,12 +44,18 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
     protected AbstractIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.storage = getRequiredResource("storage", IBatchStorageRead.class);
-        this.topic = getRequiredResource("topic", ITopicReader.class);
+        this.topic = getOptionalResource("topic", ITopicReader.class).orElse(null);
         this.indexerOptions = options;
         this.configuredRunId = options.hasPath("runId") ? options.getString("runId") : null;
         this.pollIntervalMs = options.hasPath("pollIntervalMs") ? options.getInt("pollIntervalMs") : 1000;
         this.maxPollDurationMs = options.hasPath("maxPollDurationMs") ? options.getInt("maxPollDurationMs") : 300000;
         this.indexerStartTime = Instant.now();
+        
+        // Warn if topic is not configured
+        if (this.topic == null) {
+            log.warn("{} initialized WITHOUT topic - event-driven indexing disabled! Service will fail.", 
+                this.getClass().getSimpleName());
+        }
     }
 
     protected String discoverRunId() throws InterruptedException, TimeoutException {

@@ -95,10 +95,15 @@ public class MetadataPersistenceService extends AbstractService {
         // Required resources
         this.inputQueue = getRequiredResource("input", IInputQueueResource.class);
         this.storage = getRequiredResource("storage", IBatchStorageWrite.class);
-        this.topic = getRequiredResource("topic", ITopicWriter.class);
 
         // Optional resources
+        this.topic = getOptionalResource("topic", ITopicWriter.class).orElse(null);
         this.dlq = getOptionalResource("dlq", IOutputQueueResource.class).orElse(null);
+        
+        // Warn if topic is not configured
+        if (this.topic == null) {
+            log.warn("MetadataPersistenceService initialized WITHOUT topic - event-driven metadata indexing disabled!");
+        }
 
         // Configuration with defaults
         this.maxRetries = options.hasPath("maxRetries") ? options.getInt("maxRetries") : 3;
@@ -112,7 +117,7 @@ public class MetadataPersistenceService extends AbstractService {
             throw new IllegalArgumentException("retryBackoffMs cannot be negative");
         }
 
-        log.info("MetadataPersistenceService initialized: maxRetries={}, retryBackoff={}ms",
+        log.debug("MetadataPersistenceService initialized: maxRetries={}, retryBackoff={}ms",
             maxRetries, retryBackoffMs);
     }
 
@@ -182,19 +187,20 @@ public class MetadataPersistenceService extends AbstractService {
             try {
                 writeMetadata(key, metadata);
 
-                // Success - setup topic with run ID before sending
-                topic.setSimulationRun(metadata.getSimulationRunId());
                 metadataWritten.incrementAndGet();
                 bytesWritten.addAndGet(metadata.getSerializedSize());
                 log.debug("Successfully wrote metadata to {}", key);
                 
-                // Send topic notification (REQUIRED - must succeed after storage write)
-                try {
-                    sendTopicNotification(key, metadata);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    log.debug("Interrupted while sending topic notification");
-                    throw ie;
+                // Send topic notification if topic is configured
+                if (topic != null) {
+                    topic.setSimulationRun(metadata.getSimulationRunId());
+                    try {
+                        sendTopicNotification(key, metadata);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        log.debug("Interrupted while sending topic notification");
+                        throw ie;
+                    }
                 }
                 
                 return;

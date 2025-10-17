@@ -41,9 +41,9 @@ class H2DatabaseTest {
     }
 
     @AfterEach
-    void tearDown() throws IOException {
+    void tearDown() throws Exception {
         if (database != null) {
-            database.stop();
+            database.close();
         }
         // Clean up temporary database directories created during tests
         if (tempDbDirectory != null && Files.exists(tempDbDirectory)) {
@@ -73,7 +73,7 @@ class H2DatabaseTest {
         // We can't directly test getJdbcUrl(), but we can verify the database was created successfully
         // and that it's using the correct URL by checking it doesn't throw an exception
         assertNotNull(db);
-        db.stop();
+        db.close();
     }
 
     @Test
@@ -90,7 +90,7 @@ class H2DatabaseTest {
         H2Database db = new H2Database("test", config);
         
         assertNotNull(db);
-        db.stop();
+        db.close();
         System.clearProperty("test.db.dir");
     }
 

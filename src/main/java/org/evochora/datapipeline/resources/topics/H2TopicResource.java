@@ -128,13 +128,17 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
         hikariConfig.setUsername(username);
         hikariConfig.setPassword(password);
         
+        // Set pool name to resource name for better logging
+        hikariConfig.setPoolName(name);
+        
         this.claimTimeoutSeconds = options.hasPath("claimTimeout")
             ? options.getInt("claimTimeout")
             : 300;  // Default: 5 minutes
         
         try {
             this.dataSource = new HikariDataSource(hikariConfig);
-            log.info("H2 topic '{}' connected: {}", name, jdbcUrl);
+            log.info("H2 topic '{}' connection pool started (max={}, minIdle={}, claimTimeout={}s)", 
+                name, maxPoolSize, minIdle, claimTimeoutSeconds);
             
             // Note: Tables are created LAZY in setSimulationRun() for schema isolation
             
@@ -304,11 +308,36 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
         // Execute all CREATE statements (connection already provided by H2SchemaUtil.setupRunSchema)
         try (Statement stmt = connection.createStatement()) {
             stmt.execute(createMessagesSql);
-            stmt.execute(createIndexMessages);
+            executeIndexCreation(stmt, createIndexMessages, "idx_topic_messages");
             stmt.execute(createConsumerGroupSql);
-            stmt.execute(createIndexUnclaimed);
-            stmt.execute(createIndexClaimed);
+            executeIndexCreation(stmt, createIndexUnclaimed, "idx_consumer_group_unclaimed");
+            executeIndexCreation(stmt, createIndexClaimed, "idx_consumer_group_claimed");
             log.debug("Created centralized topic tables for resource '{}'", getResourceName());
+        }
+    }
+    
+    /**
+     * Executes CREATE INDEX statement with H2-specific error handling.
+     * <p>
+     * H2 has a bug where CREATE INDEX IF NOT EXISTS sometimes throws
+     * "object already exists" exception even with IF NOT EXISTS clause.
+     * This method catches and ignores such errors.
+     *
+     * @param stmt The statement to execute with.
+     * @param sql The CREATE INDEX SQL.
+     * @param indexName The index name for logging.
+     * @throws SQLException if creation fails for reasons other than "already exists".
+     */
+    private void executeIndexCreation(Statement stmt, String sql, String indexName) throws SQLException {
+        try {
+            stmt.execute(sql);
+        } catch (SQLException e) {
+            // H2 error code 50000 = General error (includes "object already exists")
+            if (e.getErrorCode() == 50000 && e.getMessage().contains("object already exists")) {
+                log.debug("Index '{}' already exists, skipping creation", indexName);
+            } else {
+                throw e; // Re-throw if it's a different error
+            }
         }
     }
     
@@ -419,20 +448,25 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     
     @Override
     public void close() throws Exception {
-        super.close();  // Close all delegates
-        
-        // Cleanup schema resources (trigger deregistration)
+        // Step 1: Cleanup schema resources FIRST (while connections are still available)
+        // This must happen before closing delegates/connection pool
         if (getSimulationRunId() != null) {
+            log.info("Cleaning up schema for topic '{}', run: {}", getResourceName(), getSimulationRunId());
             try (Connection conn = getConnection()) {
                 H2SchemaUtil.cleanupRunSchema(conn, getSimulationRunId(), this::cleanupSchemaResources);
             } catch (SQLException e) {
-                log.warn("Failed to cleanup schema for topic '{}', run: {}", getResourceName(), getSimulationRunId());
+                log.warn("Failed to cleanup schema for topic '{}', run: {} - Error: {}", 
+                    getResourceName(), getSimulationRunId(), e.getMessage(), e);
             }
         }
         
+        // Step 2: Close all delegates (releases connections back to pool)
+        super.close();
+        
+        // Step 3: Close connection pool (after all delegates are closed)
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
-            log.info("H2 topic resource '{}' closed", getResourceName());
+            log.info("H2 topic '{}' connection pool closed", getResourceName());
         }
     }
     

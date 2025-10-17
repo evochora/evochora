@@ -24,8 +24,11 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * H2 database implementation using HikariCP for connection pooling.
+ * <p>
+ * Implements {@link AutoCloseable} to ensure proper cleanup of database connections
+ * and connection pool resources during shutdown.
  */
-public class H2Database extends AbstractDatabaseResource {
+public class H2Database extends AbstractDatabaseResource implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(H2Database.class);
     private final HikariDataSource dataSource;
@@ -47,9 +50,13 @@ public class H2Database extends AbstractDatabaseResource {
         hikariConfig.setUsername(username);
         hikariConfig.setPassword(password);
         
+        // Set pool name to resource name for better logging
+        hikariConfig.setPoolName(name);
+        
         try {
             this.dataSource = new HikariDataSource(hikariConfig);
-            log.debug("Successfully connected to H2 database: {}", jdbcUrl);
+            log.info("H2 database '{}' connection pool started (max={}, minIdle={})", 
+                name, hikariConfig.getMaximumPoolSize(), hikariConfig.getMinimumIdle());
         } catch (Exception e) {
             // Unwrap to find root cause
             Throwable cause = e;
@@ -301,9 +308,17 @@ public class H2Database extends AbstractDatabaseResource {
         }
     }
 
-    public void stop() {
+    /**
+     * Closes the HikariCP connection pool for this H2 database.
+     * <p>
+     * This is called by {@link AbstractDatabaseResource#close()} after all wrappers
+     * have been closed and connections released back to the pool.
+     */
+    @Override
+    protected void closeConnectionPool() {
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
+            log.info("H2 database '{}' connection pool closed", getResourceName());
         }
     }
 }

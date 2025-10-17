@@ -45,6 +45,11 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
 
     @Override
     protected void indexRun(String runId) throws Exception {
+        // Check if topic is available
+        if (topic == null) {
+            throw new RuntimeException("MetadataIndexer requires topic resource for event-driven indexing");
+        }
+        
         log.info("Waiting for metadata notification for run: {} (timeout: {}ms)", runId, topicPollTimeoutMs);
         
         // Note: topic.setSimulationRun() already called by AbstractIndexer.discoverRunId()

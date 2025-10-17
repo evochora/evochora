@@ -189,7 +189,7 @@ public abstract class AbstractService implements IService, IMonitorable {
             if (getCurrentState() != State.ERROR) {
                 currentState.set(State.STOPPED);
             }
-            log.info("Service thread for {} has terminated.", this.getClass().getSimpleName());
+            log.debug("Service thread for {} has terminated.", this.getClass().getSimpleName());
         }
     }
 

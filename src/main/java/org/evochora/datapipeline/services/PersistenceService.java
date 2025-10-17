@@ -2,6 +2,7 @@ package org.evochora.datapipeline.services;
 
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
+import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
@@ -9,6 +10,7 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
+import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -42,6 +44,7 @@ public class PersistenceService extends AbstractService {
     // Required resources
     private final IInputQueueResource<TickData> inputQueue;
     private final IBatchStorageWrite storage;
+    private final ITopicWriter<BatchInfo> batchTopic;
 
     // Optional resources
     private final IOutputQueueResource<SystemContracts.DeadLetterMessage> dlq;
@@ -61,6 +64,11 @@ public class PersistenceService extends AbstractService {
     private final AtomicLong batchesFailed = new AtomicLong(0);
     private final AtomicLong duplicateTicksDetected = new AtomicLong(0);
     private final AtomicInteger currentBatchSize = new AtomicInteger(0);
+    private final AtomicLong notificationsSent = new AtomicLong(0);
+    private final AtomicLong notificationsFailed = new AtomicLong(0);
+    
+    // State tracking
+    private volatile boolean topicInitialized = false;
 
     public PersistenceService(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
@@ -70,8 +78,14 @@ public class PersistenceService extends AbstractService {
         this.storage = getRequiredResource("storage", IBatchStorageWrite.class);
 
         // Optional resources
+        this.batchTopic = getOptionalResource("topic", ITopicWriter.class).orElse(null);
         this.dlq = getOptionalResource("dlq", IOutputQueueResource.class).orElse(null);
         this.idempotencyTracker = getOptionalResource("idempotencyTracker", IIdempotencyTracker.class).orElse(null);
+        
+        // Warn if batch topic is not configured (event-driven indexing disabled)
+        if (batchTopic == null) {
+            log.warn("PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!");
+        }
 
         // Configuration with defaults
         this.maxBatchSize = options.hasPath("maxBatchSize") ? options.getInt("maxBatchSize") : 1000;
@@ -97,7 +111,7 @@ public class PersistenceService extends AbstractService {
             throw new IllegalArgumentException("shutdownBatchTimeoutSeconds must be positive");
         }
 
-        log.info("PersistenceService initialized: maxBatchSize={}, batchTimeout={}s, maxRetries={}, shutdownBatchTimeout={}s, idempotency={}",
+        log.debug("PersistenceService initialized: maxBatchSize={}, batchTimeout={}s, maxRetries={}, shutdownBatchTimeout={}s, idempotency={}",
             maxBatchSize, batchTimeoutSeconds, maxRetries, shutdownBatchTimeoutSeconds, idempotencyTracker != null ? "enabled" : "disabled");
     }
 
@@ -230,6 +244,18 @@ public class PersistenceService extends AbstractService {
         return deduped;
     }
 
+    /**
+     * Writes a batch to storage with retry logic and sends a notification to the batch topic.
+     * <p>
+     * Both storage write and topic notification must succeed for the operation to complete.
+     * If either fails, the entire operation is retried (including both storage write and notification).
+     * <p>
+     * <strong>Thread Safety:</strong> This method is called from the service's run loop thread.
+     *
+     * @param batch The batch of ticks to write (must not be empty).
+     * @param firstTick The first tick number in the original batch.
+     * @param lastTick The last tick number in the original batch.
+     */
     private void writeBatchWithRetry(List<TickData> batch, long firstTick, long lastTick) {
         int attempt = 0;
         int backoff = retryBackoffMs;
@@ -238,7 +264,29 @@ public class PersistenceService extends AbstractService {
         while (attempt <= maxRetries) {
             try {
                 // Storage handles everything: folders, compression, manifests
-                String filename = storage.writeBatch(batch, firstTick, lastTick);
+                String storageKey = storage.writeBatch(batch, firstTick, lastTick);
+
+                // Send notification to topic (if configured)
+                if (batchTopic != null) {
+                    // Initialize topic with simulation run ID on first batch
+                    String simulationRunId = batch.get(0).getSimulationRunId();
+                    if (!topicInitialized) {
+                        batchTopic.setSimulationRun(simulationRunId);
+                        topicInitialized = true;
+                    }
+
+                    // Send notification to topic (must succeed for operation to complete)
+                    BatchInfo notification = BatchInfo.newBuilder()
+                        .setSimulationRunId(simulationRunId)
+                        .setStorageKey(storageKey)
+                        .setTickStart(firstTick)
+                        .setTickEnd(lastTick)
+                        .setWrittenAtMs(System.currentTimeMillis())
+                        .build();
+                    
+                    batchTopic.send(notification);
+                    notificationsSent.incrementAndGet();
+                }
 
                 // Success - update metrics
                 batchesWritten.incrementAndGet();
@@ -250,15 +298,25 @@ public class PersistenceService extends AbstractService {
                     .sum();
                 bytesWritten.addAndGet(bytesInBatch);
 
-                log.debug("Successfully wrote batch {} with {} ticks", filename, batch.size());
+                log.debug("Successfully wrote batch {} with {} ticks and sent notification", storageKey, batch.size());
                 return;
 
-            } catch (IOException e) {
+            } catch (IOException | InterruptedException e) {
                 lastException = e;
+                
+                // Handle interruption immediately (topic send failed)
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                    log.debug("Interrupted during batch write or notification, aborting retries");
+                    notificationsFailed.incrementAndGet();
+                    break;
+                }
+                
+                // IOException - storage write failed (topic was never called)
                 attempt++;
 
                 if (attempt <= maxRetries) {
-                    log.debug("Failed to write batch [ticks {}-{}] (attempt {}/{}): {}, retrying in {}ms",
+                    log.debug("Failed to write batch or send notification [ticks {}-{}] (attempt {}/{}): {}, retrying in {}ms",
                         firstTick, lastTick, attempt, maxRetries, e.getMessage(), backoff);
 
                     try {
@@ -272,7 +330,7 @@ public class PersistenceService extends AbstractService {
                     // Exponential backoff with cap to prevent overflow
                     backoff = Math.min(backoff * 2, 60000); // Max 60 seconds
                 } else {
-                    log.warn("Failed to write batch [ticks {}-{}] after {} retries, sending to DLQ",
+                    log.warn("Failed to write batch or send notification [ticks {}-{}] after {} retries, sending to DLQ",
                         firstTick, lastTick, maxRetries);
                 }
             }
@@ -282,8 +340,8 @@ public class PersistenceService extends AbstractService {
         String errorDetails = String.format("Batch: [ticks %d-%d], Retries: %d, Exception: %s",
             firstTick, lastTick, maxRetries, lastException != null ? lastException.getMessage() : "Unknown");
         recordError(
-            "BATCH_WRITE_FAILED",
-            "Failed to write batch after all retries",
+            "BATCH_WRITE_OR_NOTIFY_FAILED",
+            "Failed to write batch or send notification after all retries",
             errorDetails
         );
         sendToDLQ(batch, lastException != null ? lastException.getMessage() : "Unknown error", attempt - 1, lastException);
@@ -431,5 +489,7 @@ public class PersistenceService extends AbstractService {
         metrics.put("batches_failed", batchesFailed.get());
         metrics.put("duplicate_ticks_detected", duplicateTicksDetected.get());
         metrics.put("current_batch_size", currentBatchSize.get());
+        metrics.put("notifications_sent", notificationsSent.get());
+        metrics.put("notifications_failed", notificationsFailed.get());
     }
 }

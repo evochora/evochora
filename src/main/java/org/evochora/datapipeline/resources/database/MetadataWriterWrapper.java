@@ -48,7 +48,7 @@ public class MetadataWriterWrapper extends AbstractDatabaseWrapper implements IM
             metadataInserts.incrementAndGet();
             insertMetadataLatency.record(System.nanoTime() - startNanos);
         } catch (Exception e) {
-            operationErrors.incrementAndGet();
+        operationErrors.incrementAndGet();
             log.warn("Failed to insert metadata for run: {}", metadata.getSimulationRunId());
             recordError("INSERT_METADATA_FAILED", "Failed to insert metadata",
                        "RunId: " + metadata.getSimulationRunId() + ", Error: " + e.getMessage());

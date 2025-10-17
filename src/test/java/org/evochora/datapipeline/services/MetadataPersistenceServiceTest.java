@@ -141,14 +141,14 @@ class MetadataPersistenceServiceTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = "MetadataPersistenceService initialized WITHOUT topic.*")
     void testConstructorWithMissingTopicResource() {
         resources.remove("topic");
 
-        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
-            new MetadataPersistenceService("test-metadata-persistence", config, resources);
-        });
-
-        assertTrue(exception.getMessage().contains("Resource port 'topic' is not configured"));
+        // Topic is now optional - service should start with WARN log
+        MetadataPersistenceService service = new MetadataPersistenceService("test-metadata-persistence", config, resources);
+        
+        assertNotNull(service);
     }
 
     @Test

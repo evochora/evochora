@@ -142,7 +142,12 @@ tasks.test {
     finalizedBy(tasks.jacocoTestReport)
     testLogging {
         events("passed", "skipped", "failed")
-        showStandardStreams = true
+        // Only show output for failed tests (silent on success)
+        showStandardStreams = false
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showExceptions = true
+        showCauses = true
+        showStackTraces = true
     }
     include("org/evochora/**")
     // Läuft alle Tests außer Benchmarks - für CI/CD und vollständige Test-Suite
@@ -178,7 +183,12 @@ tasks.register<Test>("integration") {
     jvmArgs("-Xshare:off")
     testLogging {
         events("passed", "skipped", "failed")
-        showStandardStreams = true
+        // Only show output for failed tests (silent on success)
+        showStandardStreams = false
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showExceptions = true
+        showCauses = true
+        showStackTraces = true
     }
     // Explicitly configure classpath and test classes for Gradle 9 compatibility
     classpath = sourceSets.test.get().runtimeClasspath

@@ -6,7 +6,12 @@ import org.evochora.datapipeline.api.resources.*;
 import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
 import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
 import org.evochora.datapipeline.resources.AbstractResource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -15,14 +20,26 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>
  * Inherits IMonitorable infrastructure from {@link AbstractResource} including
  * error tracking, health checks, and metrics collection.
+ * <p>
+ * <strong>Wrapper Management:</strong> Tracks all created wrappers and ensures they
+ * are properly closed when the base resource is closed.
+ * <p>
+ * <strong>AutoCloseable:</strong> Implements {@link AutoCloseable} to ensure proper
+ * cleanup during shutdown. The {@link #close()} method closes all wrappers first,
+ * then calls {@link #closeConnectionPool()} which subclasses must implement.
  */
 public abstract class AbstractDatabaseResource extends AbstractResource
-        implements IMetadataWriter, IContextualResource {
+        implements IMetadataWriter, IContextualResource, AutoCloseable {
+
+    private static final Logger log = LoggerFactory.getLogger(AbstractDatabaseResource.class);
 
     protected final AtomicLong queriesExecuted = new AtomicLong(0);
     protected final AtomicLong rowsInserted = new AtomicLong(0);
     protected final AtomicLong writeErrors = new AtomicLong(0);
     protected final AtomicLong readErrors = new AtomicLong(0);
+    
+    // Track all active wrappers for proper cleanup during shutdown
+    private final List<AutoCloseable> activeWrappers = Collections.synchronizedList(new ArrayList<>());
 
     protected AbstractDatabaseResource(String name, Config options) {
         super(name, options);
@@ -31,12 +48,41 @@ public abstract class AbstractDatabaseResource extends AbstractResource
     @Override
     public final IWrappedResource getWrappedResource(ResourceContext context) {
         String usageType = context.usageType();
-        return switch (usageType) {
+        IWrappedResource wrapper = switch (usageType) {
             case "db-meta-write" -> new MetadataWriterWrapper(this, context);
             case "db-meta-read" -> new MetadataReaderWrapper(this, context);
             default -> throw new IllegalArgumentException(
                     "Unknown database usage type: " + usageType + ". Supported: db-meta-write, db-meta-read");
         };
+        
+        // Track wrapper for cleanup
+        if (wrapper instanceof AutoCloseable) {
+            activeWrappers.add((AutoCloseable) wrapper);
+        }
+        
+        return wrapper;
+    }
+    
+    /**
+     * Closes all active wrappers, releasing connections back to the pool.
+     * <p>
+     * This method should be called by subclasses in their {@link #close()} implementation
+     * before shutting down the connection pool.
+     */
+    protected void closeAllWrappers() {
+        if (!activeWrappers.isEmpty()) {
+            log.info("Closing {} wrappers for database '{}'", activeWrappers.size(), getResourceName());
+        }
+        for (AutoCloseable wrapper : activeWrappers) {
+            try {
+                wrapper.close();
+            } catch (Exception e) {
+                // Log but don't fail - best effort cleanup
+                log.warn("Failed to close wrapper for database '{}'", getResourceName());
+                recordError("WRAPPER_CLOSE_FAILED", "Failed to close wrapper", "Database: " + getResourceName());
+            }
+        }
+        activeWrappers.clear();
     }
 
     protected abstract Object acquireDedicatedConnection() throws Exception;
@@ -98,10 +144,45 @@ public abstract class AbstractDatabaseResource extends AbstractResource
         throw new UnsupportedOperationException("This operation must be called on a wrapped resource.");
     }
 
+    /**
+     * Closes the database resource and all its wrappers.
+     * <p>
+     * Shutdown order:
+     * <ol>
+     *   <li>Close all wrappers (releases connections back to pool)</li>
+     *   <li>Close connection pool via {@link #closeConnectionPool()}</li>
+     * </ol>
+     * <p>
+     * <strong>Note:</strong> This method does not declare {@code throws Exception} because
+     * it implements both {@link AutoCloseable} and {@link IMetadataWriter}. All exceptions
+     * are handled internally to comply with the stricter {@link IMetadataWriter#close()} signature.
+     */
     @Override
     public void close() {
-        throw new UnsupportedOperationException("This operation must be called on a wrapped resource.");
+        // Step 1: Close all wrappers
+        closeAllWrappers();
+        
+        // Step 2: Close connection pool (subclass-specific)
+        try {
+            closeConnectionPool();
+        } catch (Exception e) {
+            // Log error but don't throw - best effort cleanup
+            recordError("POOL_CLOSE_FAILED", "Failed to close connection pool", 
+                "Database: " + getResourceName() + ", Error: " + e.getMessage());
+        }
     }
+    
+    /**
+     * Closes the database connection pool.
+     * <p>
+     * Subclasses must implement this to properly shut down their connection pools
+     * (e.g., HikariCP for H2Database).
+     * <p>
+     * Any exceptions thrown will be caught by {@link #close()} and logged as errors.
+     * 
+     * @throws Exception if pool shutdown fails
+     */
+    protected abstract void closeConnectionPool() throws Exception;
 
     /**
      * Adds database-specific metrics to the provided map.

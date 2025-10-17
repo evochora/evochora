@@ -1,6 +1,7 @@
 package org.evochora.node.processes.h2;
 
 import com.typesafe.config.Config;
+import org.evochora.datapipeline.utils.PathExpansion;
 import org.evochora.node.processes.AbstractProcess;
 import org.h2.tools.Server;
 import org.slf4j.Logger;
@@ -134,22 +135,22 @@ public class H2ConsoleProcess extends AbstractProcess {
     }
     
     /**
-     * Builds the JDBC URL from database configuration.
-     * Mirrors the logic in H2Database.getJdbcUrl().
+     * Builds the JDBC URL from database configuration with path expansion.
+     * Uses {@link PathExpansion} to resolve system properties and environment variables.
      */
     private String getJdbcUrl(final Config dbConfig) {
         if (dbConfig.hasPath("jdbcUrl")) {
-            return dbConfig.getString("jdbcUrl");
+            String jdbcUrl = dbConfig.getString("jdbcUrl");
+            // Expand variables in JDBC URL (e.g., ${user.home})
+            return PathExpansion.expandPath(jdbcUrl);
         }
         if (!dbConfig.hasPath("dataDirectory")) {
             return "jdbc:h2:~/evochora/data/evochora;MODE=PostgreSQL";
         }
         
         String dataDir = dbConfig.getString("dataDirectory");
-        // Simple path expansion for common variables
-        dataDir = dataDir.replace("${user.home}", System.getProperty("user.home"));
-        dataDir = dataDir.replace("${java.io.tmpdir}", System.getProperty("java.io.tmpdir"));
-        dataDir = dataDir.replace("${HOME}", System.getenv("HOME"));
+        // Expand variables in data directory path
+        dataDir = PathExpansion.expandPath(dataDir);
         
         return "jdbc:h2:" + dataDir + "/evochora;MODE=PostgreSQL";
     }

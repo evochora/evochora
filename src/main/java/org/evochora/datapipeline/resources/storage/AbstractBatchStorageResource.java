@@ -80,7 +80,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         try {
             this.codec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory.createAndValidate(options);
             if (!"none".equals(codec.getName())) {
-                log.info("Storage '{}' using compression: codec={}, level={}",
+                log.debug("Storage '{}' using compression: codec={}, level={}",
                     name, codec.getName(), codec.getLevel());
             }
         } catch (org.evochora.datapipeline.utils.compression.CompressionException e) {
@@ -120,8 +120,8 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         this.readBytesCounter = new SlidingWindowCounter(metricsWindowSeconds);
         this.readLatencyTracker = new SlidingWindowPercentiles(metricsWindowSeconds);
 
-        log.info("AbstractBatchStorageResource '{}' initialized: folders={}, metricsWindow={}s",
-            name, folderLevels, metricsWindowSeconds);
+        log.info("Storage '{}' initialized: codec={}, level={}, folders={}, metricsWindow={}s",
+            name, codec.getName(), codec.getLevel(), folderLevels, metricsWindowSeconds);
     }
 
     @Override

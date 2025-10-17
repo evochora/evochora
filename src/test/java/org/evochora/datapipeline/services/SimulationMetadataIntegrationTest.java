@@ -7,6 +7,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.junit.extensions.logging.AllowLog;
+import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.isa.Instruction;
@@ -65,25 +66,15 @@ class SimulationMetadataIntegrationTest {
     @AfterEach
     void tearDown() throws Exception {
         if (serviceManager != null) {
+            // ServiceManager.stopAll() already closes all AutoCloseable resources
+            // No need to manually close them again here
             serviceManager.stopAll();
-            
-            // Manually close resources that require cleanup (topic, database)
-            serviceManager.getAllResourceStatus().values().forEach(resource -> {
-                try {
-                    if (resource instanceof AutoCloseable) {
-                        ((AutoCloseable) resource).close();
-                    } else if (resource instanceof H2Database) {
-                        ((H2Database) resource).stop();
-                    }
-                } catch (Exception e) {
-                    // Ignore cleanup errors in test teardown
-                }
-            });
         }
     }
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testEndToEndMetadataPersistence() throws IOException {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
@@ -112,6 +103,7 @@ class SimulationMetadataIntegrationTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testMetadataCorrelatesWithTickData() throws IOException {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
@@ -144,6 +136,7 @@ class SimulationMetadataIntegrationTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testServiceStopsAfterProcessing() {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
@@ -170,6 +163,7 @@ class SimulationMetadataIntegrationTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testMetadataContentCompleteness() throws IOException {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
@@ -212,6 +206,7 @@ class SimulationMetadataIntegrationTest {
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager).*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testGracefulShutdown() {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
@@ -227,6 +222,7 @@ class SimulationMetadataIntegrationTest {
             });
 
         serviceManager.stopAll();
+        serviceManager = null;  // Prevent double-stop in @AfterEach
 
         // If metadata was queued, it should still be written during graceful shutdown
         // This test verifies no data loss during shutdown
@@ -236,8 +232,8 @@ class SimulationMetadataIntegrationTest {
     // ========== Helper Methods ==========
 
     private Config createIntegrationConfig() {
-        // Generate unique database name for metadata topic
-        String topicJdbcUrl = "jdbc:h2:mem:test-metadata-topic-" + UUID.randomUUID();
+        // Generate unique database name for topics (shared by all topics)
+        String topicJdbcUrl = "jdbc:h2:mem:test-topics-" + UUID.randomUUID();
         
         // Build config using HOCON string to avoid Map.of() size limit
         String hoconConfig = String.format("""
