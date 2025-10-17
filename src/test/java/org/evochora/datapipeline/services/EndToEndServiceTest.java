@@ -32,7 +32,8 @@ public class EndToEndServiceTest {
 
         InMemoryBlockingQueue<DummyMessage> queue = new InMemoryBlockingQueue<>("e2e-queue", ConfigFactory.parseString("capacity=10"));
         IDeadLetterQueueResource<DummyMessage> dlq = new InMemoryDeadLetterQueue<>("e2e-dlq", ConfigFactory.parseString("capacity=100"));
-        IIdempotencyTracker<Integer> idempotencyTracker = new InMemoryIdempotencyTracker<>(Duration.ofHours(1));
+        Config trackerConfig = ConfigFactory.parseString("maxKeys=1000\ninitialCapacity=100");
+        IIdempotencyTracker<Integer> idempotencyTracker = new InMemoryIdempotencyTracker<>("e2e-tracker", trackerConfig);
 
         Map<String, List<IResource>> producerResources = new HashMap<>();
         producerResources.put("output", Collections.singletonList(queue));
@@ -69,7 +70,8 @@ public class EndToEndServiceTest {
 
         InMemoryBlockingQueue<DummyMessage> queue = new InMemoryBlockingQueue<>("pause-queue", ConfigFactory.parseString("capacity=100"));
         IDeadLetterQueueResource<DummyMessage> dlq = new InMemoryDeadLetterQueue<>("pause-dlq", ConfigFactory.parseString("capacity=100"));
-        IIdempotencyTracker<Integer> idempotencyTracker = new InMemoryIdempotencyTracker<>(Duration.ofHours(1));
+        Config trackerConfig = ConfigFactory.parseString("maxKeys=1000\ninitialCapacity=100");
+        IIdempotencyTracker<Integer> idempotencyTracker = new InMemoryIdempotencyTracker<>("e2e-tracker", trackerConfig);
 
         Map<String, List<IResource>> producerResources = new HashMap<>();
         producerResources.put("output", Collections.singletonList(queue));

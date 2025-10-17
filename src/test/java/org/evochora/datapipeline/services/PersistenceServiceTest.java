@@ -58,7 +58,7 @@ class PersistenceServiceTest {
     private IOutputQueueResource<SystemContracts.DeadLetterMessage> mockDLQ;
 
     @Mock
-    private IIdempotencyTracker<String> mockIdempotencyTracker;
+    private IIdempotencyTracker<Long> mockIdempotencyTracker;
 
     private PersistenceService service;
     private Map<String, List<IResource>> resources;
@@ -342,9 +342,10 @@ class PersistenceServiceTest {
 
         // Mock idempotency tracker - uses atomic checkAndMarkProcessed()
         // First tick is duplicate (returns false), others are new (returns true)
-        when(mockIdempotencyTracker.checkAndMarkProcessed("sim-123:100")).thenReturn(false); // Already processed
-        when(mockIdempotencyTracker.checkAndMarkProcessed("sim-123:101")).thenReturn(true);  // New
-        when(mockIdempotencyTracker.checkAndMarkProcessed("sim-123:102")).thenReturn(true);  // New
+        // Changed from String to Long keys (tick number only)
+        when(mockIdempotencyTracker.checkAndMarkProcessed(100L)).thenReturn(false); // Already processed
+        when(mockIdempotencyTracker.checkAndMarkProcessed(101L)).thenReturn(true);  // New
+        when(mockIdempotencyTracker.checkAndMarkProcessed(102L)).thenReturn(true);  // New
 
         service.start();
 
@@ -356,9 +357,9 @@ class PersistenceServiceTest {
         verify(mockStorage).writeBatch(argThat(list -> list.size() == 2), eq(100L), eq(102L));
 
         // Verify the atomic method was actually called for all ticks
-        verify(mockIdempotencyTracker).checkAndMarkProcessed("sim-123:100");
-        verify(mockIdempotencyTracker).checkAndMarkProcessed("sim-123:101");
-        verify(mockIdempotencyTracker).checkAndMarkProcessed("sim-123:102");
+        verify(mockIdempotencyTracker).checkAndMarkProcessed(100L);
+        verify(mockIdempotencyTracker).checkAndMarkProcessed(101L);
+        verify(mockIdempotencyTracker).checkAndMarkProcessed(102L);
 
         // Verify duplicate detection metrics
         assertEquals(1, service.getMetrics().get("duplicate_ticks_detected").longValue());

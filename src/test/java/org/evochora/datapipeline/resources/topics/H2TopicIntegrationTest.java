@@ -359,63 +359,41 @@ class H2TopicIntegrationTest {
     }
     
     @Test
-    @DisplayName("Should receive instant notifications via H2 trigger (event-driven)")
-    void shouldReceiveInstantNotifications() throws Exception {
-        // Given - Setup topic with trigger-based notification
-        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:mem:h2-trigger-test\"");
-        this.topic = new H2TopicResource<>("trigger-test-topic", config);
-        this.topic.setSimulationRun("RUN-TRIGGER-001");
+    @DisplayName("Should receive messages via polling")
+    void shouldReceiveMessagesViaPolling() throws Exception {
+        // Given - Setup topic with polling-based delivery
+        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:mem:h2-polling-test\"");
+        this.topic = new H2TopicResource<>("polling-test-topic", config);
+        this.topic.setSimulationRun("RUN-POLLING-001");
         
         @SuppressWarnings("unchecked")
         ITopicWriter<BatchInfo> writer = (ITopicWriter<BatchInfo>) this.topic.getWrappedResource(
-            new ResourceContext("writer-service", "writer-port", "topic-write", "trigger-test-topic", Map.of()));
+            new ResourceContext("writer-service", "writer-port", "topic-write", "polling-test-topic", Map.of()));
         
         @SuppressWarnings("unchecked")
         ITopicReader<BatchInfo, AckToken> reader = (ITopicReader<BatchInfo, AckToken>) this.topic.getWrappedResource(
-            new ResourceContext("reader-service", "reader-port", "topic-read", "trigger-test-topic", Map.of("consumerGroup", "trigger-group")));
+            new ResourceContext("reader-service", "reader-port", "topic-read", "polling-test-topic", Map.of("consumerGroup", "polling-group")));
         
         BatchInfo message = BatchInfo.newBuilder()
-            .setSimulationRunId("RUN-TRIGGER-001")
+            .setSimulationRunId("RUN-POLLING-001")
             .setStorageKey("/data/batch_001.parquet")
             .setTickStart(0)
             .setTickEnd(100)
             .setWrittenAtMs(System.currentTimeMillis())
             .build();
         
-        // When - Start reader in background thread (blocking on receive)
-        CountDownLatch readerReady = new CountDownLatch(1);
-        AtomicReference<TopicMessage<BatchInfo, AckToken>> receivedRef = new AtomicReference<>();
-        AtomicLong elapsedRef = new AtomicLong(0);
-        
-        CompletableFuture<Void> readerFuture = CompletableFuture.runAsync(() -> {
-            try {
-                readerReady.countDown();  // Signal that reader is ready
-                long startTime = System.currentTimeMillis();
-                TopicMessage<BatchInfo, AckToken> received = reader.receive();  // Blocking wait
-                elapsedRef.set(System.currentTimeMillis() - startTime);
-                receivedRef.set(received);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        });
-        
-        // Wait for reader to be ready, then write message
-        await().atMost(2, TimeUnit.SECONDS).until(() -> readerReady.getCount() == 0);
+        // When - Write message
         writer.send(message);
         
-        // Wait for reader to receive message
-        await().atMost(5, TimeUnit.SECONDS).until(() -> receivedRef.get() != null);
-        readerFuture.join();
+        // Then - Reader polls and eventually receives (up to 1 second delay for 500ms polling)
+        TopicMessage<BatchInfo, AckToken> received = await()
+            .atMost(2, TimeUnit.SECONDS)
+            .pollInterval(100, TimeUnit.MILLISECONDS)
+            .until(() -> reader.poll(100, TimeUnit.MILLISECONDS), result -> result != null);
         
-        // Then - Message received via trigger (event-driven, not polling)
-        TopicMessage<BatchInfo, AckToken> received = receivedRef.get();
         assertThat(received).isNotNull();
-        assertThat(received.payload().getSimulationRunId()).isEqualTo("RUN-TRIGGER-001");
+        assertThat(received.payload().getSimulationRunId()).isEqualTo("RUN-POLLING-001");
         assertThat(received.payload().getStorageKey()).isEqualTo("/data/batch_001.parquet");
-        
-        // Trigger notification should be reasonably fast (< 1 second)
-        // Note: Timing can vary on slow CI machines, but should be much faster than polling (which would be 100ms+ per poll)
-        assertThat(elapsedRef.get()).isLessThan(1000L);
         
         reader.ack(received);
     }

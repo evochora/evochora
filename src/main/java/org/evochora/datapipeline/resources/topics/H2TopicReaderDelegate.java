@@ -16,7 +16,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Map;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -62,7 +61,6 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
     private PreparedStatement insertClaimStatement;           // INSERT new claim (first time)
     private PreparedStatement updateClaimStatement;           // UPDATE existing claim (reassignment)
     private PreparedStatement ackStatement;                   // Mark as acknowledged
-    private final BlockingQueue<Long> notificationQueue;
     private final int claimTimeout;  // Store for lazy init
     
     // H2-specific metrics (in addition to abstract delegate metrics)
@@ -87,9 +85,6 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
     public H2TopicReaderDelegate(H2TopicResource<T> parent, ResourceContext context) {
         super(parent, context);
         // Note: readThroughput is initialized by AbstractTopicDelegateReader
-        
-        // Get notification queue from parent (event-driven delivery)
-        this.notificationQueue = parent.getMessageNotifications();
         
         try {
             // Obtain connection from HikariCP pool (held for delegate lifetime)
@@ -201,27 +196,15 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
     
     @Override
     protected ReceivedEnvelope<AckToken> receiveEnvelope(long timeout, TimeUnit unit) throws InterruptedException {
-        while (true) {
-            // Try to read a message immediately
-            ReceivedEnvelope<AckToken> message = tryReadMessage();
-            if (message != null) {
-                return message;
-            }
-            
-            // No message available - wait for notification or timeout
-            if (timeout == 0 && unit == null) {
-                // Block indefinitely - wait for trigger notification
-                notificationQueue.take();  // Blocks until notification arrives
-                // Loop back to try reading again
-            } else {
-                // Wait with timeout
-                Long notification = notificationQueue.poll(timeout, unit);
-                if (notification == null) {
-                    return null;  // Timeout - no message
-                }
-                // Loop back to try reading again
-            }
+        // Try to read a message immediately
+        ReceivedEnvelope<AckToken> message = tryReadMessage();
+        if (message != null) {
+            return message;
         }
+        
+        // No message available - sleep 500ms and return null
+        Thread.sleep(500);
+        return null;
     }
     
     /**

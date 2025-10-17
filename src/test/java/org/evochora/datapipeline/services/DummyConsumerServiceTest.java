@@ -35,8 +35,9 @@ public class DummyConsumerServiceTest {
         mockDLQ = mock(IDeadLetterQueueResource.class);
         when(mockDLQ.offer(any())).thenReturn(true); // DLQ accepts messages
 
-        // Use real idempotency tracker for behavior testing
-        idempotencyTracker = new InMemoryIdempotencyTracker<>(Duration.ofHours(1));
+        // Use real idempotency tracker for behavior testing with new constructor
+        Config trackerConfig = ConfigFactory.parseString("maxKeys=1000\ninitialCapacity=100");
+        idempotencyTracker = new InMemoryIdempotencyTracker<>("test-tracker", trackerConfig);
 
         resources = new HashMap<>();
         resources.put("input", Collections.singletonList(mockInputQueue));

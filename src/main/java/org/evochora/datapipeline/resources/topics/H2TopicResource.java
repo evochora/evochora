@@ -18,9 +18,6 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Map;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -64,13 +61,8 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     
     private final HikariDataSource dataSource;
     private final int claimTimeoutSeconds;  // 0 = disabled, > 0 = timeout for stuck message reassignment
-    private final BlockingQueue<Long> messageNotifications;  // Event-driven notification from H2 trigger
     private final AtomicLong stuckMessagesReassigned;  // O(1) metric for reassignments
     // Note: writeThroughput and readThroughput are now inherited from AbstractTopicResource
-    
-    // Lazy trigger registration (schema-aware for run isolation)
-    private volatile String currentSchemaName = null;  // Current registered schema (null = not registered)
-    private final Object triggerLock = new Object();   // Synchronization for trigger registration
     
     // Synchronization for schema setup
     private final Object initLock = new Object();
@@ -142,11 +134,6 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
             
             // Note: Tables are created LAZY in setSimulationRun() for schema isolation
             
-            // Initialize notification queue for event-driven message delivery
-            this.messageNotifications = new LinkedBlockingQueue<>();
-            
-            // Note: Trigger registration is LAZY - happens in ensureTriggerRegistered()
-            
             // Initialize H2-specific metrics
             this.stuckMessagesReassigned = new AtomicLong(0);
             // Note: writeThroughput and readThroughput are initialized by AbstractTopicResource
@@ -197,15 +184,6 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
         return claimTimeoutSeconds;
     }
     
-    /**
-     * Returns the message notification queue.
-     *
-     * @return The blocking queue for trigger notifications.
-     */
-    protected BlockingQueue<Long> getMessageNotifications() {
-        return messageNotifications;
-    }
-    
     // Note: recordWrite() and recordRead() are inherited from AbstractTopicResource
     // They update both counter (messagesPublished/Received) and throughput (writeThroughput/readThroughput)
     
@@ -217,13 +195,12 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     }
     
     /**
-     * Setup callback for H2SchemaUtil: creates tables and registers trigger.
+     * Setup callback for H2SchemaUtil: creates tables.
      * <p>
      * This method performs ALL schema-specific setup:
      * <ul>
      *   <li>Creates centralized topic tables ({@code topic_messages}, {@code topic_consumer_group_acks})</li>
      *   <li>Creates all necessary indexes</li>
-     *   <li>Registers H2 insert trigger for event-driven notifications</li>
      * </ul>
      * <p>
      * <strong>Thread Safety:</strong>
@@ -240,12 +217,6 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     private void setupSchemaResources(Connection connection, String schemaName) throws SQLException {
         // Create tables
         createTablesInSchema(connection);
-        
-        // Register trigger (now that schema and tables exist)
-        registerInsertTrigger(connection, schemaName);
-        
-        // Store schema name for cleanup
-        this.currentSchemaName = schemaName;
     }
     
     /**
@@ -342,50 +313,6 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     }
     
     
-    /**
-     * Registers an H2 trigger to provide instant notifications on message INSERT.
-     * <p>
-     * This enables event-driven message delivery instead of polling. When a message is inserted,
-     * the trigger pushes the message ID into the {@link #messageNotifications} queue, instantly
-     * waking up waiting readers.
-     * <p>
-     * <strong>Event-Driven Architecture:</strong>
-     * <pre>
-     * Writer → INSERT → H2 Trigger → BlockingQueue → Reader (INSTANT!)
-     * </pre>
-     * Instead of polling every 100ms, readers use {@code BlockingQueue.take()} which blocks
-     * efficiently until a notification arrives.
-     * <p>
-     * <strong>Run Isolation:</strong>
-     * The notification queue is registered with a schema-qualified key ({@code topicName:schemaName})
-     * to ensure different simulation runs don't interfere with each other.
-     *
-     * @param connection The database connection (already switched to target schema).
-     * @param schemaName The H2 schema name (e.g., "SIM_20251006_UUID").
-     * @throws SQLException if trigger creation fails.
-     */
-    private void registerInsertTrigger(Connection connection, String schemaName) throws SQLException {
-        // With shared table structure, we use a single trigger for all topics
-        // The trigger reads topic_name from the inserted row and routes to the correct queue
-        String triggerName = "topic_messages_notify_trigger";
-        String triggerSql = String.format("""
-            CREATE TRIGGER IF NOT EXISTS %s
-            AFTER INSERT ON %s
-            FOR EACH ROW
-            CALL "org.evochora.datapipeline.resources.topics.H2InsertTrigger"
-            """, triggerName, MESSAGES_TABLE);
-        
-        try (Statement stmt = connection.createStatement()) {
-            stmt.execute(triggerSql);
-        }
-        
-        // Register this topic's notification queue with schema-qualified key for run isolation
-        H2InsertTrigger.registerNotificationQueue(getResourceName(), schemaName, messageNotifications);
-        
-        log.debug("Registered H2 trigger '{}' for topic '{}' in schema '{}' (event-driven notifications)", 
-            triggerName, getResourceName(), schemaName);
-    }
-    
     @Override
     protected ITopicReader<T, AckToken> createReaderDelegate(ResourceContext context) {
         return new H2TopicReaderDelegate<>(this, context);
@@ -432,7 +359,7 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     protected void onSimulationRunSet(String simulationRunId) {
         synchronized (initLock) {
             try (Connection conn = getConnection()) {
-                // Setup schema + tables + trigger for this run (called only once, guaranteed by AbstractTopicResource)
+                // Setup schema + tables for this run (called only once, guaranteed by AbstractTopicResource)
                 H2SchemaUtil.setupRunSchema(conn, simulationRunId, this::setupSchemaResources);
                 
                 log.info("H2 topic '{}' setup complete for run: {}", getResourceName(), simulationRunId);
@@ -448,40 +375,14 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     
     @Override
     public void close() throws Exception {
-        // Step 1: Cleanup schema resources FIRST (while connections are still available)
-        // This must happen before closing delegates/connection pool
-        if (getSimulationRunId() != null) {
-            log.info("Cleaning up schema for topic '{}', run: {}", getResourceName(), getSimulationRunId());
-            try (Connection conn = getConnection()) {
-                H2SchemaUtil.cleanupRunSchema(conn, getSimulationRunId(), this::cleanupSchemaResources);
-            } catch (SQLException e) {
-                log.warn("Failed to cleanup schema for topic '{}', run: {} - Error: {}", 
-                    getResourceName(), getSimulationRunId(), e.getMessage(), e);
-            }
-        }
-        
-        // Step 2: Close all delegates (releases connections back to pool)
+        // Step 1: Close all delegates (releases connections back to pool)
         super.close();
         
-        // Step 3: Close connection pool (after all delegates are closed)
+        // Step 2: Close connection pool (after all delegates are closed)
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
             log.info("H2 topic '{}' connection pool closed", getResourceName());
         }
-    }
-    
-    /**
-     * Cleanup callback for H2SchemaUtil: deregisters trigger.
-     * <p>
-     * This method is called during {@link #close()} to cleanup schema-specific resources.
-     *
-     * @param connection The database connection.
-     * @param schemaName The sanitized schema name (provided by H2SchemaUtil).
-     * @throws SQLException if cleanup fails.
-     */
-    private void cleanupSchemaResources(Connection connection, String schemaName) throws SQLException {
-        H2InsertTrigger.deregisterNotificationQueue(getResourceName(), schemaName);
-        log.debug("Deregistered trigger for topic '{}' from schema '{}'", getResourceName(), schemaName);
     }
 }
 

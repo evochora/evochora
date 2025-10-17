@@ -124,9 +124,6 @@ public class DummyConsumerService<T> extends AbstractService {
             T message = null;
             try {
                 message = inputQueue.take();
-                if (message == null) {
-                    continue;
-                }
 
                 messagesReceived.incrementAndGet();
                 int messageId = extractMessageId(message);
@@ -144,6 +141,12 @@ public class DummyConsumerService<T> extends AbstractService {
 
                 // Clean up retry tracking for successfully processed message
                 retryTracker.remove(messageId);
+                
+                // Check if we've reached the max message limit
+                if (maxMessages != -1 && messageCounter >= maxMessages) {
+                    logger.info("Reached max message limit of {}. Stopping service.", maxMessages);
+                    break;
+                }
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

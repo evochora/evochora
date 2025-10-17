@@ -7,9 +7,9 @@ import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.resources.AbstractResource;
 
-import java.time.Duration;
 import java.util.Collections;
-import java.util.LinkedHashMap;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -17,30 +17,32 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Fixed-size in-memory idempotency tracker with GUARANTEED memory bounds.
  * <p>
- * This implementation uses a synchronized {@link LinkedHashMap} with FIFO eviction
+ * This implementation uses a synchronized {@link LinkedHashSet} with manual FIFO eviction
  * to provide predictable memory usage without cleanup threads or TTL management.
  * <p>
  * <strong>Characteristics:</strong>
  * <ul>
  *   <li>Thread-safe via synchronization</li>
- *   <li>Automatic FIFO eviction when maxKeys reached</li>
+ *   <li>Manual FIFO eviction when maxKeys reached</li>
  *   <li>O(1) operations for insert/lookup/evict</li>
  *   <li>GUARANTEED memory limit (no surprises!)</li>
  *   <li>No cleanup threads, no periodic scanning</li>
+ *   <li>Memory-optimized: Set-based (no value objects)</li>
  * </ul>
  * <p>
  * <strong>Window Size:</strong><br>
- * At 100k TPS with maxKeys=10M: window = 100 seconds<br>
- * At 163k TPS with maxKeys=10M: window = 61 seconds<br>
- * At 200k TPS with maxKeys=10M: window = 50 seconds
+ * At 100k TPS with maxKeys=5M: window = 50 seconds<br>
+ * At 163k TPS with maxKeys=5M: window = 30 seconds<br>
+ * At 200k TPS with maxKeys=5M: window = 25 seconds
  * <p>
- * <strong>Memory Usage:</strong><br>
- * 10M keys ≈ 1.3 GB RAM (String keys ~130 bytes each)
+ * <strong>Memory Usage (Long keys):</strong><br>
+ * 5M keys ≈ 360 MB RAM (~72 bytes per entry, default)<br>
+ * 10M keys ≈ 720 MB RAM (~72 bytes per entry)
  * <p>
  * <strong>Configuration Options:</strong>
  * <ul>
- *   <li><b>maxKeys</b>: Maximum number of keys to track (default: 10000000)</li>
- *   <li><b>initialCapacity</b>: Initial map capacity (default: maxKeys)</li>
+ *   <li><b>maxKeys</b>: Maximum number of keys to track (default: 5000000)</li>
+ *   <li><b>initialCapacity</b>: Initial set capacity (default: maxKeys)</li>
  * </ul>
  * <p>
  * <strong>Limitations:</strong>
@@ -56,8 +58,8 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class InMemoryIdempotencyTracker<K> extends AbstractResource implements IIdempotencyTracker<K> {
 
-    // Fixed-size FIFO map with automatic eviction
-    private final LinkedHashMap<K, Boolean> trackedKeys;
+    // Fixed-size FIFO set with manual eviction
+    private final LinkedHashSet<K> trackedKeys;
     private final int maxKeys;
 
     // Metrics - zero overhead counters for monitoring
@@ -77,27 +79,17 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
 
         // Set defaults
         Config defaults = ConfigFactory.parseMap(Map.of(
-            "maxKeys", 10_000_000,  // 10M keys ≈ 1.3 GB RAM
-            "initialCapacity", 10_000_000
+            "maxKeys", 5_000_000,  // 5M keys ≈ 360 MB RAM (Long keys)
+            "initialCapacity", 5_000_000
         ));
         Config config = options.withFallback(defaults);
 
         // Parse configuration
         this.maxKeys = config.getInt("maxKeys");
         int initialCapacity = config.getInt("initialCapacity");
-        float loadFactor = 0.75f;
 
-        // Create fixed-size map with FIFO eviction
-        this.trackedKeys = new LinkedHashMap<K, Boolean>(initialCapacity, loadFactor, false) {
-            @Override
-            protected boolean removeEldestEntry(Map.Entry<K, Boolean> eldest) {
-                boolean shouldRemove = size() > maxKeys;
-                if (shouldRemove) {
-                    totalEvictions.incrementAndGet();
-                }
-                return shouldRemove;
-            }
-        };
+        // Create fixed-size set (manual FIFO eviction in checkAndMarkProcessed)
+        this.trackedKeys = new LinkedHashSet<>(initialCapacity);
     }
 
     /**
@@ -108,63 +100,60 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
     public InMemoryIdempotencyTracker(int maxKeys) {
         super("test-tracker", ConfigFactory.empty());
         this.maxKeys = maxKeys;
-        float loadFactor = 0.75f;
 
-        this.trackedKeys = new LinkedHashMap<K, Boolean>(maxKeys, loadFactor, false) {
-            @Override
-            protected boolean removeEldestEntry(Map.Entry<K, Boolean> eldest) {
-                boolean shouldRemove = size() > maxKeys;
-                if (shouldRemove) {
-                    totalEvictions.incrementAndGet();
-                }
-                return shouldRemove;
-            }
-        };
-    }
-
-    /**
-     * Legacy constructor for backward compatibility with tests using Duration TTL.
-     * <p>
-     * <strong>NOTE:</strong> TTL is no longer used. This constructor calculates an equivalent
-     * maxKeys based on an assumed throughput of 100k TPS.
-     *
-     * @param ttl The time-to-live (converted to maxKeys assuming 100k TPS).
-     * @deprecated Use {@link #InMemoryIdempotencyTracker(int)} instead.
-     */
-    @Deprecated
-    public InMemoryIdempotencyTracker(Duration ttl) {
-        this((int) (ttl.toSeconds() * 100_000));  // Assume 100k TPS for backward compat
+        // Create fixed-size set (manual FIFO eviction in checkAndMarkProcessed)
+        this.trackedKeys = new LinkedHashSet<>(maxKeys);
     }
 
     @Override
     public synchronized boolean isProcessed(K key) {
         totalChecks.incrementAndGet();
-        return trackedKeys.containsKey(key);
+        return trackedKeys.contains(key);
     }
 
     @Override
     public synchronized boolean checkAndMarkProcessed(K key) {
         totalChecks.incrementAndGet();
 
-        if (trackedKeys.containsKey(key)) {
+        // Check if already processed
+        if (trackedKeys.contains(key)) {
             // Key already exists - duplicate detected
             totalDuplicates.incrementAndGet();
             return false;
         }
 
-        // Key not present - mark as processed
-        trackedKeys.put(key, Boolean.TRUE);
+        // Manual FIFO eviction: remove oldest entry if at capacity
+        if (trackedKeys.size() >= maxKeys) {
+            Iterator<K> iterator = trackedKeys.iterator();
+            if (iterator.hasNext()) {
+                iterator.next();      // Get first (oldest) element
+                iterator.remove();    // Remove it
+                totalEvictions.incrementAndGet();
+            }
+        }
+
+        // Add new key
+        trackedKeys.add(key);
         return true;
     }
 
     @Override
     public synchronized void markProcessed(K key) {
-        trackedKeys.put(key, Boolean.TRUE);
+        // Manual FIFO eviction: remove oldest entry if at capacity
+        if (trackedKeys.size() >= maxKeys) {
+            Iterator<K> iterator = trackedKeys.iterator();
+            if (iterator.hasNext()) {
+                iterator.next();      // Get first (oldest) element
+                iterator.remove();    // Remove it
+                totalEvictions.incrementAndGet();
+            }
+        }
+        trackedKeys.add(key);
     }
 
     @Override
     public synchronized boolean remove(K key) {
-        return trackedKeys.remove(key) != null;
+        return trackedKeys.remove(key);
     }
 
     @Override
