@@ -113,19 +113,21 @@ public class H2ConsoleProcess extends AbstractProcess {
             webServer.start();
 
             final String consoleUrl = String.format("http://%s:%d", host, port);
-            LOGGER.info("H2 web console started at {}", consoleUrl);
             
-            // Log connection details if database config is provided
+            // Log startup with connection details if database config is provided
             if (options.hasPath("database")) {
                 final Config dbConfig = options.getConfig("database");
                 final String jdbcUrl = getJdbcUrl(dbConfig);
                 final String username = dbConfig.hasPath("username") ? dbConfig.getString("username") : "sa";
                 final String password = dbConfig.hasPath("password") ? dbConfig.getString("password") : "";
                 
-                LOGGER.info("Connect using - JDBC URL: {}, User: {}, Password: {}",
+                LOGGER.info("H2 web console started at {} - Connect: JDBC URL: {}, User: {}, Password: {}",
+                    consoleUrl,
                     jdbcUrl,
                     username,
                     password.isEmpty() ? "(empty)" : "***");
+            } else {
+                LOGGER.info("H2 web console started at {}", consoleUrl);
             }
 
         } catch (final SQLException e) {

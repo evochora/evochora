@@ -46,6 +46,7 @@ public final class Node {
         if (managedProcesses.isEmpty()) {
             LOGGER.warn("No processes configured to start. The node will be idle.");
         } else {
+            LOGGER.info("\u001B[34m═══════════════════════════════ Management Interfaces ════════════════════════════════════\u001B[0m");
             managedProcesses.forEach((name, process) -> {
                 try {
                     LOGGER.debug("Starting process '{}'...", name);
@@ -79,6 +80,7 @@ public final class Node {
         }
 
         // Stop processes in reverse order (LIFO - last created, first stopped)
+        LOGGER.info("\u001B[34m══════════════════════════ Management Interface Shutdown ════════════════════════════════\u001B[0m");
         final List<String> processNames = new ArrayList<>(managedProcesses.keySet());
         Collections.reverse(processNames);
 

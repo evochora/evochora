@@ -167,7 +167,7 @@ public class MetadataPersistenceService extends AbstractService {
         // Write metadata with retry logic
         writeMetadataWithRetry(key, metadata);
 
-        log.info("Metadata persisted successfully for simulation {}, service stopping", simulationRunId);
+        log.debug("Metadata persisted successfully for simulation {}, service stopping", simulationRunId);
         // Exit run() - service stops naturally (one-shot pattern)
     }
 

@@ -53,14 +53,14 @@ public class DummyIndexer<ACK> extends AbstractIndexer<BatchInfo, ACK> {
     protected void indexRun(String runId) throws Exception {
         // Use try-with-resources to ensure connection cleanup
         try (IMetadataReader reader = metadataReader) {
-            log.info("Starting metadata reading for run: {}", runId);
+            log.debug("Starting metadata reading for run: {}", runId);
             
             // Load metadata (polls until available)
             metadataComponent.loadMetadata(runId);
             
             runsProcessed.incrementAndGet();
             
-            log.info("Successfully read metadata for run: {}", runId);
+            log.debug("Successfully read metadata for run: {}", runId);
             
             // Phase 2.5.1: Stop after metadata (no batch processing yet)
         }  // AutoCloseable.close() releases connection

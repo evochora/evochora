@@ -103,7 +103,7 @@ public abstract class AbstractService implements IService, IMonitorable {
                         log.warn("{} interrupted while waiting for service thread to stop", this.getClass().getSimpleName());
                     }
                 }
-                log.info("{} stopped", this.getClass().getSimpleName());
+                log.debug("{} stopped", this.getClass().getSimpleName());
             }
         } else {
             throw new IllegalStateException(String.format("Cannot stop service '%s' as it is in state %s", serviceName, state));
@@ -176,7 +176,7 @@ public abstract class AbstractService implements IService, IMonitorable {
         try {
             run();
         } catch (InterruptedException e) {
-            log.info("Service thread interrupted, shutting down.");
+            log.debug("Service thread interrupted, shutting down.");
             Thread.currentThread().interrupt();
         } catch (Exception e) {
             log.error("{} stopped with ERROR due to {}", 

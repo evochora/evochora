@@ -41,6 +41,10 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
     private final int maxPollDurationMs;
     private final Instant indexerStartTime;
 
+    protected Instant getIndexerStartTime() {
+        return indexerStartTime;
+    }
+
     protected AbstractIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.storage = getRequiredResource("storage", IBatchStorageRead.class);
@@ -65,7 +69,7 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
             log.info("Using configured runId: {}", configuredRunId);
             runId = configuredRunId;
         } else {
-            log.info("Discovering runId from storage (timestamp-based, after {})", indexerStartTime);
+            log.debug("Discovering runId from storage (timestamp-based, after {})", indexerStartTime);
             long startTime = System.currentTimeMillis();
 
             while (!Thread.currentThread().isInterrupted()) {
@@ -73,7 +77,7 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
                     List<String> runIds = storage.listRunIds(indexerStartTime);
                     if (!runIds.isEmpty()) {
                         runId = runIds.get(0);
-                        log.info("Discovered runId from storage: {}", runId);
+                        log.debug("Discovered runId from storage: {}", runId);
                         break;
                     }
 

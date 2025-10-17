@@ -209,16 +209,38 @@ java -jar build/libs/evochora.jar compile --file=<path> [--env=<dimensions>[:<to
 - Use SLF4J + Logback: `LoggerFactory.getLogger(this.getClass())`
 - NEVER use `System.out.println()` or `System.err.println()`
 
-**Log Levels:**
-- **INFO**: Lifecycle events (service started/stopped, resource created/closed)
-- **DEBUG**: Operations (message sent/received, interrupted), cleanup details
-- **WARN**: Transient errors (always with `recordError()` call)
-- **ERROR**: Fatal errors only (always with exception throw, NO exception parameter in log)
+**Log Levels by Component:**
+
+**ServiceManager & Node (INFO-level orchestration):**
+- `INFO`: Service/resource lifecycle (starting, stopping, closing), batch control operations
+- `WARN`: Operation failures (service didn't stop in time, resource close failed)
+- `DEBUG`: Process initialization details, topology sorting, dependency injection
+
+**Services (INFO only for user-visible events):**
+- `INFO`: 
+  - Service started with configuration (via `logStarted()` override - each service logs its own config)
+  - User-visible events: DLQ writes, auto-pause, max limit reached, simulation loop finished
+  - Explicit runId configuration
+- `WARN`: Transient errors (always with `recordError()` call) - duplicate detection, retries exhausted, resource unavailable, DLQ full, configuration warnings
+- `ERROR`: Fatal initialization/runtime errors (schema setup failed, discovery timeout, indexing failed)
+- `DEBUG`: All operational details (batch processing, retries, interrupts, shutdown sequences, drain operations)
+
+**AbstractService (automatic lifecycle logs):**
+- `INFO`: `paused`, `resumed` (automatic via base class)
+- `DEBUG`: `stopped`, `Service thread interrupted`, `Service thread terminated` (automatic via base class)
+- Note: `started` log is replaced by service's `logStarted()` override
+
+**Resources (DEBUG-only operations, WARN/ERROR for problems):**
+- `INFO`: NEVER log at INFO level (all orchestration goes through ServiceManager)
+- `WARN`: Transient operational errors (query failed, parse error, rollback failed, claim conflict reassignment, sampler errors) - always with `recordError()`
+- `ERROR`: Fatal initialization errors (connection pool failed, delegate creation failed, schema setup failed)
+- `DEBUG`: All operations (connection pool started/closed, schema setup, delegate creation, message claim/ack, wrapper close, compression setup, sampling)
 
 **Format:**
 - Single-line logs only (no multi-line output)
 - No phase/version prefixes in log messages
 - Include context: service name, resource name, consumer group, relevant parameters
+- For orchestration logs: use ServiceManager/Node for INFO, keep service/resource details at DEBUG
 
 **Stack Traces:**
 - NEVER log exceptions with `log.error(..., exception)` - framework logs them at DEBUG level
@@ -228,18 +250,30 @@ java -jar build/libs/evochora.jar compile --file=<path> [--env=<dimensions>[:<to
 
 **Examples:**
 ```java
-// Good - Lifecycle
-log.info("Service '{}' started with {} workers", serviceName, workerCount);
+// Good - ServiceManager orchestration (INFO)
+log.info("Starting service '{}'...", serviceName);
+log.info("Closed resource: {}", resourceName);
 
-// Good - Transient error
+// Good - Service startup (INFO, via logStarted())
+log.info("PersistenceService started: batch=[size={}, timeout={}s], retry=[max={}, backoff={}ms], dlq={}, idempotency={}",
+    maxBatchSize, batchTimeoutSeconds, maxRetries, retryBackoffMs, dlq != null ? "configured" : "none", 
+    idempotencyTracker != null ? "enabled" : "disabled");
+
+// Good - Service operation (DEBUG)
+log.debug("Successfully wrote batch {} with {} ticks", storageKey, batch.size());
+
+// Good - Resource operation (DEBUG)
+log.debug("H2 database '{}' connection pool started (max={}, minIdle={})", name, maxPoolSize, minIdle);
+
+// Good - Transient error (WARN)
 log.warn("Failed to send message to queue '{}'", queueName);
 recordError("SEND_FAILED", "Queue full", "Queue: " + queueName);
 
-// Good - Fatal error
+// Good - Fatal error (ERROR)
 log.error("Cannot initialize database connection pool for '{}'", dbName);
 throw new RuntimeException("Database initialization failed");
 
-// Good - Interruption
+// Good - Interruption (DEBUG)
 log.debug("Service '{}' interrupted during queue.take()", serviceName);
 throw new InterruptedException();
 ```

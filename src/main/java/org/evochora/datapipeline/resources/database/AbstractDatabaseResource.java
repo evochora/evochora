@@ -71,7 +71,7 @@ public abstract class AbstractDatabaseResource extends AbstractResource
      */
     protected void closeAllWrappers() {
         if (!activeWrappers.isEmpty()) {
-            log.info("Closing {} wrappers for database '{}'", activeWrappers.size(), getResourceName());
+            log.debug("Closing {} wrappers for database '{}'", activeWrappers.size(), getResourceName());
         }
         for (AutoCloseable wrapper : activeWrappers) {
             try {

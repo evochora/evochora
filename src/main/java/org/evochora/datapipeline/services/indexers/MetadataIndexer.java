@@ -45,12 +45,7 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
 
     @Override
     protected void indexRun(String runId) throws Exception {
-        // Check if topic is available
-        if (topic == null) {
-            throw new RuntimeException("MetadataIndexer requires topic resource for event-driven indexing");
-        }
-        
-        log.info("Waiting for metadata notification for run: {} (timeout: {}ms)", runId, topicPollTimeoutMs);
+        log.debug("Waiting for metadata notification for run: {} (timeout: {}ms)", runId, topicPollTimeoutMs);
         
         // Note: topic.setSimulationRun() already called by AbstractIndexer.discoverRunId()
         
@@ -64,7 +59,7 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
         }
         
         MetadataInfo info = message.payload();
-        log.info("Received metadata notification, reading from storage: {}", info.getStorageKey());
+        log.debug("Received metadata notification, reading from storage: {}", info.getStorageKey());
         
         // Read metadata from storage
         SimulationMetadata metadata = storage.readMessage(info.getStorageKey(), SimulationMetadata.parser());
@@ -73,7 +68,7 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
         try (IMetadataWriter db = database) {
             db.insertMetadata(metadata);
             metadataIndexed.incrementAndGet();
-            log.info("Successfully indexed metadata for run: {}", runId);
+            log.debug("Successfully indexed metadata for run: {}, service stopping", runId);
         } catch (Exception e) {
             metadataFailed.incrementAndGet();
             log.error("Failed to index metadata for run: {}", runId);

@@ -129,7 +129,7 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
         
         try {
             this.dataSource = new HikariDataSource(hikariConfig);
-            log.info("H2 topic '{}' connection pool started (max={}, minIdle={}, claimTimeout={}s)", 
+            log.debug("H2 topic '{}' connection pool started (max={}, minIdle={}, claimTimeout={}s)", 
                 name, maxPoolSize, minIdle, claimTimeoutSeconds);
             
             // Note: Tables are created LAZY in setSimulationRun() for schema isolation
@@ -362,7 +362,7 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
                 // Setup schema + tables for this run (called only once, guaranteed by AbstractTopicResource)
                 H2SchemaUtil.setupRunSchema(conn, simulationRunId, this::setupSchemaResources);
                 
-                log.info("H2 topic '{}' setup complete for run: {}", getResourceName(), simulationRunId);
+                log.debug("H2 topic '{}' setup complete for run: {}", getResourceName(), simulationRunId);
                 
             } catch (SQLException e) {
                 log.error("Failed to setup schema for topic '{}', run: {} - Cause: {}", getResourceName(), simulationRunId, e.getMessage());
@@ -381,7 +381,7 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
         // Step 2: Close connection pool (after all delegates are closed)
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
-            log.info("H2 topic '{}' connection pool closed", getResourceName());
+            log.debug("H2 topic '{}' connection pool closed", getResourceName());
         }
     }
 }

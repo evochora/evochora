@@ -135,15 +135,15 @@ public class JvmMemoryMonitor extends AbstractResource implements AutoCloseable 
             this.samplerThread.setDaemon(true);
             this.samplerThread.setPriority(Thread.MIN_PRIORITY);  // Low priority, don't interfere with main work
             this.samplerThread.start();
-            log.info("JVM memory monitor '{}' started with background sampling (window={}s, sampleInterval={}s)", 
+            log.debug("JVM memory monitor '{}' started with background sampling (window={}s, sampleInterval={}s)", 
                 name, windowSeconds, sampleIntervalSeconds);
         } else if (windowSeconds > 0) {
             this.samplerThread = null;
-            log.info("JVM memory monitor '{}' started with on-demand sampling (window={}s)", 
+            log.debug("JVM memory monitor '{}' started with on-demand sampling (window={}s)", 
                 name, windowSeconds);
         } else {
             this.samplerThread = null;
-            log.info("JVM memory monitor '{}' started (live metrics only)", name);
+            log.debug("JVM memory monitor '{}' started (live metrics only)", name);
         }
     }
     

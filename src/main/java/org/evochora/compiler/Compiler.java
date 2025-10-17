@@ -233,7 +233,7 @@ public class Compiler implements ICompiler {
             throw new org.evochora.compiler.api.CompilationException(re.getMessage(), re);
         }
 
-        org.evochora.compiler.diagnostics.CompilerLogger.info("Compiler: " + programName + " programId:" + artifact.programId());
+        org.evochora.compiler.diagnostics.CompilerLogger.debug("Compiler: " + programName + " programId:" + artifact.programId());
         DebugDump.dumpProgramArtifact(programName, artifact);
         return artifact;
     }

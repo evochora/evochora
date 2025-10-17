@@ -120,7 +120,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         this.readBytesCounter = new SlidingWindowCounter(metricsWindowSeconds);
         this.readLatencyTracker = new SlidingWindowPercentiles(metricsWindowSeconds);
 
-        log.info("Storage '{}' initialized: codec={}, level={}, folders={}, metricsWindow={}s",
+        log.debug("Storage '{}' initialized: codec={}, level={}, folders={}, metricsWindow={}s",
             name, codec.getName(), codec.getLevel(), folderLevels, metricsWindowSeconds);
     }
 

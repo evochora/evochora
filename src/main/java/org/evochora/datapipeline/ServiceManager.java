@@ -53,8 +53,8 @@ public class ServiceManager implements IMonitorable {
                 : true; // default to true for production readiness
 
         if (autoStart && !this.startupSequence.isEmpty()) {
-            log.info("Auto-starting services according to startup sequence...");
-            startAll();
+            log.info("\u001B[34m════════════════════════════════ Service Startup ════════════════════════════════════════\u001B[0m");
+            startAllInternal();
         } else if (!autoStart) {
             log.info("Auto-start is disabled. Services must be started manually via API.");
         } else {
@@ -74,6 +74,7 @@ public class ServiceManager implements IMonitorable {
             log.debug("No resources configured.");
             return;
         }
+        log.info("\u001B[34m══════════════════════════════ Resource Initialization ══════════════════════════════════\u001B[0m");
         Config resourcesConfig = config.getConfig("resources");
         for (String resourceName : resourcesConfig.root().keySet()) {
             try {
@@ -99,6 +100,7 @@ public class ServiceManager implements IMonitorable {
             log.debug("No services configured.");
             return;
         }
+        log.info("\u001B[34m═══════════════════════════════ Service Initialization ══════════════════════════════════\u001B[0m");
         Config servicesConfig = config.getConfig("services");
         for (String serviceName : servicesConfig.root().keySet()) {
             try {
@@ -187,14 +189,18 @@ public class ServiceManager implements IMonitorable {
     }
 
     public void startAll() {
-        log.info("Starting services in startup sequence...");
+        log.info("═══════════════════════════════ Starting Services ═══════════════════════════════════════");
+        startAllInternal();
+    }
+    
+    private void startAllInternal() {
         List<String> toStart = new ArrayList<>(startupSequence);
         //serviceFactories.keySet().stream().filter(s -> !toStart.contains(s)).forEach(toStart::add);
         applyToAllServices(this::startService, toStart);
     }
 
     public void stopAll() {
-        log.info("Stopping all services...");
+        log.info("\u001B[34m═════════════════════════════════ Service Shutdown ══════════════════════════════════════\u001B[0m");
         List<String> toStop = new ArrayList<>(startupSequence);
         Collections.reverse(toStop);
         runningServices.keySet().stream().filter(s -> !toStop.contains(s)).forEach(toStop::add);
@@ -227,7 +233,7 @@ public class ServiceManager implements IMonitorable {
      * Other resources (e.g., in-memory queues) do not require explicit shutdown.
      */
     private void closeAllResources() {
-        log.info("Closing all resources...");
+        log.info("\u001B[34m════════════════════════════════ Resource Shutdown ══════════════════════════════════════\u001B[0m");
         
         for (Map.Entry<String, IResource> entry : resources.entrySet()) {
             String resourceName = entry.getKey();

@@ -329,7 +329,7 @@ public abstract class AbstractTopicResource<T extends Message, ACK> extends Abst
     @Override
     public void close() throws Exception {
         if (!activeDelegates.isEmpty()) {
-            log.info("Closing {} delegates for topic '{}'", activeDelegates.size(), getResourceName());
+            log.debug("Closing {} delegates for topic '{}'", activeDelegates.size(), getResourceName());
         }
         
         // Close all active delegates

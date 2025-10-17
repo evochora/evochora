@@ -445,7 +445,7 @@ public class PersistenceService extends AbstractService {
         java.util.concurrent.Future<?> future = executor.submit(() -> {
             try {
                 processBatch(batch);
-                log.info("Successfully completed shutdown batch of {} ticks", batch.size());
+                log.debug("Successfully completed shutdown batch of {} ticks", batch.size());
             } catch (Exception ex) {
                 log.warn("Failed to complete shutdown batch of {} ticks", batch.size());
             }

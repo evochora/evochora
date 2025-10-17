@@ -55,7 +55,7 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
         
         try {
             this.dataSource = new HikariDataSource(hikariConfig);
-            log.info("H2 database '{}' connection pool started (max={}, minIdle={})", 
+            log.debug("H2 database '{}' connection pool started (max={}, minIdle={})", 
                 name, hikariConfig.getMaximumPoolSize(), hikariConfig.getMinimumIdle());
         } catch (Exception e) {
             // Unwrap to find root cause
@@ -318,7 +318,7 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
     protected void closeConnectionPool() {
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
-            log.info("H2 database '{}' connection pool closed", getResourceName());
+            log.debug("H2 database '{}' connection pool closed", getResourceName());
         }
     }
 }
