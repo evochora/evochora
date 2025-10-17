@@ -48,7 +48,7 @@ public class PersistenceService extends AbstractService {
 
     // Optional resources
     private final IOutputQueueResource<SystemContracts.DeadLetterMessage> dlq;
-    private final IIdempotencyTracker<String> idempotencyTracker;
+    private final IIdempotencyTracker<Long> idempotencyTracker;
 
     // Configuration
     private final int maxBatchSize;
@@ -227,12 +227,14 @@ public class PersistenceService extends AbstractService {
         List<TickData> deduped = new ArrayList<>(batch.size());
 
         for (TickData tick : batch) {
-            String idempotencyKey = tick.getSimulationRunId() + ":" + tick.getTickNumber();
+            // Use only tickNumber as key - simulationRunId is constant within a run
+            // and the tracker is per-service-instance (never shared across runs)
+            long idempotencyKey = tick.getTickNumber();
 
             // Atomic check-and-mark operation to prevent race conditions
             if (!idempotencyTracker.checkAndMarkProcessed(idempotencyKey)) {
                 // Returns false = already processed
-                log.warn("Duplicate tick detected: {}", idempotencyKey);
+                log.warn("Duplicate tick detected: tick={}", idempotencyKey);
                 duplicateTicksDetected.incrementAndGet();
                 continue; // Skip duplicate
             }
