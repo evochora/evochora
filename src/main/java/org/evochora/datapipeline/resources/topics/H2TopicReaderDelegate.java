@@ -196,15 +196,28 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
     
     @Override
     protected ReceivedEnvelope<AckToken> receiveEnvelope(long timeout, TimeUnit unit) throws InterruptedException {
-        // Try to read a message immediately
-        ReceivedEnvelope<AckToken> message = tryReadMessage();
-        if (message != null) {
-            return message;
-        }
+        long timeoutMs = unit.toMillis(timeout);
+        long startTime = System.currentTimeMillis();
+        long pollIntervalMs = 500;
         
-        // No message available - sleep 500ms and return null
-        Thread.sleep(500);
-        return null;
+        while (true) {
+            // Try to read a message
+            ReceivedEnvelope<AckToken> message = tryReadMessage();
+            if (message != null) {
+                return message;
+            }
+            
+            // Check if timeout expired
+            long elapsedMs = System.currentTimeMillis() - startTime;
+            if (elapsedMs >= timeoutMs) {
+                return null; // Timeout reached, no message available
+            }
+            
+            // Sleep for poll interval or remaining time, whichever is shorter
+            long remainingMs = timeoutMs - elapsedMs;
+            long sleepMs = Math.min(pollIntervalMs, remainingMs);
+            Thread.sleep(sleepMs);
+        }
     }
     
     /**
