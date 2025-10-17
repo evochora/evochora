@@ -182,10 +182,10 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
             log.debug("Indexing interrupted during shutdown for run: {}", runId);
             throw e;
         } catch (TimeoutException e) {
-            // Error already logged by subclass with specific details
+            log.error("Indexing timeout for run: {}", runId);
             throw new RuntimeException("Indexing timeout", e);  // Fatal → ERROR state
         } catch (Exception e) {
-            // Error already logged by subclass with specific details
+            log.error("Indexing failed for run: {}", runId);
             throw new RuntimeException("Indexing failed", e);  // Fatal → ERROR state
         }
     }

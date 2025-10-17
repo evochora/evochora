@@ -196,7 +196,9 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
     
     @Override
     protected ReceivedEnvelope<AckToken> receiveEnvelope(long timeout, TimeUnit unit) throws InterruptedException {
-        long timeoutMs = unit.toMillis(timeout);
+        // Handle blocking mode (timeout=0, unit=null) - poll indefinitely
+        boolean blockIndefinitely = (unit == null);
+        long timeoutMs = blockIndefinitely ? Long.MAX_VALUE : unit.toMillis(timeout);
         long startTime = System.currentTimeMillis();
         long pollIntervalMs = 500;
         

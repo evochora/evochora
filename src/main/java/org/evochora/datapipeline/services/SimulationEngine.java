@@ -145,8 +145,8 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
                 .map(s -> s.strategy().getClass().getSimpleName())
                 .collect(java.util.stream.Collectors.joining(", "));
 
-        log.info("SimulationEngine started: world=[{}, {}], organisms={}, energyStrategies={} ({}), seed={}, samplingInterval={}",
-                worldDims, topology, simulation.getOrganisms().size(), energyStrategies.size(), strategyNames, seed, samplingInterval);
+        log.info("SimulationEngine started: world=[{}, {}], organisms={}, energyStrategies={} ({}), seed={}, samplingInterval={}, runId={}",
+                worldDims, topology, simulation.getOrganisms().size(), energyStrategies.size(), strategyNames, seed, samplingInterval, runId);
     }
 
     @Override

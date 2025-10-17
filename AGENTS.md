@@ -321,7 +321,7 @@ throw new InterruptedException();
  */
 void send(T message) throws InterruptedException;
 ```
-
+    
 ## CI & PR expectations
 - CI: GitHub Actions that run `./gradlew build` on Ubuntu & Windows.
 - PR must include: summary, changelog, follow-up suggestions, green CI.
