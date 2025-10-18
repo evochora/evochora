@@ -219,7 +219,7 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
 
 ### Phase 14.2.4: Batch Notification (Write)
 
-**Status:** ✅ Completed
+**Status:** ✅ Completed (ready for Phase 14.2.5)
 
 **Goal:** `PersistenceService` publishes batch availability to `batch-topic`.
 
@@ -253,109 +253,116 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
 
 **Status:** Ready for implementation
 
-**Goal:** Create `AbstractBatchIndexer` with complete batch-processing logic. `DummyIndexer` only implements `flushTicks()`.
+**Goal:** Create `AbstractBatchIndexer` with topic loop and storage-read logic. `DummyIndexer` only implements `createComponents()` and `flushTicks()`.
+
+**Phase 14.2.5 Scope:**
+- ✅ MetadataReadingComponent (wait for metadata before processing)
+- ✅ Storage-read + tick-by-tick processing (no buffering yet)
+- ✅ ACK after ALL ticks from batch are processed
+- ❌ TickBufferingComponent (comes in Phase 14.2.6)
+- ❌ IdempotencyComponent (comes in Phase 14.2.7)
 
 **Changes:**
 - Create `AbstractBatchIndexer` extending `AbstractIndexer`
-- Add `BatchIndexerComponents` helper class for component configuration
-- All topic loop, buffering, ACK tracking logic goes into `AbstractBatchIndexer`
-- `DummyIndexer` extends `AbstractBatchIndexer` and only implements `flushTicks()`
+- Add `BatchIndexerComponents` helper class (Phase 14.2.5: only metadata component)
+- Topic loop + storage-read logic in `AbstractBatchIndexer.processBatchMessage()`
+- Template method `createComponents()` called in constructor
+- `DummyIndexer` extends `AbstractBatchIndexer` and implements `createComponents()` and `flushTicks()`
 
 **AbstractBatchIndexer Implementation:**
 ```java
 public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInfo, ACK> {
     
-    private final MetadataReadingComponent metadataComponent;
-    private final TickBufferingComponent bufferingComponent;
-    private final IdempotencyComponent idempotencyComponent;
+    private final BatchIndexerComponents components;
     private final int topicPollTimeoutMs;
     
     protected AbstractBatchIndexer(String name, 
                                    Config options, 
-                                   Map<String, List<IResource>> resources,
-                                   BatchIndexerComponents components) {
+                                   Map<String, List<IResource>> resources) {
         super(name, options, resources);
         
-        // All components are optional!
-        this.metadataComponent = components != null ? components.metadata : null;
-        this.bufferingComponent = components != null ? components.buffering : null;
-        this.idempotencyComponent = components != null ? components.idempotency : null;
-        this.topicPollTimeoutMs = components != null ? components.topicPollTimeoutMs : 5000;
+        // Template method: Let subclass configure components
+        this.components = createComponents();
+        
+        // Phase 14.2.5: Simple configurable timeout
+        // Phase 14.2.6: Will be automatically set to flushTimeout
+        this.topicPollTimeoutMs = options.hasPath("topicPollTimeoutMs") 
+            ? options.getInt("topicPollTimeoutMs") 
+            : 5000;
     }
+    
+    /**
+     * Template method: Create components for this indexer.
+     * <p>
+     * Called once during construction. Subclasses can return null for minimal indexers
+     * or create specific components based on configuration.
+     * <p>
+     * Phase 14.2.5 scope: Only MetadataReadingComponent!
+     * Phase 14.2.6+: TickBufferingComponent, IdempotencyComponent added.
+     *
+     * @return component configuration (may be null for minimal indexers)
+     */
+    protected abstract BatchIndexerComponents createComponents();
     
     @Override
     protected final void indexRun(String runId) throws Exception {
         // Step 1: Wait for metadata (if component exists)
-        if (metadataComponent != null) {
-            metadataComponent.loadMetadata(runId);
-            log.info("Metadata loaded for run: {}", runId);
+        if (components != null && components.metadata != null) {
+            components.metadata.loadMetadata(runId);
+            log.debug("Metadata loaded for run: {}", runId);
         }
         
-        // Step 2: Topic loop with buffering
+        // Step 2: Topic loop
         while (!Thread.currentThread().isInterrupted()) {
             TopicMessage<BatchInfo, ACK> msg = topic.poll(topicPollTimeoutMs, TimeUnit.MILLISECONDS);
             
             if (msg == null) {
-                // Timeout - check flush
-                if (bufferingComponent.shouldFlush()) {
-                    flushAndAcknowledge();
-                }
+                // Phase 14.2.6: Will check buffering component for timeout-based flush here
                 continue;
             }
             
             processBatchMessage(msg);
         }
         
-        // Final flush
-        if (bufferingComponent.getBufferSize() > 0) {
-            flushAndAcknowledge();
-        }
+        // Phase 14.2.6: Final flush of remaining buffered ticks here
     }
     
     private void processBatchMessage(TopicMessage<BatchInfo, ACK> msg) throws Exception {
-        BatchInfo batch = msg.message();
-        String batchId = batch.getBatchId();
+        BatchInfo batch = msg.payload();
+        String batchId = batch.getStorageKey();
         
-        // Idempotency check (if enabled)
-        if (idempotencyComponent != null && idempotencyComponent.isProcessed(batchId)) {
-            log.debug("Skipping duplicate batch (performance optimization): {}", batchId);
-            topic.acknowledge(msg.acknowledgment());
-            return;
-        }
+        log.debug("Received BatchInfo: storageKey={}, ticks=[{}-{}]", 
+            batch.getStorageKey(), batch.getTickStart(), batch.getTickEnd());
+        
+        // Phase 14.2.7: Idempotency check here (skip storage read if already processed)
+        // if (idempotencyComponent != null && idempotencyComponent.isProcessed(batchId)) {
+        //     log.warn("Skipping duplicate batch (performance optimization): {}", batchId);
+        //     topic.ack(msg);
+        //     return;
+        // }
         
         try {
             // Read from storage (GENERIC for all batch indexers!)
             byte[] data = storage.readBatchFile(batch.getStorageKey());
             TickDataBatch tickBatch = TickDataBatch.parseFrom(data);
             
-            if (bufferingComponent != null) {
-                // WITH buffering: Add to buffer, ACK after flush
-                bufferingComponent.addTicksFromBatch(tickBatch.getTicksList(), batchId, msg);
-                
-                log.debug("Buffered {} ticks from {}, buffer size: {}", 
-                         tickBatch.getTicksCount(), batch.getStorageKey(), 
-                         bufferingComponent.getBufferSize());
-                
-                // Flush if needed
-                if (bufferingComponent.shouldFlush()) {
-                    flushAndAcknowledge();
-                }
-            } else {
-                // WITHOUT buffering: insertBatchSize=1 (tick-by-tick processing)
-                // Process each tick individually to avoid hidden buffering
-                for (TickData tick : tickBatch.getTicksList()) {
-                    flushTicks(List.of(tick));
-                }
-                topic.acknowledge(msg.acknowledgment());
-                
-                log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
-                         tickBatch.getTicksCount(), batch.getStorageKey());
+            // Phase 14.2.5: WITHOUT buffering - tick-by-tick processing
+            // Phase 14.2.6: WITH buffering - add ticks to buffer, check shouldFlush()
+            // Process each tick individually (insertBatchSize=1 - no hidden buffering)
+            for (TickData tick : tickBatch.getTicksList()) {
+                flushTicks(List.of(tick));
             }
             
-            // Mark processed (if enabled)
-            if (idempotencyComponent != null) {
-                idempotencyComponent.markProcessed(batchId);
-            }
+            // ACK after ALL ticks from batch are processed
+            topic.ack(msg);
+            
+            log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
+                tickBatch.getTicksCount(), batch.getStorageKey());
+            
+            // Phase 14.2.7: Mark processed for idempotency optimization
+            // if (idempotencyComponent != null) {
+            //     idempotencyComponent.markProcessed(batchId);
+            // }
             
         } catch (Exception e) {
             log.error("Failed to process batch: {}", batchId);
@@ -363,48 +370,38 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         }
     }
     
-    private void flushAndAcknowledge() throws Exception {
-        TickBufferingComponent.FlushResult<ACK> result = bufferingComponent.flush();
-        if (result.ticks().isEmpty()) return;
-        
-        // ONLY indexer-specific part!
-        flushTicks(result.ticks());
-        
-        // ACK all completed batches (GENERIC!)
-        for (TopicMessage<?, ACK> msg : result.completedMessages()) {
-            topic.acknowledge(msg.acknowledgment());
-        }
-    }
-    
     /**
-     * Flush ticks to database.
+     * Flush ticks to database/log.
      * <p>
-     * CRITICAL: Must use MERGE (not INSERT) for idempotency!
+     * Phase 14.2.5: Called per tick (list will always contain exactly 1 tick).
+     * Phase 14.2.6+: Called per buffer flush (list can contain multiple ticks).
      * <p>
-     * Called by AbstractBatchIndexer when buffer is full or timeout reached.
+     * CRITICAL: Must use MERGE (not INSERT) for idempotency when writing to database!
      *
-     * @param ticks Ticks to flush
+     * @param ticks Ticks to flush (Phase 14.2.5: always size=1)
      * @throws Exception if flush fails
      */
     protected abstract void flushTicks(List<TickData> ticks) throws Exception;
     
     /**
      * Component configuration for batch indexers.
+     * <p>
+     * Phase 14.2.5: Only contains MetadataReadingComponent.
+     * Phase 14.2.6+: TickBufferingComponent, IdempotencyComponent added.
+     * <p>
+     * Use builder pattern for extensibility:
+     * <pre>
+     * BatchIndexerComponents.builder()
+     *     .withMetadata(...)
+     *     .withBuffering(...)
+     *     .build()
+     * </pre>
      */
     public static class BatchIndexerComponents {
-        public final MetadataReadingComponent metadata;     // Optional
-        public final TickBufferingComponent buffering;      // Required!
-        public final IdempotencyComponent idempotency;      // Optional
-        public final int topicPollTimeoutMs;
+        public final MetadataReadingComponent metadata;  // Optional
         
-        public BatchIndexerComponents(MetadataReadingComponent metadata,
-                                      TickBufferingComponent buffering,
-                                      IdempotencyComponent idempotency,
-                                      int topicPollTimeoutMs) {
+        private BatchIndexerComponents(MetadataReadingComponent metadata) {
             this.metadata = metadata;
-            this.buffering = buffering;
-            this.idempotency = idempotency;
-            this.topicPollTimeoutMs = topicPollTimeoutMs;
         }
         
         public static Builder builder() {
@@ -413,17 +410,14 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         
         public static class Builder {
             private MetadataReadingComponent metadata;
-            private TickBufferingComponent buffering;
-            private IdempotencyComponent idempotency;
-            private int topicPollTimeoutMs = 5000;
             
-            public Builder metadata(MetadataReadingComponent c) { this.metadata = c; return this; }
-            public Builder buffering(TickBufferingComponent c) { this.buffering = c; return this; }
-            public Builder idempotency(IdempotencyComponent c) { this.idempotency = c; return this; }
-            public Builder topicPollTimeout(int ms) { this.topicPollTimeoutMs = ms; return this; }
+            public Builder withMetadata(MetadataReadingComponent c) {
+                this.metadata = c;
+                return this;
+            }
             
             public BatchIndexerComponents build() {
-                return new BatchIndexerComponents(metadata, buffering, idempotency, topicPollTimeoutMs);
+                return new BatchIndexerComponents(metadata);
             }
         }
     }
@@ -435,35 +429,28 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
 public class DummyIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     
     public DummyIndexer(String name, Config options, Map<String, List<IResource>> resources) {
-        super(name, options, resources, createComponents(options, resources));
+        super(name, options, resources);
     }
     
-    private static BatchIndexerComponents createComponents(Config options, Map<String, List<IResource>> resources) {
-        var builder = BatchIndexerComponents.builder();
-        
+    @Override
+    protected BatchIndexerComponents createComponents() {
         // Component 1: Metadata Reading (DummyIndexer wants this!)
-        IMetadataReader metadataReader = getResourceStatic(resources, "metadata", IMetadataReader.class);
-        int pollIntervalMs = options.hasPath("pollIntervalMs") ? options.getInt("pollIntervalMs") : 1000;
-        int maxPollDurationMs = options.hasPath("maxPollDurationMs") ? options.getInt("maxPollDurationMs") : 300000;
-        builder.metadata(new MetadataReadingComponent(metadataReader, pollIntervalMs, maxPollDurationMs));
+        IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
+        int pollIntervalMs = indexerOptions.getInt("pollIntervalMs");
+        int maxPollDurationMs = indexerOptions.getInt("maxPollDurationMs");
         
-        // Component 2: Tick Buffering (REQUIRED!)
-        int insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 1000;
-        long flushTimeoutMs = options.hasPath("flushTimeoutMs") ? options.getLong("flushTimeoutMs") : 5000;
-        builder.buffering(new TickBufferingComponent(insertBatchSize, flushTimeoutMs));
-        builder.topicPollTimeout((int) flushTimeoutMs);  // Auto-calculate!
+        MetadataReadingComponent metadataComp = new MetadataReadingComponent(
+            metadataReader, pollIntervalMs, maxPollDurationMs);
         
-        // Component 3: Idempotency (DummyIndexer wants this for testing!)
-        if (options.hasPath("enableIdempotency") && options.getBoolean("enableIdempotency")) {
-            IIdempotencyTracker tracker = getResourceStatic(resources, "idempotency", IIdempotencyTracker.class);
-            builder.idempotency(new IdempotencyComponent(tracker, DummyIndexer.class.getName()));
-        }
-        
-        return builder.build();
+        return BatchIndexerComponents.builder()
+            .withMetadata(metadataComp)
+            .build();
     }
     
     @Override
     protected void flushTicks(List<TickData> ticks) {
+        // Phase 14.2.5: Log-only (will always receive exactly 1 tick)
+        // Phase 14.2.6+: Will receive multiple ticks from buffer flush
         log.debug("Flushed {} ticks (DummyIndexer: no DB writes)", ticks.size());
     }
 }
@@ -478,7 +465,7 @@ dummy-indexer {
     storage = "storage-read:tick-storage"
     metadata = "db-meta-read:index-database"
     topic = "topic-read:batch-topic?consumerGroup=dummy-indexer"
-    idempotency = "db-idempotency:index-database"  # Optional
+    # Phase 14.2.7: idempotency = "db-idempotency:index-database"
   }
   
   options {
@@ -488,22 +475,20 @@ dummy-indexer {
     pollIntervalMs = 1000
     maxPollDurationMs = 300000
     
-    # Tick buffering
-    insertBatchSize = 1000
-    flushTimeoutMs = 5000
-    # Note: topicPollTimeoutMs automatically set to flushTimeoutMs
+    # Topic polling (Phase 14.2.5: simple timeout)
+    topicPollTimeoutMs = 5000
     
-    # Idempotency (optional)
-    enableIdempotency = true
+    # Phase 14.2.6: insertBatchSize and flushTimeoutMs will be added
+    # Phase 14.2.7: enableIdempotency will be added
   }
 }
 ```
 
 **Deliverables:**
-- `AbstractBatchIndexer` with complete batch-processing logic
-- `BatchIndexerComponents` helper class
-- `DummyIndexer` with only `flushTicks()` implementation
-- Integration tests (all 3 components active)
+- `AbstractBatchIndexer` with topic loop + storage-read logic
+- `BatchIndexerComponents` helper class (Phase 14.2.5: only metadata)
+- `DummyIndexer` with `createComponents()` and `flushTicks()` implementations
+- Integration tests (metadata reading + tick-by-tick processing)
 
 ---
 
@@ -511,9 +496,186 @@ dummy-indexer {
 
 **Status:** Ready for implementation
 
-**Goal:** Implement `TickBufferingComponent` with integrated batch-level ACK tracking.
+**Goal:** Add `TickBufferingComponent` with batch-level ACK tracking to `AbstractBatchIndexer`.
 
-**Note:** This component is already used by `AbstractBatchIndexer` (Phase 14.2.5). This phase documents its implementation details.
+**Phase 14.2.6 Changes:**
+- Add `TickBufferingComponent` to `BatchIndexerComponents`
+- Add buffering logic to `AbstractBatchIndexer.processBatchMessage()` (if-else branch)
+- Add `flushAndAcknowledge()` helper method
+- Add timeout-based flush check in `indexRun()` topic loop
+- Update `DummyIndexer.createComponents()` to configure buffering
+- Automatically set `topicPollTimeoutMs = flushTimeoutMs`
+
+**Note:** Storage-read logic already exists in Phase 14.2.5, only buffering logic is added here.
+
+**AbstractBatchIndexer Changes (Phase 14.2.6):**
+
+```java
+public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInfo, ACK> {
+    
+    private final BatchIndexerComponents components;
+    private final int topicPollTimeoutMs;
+    
+    protected AbstractBatchIndexer(...) {
+        super(...);
+        this.components = createComponents();
+        
+        // Phase 14.2.6: Automatically set topicPollTimeout to flushTimeout if buffering enabled
+        if (components != null && components.buffering != null) {
+            this.topicPollTimeoutMs = (int) components.buffering.getFlushTimeoutMs();
+        } else {
+            this.topicPollTimeoutMs = options.hasPath("topicPollTimeoutMs") 
+                ? options.getInt("topicPollTimeoutMs") 
+                : 5000;
+        }
+    }
+    
+    @Override
+    protected final void indexRun(String runId) throws Exception {
+        if (components != null && components.metadata != null) {
+            components.metadata.loadMetadata(runId);
+            log.info("Metadata loaded for run: {}", runId);
+        }
+        
+        while (!Thread.currentThread().isInterrupted()) {
+            TopicMessage<BatchInfo, ACK> msg = topic.poll(topicPollTimeoutMs, TimeUnit.MILLISECONDS);
+            
+            if (msg == null) {
+                // Phase 14.2.6: Check buffering component for timeout-based flush
+                if (components != null && components.buffering != null 
+                    && components.buffering.shouldFlush()) {
+                    flushAndAcknowledge();
+                }
+                continue;
+            }
+            
+            processBatchMessage(msg);
+        }
+        
+        // Phase 14.2.6: Final flush of remaining buffered ticks
+        if (components != null && components.buffering != null 
+            && components.buffering.getBufferSize() > 0) {
+            flushAndAcknowledge();
+        }
+    }
+    
+    private void processBatchMessage(TopicMessage<BatchInfo, ACK> msg) throws Exception {
+        BatchInfo batch = msg.payload();
+        String batchId = batch.getStorageKey();
+        
+        log.debug("Received BatchInfo: storageKey={}, ticks=[{}-{}]", 
+            batch.getStorageKey(), batch.getTickStart(), batch.getTickEnd());
+        
+        try {
+            byte[] data = storage.readBatchFile(batch.getStorageKey());
+            TickDataBatch tickBatch = TickDataBatch.parseFrom(data);
+            
+            // Phase 14.2.6: Add buffering logic (if-else branch)
+            if (components != null && components.buffering != null) {
+                // WITH buffering: Add to buffer, ACK after flush
+                components.buffering.addTicksFromBatch(tickBatch.getTicksList(), batchId, msg);
+                
+                log.debug("Buffered {} ticks from {}, buffer size: {}", 
+                    tickBatch.getTicksCount(), batch.getStorageKey(), 
+                    components.buffering.getBufferSize());
+                
+                // Flush if needed
+                if (components.buffering.shouldFlush()) {
+                    flushAndAcknowledge();
+                }
+            } else {
+                // WITHOUT buffering: tick-by-tick processing (Phase 14.2.5)
+                for (TickData tick : tickBatch.getTicksList()) {
+                    flushTicks(List.of(tick));
+                }
+                topic.ack(msg);
+                
+                log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
+                    tickBatch.getTicksCount(), batch.getStorageKey());
+            }
+            
+        } catch (Exception e) {
+            log.error("Failed to process batch: {}", batchId);
+            throw e;  // NO acknowledge - redelivery!
+        }
+    }
+    
+    // Phase 14.2.6: New helper method for buffered flush + ACK
+    private void flushAndAcknowledge() throws Exception {
+        TickBufferingComponent.FlushResult<ACK> result = components.buffering.flush();
+        if (result.ticks().isEmpty()) return;
+        
+        // Call indexer-specific flush
+        flushTicks(result.ticks());
+        
+        // ACK all completed batches
+        for (TopicMessage<?, ACK> msg : result.completedMessages()) {
+            topic.ack(msg);
+        }
+    }
+}
+```
+
+**BatchIndexerComponents (Phase 14.2.6):**
+```java
+public static class BatchIndexerComponents {
+    public final MetadataReadingComponent metadata;     // Optional
+    public final TickBufferingComponent buffering;      // Optional (Phase 14.2.6)
+    
+    private BatchIndexerComponents(MetadataReadingComponent metadata,
+                                   TickBufferingComponent buffering) {
+        this.metadata = metadata;
+        this.buffering = buffering;
+    }
+    
+    public static Builder builder() {
+        return new Builder();
+    }
+    
+    public static class Builder {
+        private MetadataReadingComponent metadata;
+        private TickBufferingComponent buffering;
+        
+        public Builder withMetadata(MetadataReadingComponent c) {
+            this.metadata = c;
+            return this;
+        }
+        
+        public Builder withBuffering(TickBufferingComponent c) {
+            this.buffering = c;
+            return this;
+        }
+        
+        public BatchIndexerComponents build() {
+            return new BatchIndexerComponents(metadata, buffering);
+        }
+    }
+}
+```
+
+**DummyIndexer (Phase 14.2.6):**
+```java
+@Override
+protected BatchIndexerComponents createComponents() {
+    // Component 1: Metadata Reading
+    IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
+    int pollIntervalMs = indexerOptions.getInt("pollIntervalMs");
+    int maxPollDurationMs = indexerOptions.getInt("maxPollDurationMs");
+    MetadataReadingComponent metadataComp = new MetadataReadingComponent(
+        metadataReader, pollIntervalMs, maxPollDurationMs);
+    
+    // Component 2: Tick Buffering (NEW in Phase 14.2.6!)
+    int insertBatchSize = indexerOptions.getInt("insertBatchSize");
+    long flushTimeoutMs = indexerOptions.getLong("flushTimeoutMs");
+    TickBufferingComponent bufferingComp = new TickBufferingComponent(
+        insertBatchSize, flushTimeoutMs);
+    
+    return BatchIndexerComponents.builder()
+        .withMetadata(metadataComp)
+        .withBuffering(bufferingComp)
+        .build();
+}
+```
 
 **The ACK Problem:**
 
@@ -699,8 +861,37 @@ public class TickBufferingComponent {
 - **Example:** If storage batch has 100 ticks but `insertBatchSize=250`, remaining 50 ticks after 2 batches will be flushed after `flushTimeout`
 - **No manual configuration:** Always correct, no misconfiguration possible (set by `AbstractBatchIndexer`)
 
+**Configuration (Phase 14.2.6):**
+```hocon
+dummy-indexer {
+  resources {
+    storage = "storage-read:tick-storage"
+    metadata = "db-meta-read:index-database"
+    topic = "topic-read:batch-topic?consumerGroup=dummy-indexer"
+  }
+  
+  options {
+    runId = ${?pipeline.services.runId}
+    
+    # Metadata polling
+    pollIntervalMs = 1000
+    maxPollDurationMs = 300000
+    
+    # Tick buffering (NEW in Phase 14.2.6)
+    insertBatchSize = 1000
+    flushTimeoutMs = 5000
+    # Note: topicPollTimeoutMs automatically set to flushTimeoutMs
+    
+    # Phase 14.2.7: enableIdempotency will be added
+  }
+}
+```
+
 **Deliverables:**
 - `TickBufferingComponent` implementation with ACK tracking
+- Updated `AbstractBatchIndexer` with buffering logic (if-else branch)
+- Updated `BatchIndexerComponents` with buffering field
+- Updated `DummyIndexer.createComponents()` to configure buffering
 - Integration tests (batch-overgreifend ACK, timeout-based flush, buffer loss recovery)
 
 ---
@@ -709,9 +900,15 @@ public class TickBufferingComponent {
 
 **Status:** Ready for implementation
 
-**Goal:** Implement optional `IdempotencyComponent` and document MERGE-based idempotency for production indexers.
+**Goal:** Add optional `IdempotencyComponent` for performance optimization (skip duplicate storage reads).
 
-**Note:** `AbstractBatchIndexer` (Phase 14.2.5) already handles idempotency checks. This phase documents component implementation and MERGE examples.
+**Phase 14.2.7 Changes:**
+- Add `IdempotencyComponent` to `BatchIndexerComponents`
+- Add idempotency checks to `AbstractBatchIndexer.processBatchMessage()` (before storage read, after buffering)
+- Update `DummyIndexer.createComponents()` to optionally configure idempotency
+- Document MERGE-based idempotency for production indexers
+
+**Critical:** IdempotencyComponent is OPTIONAL and ONLY for performance. Correctness is guaranteed by MERGE statements!
 
 **Critical Architecture Decision: MERGE-Based Idempotency**
 
@@ -731,25 +928,133 @@ Lösung: Tick-Level Idempotency via MERGE!
 - IdempotencyComponent NUR für Performance (skip storage read), NICHT für Correctness!
 ```
 
-**Changes:**
-- **PFLICHT:** Alle production indexers verwenden MERGE statt INSERT in `flushTicks()`!
-- **OPTIONAL:** Implement `IdempotencyComponent` für Performance (skip storage reads)
-- Already implemented in `AbstractBatchIndexer`: Error handling, no ACK on failure
+**AbstractBatchIndexer Changes (Phase 14.2.7):**
 
-**How IdempotencyComponent is used by AbstractBatchIndexer:**
 ```java
-// In AbstractBatchIndexer.processBatchMessage():
-if (idempotencyComponent != null && idempotencyComponent.isProcessed(batchId)) {
-    log.debug("Skipping duplicate batch (performance optimization): {}", batchId);
-    topic.acknowledge(msg.acknowledgment());
-    return;  // Skip storage read!
+private void processBatchMessage(TopicMessage<BatchInfo, ACK> msg) throws Exception {
+    BatchInfo batch = msg.payload();
+    String batchId = batch.getStorageKey();
+    
+    log.debug("Received BatchInfo: storageKey={}, ticks=[{}-{}]", 
+        batch.getStorageKey(), batch.getTickStart(), batch.getTickEnd());
+    
+    // Phase 14.2.7: Idempotency check (skip storage read if already processed)
+    if (components != null && components.idempotency != null 
+        && components.idempotency.isProcessed(batchId)) {
+        log.debug("Skipping duplicate batch (performance optimization): {}", batchId);
+        topic.ack(msg);
+        return;  // Skip storage read!
+    }
+    
+    try {
+        byte[] data = storage.readBatchFile(batch.getStorageKey());
+        TickDataBatch tickBatch = TickDataBatch.parseFrom(data);
+        
+        if (components != null && components.buffering != null) {
+            components.buffering.addTicksFromBatch(tickBatch.getTicksList(), batchId, msg);
+            log.debug("Buffered {} ticks from {}, buffer size: {}", 
+                tickBatch.getTicksCount(), batch.getStorageKey(), 
+                components.buffering.getBufferSize());
+            
+            if (components.buffering.shouldFlush()) {
+                flushAndAcknowledge();
+            }
+        } else {
+            for (TickData tick : tickBatch.getTicksList()) {
+                flushTicks(List.of(tick));
+            }
+            topic.ack(msg);
+            log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
+                tickBatch.getTicksCount(), batch.getStorageKey());
+        }
+        
+        // Phase 14.2.7: Mark processed (after buffering/flushing)
+        if (components != null && components.idempotency != null) {
+            components.idempotency.markProcessed(batchId);
+        }
+        
+    } catch (Exception e) {
+        log.error("Failed to process batch: {}", batchId);
+        throw e;  // NO acknowledge - redelivery!
+    }
 }
+```
 
-// ... read storage, buffer ticks, flush ...
+**BatchIndexerComponents (Phase 14.2.7):**
+```java
+public static class BatchIndexerComponents {
+    public final MetadataReadingComponent metadata;     // Optional
+    public final TickBufferingComponent buffering;      // Optional
+    public final IdempotencyComponent idempotency;      // Optional (Phase 14.2.7)
+    
+    private BatchIndexerComponents(MetadataReadingComponent metadata,
+                                   TickBufferingComponent buffering,
+                                   IdempotencyComponent idempotency) {
+        this.metadata = metadata;
+        this.buffering = buffering;
+        this.idempotency = idempotency;
+    }
+    
+    public static Builder builder() {
+        return new Builder();
+    }
+    
+    public static class Builder {
+        private MetadataReadingComponent metadata;
+        private TickBufferingComponent buffering;
+        private IdempotencyComponent idempotency;
+        
+        public Builder withMetadata(MetadataReadingComponent c) {
+            this.metadata = c;
+            return this;
+        }
+        
+        public Builder withBuffering(TickBufferingComponent c) {
+            this.buffering = c;
+            return this;
+        }
+        
+        public Builder withIdempotency(IdempotencyComponent c) {
+            this.idempotency = c;
+            return this;
+        }
+        
+        public BatchIndexerComponents build() {
+            return new BatchIndexerComponents(metadata, buffering, idempotency);
+        }
+    }
+}
+```
 
-// Mark processed AFTER buffering
-if (idempotencyComponent != null) {
-    idempotencyComponent.markProcessed(batchId);
+**DummyIndexer (Phase 14.2.7):**
+```java
+@Override
+protected BatchIndexerComponents createComponents() {
+    // Component 1: Metadata Reading
+    IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
+    int pollIntervalMs = indexerOptions.getInt("pollIntervalMs");
+    int maxPollDurationMs = indexerOptions.getInt("maxPollDurationMs");
+    MetadataReadingComponent metadataComp = new MetadataReadingComponent(
+        metadataReader, pollIntervalMs, maxPollDurationMs);
+    
+    // Component 2: Tick Buffering
+    int insertBatchSize = indexerOptions.getInt("insertBatchSize");
+    long flushTimeoutMs = indexerOptions.getLong("flushTimeoutMs");
+    TickBufferingComponent bufferingComp = new TickBufferingComponent(
+        insertBatchSize, flushTimeoutMs);
+    
+    // Component 3: Idempotency (NEW in Phase 14.2.7 - optional!)
+    var builder = BatchIndexerComponents.builder()
+        .withMetadata(metadataComp)
+        .withBuffering(bufferingComp);
+    
+    if (indexerOptions.hasPath("enableIdempotency") 
+        && indexerOptions.getBoolean("enableIdempotency")) {
+        IIdempotencyTracker tracker = getRequiredResource("idempotency", IIdempotencyTracker.class);
+        builder.withIdempotency(new IdempotencyComponent(tracker, DummyIndexer.class.getName()));
+    }
+    
+    return builder.build();
 }
 ```
 
@@ -930,7 +1235,9 @@ Ohne MERGE (nur INSERT):
 
 **Deliverables:**
 - `IdempotencyComponent` implementation (OPTIONAL - Performance only!)
-- Updated `DummyIndexer` with MERGE-based idempotency + error handling
+- Updated `AbstractBatchIndexer` with idempotency checks (before storage read, after buffering)
+- Updated `BatchIndexerComponents` with idempotency field
+- Updated `DummyIndexer.createComponents()` to optionally configure idempotency
 - Integration tests (MERGE idempotency, duplicates, failures, redelivery, buffer-loss recovery)
 
 **Note:** `IIdempotencyTracker` interface and H2 implementation with `idempotency_tracking` table already exist!
@@ -988,29 +1295,36 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
 }
 ```
 
-**DummyIndexer (extends AbstractBatchIndexer, only flushTicks!):**
+**DummyIndexer (extends AbstractBatchIndexer, implements createComponents + flushTicks):**
 ```java
 public class DummyIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     
     public DummyIndexer(String name, Config options, Map<String, List<IResource>> resources) {
-        super(name, options, resources, createComponents(options, resources));
+        super(name, options, resources);
     }
     
-    private static BatchIndexerComponents createComponents(Config options, Map<String, List<IResource>> resources) {
-        var builder = BatchIndexerComponents.builder();
+    @Override
+    protected BatchIndexerComponents createComponents() {
+        // All components: Metadata, Buffering, Idempotency
+        IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
+        int pollIntervalMs = indexerOptions.getInt("pollIntervalMs");
+        int maxPollDurationMs = indexerOptions.getInt("maxPollDurationMs");
+        MetadataReadingComponent metadataComp = new MetadataReadingComponent(
+            metadataReader, pollIntervalMs, maxPollDurationMs);
         
-        // Component selection in constructor!
-        IMetadataReader metadataReader = getResourceStatic(resources, "metadata", IMetadataReader.class);
-        builder.metadata(new MetadataReadingComponent(metadataReader, 1000, 300000));
+        int insertBatchSize = indexerOptions.getInt("insertBatchSize");
+        long flushTimeoutMs = indexerOptions.getLong("flushTimeoutMs");
+        TickBufferingComponent bufferingComp = new TickBufferingComponent(
+            insertBatchSize, flushTimeoutMs);
         
-        int insertBatchSize = options.getInt("insertBatchSize");
-        long flushTimeoutMs = options.getLong("flushTimeoutMs");
-        builder.buffering(new TickBufferingComponent(insertBatchSize, flushTimeoutMs));
-        builder.topicPollTimeout((int) flushTimeoutMs);
+        var builder = BatchIndexerComponents.builder()
+            .withMetadata(metadataComp)
+            .withBuffering(bufferingComp);
         
-        if (options.getBoolean("enableIdempotency", false)) {
-            IIdempotencyTracker tracker = getResourceStatic(resources, "idempotency", IIdempotencyTracker.class);
-            builder.idempotency(new IdempotencyComponent(tracker, DummyIndexer.class.getName()));
+        if (indexerOptions.hasPath("enableIdempotency") 
+            && indexerOptions.getBoolean("enableIdempotency")) {
+            IIdempotencyTracker tracker = getRequiredResource("idempotency", IIdempotencyTracker.class);
+            builder.withIdempotency(new IdempotencyComponent(tracker, DummyIndexer.class.getName()));
         }
         
         return builder.build();
@@ -1029,25 +1343,32 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     private final IEnvironmentDatabase database;
     
     public EnvironmentIndexer(String name, Config options, Map<String, List<IResource>> resources) {
-        super(name, options, resources, createComponents(options, resources));
+        super(name, options, resources);
         this.database = getRequiredResource("database", IEnvironmentDatabase.class);
     }
     
-    private static BatchIndexerComponents createComponents(Config options, Map<String, List<IResource>> resources) {
-        // Same as DummyIndexer! (could be shared helper)
-        var builder = BatchIndexerComponents.builder();
+    @Override
+    protected BatchIndexerComponents createComponents() {
+        // All components: Metadata, Buffering, Idempotency
+        IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
+        int pollIntervalMs = indexerOptions.getInt("pollIntervalMs");
+        int maxPollDurationMs = indexerOptions.getInt("maxPollDurationMs");
+        MetadataReadingComponent metadataComp = new MetadataReadingComponent(
+            metadataReader, pollIntervalMs, maxPollDurationMs);
         
-        IMetadataReader metadataReader = getResourceStatic(resources, "metadata", IMetadataReader.class);
-        builder.metadata(new MetadataReadingComponent(metadataReader, 1000, 300000));
+        int insertBatchSize = indexerOptions.getInt("insertBatchSize");
+        long flushTimeoutMs = indexerOptions.getLong("flushTimeoutMs");
+        TickBufferingComponent bufferingComp = new TickBufferingComponent(
+            insertBatchSize, flushTimeoutMs);
         
-        int insertBatchSize = options.getInt("insertBatchSize");
-        long flushTimeoutMs = options.getLong("flushTimeoutMs");
-        builder.buffering(new TickBufferingComponent(insertBatchSize, flushTimeoutMs));
-        builder.topicPollTimeout((int) flushTimeoutMs);
+        var builder = BatchIndexerComponents.builder()
+            .withMetadata(metadataComp)
+            .withBuffering(bufferingComp);
         
-        if (options.getBoolean("enableIdempotency", false)) {
-            IIdempotencyTracker tracker = getResourceStatic(resources, "idempotency", IIdempotencyTracker.class);
-            builder.idempotency(new IdempotencyComponent(tracker, EnvironmentIndexer.class.getName()));
+        if (indexerOptions.hasPath("enableIdempotency") 
+            && indexerOptions.getBoolean("enableIdempotency")) {
+            IIdempotencyTracker tracker = getRequiredResource("idempotency", IIdempotencyTracker.class);
+            builder.withIdempotency(new IdempotencyComponent(tracker, EnvironmentIndexer.class.getName()));
         }
         
         return builder.build();
@@ -1055,7 +1376,7 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     
     @Override
     protected void flushTicks(List<TickData> ticks) throws SQLException {
-        // CRITICAL: MERGE statt INSERT - 100% idempotent!
+        // CRITICAL: MERGE instead of INSERT - 100% idempotent!
         String mergeSql = """
             MERGE INTO environment_data (tick_number, cell_id, x, y, z, state)
             KEY (tick_number, cell_id)
@@ -1083,29 +1404,27 @@ public class SimpleBatchIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     private final ISimpleDatabase database;
     
     public SimpleBatchIndexer(String name, Config options, Map<String, List<IResource>> resources) {
-        super(name, options, resources, createComponents(options, resources));
+        super(name, options, resources);
         this.database = getRequiredResource("database", ISimpleDatabase.class);
     }
     
-    private static BatchIndexerComponents createComponents(Config options, Map<String, List<IResource>> resources) {
-        var builder = BatchIndexerComponents.builder();
+    @Override
+    protected BatchIndexerComponents createComponents() {
+        // Metadata component only, no buffering, no idempotency
+        IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
+        int pollIntervalMs = indexerOptions.getInt("pollIntervalMs");
+        int maxPollDurationMs = indexerOptions.getInt("maxPollDurationMs");
+        MetadataReadingComponent metadataComp = new MetadataReadingComponent(
+            metadataReader, pollIntervalMs, maxPollDurationMs);
         
-        // Metadata component (optional, but useful)
-        IMetadataReader metadataReader = getResourceStatic(resources, "metadata", IMetadataReader.class);
-        builder.metadata(new MetadataReadingComponent(metadataReader, 1000, 300000));
-        
-        // NO buffering! Process each batch immediately
-        // NO idempotency component (MERGE handles it)
-        
-        builder.topicPollTimeout(5000);  // Standard timeout (5s)
-        
-        return builder.build();
+        return BatchIndexerComponents.builder()
+            .withMetadata(metadataComp)
+            .build();
     }
     
     @Override
     protected void flushTicks(List<TickData> ticks) throws SQLException {
-        // Called per tick (insertBatchSize=1 due to no buffering component)
-        // ticks.size() will always be 1!
+        // Called per tick (ticks.size() will always be 1 without buffering)
         // MERGE ensures idempotency
         String mergeSql = """
             MERGE INTO simple_data (tick_number, value)
@@ -1129,13 +1448,17 @@ public class SimpleBatchIndexer<ACK> extends AbstractBatchIndexer<ACK> {
 public class MinimalBatchIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     
     public MinimalBatchIndexer(String name, Config options, Map<String, List<IResource>> resources) {
-        super(name, options, resources, null);  // No components!
+        super(name, options, resources);
+    }
+    
+    @Override
+    protected BatchIndexerComponents createComponents() {
+        return null;  // No components - or: BatchIndexerComponents.builder().build()
     }
     
     @Override
     protected void flushTicks(List<TickData> ticks) {
-        // Called per tick (insertBatchSize=1 due to no buffering component)
-        // ticks.size() will always be 1!
+        // Called per tick (ticks.size() will always be 1 without buffering)
         log.info("Processed {} ticks from batch", ticks.size());
     }
 }
@@ -1143,11 +1466,13 @@ public class MinimalBatchIndexer<ACK> extends AbstractBatchIndexer<ACK> {
 
 ### Design Benefits
 
-✅ **3-Level Architecture:** Clear separation: AbstractIndexer (core) → AbstractBatchIndexer (batch logic) → Concrete Indexers (only `flushTicks()`)  
-✅ **Zero Boilerplate:** Batch indexers only implement `flushTicks()` + component selection in constructor  
+✅ **3-Level Architecture:** Clear separation: AbstractIndexer (core) → AbstractBatchIndexer (batch logic) → Concrete Indexers (only `createComponents()` + `flushTicks()`)  
+✅ **Zero Boilerplate:** Batch indexers only implement two template methods, no complex constructor logic  
+✅ **Template Method Pattern:** `createComponents()` called in constructor, subclass configures components with access to `this`  
+✅ **Builder Pattern:** Fluent API with `final` fields - new components can be added without breaking existing indexers  
 ✅ **DRY:** All batch-processing logic in one place (`AbstractBatchIndexer`)  
 ✅ **Maximum Flexibility:** All components optional - from minimal (no components) to full-featured (all components)  
-✅ **Two Modes:** With buffering (batch-overgreifend) or without buffering (direct processing)  
+✅ **Two Modes:** With buffering (batch-übergreifend) or without buffering (direct processing)  
 ✅ **Simplicity:** `AbstractIndexer` stays minimal (no business logic)  
 ✅ **Testability:** Components tested separately, `AbstractBatchIndexer` tested once  
 ✅ **100% Idempotent:** MERGE guarantees no duplicates, even after crash + redelivery  
@@ -1339,8 +1664,8 @@ Upon completion of all phases:
 - Phase 14.2.1: Topic Infrastructure ✅ Completed
 - Phase 14.2.2: Metadata Notification Write ✅ Completed
 - Phase 14.2.3: Metadata Notification Read ✅ Completed
-- Phase 14.2.4: Batch Notification Write - Ready
-- Phase 14.2.5: DummyIndexer Topic Loop - Ready
-- Phase 14.2.6: Tick Buffering - Ready
-- Phase 14.2.7: Idempotency + Error Handling - Ready
+- Phase 14.2.4: Batch Notification Write ✅ Completed
+- Phase 14.2.5: AbstractBatchIndexer + DummyIndexer (Metadata + Storage-Read + Tick-by-Tick) - Ready
+- Phase 14.2.6: TickBufferingComponent (Batch-übergreifend Buffering) - Ready
+- Phase 14.2.7: IdempotencyComponent (Performance Optimization) - Ready
 
