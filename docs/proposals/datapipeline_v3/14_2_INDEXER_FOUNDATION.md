@@ -407,19 +407,19 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         
         try {
             // Read from storage (GENERIC for all batch indexers!)
-            byte[] data = storage.readBatchFile(batch.getStorageKey());
-            TickDataBatch tickBatch = TickDataBatch.parseFrom(data);
+            // Storage handles length-delimited format automatically
+            List<TickData> ticks = storage.readBatch(batch.getStorageKey());
             
             // WITHOUT buffering - tick-by-tick processing
-                for (TickData tick : tickBatch.getTicksList()) {
-                    flushTicks(List.of(tick));
-                }
+            for (TickData tick : ticks) {
+                flushTicks(List.of(tick));
+            }
             
             // ACK after ALL ticks from batch are processed
             topic.ack(msg);
-                
-                log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
-                         tickBatch.getTicksCount(), batch.getStorageKey());
+            
+            log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
+                     ticks.size(), batch.getStorageKey());
             
         } catch (Exception e) {
             log.error("Failed to process batch: {}", batchId);
@@ -669,15 +669,15 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             batch.getStorageKey(), batch.getTickStart(), batch.getTickEnd());
         
         try {
-            byte[] data = storage.readBatchFile(batch.getStorageKey());
-            TickDataBatch tickBatch = TickDataBatch.parseFrom(data);
+            // Storage handles length-delimited format automatically
+            List<TickData> ticks = storage.readBatch(batch.getStorageKey());
             
             if (components != null && components.buffering != null) {
                 // WITH buffering: Add to buffer, ACK after flush
-                components.buffering.addTicksFromBatch(tickBatch.getTicksList(), batchId, msg);
+                components.buffering.addTicksFromBatch(ticks, batchId, msg);
                 
                 log.debug("Buffered {} ticks from {}, buffer size: {}", 
-                    tickBatch.getTicksCount(), batch.getStorageKey(), 
+                    ticks.size(), batch.getStorageKey(), 
                     components.buffering.getBufferSize());
                 
                 // Flush if needed
@@ -686,13 +686,13 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 }
             } else {
                 // WITHOUT buffering: tick-by-tick processing
-                for (TickData tick : tickBatch.getTicksList()) {
+                for (TickData tick : ticks) {
                     flushTicks(List.of(tick));
                 }
                 topic.ack(msg);
                 
                 log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
-                    tickBatch.getTicksCount(), batch.getStorageKey());
+                         ticks.size(), batch.getStorageKey());
             }
             
         } catch (Exception e) {
@@ -1109,17 +1109,17 @@ private void processBatchMessage(TopicMessage<BatchInfo, ACK> msg) throws Except
     }
     
     try {
-        byte[] data = storage.readBatchFile(batch.getStorageKey());
-        TickDataBatch tickBatch = TickDataBatch.parseFrom(data);
+        // Storage handles length-delimited format automatically
+        List<TickData> ticks = storage.readBatch(batch.getStorageKey());
         
         if (components.buffering != null) {
-            components.buffering.addTicksFromBatch(...);
+            components.buffering.addTicksFromBatch(ticks, batchId, msg);
             if (components.buffering.shouldFlush()) {
                 flushAndAcknowledge();  // This will mark processed after ACK
             }
         } else {
             // WITHOUT buffering: Safe to mark immediately after ACK
-            for (TickData tick : tickBatch.getTicksList()) {
+            for (TickData tick : ticks) {
                 flushTicks(List.of(tick));
             }
             topic.ack(msg);
@@ -1689,16 +1689,16 @@ private void processBatchMessage(TopicMessage<BatchInfo, ACK> msg) throws Except
     log.debug("Received BatchInfo: storageKey={}, ticks=[{}-{}]", ...);
     
     try {
-        byte[] data = storage.readBatchFile(batch.getStorageKey());
-        TickDataBatch tickBatch = TickDataBatch.parseFrom(data);
+        // Storage handles length-delimited format automatically
+        List<TickData> ticks = storage.readBatch(batch.getStorageKey());
         
         if (components != null && components.buffering != null) {
-            components.buffering.addTicksFromBatch(...);
+            components.buffering.addTicksFromBatch(ticks, batchId, msg);
             if (components.buffering.shouldFlush()) {
                 flushAndAcknowledge();
             }
         } else {
-            for (TickData tick : tickBatch.getTicksList()) {
+            for (TickData tick : ticks) {
                 flushTicks(List.of(tick));
             }
             topic.ack(msg);

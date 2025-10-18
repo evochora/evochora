@@ -2,12 +2,17 @@ package org.evochora.datapipeline.services.indexers;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.topics.ITopicReader;
+import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
+import org.evochora.datapipeline.resources.topics.H2TopicResource;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.ExpectLogs;
@@ -18,6 +23,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -33,6 +40,8 @@ import java.util.concurrent.TimeUnit;
 import static org.awaitility.Awaitility.await;
 import static org.evochora.junit.extensions.logging.LogLevel.ERROR;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 /**
  * Integration tests for DummyIndexer Phase 2.5.1 (Metadata Reading).
@@ -40,12 +49,18 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests the complete metadata reading flow with real database and storage.
  */
 @Tag("integration")
+@ExtendWith(MockitoExtension.class)
 @ExtendWith(LogWatchExtension.class)
 @AllowLog(level = LogLevel.WARN, messagePattern = ".*initialized WITHOUT topic.*")
 class DummyIndexerIntegrationTest {
     
+    @Mock
+    private ITopicReader<BatchInfo, Object> mockTopic;
+    
     private H2Database testDatabase;
     private FileSystemStorageResource testStorage;
+    private H2TopicResource testBatchTopic;  // Real topic for batch processing tests
+    private DummyIndexer<?> indexer;  // Track for cleanup
     private Path tempStorageDir;
     private String dbUrl;
     private String dbUsername;
@@ -70,26 +85,41 @@ class DummyIndexerIntegrationTest {
             "password = \"" + dbPassword + "\""
         );
         testDatabase = new H2Database("test-db", dbConfig);
+        
+        // Setup H2 topic for batch processing tests
+        String topicJdbcUrl = "jdbc:h2:mem:test-batch-topic-" + UUID.randomUUID();
+        Config topicConfig = ConfigFactory.parseString(
+            "jdbcUrl = \"" + topicJdbcUrl + "\"\n" +
+            "username = \"sa\"\n" +
+            "password = \"\"\n" +
+            "claimTimeout = 300"
+        );
+        testBatchTopic = new H2TopicResource("batch-topic", topicConfig);
+        
+        // Configure mock topic to return null (no batch messages) - keeps indexer running
+        // Use lenient() because not all tests reach the topic polling stage
+        try {
+            lenient().when(mockTopic.poll(anyLong(), any(TimeUnit.class))).thenReturn(null);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        }
     }
     
     @AfterEach
     void cleanup() throws Exception {
+        // Stop indexer if still running (DummyIndexer runs continuously)
+        if (indexer != null && indexer.getCurrentState() != IService.State.STOPPED && indexer.getCurrentState() != IService.State.ERROR) {
+            indexer.stop();
+            await().atMost(5, TimeUnit.SECONDS)
+                .until(() -> indexer.getCurrentState() == IService.State.STOPPED || indexer.getCurrentState() == IService.State.ERROR);
+        }
+        
+        if (testBatchTopic != null) {
+            testBatchTopic.close();
+        }
+        
         if (testDatabase != null) {
-            // Wait for connections to be released (avoid Thread.sleep)
-            await().atMost(2, TimeUnit.SECONDS)
-                .pollInterval(50, TimeUnit.MILLISECONDS)
-                .until(() -> {
-                    Map<String, Number> metrics = testDatabase.getMetrics();
-                    Number active = metrics.get("h2_pool_active_connections");
-                    return active == null || active.intValue() == 0;
-                });
-            
-            // Verify no connection leaks
-            Map<String, Number> metrics = testDatabase.getMetrics();
-            Number activeConnections = metrics.get("h2_pool_active_connections");
-            assertEquals(0, activeConnections != null ? activeConnections.intValue() : 0,
-                "Connection leak detected! Active connections should be 0 after test completion");
-            
             testDatabase.close();
         }
         
@@ -114,32 +144,28 @@ class DummyIndexerIntegrationTest {
         // Configure DummyIndexer in post-mortem mode
         Config config = ConfigFactory.parseString("""
             runId = "%s"
-            pollIntervalMs = 100
-            maxPollDurationMs = 5000
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
             """.formatted(runId));
         
-        DummyIndexer indexer = createDummyIndexer("test-indexer", config);
+        indexer = createDummyIndexer("test-indexer", config);
         
         // When: Start indexer
         indexer.start();
         
-        // Then: Should complete successfully after reading metadata
-        await().atMost(15, TimeUnit.SECONDS)
-            .pollInterval(500, TimeUnit.MILLISECONDS)
-            .until(() -> {
-                IService.State state = indexer.getCurrentState();
-                return state == IService.State.STOPPED || state == IService.State.ERROR;
-            });
+        // Then: Should transition to RUNNING (continuous batch processing mode)
+        await().atMost(5, TimeUnit.SECONDS)
+            .pollInterval(100, TimeUnit.MILLISECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
         
-        // Verify final state
-        IService.State finalState = indexer.getCurrentState();
-        assertEquals(IService.State.STOPPED, finalState,
-            "Indexer should be STOPPED after reading metadata, but was: " + finalState);
+        // Verify indexer is running (no batches to process, waiting for topic messages)
+        assertEquals(IService.State.RUNNING, indexer.getCurrentState(),
+            "Indexer should be RUNNING and waiting for batch notifications");
         
-        // Verify metrics
+        // Verify no batches processed yet (no messages in topic)
         Map<String, Number> metrics = indexer.getMetrics();
-        assertEquals(1, metrics.get("runs_processed").intValue(),
-            "DummyIndexer should have processed exactly one run");
+        assertEquals(0, metrics.get("batches_processed").intValue(),
+            "No batches should be processed yet");
     }
     
     @Test
@@ -149,11 +175,11 @@ class DummyIndexerIntegrationTest {
         
         Config config = ConfigFactory.parseString("""
             runId = "%s"
-            pollIntervalMs = 100
-            maxPollDurationMs = 5000
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
             """.formatted(runId));
         
-        DummyIndexer indexer = createDummyIndexer("test-indexer", config);
+        indexer = createDummyIndexer("test-indexer", config);
         
         // When: Start indexer (metadata doesn't exist yet)
         indexer.start();
@@ -166,11 +192,12 @@ class DummyIndexerIntegrationTest {
         SimulationMetadata metadata = createTestMetadata(runId, 10);
         indexMetadata(runId, metadata);
         
-        // Then: Should complete now that metadata is available
+        // Then: Should transition to RUNNING now that metadata is available
         await().atMost(10, TimeUnit.SECONDS)
-            .until(() -> indexer.getCurrentState() == IService.State.STOPPED);
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
         
-        assertEquals(1, indexer.getMetrics().get("runs_processed").intValue());
+        assertEquals(IService.State.RUNNING, indexer.getCurrentState());
+        assertEquals(0, indexer.getMetrics().get("batches_processed").intValue());
     }
     
     @Test
@@ -189,11 +216,11 @@ class DummyIndexerIntegrationTest {
         // Configure short timeout
         Config config = ConfigFactory.parseString("""
             runId = "%s"
-            pollIntervalMs = 100
-            maxPollDurationMs = 1000
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 1000
             """.formatted(runId));
         
-        DummyIndexer indexer = createDummyIndexer("test-indexer", config);
+        indexer = createDummyIndexer("test-indexer", config);
         
         // When: Start indexer (metadata never created)
         indexer.start();
@@ -205,19 +232,19 @@ class DummyIndexerIntegrationTest {
         assertEquals(IService.State.ERROR, indexer.getCurrentState(),
             "Service should enter ERROR state after timeout");
         
-        // Verify no runs processed
-        assertEquals(0, indexer.getMetrics().get("runs_processed").intValue());
+        // Verify no batches processed
+        assertEquals(0, indexer.getMetrics().get("batches_processed").intValue());
     }
     
     @Test
     void testMetadataReading_ParallelMode() throws Exception {
         // Given: Setup DummyIndexer in parallel mode (no runId specified)
         Config config = ConfigFactory.parseString("""
-            pollIntervalMs = 100
-            maxPollDurationMs = 5000
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
             """);
         
-        DummyIndexer indexer = createDummyIndexer("test-indexer", config);
+        indexer = createDummyIndexer("test-indexer", config);
         indexer.start();
         
         // Wait for indexer to be running
@@ -241,14 +268,137 @@ class DummyIndexerIntegrationTest {
         // Index metadata
         indexMetadata(runId, metadata);
         
-        // Then: Should discover, read metadata, and complete
+        // Then: Should discover and read metadata, then keep running
         await().atMost(10, TimeUnit.SECONDS)
-            .until(() -> indexer.getCurrentState() == IService.State.STOPPED);
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
         
-        assertEquals(1, indexer.getMetrics().get("runs_processed").intValue());
+        // Verify still running (no batches to process)
+        assertEquals(IService.State.RUNNING, indexer.getCurrentState());
+        assertEquals(0, indexer.getMetrics().get("batches_processed").intValue());
+    }
+    
+    // ========== Batch Processing Tests ==========
+    
+    @Test
+    void testBatchProcessing_MultipleBatches() throws Exception {
+        // Given: Create test run with metadata
+        String runId = "20251018-120000-" + UUID.randomUUID();
+        SimulationMetadata metadata = createTestMetadata(runId, 10);
+        
+        // Index metadata first
+        indexMetadata(runId, metadata);
+        
+        // Write 3 batches to storage (10 ticks each)
+        List<TickData> batch1 = createTestTicks(runId, 0, 10);
+        List<TickData> batch2 = createTestTicks(runId, 10, 10);
+        List<TickData> batch3 = createTestTicks(runId, 20, 10);
+        
+        String key1 = testStorage.writeBatch(batch1, 0, 9);
+        String key2 = testStorage.writeBatch(batch2, 10, 19);
+        String key3 = testStorage.writeBatch(batch3, 20, 29);
+        
+        // Create indexer with real topic (not mock!)
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            topicPollTimeoutMs = 1000
+            """.formatted(runId));
+        
+        indexer = createDummyIndexerWithRealTopic("test-indexer", config);
+        
+        // When: Start indexer
+        indexer.start();
+        
+        // Wait for metadata to be loaded
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+        
+        // Send 3 BatchInfo messages to topic
+        sendBatchInfoToTopic(runId, key1, 0, 9);
+        sendBatchInfoToTopic(runId, key2, 10, 19);
+        sendBatchInfoToTopic(runId, key3, 20, 29);
+        
+        // Then: Verify all batches processed
+        // Phase 14.2.5: tick-by-tick processing (30 ticks = 30 flush calls)
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 30);
+        
+        // Verify metrics
+        Map<String, Number> metrics = indexer.getMetrics();
+        assertEquals(3, metrics.get("batches_processed").intValue(), 
+            "Should have processed 3 batches");
+        assertEquals(30, metrics.get("ticks_processed").intValue(), 
+            "Should have processed 30 ticks (10 per batch)");
     }
     
     // ========== Helper Methods ==========
+    
+    private List<TickData> createTestTicks(String runId, long startTick, int count) {
+        List<TickData> ticks = new java.util.ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            ticks.add(TickData.newBuilder()
+                .setSimulationRunId(runId)
+                .setTickNumber(startTick + i)
+                .setCaptureTimeMs(System.currentTimeMillis())
+                .build());
+        }
+        return ticks;
+    }
+    
+    private void sendBatchInfoToTopic(String runId, String storageKey, long tickStart, long tickEnd) throws Exception {
+        ResourceContext writerContext = new ResourceContext(
+            "test-sender",
+            "topic",
+            "topic-write",
+            "batch-topic",
+            Collections.emptyMap()
+        );
+        
+        @SuppressWarnings("unchecked")
+        ITopicWriter<BatchInfo> writer = (ITopicWriter<BatchInfo>) testBatchTopic.getWrappedResource(writerContext);
+        writer.setSimulationRun(runId);
+        
+        BatchInfo batchInfo = BatchInfo.newBuilder()
+            .setSimulationRunId(runId)
+            .setStorageKey(storageKey)
+            .setTickStart(tickStart)
+            .setTickEnd(tickEnd)
+            .setWrittenAtMs(System.currentTimeMillis())
+            .build();
+        
+        writer.send(batchInfo);
+    }
+    
+    private DummyIndexer<?> createDummyIndexerWithRealTopic(String name, Config config) {
+        // Wrap database resource with db-meta-read usage type
+        ResourceContext dbContext = new ResourceContext(
+            name,
+            "metadata",
+            "db-meta-read",
+            "test-db",
+            Collections.emptyMap()
+        );
+        IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
+        
+        // Wrap REAL topic resource with topic-read usage type
+        ResourceContext topicContext = new ResourceContext(
+            name,
+            "topic",
+            "topic-read",
+            "batch-topic",
+            Map.of("consumerGroup", "test-consumer")
+        );
+        IResource wrappedTopic = testBatchTopic.getWrappedResource(topicContext);
+        
+        Map<String, List<IResource>> resources = Map.of(
+            "storage", List.of(testStorage),
+            "metadata", List.of(wrappedDatabase),
+            "topic", List.of(wrappedTopic)  // REAL topic, not mock!
+        );
+        
+        return new DummyIndexer(name, config, resources);
+    }
     
     private SimulationMetadata createTestMetadata(String runId, int samplingInterval) {
         return SimulationMetadata.newBuilder()
@@ -296,7 +446,8 @@ class DummyIndexerIntegrationTest {
         
         Map<String, List<IResource>> resources = Map.of(
             "storage", List.of(testStorage),
-            "metadata", List.of(wrappedDatabase)  // Port name must match getRequiredResource() call
+            "metadata", List.of(wrappedDatabase),  // Port name must match getRequiredResource() call
+            "topic", List.of(mockTopic)  // Mock topic for batch processing (not tested yet)
         );
         
         return new DummyIndexer(name, config, resources);

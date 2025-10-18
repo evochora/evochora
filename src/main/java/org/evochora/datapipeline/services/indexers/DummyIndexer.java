@@ -1,76 +1,61 @@
 package org.evochora.datapipeline.services.indexers;
 
 import com.typesafe.config.Config;
-import org.evochora.datapipeline.api.contracts.BatchInfo;
+import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.database.IMetadataReader;
-import org.evochora.datapipeline.services.indexers.components.MetadataReadingComponent;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Test indexer for validating metadata reading infrastructure.
+ * Test indexer for validating batch indexing infrastructure.
  * <p>
- * <strong>Phase 2.5.1 Scope:</strong>
+ * <strong>Phase 14.2.5 Scope:</strong>
  * <ul>
- *   <li>Discovers simulation run</li>
- *   <li>Waits for metadata to be indexed (polls database)</li>
- *   <li>Reads and logs metadata (especially samplingInterval)</li>
- *   <li>Does NOT process batches (added in Phase 2.5.2)</li>
+ *   <li>Extends {@link AbstractBatchIndexer} for batch processing</li>
+ *   <li>Uses MetadataReadingComponent (waits for metadata before processing)</li>
+ *   <li>Processes batches from batch-topic</li>
+ *   <li>Reads TickData from storage (length-delimited format)</li>
+ *   <li>Logs tick counts (no database writes)</li>
  * </ul>
  * <p>
- * <strong>Purpose:</strong> Validate metadata reading capability before adding
- * batch coordination and processing.
+ * <strong>Purpose:</strong> Validate AbstractBatchIndexer infrastructure and component
+ * system before implementing production indexers (EnvironmentIndexer, OrganismIndexer).
  * <p>
- * <strong>Note:</strong> DummyIndexer will later be migrated to use BatchInfo from topic
- * instead of polling the database. Currently uses BatchInfo as message type.
+ * <strong>Thread Safety:</strong> This class is <strong>NOT thread-safe</strong>.
+ * Each service instance must run in exactly one thread.
  *
  * @param <ACK> The acknowledgment token type (implementation-specific, e.g., H2's AckToken)
  */
-public class DummyIndexer<ACK> extends AbstractIndexer<BatchInfo, ACK> {
-    private static final Logger log = LoggerFactory.getLogger(DummyIndexer.class);
+public class DummyIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     
-    private final IMetadataReader metadataReader;
-    private final MetadataReadingComponent metadataComponent;
-    private final AtomicLong runsProcessed = new AtomicLong(0);
-    
+    /**
+     * Creates a new DummyIndexer.
+     *
+     * @param name Service name (must not be null/blank)
+     * @param options Configuration for this indexer (must not be null)
+     * @param resources Resources for this indexer (must not be null)
+     */
     public DummyIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
+    }
+    
+    // No need to override getRequiredComponents() - default is METADATA which is correct! ✅
+    
+    @Override
+    protected void flushTicks(List<TickData> ticks) {
+        // Phase 14.2.5: Log-only (will always receive exactly 1 tick)
+        // Phase 14.2.6+: Will receive multiple ticks from buffer flush
+        // Metrics are tracked by AbstractBatchIndexer
         
-        // Setup metadata reader and component
-        this.metadataReader = getRequiredResource("metadata", IMetadataReader.class);
-        int pollIntervalMs = options.hasPath("pollIntervalMs") ? options.getInt("pollIntervalMs") : 1000;
-        int maxPollDurationMs = options.hasPath("maxPollDurationMs") ? options.getInt("maxPollDurationMs") : 300000;
-        
-        this.metadataComponent = new MetadataReadingComponent(metadataReader, pollIntervalMs, maxPollDurationMs);
+        log.debug("Flushed {} ticks (DummyIndexer: no DB writes)", ticks.size());
     }
     
     @Override
-    protected void indexRun(String runId) throws Exception {
-        // Use try-with-resources to ensure connection cleanup
-        try (IMetadataReader reader = metadataReader) {
-            log.debug("Starting metadata reading for run: {}", runId);
-            
-            // Load metadata (polls until available)
-            metadataComponent.loadMetadata(runId);
-            
-            runsProcessed.incrementAndGet();
-            
-            log.debug("Successfully read metadata for run: {}", runId);
-            
-            // Phase 2.5.1: Stop after metadata (no batch processing yet)
-        }  // AutoCloseable.close() releases connection
-    }
-    
-    @Override
-    protected void addCustomMetrics(Map<String, Number> metrics) {
-        super.addCustomMetrics(metrics);
-        
-        metrics.put("runs_processed", runsProcessed.get());
+    protected void logStarted() {
+        log.info("DummyIndexer started: metadata=[pollInterval={}ms, maxPollDuration={}ms], topicPollTimeout={}ms",
+            indexerOptions.hasPath("metadataPollIntervalMs") ? indexerOptions.getInt("metadataPollIntervalMs") : "default",
+            indexerOptions.hasPath("metadataMaxPollDurationMs") ? indexerOptions.getInt("metadataMaxPollDurationMs") : "default",
+            indexerOptions.hasPath("topicPollTimeoutMs") ? indexerOptions.getInt("topicPollTimeoutMs") : 5000);
     }
 }
-
