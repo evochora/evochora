@@ -6,6 +6,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.datapipeline.services.indexers.components.MetadataReadingComponent;
+import org.evochora.datapipeline.services.indexers.components.TickBufferingComponent;
 import org.evochora.datapipeline.api.resources.database.IMetadataReader;
 
 import java.util.EnumSet;
@@ -78,25 +79,28 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         // Template method: Let subclass configure components
         this.components = createComponents();
         
-        // Phase 14.2.5: Simple configurable timeout
-        // Phase 14.2.6: Will be automatically set to flushTimeout
-        this.topicPollTimeoutMs = options.hasPath("topicPollTimeoutMs") 
-            ? options.getInt("topicPollTimeoutMs") 
-            : 5000;
+        // Phase 14.2.6: Automatically set topicPollTimeout to flushTimeout if buffering enabled
+        if (components != null && components.buffering != null) {
+            this.topicPollTimeoutMs = (int) components.buffering.getFlushTimeoutMs();
+        } else {
+            this.topicPollTimeoutMs = options.hasPath("topicPollTimeoutMs") 
+                ? options.getInt("topicPollTimeoutMs") 
+                : 5000;
+        }
     }
     
     /**
      * Component types available for batch indexers.
      * <p>
      * Used by {@link #getRequiredComponents()} to declare which components to use.
-     * <p>
-     * Phase 14.2.5 scope: Only METADATA available!
      */
     public enum ComponentType {
         /** Metadata reading component (polls DB for simulation metadata). */
-        METADATA
+        METADATA,
         
-        // Phase 14.2.6: BUFFERING will be added
+        /** Tick buffering component (buffers ticks for batch inserts). Phase 14.2.6. */
+        BUFFERING
+        
         // Phase 14.2.8: DLQ will be added
     }
     
@@ -122,9 +126,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * @return set of component types to use (never null)
      */
     protected Set<ComponentType> getRequiredComponents() {
-        // Phase 14.2.5: Default is METADATA only
-        // Phase 14.2.6+: Default will be METADATA + BUFFERING
-        return EnumSet.of(ComponentType.METADATA);
+        // Phase 14.2.6: Default is METADATA + BUFFERING
+        return EnumSet.of(ComponentType.METADATA, ComponentType.BUFFERING);
     }
     
     /**
@@ -159,7 +162,13 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 metadataReader, pollIntervalMs, maxPollDurationMs));
         }
         
-        // Phase 14.2.6: BUFFERING component handling will be added here
+        // Component 2: Tick Buffering (Phase 14.2.6)
+        if (required.contains(ComponentType.BUFFERING)) {
+            int insertBatchSize = indexerOptions.getInt("insertBatchSize");
+            long flushTimeoutMs = indexerOptions.getLong("flushTimeoutMs");
+            builder.withBuffering(new TickBufferingComponent(insertBatchSize, flushTimeoutMs));
+        }
+        
         // Phase 14.2.8: DLQ component handling will be added here
         
         return builder.build();
@@ -167,25 +176,40 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     
     @Override
     protected final void indexRun(String runId) throws Exception {
-        // Step 1: Wait for metadata (if component exists)
-        if (components != null && components.metadata != null) {
-            components.metadata.loadMetadata(runId);
-            log.debug("Metadata loaded for run: {}", runId);
-        }
-        
-        // Step 2: Topic loop
-        while (!Thread.currentThread().isInterrupted()) {
-            TopicMessage<BatchInfo, ACK> msg = topic.poll(topicPollTimeoutMs, TimeUnit.MILLISECONDS);
-            
-            if (msg == null) {
-                // Phase 14.2.6: Will check buffering component for timeout-based flush here
-                continue;
+        try {
+            // Step 1: Wait for metadata (if component exists)
+            if (components != null && components.metadata != null) {
+                components.metadata.loadMetadata(runId);
+                log.debug("Metadata loaded for run: {}", runId);
             }
             
-            processBatchMessage(msg);
+            // Step 2: Topic loop
+            while (!Thread.currentThread().isInterrupted()) {
+                TopicMessage<BatchInfo, ACK> msg = topic.poll(topicPollTimeoutMs, TimeUnit.MILLISECONDS);
+                
+                if (msg == null) {
+                    // Check buffering component for timeout-based flush
+                    if (components != null && components.buffering != null 
+                        && components.buffering.shouldFlush()) {
+                        flushAndAcknowledge();
+                    }
+                    continue;
+                }
+                
+                processBatchMessage(msg);
+            }
+        } finally {
+            // Final flush of remaining buffered ticks (always executed, even on interrupt!)
+            if (components != null && components.buffering != null 
+                && components.buffering.getBufferSize() > 0) {
+                try {
+                    flushAndAcknowledge();
+                } catch (Exception e) {
+                    log.error("Final flush failed during shutdown");
+                    throw e;
+                }
+            }
         }
-        
-        // Phase 14.2.6: Final flush of remaining buffered ticks here
     }
     
     /**
@@ -212,25 +236,70 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             // Storage handles length-delimited format automatically
             List<TickData> ticks = storage.readBatch(batch.getStorageKey());
             
-            // WITHOUT buffering - tick-by-tick processing
-            for (TickData tick : ticks) {
-                flushTicks(List.of(tick));
+            if (components != null && components.buffering != null) {
+                // WITH buffering: Add to buffer, ACK after flush
+                components.buffering.addTicksFromBatch(ticks, batchId, msg);
+                
+                log.debug("Buffered {} ticks from {}, buffer size: {}", 
+                    ticks.size(), batch.getStorageKey(), 
+                    components.buffering.getBufferSize());
+                
+                // Flush if needed
+                if (components.buffering.shouldFlush()) {
+                    flushAndAcknowledge();
+                }
+            } else {
+                // WITHOUT buffering: tick-by-tick processing
+                for (TickData tick : ticks) {
+                    flushTicks(List.of(tick));
+                }
+                
+                // ACK after ALL ticks from batch are processed
+                topic.ack(msg);
+                
+                // Track metrics
+                batchesProcessed.incrementAndGet();
+                ticksProcessed.addAndGet(ticks.size());
+                
+                log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
+                         ticks.size(), batch.getStorageKey());
             }
-            
-            // ACK after ALL ticks from batch are processed
-            topic.ack(msg);
-            
-            // Track metrics
-            batchesProcessed.incrementAndGet();
-            ticksProcessed.addAndGet(ticks.size());
-            
-            log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
-                     ticks.size(), batch.getStorageKey());
             
         } catch (Exception e) {
             log.error("Failed to process batch: {}", batchId);
             throw e;  // NO acknowledge - redelivery!
         }
+    }
+    
+    /**
+     * Flushes buffered ticks and acknowledges completed batches.
+     * <p>
+     * Called when buffer is full or timeout occurs. Flushes ticks to database,
+     * acknowledges only fully completed batches, and updates metrics.
+     * <p>
+     * Phase 14.2.6+: Used by buffering logic only.
+     *
+     * @throws Exception if flush or ACK fails
+     */
+    private void flushAndAcknowledge() throws Exception {
+        TickBufferingComponent.FlushResult<ACK> result = components.buffering.flush();
+        if (result.ticks().isEmpty()) {
+            return;
+        }
+        
+        // Call indexer-specific flush
+        flushTicks(result.ticks());
+        
+        // ACK all completed batches
+        for (TopicMessage<?, ACK> completedMsg : result.completedMessages()) {
+            @SuppressWarnings("unchecked")
+            TopicMessage<BatchInfo, ACK> batchMsg = (TopicMessage<BatchInfo, ACK>) completedMsg;
+            topic.ack(batchMsg);
+        }
+        
+        // Update metrics
+        batchesProcessed.addAndGet(result.completedMessages().size());
+        ticksProcessed.addAndGet(result.ticks().size());
     }
     
     /**
@@ -267,7 +336,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * Component configuration for batch indexers.
      * <p>
      * Phase 14.2.5: Only contains MetadataReadingComponent.
-     * Phase 14.2.6+: TickBufferingComponent, IdempotencyComponent added.
+     * Phase 14.2.6+: TickBufferingComponent added.
      * <p>
      * <strong>Thread Safety:</strong> Components are <strong>NOT thread-safe</strong>.
      * Each service instance creates its own component instances. Never share
@@ -285,8 +354,13 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         /** Metadata reading component (optional). */
         public final MetadataReadingComponent metadata;
         
-        private BatchIndexerComponents(MetadataReadingComponent metadata) {
+        /** Tick buffering component (optional, Phase 14.2.6). */
+        public final TickBufferingComponent buffering;
+        
+        private BatchIndexerComponents(MetadataReadingComponent metadata,
+                                       TickBufferingComponent buffering) {
             this.metadata = metadata;
+            this.buffering = buffering;
         }
         
         /**
@@ -306,6 +380,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
          */
         public static class Builder {
             private MetadataReadingComponent metadata;
+            private TickBufferingComponent buffering;
             
             /**
              * Configures metadata reading component.
@@ -319,12 +394,23 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             }
             
             /**
+             * Configures tick buffering component.
+             *
+             * @param c Tick buffering component (may be null)
+             * @return this builder for chaining
+             */
+            public Builder withBuffering(TickBufferingComponent c) {
+                this.buffering = c;
+                return this;
+            }
+            
+            /**
              * Builds the component configuration.
              *
              * @return new BatchIndexerComponents instance
              */
             public BatchIndexerComponents build() {
-                return new BatchIndexerComponents(metadata);
+                return new BatchIndexerComponents(metadata, buffering);
             }
         }
     }

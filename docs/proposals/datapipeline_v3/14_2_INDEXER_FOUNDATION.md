@@ -251,7 +251,7 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
 
 ### Phase 14.2.5: AbstractBatchIndexer Foundation + DummyIndexer
 
-**Status:** Ready for implementation
+**Status:** ✅ Completed
 
 **Goal:** Create `AbstractBatchIndexer` with topic loop and storage-read logic. `DummyIndexer` only implements `getRequiredComponents()` and `flushTicks()`.
 
@@ -279,6 +279,10 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     
     private final BatchIndexerComponents components;
     private final int topicPollTimeoutMs;
+    
+    // Metrics (O(1) tracking)
+    private final AtomicLong batchesProcessed = new AtomicLong(0);
+    private final AtomicLong ticksProcessed = new AtomicLong(0);
     
     protected AbstractBatchIndexer(String name, 
                                    Config options, 
@@ -412,19 +416,28 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             
             // WITHOUT buffering - tick-by-tick processing
             for (TickData tick : ticks) {
-                flushTicks(List.of(tick));
-            }
+                    flushTicks(List.of(tick));
+                ticksProcessed.incrementAndGet();  // Track each tick
+                }
             
             // ACK after ALL ticks from batch are processed
             topic.ack(msg);
-            
-            log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
+            batchesProcessed.incrementAndGet();  // Track each batch
+                
+                log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
                      ticks.size(), batch.getStorageKey());
             
         } catch (Exception e) {
             log.error("Failed to process batch: {}", batchId);
             throw e;  // NO acknowledge - redelivery!
         }
+    }
+    
+    @Override
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);
+        metrics.put("batches_processed", batchesProcessed.get());
+        metrics.put("ticks_processed", ticksProcessed.get());
     }
     
     /**
@@ -529,19 +542,36 @@ dummyIndexer {
 ```
 
 **Deliverables:**
-- `AbstractBatchIndexer` with topic loop + storage-read logic
-- `ComponentType` enum and `getRequiredComponents()` template method
-- Final `createComponents()` method that uses `getRequiredComponents()`
-- `BatchIndexerComponents` helper class (Phase 14.2.5: only metadata)
-- Standardized config parameters: `metadataPollIntervalMs`, `metadataMaxPollDurationMs`
-- `DummyIndexer` with `getRequiredComponents()` and `flushTicks()` implementations
-- Integration tests (metadata reading + tick-by-tick processing)
+- ✅ `AbstractBatchIndexer` with topic loop + storage-read logic + metrics
+  - `ComponentType` enum (Phase 14.2.5: only `METADATA`)
+  - Template method `getRequiredComponents()` (default: `METADATA`)
+  - Final `createComponents()` using `getRequiredComponents()`
+  - `processBatchMessage()` with tick-by-tick processing
+  - Metrics: `batches_processed`, `ticks_processed` (O(1) AtomicLong)
+  - Override `addCustomMetrics()` to expose batch/tick counters
+- ✅ `BatchIndexerComponents` helper class (Phase 14.2.5: only metadata field)
+- ✅ Standardized config parameters: `metadataPollIntervalMs`, `metadataMaxPollDurationMs`, `topicPollTimeoutMs`
+- ✅ `DummyIndexer` refactored to extend `AbstractBatchIndexer`
+  - Only `flushTicks()` implemented (log-only, no DB writes)
+  - Uses default `getRequiredComponents()` (no override needed)
+  - All metadata/metric logic removed (now in AbstractBatchIndexer)
+- ✅ Unit tests: `AbstractBatchIndexerTest` (6 tests)
+  - ACK after successful processing
+  - No ACK on storage read error
+  - No ACK on flush error
+  - Tick-by-tick processing (each tick flushed individually)
+  - Metadata loaded before batch processing
+  - Metrics tracking (batches_processed, ticks_processed)
+- ✅ Integration tests: `DummyIndexerIntegrationTest` (5 tests)
+  - Metadata reading (success, polling, parallel mode, timeout)
+  - Batch processing end-to-end (BatchInfo → Storage → Ticks → ACK)
+- ✅ Configuration: `evochora.conf` with full DummyIndexer config and comments
 
 ---
 
 ### Phase 14.2.6: TickBufferingComponent Implementation
 
-**Status:** Ready for implementation
+**Status:** ✅ Completed
 
 **Goal:** Add `TickBufferingComponent` with batch-level ACK tracking to `AbstractBatchIndexer`.
 
@@ -996,15 +1026,37 @@ dummyIndexer {
 ```
 
 **Deliverables:**
-- `ComponentType.BUFFERING` enum value
-- `TickBufferingComponent` implementation with ACK tracking and **Thread-Safety JavaDoc**
-- Updated final `createComponents()` to create buffering component
-- Updated `AbstractBatchIndexer` with buffering logic (if-else branch)
-- Updated `BatchIndexerComponents` with buffering field
-- Standardized config parameters: `insertBatchSize`, `flushTimeoutMs`
-- Updated default `getRequiredComponents()` to return METADATA + BUFFERING
-- **DummyIndexer needs NO changes** - uses new default automatically! ✅
-- Integration tests (cross-batch ACK, timeout-based flush, buffer loss recovery)
+- ✅ `ComponentType.BUFFERING` enum value added to `AbstractBatchIndexer`
+- ✅ `TickBufferingComponent` implementation with ACK tracking and **Thread-Safety JavaDoc**
+  - `BatchFlushState` inner class for per-batch completion tracking
+  - `FlushResult<ACK>` with ticks and completedMessages
+  - `addTicksFromBatch()`, `shouldFlush()`, `flush()`, `getBufferSize()`, `getFlushTimeoutMs()`
+- ✅ Updated final `createComponents()` to create buffering component from config
+- ✅ Updated `AbstractBatchIndexer` with buffering logic (if-else branch in `processBatchMessage()`)
+- ✅ Added `flushAndAcknowledge()` helper method with metric updates
+- ✅ Added timeout flush check in `indexRun()` topic loop (`msg == null` case)
+- ✅ Added final flush in finally block (guarantees flush on shutdown, even on interrupt!)
+- ✅ Updated `BatchIndexerComponents` with buffering field and builder method
+- ✅ Standardized config parameters: `insertBatchSize`, `flushTimeoutMs`
+- ✅ Updated default `getRequiredComponents()` to return METADATA + BUFFERING
+- ✅ Auto-set `topicPollTimeoutMs = flushTimeoutMs` when buffering enabled
+- ✅ **DummyIndexer needs NO changes** - uses new default automatically!
+- ✅ Unit tests: `TickBufferingComponentTest` (5 tests)
+  - Size-triggered flush
+  - Timeout-triggered flush
+  - Cross-batch ACK tracking
+  - Partial batch not ACKed
+  - Empty flush
+- ✅ Integration tests: `DummyIndexerIntegrationTest` (4 tests for buffering)
+  - Normal flush (size trigger)
+  - Timeout flush
+  - Cross-batch ACK tracking (5 batches, 2 flushes)
+  - Final flush on shutdown
+- ⚠️ **Deferred test:** Buffer Loss Recovery (crash simulation without graceful shutdown)
+  - Reason: DummyIndexer has no DB writes → cannot test MERGE idempotency
+  - Will be implemented for real indexers (EnvironmentIndexer, OrganismIndexer)
+  - See spec lines 2395-2434 for implementation when needed
+- ✅ Configuration: `evochora.conf` with buffering config uncommented and documented
 
 ---
 
@@ -2257,8 +2309,8 @@ services {
 - Specific `@ExpectLog` patterns for WARN/ERROR
 
 **DummyIndexer Evolution:**
-- Phase 14.2.5: Metadata wait + Storage read + Tick-by-tick processing (log-only)
-- Phase 14.2.6: Add buffering component (cross-batch)
+- Phase 14.2.5: ✅ Metadata wait + Storage read + Tick-by-tick processing (log-only)
+- Phase 14.2.6: ✅ Buffering component enabled by default (cross-batch ACK tracking)
 
 ### Critical Test Cases for Phase 14.2.6 (Buffering)
 
@@ -2295,13 +2347,16 @@ services {
 - ✅ Edge-case: normal flow (full buffer) is tested automatically, but shutdown is not
 - ✅ ACK semantics: verifies partial batches are correctly NOT acknowledged
 
-**5. Buffer Loss Recovery (Crash Simulation):**
-- Send 3 batches, add to buffer
-- "Crash" before flush (don't call flush, just exit)
-- Restart service
-- Verify batches redelivered (not ACKed)
-- Verify MERGE prevents duplicates
-- Verify all ticks present exactly once
+**5. Buffer Loss Recovery (Crash Simulation) - ⚠️ Deferred for Real Indexers:**
+- **Status:** Not implemented for DummyIndexer (no DB writes to test MERGE)
+- **When to implement:** When creating EnvironmentIndexer or OrganismIndexer
+- **Test scenario:**
+  - Send 3 batches, add to buffer
+  - "Crash" before flush (don't call flush, just exit)
+  - Restart service
+  - Verify batches redelivered (not ACKed)
+  - **Verify MERGE prevents duplicates** (requires real DB writes!)
+  - Verify all ticks present exactly once in database
 
 **Test Example (Final Flush on Shutdown):**
 
@@ -2362,9 +2417,11 @@ void testFinalFlushOnShutdown() throws Exception {
 }
 ```
 
-**Test Example (Buffer Loss Recovery):**
+**Test Example (Buffer Loss Recovery) - ⚠️ Implement for Real Indexers:**
 
 ```java
+// TODO: Implement this test for EnvironmentIndexer/OrganismIndexer
+// Cannot test MERGE idempotency with DummyIndexer (no DB writes)
 @Test
 @Tag("integration")
 void testBufferLossRecovery() throws Exception {
@@ -2511,8 +2568,8 @@ Upon completion of Phase 14.2.5 and 14.2.6:
 - Phase 14.2.2: Metadata Notification Write ✅ Completed
 - Phase 14.2.3: Metadata Notification Read ✅ Completed
 - Phase 14.2.4: Batch Notification Write ✅ Completed
-- Phase 14.2.5: AbstractBatchIndexer + DummyIndexer (Metadata + Storage-Read + Tick-by-Tick) - Ready
-- Phase 14.2.6: TickBufferingComponent (Cross-Batch Buffering) - Ready
+- Phase 14.2.5: AbstractBatchIndexer + DummyIndexer (Metadata + Storage-Read + Tick-by-Tick) ✅ Completed
+- Phase 14.2.6: TickBufferingComponent (Cross-Batch Buffering) ✅ Completed
 - Phase 14.2.7: IdempotencyComponent (Performance Optimization) - ⚠️ **Specification ready - Implementation deferred (YAGNI)**
 - Phase 14.2.8: DlqComponent (Poison Message Handling) - ⚠️ **Specification ready - Implementation deferred (YAGNI)**
 

@@ -203,11 +203,11 @@ class DummyIndexerIntegrationTest {
     @Test
     @ExpectLogs({
         @ExpectLog(level = ERROR,
-                   loggerPattern = "org.evochora.datapipeline.services.indexers.DummyIndexer",
+                   loggerPattern = ".*DummyIndexer.*",
                    messagePattern = "Indexing timeout for run: test-run-.*"),
         @ExpectLog(level = ERROR,
-                   loggerPattern = "org.evochora.datapipeline.services.indexers.DummyIndexer",
-                   messagePattern = "DummyIndexer stopped with ERROR due to RuntimeException")
+                   loggerPattern = ".*DummyIndexer.*",
+                   messagePattern = ".*DummyIndexer.* stopped with ERROR due to RuntimeException")
     })
     void testMetadataReading_Timeout() throws Exception {
         // Given: Create run ID but never index metadata
@@ -332,7 +332,234 @@ class DummyIndexerIntegrationTest {
             "Should have processed 30 ticks (10 per batch)");
     }
     
+    // ========== Buffering Tests (Phase 14.2.6) ==========
+    
+    @Test
+    void testBuffering_NormalFlush() throws Exception {
+        // Given: Create test run with metadata
+        String runId = "20251018-140000-" + UUID.randomUUID();
+        SimulationMetadata metadata = createTestMetadata(runId, 10);
+        indexMetadata(runId, metadata);
+        
+        // Write 3 batches to storage (100 ticks each), insertBatchSize=250
+        List<TickData> batch1 = createTestTicks(runId, 0, 100);
+        List<TickData> batch2 = createTestTicks(runId, 100, 100);
+        List<TickData> batch3 = createTestTicks(runId, 200, 100);
+        
+        String key1 = testStorage.writeBatch(batch1, 0, 99);
+        String key2 = testStorage.writeBatch(batch2, 100, 199);
+        String key3 = testStorage.writeBatch(batch3, 200, 299);
+        
+        // Create indexer WITH buffering (insertBatchSize=250)
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            insertBatchSize = 250
+            flushTimeoutMs = 10000
+            """.formatted(runId));
+        
+        indexer = createDummyIndexerWithBuffering("test-indexer", config);
+        
+        // When: Start indexer and send 3 batches
+        indexer.start();
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+        
+        sendBatchInfoToTopic(runId, key1, 0, 99);
+        sendBatchInfoToTopic(runId, key2, 100, 199);
+        sendBatchInfoToTopic(runId, key3, 200, 299);
+        
+        // Then: Verify flush triggered by size (buffer: 300 >= insertBatchSize: 250)
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 250);
+        
+        // Verify at least one flush happened
+        Map<String, Number> metrics = indexer.getMetrics();
+        assertTrue(metrics.get("ticks_processed").intValue() >= 250,
+            "At least 250 ticks should be flushed");
+    }
+    
+    @Test
+    void testBuffering_TimeoutFlush() throws Exception {
+        // Given: Create test run with metadata
+        String runId = "20251018-141000-" + UUID.randomUUID();
+        SimulationMetadata metadata = createTestMetadata(runId, 10);
+        indexMetadata(runId, metadata);
+        
+        // Write one small batch (< insertBatchSize)
+        List<TickData> batch1 = createTestTicks(runId, 0, 50);
+        String key1 = testStorage.writeBatch(batch1, 0, 49);
+        
+        // Create indexer with short flush timeout
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            insertBatchSize = 1000
+            flushTimeoutMs = 1000
+            """.formatted(runId));
+        
+        indexer = createDummyIndexerWithBuffering("test-indexer", config);
+        
+        // When: Start and send batch
+        indexer.start();
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+        
+        sendBatchInfoToTopic(runId, key1, 0, 49);
+        
+        // Then: Verify timeout-triggered flush (wait for flushTimeout + buffer)
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 50);
+        
+        assertEquals(50, indexer.getMetrics().get("ticks_processed").intValue(),
+            "All 50 ticks should be flushed after timeout");
+    }
+    
+    @Test
+    void testBuffering_CrossBatchAck() throws Exception {
+        // Given: insertBatchSize=250, batches are 100 ticks each
+        String runId = "20251018-142000-" + UUID.randomUUID();
+        SimulationMetadata metadata = createTestMetadata(runId, 10);
+        indexMetadata(runId, metadata);
+        
+        // Write 5 batches to storage
+        List<TickData> batch1 = createTestTicks(runId, 0, 100);
+        List<TickData> batch2 = createTestTicks(runId, 100, 100);
+        List<TickData> batch3 = createTestTicks(runId, 200, 100);
+        List<TickData> batch4 = createTestTicks(runId, 300, 100);
+        List<TickData> batch5 = createTestTicks(runId, 400, 100);
+        
+        String key1 = testStorage.writeBatch(batch1, 0, 99);
+        String key2 = testStorage.writeBatch(batch2, 100, 199);
+        String key3 = testStorage.writeBatch(batch3, 200, 299);
+        String key4 = testStorage.writeBatch(batch4, 300, 399);
+        String key5 = testStorage.writeBatch(batch5, 400, 499);
+        
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            insertBatchSize = 250
+            flushTimeoutMs = 10000
+            """.formatted(runId));
+        
+        indexer = createDummyIndexerWithBuffering("test-indexer", config);
+        
+        // When: Start and send batches
+        indexer.start();
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+        
+        sendBatchInfoToTopic(runId, key1, 0, 99);      // buffer: 100
+        sendBatchInfoToTopic(runId, key2, 100, 199);   // buffer: 200
+        sendBatchInfoToTopic(runId, key3, 200, 299);   // buffer: 300 → FLUSH 250!
+        
+        // Then: Verify first flush (250 ticks)
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 250);
+        
+        // At this point: batch1 & batch2 fully flushed, batch3 only 50/100 flushed
+        // Continue with more batches
+        sendBatchInfoToTopic(runId, key4, 300, 399);   // buffer: 150 (50 + 100)
+        sendBatchInfoToTopic(runId, key5, 400, 499);   // buffer: 250 → FLUSH 250!
+        
+        // Verify second flush (total 500 ticks)
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 500);
+        
+        // All 5 batches should now be fully flushed
+        assertEquals(5, indexer.getMetrics().get("batches_processed").intValue(),
+            "All 5 batches should be ACKed (fully flushed)");
+        assertEquals(500, indexer.getMetrics().get("ticks_processed").intValue(),
+            "All 500 ticks should be processed");
+    }
+    
+    @Test
+    void testBuffering_FinalFlush() throws Exception {
+        // Given: Write batches that will trigger normal flush first
+        String runId = "20251018-143000-" + UUID.randomUUID();
+        SimulationMetadata metadata = createTestMetadata(runId, 10);
+        indexMetadata(runId, metadata);
+        
+        // Write batches: first 2 will trigger flush, 3rd will remain in buffer
+        List<TickData> batch1 = createTestTicks(runId, 0, 100);
+        List<TickData> batch2 = createTestTicks(runId, 100, 150);  // Total: 250 → triggers flush!
+        List<TickData> batch3 = createTestTicks(runId, 250, 50);   // Remaining in buffer
+        
+        String key1 = testStorage.writeBatch(batch1, 0, 99);
+        String key2 = testStorage.writeBatch(batch2, 100, 249);
+        String key3 = testStorage.writeBatch(batch3, 250, 299);
+        
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            insertBatchSize = 250
+            flushTimeoutMs = 60000
+            """.formatted(runId));
+        
+        indexer = createDummyIndexerWithBuffering("test-indexer", config);
+        
+        // When: Start and send batches
+        indexer.start();
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+        
+        sendBatchInfoToTopic(runId, key1, 0, 99);
+        sendBatchInfoToTopic(runId, key2, 100, 249);
+        sendBatchInfoToTopic(runId, key3, 250, 299);
+        
+        // Wait for first flush (250 ticks)
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 250);
+        
+        // At this point: 50 ticks remain in buffer (from batch3)
+        // Stop service (triggers final flush of remaining 50 ticks)
+        indexer.stop();
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.STOPPED);
+        
+        // Then: Verify final flush executed remaining buffered ticks
+        assertEquals(300, indexer.getMetrics().get("ticks_processed").intValue(),
+            "All 300 ticks should be flushed (250 normal + 50 final flush)");
+        assertEquals(3, indexer.getMetrics().get("batches_processed").intValue(),
+            "All 3 batches should be ACKed (batch3 ACKed after final flush)");
+    }
+    
     // ========== Helper Methods ==========
+    
+    private DummyIndexer<?> createDummyIndexerWithBuffering(String name, Config config) {
+        // Wrap database resource with db-meta-read usage type
+        ResourceContext dbContext = new ResourceContext(
+            name,
+            "metadata",
+            "db-meta-read",
+            "test-db",
+            Collections.emptyMap()
+        );
+        IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
+        
+        // Wrap REAL topic resource with topic-read usage type
+        ResourceContext topicContext = new ResourceContext(
+            name,
+            "topic",
+            "topic-read",
+            "batch-topic",
+            Map.of("consumerGroup", "test-buffering-" + UUID.randomUUID())  // Unique consumer group
+        );
+        IResource wrappedTopic = testBatchTopic.getWrappedResource(topicContext);
+        
+        Map<String, List<IResource>> resources = Map.of(
+            "storage", List.of(testStorage),
+            "metadata", List.of(wrappedDatabase),
+            "topic", List.of(wrappedTopic)
+        );
+        
+        // Phase 14.2.6 tests: Use regular DummyIndexer WITH buffering
+        return new DummyIndexer<>(name, config, resources);
+    }
     
     private List<TickData> createTestTicks(String runId, long startTick, int count) {
         List<TickData> ticks = new java.util.ArrayList<>();
@@ -397,7 +624,8 @@ class DummyIndexerIntegrationTest {
             "topic", List.of(wrappedTopic)  // REAL topic, not mock!
         );
         
-        return new DummyIndexer(name, config, resources);
+        // Phase 14.2.5 tests: Use indexer without buffering (tick-by-tick)
+        return new TestDummyIndexerWithoutBuffering(name, config, resources);
     }
     
     private SimulationMetadata createTestMetadata(String runId, int samplingInterval) {
@@ -450,7 +678,27 @@ class DummyIndexerIntegrationTest {
             "topic", List.of(mockTopic)  // Mock topic for batch processing (not tested yet)
         );
         
-        return new DummyIndexer(name, config, resources);
+        // Phase 14.2.5 tests: Use indexer without buffering (tick-by-tick)
+        return new TestDummyIndexerWithoutBuffering(name, config, resources);
+    }
+    
+    /**
+     * Test implementation of DummyIndexer that disables buffering.
+     * <p>
+     * Used by Phase 14.2.5 tests to test tick-by-tick processing.
+     * Phase 14.2.6 tests will use regular DummyIndexer with buffering.
+     */
+    private static class TestDummyIndexerWithoutBuffering extends DummyIndexer<Object> {
+        public TestDummyIndexerWithoutBuffering(String name, Config options, Map<String, List<IResource>> resources) {
+            super(name, options, resources);
+        }
+        
+        @Override
+        protected java.util.Set<ComponentType> getRequiredComponents() {
+            // Disable buffering for Phase 14.2.5 tests
+            return java.util.EnumSet.of(ComponentType.METADATA);
+        }
     }
 }
+
 

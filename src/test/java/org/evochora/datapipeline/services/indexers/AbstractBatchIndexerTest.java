@@ -401,6 +401,7 @@ class AbstractBatchIndexerTest {
         
         @Override
         protected Set<ComponentType> getRequiredComponents() {
+            // Phase 14.2.5 tests: No buffering (tick-by-tick)
             return withMetadata ? EnumSet.of(ComponentType.METADATA) : EnumSet.noneOf(ComponentType.class);
         }
         
