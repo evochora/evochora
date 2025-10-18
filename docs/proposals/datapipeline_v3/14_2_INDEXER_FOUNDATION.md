@@ -11,7 +11,7 @@ PersistenceService → Storage.writeBatch()
                          ↓
 Indexer → Topic.poll() [BLOCKING, no polling storage!]
        → MERGE-based idempotent processing (no duplicate inserts!)
-       → Buffer ticks (batch-overgreifend!)
+       → Buffer ticks (cross-batch!)
        → Flush → MERGE to DB
        → Topic.ack() [ONLY for batches fully flushed!]
 ```
@@ -21,7 +21,7 @@ Indexer → Topic.poll() [BLOCKING, no polling storage!]
 - ✅ Reliable delivery (Topic guarantees)
 - ✅ Competing consumers via Consumer Groups (built-in)
 - ✅ At-least-once delivery + MERGE = Exactly-once semantics
-- ✅ ACK only after ALL ticks of a batch are flushed (batch-overgreifend buffering safe!)
+- ✅ ACK only after ALL ticks of a batch are flushed (cross-batch buffering safe!)
 - ✅ 100% idempotent via MERGE (IdempotencyComponent optional for performance)
 
 ## Architecture Principles
@@ -253,7 +253,7 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
 
 **Status:** Ready for implementation
 
-**Goal:** Create `AbstractBatchIndexer` with topic loop and storage-read logic. `DummyIndexer` only implements `createComponents()` and `flushTicks()`.
+**Goal:** Create `AbstractBatchIndexer` with topic loop and storage-read logic. `DummyIndexer` only implements `getRequiredComponents()` and `flushTicks()`.
 
 **Phase 14.2.5 Scope:**
 - ✅ MetadataReadingComponent (wait for metadata before processing)
@@ -266,10 +266,14 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
 - Create `AbstractBatchIndexer` extending `AbstractIndexer`
 - Add `BatchIndexerComponents` helper class (Phase 14.2.5: only metadata component)
 - Topic loop + storage-read logic in `AbstractBatchIndexer.processBatchMessage()`
-- Template method `createComponents()` called in constructor
-- `DummyIndexer` extends `AbstractBatchIndexer` and implements `createComponents()` and `flushTicks()`
+- Template method `getRequiredComponents()` declares which components to use
+- Final method `createComponents()` creates components based on declaration
+- `DummyIndexer` extends `AbstractBatchIndexer` and implements `getRequiredComponents()` and `flushTicks()`
 
 **AbstractBatchIndexer Implementation:**
+
+*Note: Requires `import java.util.Set; import java.util.EnumSet;`*
+
 ```java
 public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInfo, ACK> {
     
@@ -292,17 +296,84 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     }
     
     /**
-     * Template method: Create components for this indexer.
+     * Component types available for batch indexers.
      * <p>
-     * Called once during construction. Subclasses can return null for minimal indexers
-     * or create specific components based on configuration.
+     * Used by {@link #getRequiredComponents()} to declare which components to use.
      * <p>
-     * Phase 14.2.5 scope: Only MetadataReadingComponent!
-     * Phase 14.2.6+: TickBufferingComponent, IdempotencyComponent added.
-     *
-     * @return component configuration (may be null for minimal indexers)
+     * Phase 14.2.5 scope: Only METADATA available!
      */
-    protected abstract BatchIndexerComponents createComponents();
+    public enum ComponentType {
+        /** Metadata reading component (polls DB for simulation metadata). */
+        METADATA
+        
+        // Phase 14.2.6: BUFFERING will be added
+        // Phase 14.2.8: DLQ will be added
+    }
+    
+    /**
+     * Template method: Declare which components this indexer uses.
+     * <p>
+     * Called once during construction. Subclasses can override to customize component usage.
+     * <p>
+     * <strong>Default:</strong> Returns METADATA only (Phase 14.2.5).
+     * Phase 14.2.6+ default: METADATA + BUFFERING.
+     * <p>
+     * <strong>Examples:</strong>
+     * <pre>
+     * // Use default (no override needed for standard case!)
+     * 
+     * // Minimal: No components at all
+     * @Override
+     * protected Set&lt;ComponentType&gt; getRequiredComponents() {
+     *     return EnumSet.noneOf(ComponentType.class);
+     * }
+     * </pre>
+     *
+     * @return set of component types to use (never null)
+     */
+    protected Set<ComponentType> getRequiredComponents() {
+        // Phase 14.2.5: Default is METADATA only
+        // Phase 14.2.6+: Default will be METADATA + BUFFERING
+        return EnumSet.of(ComponentType.METADATA);
+    }
+    
+    /**
+     * Creates components based on {@link #getRequiredComponents()}.
+     * <p>
+     * <strong>FINAL:</strong> Subclasses must NOT override this method.
+     * Instead, override {@link #getRequiredComponents()} to customize components.
+     * <p>
+     * All components use standardized config parameters:
+     * <ul>
+     *   <li>Metadata: {@code metadataPollIntervalMs}, {@code metadataMaxPollDurationMs}</li>
+     * </ul>
+     * <p>
+     * Phase 14.2.5 scope: Only METADATA component!
+     * Phase 14.2.6+: BUFFERING component added.
+     * Phase 14.2.8+: DLQ component added.
+     *
+     * @return component configuration (may be null if no components requested)
+     */
+    protected final BatchIndexerComponents createComponents() {
+        Set<ComponentType> required = getRequiredComponents();
+        if (required.isEmpty()) return null;
+        
+        var builder = BatchIndexerComponents.builder();
+        
+        // Component 1: Metadata Reading (Phase 14.2.5)
+        if (required.contains(ComponentType.METADATA)) {
+            IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
+            int pollIntervalMs = indexerOptions.getInt("metadataPollIntervalMs");
+            int maxPollDurationMs = indexerOptions.getInt("metadataMaxPollDurationMs");
+            builder.withMetadata(new MetadataReadingComponent(
+                metadataReader, pollIntervalMs, maxPollDurationMs));
+        }
+        
+        // Phase 14.2.6: BUFFERING component handling will be added here
+        // Phase 14.2.8: DLQ component handling will be added here
+        
+        return builder.build();
+    }
     
     @Override
     protected final void indexRun(String runId) throws Exception {
@@ -334,35 +405,21 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         log.debug("Received BatchInfo: storageKey={}, ticks=[{}-{}]", 
             batch.getStorageKey(), batch.getTickStart(), batch.getTickEnd());
         
-        // Phase 14.2.7: Idempotency check here (skip storage read if already processed)
-        // if (idempotencyComponent != null && idempotencyComponent.isProcessed(batchId)) {
-        //     log.warn("Skipping duplicate batch (performance optimization): {}", batchId);
-        //     topic.ack(msg);
-        //     return;
-        // }
-        
         try {
             // Read from storage (GENERIC for all batch indexers!)
             byte[] data = storage.readBatchFile(batch.getStorageKey());
             TickDataBatch tickBatch = TickDataBatch.parseFrom(data);
             
-            // Phase 14.2.5: WITHOUT buffering - tick-by-tick processing
-            // Phase 14.2.6: WITH buffering - add ticks to buffer, check shouldFlush()
-            // Process each tick individually (insertBatchSize=1 - no hidden buffering)
-            for (TickData tick : tickBatch.getTicksList()) {
-                flushTicks(List.of(tick));
-            }
+            // WITHOUT buffering - tick-by-tick processing
+                for (TickData tick : tickBatch.getTicksList()) {
+                    flushTicks(List.of(tick));
+                }
             
             // ACK after ALL ticks from batch are processed
             topic.ack(msg);
-            
-            log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
-                tickBatch.getTicksCount(), batch.getStorageKey());
-            
-            // Phase 14.2.7: Mark processed for idempotency optimization
-            // if (idempotencyComponent != null) {
-            //     idempotencyComponent.markProcessed(batchId);
-            // }
+                
+                log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
+                         tickBatch.getTicksCount(), batch.getStorageKey());
             
         } catch (Exception e) {
             log.error("Failed to process batch: {}", batchId);
@@ -432,20 +489,7 @@ public class DummyIndexer<ACK> extends AbstractBatchIndexer<ACK> {
         super(name, options, resources);
     }
     
-    @Override
-    protected BatchIndexerComponents createComponents() {
-        // Component 1: Metadata Reading (DummyIndexer wants this!)
-        IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
-        int pollIntervalMs = indexerOptions.getInt("pollIntervalMs");
-        int maxPollDurationMs = indexerOptions.getInt("maxPollDurationMs");
-        
-        MetadataReadingComponent metadataComp = new MetadataReadingComponent(
-            metadataReader, pollIntervalMs, maxPollDurationMs);
-        
-        return BatchIndexerComponents.builder()
-            .withMetadata(metadataComp)
-            .build();
-    }
+    // No need to override getRequiredComponents() - default is METADATA! ✅
     
     @Override
     protected void flushTicks(List<TickData> ticks) {
@@ -458,36 +502,39 @@ public class DummyIndexer<ACK> extends AbstractBatchIndexer<ACK> {
 
 **Configuration:**
 ```hocon
-dummy-indexer {
+dummyIndexer {
   className = "org.evochora.datapipeline.services.indexers.DummyIndexer"
   
   resources {
-    storage = "storage-read:tick-storage"
-    metadata = "db-meta-read:index-database"
-    topic = "topic-read:batch-topic?consumerGroup=dummy-indexer"
-    # Phase 14.2.7: idempotency = "db-idempotency:index-database"
+    storage = "storageRead:tickStorage"
+    metadata = "dbMetaRead:indexDatabase"
+    topic = "topicRead:batchTopic?consumerGroup=dummyIndexer"
+    # Phase 14.2.7: idempotency = "dbIdempotency:indexDatabase"
   }
   
   options {
     runId = ${?pipeline.services.runId}
     
-    # Metadata polling
-    pollIntervalMs = 1000
-    maxPollDurationMs = 300000
+    # Metadata polling (standardized config names!)
+    metadataPollIntervalMs = 1000
+    metadataMaxPollDurationMs = 300000
     
     # Topic polling (Phase 14.2.5: simple timeout)
     topicPollTimeoutMs = 5000
     
     # Phase 14.2.6: insertBatchSize and flushTimeoutMs will be added
-    # Phase 14.2.7: enableIdempotency will be added
+    # Phase 14.2.8: maxRetries will be added (for DLQ)
   }
 }
 ```
 
 **Deliverables:**
 - `AbstractBatchIndexer` with topic loop + storage-read logic
+- `ComponentType` enum and `getRequiredComponents()` template method
+- Final `createComponents()` method that uses `getRequiredComponents()`
 - `BatchIndexerComponents` helper class (Phase 14.2.5: only metadata)
-- `DummyIndexer` with `createComponents()` and `flushTicks()` implementations
+- Standardized config parameters: `metadataPollIntervalMs`, `metadataMaxPollDurationMs`
+- `DummyIndexer` with `getRequiredComponents()` and `flushTicks()` implementations
 - Integration tests (metadata reading + tick-by-tick processing)
 
 ---
@@ -499,49 +546,104 @@ dummy-indexer {
 **Goal:** Add `TickBufferingComponent` with batch-level ACK tracking to `AbstractBatchIndexer`.
 
 **Phase 14.2.6 Changes:**
+- Add `ComponentType.BUFFERING` to enum
 - Add `TickBufferingComponent` to `BatchIndexerComponents`
+- Update final `createComponents()` to handle BUFFERING component
 - Add buffering logic to `AbstractBatchIndexer.processBatchMessage()` (if-else branch)
 - Add `flushAndAcknowledge()` helper method
 - Add timeout-based flush check in `indexRun()` topic loop
-- Update `DummyIndexer.createComponents()` to configure buffering
+- Add standardized config parameters: `insertBatchSize`, `flushTimeoutMs`
+- Update `DummyIndexer.getRequiredComponents()` to include BUFFERING
 - Automatically set `topicPollTimeoutMs = flushTimeoutMs`
 
 **Note:** Storage-read logic already exists in Phase 14.2.5, only buffering logic is added here.
 
 **AbstractBatchIndexer Changes (Phase 14.2.6):**
 
+**Step 1: Add BUFFERING to ComponentType enum**
+```java
+public enum ComponentType {
+    /** Metadata reading component (polls DB for simulation metadata). */
+    METADATA,
+    
+    /** Tick buffering component (buffers ticks for batch inserts). Phase 14.2.6. */
+    BUFFERING  // NEW!
+    
+    // Phase 14.2.8: DLQ will be added
+}
+```
+
+**Step 2: Update getRequiredComponents() default**
+```java
+protected Set<ComponentType> getRequiredComponents() {
+    // Phase 14.2.6: Default is METADATA + BUFFERING
+    return EnumSet.of(ComponentType.METADATA, ComponentType.BUFFERING);
+}
+```
+
+**Step 3: Update createComponents() to handle BUFFERING**
+```java
+protected final BatchIndexerComponents createComponents() {
+    Set<ComponentType> required = getRequiredComponents();
+    if (required.isEmpty()) return null;
+    
+    var builder = BatchIndexerComponents.builder();
+    
+    // Component 1: Metadata Reading (Phase 14.2.5)
+    if (required.contains(ComponentType.METADATA)) {
+        IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
+        int pollIntervalMs = indexerOptions.getInt("metadataPollIntervalMs");
+        int maxPollDurationMs = indexerOptions.getInt("metadataMaxPollDurationMs");
+        builder.withMetadata(new MetadataReadingComponent(
+            metadataReader, pollIntervalMs, maxPollDurationMs));
+    }
+    
+    // Component 2: Tick Buffering (Phase 14.2.6 - NEW!)
+    if (required.contains(ComponentType.BUFFERING)) {
+        int insertBatchSize = indexerOptions.getInt("insertBatchSize");
+        long flushTimeoutMs = indexerOptions.getLong("flushTimeoutMs");
+        builder.withBuffering(new TickBufferingComponent(insertBatchSize, flushTimeoutMs));
+    }
+    
+    // Phase 14.2.8: DLQ component handling will be added here
+    
+    return builder.build();
+}
+```
+
+**Step 4: Update constructor to auto-set topicPollTimeout**
+```java
+protected AbstractBatchIndexer(...) {
+    super(...);
+    this.components = createComponents();
+    
+    // Phase 14.2.6: Automatically set topicPollTimeout to flushTimeout if buffering enabled
+    if (components != null && components.buffering != null) {
+        this.topicPollTimeoutMs = (int) components.buffering.getFlushTimeoutMs();
+    } else {
+        this.topicPollTimeoutMs = options.hasPath("topicPollTimeoutMs") 
+            ? options.getInt("topicPollTimeoutMs") 
+            : 5000;
+    }
+}
+```
+
+**Step 5: Update indexRun() and processBatchMessage()**
 ```java
 public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInfo, ACK> {
-    
-    private final BatchIndexerComponents components;
-    private final int topicPollTimeoutMs;
-    
-    protected AbstractBatchIndexer(...) {
-        super(...);
-        this.components = createComponents();
-        
-        // Phase 14.2.6: Automatically set topicPollTimeout to flushTimeout if buffering enabled
-        if (components != null && components.buffering != null) {
-            this.topicPollTimeoutMs = (int) components.buffering.getFlushTimeoutMs();
-        } else {
-            this.topicPollTimeoutMs = options.hasPath("topicPollTimeoutMs") 
-                ? options.getInt("topicPollTimeoutMs") 
-                : 5000;
-        }
-    }
     
     @Override
     protected final void indexRun(String runId) throws Exception {
         if (components != null && components.metadata != null) {
             components.metadata.loadMetadata(runId);
-            log.info("Metadata loaded for run: {}", runId);
+            log.debug("Metadata loaded for run: {}", runId);
         }
         
         while (!Thread.currentThread().isInterrupted()) {
             TopicMessage<BatchInfo, ACK> msg = topic.poll(topicPollTimeoutMs, TimeUnit.MILLISECONDS);
             
             if (msg == null) {
-                // Phase 14.2.6: Check buffering component for timeout-based flush
+                // Check buffering component for timeout-based flush
                 if (components != null && components.buffering != null 
                     && components.buffering.shouldFlush()) {
                     flushAndAcknowledge();
@@ -552,7 +654,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             processBatchMessage(msg);
         }
         
-        // Phase 14.2.6: Final flush of remaining buffered ticks
+        // Final flush of remaining buffered ticks
         if (components != null && components.buffering != null 
             && components.buffering.getBufferSize() > 0) {
             flushAndAcknowledge();
@@ -570,7 +672,6 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             byte[] data = storage.readBatchFile(batch.getStorageKey());
             TickDataBatch tickBatch = TickDataBatch.parseFrom(data);
             
-            // Phase 14.2.6: Add buffering logic (if-else branch)
             if (components != null && components.buffering != null) {
                 // WITH buffering: Add to buffer, ACK after flush
                 components.buffering.addTicksFromBatch(tickBatch.getTicksList(), batchId, msg);
@@ -584,7 +685,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                     flushAndAcknowledge();
                 }
             } else {
-                // WITHOUT buffering: tick-by-tick processing (Phase 14.2.5)
+                // WITHOUT buffering: tick-by-tick processing
                 for (TickData tick : tickBatch.getTicksList()) {
                     flushTicks(List.of(tick));
                 }
@@ -600,7 +701,6 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         }
     }
     
-    // Phase 14.2.6: New helper method for buffered flush + ACK
     private void flushAndAcknowledge() throws Exception {
         TickBufferingComponent.FlushResult<ACK> result = components.buffering.flush();
         if (result.ticks().isEmpty()) return;
@@ -655,26 +755,8 @@ public static class BatchIndexerComponents {
 
 **DummyIndexer (Phase 14.2.6):**
 ```java
-@Override
-protected BatchIndexerComponents createComponents() {
-    // Component 1: Metadata Reading
-    IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
-    int pollIntervalMs = indexerOptions.getInt("pollIntervalMs");
-    int maxPollDurationMs = indexerOptions.getInt("maxPollDurationMs");
-    MetadataReadingComponent metadataComp = new MetadataReadingComponent(
-        metadataReader, pollIntervalMs, maxPollDurationMs);
-    
-    // Component 2: Tick Buffering (NEW in Phase 14.2.6!)
-    int insertBatchSize = indexerOptions.getInt("insertBatchSize");
-    long flushTimeoutMs = indexerOptions.getLong("flushTimeoutMs");
-    TickBufferingComponent bufferingComp = new TickBufferingComponent(
-        insertBatchSize, flushTimeoutMs);
-    
-    return BatchIndexerComponents.builder()
-        .withMetadata(metadataComp)
-        .withBuffering(bufferingComp)
-        .build();
-}
+// NO CHANGES needed! ✅
+// Default is now METADATA + BUFFERING, which is exactly what DummyIndexer wants!
 ```
 
 **The ACK Problem:**
@@ -686,28 +768,28 @@ Config: insertBatchSize=250, storage batches=100 ticks each
 2. poll() → batch_0001.pb (100 ticks) → buffer: [0-199]   (size: 200) 
 3. poll() → batch_0002.pb (100 ticks) → buffer: [0-299]   (size: 300)
    → shouldFlush() → TRUE → Flush 250 Ticks (0-249)
-   → buffer: [250-299] (nur 50 Ticks aus batch_0002!)
+   → buffer: [250-299] (only 50 ticks from batch_0002!)
 
-FRAGE: Was wird jetzt geackt?
-- batch_0000: ✅ Alle 100 Ticks geflusht → ACK ok
-- batch_0001: ✅ Alle 100 Ticks geflusht → ACK ok  
-- batch_0002: ❌ Nur 50 von 100 Ticks geflusht → ACK NICHT!
+QUESTION: What gets ACKed now?
+- batch_0000: ✅ All 100 ticks flushed → ACK ok
+- batch_0001: ✅ All 100 ticks flushed → ACK ok  
+- batch_0002: ❌ Only 50 of 100 ticks flushed → NO ACK!
 
-Wenn wir batch_0002 jetzt acken und dann crashen:
-→ Topic gibt batch_0002 nicht mehr raus
-→ 50 Ticks (tick_250-299) sind VERLOREN! ❌❌❌
+If we ACK batch_0002 now and then crash:
+→ Topic won't redeliver batch_0002
+→ 50 Ticks (tick_250-299) are LOST! ❌❌❌
 ```
 
-**Lösung: TickBufferingComponent mit Batch-Flush-Tracking**
+**Solution: TickBufferingComponent with Batch-Flush-Tracking**
 
-Component trackt:
-- Welcher Tick gehört zu welchem Batch? → `batchIds` Array (parallel zu `buffer`)
-- Wie viele Ticks eines Batches wurden geflusht? → `BatchFlushState.ticksFlushed`
-- Welche TopicMessage muss geackt werden? → `BatchFlushState.message`
+Component tracks:
+- Which tick belongs to which batch? → `batchIds` Array (parallel to `buffer`)
+- How many ticks of a batch were flushed? → `BatchFlushState.ticksFlushed`
+- Which TopicMessage must be ACKed? → `BatchFlushState.message`
 
-Component liefert bei `flush()`:
-- Ticks zum Flushen → `List<TickData>`
-- ACKs für **nur vollständig geflusht Batches** → `List<TopicMessage<?, ACK>>`
+Component returns on `flush()`:
+- Ticks to flush → `List<TickData>`
+- ACKs for **only fully flushed batches** → `List<TopicMessage<?, ACK>>`
 
 **Topic Poll Timeout Strategy:**
 
@@ -732,16 +814,42 @@ Scenario: insertBatchSize=250, storage batches=100 ticks each, flushTimeout=5s
 
 **TickBufferingComponent (with ACK Tracking):**
 ```java
+/**
+ * Component for buffering ticks across batches to enable efficient bulk inserts.
+ * <p>
+ * Tracks which ticks belong to which batch and returns ACK tokens only for
+ * batches that have been fully flushed to the database. This ensures that
+ * no batch is acknowledged before ALL its ticks are persisted.
+ * <p>
+ * <strong>Thread Safety:</strong> This component is <strong>NOT thread-safe</strong>
+ * and must not be accessed concurrently by multiple threads. It is designed for
+ * single-threaded use within one service instance.
+ * <p>
+ * <strong>Usage Pattern:</strong> Each {@link AbstractBatchIndexer} instance creates
+ * its own {@code TickBufferingComponent} in {@code createComponents()}. Components
+ * are never shared between service instances or threads.
+ * <p>
+ * <strong>Design Rationale:</strong>
+ * <ul>
+ *   <li>Each service instance runs in exactly one thread</li>
+ *   <li>Each service instance has its own component instances</li>
+ *   <li>Underlying resources (DB, topics) are thread-safe and shared</li>
+ *   <li>No need for synchronization overhead in components</li>
+ * </ul>
+ * <p>
+ * <strong>Example:</strong> 3x DummyIndexer (competing consumers) each has own
+ * TickBufferingComponent, but all share the same H2TopicReader and IMetadataReader.
+ */
 public class TickBufferingComponent {
     private final int insertBatchSize;
     private final long flushTimeoutMs;
     private final List<TickData> buffer = new ArrayList<>();
-    private final List<String> batchIds = new ArrayList<>(); // Parallel zu buffer!
+    private final List<String> batchIds = new ArrayList<>(); // Parallel to buffer!
     private final Map<String, BatchFlushState> pendingBatches = new LinkedHashMap<>();
     private long lastFlushMs = System.currentTimeMillis();
     
     static class BatchFlushState {
-        final Object message; // TopicMessage - generisch!
+        final Object message; // TopicMessage - generic!
         final int totalTicks;
         int ticksFlushed = 0;
         
@@ -823,7 +931,7 @@ public class TickBufferingComponent {
             state.ticksFlushed += ticksFlushed;
             
             if (state.isComplete()) {
-                // Batch ist komplett geflusht → kann geackt werden!
+                // Batch is fully flushed → can be ACKed!
                 completedMessages.add((TopicMessage<?, ACK>) state.message);
                 pendingBatches.remove(batchId);
             }
@@ -863,19 +971,19 @@ public class TickBufferingComponent {
 
 **Configuration (Phase 14.2.6):**
 ```hocon
-dummy-indexer {
+dummyIndexer {
   resources {
-    storage = "storage-read:tick-storage"
-    metadata = "db-meta-read:index-database"
-    topic = "topic-read:batch-topic?consumerGroup=dummy-indexer"
+    storage = "storageRead:tickStorage"
+    metadata = "dbMetaRead:indexDatabase"
+    topic = "topicRead:batchTopic?consumerGroup=dummyIndexer"
   }
   
   options {
     runId = ${?pipeline.services.runId}
     
-    # Metadata polling
-    pollIntervalMs = 1000
-    maxPollDurationMs = 300000
+    # Metadata polling (standardized!)
+    metadataPollIntervalMs = 1000
+    metadataMaxPollDurationMs = 300000
     
     # Tick buffering (NEW in Phase 14.2.6)
     insertBatchSize = 1000
@@ -888,175 +996,174 @@ dummy-indexer {
 ```
 
 **Deliverables:**
-- `TickBufferingComponent` implementation with ACK tracking
+- `ComponentType.BUFFERING` enum value
+- `TickBufferingComponent` implementation with ACK tracking and **Thread-Safety JavaDoc**
+- Updated final `createComponents()` to create buffering component
 - Updated `AbstractBatchIndexer` with buffering logic (if-else branch)
 - Updated `BatchIndexerComponents` with buffering field
-- Updated `DummyIndexer.createComponents()` to configure buffering
-- Integration tests (batch-overgreifend ACK, timeout-based flush, buffer loss recovery)
+- Standardized config parameters: `insertBatchSize`, `flushTimeoutMs`
+- Updated default `getRequiredComponents()` to return METADATA + BUFFERING
+- **DummyIndexer needs NO changes** - uses new default automatically! ✅
+- Integration tests (cross-batch ACK, timeout-based flush, buffer loss recovery)
 
 ---
 
-### Phase 14.2.7: IdempotencyComponent + MERGE Examples
+### Phase 14.2.7: IdempotencyComponent (Optional Performance Optimization)
 
-**Status:** Ready for implementation
+**Status:** ⚠️ **Specification ready - Implementation deferred (YAGNI)**
 
-**Goal:** Add optional `IdempotencyComponent` for performance optimization (skip duplicate storage reads).
+**Rationale for deferral:**
+- IdempotencyComponent is **only a performance optimization** (skip duplicate storage reads)
+- MERGE already guarantees correctness (tick-level idempotency)
+- Performance gain is minimal (only on rare Topic redeliveries)
+- **Complexity not justified** without measurable performance problems
+- **Implementation risk:** Must be implemented correctly or causes data loss (see below)
+- **Recommendation:** Implement only if performance monitoring shows storage reads are bottleneck
 
-**Phase 14.2.7 Changes:**
-- Add `IdempotencyComponent` to `BatchIndexerComponents`
-- Add idempotency checks to `AbstractBatchIndexer.processBatchMessage()` (before storage read, after buffering)
-- Update `DummyIndexer.createComponents()` to optionally configure idempotency
-- Document MERGE-based idempotency for production indexers
+**Goal (if implemented later):** Add optional `IdempotencyComponent` for performance optimization (skip duplicate storage reads).
 
-**Critical:** IdempotencyComponent is OPTIONAL and ONLY for performance. Correctness is guaranteed by MERGE statements!
+**Critical Implementation Requirement:**
 
-**Critical Architecture Decision: MERGE-Based Idempotency**
+IdempotencyComponent with buffering has a **dangerous race condition** if implemented incorrectly:
 
 ```
-Problem: Batch-Level Idempotency funktioniert NICHT bei batch-übergreifendem Buffering!
+❌ WRONG (data loss possible):
+1. Batch B received → ticks added to buffer
+2. markProcessed(B) called → written to DB
+3. CRASH before flush/ACK
+4. Topic redelivers B → isProcessed(B) returns true → storage read skipped
+5. Result: Ticks lost!
 
-Szenario (Crash):
-1. Flush: tick_0-249 (aus batch_0000, batch_0001, batch_0002 teilweise) → DB ✅
-2. Crash → Buffer verliert tick_250-299 (Rest von batch_0002) ❌
-3. Restart → batch_0002 wird neu verarbeitet (kein ACK war)
-   → Batch-Level Idempotency: "batch_0002 processed" → SKIP! ❌
-   → tick_250-299 sind VERLOREN! ❌❌❌
-
-Lösung: Tick-Level Idempotency via MERGE!
-- Jeder Indexer verwendet MERGE (nicht INSERT!) → 100% idempotent
-- Bei Redelivery: MERGE findet existing rows → UPDATE (noop) oder INSERT (fehlende)
-- IdempotencyComponent NUR für Performance (skip storage read), NICHT für Correctness!
+✅ CORRECT (safe with buffering):
+1. Batch B received → ticks added to buffer
+2. Flush ticks to DB
+3. ACK message
+4. markProcessed(B) called → ONLY AFTER ACK!
+5. CRASH anywhere: Safe (MERGE handles duplicates)
 ```
 
-**AbstractBatchIndexer Changes (Phase 14.2.7):**
+**Correct Implementation (when needed):**
+
+**Step 1: Extend TickBufferingComponent.FlushResult to track completed batch IDs:**
+
+```java
+public static class FlushResult<ACK> {
+    private final List<TickData> ticks;
+    private final List<TopicMessage<?, ACK>> completedMessages;
+    private final List<String> completedBatchIds;  // NEW: Track which batches are fully flushed
+    
+    public FlushResult(List<TickData> ticks, 
+                       List<TopicMessage<?, ACK>> completedMessages,
+                       List<String> completedBatchIds) {
+        this.ticks = List.copyOf(ticks);
+        this.completedMessages = List.copyOf(completedMessages);
+        this.completedBatchIds = List.copyOf(completedBatchIds);
+    }
+    
+    public List<TickData> ticks() { return ticks; }
+    public List<TopicMessage<?, ACK>> completedMessages() { return completedMessages; }
+    public List<String> completedBatchIds() { return completedBatchIds; }  // NEW
+}
+```
+
+**Step 2: Update AbstractBatchIndexer.flushAndAcknowledge() - markProcessed AFTER ACK:**
+
+```java
+private void flushAndAcknowledge() throws Exception {
+    TickBufferingComponent.FlushResult<ACK> result = components.buffering.flush();
+    if (result.ticks().isEmpty()) return;
+    
+    // 1. Flush ticks to DB
+    flushTicks(result.ticks());
+    
+    // 2. ACK completed batches
+    for (TopicMessage<?, ACK> msg : result.completedMessages()) {
+        topic.ack(msg);
+    }
+    
+    // 3. CRITICAL: Mark processed ONLY AFTER ACK (safe!)
+    if (components != null && components.idempotency != null) {
+        for (String batchId : result.completedBatchIds()) {
+            components.idempotency.markProcessed(batchId);
+        }
+    }
+}
+```
+
+**Step 3: Add idempotency check in processBatchMessage (before storage read):**
 
 ```java
 private void processBatchMessage(TopicMessage<BatchInfo, ACK> msg) throws Exception {
     BatchInfo batch = msg.payload();
     String batchId = batch.getStorageKey();
     
-    log.debug("Received BatchInfo: storageKey={}, ticks=[{}-{}]", 
-        batch.getStorageKey(), batch.getTickStart(), batch.getTickEnd());
+    log.debug("Received BatchInfo: storageKey={}, ticks=[{}-{}]", ...);
     
-    // Phase 14.2.7: Idempotency check (skip storage read if already processed)
-    if (components != null && components.idempotency != null 
-        && components.idempotency.isProcessed(batchId)) {
-        log.debug("Skipping duplicate batch (performance optimization): {}", batchId);
-        topic.ack(msg);
-        return;  // Skip storage read!
+    // Idempotency check (skip storage read if already processed)
+    if (components != null && components.idempotency != null) {
+        if (components.idempotency.isProcessed(batchId)) {
+    log.debug("Skipping duplicate batch (performance optimization): {}", batchId);
+            topic.ack(msg);
+            return;
+        }
     }
     
     try {
         byte[] data = storage.readBatchFile(batch.getStorageKey());
         TickDataBatch tickBatch = TickDataBatch.parseFrom(data);
         
-        if (components != null && components.buffering != null) {
-            components.buffering.addTicksFromBatch(tickBatch.getTicksList(), batchId, msg);
-            log.debug("Buffered {} ticks from {}, buffer size: {}", 
-                tickBatch.getTicksCount(), batch.getStorageKey(), 
-                components.buffering.getBufferSize());
-            
+        if (components.buffering != null) {
+            components.buffering.addTicksFromBatch(...);
             if (components.buffering.shouldFlush()) {
-                flushAndAcknowledge();
+                flushAndAcknowledge();  // This will mark processed after ACK
             }
         } else {
+            // WITHOUT buffering: Safe to mark immediately after ACK
             for (TickData tick : tickBatch.getTicksList()) {
                 flushTicks(List.of(tick));
             }
             topic.ack(msg);
-            log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
-                tickBatch.getTicksCount(), batch.getStorageKey());
+            
+            if (components.idempotency != null) {
+                components.idempotency.markProcessed(batchId);
+            }
         }
-        
-        // Phase 14.2.7: Mark processed (after buffering/flushing)
-        if (components != null && components.idempotency != null) {
-            components.idempotency.markProcessed(batchId);
-        }
-        
     } catch (Exception e) {
         log.error("Failed to process batch: {}", batchId);
-        throw e;  // NO acknowledge - redelivery!
+        throw e;
     }
 }
 ```
 
-**BatchIndexerComponents (Phase 14.2.7):**
-```java
-public static class BatchIndexerComponents {
-    public final MetadataReadingComponent metadata;     // Optional
-    public final TickBufferingComponent buffering;      // Optional
-    public final IdempotencyComponent idempotency;      // Optional (Phase 14.2.7)
-    
-    private BatchIndexerComponents(MetadataReadingComponent metadata,
-                                   TickBufferingComponent buffering,
-                                   IdempotencyComponent idempotency) {
-        this.metadata = metadata;
-        this.buffering = buffering;
-        this.idempotency = idempotency;
-    }
-    
-    public static Builder builder() {
-        return new Builder();
-    }
-    
-    public static class Builder {
-        private MetadataReadingComponent metadata;
-        private TickBufferingComponent buffering;
-        private IdempotencyComponent idempotency;
-        
-        public Builder withMetadata(MetadataReadingComponent c) {
-            this.metadata = c;
-            return this;
-        }
-        
-        public Builder withBuffering(TickBufferingComponent c) {
-            this.buffering = c;
-            return this;
-        }
-        
-        public Builder withIdempotency(IdempotencyComponent c) {
-            this.idempotency = c;
-            return this;
-        }
-        
-        public BatchIndexerComponents build() {
-            return new BatchIndexerComponents(metadata, buffering, idempotency);
-        }
-    }
-}
+**Why this is safe:**
+- `markProcessed()` only called **after flush + ACK**
+- If crash before ACK: Topic redelivers → storage read → MERGE handles duplicates ✅
+- If crash after ACK but before markProcessed: Next startup no redelivery, marking skipped (OK)
+- If Topic bug delivers duplicate after ACK: `isProcessed()` returns true → skip storage read ✅
+
+---
+
+**MERGE-Based Idempotency (The Real Foundation)**
+
+```
+Problem: Batch-Level Idempotency does NOT work with cross-batch buffering!
+
+Scenario (Crash):
+1. Flush: tick_0-249 (from batch_0000, batch_0001, batch_0002 partially) → DB ✅
+2. Crash → Buffer loses tick_250-299 (rest of batch_0002) ❌
+3. Restart → batch_0002 is reprocessed (no ACK was sent)
+   → Batch-Level Idempotency: "batch_0002 processed" → SKIP! ❌
+   → tick_250-299 are LOST! ❌❌❌
+
+Solution: Tick-Level Idempotency via MERGE!
+- Every indexer uses MERGE (not INSERT!) → 100% idempotent
+- On redelivery: MERGE finds existing rows → UPDATE (noop) or INSERT (missing)
+- IdempotencyComponent ONLY for performance (skip storage read), NOT for correctness!
 ```
 
-**DummyIndexer (Phase 14.2.7):**
-```java
-@Override
-protected BatchIndexerComponents createComponents() {
-    // Component 1: Metadata Reading
-    IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
-    int pollIntervalMs = indexerOptions.getInt("pollIntervalMs");
-    int maxPollDurationMs = indexerOptions.getInt("maxPollDurationMs");
-    MetadataReadingComponent metadataComp = new MetadataReadingComponent(
-        metadataReader, pollIntervalMs, maxPollDurationMs);
-    
-    // Component 2: Tick Buffering
-    int insertBatchSize = indexerOptions.getInt("insertBatchSize");
-    long flushTimeoutMs = indexerOptions.getLong("flushTimeoutMs");
-    TickBufferingComponent bufferingComp = new TickBufferingComponent(
-        insertBatchSize, flushTimeoutMs);
-    
-    // Component 3: Idempotency (NEW in Phase 14.2.7 - optional!)
-    var builder = BatchIndexerComponents.builder()
-        .withMetadata(metadataComp)
-        .withBuffering(bufferingComp);
-    
-    if (indexerOptions.hasPath("enableIdempotency") 
-        && indexerOptions.getBoolean("enableIdempotency")) {
-        IIdempotencyTracker tracker = getRequiredResource("idempotency", IIdempotencyTracker.class);
-        builder.withIdempotency(new IdempotencyComponent(tracker, DummyIndexer.class.getName()));
-    }
-    
-    return builder.build();
-}
-```
+**Implementation Priority:**
+
+**Phase 14.2.7 is deferred - NOT implemented initially.** Focus on MERGE-based idempotency.
 
 **IdempotencyComponent Implementation:**
 ```java
@@ -1067,7 +1174,22 @@ protected BatchIndexerComponents createComponents() {
  * methods for duplicate detection. This is a PERFORMANCE optimization only - 
  * correctness is guaranteed by MERGE statements in indexers.
  * <p>
- * <strong>Thread Safety:</strong> Not thread-safe. Should be used by single indexer instance only.
+ * <strong>Thread Safety:</strong> This component is <strong>NOT thread-safe</strong>
+ * and must not be accessed concurrently by multiple threads. It is designed for
+ * single-threaded use within one service instance.
+ * <p>
+ * <strong>Competing Consumer Pattern:</strong> Multiple service instances (competing
+ * consumers) each have their own {@code IdempotencyComponent} instance. The underlying
+ * {@link IIdempotencyTracker} resource IS thread-safe and coordinates duplicate
+ * detection across all consumers.
+ * <p>
+ * <strong>Usage Pattern:</strong> Each {@link AbstractBatchIndexer} instance creates
+ * its own {@code IdempotencyComponent} in {@code createComponents()}. Components are
+ * never shared between service instances or threads.
+ * <p>
+ * <strong>Important:</strong> This component is deferred (YAGNI). MERGE statements
+ * provide 100% correctness without it. Only implement if performance monitoring shows
+ * storage reads as bottleneck.
  */
 public class IdempotencyComponent {
     private static final Logger log = LoggerFactory.getLogger(IdempotencyComponent.class);
@@ -1151,22 +1273,22 @@ public class IdempotencyComponent {
 
 **Configuration:**
 ```hocon
-dummy-indexer {
+dummyIndexer {
   resources {
-    storage = "storage-read:tick-storage"
-    metadata = "db-meta-read:index-database"
-    topic = "topic-read:batch-topic?consumerGroup=dummy-indexer"
-    idempotency = "db-idempotency:index-database"  # NEW
+    storage = "storageRead:tickStorage"
+    metadata = "dbMetaRead:indexDatabase"
+    topic = "topicRead:batchTopic?consumerGroup=dummyIndexer"
+    idempotency = "dbIdempotency:indexDatabase"  # NEW
   }
   
   options {
     runId = ${?pipeline.services.runId}
     
-    # Metadata polling
-    pollIntervalMs = 1000
-    maxPollDurationMs = 300000
+    # Metadata polling (standardized!)
+    metadataPollIntervalMs = 1000
+    metadataMaxPollDurationMs = 300000
     
-    # Tick buffering
+    # Tick buffering (standardized!)
     insertBatchSize = 1000
     flushTimeoutMs = 5000
     # topicPollTimeoutMs automatically set to flushTimeoutMs
@@ -1216,31 +1338,538 @@ private void flushTicks(List<TickData> ticks) throws SQLException {
 **Why MERGE is critical:**
 
 ```
-Crash-Szenario mit MERGE:
+Crash scenario with MERGE:
 1. Buffer: [tick_0-99 (batch_0000), tick_100-199 (batch_0001), tick_200-299 (batch_0002)]
 2. Flush 250 ticks → MERGE (tick_0-249) → DB ✅
 3. Buffer: [tick_250-299 (batch_0002)]
-4. CRASH! → Buffer verloren, keine ACKs gesendet
+4. CRASH! → Buffer lost, no ACKs sent
 5. Topic redelivery: batch_0000, batch_0001, batch_0002
-6. Indexer-2 verarbeitet alle 3 batches:
+6. Indexer restarts and processes all 3 batches:
    - Read storage → 300 ticks
    - Flush → MERGE (tick_0-299)
-     - tick_0-249: MERGE findet existing rows → UPDATE (noop, weil gleiche Daten) ✅
-     - tick_250-299: MERGE findet keine rows → INSERT (fehlende Ticks!) ✅
-7. Ergebnis: ALLE 300 Ticks in DB, KEINE Duplikate! ✅✅✅
+     - tick_0-249: MERGE finds existing rows → UPDATE (noop, same data) ✅
+     - tick_250-299: MERGE finds no rows → INSERT (missing ticks!) ✅
+7. Result: ALL 300 ticks in DB, NO duplicates! ✅✅✅
 
-Ohne MERGE (nur INSERT):
-→ tick_0-249 würden als Duplikate fehlschlagen oder doppelt eingefügt ❌
+Without MERGE (only INSERT):
+→ tick_0-249 would fail as duplicates or be inserted twice ❌
 ```
 
-**Deliverables:**
-- `IdempotencyComponent` implementation (OPTIONAL - Performance only!)
-- Updated `AbstractBatchIndexer` with idempotency checks (before storage read, after buffering)
+**Deliverables (if implemented later):**
+- `IdempotencyComponent` implementation with **Thread-Safety JavaDoc**
+- Extended `TickBufferingComponent.FlushResult` with `completedBatchIds`
+- Updated `AbstractBatchIndexer.flushAndAcknowledge()` - markProcessed AFTER ACK
+- Updated `AbstractBatchIndexer.processBatchMessage()` - idempotency check before storage read
 - Updated `BatchIndexerComponents` with idempotency field
-- Updated `DummyIndexer.createComponents()` to optionally configure idempotency
 - Integration tests (MERGE idempotency, duplicates, failures, redelivery, buffer-loss recovery)
 
+**Current Priority:** Focus on Phase 14.2.5 and 14.2.6. Phase 14.2.7 only if performance monitoring shows need.
+
 **Note:** `IIdempotencyTracker` interface and H2 implementation with `idempotency_tracking` table already exist!
+
+---
+
+### Phase 14.2.8: DlqComponent (Optional Retry Limit)
+
+**Status:** ⚠️ **Specification ready - Implementation deferred (YAGNI)**
+
+**Rationale for deferral:**
+- Current architecture is sufficient (Topic reassignment + Service ERROR state)
+- DLQ only needed for persistent, message-specific failures (poison messages)
+- Added complexity not justified without real-world failure patterns
+- **Recommendation:** Implement only if monitoring shows specific batches failing repeatedly
+
+**Goal (if implemented later):** Add optional `DlqComponent` to move poison messages to DLQ after max retries.
+
+**Use Case:**
+```
+Scenario: Specific batch corrupted in storage (only this batch fails, DB is healthy)
+
+Without DLQ:
+1. Consumer A: poll() → batch_X → parse error → Exception → NO ACK
+2. Topic: claimTimeout → reassign to Consumer B
+3. Consumer B: poll() → batch_X → parse error → Exception → NO ACK
+4. → Endless rotation, poison message blocks consumers periodically
+
+With DLQ Component:
+1. Consumer A: poll() → batch_X → Exception → retry_count=1 → NO ACK
+2. Consumer B: poll() → batch_X → Exception → retry_count=2 → NO ACK
+3. Consumer C: poll() → batch_X → Exception → retry_count=3 → DLQ!
+4. batch_X moved to DLQ, ACKed from topic → pipeline continues ✅
+```
+
+**Architecture:**
+
+DlqComponent requires **shared retry tracking** across competing consumers:
+
+```
+3x DummyIndexer (competing consumers)
+        ↓
+  RetryTracker (shared DB/memory)
+        ↓
+    count=1, count=2, count=3 → DLQ
+```
+
+**New Resource Interface:**
+
+```java
+/**
+ * Resource for tracking retry counts across competing consumers.
+ * <p>
+ * Backed by shared storage (in-memory or database) to coordinate
+ * retry counting between multiple service instances.
+ * <p>
+ * <strong>Thread Safety:</strong> Implementations must be thread-safe for
+ * concurrent access from multiple consumers.
+ */
+public interface IRetryTracker extends IResource {
+    
+    /**
+     * Increments and returns retry count for a message.
+     * <p>
+     * Thread-safe across competing consumers. Each call increments the
+     * shared counter, regardless of which consumer instance makes the call.
+     *
+     * @param messageId Unique message identifier
+     * @return Current retry count after increment
+     * @throws Exception if tracking fails
+     */
+    int incrementAndGetRetryCount(String messageId) throws Exception;
+    
+    /**
+     * Gets current retry count without incrementing.
+     *
+     * @param messageId Unique message identifier
+     * @return Current retry count
+     * @throws Exception if tracking fails
+     */
+    int getRetryCount(String messageId) throws Exception;
+    
+    /**
+     * Marks message as moved to DLQ (stops further tracking).
+     *
+     * @param messageId Unique message identifier
+     * @throws Exception if marking fails
+     */
+    void markMovedToDlq(String messageId) throws Exception;
+    
+    /**
+     * Resets retry count after successful processing.
+     * <p>
+     * Called when message is successfully processed to prevent false
+     * positives from earlier transient failures.
+     *
+     * @param messageId Unique message identifier
+     * @throws Exception if reset fails
+     */
+    void resetRetryCount(String messageId) throws Exception;
+}
+```
+
+**InMemoryRetryTracker Implementation:**
+
+```java
+/**
+ * In-memory implementation of retry tracker.
+ * <p>
+ * Suitable for single-instance deployments and development/testing.
+ * <p>
+ * <strong>Limitation:</strong> Retry counts are lost on restart.
+ * For production with multiple instances, use H2RetryTracker.
+ */
+public class InMemoryRetryTracker extends AbstractResource implements IRetryTracker {
+    
+    private final ConcurrentHashMap<String, AtomicInteger> retryCounts = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> lastRetryAt = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Boolean> movedToDlq = new ConcurrentHashMap<>();
+    
+    public InMemoryRetryTracker(String name, Config options) {
+        super(name, options);
+    }
+    
+    @Override
+    public int incrementAndGetRetryCount(String messageId) {
+        lastRetryAt.put(messageId, System.currentTimeMillis());
+        return retryCounts.computeIfAbsent(messageId, k -> new AtomicInteger(0))
+            .incrementAndGet();
+    }
+    
+    @Override
+    public int getRetryCount(String messageId) {
+        AtomicInteger count = retryCounts.get(messageId);
+        return count != null ? count.get() : 0;
+    }
+    
+    @Override
+    public void markMovedToDlq(String messageId) {
+        movedToDlq.put(messageId, true);
+    }
+    
+    @Override
+    public void resetRetryCount(String messageId) {
+        retryCounts.remove(messageId);
+        lastRetryAt.remove(messageId);
+    }
+    
+    @Override
+    protected void onStart() {
+        log.debug("InMemoryRetryTracker '{}' started", getResourceName());
+    }
+    
+    @Override
+    protected void onClose() {
+        log.debug("InMemoryRetryTracker '{}' closed, tracked {} messages", 
+            getResourceName(), retryCounts.size());
+        retryCounts.clear();
+        lastRetryAt.clear();
+        movedToDlq.clear();
+    }
+}
+```
+
+**DlqComponent Implementation:**
+
+```java
+/**
+ * Component for moving poison messages to Dead Letter Queue after max retries.
+ * <p>
+ * Tracks retry counts across competing consumers using shared {@link IRetryTracker}.
+ * When a message fails repeatedly, moves it to DLQ to prevent blocking the pipeline.
+ * <p>
+ * <strong>Thread Safety:</strong> This component is <strong>NOT thread-safe</strong>
+ * and must not be accessed concurrently by multiple threads. It is designed for
+ * single-threaded use within one service instance.
+ * <p>
+ * <strong>Competing Consumer Pattern:</strong> Multiple service instances (competing
+ * consumers) each have their own {@code DlqComponent} instance. The underlying
+ * {@link IRetryTracker} and {@link IDeadLetterQueue} resources ARE thread-safe
+ * and coordinate retry counting across all consumers.
+ * <p>
+ * <strong>Usage Pattern:</strong> Each {@link AbstractBatchIndexer} instance creates
+ * its own {@code DlqComponent} in {@code createComponents()}. Components are never
+ * shared between service instances or threads.
+ */
+public class DlqComponent<T extends Message, ACK> {
+    private static final Logger log = LoggerFactory.getLogger(DlqComponent.class);
+    
+    private final IRetryTracker retryTracker;
+    private final IOutputQueueResource<SystemContracts.DeadLetterMessage> dlq;
+    private final int maxRetries;
+    private final String indexerName;
+    
+    /**
+     * Creates DLQ component.
+     *
+     * @param retryTracker Shared retry tracker (must not be null)
+     * @param dlq Dead letter queue resource (must not be null)
+     * @param maxRetries Maximum retries before moving to DLQ (must be positive)
+     * @param indexerName Name of indexer for metadata (must not be null/blank)
+     */
+    public DlqComponent(IRetryTracker retryTracker,
+                        IOutputQueueResource<SystemContracts.DeadLetterMessage> dlq,
+                        int maxRetries,
+                        String indexerName) {
+        if (retryTracker == null) {
+            throw new IllegalArgumentException("RetryTracker must not be null");
+        }
+        if (dlq == null) {
+            throw new IllegalArgumentException("DLQ must not be null");
+        }
+        if (maxRetries <= 0) {
+            throw new IllegalArgumentException("MaxRetries must be positive");
+        }
+        if (indexerName == null || indexerName.isBlank()) {
+            throw new IllegalArgumentException("Indexer name must not be null or blank");
+        }
+        
+        this.retryTracker = retryTracker;
+        this.dlq = dlq;
+        this.maxRetries = maxRetries;
+        this.indexerName = indexerName;
+    }
+    
+    /**
+     * Check if message should be moved to DLQ.
+     * <p>
+     * Increments retry count (shared across competing consumers).
+     * Returns true if retry limit exceeded.
+     * <p>
+     * If tracking fails, returns false as safe default (retry again).
+     *
+     * @param messageId Unique message identifier
+     * @return true if message should be moved to DLQ
+     */
+    public boolean shouldMoveToDlq(String messageId) {
+        try {
+            int retries = retryTracker.incrementAndGetRetryCount(messageId);
+            return retries > maxRetries;
+        } catch (Exception e) {
+            log.debug("Retry tracking failed for {}, assuming not at limit: {}", 
+                messageId, e.getMessage());
+            return false;  // Safe default - retry again
+        }
+    }
+    
+    /**
+     * Move message to DLQ with error metadata.
+     * <p>
+     * Wraps original message in DeadLetterMessage with error details
+     * and retry count. Uses existing DLQ resource infrastructure.
+     *
+     * @param message Original topic message
+     * @param error Exception that caused the failure
+     * @param storageKey Storage key for metadata
+     * @throws InterruptedException if DLQ write is interrupted
+     */
+    public void moveToDlq(TopicMessage<T, ACK> message, 
+                          Exception error,
+                          String storageKey) throws InterruptedException {
+        try {
+            int retries = retryTracker.getRetryCount(storageKey);
+            
+            // Build stack trace (limit to 10 lines)
+            List<String> stackTraceLines = new ArrayList<>();
+            if (error != null) {
+                for (StackTraceElement element : error.getStackTrace()) {
+                    stackTraceLines.add(element.toString());
+                    if (stackTraceLines.size() >= 10) break;
+                }
+            }
+            
+            // Build DLQ message (reuse existing DeadLetterMessage protocol!)
+            SystemContracts.DeadLetterMessage dlqMsg = 
+                SystemContracts.DeadLetterMessage.newBuilder()
+                    .setOriginalMessage(message.payload().toByteString())
+                    .setMessageType(message.payload().getClass().getName())
+                    .setFailureReason(error.getClass().getName() + ": " + error.getMessage())
+                    .setRetryCount(retries)
+                    .setSourceService(indexerName)
+                    .setFirstFailureTimeMs(System.currentTimeMillis())  // Approximation
+                    .setLastFailureTimeMs(System.currentTimeMillis())
+                    .addAllStackTraceLines(stackTraceLines)
+                    .build();
+            
+            dlq.put(dlqMsg);
+            retryTracker.markMovedToDlq(storageKey);
+            
+            log.warn("Moved message to DLQ after {} retries: {}", retries, storageKey);
+            
+        } catch (Exception e) {
+            log.warn("Failed to move message to DLQ: {}", storageKey);
+            throw new InterruptedException("DLQ write failed");
+        }
+    }
+    
+    /**
+     * Reset retry count after successful processing.
+     * <p>
+     * Should be called after successful flush to clear retry history.
+     * This prevents false positives from earlier transient failures.
+     *
+     * @param messageId Unique message identifier
+     */
+    public void resetRetryCount(String messageId) {
+        try {
+            retryTracker.resetRetryCount(messageId);
+        } catch (Exception e) {
+            log.debug("Failed to reset retry count for {}: {}", messageId, e.getMessage());
+            // Not critical - next successful processing will reset
+        }
+    }
+}
+```
+
+**AbstractBatchIndexer Integration:**
+
+```java
+private void processBatchMessage(TopicMessage<BatchInfo, ACK> msg) throws Exception {
+    BatchInfo batch = msg.payload();
+    String batchId = batch.getStorageKey();
+    
+    log.debug("Received BatchInfo: storageKey={}, ticks=[{}-{}]", ...);
+    
+    try {
+        byte[] data = storage.readBatchFile(batch.getStorageKey());
+        TickDataBatch tickBatch = TickDataBatch.parseFrom(data);
+        
+        if (components != null && components.buffering != null) {
+            components.buffering.addTicksFromBatch(...);
+            if (components.buffering.shouldFlush()) {
+                flushAndAcknowledge();
+            }
+        } else {
+            for (TickData tick : tickBatch.getTicksList()) {
+                flushTicks(List.of(tick));
+            }
+            topic.ack(msg);
+        }
+        
+        // Success - reset retry count if DLQ component exists
+        if (components != null && components.dlq != null) {
+            components.dlq.resetRetryCount(batchId);
+        }
+        
+    } catch (Exception e) {
+        log.error("Failed to process batch: {}", batchId);
+        
+        // DLQ check (if component configured)
+        if (components != null && components.dlq != null) {
+            if (components.dlq.shouldMoveToDlq(batchId)) {
+                log.warn("Moving batch to DLQ after max retries: {}", batchId);
+                components.dlq.moveToDlq(msg, e, batchId);
+                topic.ack(msg);  // ACK original - now in DLQ
+                return;  // Don't rethrow
+            }
+        }
+        
+        throw e;  // NO ACK - redelivery
+    }
+}
+```
+
+**BatchIndexerComponents (Phase 14.2.8):**
+
+```java
+public static class BatchIndexerComponents {
+    public final MetadataReadingComponent metadata;     // Optional
+    public final TickBufferingComponent buffering;      // Optional
+    public final DlqComponent dlq;                      // Optional (Phase 14.2.8)
+    
+    private BatchIndexerComponents(MetadataReadingComponent metadata,
+                                   TickBufferingComponent buffering,
+                                   DlqComponent dlq) {
+        this.metadata = metadata;
+        this.buffering = buffering;
+        this.dlq = dlq;
+    }
+    
+    public static Builder builder() {
+        return new Builder();
+    }
+    
+    public static class Builder {
+        private MetadataReadingComponent metadata;
+        private TickBufferingComponent buffering;
+        private DlqComponent dlq;
+        
+        public Builder withMetadata(MetadataReadingComponent c) {
+            this.metadata = c;
+            return this;
+        }
+        
+        public Builder withBuffering(TickBufferingComponent c) {
+            this.buffering = c;
+            return this;
+        }
+        
+        public Builder withDlq(DlqComponent c) {
+            this.dlq = c;
+            return this;
+        }
+        
+        public BatchIndexerComponents build() {
+            return new BatchIndexerComponents(metadata, buffering, dlq);
+        }
+    }
+}
+```
+
+**Configuration:**
+
+```hocon
+resources {
+  # Shared retry tracker (single instance for all indexers)
+  indexerRetries {
+    className = "org.evochora.datapipeline.resources.InMemoryRetryTracker"
+    options {
+      # No maxRetries here - that's service-level policy!
+    }
+  }
+  
+  # DLQ (reuse existing implementation!)
+  indexerDlq {
+    className = "org.evochora.datapipeline.resources.queues.InMemoryDeadLetterQueue"
+    options {
+      capacity = 10000
+    }
+  }
+}
+
+services {
+  dummyIndexer {
+    resources {
+      topic = "topicRead:batchTopic?consumerGroup=dummyIndexer"
+      storage = "storageRead:tickStorage"
+      metadata = "dbMetaRead:indexDatabase"
+      retryTracker = "retryTracker:indexerRetries"  # NEW
+      dlq = "dlq:indexerDlq"                        # NEW
+    }
+    
+    options {
+      # Metadata polling (standardized!)
+      metadataPollIntervalMs = 1000
+      metadataMaxPollDurationMs = 300000
+      
+      # Buffering (standardized!)
+      insertBatchSize = 1000
+      flushTimeoutMs = 5000
+      
+      # DLQ (standardized - service-level policy!)
+      maxRetries = 3  # After 3 retries across ALL consumers → DLQ
+    }
+  }
+  
+  environmentIndexer {
+    resources {
+      # ... same retryTracker, same dlq ...
+    }
+    options {
+      # Same standardized config names!
+      metadataPollIntervalMs = 1000
+      metadataMaxPollDurationMs = 300000
+      insertBatchSize = 1000
+      flushTimeoutMs = 5000
+      maxRetries = 5  # Different policy for environment data!
+    }
+  }
+}
+```
+
+**DummyIndexer (Phase 14.2.8):**
+
+```java
+@Override
+protected Set<ComponentType> getRequiredComponents() {
+    // Phase 14.2.8: Add DLQ to standard defaults
+    return EnumSet.of(ComponentType.METADATA, ComponentType.BUFFERING, ComponentType.DLQ);
+}
+
+// Note: To use DLQ, the service must:
+// 1. Configure retryTracker and dlq resources
+// 2. Set maxRetries in options
+// The final createComponents() in AbstractBatchIndexer automatically creates DlqComponent
+```
+
+**Why maxRetries in Service Options (not Resource):**
+- ✅ **Flexible:** Different indexers can have different retry policies
+- ✅ **Separation of Concerns:** RetryTracker counts, Service decides policy
+- ✅ **Reusable:** One RetryTracker shared by all indexers with different limits
+- ✅ **Standard Pattern:** Like database timeout (DB resource shared, timeout per service)
+
+**Deliverables (if implemented later):**
+- `IRetryTracker` interface with **Thread-Safety JavaDoc**
+- `InMemoryRetryTracker` implementation (single-instance, development)
+- `DlqComponent` implementation with **Thread-Safety JavaDoc** (uses existing DLQ infrastructure!)
+- Updated `AbstractBatchIndexer.processBatchMessage()` with DLQ logic
+- Updated `BatchIndexerComponents` with DLQ field
+- Integration tests (poison message handling, competing consumer retry tracking, DLQ overflow)
+
+**Current Priority:** Focus on Phase 14.2.5 and 14.2.6. Phase 14.2.8 only if monitoring shows poison messages.
+
+**Note:** 
+- `IOutputQueueResource<DeadLetterMessage>` interface already exists!
+- `InMemoryDeadLetterQueue` implementation already exists!
+- Only `IRetryTracker` and `DlqComponent` are new
 
 ---
 
@@ -1252,7 +1881,7 @@ Ohne MERGE (nur INSERT):
 |-----------|---------|----------|--------------|
 | `MetadataReadingComponent` | Polls DB for metadata, caches `samplingInterval` | In `AbstractBatchIndexer` | **Optional:** Most batch indexers need it |
 | `TickBufferingComponent` | Buffers ticks + ACK tracking, triggers flush | In `AbstractBatchIndexer` | **Optional:** For large batch inserts |
-| `IdempotencyComponent` | Skip duplicate batches (performance) | In `AbstractBatchIndexer` | **Optional:** Performance only, not correctness! |
+| `DlqComponent` | Move poison messages to DLQ after max retries | In `AbstractBatchIndexer` | **Optional (deferred):** Only for poison message handling |
 
 **All components are optional!** Each batch indexer decides in its constructor which components to use.
 
@@ -1260,9 +1889,81 @@ Ohne MERGE (nur INSERT):
 - **TickBufferingComponent:** If used, tracks which ticks belong to which batch, returns ACKs ONLY for fully flushed batches (configurable `insertBatchSize`, e.g., 250)
 - **Without TickBufferingComponent:** Each **tick** processed individually (`insertBatchSize=1`), then **ONE ACK** sent after all ticks from BatchFile are processed
 - **ACK Guarantee:** In both modes, ACK is sent ONLY after ALL ticks from a BatchFile are successfully flushed to DB (atomicity per BatchFile!)
-- **IdempotencyComponent:** ONLY for performance (skip storage read), NOT for correctness (MERGE guarantees idempotency!)
 - **MERGE:** ALL indexers MUST use MERGE (not INSERT) for 100% idempotent processing
 - **insertBatchSize is independent of batchFileSize:** Buffering can combine ticks from multiple BatchFiles (e.g., 3x 100-tick files → 1x 250-tick flush)
+
+**Thread Safety:**
+- **Components (NOT thread-safe):** `MetadataReadingComponent`, `TickBufferingComponent`, `DlqComponent`, `IdempotencyComponent` are **NOT thread-safe**
+- **Design Pattern:** Each service instance creates its own component instances in `createComponents()` - never shared between threads
+- **Resources (thread-safe):** Underlying resources (`IMetadataReader`, `IRetryTracker`, `IDeadLetterQueue`, `H2TopicReader`) **ARE thread-safe** and shared across competing consumers
+- **Why this works:** Each indexer service runs in exactly one thread with its own components, accessing shared thread-safe resources
+- **Example:** 3x DummyIndexer (competing consumers) → each has own `TickBufferingComponent`, all share same `IMetadataReader` ✅
+
+### Component Decision Guide
+
+**What components should my indexer use?**
+
+| Indexer Type | METADATA | BUFFERING | DLQ | Example |
+|--------------|----------|-----------|-----|---------|
+| **Production Indexer** | ✅ Yes (default) | ✅ Yes (default) | ⚠️ If needed | EnvironmentIndexer, OrganismIndexer |
+| **Simple Indexer** | ✅ Yes (default) | ❌ No | ❌ No | LoggingIndexer, MetricsIndexer |
+| **Test/Debug Indexer** | ✅ Yes (default) | ✅ Yes (default) | ❌ No | DummyIndexer |
+| **Minimal Indexer** | ❌ No | ❌ No | ❌ No | CustomBatchProcessor |
+
+**Component Usage Patterns:**
+
+```java
+// Pattern 1: Standard (METADATA + BUFFERING) - Most common!
+@Override
+protected Set<ComponentType> getRequiredComponents() {
+    return EnumSet.of(ComponentType.METADATA, ComponentType.BUFFERING);
+}
+
+// Pattern 2: Metadata only (no buffering)
+@Override
+protected Set<ComponentType> getRequiredComponents() {
+    return EnumSet.of(ComponentType.METADATA);
+}
+
+// Pattern 3: With DLQ (for poison message handling)
+@Override
+protected Set<ComponentType> getRequiredComponents() {
+    return EnumSet.of(ComponentType.METADATA, ComponentType.BUFFERING, ComponentType.DLQ);
+}
+
+// Pattern 4: Minimal (no components)
+@Override
+protected Set<ComponentType> getRequiredComponents() {
+    return EnumSet.noneOf(ComponentType.class);
+}
+```
+
+**When to use each component:**
+
+| Component | Use when... | Skip when... |
+|-----------|-------------|--------------|
+| **METADATA** | Indexer needs simulation metadata (dimensions, sampling interval) | Indexer is self-contained (no metadata dependency) |
+| **BUFFERING** | High throughput, batch inserts, production environment | Low throughput, simplicity preferred, debugging |
+| **DLQ** | Poison messages possible (corrupted data, parsing errors) | All data is trusted, no message-specific failures expected |
+
+**Standardized Config Parameters:**
+
+```hocon
+indexer {
+  options {
+    # METADATA component
+    metadataPollIntervalMs = 1000      # How often to poll for metadata
+    metadataMaxPollDurationMs = 300000 # Max wait for metadata (5 min)
+    
+    # BUFFERING component
+    insertBatchSize = 1000             # Flush after N ticks
+    flushTimeoutMs = 5000              # Flush after N ms
+    
+    # DLQ component
+    maxRetries = 3                     # Move to DLQ after N retries
+  }
+}
+```
 
 ### Indexer Examples
 
@@ -1295,7 +1996,7 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
 }
 ```
 
-**DummyIndexer (extends AbstractBatchIndexer, implements createComponents + flushTicks):**
+**DummyIndexer (extends AbstractBatchIndexer, implements getRequiredComponents + flushTicks):**
 ```java
 public class DummyIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     
@@ -1304,30 +2005,9 @@ public class DummyIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     }
     
     @Override
-    protected BatchIndexerComponents createComponents() {
-        // All components: Metadata, Buffering, Idempotency
-        IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
-        int pollIntervalMs = indexerOptions.getInt("pollIntervalMs");
-        int maxPollDurationMs = indexerOptions.getInt("maxPollDurationMs");
-        MetadataReadingComponent metadataComp = new MetadataReadingComponent(
-            metadataReader, pollIntervalMs, maxPollDurationMs);
-        
-        int insertBatchSize = indexerOptions.getInt("insertBatchSize");
-        long flushTimeoutMs = indexerOptions.getLong("flushTimeoutMs");
-        TickBufferingComponent bufferingComp = new TickBufferingComponent(
-            insertBatchSize, flushTimeoutMs);
-        
-        var builder = BatchIndexerComponents.builder()
-            .withMetadata(metadataComp)
-            .withBuffering(bufferingComp);
-        
-        if (indexerOptions.hasPath("enableIdempotency") 
-            && indexerOptions.getBoolean("enableIdempotency")) {
-            IIdempotencyTracker tracker = getRequiredResource("idempotency", IIdempotencyTracker.class);
-            builder.withIdempotency(new IdempotencyComponent(tracker, DummyIndexer.class.getName()));
-        }
-        
-        return builder.build();
+    protected Set<ComponentType> getRequiredComponents() {
+        // Use standard defaults: METADATA + BUFFERING
+        return EnumSet.of(ComponentType.METADATA, ComponentType.BUFFERING);
     }
     
     @Override
@@ -1348,30 +2028,9 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     }
     
     @Override
-    protected BatchIndexerComponents createComponents() {
-        // All components: Metadata, Buffering, Idempotency
-        IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
-        int pollIntervalMs = indexerOptions.getInt("pollIntervalMs");
-        int maxPollDurationMs = indexerOptions.getInt("maxPollDurationMs");
-        MetadataReadingComponent metadataComp = new MetadataReadingComponent(
-            metadataReader, pollIntervalMs, maxPollDurationMs);
-        
-        int insertBatchSize = indexerOptions.getInt("insertBatchSize");
-        long flushTimeoutMs = indexerOptions.getLong("flushTimeoutMs");
-        TickBufferingComponent bufferingComp = new TickBufferingComponent(
-            insertBatchSize, flushTimeoutMs);
-        
-        var builder = BatchIndexerComponents.builder()
-            .withMetadata(metadataComp)
-            .withBuffering(bufferingComp);
-        
-        if (indexerOptions.hasPath("enableIdempotency") 
-            && indexerOptions.getBoolean("enableIdempotency")) {
-            IIdempotencyTracker tracker = getRequiredResource("idempotency", IIdempotencyTracker.class);
-            builder.withIdempotency(new IdempotencyComponent(tracker, EnvironmentIndexer.class.getName()));
-        }
-        
-        return builder.build();
+    protected Set<ComponentType> getRequiredComponents() {
+        // Use standard defaults: METADATA + BUFFERING
+        return EnumSet.of(ComponentType.METADATA, ComponentType.BUFFERING);
     }
     
     @Override
@@ -1409,17 +2068,9 @@ public class SimpleBatchIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     }
     
     @Override
-    protected BatchIndexerComponents createComponents() {
-        // Metadata component only, no buffering, no idempotency
-        IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
-        int pollIntervalMs = indexerOptions.getInt("pollIntervalMs");
-        int maxPollDurationMs = indexerOptions.getInt("maxPollDurationMs");
-        MetadataReadingComponent metadataComp = new MetadataReadingComponent(
-            metadataReader, pollIntervalMs, maxPollDurationMs);
-        
-        return BatchIndexerComponents.builder()
-            .withMetadata(metadataComp)
-            .build();
+    protected Set<ComponentType> getRequiredComponents() {
+        // Metadata only, no buffering
+        return EnumSet.of(ComponentType.METADATA);
     }
     
     @Override
@@ -1452,8 +2103,9 @@ public class MinimalBatchIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     }
     
     @Override
-    protected BatchIndexerComponents createComponents() {
-        return null;  // No components - or: BatchIndexerComponents.builder().build()
+    protected Set<ComponentType> getRequiredComponents() {
+        // No components - minimal indexer
+        return EnumSet.noneOf(ComponentType.class);
     }
     
     @Override
@@ -1466,13 +2118,14 @@ public class MinimalBatchIndexer<ACK> extends AbstractBatchIndexer<ACK> {
 
 ### Design Benefits
 
-✅ **3-Level Architecture:** Clear separation: AbstractIndexer (core) → AbstractBatchIndexer (batch logic) → Concrete Indexers (only `createComponents()` + `flushTicks()`)  
+✅ **3-Level Architecture:** Clear separation: AbstractIndexer (core) → AbstractBatchIndexer (batch logic) → Concrete Indexers (only `getRequiredComponents()` + `flushTicks()`)  
 ✅ **Zero Boilerplate:** Batch indexers only implement two template methods, no complex constructor logic  
-✅ **Template Method Pattern:** `createComponents()` called in constructor, subclass configures components with access to `this`  
+✅ **Standardized Config:** All indexers use same config parameter names (`metadataPollIntervalMs`, `insertBatchSize`, `maxRetries`)  
+✅ **Component Declaration Pattern:** Subclasses declare which components to use via EnumSet, AbstractBatchIndexer creates them  
+✅ **DRY (Don't Repeat Yourself):** Component creation logic and batch-processing logic centralized in `AbstractBatchIndexer`  
 ✅ **Builder Pattern:** Fluent API with `final` fields - new components can be added without breaking existing indexers  
-✅ **DRY:** All batch-processing logic in one place (`AbstractBatchIndexer`)  
-✅ **Maximum Flexibility:** All components optional - from minimal (no components) to full-featured (all components)  
-✅ **Two Modes:** With buffering (batch-übergreifend) or without buffering (direct processing)  
+✅ **Maximum Flexibility:** All components optional - from minimal (no components) to full-featured (metadata + buffering + DLQ)  
+✅ **Two Modes:** With buffering (cross-batch) or without buffering (tick-by-tick processing)  
 ✅ **Simplicity:** `AbstractIndexer` stays minimal (no business logic)  
 ✅ **Testability:** Components tested separately, `AbstractBatchIndexer` tested once  
 ✅ **100% Idempotent:** MERGE guarantees no duplicates, even after crash + redelivery  
@@ -1570,29 +2223,25 @@ services {
     }
   }
   
-  # Reader (Phase 14.2.5-14.2.7)
-  dummy-indexer {
+  # Reader (Phase 14.2.5-14.2.6)
+  dummyIndexer {
     className = "org.evochora.datapipeline.services.indexers.DummyIndexer"
     resources {
-      topic = "topic-read:batch-topic?consumerGroup=dummy-indexer"
-      storage = "storage-read:tick-storage"
-      metadata = "db-meta-read:index-database"
-      idempotency = "db-idempotency:index-database"
+      topic = "topicRead:batchTopic?consumerGroup=dummyIndexer"
+      storage = "storageRead:tickStorage"
+      metadata = "dbMetaRead:indexDatabase"
     }
     options {
       runId = ${?pipeline.services.runId}
       
-      # Metadata polling (for MetadataReadingComponent)
-      pollIntervalMs = 1000
-      maxPollDurationMs = 300000
+      # Metadata polling (standardized!)
+      metadataPollIntervalMs = 1000
+      metadataMaxPollDurationMs = 300000
       
-      # Tick buffering (Phase 14.2.6)
+      # Tick buffering (Phase 14.2.6, standardized!)
       insertBatchSize = 1000
       flushTimeoutMs = 5000
       # Note: topicPollTimeoutMs automatically set to flushTimeoutMs (no manual config)
-      
-      # Idempotency (Phase 14.2.7)
-      enableIdempotency = true
     }
   }
 }
@@ -1608,9 +2257,203 @@ services {
 - Specific `@ExpectLog` patterns for WARN/ERROR
 
 **DummyIndexer Evolution:**
-- Phase 14.2.5: Metadata wait + Topic loop (log-only)
-- Phase 14.2.6: Add storage reads + buffering
-- Phase 14.2.7: Add idempotency + error handling
+- Phase 14.2.5: Metadata wait + Storage read + Tick-by-tick processing (log-only)
+- Phase 14.2.6: Add buffering component (cross-batch)
+
+### Critical Test Cases for Phase 14.2.6 (Buffering)
+
+**1. Normal Flush (Size Trigger):**
+- Send batches until buffer size >= insertBatchSize
+- Verify flush triggered automatically
+- Verify only completed batches are ACKed
+
+**2. Timeout Flush:**
+- Send partial batch (< insertBatchSize)
+- Wait for flushTimeoutMs
+- Verify flush triggered by timeout
+- Verify incomplete batch is NOT ACKed
+
+**3. Cross-Batch ACK Tracking:**
+- Send 3x 100-tick batches (insertBatchSize=250)
+- Verify flush after 3rd batch
+- Verify batch_0 and batch_1 ACKed (fully flushed)
+- Verify batch_2 NOT ACKed (only 50 ticks flushed)
+- Send more ticks to complete batch_2
+- Verify batch_2 ACKed after completion
+
+**4. Final Flush (Service Shutdown) - HIGH PRIORITY ⚠️**
+- Send partial batch (< insertBatchSize, < flushTimeoutMs)
+- Stop service (Thread.interrupt())
+- Verify final flush executed
+- Verify all ticks persisted
+- Verify partial batches NOT ACKed (correct behavior!)
+- Verify redelivery works after restart
+
+**Rationale:** This is the most critical test because:
+- ✅ Prevents data loss on graceful shutdown
+- ✅ Production-relevant: services restart frequently
+- ✅ Edge-case: normal flow (full buffer) is tested automatically, but shutdown is not
+- ✅ ACK semantics: verifies partial batches are correctly NOT acknowledged
+
+**5. Buffer Loss Recovery (Crash Simulation):**
+- Send 3 batches, add to buffer
+- "Crash" before flush (don't call flush, just exit)
+- Restart service
+- Verify batches redelivered (not ACKed)
+- Verify MERGE prevents duplicates
+- Verify all ticks present exactly once
+
+**Test Example (Final Flush on Shutdown):**
+
+```java
+@Test
+@Tag("integration")
+void testFinalFlushOnShutdown() throws Exception {
+    // Setup: insertBatchSize=1000, send 3x 100-tick batches = 300 ticks in buffer
+    Config config = ConfigFactory.parseString("""
+        insertBatchSize = 1000
+        flushTimeoutMs = 10000
+        metadataPollIntervalMs = 100
+        metadataMaxPollDurationMs = 5000
+        """);
+    
+    DummyIndexer indexer = createIndexer(config);
+    indexer.start();
+    
+    // Send metadata first
+    sendMetadata(runId);
+    await().atMost(2, SECONDS).until(() -> metadataLoaded());
+    
+    // Send 3 small batches (total 300 ticks, < insertBatchSize=1000)
+    sendBatch(runId, "batch_0", 0, 100);    // 100 ticks
+    sendBatch(runId, "batch_1", 100, 100);  // 200 ticks
+    sendBatch(runId, "batch_2", 200, 100);  // 300 ticks
+    
+    // Wait for all batches to be buffered
+    await().atMost(2, SECONDS).until(() -> getBufferSize() == 300);
+    
+    // Verify NO flush yet (buffer not full, timeout not reached)
+    assertThat(getFlushedTickCount()).isEqualTo(0);
+    assertThat(getAckedBatchIds()).isEmpty();
+    
+    // Stop service gracefully (triggers final flush)
+    indexer.stop();
+    await().atMost(2, SECONDS).until(() -> indexer.getState() == ServiceState.STOPPED);
+    
+    // CRITICAL: Verify final flush executed
+    assertThat(getFlushedTickCount()).isEqualTo(300);
+    
+    // CRITICAL: Verify partial batches NOT ACKed
+    // (Each batch has 100 ticks but only 300/1000 of insertBatchSize flushed)
+    // Batches are incomplete → must be redelivered on restart
+    assertThat(getAckedBatchIds()).isEmpty();
+    
+    // Verify redelivery works after restart
+    indexer.start();
+    await().atMost(2, SECONDS).until(() -> getBufferSize() == 300);  // Re-buffered
+    
+    // CRITICAL: Verify MERGE prevents duplicates (ticks already in DB from final flush)
+    // After second flush, all ticks should exist exactly once
+    sendBatch(runId, "batch_3", 300, 700);  // Complete to 1000 → trigger flush
+    await().atMost(2, SECONDS).until(() -> getFlushedTickCount() == 1000);
+    
+    // Verify no duplicates in database (if this was real DB indexer)
+    // For DummyIndexer: just verify flush was called with correct tick count
+}
+```
+
+**Test Example (Buffer Loss Recovery):**
+
+```java
+@Test
+@Tag("integration")
+void testBufferLossRecovery() throws Exception {
+    DummyIndexer indexer = createIndexer();
+    indexer.start();
+    
+    sendMetadata(runId);
+    await().until(() -> metadataLoaded());
+    
+    // Send 3 batches, add to buffer
+    sendBatch(runId, "batch_0", 0, 100);
+    sendBatch(runId, "batch_1", 100, 100);
+    sendBatch(runId, "batch_2", 200, 100);
+    await().until(() -> getBufferSize() == 300);
+    
+    // CRASH before flush (kill thread without graceful shutdown)
+    indexer.stopImmediately();  // No final flush!
+    
+    // Verify ticks NOT flushed, batches NOT ACKed
+    assertThat(getFlushedTickCount()).isEqualTo(0);
+    assertThat(getAckedBatchIds()).isEmpty();
+    
+    // Restart service
+    indexer = createIndexer();
+    indexer.start();
+    await().until(() -> metadataLoaded());
+    
+    // Verify batches redelivered (topic sees they were never ACKed)
+    await().atMost(5, SECONDS).until(() -> getBufferSize() == 300);
+    
+    // Complete buffer to trigger flush
+    sendBatch(runId, "batch_3", 300, 700);
+    await().until(() -> getFlushedTickCount() == 1000);
+    
+    // CRITICAL: Verify MERGE ensures no duplicates
+    // (In real indexer: query DB and verify each tick exists exactly once)
+}
+```
+
+**Test Example (Cross-Batch ACK Tracking):**
+
+```java
+@Test
+@Tag("integration")
+void testCrossBatchAckTracking() throws Exception {
+    // insertBatchSize=250, batches are 100 ticks each
+    Config config = ConfigFactory.parseString("insertBatchSize = 250");
+    DummyIndexer indexer = createIndexer(config);
+    indexer.start();
+    
+    sendMetadata(runId);
+    await().until(() -> metadataLoaded());
+    
+    // Send batch_0: 100 ticks (buffer: 100)
+    sendBatch(runId, "batch_0", 0, 100);
+    await().until(() -> getBufferSize() == 100);
+    assertThat(getAckedBatchIds()).isEmpty();  // No flush yet
+    
+    // Send batch_1: 100 ticks (buffer: 200)
+    sendBatch(runId, "batch_1", 100, 100);
+    await().until(() -> getBufferSize() == 200);
+    assertThat(getAckedBatchIds()).isEmpty();  // Still no flush
+    
+    // Send batch_2: 100 ticks (buffer: 300 > 250 → FLUSH!)
+    sendBatch(runId, "batch_2", 200, 100);
+    await().atMost(2, SECONDS).until(() -> getFlushedTickCount() == 250);
+    
+    // CRITICAL: Verify only FULLY flushed batches ACKed
+    await().until(() -> getAckedBatchIds().size() == 2);
+    assertThat(getAckedBatchIds()).containsExactlyInAnyOrder("batch_0", "batch_1");
+    assertThat(getAckedBatchIds()).doesNotContain("batch_2");  // Only 50/100 flushed!
+    
+    // Remaining buffer: 50 ticks from batch_2
+    assertThat(getBufferSize()).isEqualTo(50);
+    
+    // Send batch_3: 100 ticks (buffer: 150)
+    sendBatch(runId, "batch_3", 300, 100);
+    await().until(() -> getBufferSize() == 150);
+    
+    // Send batch_4: 100 ticks (buffer: 250 → FLUSH!)
+    sendBatch(runId, "batch_4", 400, 100);
+    await().until(() -> getFlushedTickCount() == 500);
+    
+    // CRITICAL: Now batch_2 should be ACKed (all 100 ticks flushed)
+    await().until(() -> getAckedBatchIds().contains("batch_2"));
+    assertThat(getAckedBatchIds()).contains("batch_0", "batch_1", "batch_2");
+    assertThat(getAckedBatchIds()).doesNotContain("batch_3", "batch_4");
+}
+```
 
 ## Logging Strategy
 
@@ -1627,22 +2470,25 @@ services {
 DEBUG Received BatchInfo: storageKey=batch_0000000000_0000009999.pb, ticks=[0, 9999]
 DEBUG Buffered 10000 ticks from batch_0000000000_0000009999.pb, buffer size: 10000
 DEBUG Flushed 10000 ticks (DummyIndexer: no DB writes)
-DEBUG Skipping duplicate batch: batch_0000000000_0000009999.pb
 ```
 
 ## Success Criteria
 
-Upon completion of all phases:
+Upon completion of Phase 14.2.5 and 14.2.6:
 - ✅ `MetadataPersistenceService` → `metadata-topic` → `MetadataIndexer`
 - ✅ `PersistenceService` → `batch-topic` → `DummyIndexer`
 - ✅ DummyIndexer waits for metadata before processing batches
 - ✅ DummyIndexer runs continuously (blocking poll, not one-shot)
 - ✅ **MERGE-based idempotency ensures exactly-once processing (even with buffer loss + redelivery!)**
-- ✅ **ACK only after ALL ticks of a batch are flushed (batch-overgreifend safe!)**
+- ✅ **ACK only after ALL ticks of a batch are flushed (cross-batch safe!)**
 - ✅ Error handling: failed batches are redelivered, MERGE prevents duplicates
 - ✅ All tests pass (<1 minute total)
 - ✅ Monitoring: O(1) metrics for topics, components
 - ✅ **Buffer-loss recovery:** Crash + redelivery works correctly (MERGE re-inserts missing ticks)
+
+**Deferred Phases:**
+- **Phase 14.2.7 (deferred):** IdempotencyComponent only if performance monitoring shows storage reads are bottleneck
+- **Phase 14.2.8 (deferred):** DlqComponent only if monitoring shows specific batches (poison messages) failing repeatedly
 
 ## Implementation Notes
 
@@ -1666,6 +2512,7 @@ Upon completion of all phases:
 - Phase 14.2.3: Metadata Notification Read ✅ Completed
 - Phase 14.2.4: Batch Notification Write ✅ Completed
 - Phase 14.2.5: AbstractBatchIndexer + DummyIndexer (Metadata + Storage-Read + Tick-by-Tick) - Ready
-- Phase 14.2.6: TickBufferingComponent (Batch-übergreifend Buffering) - Ready
-- Phase 14.2.7: IdempotencyComponent (Performance Optimization) - Ready
+- Phase 14.2.6: TickBufferingComponent (Cross-Batch Buffering) - Ready
+- Phase 14.2.7: IdempotencyComponent (Performance Optimization) - ⚠️ **Specification ready - Implementation deferred (YAGNI)**
+- Phase 14.2.8: DlqComponent (Poison Message Handling) - ⚠️ **Specification ready - Implementation deferred (YAGNI)**
 
