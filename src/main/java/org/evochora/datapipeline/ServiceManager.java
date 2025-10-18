@@ -23,7 +23,9 @@ public class ServiceManager implements IMonitorable {
 
     private final Config pipelineConfig;
     private final Map<String, IServiceFactory> serviceFactories = new ConcurrentHashMap<>();
-    private final Map<String, IService> runningServices = new ConcurrentHashMap<>();
+    // Contains all service instances (RUNNING, PAUSED, STOPPED, ERROR)
+    // Services are removed only on explicit restart or during shutdown
+    private final Map<String, IService> services = new ConcurrentHashMap<>();
     private final Map<String, IResource> resources = new ConcurrentHashMap<>();
     private final Map<String, List<ResourceBinding>> serviceResourceBindings = new ConcurrentHashMap<>();
     private final List<String> startupSequence;
@@ -200,15 +202,15 @@ public class ServiceManager implements IMonitorable {
     }
 
     public void stopAll() {
-        log.info("\u001B[34m═════════════════════════════════ Service Shutdown ══════════════════════════════════════\u001B[0m");
+        log.info("\u001B[34m═════════════════════════════════ Stopping Service ══════════════════════════════════════\u001B[0m");
         List<String> toStop = new ArrayList<>(startupSequence);
         Collections.reverse(toStop);
-        runningServices.keySet().stream().filter(s -> !toStop.contains(s)).forEach(toStop::add);
+        services.keySet().stream().filter(s -> !toStop.contains(s)).forEach(toStop::add);
         // Filter to only stop services that are in a stoppable state (RUNNING or PAUSED)
         // This excludes one-shot services that have already stopped themselves
         List<String> actuallyStoppable = toStop.stream()
                 .filter(name -> {
-                    IService service = runningServices.get(name);
+                    IService service = services.get(name);
                     if (service == null) return false;
                     IService.State state = service.getCurrentState();
                     return state == IService.State.RUNNING || state == IService.State.PAUSED;
@@ -216,7 +218,20 @@ public class ServiceManager implements IMonitorable {
                 .collect(Collectors.toList());
         applyToAllServices(this::stopService, actuallyStoppable);
         
-        // Close all resources after all services have stopped
+        // NOTE: Resources are NOT closed here to allow restart via HTTP API.
+        // Resources are only closed during JVM shutdown via shutdown() method.
+    }
+    
+    /**
+     * Performs a complete shutdown: stops all services and closes all resources.
+     * <p>
+     * This method should only be called during JVM shutdown (via shutdown hook in Node),
+     * NOT during normal stop/start cycling via HTTP API.
+     * <p>
+     * Once resources are closed, they cannot be reopened, making restart impossible.
+     */
+    public void shutdown() {
+        stopAll();
         closeAllResources();
     }
     
@@ -233,7 +248,7 @@ public class ServiceManager implements IMonitorable {
      * Other resources (e.g., in-memory queues) do not require explicit shutdown.
      */
     private void closeAllResources() {
-        log.info("\u001B[34m════════════════════════════════ Resource Shutdown ══════════════════════════════════════\u001B[0m");
+        log.info("\u001B[34m════════════════════════════════ Closing Resource ══════════════════════════════════════\u001B[0m");
         
         for (Map.Entry<String, IResource> entry : resources.entrySet()) {
             String resourceName = entry.getKey();
@@ -254,12 +269,12 @@ public class ServiceManager implements IMonitorable {
 
     public void pauseAll() {
         log.info("Pausing all services...");
-        applyToAllServices(this::pauseService, new ArrayList<>(runningServices.keySet()));
+        applyToAllServices(this::pauseService, new ArrayList<>(services.keySet()));
     }
 
     public void resumeAll() {
         log.info("Resuming all services...");
-        applyToAllServices(this::resumeService, new ArrayList<>(runningServices.keySet()));
+        applyToAllServices(this::resumeService, new ArrayList<>(services.keySet()));
     }
 
     public void restartAll() {
@@ -269,10 +284,19 @@ public class ServiceManager implements IMonitorable {
     }
 
     public void startService(String name) {
-        // VALIDATION: Check if the service is already running.
-        if (runningServices.containsKey(name)) {
-            // Throw an exception to enforce explicit commands for destructive actions.
-            throw new IllegalStateException("Service '" + name + "' is already running. Use restartService() for an explicit restart.");
+        // VALIDATION: Check if the service already exists and its state
+        IService existing = services.get(name);
+        if (existing != null) {
+            IService.State state = existing.getCurrentState();
+            // Services that have finished (STOPPED/ERROR) can be restarted
+            if (state == IService.State.STOPPED || state == IService.State.ERROR) {
+                log.debug("Removing previous instance of service '{}' (state: {}) before creating new instance", name, state);
+                services.remove(name);
+                serviceResourceBindings.remove(name);
+            } else {
+                // Service is still RUNNING or PAUSED
+                throw new IllegalStateException("Service '" + name + "' is already running (state: " + state + "). Use restartService() for an explicit restart.");
+            }
         }
 
         IServiceFactory factory = serviceFactories.get(name);
@@ -309,7 +333,7 @@ public class ServiceManager implements IMonitorable {
                         .collect(Collectors.toList());
                 serviceResourceBindings.put(name, Collections.unmodifiableList(finalBindings));
 
-                runningServices.put(name, newServiceInstance);
+                services.put(name, newServiceInstance);
 
                 newServiceInstance.start();
             } finally {
@@ -318,7 +342,7 @@ public class ServiceManager implements IMonitorable {
             }
         } catch (OutOfMemoryError e) {
             // Clean up maps in case of a startup failure.
-            runningServices.remove(name);
+            services.remove(name);
             serviceResourceBindings.remove(name);
             activeWrappedResources.remove(name);
 
@@ -344,7 +368,7 @@ public class ServiceManager implements IMonitorable {
             return;
         } catch (RuntimeException e) {
             // Clean up maps in case of a startup failure.
-            runningServices.remove(name);
+            services.remove(name);
             serviceResourceBindings.remove(name);
             activeWrappedResources.remove(name);
 
@@ -399,28 +423,29 @@ public class ServiceManager implements IMonitorable {
         } catch (Exception e) {
             log.error("Failed to create and start a new instance for service '{}'.", name, e);
             // Clean up maps in case of a startup failure.
-            runningServices.remove(name);
+            services.remove(name);
             serviceResourceBindings.remove(name);
             activeWrappedResources.remove(name);
         }
     }
 
     public void stopService(String name) {
-        IService service = runningServices.remove(name);
+        IService service = services.get(name);
         if (service != null) {
-            serviceResourceBindings.remove(name);
             stopAndAwait(service, name);
+            // NOTE: Service remains in 'services' map with State STOPPED for monitoring.
+            // It will be removed on next startService() or during shutdown().
         } else {
-            log.warn("Attempted to stop service '{}', but it was not found among running services.", name);
+            log.warn("Attempted to stop service '{}', but it was not found among services.", name);
         }
     }
 
     public void pauseService(String serviceName) {
-        getRunningServiceOrFail(serviceName).pause();
+        getServiceOrFail(serviceName).pause();
     }
 
     public void resumeService(String serviceName) {
-        getRunningServiceOrFail(serviceName).resume();
+        getServiceOrFail(serviceName).resume();
     }
 
     public void restartService(String serviceName) {
@@ -453,25 +478,25 @@ public class ServiceManager implements IMonitorable {
         }
     }
 
-    private IService getRunningServiceOrFail(String serviceName) {
-        IService service = runningServices.get(serviceName);
+    private IService getServiceOrFail(String serviceName) {
+        IService service = services.get(serviceName);
         if (service == null) {
-            throw new IllegalArgumentException("Service not found or not running: " + serviceName);
+            throw new IllegalArgumentException("Service not found: " + serviceName);
         }
         return service;
     }
 
     public Collection<IService> getAllServices() {
-        return Collections.unmodifiableCollection(runningServices.values());
+        return Collections.unmodifiableCollection(services.values());
     }
 
     @Override
     public Map<String, Number> getMetrics() {
         Map<String, Number> metrics = new HashMap<>();
-        Map<IService.State, Long> serviceStates = runningServices.values().stream()
+        Map<IService.State, Long> serviceStates = services.values().stream()
                 .collect(Collectors.groupingBy(IService::getCurrentState, Collectors.counting()));
 
-        long stoppedCount = serviceFactories.size() - runningServices.size();
+        long stoppedCount = serviceFactories.size() - services.size();
 
         metrics.put("services_total", (long) serviceFactories.size());
         metrics.put("services_running", serviceStates.getOrDefault(IService.State.RUNNING, 0L));
@@ -494,7 +519,7 @@ public class ServiceManager implements IMonitorable {
 
     @Override
     public List<OperationalError> getErrors() {
-        return runningServices.values().stream()
+        return services.values().stream()
                 .filter(s -> s instanceof IMonitorable)
                 .flatMap(s -> ((IMonitorable) s).getErrors().stream())
                 .collect(Collectors.toList());
@@ -502,7 +527,7 @@ public class ServiceManager implements IMonitorable {
 
     @Override
     public void clearErrors() {
-        runningServices.values().stream()
+        services.values().stream()
                 .filter(s -> s instanceof IMonitorable)
                 .forEach(s -> ((IMonitorable) s).clearErrors());
         log.info("Cleared errors for all monitorable services.");
@@ -510,7 +535,7 @@ public class ServiceManager implements IMonitorable {
 
     @Override
     public boolean isHealthy() {
-        boolean servicesOk = runningServices.values().stream().noneMatch(s -> s.getCurrentState() == IService.State.ERROR);
+        boolean servicesOk = services.values().stream().noneMatch(s -> s.getCurrentState() == IService.State.ERROR);
         boolean resourcesOk = serviceResourceBindings.values().stream()
                 .flatMap(List::stream)
                 .noneMatch(b -> b.resource().getUsageState(b.context().usageType()) == IResource.UsageState.FAILED);
@@ -518,7 +543,7 @@ public class ServiceManager implements IMonitorable {
     }
 
     public Map<String, List<OperationalError>> getServiceErrors() {
-        return runningServices.entrySet().stream()
+        return services.entrySet().stream()
                 .filter(e -> e.getValue() instanceof IMonitorable)
                 .map(e -> new AbstractMap.SimpleEntry<>(e.getKey(), ((IMonitorable) e.getValue()).getErrors()))
                 .filter(e -> e.getValue() != null && !e.getValue().isEmpty())
@@ -526,7 +551,7 @@ public class ServiceManager implements IMonitorable {
     }
 
     public List<OperationalError> getServiceErrors(String serviceName) {
-        IService service = getRunningServiceOrFail(serviceName);
+        IService service = getServiceOrFail(serviceName);
         if (service instanceof IMonitorable) {
             return ((IMonitorable) service).getErrors();
         }
@@ -547,7 +572,7 @@ public class ServiceManager implements IMonitorable {
             throw new IllegalArgumentException("Service not found: " + serviceName);
         }
 
-        IService service = runningServices.get(serviceName);
+        IService service = services.get(serviceName);
         if (service == null) {
             return new ServiceStatus(IService.State.STOPPED, true, Collections.emptyMap(), Collections.emptyList(), Collections.emptyList());
         }

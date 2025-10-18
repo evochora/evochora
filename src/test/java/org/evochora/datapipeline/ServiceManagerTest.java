@@ -120,8 +120,8 @@ public class ServiceManagerTest {
             assertEquals(IService.State.STOPPED, sm.getServiceStatus("consumer").state());
             assertEquals(2, (long) sm.getMetrics().get("services_stopped"));
         });
-        // Stopping an already stopped service should be a no-op, not throw an exception.
-        sm.stopService("producer");
+        // Stopping an already stopped service should throw an exception (consistent with pause/resume)
+        assertThrows(IllegalStateException.class, () -> sm.stopService("producer"));
     }
 
     @Test
