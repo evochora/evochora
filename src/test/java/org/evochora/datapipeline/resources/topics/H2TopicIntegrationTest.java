@@ -5,10 +5,15 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.resources.IResource.UsageState;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -100,7 +105,7 @@ class H2TopicIntegrationTest {
         // Create test message
         BatchInfo message = BatchInfo.newBuilder()
             .setSimulationRunId("SIM_20250101_TEST")
-            .setStorageKey("/data/batch_001.parquet")
+            .setStoragePath("/data/batch_001.parquet")
             .setTickStart(100)
             .setTickEnd(200)
             .setWrittenAtMs(System.currentTimeMillis())
@@ -120,7 +125,7 @@ class H2TopicIntegrationTest {
         // Verify message content
         BatchInfo receivedPayload = receivedMessage.payload();
         assertThat(receivedPayload.getSimulationRunId()).isEqualTo("SIM_20250101_TEST");
-        assertThat(receivedPayload.getStorageKey()).isEqualTo("/data/batch_001.parquet");
+        assertThat(receivedPayload.getStoragePath()).isEqualTo("/data/batch_001.parquet");
         assertThat(receivedPayload.getTickStart()).isEqualTo(100);
         assertThat(receivedPayload.getTickEnd()).isEqualTo(200);
         assertThat(receivedPayload.getWrittenAtMs()).isPositive();
@@ -160,7 +165,7 @@ class H2TopicIntegrationTest {
         // When - Write one message
         BatchInfo message = BatchInfo.newBuilder()
             .setSimulationRunId("20250101-CONSUMER-GROUPS")
-            .setStorageKey("/data/batch_001.parquet")
+            .setStoragePath("/data/batch_001.parquet")
             .setTickStart(100)
             .setTickEnd(200)
             .setWrittenAtMs(System.currentTimeMillis())
@@ -212,7 +217,7 @@ class H2TopicIntegrationTest {
         // When - Write TWO messages
         BatchInfo message1 = BatchInfo.newBuilder()
             .setSimulationRunId("20250101-COMPETING")
-            .setStorageKey("/data/batch_001.parquet")
+            .setStoragePath("/data/batch_001.parquet")
             .setTickStart(100)
             .setTickEnd(200)
             .setWrittenAtMs(System.currentTimeMillis())
@@ -220,7 +225,7 @@ class H2TopicIntegrationTest {
         
         BatchInfo message2 = BatchInfo.newBuilder()
             .setSimulationRunId("20250101-COMPETING")
-            .setStorageKey("/data/batch_002.parquet")
+            .setStoragePath("/data/batch_002.parquet")
             .setTickStart(201)
             .setTickEnd(300)
             .setWrittenAtMs(System.currentTimeMillis())
@@ -274,7 +279,7 @@ class H2TopicIntegrationTest {
         // When - Write message, reader1 claims it but does NOT ack
         BatchInfo message = BatchInfo.newBuilder()
             .setSimulationRunId("20250101-STUCK")
-            .setStorageKey("/data/batch_001.parquet")
+            .setStoragePath("/data/batch_001.parquet")
             .setTickStart(100)
             .setTickEnd(200)
             .setWrittenAtMs(System.currentTimeMillis())
@@ -328,7 +333,7 @@ class H2TopicIntegrationTest {
         // When - Write message, reader1 claims it but delays ACK
         BatchInfo message = BatchInfo.newBuilder()
             .setSimulationRunId("20250101-STALE-ACK")
-            .setStorageKey("/data/batch_001.parquet")
+            .setStoragePath("/data/batch_001.parquet")
             .setTickStart(100)
             .setTickEnd(200)
             .setWrittenAtMs(System.currentTimeMillis())
@@ -376,7 +381,7 @@ class H2TopicIntegrationTest {
         
         BatchInfo message = BatchInfo.newBuilder()
             .setSimulationRunId("RUN-POLLING-001")
-            .setStorageKey("/data/batch_001.parquet")
+            .setStoragePath("/data/batch_001.parquet")
             .setTickStart(0)
             .setTickEnd(100)
             .setWrittenAtMs(System.currentTimeMillis())
@@ -393,7 +398,7 @@ class H2TopicIntegrationTest {
         
         assertThat(received).isNotNull();
         assertThat(received.payload().getSimulationRunId()).isEqualTo("RUN-POLLING-001");
-        assertThat(received.payload().getStorageKey()).isEqualTo("/data/batch_001.parquet");
+        assertThat(received.payload().getStoragePath()).isEqualTo("/data/batch_001.parquet");
         
         reader.ack(received);
     }
@@ -416,7 +421,7 @@ class H2TopicIntegrationTest {
         
         BatchInfo message = BatchInfo.newBuilder()
             .setSimulationRunId("test-run-789")
-            .setStorageKey("test-run-789/batch_0000000000_0000000100.pb")
+            .setStoragePath("test-run-789/batch_0000000000_0000000100.pb")
             .setTickStart(0)
             .setTickEnd(100)
             .setWrittenAtMs(System.currentTimeMillis())
@@ -430,7 +435,7 @@ class H2TopicIntegrationTest {
         assertThat(received).isNotNull();
         assertThat(received.payload()).isInstanceOf(BatchInfo.class);
         assertThat(received.payload().getSimulationRunId()).isEqualTo("test-run-789");
-        assertThat(received.payload().getStorageKey()).isEqualTo("test-run-789/batch_0000000000_0000000100.pb");
+        assertThat(received.payload().getStoragePath()).isEqualTo("test-run-789/batch_0000000000_0000000100.pb");
         assertThat(received.payload().getTickStart()).isEqualTo(0L);
         assertThat(received.payload().getTickEnd()).isEqualTo(100L);
         
@@ -453,7 +458,7 @@ class H2TopicIntegrationTest {
         for (int i = 1; i <= 3; i++) {
             writer.send(BatchInfo.newBuilder()
                 .setSimulationRunId("test-run-" + i)
-                .setStorageKey(String.format("test-run-%d/batch_0000000000_0000000100.pb", i))
+                .setStoragePath(String.format("test-run-%d/batch_0000000000_0000000100.pb", i))
                 .setTickStart(i * 100L)
                 .setTickEnd((i + 1) * 100L)
                 .setWrittenAtMs(System.currentTimeMillis())
@@ -530,7 +535,7 @@ class H2TopicIntegrationTest {
                     for (int msgIdx = 0; msgIdx < 10; msgIdx++) {
                         BatchInfo message = BatchInfo.newBuilder()
                             .setSimulationRunId("RUN-CONCURRENT-001")
-                            .setStorageKey(String.format("writer_%d/batch_%03d.parquet", writerId, msgIdx))
+                            .setStoragePath(String.format("writer_%d/batch_%03d.parquet", writerId, msgIdx))
                             .setTickStart(writerId * 1000L + msgIdx * 100L)
                             .setTickEnd(writerId * 1000L + (msgIdx + 1) * 100L)
                             .setWrittenAtMs(System.currentTimeMillis())
@@ -636,11 +641,11 @@ class H2TopicIntegrationTest {
                 var msg = reader.poll(200, TimeUnit.MILLISECONDS);
                 if (msg != null) {
                     // Track message (detect duplicates within consumer group)
-                    boolean added = processedKeys.add(msg.payload().getStorageKey());
+                    boolean added = processedKeys.add(msg.payload().getStoragePath());
                     if (!added) {
                         // Duplicate detected! This should NEVER happen within a consumer group
                         errors.incrementAndGet();
-                        System.err.println("DUPLICATE MESSAGE DETECTED: " + msg.payload().getStorageKey());
+                        System.err.println("DUPLICATE MESSAGE DETECTED: " + msg.payload().getStoragePath());
                     }
                     
                     // Acknowledge message

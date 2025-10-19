@@ -9,8 +9,11 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
@@ -115,7 +118,7 @@ class MetadataIndexerIntegrationTest {
         
         MetadataInfo notification = MetadataInfo.newBuilder()
             .setSimulationRunId(runId)
-            .setStorageKey(storageKey)
+            .setStoragePath(storageKey)
             .setWrittenAtMs(System.currentTimeMillis())
             .build();
         topicWriter.send(notification);
@@ -187,7 +190,7 @@ class MetadataIndexerIntegrationTest {
         
         MetadataInfo notification = MetadataInfo.newBuilder()
             .setSimulationRunId(runId)
-            .setStorageKey(storageKey)
+            .setStoragePath(storageKey)
             .setWrittenAtMs(System.currentTimeMillis())
             .build();
         topicWriter.send(notification);

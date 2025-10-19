@@ -36,9 +36,9 @@ message BatchInfo {
   // Simulation run identifier (matches SimulationMetadata.simulation_run_id)
   string simulation_run_id = 1;
 
-  // Storage key where batch was written (path or object key)
-  // Example: "20251014-143025-550e8400/batch_0000000000_0000000100.pb"
-  string storage_key = 2;
+  // Physical storage path where batch was written (includes compression extension)
+  // Example: "20251014-143025-550e8400/000/000/batch_0000000000_0000000100.pb.zst"
+  string storage_path = 2;
 
   // First tick number in this batch (inclusive)
   int64 tick_start = 3;
@@ -60,9 +60,9 @@ message MetadataInfo {
   // Simulation run identifier (matches SimulationMetadata.simulation_run_id)
   string simulation_run_id = 1;
 
-  // Storage key where metadata was written (path or object key)
-  // Example: "20251014-143025-550e8400/metadata.pb"
-  string storage_key = 2;
+  // Physical storage path where metadata was written (includes compression extension)
+  // Example: "20251014-143025-550e8400/metadata.pb.zst"
+  string storage_path = 2;
 
   // Unix timestamp in milliseconds when metadata was written to storage
   int64 written_at_ms = 3;

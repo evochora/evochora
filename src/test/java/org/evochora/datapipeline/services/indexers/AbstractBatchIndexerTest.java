@@ -8,6 +8,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IMetadataReader;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.junit.extensions.logging.AllowLog;
@@ -95,7 +96,7 @@ class AbstractBatchIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)  // First call: return batch
             .thenReturn(null);    // Subsequent calls: return null (keep running)
-        when(mockStorage.readBatch(batchInfo.getStorageKey())).thenReturn(ticks);
+        when(mockStorage.readBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(ticks);
         
         // Expect 5 flush calls (tick-by-tick processing)
         flushLatch = new CountDownLatch(5);
@@ -119,7 +120,7 @@ class AbstractBatchIndexerTest {
             .untilAsserted(() -> verify(mockTopic, times(1)).ack(message));
         
         // Verify storage was read exactly once
-        verify(mockStorage, times(1)).readBatch(batchInfo.getStorageKey());
+        verify(mockStorage, times(1)).readBatch(StoragePath.of(batchInfo.getStoragePath()));
     }
     
     @Test
@@ -141,7 +142,7 @@ class AbstractBatchIndexerTest {
             .thenReturn(null);    // Subsequent calls: null
         
         // Storage read fails
-        when(mockStorage.readBatch(batchInfo.getStorageKey()))
+        when(mockStorage.readBatch(StoragePath.of(batchInfo.getStoragePath())))
             .thenThrow(new IOException("Storage read failed"));
         
         // When: Start indexer
@@ -177,7 +178,7 @@ class AbstractBatchIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
             .thenReturn(null);
-        when(mockStorage.readBatch(batchInfo.getStorageKey())).thenReturn(ticks);
+        when(mockStorage.readBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(ticks);
         
         // Configure test indexer to throw error on flush
         flushLatch = new CountDownLatch(1);
@@ -213,7 +214,7 @@ class AbstractBatchIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
             .thenReturn(null);
-        when(mockStorage.readBatch(batchInfo.getStorageKey())).thenReturn(ticks);
+        when(mockStorage.readBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(ticks);
         
         flushLatch = new CountDownLatch(10);
         
@@ -254,7 +255,7 @@ class AbstractBatchIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
             .thenReturn(null);
-        when(mockStorage.readBatch(batchInfo.getStorageKey())).thenReturn(ticks);
+        when(mockStorage.readBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(ticks);
         
         flushLatch = new CountDownLatch(2);
         
@@ -294,8 +295,8 @@ class AbstractBatchIndexerTest {
             .thenReturn(msg1)
             .thenReturn(msg2)
             .thenAnswer(invocation -> null);  // Keep returning null indefinitely
-        when(mockStorage.readBatch(batch1.getStorageKey())).thenReturn(ticks1);
-        when(mockStorage.readBatch(batch2.getStorageKey())).thenReturn(ticks2);
+        when(mockStorage.readBatch(StoragePath.of(batch1.getStoragePath()))).thenReturn(ticks1);
+        when(mockStorage.readBatch(StoragePath.of(batch2.getStoragePath()))).thenReturn(ticks2);
         
         flushLatch = new CountDownLatch(8);  // 5 + 3 ticks
         
@@ -377,7 +378,7 @@ class AbstractBatchIndexerTest {
     private BatchInfo createBatchInfo(String runId, String storageKey, long tickStart, long tickEnd) {
         return BatchInfo.newBuilder()
             .setSimulationRunId(runId)
-            .setStorageKey(storageKey)
+            .setStoragePath(storageKey)
             .setTickStart(tickStart)
             .setTickEnd(tickEnd)
             .setWrittenAtMs(System.currentTimeMillis())

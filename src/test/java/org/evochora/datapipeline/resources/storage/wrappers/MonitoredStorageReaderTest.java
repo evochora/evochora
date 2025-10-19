@@ -3,7 +3,7 @@ package org.evochora.datapipeline.resources.storage.wrappers;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
-import org.evochora.datapipeline.api.resources.storage.BatchMetadata;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,7 +39,10 @@ class MonitoredStorageReaderTest {
 
     @Test
     void testListBatchFilesPassthrough() throws IOException {
-        List<String> files = Arrays.asList("run/batch_001.pb.zst", "run/batch_002.pb.zst");
+        List<StoragePath> files = Arrays.asList(
+            StoragePath.of("run/batch_001.pb.zst"),
+            StoragePath.of("run/batch_002.pb.zst")
+        );
         BatchFileListResult result = new BatchFileListResult(files, null, false);
 
         when(mockDelegate.listBatchFiles("run/", null, 10)).thenReturn(result);
@@ -57,11 +60,12 @@ class MonitoredStorageReaderTest {
             TickData.newBuilder().setTickNumber(101).build()
         );
 
-        when(mockDelegate.readBatch(anyString())).thenReturn(ticks);
+        StoragePath testPath = StoragePath.of("batch.pb.zst");
+        when(mockDelegate.readBatch(any(StoragePath.class))).thenReturn(ticks);
 
-        monitoredReader.readBatch("batch.pb.zst");
+        monitoredReader.readBatch(testPath);
 
-        verify(mockDelegate).readBatch("batch.pb.zst");
+        verify(mockDelegate).readBatch(testPath);
 
         Map<String, Number> metrics = monitoredReader.getMetrics();
         assertEquals(1L, metrics.get("batches_read").longValue());
@@ -84,10 +88,11 @@ class MonitoredStorageReaderTest {
 
     @Test
     void testReadErrorTracked() throws IOException {
-        when(mockDelegate.readBatch(anyString()))
+        StoragePath testPath = StoragePath.of("batch.pb.zst");
+        when(mockDelegate.readBatch(any(StoragePath.class)))
             .thenThrow(new IOException("Read failed"));
 
-        assertThrows(IOException.class, () -> monitoredReader.readBatch("batch.pb.zst"));
+        assertThrows(IOException.class, () -> monitoredReader.readBatch(testPath));
 
         Map<String, Number> metrics = monitoredReader.getMetrics();
         assertEquals(1L, metrics.get("read_errors").longValue());

@@ -3,6 +3,7 @@ package org.evochora.datapipeline.services.indexers.components;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -166,7 +167,7 @@ class TickBufferingComponentTest {
     private TopicMessage<BatchInfo, String> createTestMessage(String batchId) {
         BatchInfo batchInfo = BatchInfo.newBuilder()
             .setSimulationRunId("test-run")
-            .setStorageKey(batchId)
+            .setStoragePath(batchId)
             .setTickStart(0)
             .setTickEnd(99)
             .setWrittenAtMs(System.currentTimeMillis())

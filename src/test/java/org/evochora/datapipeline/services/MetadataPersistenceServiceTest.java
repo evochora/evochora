@@ -6,10 +6,15 @@ import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.services.IService.State;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.ExpectLog;
@@ -173,7 +178,7 @@ class MetadataPersistenceServiceTest {
 
         // Mock queue to return metadata
         when(mockInputQueue.take()).thenReturn(metadata);
-        doNothing().when(mockStorage).writeMessage(anyString(), any());
+        when(mockStorage.writeMessage(anyString(), any())).thenReturn(StoragePath.of("sim-123/metadata.pb"));
 
         // Start service (will process message and stop)
         service.start();
@@ -193,7 +198,7 @@ class MetadataPersistenceServiceTest {
         verify(mockTopic).setSimulationRun(eq("sim-123"));
         verify(mockTopic).send(argThat(info -> 
             info.getSimulationRunId().equals("sim-123") &&
-            info.getStorageKey().equals("sim-123/metadata.pb") &&
+            info.getStoragePath().startsWith("sim-123/metadata.pb") &&
             info.getWrittenAtMs() > 0
         ));
 
@@ -211,7 +216,7 @@ class MetadataPersistenceServiceTest {
         SimulationMetadata metadata = createTestMetadata("my-simulation-run-42");
 
         when(mockInputQueue.take()).thenReturn(metadata);
-        doNothing().when(mockStorage).writeMessage(anyString(), any());
+        when(mockStorage.writeMessage(anyString(), any())).thenReturn(StoragePath.of("sim-123/metadata.pb"));
 
         service.start();
 
@@ -297,9 +302,9 @@ class MetadataPersistenceServiceTest {
         when(mockInputQueue.take()).thenReturn(metadata);
 
         // First attempt fails, second succeeds
-        doThrow(new IOException("Transient error"))
-            .doNothing()
-            .when(mockStorage).writeMessage(anyString(), any());
+        when(mockStorage.writeMessage(anyString(), any()))
+            .thenThrow(new IOException("Transient error"))
+            .thenReturn(StoragePath.of("sim-123/metadata.pb"));
 
         service.start();
 
@@ -463,7 +468,7 @@ class MetadataPersistenceServiceTest {
         SimulationMetadata metadata = createTestMetadata("sim-metrics");
 
         when(mockInputQueue.take()).thenReturn(metadata);
-        doNothing().when(mockStorage).writeMessage(anyString(), any());
+        when(mockStorage.writeMessage(anyString(), any())).thenReturn(StoragePath.of("sim-123/metadata.pb"));
 
         service.start();
 

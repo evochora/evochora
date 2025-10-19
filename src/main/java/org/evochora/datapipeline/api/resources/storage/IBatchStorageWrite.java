@@ -40,23 +40,27 @@ public interface IBatchStorageWrite extends IResource {
      *   <li>Atomically committed (temp file → final file)</li>
      * </ul>
      * <p>
+     * The returned {@link StoragePath} represents the physical path including compression
+     * extension (e.g., ".zst" for Zstandard). This path can be passed directly to
+     * {@link IBatchStorageRead#readBatch(StoragePath)} for reading.
+     * <p>
      * <strong>Example usage (PersistenceService):</strong>
      * <pre>
      * List&lt;TickData&gt; batch = queue.drainTo(maxBatchSize);
      * long firstTick = batch.get(0).getTickNumber();
      * long lastTick = batch.get(batch.size() - 1).getTickNumber();
-     * String filename = storage.writeBatch(batch, firstTick, lastTick);
-     * log.info("Wrote {} ticks to {}", batch.size(), filename);
+     * StoragePath path = storage.writeBatch(batch, firstTick, lastTick);
+     * log.info("Wrote {} ticks to {}", batch.size(), path);
      * </pre>
      *
      * @param batch The tick data to persist (must be non-empty)
      * @param firstTick The first tick number in the batch
      * @param lastTick The last tick number in the batch
-     * @return The relative filename where batch was stored (e.g., "001/234/batch_0012340000_0012340999.pb.zst")
+     * @return The physical storage path where batch was written (includes compression extension)
      * @throws IOException If write fails
      * @throws IllegalArgumentException If batch is empty or tick order is invalid (firstTick > lastTick)
      */
-    String writeBatch(List<TickData> batch, long firstTick, long lastTick) throws IOException;
+    StoragePath writeBatch(List<TickData> batch, long firstTick, long lastTick) throws IOException;
 
     /**
      * Writes a single protobuf message to storage at the specified key.
@@ -72,19 +76,24 @@ public interface IBatchStorageWrite extends IResource {
      *   <li>Atomically committed (temp file → final file)</li>
      * </ul>
      * <p>
+     * The returned {@link StoragePath} represents the physical path including compression
+     * extension. This path can be passed directly to {@link IBatchStorageRead#readMessage(StoragePath, com.google.protobuf.Parser)}
+     * for reading.
+     * <p>
      * <strong>Example usage (MetadataPersistenceService):</strong>
      * <pre>
      * SimulationMetadata metadata = buildMetadata();
      * String key = simulationRunId + "/metadata.pb";
-     * storage.writeMessage(key, metadata);
-     * log.info("Wrote metadata to {}", key);
+     * StoragePath path = storage.writeMessage(key, metadata);
+     * log.info("Wrote metadata to {}", path);
      * </pre>
      *
-     * @param key The storage key (relative path, e.g., "sim-123/metadata.pb")
+     * @param key The storage key (relative path without compression extension, e.g., "sim-123/metadata.pb")
      * @param message The protobuf message to write
      * @param <T> The protobuf message type
+     * @return The physical storage path where message was written (includes compression extension)
      * @throws IOException If write fails
      * @throws IllegalArgumentException If key is null/empty or message is null
      */
-    <T extends MessageLite> void writeMessage(String key, T message) throws IOException;
+    <T extends MessageLite> StoragePath writeMessage(String key, T message) throws IOException;
 }

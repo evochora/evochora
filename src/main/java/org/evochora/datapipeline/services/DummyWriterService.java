@@ -3,6 +3,7 @@ package org.evochora.datapipeline.services;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.contracts.TickData;
 
 import java.io.IOException;
@@ -61,11 +62,11 @@ public class DummyWriterService extends AbstractService {
 
             try {
                 // Write batch using batch API
-                String filename = storage.writeBatch(batch, firstTick, lastTick);
+                StoragePath path = storage.writeBatch(batch, firstTick, lastTick);
                 totalMessagesWritten.addAndGet(batch.size());
                 writeOperations.incrementAndGet();
                 log.debug("Wrote batch {} with {} messages (ticks {}-{})",
-                    filename, batch.size(), firstTick, lastTick);
+                    path, batch.size(), firstTick, lastTick);
 
             } catch (IOException e) {
                 log.warn("Failed to write batch (ticks {}-{})", firstTick, lastTick);

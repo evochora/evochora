@@ -8,6 +8,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.resources.database.H2Database;
@@ -293,9 +294,9 @@ class DummyIndexerIntegrationTest {
         List<TickData> batch2 = createTestTicks(runId, 10, 10);
         List<TickData> batch3 = createTestTicks(runId, 20, 10);
         
-        String key1 = testStorage.writeBatch(batch1, 0, 9);
-        String key2 = testStorage.writeBatch(batch2, 10, 19);
-        String key3 = testStorage.writeBatch(batch3, 20, 29);
+        StoragePath key1 = testStorage.writeBatch(batch1, 0, 9);
+        StoragePath key2 = testStorage.writeBatch(batch2, 10, 19);
+        StoragePath key3 = testStorage.writeBatch(batch3, 20, 29);
         
         // Create indexer with real topic (not mock!)
         Config config = ConfigFactory.parseString("""
@@ -315,9 +316,9 @@ class DummyIndexerIntegrationTest {
             .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
         
         // Send 3 BatchInfo messages to topic
-        sendBatchInfoToTopic(runId, key1, 0, 9);
-        sendBatchInfoToTopic(runId, key2, 10, 19);
-        sendBatchInfoToTopic(runId, key3, 20, 29);
+        sendBatchInfoToTopic(runId, key1.asString(), 0, 9);
+        sendBatchInfoToTopic(runId, key2.asString(), 10, 19);
+        sendBatchInfoToTopic(runId, key3.asString(), 20, 29);
         
         // Then: Verify all batches processed
         // Phase 14.2.5: tick-by-tick processing (30 ticks = 30 flush calls)
@@ -346,9 +347,9 @@ class DummyIndexerIntegrationTest {
         List<TickData> batch2 = createTestTicks(runId, 100, 100);
         List<TickData> batch3 = createTestTicks(runId, 200, 100);
         
-        String key1 = testStorage.writeBatch(batch1, 0, 99);
-        String key2 = testStorage.writeBatch(batch2, 100, 199);
-        String key3 = testStorage.writeBatch(batch3, 200, 299);
+        StoragePath key1 = testStorage.writeBatch(batch1, 0, 99);
+        StoragePath key2 = testStorage.writeBatch(batch2, 100, 199);
+        StoragePath key3 = testStorage.writeBatch(batch3, 200, 299);
         
         // Create indexer WITH buffering (insertBatchSize=250)
         Config config = ConfigFactory.parseString("""
@@ -366,9 +367,9 @@ class DummyIndexerIntegrationTest {
         await().atMost(5, TimeUnit.SECONDS)
             .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
         
-        sendBatchInfoToTopic(runId, key1, 0, 99);
-        sendBatchInfoToTopic(runId, key2, 100, 199);
-        sendBatchInfoToTopic(runId, key3, 200, 299);
+        sendBatchInfoToTopic(runId, key1.asString(), 0, 99);
+        sendBatchInfoToTopic(runId, key2.asString(), 100, 199);
+        sendBatchInfoToTopic(runId, key3.asString(), 200, 299);
         
         // Then: Verify flush triggered by size (buffer: 300 >= insertBatchSize: 250)
         await().atMost(10, TimeUnit.SECONDS)
@@ -389,7 +390,7 @@ class DummyIndexerIntegrationTest {
         
         // Write one small batch (< insertBatchSize)
         List<TickData> batch1 = createTestTicks(runId, 0, 50);
-        String key1 = testStorage.writeBatch(batch1, 0, 49);
+        StoragePath key1 = testStorage.writeBatch(batch1, 0, 49);
         
         // Create indexer with short flush timeout
         Config config = ConfigFactory.parseString("""
@@ -407,7 +408,7 @@ class DummyIndexerIntegrationTest {
         await().atMost(5, TimeUnit.SECONDS)
             .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
         
-        sendBatchInfoToTopic(runId, key1, 0, 49);
+        sendBatchInfoToTopic(runId, key1.asString(), 0, 49);
         
         // Then: Verify timeout-triggered flush (wait for flushTimeout + buffer)
         await().atMost(5, TimeUnit.SECONDS)
@@ -431,11 +432,11 @@ class DummyIndexerIntegrationTest {
         List<TickData> batch4 = createTestTicks(runId, 300, 100);
         List<TickData> batch5 = createTestTicks(runId, 400, 100);
         
-        String key1 = testStorage.writeBatch(batch1, 0, 99);
-        String key2 = testStorage.writeBatch(batch2, 100, 199);
-        String key3 = testStorage.writeBatch(batch3, 200, 299);
-        String key4 = testStorage.writeBatch(batch4, 300, 399);
-        String key5 = testStorage.writeBatch(batch5, 400, 499);
+        StoragePath key1 = testStorage.writeBatch(batch1, 0, 99);
+        StoragePath key2 = testStorage.writeBatch(batch2, 100, 199);
+        StoragePath key3 = testStorage.writeBatch(batch3, 200, 299);
+        StoragePath key4 = testStorage.writeBatch(batch4, 300, 399);
+        StoragePath key5 = testStorage.writeBatch(batch5, 400, 499);
         
         Config config = ConfigFactory.parseString("""
             runId = "%s"
@@ -452,9 +453,9 @@ class DummyIndexerIntegrationTest {
         await().atMost(5, TimeUnit.SECONDS)
             .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
         
-        sendBatchInfoToTopic(runId, key1, 0, 99);      // buffer: 100
-        sendBatchInfoToTopic(runId, key2, 100, 199);   // buffer: 200
-        sendBatchInfoToTopic(runId, key3, 200, 299);   // buffer: 300 → FLUSH 250!
+        sendBatchInfoToTopic(runId, key1.asString(), 0, 99);      // buffer: 100
+        sendBatchInfoToTopic(runId, key2.asString(), 100, 199);   // buffer: 200
+        sendBatchInfoToTopic(runId, key3.asString(), 200, 299);   // buffer: 300 → FLUSH 250!
         
         // Then: Verify first flush (250 ticks)
         await().atMost(10, TimeUnit.SECONDS)
@@ -462,8 +463,8 @@ class DummyIndexerIntegrationTest {
         
         // At this point: batch1 & batch2 fully flushed, batch3 only 50/100 flushed
         // Continue with more batches
-        sendBatchInfoToTopic(runId, key4, 300, 399);   // buffer: 150 (50 + 100)
-        sendBatchInfoToTopic(runId, key5, 400, 499);   // buffer: 250 → FLUSH 250!
+        sendBatchInfoToTopic(runId, key4.asString(), 300, 399);   // buffer: 150 (50 + 100)
+        sendBatchInfoToTopic(runId, key5.asString(), 400, 499);   // buffer: 250 → FLUSH 250!
         
         // Verify second flush (total 500 ticks)
         await().atMost(10, TimeUnit.SECONDS)
@@ -488,9 +489,9 @@ class DummyIndexerIntegrationTest {
         List<TickData> batch2 = createTestTicks(runId, 100, 150);  // Total: 250 → triggers flush!
         List<TickData> batch3 = createTestTicks(runId, 250, 50);   // Remaining in buffer
         
-        String key1 = testStorage.writeBatch(batch1, 0, 99);
-        String key2 = testStorage.writeBatch(batch2, 100, 249);
-        String key3 = testStorage.writeBatch(batch3, 250, 299);
+        StoragePath key1 = testStorage.writeBatch(batch1, 0, 99);
+        StoragePath key2 = testStorage.writeBatch(batch2, 100, 249);
+        StoragePath key3 = testStorage.writeBatch(batch3, 250, 299);
         
         Config config = ConfigFactory.parseString("""
             runId = "%s"
@@ -507,9 +508,9 @@ class DummyIndexerIntegrationTest {
         await().atMost(5, TimeUnit.SECONDS)
             .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
         
-        sendBatchInfoToTopic(runId, key1, 0, 99);
-        sendBatchInfoToTopic(runId, key2, 100, 249);
-        sendBatchInfoToTopic(runId, key3, 250, 299);
+        sendBatchInfoToTopic(runId, key1.asString(), 0, 99);
+        sendBatchInfoToTopic(runId, key2.asString(), 100, 249);
+        sendBatchInfoToTopic(runId, key3.asString(), 250, 299);
         
         // Wait for first flush (250 ticks)
         await().atMost(10, TimeUnit.SECONDS)
@@ -588,7 +589,7 @@ class DummyIndexerIntegrationTest {
         
         BatchInfo batchInfo = BatchInfo.newBuilder()
             .setSimulationRunId(runId)
-            .setStorageKey(storageKey)
+            .setStoragePath(storageKey)
             .setTickStart(tickStart)
             .setTickEnd(tickEnd)
             .setWrittenAtMs(System.currentTimeMillis())

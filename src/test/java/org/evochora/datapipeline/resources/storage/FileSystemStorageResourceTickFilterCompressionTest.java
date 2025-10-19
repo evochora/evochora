@@ -4,6 +4,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -63,7 +64,7 @@ class FileSystemStorageResourceTickFilterCompressionTest {
     }
 
     @Test
-    void testLogicalPathsReturnedWithCompression() throws IOException {
+    void testPhysicalPathsReturnedWithCompression() throws IOException {
         // Write batches with compression
         storageCompressed.writeBatch(List.of(createTick(0), createTick(10)), 0, 10);
         storageCompressed.writeBatch(List.of(createTick(100), createTick(200)), 100, 200);
@@ -73,12 +74,12 @@ class FileSystemStorageResourceTickFilterCompressionTest {
 
         assertEquals(2, result.getFilenames().size(), "Should find 2 batches");
         
-        // Verify that returned paths are LOGICAL (no .zst extension)
-        for (String filename : result.getFilenames()) {
-            assertTrue(filename.endsWith(".pb"), 
-                "Public API should return logical paths ending with .pb, but got: " + filename);
-            assertFalse(filename.endsWith(".zst"), 
-                "Public API should NOT expose physical .zst extension, but got: " + filename);
+        // Verify that returned paths are PHYSICAL (include .pb.zst extension when compression enabled)
+        for (StoragePath filename : result.getFilenames()) {
+            assertTrue(filename.asString().contains(".pb"), 
+                "Physical paths should contain .pb");
+            assertTrue(filename.asString().endsWith(".pb.zst"), 
+                "Compressed storage should return physical paths with .zst extension, but got: " + filename);
         }
     }
 
@@ -95,15 +96,15 @@ class FileSystemStorageResourceTickFilterCompressionTest {
         assertEquals(2, result.getFilenames().size(), "Should find 2 batches >= tick 100");
         
         // Verify logical paths
-        for (String filename : result.getFilenames()) {
-            assertTrue(filename.endsWith(".pb"), "Should return logical paths");
-            assertFalse(filename.endsWith(".zst"), "Should not expose compression extension");
+        for (StoragePath filename : result.getFilenames()) {
+            assertTrue(filename.asString().contains(".pb"), "Should return physical paths with .pb");
+            // Compression extension depends on config;
         }
         
         // Verify correct batches were returned
-        assertTrue(result.getFilenames().stream().anyMatch(f -> f.contains("batch_0000000000000000100_")));
-        assertTrue(result.getFilenames().stream().anyMatch(f -> f.contains("batch_0000000000000001000_")));
-        assertFalse(result.getFilenames().stream().anyMatch(f -> f.contains("batch_0000000000000000000_")));
+        assertTrue(result.getFilenames().stream().anyMatch(f -> f.asString().contains("batch_0000000000000000100_")));
+        assertTrue(result.getFilenames().stream().anyMatch(f -> f.asString().contains("batch_0000000000000001000_")));
+        assertFalse(result.getFilenames().stream().anyMatch(f -> f.asString().contains("batch_0000000000000000000_")));
     }
 
     @Test
@@ -120,8 +121,8 @@ class FileSystemStorageResourceTickFilterCompressionTest {
         assertEquals(2, result.getFilenames().size(), "Should find 2 batches in range [500, 1000]");
         
         // Verify logical paths
-        for (String filename : result.getFilenames()) {
-            assertTrue(filename.endsWith(".pb"), "Should return logical paths");
+        for (StoragePath filename : result.getFilenames()) {
+            assertTrue(filename.asString().contains(".pb"), "Should return physical paths with .pb");
         }
     }
 
@@ -159,13 +160,13 @@ class FileSystemStorageResourceTickFilterCompressionTest {
             "Compressed and uncompressed storage should return same number of results");
         
         // Verify both return logical paths
-        for (String filename : compressedResult.getFilenames()) {
-            assertTrue(filename.endsWith(".pb"), "Compressed storage should return logical paths");
-            assertFalse(filename.contains(".zst"), "Compressed storage should not expose .zst in public API");
+        for (StoragePath filename : compressedResult.getFilenames()) {
+            assertTrue(filename.asString().contains(".pb"), "Should return physical paths with .pb");
+            // Compression extension depends on config;
         }
         
-        for (String filename : uncompressedResult.getFilenames()) {
-            assertTrue(filename.endsWith(".pb"), "Uncompressed storage should return logical paths");
+        for (StoragePath filename : uncompressedResult.getFilenames()) {
+            assertTrue(filename.asString().contains(".pb"), "Should return physical paths with .pb");
         }
     }
 
@@ -179,10 +180,10 @@ class FileSystemStorageResourceTickFilterCompressionTest {
         BatchFileListResult result = storageCompressed.listBatchFiles("test-sim/", null, 100, 1000L, 1000L);
         
         assertEquals(1, result.getFilenames().size(), "Should find exactly one batch");
-        String logicalPath = result.getFilenames().get(0);
+        StoragePath path = result.getFilenames().get(0);
         
         // Read the batch using the logical path
-        List<TickData> readBatch = storageCompressed.readBatch(logicalPath);
+        List<TickData> readBatch = storageCompressed.readBatch(path);
         
         assertEquals(originalBatch.size(), readBatch.size(), "Should read all ticks");
         assertEquals(originalBatch, readBatch, "Data should be preserved through compression round-trip");

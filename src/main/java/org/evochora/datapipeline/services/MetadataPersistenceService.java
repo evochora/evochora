@@ -9,6 +9,7 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 
 import java.io.IOException;
@@ -185,17 +186,17 @@ public class MetadataPersistenceService extends AbstractService {
 
         while (attempt <= maxRetries) {
             try {
-                writeMetadata(key, metadata);
+                StoragePath storagePath = writeMetadata(key, metadata);
 
                 metadataWritten.incrementAndGet();
                 bytesWritten.addAndGet(metadata.getSerializedSize());
-                log.debug("Successfully wrote metadata to {}", key);
+                log.debug("Successfully wrote metadata to {}", storagePath);
                 
                 // Send topic notification if topic is configured
                 if (topic != null) {
                     topic.setSimulationRun(metadata.getSimulationRunId());
                     try {
-                        sendTopicNotification(key, metadata);
+                        sendTopicNotification(storagePath.asString(), metadata);
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                         log.debug("Interrupted while sending topic notification");
@@ -252,12 +253,13 @@ public class MetadataPersistenceService extends AbstractService {
      *   <li>Performs atomic write (temp file → final file)</li>
      * </ul>
      *
-     * @param key storage key for the metadata file
+     * @param key storage key for the metadata file (logical path without compression)
      * @param metadata the simulation metadata to persist
+     * @return the physical storage path where metadata was written (includes compression extension)
      * @throws IOException if write operation fails
      */
-    private void writeMetadata(String key, SimulationMetadata metadata) throws IOException {
-        storage.writeMessage(key, metadata);
+    private StoragePath writeMetadata(String key, SimulationMetadata metadata) throws IOException {
+        return storage.writeMessage(key, metadata);
     }
 
     /**
@@ -266,19 +268,19 @@ public class MetadataPersistenceService extends AbstractService {
      * This notification enables event-driven metadata indexing - MetadataIndexer
      * subscribes to the topic and reads from storage only when notified.
      *
-     * @param key storage key where metadata was written
+     * @param storagePath physical storage path where metadata was written (includes compression extension)
      * @param metadata the simulation metadata that was persisted
      * @throws InterruptedException if interrupted while sending notification
      */
-    private void sendTopicNotification(String key, SimulationMetadata metadata) throws InterruptedException {
+    private void sendTopicNotification(String storagePath, SimulationMetadata metadata) throws InterruptedException {
         MetadataInfo info = MetadataInfo.newBuilder()
             .setSimulationRunId(metadata.getSimulationRunId())
-            .setStorageKey(key)
+            .setStoragePath(storagePath)
             .setWrittenAtMs(System.currentTimeMillis())
             .build();
         
         topic.send(info);
-        log.debug("Sent metadata notification for {}", key);
+        log.debug("Sent metadata notification for {}", storagePath);
     }
 
     /**

@@ -4,6 +4,7 @@ import com.google.protobuf.Int32Value;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -89,7 +90,7 @@ class FileSystemStorageResourceCompressionTest {
 
             // Act: Write and read back
             storage.writeMessage(key, originalMessage);
-            Int32Value readMessage = storage.readMessage(key + ".zst", Int32Value.parser());
+            Int32Value readMessage = storage.readMessage(StoragePath.of(key + ".zst"), Int32Value.parser());
 
             // Assert: Data preserved
             assertThat(readMessage.getValue()).isEqualTo(originalMessage.getValue());
@@ -105,11 +106,11 @@ class FileSystemStorageResourceCompressionTest {
             }
 
             // Act: Write compressed batch
-            String batchPath = storage.writeBatch(batch, 42, 42);
+            StoragePath batchPath = storage.writeBatch(batch, 42, 42);
 
             // Assert: Compressed file is significantly smaller than uncompressed would be
-            // Note: writeBatch() returns logical path, but physical file has compression extension
-            Path compressedFile = tempDir.resolve(batchPath + compressionExtension);
+            // Note: writeBatch() now returns physical path including compression extension
+            Path compressedFile = tempDir.resolve(batchPath.asString());
             long compressedSize = Files.size(compressedFile);
 
             // Each TickData message when delimited is ~30-40 bytes, so 1000 messages ~= 35000 bytes
@@ -130,7 +131,7 @@ class FileSystemStorageResourceCompressionTest {
             storage.writeMessage(key, originalMessage);
 
             // Act: Read using readMessage
-            Int32Value readMessage = storage.readMessage(key + ".zst", Int32Value.parser());
+            Int32Value readMessage = storage.readMessage(StoragePath.of(key + ".zst"), Int32Value.parser());
 
             // Assert
             assertThat(readMessage.getValue()).isEqualTo(originalMessage.getValue());
@@ -146,8 +147,8 @@ class FileSystemStorageResourceCompressionTest {
             // Act & Assert: Verify files exist with .zst extension by reading them back
             // (listKeys() removed in Step 1, will be replaced with paginated API in Step 2)
             // Files are written with .zst extension when compression is enabled
-            Int32Value read1 = storage.readMessage("file1.pb.zst", Int32Value.parser());
-            Int32Value read2 = storage.readMessage("file2.pb.zst", Int32Value.parser());
+            Int32Value read1 = storage.readMessage(StoragePath.of("file1.pb.zst"), Int32Value.parser());
+            Int32Value read2 = storage.readMessage(StoragePath.of("file2.pb.zst"), Int32Value.parser());
 
             assertThat(read1.getValue()).isEqualTo(1);
             assertThat(read2.getValue()).isEqualTo(2);
@@ -185,7 +186,7 @@ class FileSystemStorageResourceCompressionTest {
             // Arrange: Write a test file
             String key = "metrics/read-test.pb";
             Int32Value message = Int32Value.of(42);
-            storage.writeMessage(key, message);
+            StoragePath physicalPath = storage.writeMessage(key, message);
 
             // Get initial metrics
             var initialMetrics = storage.getMetrics();
@@ -194,8 +195,8 @@ class FileSystemStorageResourceCompressionTest {
             long initialBytes = initialMetrics.containsKey("bytes_read") ?
                 initialMetrics.get("bytes_read").longValue() : 0L;
 
-            // Act: Read the message (using logical key - storage finds .zst automatically)
-            Int32Value readMessage = storage.readMessage(key, Int32Value.parser());
+            // Act: Read the message using physical path returned from write
+            Int32Value readMessage = storage.readMessage(physicalPath, Int32Value.parser());
 
             // Assert: Metrics updated
             var finalMetrics = storage.getMetrics();
@@ -228,7 +229,7 @@ class FileSystemStorageResourceCompressionTest {
             uncompressedStorage.writeMessage(key, originalMessage);
 
             // Act: Read back with same uncompressed storage
-            Int32Value readMessage = uncompressedStorage.readMessage(key, Int32Value.parser());
+            Int32Value readMessage = uncompressedStorage.readMessage(StoragePath.of(key), Int32Value.parser());
 
             // Assert
             assertThat(readMessage.getValue()).isEqualTo(originalMessage.getValue());
@@ -266,7 +267,7 @@ class FileSystemStorageResourceCompressionTest {
             FileSystemStorageResource compressedStorage =
                 new FileSystemStorageResource("compressed", compressedConfig);
 
-            Int32Value readMessage = compressedStorage.readMessage(key, Int32Value.parser());
+            Int32Value readMessage = compressedStorage.readMessage(StoragePath.of(key), Int32Value.parser());
 
             // Assert: Can read legacy file correctly
             assertThat(readMessage.getValue()).isEqualTo(originalMessage.getValue());
@@ -337,13 +338,13 @@ class FileSystemStorageResourceCompressionTest {
             }
 
             // Act: Write with both levels using writeBatch
-            String batchPath1 = storageLevel1.writeBatch(batch, 42, 42);
-            String batchPath9 = storageLevel9.writeBatch(batch, 42, 42);
+            StoragePath batchPath1 = storageLevel1.writeBatch(batch, 42, 42);
+            StoragePath batchPath9 = storageLevel9.writeBatch(batch, 42, 42);
 
             // Assert: Both create valid compressed files
-            // Note: writeBatch() returns logical path, but physical files have compression extension
-            Path file1 = tempDir.resolve("level1/" + batchPath1 + ext);
-            Path file9 = tempDir.resolve("level9/" + batchPath9 + ext);
+            // Note: writeBatch() now returns physical path including compression extension
+            Path file1 = tempDir.resolve("level1/" + batchPath1.asString());
+            Path file9 = tempDir.resolve("level9/" + batchPath9.asString());
             assertThat(file1).exists();
             assertThat(file9).exists();
 

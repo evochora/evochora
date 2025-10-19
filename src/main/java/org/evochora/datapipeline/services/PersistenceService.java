@@ -10,6 +10,7 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 
 import java.io.ByteArrayOutputStream;
@@ -266,7 +267,7 @@ public class PersistenceService extends AbstractService {
         while (attempt <= maxRetries) {
             try {
                 // Storage handles everything: folders, compression, manifests
-                String storageKey = storage.writeBatch(batch, firstTick, lastTick);
+                StoragePath storagePath = storage.writeBatch(batch, firstTick, lastTick);
 
                 // Send notification to topic (if configured)
                 if (batchTopic != null) {
@@ -280,7 +281,7 @@ public class PersistenceService extends AbstractService {
                     // Send notification to topic (must succeed for operation to complete)
                     BatchInfo notification = BatchInfo.newBuilder()
                         .setSimulationRunId(simulationRunId)
-                        .setStorageKey(storageKey)
+                        .setStoragePath(storagePath.asString())
                         .setTickStart(firstTick)
                         .setTickEnd(lastTick)
                         .setWrittenAtMs(System.currentTimeMillis())
@@ -300,7 +301,7 @@ public class PersistenceService extends AbstractService {
                     .sum();
                 bytesWritten.addAndGet(bytesInBatch);
 
-                log.debug("Successfully wrote batch {} with {} ticks and sent notification", storageKey, batch.size());
+                log.debug("Successfully wrote batch {} with {} ticks and sent notification", storagePath, batch.size());
                 return;
 
             } catch (IOException | InterruptedException e) {

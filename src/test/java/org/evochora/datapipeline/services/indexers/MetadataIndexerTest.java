@@ -8,6 +8,7 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.datapipeline.api.services.IService;
@@ -71,7 +72,7 @@ class MetadataIndexerTest {
         // Mock topic message with MetadataInfo
         MetadataInfo info = MetadataInfo.newBuilder()
             .setSimulationRunId(testRunId)
-            .setStorageKey(testRunId + "/metadata.pb")
+            .setStoragePath(testRunId + "/metadata.pb")
             .setWrittenAtMs(System.currentTimeMillis())
             .build();
         when(mockMessage.payload()).thenReturn(info);
@@ -79,7 +80,7 @@ class MetadataIndexerTest {
         
         // Mock storage to return metadata
         SimulationMetadata metadata = SimulationMetadata.newBuilder().setSimulationRunId(testRunId).build();
-        when(mockStorage.readMessage(eq(testRunId + "/metadata.pb"), any())).thenReturn(metadata);
+        when(mockStorage.readMessage(any(StoragePath.class), any())).thenReturn(metadata);
 
         // Act
         indexer.start();
@@ -112,7 +113,7 @@ class MetadataIndexerTest {
         // Mock topic message with MetadataInfo
         MetadataInfo info = MetadataInfo.newBuilder()
             .setSimulationRunId(testRunId)
-            .setStorageKey(testRunId + "/metadata.pb")
+            .setStoragePath(testRunId + "/metadata.pb")
             .setWrittenAtMs(System.currentTimeMillis())
             .build();
         when(mockMessage.payload()).thenReturn(info);
@@ -120,7 +121,7 @@ class MetadataIndexerTest {
         
         // Mock storage to return metadata
         SimulationMetadata metadata = SimulationMetadata.newBuilder().setSimulationRunId(testRunId).build();
-        when(mockStorage.readMessage(eq(testRunId + "/metadata.pb"), any())).thenReturn(metadata);
+        when(mockStorage.readMessage(any(StoragePath.class), any())).thenReturn(metadata);
         
         // Mock database to throw error on insert
         doThrow(new RuntimeException("DB error")).when(mockDatabase).insertMetadata(any(SimulationMetadata.class));
@@ -166,7 +167,7 @@ class MetadataIndexerTest {
         verify(mockTopic).poll(eq(100L), eq(TimeUnit.MILLISECONDS));
         
         // Verify no storage or database operations (failed before receiving message)
-        verify(mockStorage, never()).readMessage(anyString(), any());
+        verify(mockStorage, never()).readMessage(any(StoragePath.class), any());
         verify(mockDatabase, never()).insertMetadata(any());
         
         // Verify metrics

@@ -4,6 +4,7 @@ import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.datapipeline.services.indexers.components.MetadataReadingComponent;
 import org.evochora.datapipeline.services.indexers.components.TickBufferingComponent;
@@ -226,22 +227,23 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      */
     private void processBatchMessage(TopicMessage<BatchInfo, ACK> msg) throws Exception {
         BatchInfo batch = msg.payload();
-        String batchId = batch.getStorageKey();
+        String batchId = batch.getStoragePath();
         
-        log.debug("Received BatchInfo: storageKey={}, ticks=[{}-{}]", 
-            batch.getStorageKey(), batch.getTickStart(), batch.getTickEnd());
+        log.debug("Received BatchInfo: storagePath={}, ticks=[{}-{}]", 
+            batch.getStoragePath(), batch.getTickStart(), batch.getTickEnd());
         
         try {
             // Read from storage (GENERIC for all batch indexers!)
             // Storage handles length-delimited format automatically
-            List<TickData> ticks = storage.readBatch(batch.getStorageKey());
+            StoragePath storagePath = StoragePath.of(batch.getStoragePath());
+            List<TickData> ticks = storage.readBatch(storagePath);
             
             if (components != null && components.buffering != null) {
                 // WITH buffering: Add to buffer, ACK after flush
                 components.buffering.addTicksFromBatch(ticks, batchId, msg);
                 
                 log.debug("Buffered {} ticks from {}, buffer size: {}", 
-                    ticks.size(), batch.getStorageKey(), 
+                    ticks.size(), batch.getStoragePath(), 
                     components.buffering.getBufferSize());
                 
                 // Flush if needed
@@ -262,7 +264,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 ticksProcessed.addAndGet(ticks.size());
                 
                 log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
-                         ticks.size(), batch.getStorageKey());
+                         ticks.size(), batch.getStoragePath());
             }
             
         } catch (Exception e) {

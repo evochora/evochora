@@ -5,6 +5,7 @@ import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 
@@ -59,10 +60,11 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
         }
         
         MetadataInfo info = message.payload();
-        log.debug("Received metadata notification, reading from storage: {}", info.getStorageKey());
+        log.debug("Received metadata notification, reading from storage: {}", info.getStoragePath());
         
         // Read metadata from storage
-        SimulationMetadata metadata = storage.readMessage(info.getStorageKey(), SimulationMetadata.parser());
+        StoragePath storagePath = StoragePath.of(info.getStoragePath());
+        SimulationMetadata metadata = storage.readMessage(storagePath, SimulationMetadata.parser());
         
         // Index metadata to database
         try (IMetadataWriter db = database) {
@@ -77,7 +79,7 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
         
         // Acknowledge message after successful processing
         topic.ack(message);
-        log.debug("Acknowledged metadata notification for {}", info.getStorageKey());
+        log.debug("Acknowledged metadata notification for {}", info.getStoragePath());
     }
 
     @Override

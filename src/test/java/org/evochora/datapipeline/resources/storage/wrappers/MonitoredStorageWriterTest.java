@@ -2,6 +2,7 @@ package org.evochora.datapipeline.resources.storage.wrappers;
 
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,7 +44,7 @@ class MonitoredStorageWriterTest {
         );
 
         when(mockDelegate.writeBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn("001/batch.pb");
+            .thenReturn(StoragePath.of("001/batch.pb"));
 
         monitoredWriter.writeBatch(batch, 100, 102);
 
@@ -74,8 +75,8 @@ class MonitoredStorageWriterTest {
     @Test
     void testMultipleBatchesTracked() throws IOException {
         when(mockDelegate.writeBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn("batch1.pb")
-            .thenReturn("batch2.pb");
+            .thenReturn(StoragePath.of("batch1.pb"))
+            .thenReturn(StoragePath.of("batch2.pb"));
 
         List<TickData> batch1 = Arrays.asList(
             TickData.newBuilder().setTickNumber(1).build(),

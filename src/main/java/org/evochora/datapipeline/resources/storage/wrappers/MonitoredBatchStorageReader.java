@@ -10,6 +10,7 @@ import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
 
@@ -83,10 +84,10 @@ public class MonitoredBatchStorageReader implements IBatchStorageRead, IWrappedR
     }
 
     @Override
-    public List<TickData> readBatch(String filename) throws IOException {
+    public List<TickData> readBatch(StoragePath path) throws IOException {
         long startNanos = System.nanoTime();
         try {
-            List<TickData> result = delegate.readBatch(filename);
+            List<TickData> result = delegate.readBatch(path);
 
             // Update cumulative metrics
             batchesRead.incrementAndGet();
@@ -105,10 +106,10 @@ public class MonitoredBatchStorageReader implements IBatchStorageRead, IWrappedR
     }
 
     @Override
-    public <T extends MessageLite> T readMessage(String key, Parser<T> parser) throws IOException {
+    public <T extends MessageLite> T readMessage(StoragePath path, Parser<T> parser) throws IOException {
         long startNanos = System.nanoTime();
         try {
-            T message = delegate.readMessage(key, parser);
+            T message = delegate.readMessage(path, parser);
 
             // Update cumulative metrics
             messagesRead.incrementAndGet();

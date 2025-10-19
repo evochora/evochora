@@ -4,6 +4,7 @@ import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.contracts.TickData;
 
 import java.io.IOException;
@@ -37,7 +38,7 @@ public class DummyReaderService extends AbstractService {
     private final AtomicLong readOperations = new AtomicLong(0);
     private final AtomicLong validationErrors = new AtomicLong(0);
     private final AtomicLong readErrors = new AtomicLong(0);
-    private final Set<String> processedFiles = ConcurrentHashMap.newKeySet();
+    private final Set<StoragePath> processedFiles = ConcurrentHashMap.newKeySet();
 
     // Track expected tick range for validation
     private long minTickSeen = Long.MAX_VALUE;
@@ -72,19 +73,19 @@ public class DummyReaderService extends AbstractService {
                     // Files are stored under simulationRunId (keyPrefix + "_run")
                     BatchFileListResult result = storage.listBatchFiles(keyPrefix + "_run/", continuationToken, 100);
 
-                    for (String filename : result.getFilenames()) {
+                    for (StoragePath path : result.getFilenames()) {
                         // Check if max files limit reached
                         if (maxFiles != -1 && filesProcessed >= maxFiles) {
                             break;
                         }
                         
                         // Skip already processed files
-                        if (processedFiles.contains(filename)) {
+                        if (processedFiles.contains(path)) {
                             continue;
                         }
 
                         try {
-                            List<TickData> ticks = storage.readBatch(filename);
+                            List<TickData> ticks = storage.readBatch(path);
 
                             long expectedTick = -1;
                             for (TickData tick : ticks) {
@@ -100,7 +101,7 @@ public class DummyReaderService extends AbstractService {
                                 if (validateData && expectedTick >= 0) {
                                     if (tick.getTickNumber() != expectedTick) {
                                         log.warn("Tick sequence error in {}: expected {}, got {}",
-                                            filename, expectedTick, tick.getTickNumber());
+                                            path, expectedTick, tick.getTickNumber());
                                         validationErrors.incrementAndGet();
                                     }
                                 }
@@ -117,19 +118,19 @@ public class DummyReaderService extends AbstractService {
                             }
 
                             readOperations.incrementAndGet();
-                            processedFiles.add(filename);
+                            processedFiles.add(path);
                             filesFoundThisIteration++;
                             filesProcessed++;
 
-                            log.debug("Read batch {} with {} ticks", filename, ticks.size());
+                            log.debug("Read batch {} with {} ticks", path, ticks.size());
 
                         } catch (IOException e) {
-                            log.warn("Failed to read batch {}", filename);
+                            log.warn("Failed to read batch {}", path);
                             readErrors.incrementAndGet();
                             recordError(
                                 "READ_BATCH_ERROR",
                                 "Failed to read batch",
-                                String.format("Filename: %s", filename)
+                                String.format("Path: %s", path)
                             );
                         }
                     }

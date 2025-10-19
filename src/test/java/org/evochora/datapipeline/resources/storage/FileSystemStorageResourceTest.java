@@ -3,6 +3,7 @@ package org.evochora.datapipeline.resources.storage;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
@@ -73,17 +74,18 @@ class FileSystemStorageResourceTest {
         String key = "single_message.pb";
         TickData originalTick = createTick(42);
 
-        // Write using writeMessage (interface method)
-        storage.writeMessage(key, originalTick);
+        // Write using writeMessage (interface method) - returns physical path
+        StoragePath path = storage.writeMessage(key, originalTick);
 
-        // Read using readMessage - need to add extension that writeMessage added
-        TickData readTick = storage.readMessage(key, TickData.parser());
+        // Read using physical path returned from write
+        TickData readTick = storage.readMessage(path, TickData.parser());
         assertEquals(originalTick, readTick);
     }
 
     @Test
     void testReadMessage_NotFound() {
-        assertThrows(IOException.class, () -> storage.readMessage("not_found.pb", TickData.parser()));
+        StoragePath nonExistentPath = StoragePath.of("not_found.pb");
+        assertThrows(IOException.class, () -> storage.readMessage(nonExistentPath, TickData.parser()));
     }
 
     @Test
@@ -97,8 +99,8 @@ class FileSystemStorageResourceTest {
         BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 10);
 
         assertEquals(3, result.getFilenames().size(), "Should find 3 batch files");
-        assertTrue(result.getFilenames().stream().allMatch(f -> f.startsWith("test-sim/")));
-        assertTrue(result.getFilenames().stream().allMatch(f -> f.contains("batch_")));
+        assertTrue(result.getFilenames().stream().allMatch(f -> f.asString().startsWith("test-sim/")));
+        assertTrue(result.getFilenames().stream().allMatch(f -> f.asString().contains("batch_")));
         assertFalse(result.isTruncated());
     }
 
@@ -109,7 +111,7 @@ class FileSystemStorageResourceTest {
         for(int i=0; i<100; i++) {
             batch.add(createTick(i));
         }
-        String batchPath = storage.writeBatch(batch, 0, 99);
+        StoragePath batchPath = storage.writeBatch(batch, 0, 99);
 
         // Read the batch concurrently from 10 threads
         int numThreads = 10;
@@ -143,10 +145,10 @@ class FileSystemStorageResourceTest {
         TickData tick = createTick(1);
 
         // writeMessage should create nested directories automatically
-        storage.writeMessage(key, tick);
+        StoragePath path = storage.writeMessage(key, tick);
 
         // Verify the file was created and is readable
-        TickData readTick = storage.readMessage(key, TickData.parser());
+        TickData readTick = storage.readMessage(path, TickData.parser());
         assertEquals(tick, readTick, "Read tick should match written tick");
 
         // Verify all parent directories were created

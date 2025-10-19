@@ -7,8 +7,8 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
-import org.evochora.datapipeline.api.resources.storage.BatchMetadata;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
 
@@ -63,10 +63,10 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
     }
 
     @Override
-    public String writeBatch(List<TickData> batch, long firstTick, long lastTick) throws IOException {
+    public StoragePath writeBatch(List<TickData> batch, long firstTick, long lastTick) throws IOException {
         long startNanos = System.nanoTime();
         try {
-            String filename = delegate.writeBatch(batch, firstTick, lastTick);
+            StoragePath path = delegate.writeBatch(batch, firstTick, lastTick);
 
             // Update cumulative metrics
             batchesWritten.incrementAndGet();
@@ -77,7 +77,7 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
             long latencyNanos = System.nanoTime() - startNanos;
             recordWrite(batch.size(), bytes, latencyNanos);
 
-            return filename;
+            return path;
         } catch (IOException e) {
             writeErrors.incrementAndGet();
             throw e;
@@ -85,10 +85,10 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
     }
 
     @Override
-    public <T extends MessageLite> void writeMessage(String key, T message) throws IOException {
+    public <T extends MessageLite> StoragePath writeMessage(String key, T message) throws IOException {
         long startNanos = System.nanoTime();
         try {
-            delegate.writeMessage(key, message);
+            StoragePath path = delegate.writeMessage(key, message);
 
             // Update cumulative metrics
             messagesWritten.incrementAndGet();
@@ -98,6 +98,8 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
             // Record performance metrics (count as 1 message batch)
             long latencyNanos = System.nanoTime() - startNanos;
             recordWrite(1, bytes, latencyNanos);
+            
+            return path;
         } catch (IOException e) {
             writeErrors.incrementAndGet();
             throw e;

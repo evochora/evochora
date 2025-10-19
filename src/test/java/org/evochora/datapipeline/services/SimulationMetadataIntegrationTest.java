@@ -4,6 +4,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.ServiceManager;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.junit.extensions.logging.AllowLog;
@@ -375,7 +376,6 @@ class SimulationMetadataIntegrationTest {
         // readMessage() handles length-delimited protobuf format correctly
         Path storageRoot = metadataFile.getParent().getParent();
         String simulationRunId = metadataFile.getParent().getFileName().toString();
-        String key = simulationRunId + "/metadata.pb";
 
         Config storageConfig = ConfigFactory.parseMap(
             Map.of("rootDirectory", storageRoot.toAbsolutePath().toString())
@@ -383,8 +383,12 @@ class SimulationMetadataIntegrationTest {
 
         FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", storageConfig);
 
+        // Find actual metadata file (may have compression extension)
+        Path relativePath = storageRoot.relativize(metadataFile);
+        String physicalPath = relativePath.toString().replace(java.io.File.separatorChar, '/');
+        
         // Use readMessage() - validates exactly one message in file
-        return storage.readMessage(key, SimulationMetadata.parser());
+        return storage.readMessage(StoragePath.of(physicalPath), SimulationMetadata.parser());
     }
 
     private int countBatchFiles(Path storageRoot) throws IOException {

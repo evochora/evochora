@@ -59,57 +59,57 @@ public interface IBatchStorageRead extends IResource {
     List<String> listRunIds(Instant afterTimestamp) throws IOException;
 
     /**
-     * Reads a batch file by its filename.
+     * Reads a batch file by its physical storage path.
      * <p>
      * This method:
      * <ul>
-     *   <li>Decompresses the file automatically based on extension</li>
+     *   <li>Decompresses the file automatically based on path extension</li>
      *   <li>Parses length-delimited protobuf messages</li>
      *   <li>Returns all ticks in the batch in original order</li>
      * </ul>
      * <p>
      * <strong>Example usage (IndexerService):</strong>
      * <pre>
-     * String filename = "001/234/batch_0012340000_0012340999.pb.zst";
-     * List&lt;TickData&gt; ticks = storage.readBatch(filename);
-     * log.info("Read {} ticks from {}", ticks.size(), filename);
+     * StoragePath path = StoragePath.of(batchInfo.getStoragePath());
+     * List&lt;TickData&gt; ticks = storage.readBatch(path);
+     * log.info("Read {} ticks from {}", ticks.size(), path);
      * </pre>
      *
-     * @param filename The relative filename (e.g., "001/234/batch_0012340000_0012340999.pb.zst")
+     * @param path The physical storage path (includes compression extension)
      * @return List of all tick data in the batch
      * @throws IOException If file doesn't exist or read fails
-     * @throws IllegalArgumentException If filename is null or empty
+     * @throws IllegalArgumentException If path is null
      */
-    List<TickData> readBatch(String filename) throws IOException;
+    List<TickData> readBatch(StoragePath path) throws IOException;
 
     /**
-     * Reads a single protobuf message from storage at the specified key.
+     * Reads a single protobuf message from storage at the specified physical path.
      * <p>
      * This method is designed for reading non-batch data like metadata, configurations,
-     * or checkpoint files. It supports files with or without compression extensions.
+     * or checkpoint files.
      * <p>
      * The message is:
      * <ul>
-     *   <li>Decompressed automatically based on file extension</li>
+     *   <li>Decompressed automatically based on path extension</li>
      *   <li>Parsed as a single length-delimited protobuf message</li>
      *   <li>Expected to contain exactly one message (error if file is empty or has multiple messages)</li>
      * </ul>
      * <p>
      * <strong>Example usage (Analysis Service):</strong>
      * <pre>
-     * String key = simulationRunId + "/metadata.pb";
-     * SimulationMetadata metadata = storage.readMessage(key, SimulationMetadata.parser());
+     * StoragePath path = StoragePath.of(metadataInfo.getStoragePath());
+     * SimulationMetadata metadata = storage.readMessage(path, SimulationMetadata.parser());
      * log.info("Read metadata for simulation {}", metadata.getSimulationRunId());
      * </pre>
      *
-     * @param key The storage key (relative path, e.g., "sim-123/metadata.pb")
+     * @param path The physical storage path (includes compression extension)
      * @param parser The protobuf parser for the message type
      * @param <T> The protobuf message type
      * @return The parsed message
      * @throws IOException If file doesn't exist, is empty, contains multiple messages, or read fails
-     * @throws IllegalArgumentException If key or parser is null/empty
+     * @throws IllegalArgumentException If path or parser is null
      */
-    <T extends MessageLite> T readMessage(String key, Parser<T> parser) throws IOException;
+    <T extends MessageLite> T readMessage(StoragePath path, Parser<T> parser) throws IOException;
 
     /**
      * Lists batch files with pagination support (S3-compatible).
@@ -127,11 +127,11 @@ public interface IBatchStorageRead extends IResource {
      * String token = null;
      * do {
      *     BatchFileListResult result = storage.listBatchFiles(prefix, token, 1000);
-     *     for (String filename : result.getFilenames()) {
-     *         if (!processedFiles.contains(filename)) {
-     *             List&lt;TickData&gt; ticks = storage.readBatch(filename);
+     *     for (StoragePath path : result.getFilenames()) {
+     *         if (!processedFiles.contains(path)) {
+     *             List&lt;TickData&gt; ticks = storage.readBatch(path);
      *             // Process ticks...
-     *             processedFiles.add(filename);
+     *             processedFiles.add(path);
      *         }
      *     }
      *     token = result.getNextContinuationToken();

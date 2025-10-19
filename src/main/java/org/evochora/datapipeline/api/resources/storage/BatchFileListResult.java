@@ -16,7 +16,7 @@ import java.util.Objects;
  * String token = null;
  * do {
  *     BatchFileListResult result = storage.listBatchFiles("sim123/", token, 1000);
- *     for (String filename : result.getFilenames()) {
+ *     for (StoragePath path : result.getFilenames()) {
  *         // Process file
  *     }
  *     token = result.getNextContinuationToken();
@@ -25,19 +25,19 @@ import java.util.Objects;
  */
 public class BatchFileListResult {
 
-    private final List<String> filenames;
+    private final List<StoragePath> filenames;
     private final String nextContinuationToken;
     private final boolean truncated;
 
     /**
      * Constructs a BatchFileListResult.
      *
-     * @param filenames List of batch filenames (relative paths from storage root)
+     * @param filenames List of physical storage paths for batch files
      * @param nextContinuationToken Token for fetching next page, or null if no more results
      * @param truncated true if more results exist beyond this page
      * @throws IllegalArgumentException if filenames is null
      */
-    public BatchFileListResult(List<String> filenames, String nextContinuationToken, boolean truncated) {
+    public BatchFileListResult(List<StoragePath> filenames, String nextContinuationToken, boolean truncated) {
         if (filenames == null) {
             throw new IllegalArgumentException("filenames cannot be null");
         }
@@ -47,16 +47,16 @@ public class BatchFileListResult {
     }
 
     /**
-     * Returns the list of batch filenames in this page.
+     * Returns the list of physical storage paths in this page.
      * <p>
-     * Filenames are relative paths from the storage root, suitable for passing to
-     * {@link IBatchStorageRead#readBatch(String)}.
+     * Paths include compression extensions and can be passed directly to
+     * {@link IBatchStorageRead#readBatch(StoragePath)}.
      * <p>
      * Example: "sim123/000/000/batch_0000000000_0000000999.pb.zst"
      *
-     * @return Immutable list of filenames (never null, may be empty)
+     * @return Immutable list of storage paths (never null, may be empty)
      */
-    public List<String> getFilenames() {
+    public List<StoragePath> getFilenames() {
         return filenames;
     }
 

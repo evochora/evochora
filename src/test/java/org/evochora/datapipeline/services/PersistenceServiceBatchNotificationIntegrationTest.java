@@ -6,8 +6,11 @@ import org.evochora.datapipeline.ServiceManager;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.resources.topics.H2TopicResource;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
@@ -107,7 +110,7 @@ class PersistenceServiceBatchNotificationIntegrationTest {
         
         BatchInfo notification = message.payload();
         assertThat(notification.getSimulationRunId()).isNotEmpty();
-        assertThat(notification.getStorageKey()).contains("batch_");
+        assertThat(notification.getStoragePath()).contains("batch_");
         assertThat(notification.getTickStart()).isGreaterThanOrEqualTo(0);
         assertThat(notification.getTickEnd()).isGreaterThanOrEqualTo(notification.getTickStart());
         assertThat(notification.getWrittenAtMs()).isPositive();
@@ -164,8 +167,8 @@ class PersistenceServiceBatchNotificationIntegrationTest {
         BatchInfo notification2 = msg2.payload();
         
         assertThat(notification1.getSimulationRunId()).isEqualTo(notification2.getSimulationRunId());
-        assertThat(notification1.getStorageKey()).isNotEmpty();
-        assertThat(notification2.getStorageKey()).isNotEmpty();
+        assertThat(notification1.getStoragePath()).isNotEmpty();
+        assertThat(notification2.getStoragePath()).isNotEmpty();
         
         // Verify metrics from both instances
         var status1 = serviceManager.getServiceStatus("persistence-1");

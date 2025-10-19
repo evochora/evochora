@@ -10,6 +10,7 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageReader;
 import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageWriter;
@@ -125,7 +126,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     }
 
     @Override
-    public String writeBatch(List<TickData> batch, long firstTick, long lastTick) throws IOException {
+    public StoragePath writeBatch(List<TickData> batch, long firstTick, long lastTick) throws IOException {
         if (batch == null || batch.isEmpty()) {
             throw new IllegalArgumentException("batch cannot be null or empty");
         }
@@ -139,37 +140,53 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         String simulationId = batch.get(0).getSimulationRunId();
         String folderPath = simulationId + "/" + calculateFolderPath(firstTick);
 
-        // Generate batch filename (logical key)
+        // Generate batch filename (logical key without compression)
         String logicalFilename = String.format("batch_%019d_%019d.pb", firstTick, lastTick);
         String logicalPath = folderPath + "/" + logicalFilename;
 
-        // Serialize batch
+        // Convert to physical path (adds compression extension)
+        String physicalPath = toPhysicalPath(logicalPath);
+
+        // Serialize and compress batch
         byte[] data = serializeBatch(batch);
+        byte[] compressed = compressBatch(data);
 
-        // Write batch (handles compression, atomicity, and metrics)
-        put(logicalPath, data);
+        // Write directly to physical path (atomic write with temp file)
+        long writeStart = System.nanoTime();
+        putRaw(physicalPath, compressed);
+        long writeLatency = System.nanoTime() - writeStart;
 
-        // Return logical path (external API contract: always logical paths without compression)
-        log.debug("Wrote batch {} with {} ticks", logicalPath, batch.size());
+        // Record metrics
+        recordWrite(compressed.length, writeLatency);
 
-        return logicalPath;
+        log.debug("Wrote batch {} with {} ticks", physicalPath, batch.size());
+
+        return StoragePath.of(physicalPath);
     }
 
     @Override
-    public List<TickData> readBatch(String filename) throws IOException {
-        if (filename == null || filename.isEmpty()) {
-            throw new IllegalArgumentException("filename cannot be null or empty");
+    public List<TickData> readBatch(StoragePath path) throws IOException {
+        if (path == null) {
+            throw new IllegalArgumentException("path cannot be null");
         }
 
-        // Read and decompress (handles resolution, decompression, and metrics)
-        byte[] data = get(filename);
+        // Read directly from physical path (no search needed!)
+        long readStart = System.nanoTime();
+        byte[] compressed = getRaw(path.asString());
+        long readLatency = System.nanoTime() - readStart;
+
+        // Decompress based on file extension
+        byte[] data = decompressBatch(compressed, path.asString());
+
+        // Record metrics
+        recordRead(compressed.length, readLatency);
 
         // Deserialize
         return deserializeBatch(data);
     }
 
     @Override
-    public <T extends MessageLite> void writeMessage(String key, T message) throws IOException {
+    public <T extends MessageLite> StoragePath writeMessage(String key, T message) throws IOException {
         if (key == null || key.isEmpty()) {
             throw new IllegalArgumentException("key cannot be null or empty");
         }
@@ -182,64 +199,60 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         message.writeDelimitedTo(bos);
         byte[] data = bos.toByteArray();
 
-        // Write (handles compression, atomicity, and metrics)
-        put(key, data);
+        // Convert to physical path (adds compression extension)
+        String physicalPath = toPhysicalPath(key);
+
+        // Compress message
+        byte[] compressed = compressBatch(data);
+
+        // Write directly to physical path (atomic write with temp file)
+        long writeStart = System.nanoTime();
+        putRaw(physicalPath, compressed);
+        long writeLatency = System.nanoTime() - writeStart;
+
+        // Record metrics
+        recordWrite(compressed.length, writeLatency);
+
+        return StoragePath.of(physicalPath);
     }
 
     @Override
-    public <T extends MessageLite> T readMessage(String key, Parser<T> parser) throws IOException {
-        if (key == null || key.isEmpty()) {
-            throw new IllegalArgumentException("key cannot be null or empty");
+    public <T extends MessageLite> T readMessage(StoragePath path, Parser<T> parser) throws IOException {
+        if (path == null) {
+            throw new IllegalArgumentException("path cannot be null");
         }
         if (parser == null) {
             throw new IllegalArgumentException("parser cannot be null");
         }
 
-        // Read and decompress (handles resolution, decompression, and metrics)
-        byte[] data = get(key);
+        // Read directly from physical path (no search needed!)
+        long readStart = System.nanoTime();
+        byte[] compressed = getRaw(path.asString());
+        long readLatency = System.nanoTime() - readStart;
+
+        // Decompress based on file extension
+        byte[] data = decompressBatch(compressed, path.asString());
+
+        // Record metrics
+        recordRead(compressed.length, readLatency);
 
         // Deserialize single message
         ByteArrayInputStream bis = new ByteArrayInputStream(data);
         T message = parser.parseDelimitedFrom(bis);
 
         if (message == null) {
-            throw new IOException("File is empty: " + key);
+            throw new IOException("File is empty: " + path.asString());
         }
 
         // Verify exactly one message
         if (bis.available() > 0) {
             T secondMessage = parser.parseDelimitedFrom(bis);
             if (secondMessage != null) {
-                throw new IOException("File contains multiple messages: " + key);
+                throw new IOException("File contains multiple messages: " + path.asString());
             }
         }
 
         return message;
-    }
-
-    /**
-     * Strips compression extensions from physical path to get logical path.
-     * Used by listBatchFiles() to return logical keys.
-     * <p>
-     * Uses CompressionCodecFactory.detectFromExtension() to dynamically detect
-     * compression extensions. This ensures new codecs are automatically supported
-     * without changing this method.
-     *
-     * @param physicalPath physical path like "batch_000.pb.zst"
-     * @return logical path like "batch_000.pb"
-     */
-    private String toLogicalPath(String physicalPath) {
-        // Auto-detect compression from extension
-        ICompressionCodec detectedCodec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory.detectFromExtension(physicalPath);
-        String extension = detectedCodec.getFileExtension();
-        
-        // If NoneCodec, extension is "" → no change needed
-        if (extension.isEmpty() || !physicalPath.endsWith(extension)) {
-            return physicalPath;
-        }
-        
-        // Strip compression extension
-        return physicalPath.substring(0, physicalPath.length() - extension.length());
     }
 
     /**
@@ -468,14 +481,14 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * Internal implementation for listing batch files with optional tick filtering.
      * <p>
      * This method delegates to {@link #listRaw} with nullable tick parameters and performs
-     * the common logic of converting physical paths to logical paths and filtering to batch files.
+     * the common logic of filtering to batch files and wrapping as StoragePath.
      *
      * @param prefix Filter prefix (e.g., "sim123/" for specific simulation)
      * @param continuationToken Token from previous call, or null for first page
      * @param maxResults Maximum files to return per page
      * @param startTick Minimum start tick (nullable - null means no lower bound)
      * @param endTick Maximum start tick (nullable - null means no upper bound)
-     * @return Paginated result with matching batch filenames
+     * @return Paginated result with matching batch physical paths
      * @throws IOException If storage access fails
      */
     private BatchFileListResult listBatchFilesInternal(String prefix, String continuationToken, int maxResults,
@@ -492,21 +505,21 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         // Request maxResults + 1 to detect truncation
         List<String> allPhysicalFiles = listRaw(prefix, false, continuationToken, maxResults + 1, startTick, endTick);
 
-        // Convert to logical paths and filter to batch files
-        List<String> batchFiles = allPhysicalFiles.stream()
-            .map(this::toLogicalPath)  // Strip compression extensions
+        // Filter to batch files and wrap as StoragePath (keep physical paths!)
+        List<StoragePath> batchFiles = allPhysicalFiles.stream()
             .filter(path -> {
                 String filename = path.substring(path.lastIndexOf('/') + 1);
-                return filename.startsWith("batch_") && filename.endsWith(".pb");
+                return filename.startsWith("batch_") && filename.contains(".pb");
             })
             .sorted()  // Lexicographic order = tick order
             .limit(maxResults + 1)  // +1 to detect truncation
+            .map(StoragePath::of)
             .toList();
 
         // Check if truncated
         boolean truncated = batchFiles.size() > maxResults;
-        List<String> resultFiles = truncated ? batchFiles.subList(0, maxResults) : batchFiles;
-        String nextToken = truncated ? resultFiles.get(resultFiles.size() - 1) : null;
+        List<StoragePath> resultFiles = truncated ? batchFiles.subList(0, maxResults) : batchFiles;
+        String nextToken = truncated ? resultFiles.get(resultFiles.size() - 1).asString() : null;
 
         return new BatchFileListResult(resultFiles, nextToken, truncated);
     }
@@ -645,61 +658,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      */
     private String toPhysicalPath(String logicalKey) {
         return logicalKey + codec.getFileExtension();
-    }
-
-    /**
-     * Finds physical path for a logical key.
-     * Uses prefix matching to find actual file (with or without compression).
-     *
-     * @param logicalKey logical key like "runId/metadata.pb"
-     * @return physical path like "runId/metadata.pb.zst"
-     * @throws IOException if file not found
-     */
-    private String findPhysicalPath(String logicalKey) throws IOException {
-        List<String> matches = listRaw(logicalKey, false, null, 1, null, null);
-        if (matches.isEmpty()) {
-            throw new IOException("File not found: " + logicalKey);
-        }
-        return matches.get(0);
-    }
-
-    /**
-     * Writes data to storage at logical key.
-     * Handles compression, physical path resolution, and metrics tracking.
-     *
-     * @param logicalKey logical key without compression extension
-     * @param data uncompressed data
-     * @throws IOException if write fails
-     */
-    protected final void put(String logicalKey, byte[] data) throws IOException {
-        byte[] compressed = compressBatch(data);
-        String physicalPath = toPhysicalPath(logicalKey);
-        
-        long writeStart = System.nanoTime();
-        putRaw(physicalPath, compressed);
-        long writeLatency = System.nanoTime() - writeStart;
-        
-        recordWrite(compressed.length, writeLatency);
-    }
-
-    /**
-     * Reads data from storage at logical key.
-     * Handles physical path resolution, decompression, and metrics tracking.
-     *
-     * @param logicalKey logical key without compression extension
-     * @return decompressed data
-     * @throws IOException if file not found or read fails
-     */
-    protected final byte[] get(String logicalKey) throws IOException {
-        String physicalPath = findPhysicalPath(logicalKey);
-        
-        long readStart = System.nanoTime();
-        byte[] compressed = getRaw(physicalPath);
-        long readLatency = System.nanoTime() - readStart;
-        
-        recordRead(compressed.length, readLatency);
-        
-        return decompressBatch(compressed, physicalPath);
     }
 
     // ===== Abstract I/O primitives (subclasses implement) =====

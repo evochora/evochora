@@ -4,6 +4,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -57,10 +58,10 @@ class FileSystemStorageResourceTickFilterTest {
         BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 100, 100L);
 
         assertEquals(3, result.getFilenames().size(), "Should find 3 batches >= tick 100");
-        assertTrue(result.getFilenames().stream().anyMatch(f -> f.contains("batch_0000000000000000100_")));
-        assertTrue(result.getFilenames().stream().anyMatch(f -> f.contains("batch_0000000000000001000_")));
-        assertTrue(result.getFilenames().stream().anyMatch(f -> f.contains("batch_0000000000000005000_")));
-        assertFalse(result.getFilenames().stream().anyMatch(f -> f.contains("batch_0000000000000000000_")));
+        assertTrue(result.getFilenames().stream().anyMatch(f -> f.asString().contains("batch_0000000000000000100_")));
+        assertTrue(result.getFilenames().stream().anyMatch(f -> f.asString().contains("batch_0000000000000001000_")));
+        assertTrue(result.getFilenames().stream().anyMatch(f -> f.asString().contains("batch_0000000000000005000_")));
+        assertFalse(result.getFilenames().stream().anyMatch(f -> f.asString().contains("batch_0000000000000000000_")));
     }
 
     @Test
@@ -75,10 +76,10 @@ class FileSystemStorageResourceTickFilterTest {
         BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 100, 100L, 1000L);
 
         assertEquals(2, result.getFilenames().size(), "Should find 2 batches in range [100, 1000]");
-        assertTrue(result.getFilenames().stream().anyMatch(f -> f.contains("batch_0000000000000000100_")));
-        assertTrue(result.getFilenames().stream().anyMatch(f -> f.contains("batch_0000000000000001000_")));
-        assertFalse(result.getFilenames().stream().anyMatch(f -> f.contains("batch_0000000000000000000_")));
-        assertFalse(result.getFilenames().stream().anyMatch(f -> f.contains("batch_0000000000000005000_")));
+        assertTrue(result.getFilenames().stream().anyMatch(f -> f.asString().contains("batch_0000000000000000100_")));
+        assertTrue(result.getFilenames().stream().anyMatch(f -> f.asString().contains("batch_0000000000000001000_")));
+        assertFalse(result.getFilenames().stream().anyMatch(f -> f.asString().contains("batch_0000000000000000000_")));
+        assertFalse(result.getFilenames().stream().anyMatch(f -> f.asString().contains("batch_0000000000000005000_")));
     }
 
     @Test
@@ -135,8 +136,8 @@ class FileSystemStorageResourceTickFilterTest {
         BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 100, 1000L, 1500L);
 
         assertEquals(2, result.getFilenames().size(), "Should find exactly 2 batches in range");
-        assertTrue(result.getFilenames().stream().anyMatch(f -> f.contains("batch_0000000000000001000_")));
-        assertTrue(result.getFilenames().stream().anyMatch(f -> f.contains("batch_0000000000000001500_")));
+        assertTrue(result.getFilenames().stream().anyMatch(f -> f.asString().contains("batch_0000000000000001000_")));
+        assertTrue(result.getFilenames().stream().anyMatch(f -> f.asString().contains("batch_0000000000000001500_")));
     }
 
     @Test
