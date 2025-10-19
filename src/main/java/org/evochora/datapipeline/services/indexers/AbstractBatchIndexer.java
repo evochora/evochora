@@ -6,11 +6,14 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
+import org.evochora.datapipeline.services.indexers.components.DlqComponent;
 import org.evochora.datapipeline.services.indexers.components.IdempotencyComponent;
 import org.evochora.datapipeline.services.indexers.components.MetadataReadingComponent;
 import org.evochora.datapipeline.services.indexers.components.TickBufferingComponent;
 import org.evochora.datapipeline.api.resources.database.IMetadataReader;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
+import org.evochora.datapipeline.api.resources.IRetryTracker;
+import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
 
 import java.util.EnumSet;
 import java.util.List;
@@ -63,6 +66,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     // Metrics (shared by all batch indexers)
     private final AtomicLong batchesProcessed = new AtomicLong(0);
     private final AtomicLong ticksProcessed = new AtomicLong(0);
+    private final AtomicLong batchesMovedToDlq = new AtomicLong(0);
     
     /**
      * Creates a new batch indexer.
@@ -82,7 +86,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         // Template method: Let subclass configure components
         this.components = createComponents();
         
-        // Phase 14.2.6: Automatically set topicPollTimeout to flushTimeout if buffering enabled
+        // Automatically set topicPollTimeout to flushTimeout if buffering enabled
         if (components != null && components.buffering != null) {
             this.topicPollTimeoutMs = (int) components.buffering.getFlushTimeoutMs();
         } else {
@@ -101,65 +105,112 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         /** Metadata reading component (polls DB for simulation metadata). */
         METADATA,
         
-        /** Tick buffering component (buffers ticks for batch inserts). Phase 14.2.6. */
+        /** Tick buffering component (buffers ticks for batch inserts). */
         BUFFERING,
         
-        /** Idempotency component (skip duplicate storage reads). Phase 14.2.7. */
-        IDEMPOTENCY
+        /** Idempotency component (skip duplicate storage reads). */
+        IDEMPOTENCY,
         
-        // Phase 14.2.8: DLQ will be added
+        /** DLQ component (move poison messages to DLQ after max retries). */
+        DLQ
     }
     
     /**
-     * Template method: Declare which components this indexer uses.
+     * Template method: Declare which components are REQUIRED for this indexer.
      * <p>
-     * Called once during construction. Subclasses can override to customize component usage.
+     * Required components MUST have their resources configured. If resources are missing,
+     * the service will fail to start with an exception.
      * <p>
-     * <strong>Default:</strong> Returns METADATA only (Phase 14.2.5).
-     * Phase 14.2.6+ default: METADATA + BUFFERING.
+     * <strong>Default:</strong> Returns METADATA + BUFFERING (standard batch indexer setup).
      * <p>
      * <strong>Examples:</strong>
      * <pre>
      * // Use default (no override needed for standard case!)
      * 
-     * // Minimal: No components at all
+     * // Minimal indexer (no buffering)
+     * &#64;Override
+     * protected Set&lt;ComponentType&gt; getRequiredComponents() {
+     *     return EnumSet.of(ComponentType.METADATA);
+     * }
+     * 
+     * // No components at all (direct Topic processing)
      * &#64;Override
      * protected Set&lt;ComponentType&gt; getRequiredComponents() {
      *     return EnumSet.noneOf(ComponentType.class);
      * }
      * </pre>
      *
-     * @return set of component types to use (never null)
+     * @return set of required component types (never null)
      */
     protected Set<ComponentType> getRequiredComponents() {
-        // Phase 14.2.6: Default is METADATA + BUFFERING
+        // Default: METADATA + BUFFERING (standard batch indexer)
         return EnumSet.of(ComponentType.METADATA, ComponentType.BUFFERING);
     }
     
     /**
-     * Creates components based on {@link #getRequiredComponents()}.
+     * Template method: Declare which components are OPTIONAL for this indexer.
+     * <p>
+     * Optional components are created only if their resources are configured. If resources
+     * are missing, the component is silently skipped (graceful degradation, no error).
+     * <p>
+     * <strong>Default:</strong> Returns empty set (no optional components).
+     * <p>
+     * IDEMPOTENCY and DLQ are available as optional components.
+     * <p>
+     * <strong>Examples:</strong>
+     * <pre>
+     * // Use default (no override needed if no optional components!)
+     * 
+     * // With optional DLQ for poison message handling
+     * &#64;Override
+     * protected Set&lt;ComponentType&gt; getOptionalComponents() {
+     *     return EnumSet.of(ComponentType.DLQ);
+     * }
+     * 
+     * // With optional idempotency + DLQ
+     * &#64;Override
+     * protected Set&lt;ComponentType&gt; getOptionalComponents() {
+     *     return EnumSet.of(ComponentType.IDEMPOTENCY, ComponentType.DLQ);
+     * }
+     * </pre>
+     *
+     * @return set of optional component types (never null)
+     */
+    protected Set<ComponentType> getOptionalComponents() {
+        // Default: No optional components
+        // Subclasses can override to enable IDEMPOTENCY, DLQ, etc.
+        return EnumSet.noneOf(ComponentType.class);
+    }
+    
+    /**
+     * Creates components based on {@link #getRequiredComponents()} and {@link #getOptionalComponents()}.
      * <p>
      * <strong>FINAL:</strong> Subclasses must NOT override this method.
-     * Instead, override {@link #getRequiredComponents()} to customize components.
+     * Instead, override {@link #getRequiredComponents()} and {@link #getOptionalComponents()}.
+     * <p>
+     * <strong>Required components:</strong> Resources MUST be configured, service fails to start if missing.
+     * <p>
+     * <strong>Optional components:</strong> Resources MAY be configured, graceful degradation if missing.
      * <p>
      * All components use standardized config parameters:
      * <ul>
      *   <li>Metadata: {@code metadataPollIntervalMs}, {@code metadataMaxPollDurationMs}</li>
+     *   <li>Buffering: {@code insertBatchSize}, {@code flushTimeoutMs}</li>
+     *   <li>DLQ: {@code maxRetries}</li>
      * </ul>
-     * <p>
-     * Phase 14.2.5 scope: Only METADATA component!
-     * Phase 14.2.6+: BUFFERING component added.
-     * Phase 14.2.8+: DLQ component added.
      *
      * @return component configuration (may be null if no components requested)
      */
     protected final BatchIndexerComponents createComponents() {
         Set<ComponentType> required = getRequiredComponents();
-        if (required.isEmpty()) return null;
+        Set<ComponentType> optional = getOptionalComponents();
+        
+        if (required.isEmpty() && optional.isEmpty()) return null;
         
         var builder = BatchIndexerComponents.builder();
         
-        // Component 1: Metadata Reading (Phase 14.2.5)
+        // Component 1: Metadata Reading
+        // REQUIRED component - exception if resource missing
         if (required.contains(ComponentType.METADATA)) {
             IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
             int pollIntervalMs = indexerOptions.getInt("metadataPollIntervalMs");
@@ -167,23 +218,83 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             builder.withMetadata(new MetadataReadingComponent(
                 metadataReader, pollIntervalMs, maxPollDurationMs));
         }
+        // OPTIONAL metadata component - graceful skip if resource missing
+        else if (optional.contains(ComponentType.METADATA)) {
+            getOptionalResource("metadata", IMetadataReader.class).ifPresent(metadataReader -> {
+                int pollIntervalMs = indexerOptions.getInt("metadataPollIntervalMs");
+                int maxPollDurationMs = indexerOptions.getInt("metadataMaxPollDurationMs");
+                builder.withMetadata(new MetadataReadingComponent(
+                    metadataReader, pollIntervalMs, maxPollDurationMs));
+            });
+        }
         
-        // Component 2: Tick Buffering (Phase 14.2.6)
+        // Component 2: Tick Buffering
+        // REQUIRED component - exception if config missing
         if (required.contains(ComponentType.BUFFERING)) {
             int insertBatchSize = indexerOptions.getInt("insertBatchSize");
             long flushTimeoutMs = indexerOptions.getLong("flushTimeoutMs");
             builder.withBuffering(new TickBufferingComponent(insertBatchSize, flushTimeoutMs));
         }
+        // OPTIONAL buffering component - graceful skip if config missing
+        else if (optional.contains(ComponentType.BUFFERING)) {
+            if (indexerOptions.hasPath("insertBatchSize") && indexerOptions.hasPath("flushTimeoutMs")) {
+                int insertBatchSize = indexerOptions.getInt("insertBatchSize");
+                long flushTimeoutMs = indexerOptions.getLong("flushTimeoutMs");
+                builder.withBuffering(new TickBufferingComponent(insertBatchSize, flushTimeoutMs));
+            }
+        }
         
-        // Component 3: Idempotency (Phase 14.2.7)
+        // Component 3: Idempotency
+        // REQUIRED component - exception if resource missing
         if (required.contains(ComponentType.IDEMPOTENCY)) {
-            IIdempotencyTracker<String> tracker = 
-                getRequiredResource("idempotency", IIdempotencyTracker.class);
+            IIdempotencyTracker<String> tracker = getRequiredResource("idempotency", IIdempotencyTracker.class);
             String indexerClass = this.getClass().getSimpleName();
             builder.withIdempotency(new IdempotencyComponent(tracker, indexerClass));
         }
+        // OPTIONAL idempotency component - graceful skip if resource missing
+        else if (optional.contains(ComponentType.IDEMPOTENCY)) {
+            getOptionalResource("idempotency", IIdempotencyTracker.class).ifPresent(tracker -> {
+                String indexerClass = this.getClass().getSimpleName();
+                builder.withIdempotency(new IdempotencyComponent(tracker, indexerClass));
+            });
+        }
         
-        // Phase 14.2.8: DLQ component handling will be added here
+        // Component 4: DLQ
+        // DLQ requires BOTH retryTracker AND dlq resources to be present
+        // REQUIRED component - exception if resources missing
+        if (required.contains(ComponentType.DLQ)) {
+            IRetryTracker retryTracker = getRequiredResource("retryTracker", IRetryTracker.class);
+            IDeadLetterQueueResource<BatchInfo> dlq = getRequiredResource("dlq", IDeadLetterQueueResource.class);
+            int maxRetries = indexerOptions.hasPath("maxRetries") 
+                ? indexerOptions.getInt("maxRetries") 
+                : 3;  // Default: 3 retries
+            builder.withDlq(new DlqComponent<>(retryTracker, dlq, maxRetries, this.serviceName));
+        }
+        // OPTIONAL DLQ component - graceful skip if resources missing
+        else if (optional.contains(ComponentType.DLQ)) {
+            var retryTrackerOpt = getOptionalResource("retryTracker", IRetryTracker.class);
+            var dlqOpt = getOptionalResource("dlq", IDeadLetterQueueResource.class);
+            
+            if (retryTrackerOpt.isPresent() && dlqOpt.isPresent()) {
+                int maxRetries = indexerOptions.hasPath("maxRetries") 
+                    ? indexerOptions.getInt("maxRetries") 
+                    : 3;  // Default: 3 retries
+                builder.withDlq(new DlqComponent<>(
+                    retryTrackerOpt.get(), 
+                    dlqOpt.get(), 
+                    maxRetries, 
+                    this.serviceName
+                ));
+            } else {
+                // Warn if partial configuration (both resources required for DLQ)
+                if (retryTrackerOpt.isEmpty() && dlqOpt.isPresent()) {
+                    log.warn("DLQ resource configured but retryTracker missing - DLQ component not created (poison messages will rotate indefinitely)");
+                } else if (retryTrackerOpt.isPresent() && dlqOpt.isEmpty()) {
+                    log.warn("RetryTracker configured but DLQ resource missing - DLQ component not created (poison messages will rotate indefinitely)");
+                }
+                // Both missing: silent (expected for minimal config)
+            }
+        }
         
         return builder.build();
     }
@@ -231,9 +342,6 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * <p>
      * Reads TickDataBatch from storage, processes ticks (buffered or tick-by-tick),
      * and acknowledges message after successful processing.
-     * <p>
-     * Phase 14.2.5: Tick-by-tick processing only (no buffering).
-     * Phase 14.2.6+: Conditional buffering logic added.
      *
      * @param msg Topic message containing BatchInfo
      * @throws Exception if processing fails (batch will be redelivered)
@@ -295,8 +403,28 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                          ticks.size(), batch.getStoragePath());
             }
             
+            // Success - reset retry count if DLQ component exists
+            if (components != null && components.dlq != null) {
+                components.dlq.resetRetryCount(batchId);
+            }
+            
         } catch (Exception e) {
             log.error("Failed to process batch: {}", batchId);
+            
+            // DLQ check (if component configured)
+            if (components != null && components.dlq != null) {
+                if (components.dlq.shouldMoveToDlq(batchId)) {
+                    log.warn("Moving batch to DLQ after max retries: {}", batchId);
+                    @SuppressWarnings("unchecked")
+                    DlqComponent<BatchInfo, ACK> dlqComponent = (DlqComponent<BatchInfo, ACK>) components.dlq;
+                    dlqComponent.moveToDlq(msg, e, batchId);
+                    topic.ack(msg);  // ACK original - now in DLQ
+                    batchesProcessed.incrementAndGet();  // Count as processed
+                    batchesMovedToDlq.incrementAndGet();  // Track DLQ moves
+                    return;  // Don't rethrow
+                }
+            }
+            
             throw e;  // NO acknowledge - redelivery!
         }
     }
@@ -307,9 +435,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * Called when buffer is full or timeout occurs. Flushes ticks to database,
      * acknowledges only fully completed batches, and updates metrics.
      * <p>
-     * Phase 14.2.6+: Used by buffering logic only.
-     * <p>
-     * Phase 14.2.7: Marks batches as processed AFTER ACK (critical for correctness!).
+     * Marks batches as processed AFTER ACK (critical for correctness!).
      *
      * @throws Exception if flush or ACK fails
      */
@@ -345,14 +471,11 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     /**
      * Flush ticks to database/log.
      * <p>
-     * Phase 14.2.5: Called per tick (list will always contain exactly 1 tick).
-     * Phase 14.2.6+: Called per buffer flush (list can contain multiple ticks).
-     * <p>
      * <strong>CRITICAL:</strong> Must use MERGE (not INSERT) for idempotency when writing to database!
      * <p>
      * <strong>Thread Safety:</strong> Called from single service thread only.
      *
-     * @param ticks Ticks to flush (Phase 14.2.5: always size=1)
+     * @param ticks Ticks to flush (1 for tick-by-tick mode, multiple for buffered mode)
      * @throws Exception if flush fails
      */
     protected abstract void flushTicks(List<TickData> ticks) throws Exception;
@@ -370,14 +493,11 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         
         metrics.put("batches_processed", batchesProcessed.get());
         metrics.put("ticks_processed", ticksProcessed.get());
+        metrics.put("batches_moved_to_dlq", batchesMovedToDlq.get());
     }
     
     /**
      * Component configuration for batch indexers.
-     * <p>
-     * Phase 14.2.5: Only contains MetadataReadingComponent.
-     * Phase 14.2.6+: TickBufferingComponent added.
-     * Phase 14.2.7+: IdempotencyComponent added.
      * <p>
      * <strong>Thread Safety:</strong> Components are <strong>NOT thread-safe</strong>.
      * Each service instance creates its own component instances. Never share
@@ -389,6 +509,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      *     .withMetadata(...)
      *     .withBuffering(...)
      *     .withIdempotency(...)
+     *     .withDlq(...)
      *     .build()
      * </pre>
      */
@@ -396,18 +517,23 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         /** Metadata reading component (optional). */
         public final MetadataReadingComponent metadata;
         
-        /** Tick buffering component (optional, Phase 14.2.6). */
+        /** Tick buffering component (optional). */
         public final TickBufferingComponent buffering;
         
-        /** Idempotency component (optional, Phase 14.2.7). */
+        /** Idempotency component (optional). */
         public final IdempotencyComponent idempotency;
+        
+        /** DLQ component (optional). */
+        public final DlqComponent<BatchInfo, Object> dlq;
         
         private BatchIndexerComponents(MetadataReadingComponent metadata,
                                        TickBufferingComponent buffering,
-                                       IdempotencyComponent idempotency) {
+                                       IdempotencyComponent idempotency,
+                                       DlqComponent<BatchInfo, Object> dlq) {
             this.metadata = metadata;
             this.buffering = buffering;
             this.idempotency = idempotency;
+            this.dlq = dlq;
         }
         
         /**
@@ -429,6 +555,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             private MetadataReadingComponent metadata;
             private TickBufferingComponent buffering;
             private IdempotencyComponent idempotency;
+            private DlqComponent<BatchInfo, Object> dlq;
             
             /**
              * Configures metadata reading component.
@@ -453,7 +580,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             }
             
             /**
-             * Configures idempotency component (Phase 14.2.7).
+             * Configures idempotency component.
              *
              * @param c Idempotency component (may be null)
              * @return this builder for chaining
@@ -464,12 +591,23 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             }
             
             /**
+             * Configures DLQ component.
+             *
+             * @param c DLQ component (may be null)
+             * @return this builder for chaining
+             */
+            public Builder withDlq(DlqComponent<BatchInfo, Object> c) {
+                this.dlq = c;
+                return this;
+            }
+            
+            /**
              * Builds the component configuration.
              *
              * @return new BatchIndexerComponents instance
              */
             public BatchIndexerComponents build() {
-                return new BatchIndexerComponents(metadata, buffering, idempotency);
+                return new BatchIndexerComponents(metadata, buffering, idempotency, dlq);
             }
         }
     }

@@ -10,7 +10,7 @@ import java.util.Map;
 /**
  * Test indexer for validating batch indexing infrastructure.
  * <p>
- * <strong>Phase 14.2.5 Scope:</strong>
+ * <strong>Scope:</strong>
  * <ul>
  *   <li>Extends {@link AbstractBatchIndexer} for batch processing</li>
  *   <li>Uses MetadataReadingComponent (waits for metadata before processing)</li>
@@ -44,8 +44,7 @@ public class DummyIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     
     @Override
     protected void flushTicks(List<TickData> ticks) {
-        // Phase 14.2.5: Log-only (will always receive exactly 1 tick)
-        // Phase 14.2.6+: Will receive multiple ticks from buffer flush
+        // Log-only test implementation
         // Metrics are tracked by AbstractBatchIndexer
         
         log.debug("Flushed {} ticks (DummyIndexer: no DB writes)", ticks.size());

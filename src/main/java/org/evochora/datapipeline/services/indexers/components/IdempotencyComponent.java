@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
  * its own {@code IdempotencyComponent} in {@code createComponents()}. Components are
  * never shared between service instances or threads.
  * <p>
- * <strong>Important:</strong> This component is optional (Phase 14.2.7). MERGE statements
+ * <strong>Important:</strong> This component is optional. MERGE statements
  * provide 100% correctness without it. Only use if performance monitoring shows
  * storage reads as bottleneck.
  * <p>

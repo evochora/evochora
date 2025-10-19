@@ -315,37 +315,81 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     }
     
     /**
-     * Template method: Declare which components this indexer uses.
+     * Template method: Declare which components are REQUIRED for this indexer.
      * <p>
-     * Called once during construction. Subclasses can override to customize component usage.
+     * Required components MUST have their resources configured. If resources are missing,
+     * the service will fail to start with an exception.
      * <p>
-     * <strong>Default:</strong> Returns METADATA only (Phase 14.2.5).
-     * Phase 14.2.6+ default: METADATA + BUFFERING.
+     * <strong>Default:</strong> Returns METADATA + BUFFERING (standard batch indexer setup).
      * <p>
      * <strong>Examples:</strong>
      * <pre>
      * // Use default (no override needed for standard case!)
      * 
-     * // Minimal: No components at all
+     * // Minimal indexer (no buffering)
+     * @Override
+     * protected Set&lt;ComponentType&gt; getRequiredComponents() {
+     *     return EnumSet.of(ComponentType.METADATA);
+     * }
+     * 
+     * // No components at all (direct Topic processing)
      * @Override
      * protected Set&lt;ComponentType&gt; getRequiredComponents() {
      *     return EnumSet.noneOf(ComponentType.class);
      * }
      * </pre>
      *
-     * @return set of component types to use (never null)
+     * @return set of required component types (never null)
      */
     protected Set<ComponentType> getRequiredComponents() {
-        // Phase 14.2.5: Default is METADATA only
-        // Phase 14.2.6+: Default will be METADATA + BUFFERING
-        return EnumSet.of(ComponentType.METADATA);
+        // Default: METADATA + BUFFERING (standard batch indexer)
+        return EnumSet.of(ComponentType.METADATA, ComponentType.BUFFERING);
     }
     
     /**
-     * Creates components based on {@link #getRequiredComponents()}.
+     * Template method: Declare which components are OPTIONAL for this indexer.
+     * <p>
+     * Optional components are created only if their resources are configured. If resources
+     * are missing, the component is silently skipped (graceful degradation, no error).
+     * <p>
+     * <strong>Default:</strong> Returns empty set (no optional components).
+     * <p>
+     * IDEMPOTENCY and DLQ are available as optional components.
+     * <p>
+     * <strong>Examples:</strong>
+     * <pre>
+     * // Use default (no override needed if no optional components!)
+     * 
+     * // With optional DLQ for poison message handling
+     * @Override
+     * protected Set&lt;ComponentType&gt; getOptionalComponents() {
+     *     return EnumSet.of(ComponentType.DLQ);
+     * }
+     * 
+     * // With optional idempotency + DLQ
+     * @Override
+     * protected Set&lt;ComponentType&gt; getOptionalComponents() {
+     *     return EnumSet.of(ComponentType.IDEMPOTENCY, ComponentType.DLQ);
+     * }
+     * </pre>
+     *
+     * @return set of optional component types (never null)
+     */
+    protected Set<ComponentType> getOptionalComponents() {
+        // Default: No optional components
+        // Subclasses can override to enable IDEMPOTENCY, DLQ, etc.
+        return EnumSet.noneOf(ComponentType.class);
+    }
+    
+    /**
+     * Creates components based on {@link #getRequiredComponents()} and {@link #getOptionalComponents()}.
      * <p>
      * <strong>FINAL:</strong> Subclasses must NOT override this method.
-     * Instead, override {@link #getRequiredComponents()} to customize components.
+     * Instead, override {@link #getRequiredComponents()} and {@link #getOptionalComponents()}.
+     * <p>
+     * <strong>Required components:</strong> Resources MUST be configured, service fails to start if missing.
+     * <p>
+     * <strong>Optional components:</strong> Resources MAY be configured, graceful degradation if missing.
      * <p>
      * All components use standardized config parameters:
      * <ul>
@@ -1423,6 +1467,9 @@ Without MERGE (only INSERT):
 - ✅ Updated `BatchIndexerComponents` with idempotency field and Builder
   - Added `ComponentType.IDEMPOTENCY` enum value
   - Extended component creation logic in `createComponents()`
+- ✅ **Optional Component Support:** IdempotencyComponent is NOT in default `getRequiredComponents()`
+  - Available via `getOptionalComponents()` for graceful degradation
+  - Service starts successfully even if `idempotency` resource not configured
 - ✅ Unit tests: `IdempotencyComponentTest` (10 tests)
   - Constructor validation, normal operation, error handling
   - All tests pass
@@ -1443,15 +1490,17 @@ Without MERGE (only INSERT):
 
 ### Phase 14.2.8: DlqComponent (Optional Retry Limit)
 
-**Status:** ⚠️ **Specification ready - Implementation deferred (YAGNI)**
+**Status:** ✅ **Completed**
 
-**Rationale for deferral:**
-- Current architecture is sufficient (Topic reassignment + Service ERROR state)
-- DLQ only needed for persistent, message-specific failures (poison messages)
-- Added complexity not justified without real-world failure patterns
-- **Recommendation:** Implement only if monitoring shows specific batches failing repeatedly
+**Implementation Notes:**
+- DlqComponent is **optional** for poison message handling
+- Prevents endless rotation of corrupted batches across competing consumers
+- Component is **not in default** - DummyIndexer remains METADATA + BUFFERING only
+- Retry counting is **shared** across all competing consumers (thread-safe)
+- **Defense in Depth:** Active cleanup + FIFO ring buffer ensures bounded memory (~23 MB worst-case)
+- Configuration provided as commented example in evochora.conf
 
-**Goal (if implemented later):** Add optional `DlqComponent` to move poison messages to DLQ after max retries.
+**Goal:** Add optional `DlqComponent` to move poison messages to DLQ after max retries.
 
 **Use Case:**
 ```
@@ -1542,15 +1591,38 @@ public interface IRetryTracker extends IResource {
 
 ```java
 /**
- * In-memory implementation of retry tracker.
+ * In-memory implementation of retry tracker with bounded memory guarantee.
  * <p>
- * Suitable for single-instance deployments and development/testing.
+ * Suitable for single-instance and multi-instance deployments with in-process coordination.
+ * <p>
+ * <strong>Memory Management (Defense in Depth):</strong>
+ * <ul>
+ *   <li><strong>Active Cleanup:</strong> resetRetryCount() and markMovedToDlq() 
+ *       remove entries immediately (normal case: ~0 MB usage)</li>
+ *   <li><strong>FIFO Safety Net:</strong> Ring buffer with maxKeys ensures bounded memory 
+ *       even if cleanup is forgotten or fails</li>
+ *   <li><strong>Guaranteed maximum:</strong> 100k entries × 232 bytes = ~23 MB worst-case</li>
+ * </ul>
+ * <p>
+ * <strong>Typical Memory Usage:</strong>
+ * <ul>
+ *   <li>Normal (99% success): ~0 MB (entries removed via cleanup)</li>
+ *   <li>1% failure rate, 100k batches/day: ~0.23 MB (transient retries)</li>
+ *   <li>10k poison messages/year: ~2.3 MB (movedToDlq tracking)</li>
+ *   <li>Worst-case guarantee: ~23 MB maximum (FIFO protection)</li>
+ * </ul>
  * <p>
  * <strong>Limitation:</strong> Retry counts are lost on restart.
- * For production with multiple instances, use H2RetryTracker.
+ * For production with persistence requirements, use H2RetryTracker.
  */
 public class InMemoryRetryTracker extends AbstractResource implements IRetryTracker {
     
+    // Ring buffer for FIFO eviction (Safety Net - Option B)
+    private final Object[] ringBuffer;
+    private int writeIndex = 0;
+    private final int maxKeys;
+    
+    // Active tracking (Option A - with active cleanup)
     private final ConcurrentHashMap<String, AtomicInteger> retryCounts = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Long> lastRetryAt = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Boolean> movedToDlq = new ConcurrentHashMap<>();
@@ -1573,28 +1645,35 @@ public class InMemoryRetryTracker extends AbstractResource implements IRetryTrac
     }
     
     @Override
-    public void markMovedToDlq(String messageId) {
+    public synchronized void markMovedToDlq(String messageId) throws Exception {
         movedToDlq.put(messageId, true);
-    }
-    
-    @Override
-    public void resetRetryCount(String messageId) {
+        
+        // CRITICAL: Active cleanup to prevent memory growth (Option A)
         retryCounts.remove(messageId);
         lastRetryAt.remove(messageId);
     }
     
     @Override
-    protected void onStart() {
-        log.debug("InMemoryRetryTracker '{}' started", getResourceName());
+    public synchronized void resetRetryCount(String messageId) throws Exception {
+        // Active cleanup (Option A)
+        retryCounts.remove(messageId);
+        lastRetryAt.remove(messageId);
     }
     
-    @Override
-    protected void onClose() {
-        log.debug("InMemoryRetryTracker '{}' closed, tracked {} messages", 
-            getResourceName(), retryCounts.size());
-        retryCounts.clear();
-        lastRetryAt.clear();
-        movedToDlq.clear();
+    /**
+     * FIFO eviction helper (Safety Net - Option B).
+     * Called by incrementAndGetRetryCount to ensure bounded memory.
+     */
+    private void evictOldestIfNeeded(String messageId) {
+        String oldKey = (String) ringBuffer[writeIndex];
+        if (oldKey != null) {
+            retryCounts.remove(oldKey);
+            lastRetryAt.remove(oldKey);
+            movedToDlq.remove(oldKey);
+            totalEvictions.incrementAndGet();
+        }
+        ringBuffer[writeIndex] = messageId;
+        writeIndex = (writeIndex + 1) % maxKeys;
     }
 }
 ```
@@ -1851,18 +1930,26 @@ public static class BatchIndexerComponents {
 ```hocon
 resources {
   # Shared retry tracker (single instance for all indexers)
-  indexerRetries {
-    className = "org.evochora.datapipeline.resources.InMemoryRetryTracker"
+  # Defense in Depth: Active cleanup + FIFO ring buffer ensures bounded memory
+  indexer-retry-tracker {
+    className = "org.evochora.datapipeline.resources.retry.InMemoryRetryTracker"
     options {
-      # No maxRetries here - that's service-level policy!
+      # Maximum tracked messages (FIFO eviction, default: 100000)
+      # Normal case: entries removed immediately via cleanup (~0 MB)
+      # Worst case: FIFO eviction guarantees bounded memory (~23 MB at 100k)
+      maxKeys = 100000
+      
+      # Initial HashMap capacity (default: maxKeys)
+      initialCapacity = 100000
     }
   }
   
   # DLQ (reuse existing implementation!)
-  indexerDlq {
+  indexer-dlq {
     className = "org.evochora.datapipeline.resources.queues.InMemoryDeadLetterQueue"
     options {
       capacity = 10000
+      primaryQueueName = "batch-topic"
     }
   }
 }
@@ -1873,8 +1960,8 @@ services {
       topic = "topicRead:batchTopic?consumerGroup=dummyIndexer"
       storage = "storageRead:tickStorage"
       metadata = "dbMetaRead:indexDatabase"
-      retryTracker = "retryTracker:indexerRetries"  # NEW
-      dlq = "dlq:indexerDlq"                        # NEW
+      retryTracker = "retry-tracker:indexer-retry-tracker"  # NEW (Phase 14.2.8)
+      dlq = "dlq:indexer-dlq"                               # NEW (Phase 14.2.8)
     }
     
     options {
@@ -1910,15 +1997,19 @@ services {
 **DummyIndexer (Phase 14.2.8):**
 
 ```java
+// NO CHANGES needed! ✅
+// Default remains METADATA + BUFFERING (DLQ is truly optional)
+
+// To enable DLQ in specific indexer:
 @Override
 protected Set<ComponentType> getRequiredComponents() {
-    // Phase 14.2.8: Add DLQ to standard defaults
     return EnumSet.of(ComponentType.METADATA, ComponentType.BUFFERING, ComponentType.DLQ);
 }
 
 // Note: To use DLQ, the service must:
-// 1. Configure retryTracker and dlq resources
-// 2. Set maxRetries in options
+// 1. Override getRequiredComponents() to include DLQ
+// 2. Configure retryTracker and dlq resources
+// 3. Set maxRetries in options
 // The final createComponents() in AbstractBatchIndexer automatically creates DlqComponent
 ```
 
@@ -1928,20 +2019,50 @@ protected Set<ComponentType> getRequiredComponents() {
 - ✅ **Reusable:** One RetryTracker shared by all indexers with different limits
 - ✅ **Standard Pattern:** Like database timeout (DB resource shared, timeout per service)
 
-**Deliverables (if implemented later):**
-- `IRetryTracker` interface with **Thread-Safety JavaDoc**
-- `InMemoryRetryTracker` implementation (single-instance, development)
-- `DlqComponent` implementation with **Thread-Safety JavaDoc** (uses existing DLQ infrastructure!)
-- Updated `AbstractBatchIndexer.processBatchMessage()` with DLQ logic
-- Updated `BatchIndexerComponents` with DLQ field
-- Integration tests (poison message handling, competing consumer retry tracking, DLQ overflow)
-
-**Current Priority:** Focus on Phase 14.2.5 and 14.2.6. Phase 14.2.8 only if monitoring shows poison messages.
+**Deliverables:**
+- ✅ `IRetryTracker` interface with **Thread-Safety JavaDoc**
+  - Thread-safe operations for competing consumers
+  - All methods throw Exception (resource operations)
+- ✅ `InMemoryRetryTracker` implementation with **Defense in Depth**
+  - Active cleanup in resetRetryCount() and markMovedToDlq() (normal case: ~0 MB)
+  - FIFO ring buffer ensures bounded memory (worst-case: ~23 MB at 100k entries)
+  - Thread-safe with synchronized methods
+  - Metrics: tracked_messages, dlq_moved_count, total_retries, capacity_utilization_percent
+- ✅ `DlqComponent` implementation with **Thread-Safety JavaDoc**
+  - Uses existing `IDeadLetterQueueResource` infrastructure
+  - Captures error details and stack trace (10 lines max)
+  - Safe error handling (returns false on tracker failure)
+- ✅ Updated `AbstractBatchIndexer.processBatchMessage()` with DLQ logic
+  - Poison messages moved to DLQ after maxRetries
+  - Retry count reset on successful processing
+  - Safe defaults (retry on tracker failure)
+- ✅ Updated `AbstractBatchIndexer` with ComponentType.DLQ
+  - Added to enum, createComponents(), BatchIndexerComponents
+  - Metrics: batches_moved_to_dlq
+- ✅ Updated `BatchIndexerComponents` with DLQ field and Builder
+- ✅ **Optional Component Support:** DLQ is NOT in default `getRequiredComponents()`
+  - Available via `getOptionalComponents()` for graceful degradation
+  - Service starts successfully even if `retryTracker`/`dlq` resources not configured
+  - Partial configuration warnings: WARN if only one of two required resources present
+- ✅ Unit tests: `InMemoryRetryTrackerTest` (10 tests)
+  - FIFO eviction, active cleanup, thread-safety, metrics
+  - All tests pass
+- ✅ Unit tests: `DlqComponentTest` (12 tests)
+  - Constructor validation, retry limit logic, error handling
+  - All tests pass
+- ✅ Configuration: Commented examples in `evochora.conf`
+  - Resource definitions for indexer-retry-tracker and indexer-dlq
+  - Service resource bindings and maxRetries option
+  - Memory usage documentation
+- ⚠️ Integration tests: Deferred
+  - Requires poison message simulation in real indexer
+  - Will be implemented with EnvironmentIndexer/OrganismIndexer
 
 **Note:** 
-- `IOutputQueueResource<DeadLetterMessage>` interface already exists!
+- `IDeadLetterQueueResource<DeadLetterMessage>` interface already exists!
 - `InMemoryDeadLetterQueue` implementation already exists!
-- Only `IRetryTracker` and `DlqComponent` are new
+- `SystemContracts.DeadLetterMessage` protobuf already exists!
+- Only `IRetryTracker`, `InMemoryRetryTracker`, and `DlqComponent` are new
 
 ---
 
@@ -1953,7 +2074,8 @@ protected Set<ComponentType> getRequiredComponents() {
 |-----------|---------|----------|--------------|
 | `MetadataReadingComponent` | Polls DB for metadata, caches `samplingInterval` | In `AbstractBatchIndexer` | **Optional:** Most batch indexers need it |
 | `TickBufferingComponent` | Buffers ticks + ACK tracking, triggers flush | In `AbstractBatchIndexer` | **Optional:** For large batch inserts |
-| `DlqComponent` | Move poison messages to DLQ after max retries | In `AbstractBatchIndexer` | **Optional (deferred):** Only for poison message handling |
+| `IdempotencyComponent` | Skip duplicate storage reads (performance only) | In `AbstractBatchIndexer` | **Optional:** Only if storage reads are bottleneck |
+| `DlqComponent` | Move poison messages to DLQ after max retries | In `AbstractBatchIndexer` | **Optional:** Only for poison message handling |
 
 **All components are optional!** Each batch indexer decides in its constructor which components to use.
 
@@ -1970,6 +2092,60 @@ protected Set<ComponentType> getRequiredComponents() {
 - **Resources (thread-safe):** Underlying resources (`IMetadataReader`, `IRetryTracker`, `IDeadLetterQueue`, `H2TopicReader`) **ARE thread-safe** and shared across competing consumers
 - **Why this works:** Each indexer service runs in exactly one thread with its own components, accessing shared thread-safe resources
 - **Example:** 3x DummyIndexer (competing consumers) → each has own `TickBufferingComponent`, all share same `IMetadataReader` ✅
+
+### Required vs Optional Components
+
+Indexers declare components using two template methods:
+
+**1. `getRequiredComponents()` - MUST be configured**
+- Resources MUST be configured in `evochora.conf`
+- Service startup FAILS if resources missing (Exception thrown)
+- Use for components that are essential for indexer functionality
+- Default: `[METADATA, BUFFERING]`
+
+**2. `getOptionalComponents()` - MAY be configured**
+- Resources MAY be configured in `evochora.conf`  
+- Service startup SUCCEEDS even if resources missing (graceful degradation)
+- Component silently skipped if resources not configured
+- Use for performance optimizations or optional features
+- Default: `[]` (empty)
+
+**Behavior Comparison:**
+
+| Scenario | Required Component | Optional Component |
+|----------|-------------------|-------------------|
+| Resources configured | ✅ Component created | ✅ Component created |
+| Resources missing | ❌ Service fails to start (Exception) | ✅ Service starts (component=null, silent skip) |
+| Partial config (DLQ only) | ❌ Service fails | ⚠️ Service starts + WARN log |
+
+**DLQ Partial Configuration Warnings:**
+
+DLQ requires TWO resources (`retryTracker` + `dlq`). If only one is configured:
+
+```
+WARN: DLQ resource configured but retryTracker missing - DLQ component not created (poison messages will rotate indefinitely)
+WARN: RetryTracker configured but DLQ resource missing - DLQ component not created (poison messages will rotate indefinitely)
+```
+
+**No warning** if both missing (normal minimal config).
+
+**Example - Flexible Deployment:**
+
+```java
+// Indexer code declares "ideal" component set
+@Override
+protected Set<ComponentType> getRequiredComponents() {
+    return EnumSet.of(METADATA, BUFFERING);  // Essential
+}
+
+@Override
+protected Set<ComponentType> getOptionalComponents() {
+    return EnumSet.of(IDEMPOTENCY, DLQ);  // Nice-to-have
+}
+
+// Test config: Only required → service starts ✅
+// Production config: All 4 → service starts with optimizations ✅
+```
 
 ### Component Decision Guide
 
@@ -1990,20 +2166,37 @@ protected Set<ComponentType> getRequiredComponents() {
 protected Set<ComponentType> getRequiredComponents() {
     return EnumSet.of(ComponentType.METADATA, ComponentType.BUFFERING);
 }
+// No optional components needed
 
-// Pattern 2: Metadata only (no buffering)
+// Pattern 2: Standard + Optional DLQ (for poison message handling)
+@Override
+protected Set<ComponentType> getRequiredComponents() {
+    return EnumSet.of(ComponentType.METADATA, ComponentType.BUFFERING);
+}
+
+@Override
+protected Set<ComponentType> getOptionalComponents() {
+    return EnumSet.of(ComponentType.DLQ);  // Graceful if not configured
+}
+
+// Pattern 3: Standard + Optional Idempotency (performance optimization)
+@Override
+protected Set<ComponentType> getRequiredComponents() {
+    return EnumSet.of(ComponentType.METADATA, ComponentType.BUFFERING);
+}
+
+@Override
+protected Set<ComponentType> getOptionalComponents() {
+    return EnumSet.of(ComponentType.IDEMPOTENCY);  // Graceful if not configured
+}
+
+// Pattern 4: Metadata only (no buffering)
 @Override
 protected Set<ComponentType> getRequiredComponents() {
     return EnumSet.of(ComponentType.METADATA);
 }
 
-// Pattern 3: With DLQ (for poison message handling)
-@Override
-protected Set<ComponentType> getRequiredComponents() {
-    return EnumSet.of(ComponentType.METADATA, ComponentType.BUFFERING, ComponentType.DLQ);
-}
-
-// Pattern 4: Minimal (no components)
+// Pattern 5: Minimal (no components)
 @Override
 protected Set<ComponentType> getRequiredComponents() {
     return EnumSet.noneOf(ComponentType.class);
@@ -2016,6 +2209,7 @@ protected Set<ComponentType> getRequiredComponents() {
 |-----------|-------------|--------------|
 | **METADATA** | Indexer needs simulation metadata (dimensions, sampling interval) | Indexer is self-contained (no metadata dependency) |
 | **BUFFERING** | High throughput, batch inserts, production environment | Low throughput, simplicity preferred, debugging |
+| **IDEMPOTENCY** | Performance monitoring shows storage reads as bottleneck | Topic redeliveries are rare, performance is acceptable |
 | **DLQ** | Poison messages possible (corrupted data, parsing errors) | All data is trusted, no message-specific failures expected |
 
 **Standardized Config Parameters:**
@@ -2031,7 +2225,10 @@ indexer {
     insertBatchSize = 1000             # Flush after N ticks
     flushTimeoutMs = 5000              # Flush after N ms
     
-    # DLQ component
+    # IDEMPOTENCY component (Phase 14.2.7)
+    # No config parameters - component uses idempotency resource directly
+    
+    # DLQ component (Phase 14.2.8)
     maxRetries = 3                     # Move to DLQ after N retries
   }
 }
@@ -2190,10 +2387,12 @@ public class MinimalBatchIndexer<ACK> extends AbstractBatchIndexer<ACK> {
 
 ### Design Benefits
 
-✅ **3-Level Architecture:** Clear separation: AbstractIndexer (core) → AbstractBatchIndexer (batch logic) → Concrete Indexers (only `getRequiredComponents()` + `flushTicks()`)  
-✅ **Zero Boilerplate:** Batch indexers only implement two template methods, no complex constructor logic  
+✅ **3-Level Architecture:** Clear separation: AbstractIndexer (core) → AbstractBatchIndexer (batch logic) → Concrete Indexers (only `getRequiredComponents()` + `getOptionalComponents()` + `flushTicks()`)  
+✅ **Zero Boilerplate:** Batch indexers only implement template methods, no complex constructor logic  
 ✅ **Standardized Config:** All indexers use same config parameter names (`metadataPollIntervalMs`, `insertBatchSize`, `maxRetries`)  
 ✅ **Component Declaration Pattern:** Subclasses declare which components to use via EnumSet, AbstractBatchIndexer creates them  
+✅ **Required vs Optional:** Clear separation of essential components (required) vs optimizations (optional) with graceful degradation  
+✅ **Flexible Deployment:** Indexers declare "ideal" component set in code, config decides what to actually enable  
 ✅ **DRY (Don't Repeat Yourself):** Component creation logic and batch-processing logic centralized in `AbstractBatchIndexer`  
 ✅ **Builder Pattern:** Fluent API with `final` fields - new components can be added without breaking existing indexers  
 ✅ **Maximum Flexibility:** All components optional - from minimal (no components) to full-featured (metadata + buffering + DLQ)  
@@ -2563,10 +2762,7 @@ Upon completion of Phase 14.2.5 and 14.2.6:
 - ✅ Monitoring: O(1) metrics for topics, components
 - ✅ **Buffer-loss recovery:** Crash + redelivery works correctly (MERGE re-inserts missing ticks)
 
-**Deferred Phases:**
-- **Phase 14.2.8 (deferred):** DlqComponent only if monitoring shows specific batches (poison messages) failing repeatedly
-
-**Note:** Phase 14.2.7 (IdempotencyComponent) has been completed despite YAGNI concerns. It is available as an optional component for future use.
+**Note:** Phases 14.2.7 (IdempotencyComponent) and 14.2.8 (DlqComponent) have been completed despite YAGNI concerns. Both are available as optional components for future use when needed.
 
 ## Implementation Notes
 
@@ -2592,5 +2788,5 @@ Upon completion of Phase 14.2.5 and 14.2.6:
 - Phase 14.2.5: AbstractBatchIndexer + DummyIndexer (Metadata + Storage-Read + Tick-by-Tick) ✅ Completed
 - Phase 14.2.6: TickBufferingComponent (Cross-Batch Buffering) ✅ Completed
 - Phase 14.2.7: IdempotencyComponent (Performance Optimization) ✅ Completed
-- Phase 14.2.8: DlqComponent (Poison Message Handling) - ⚠️ **Specification ready - Implementation deferred (YAGNI)**
+- Phase 14.2.8: DlqComponent (Poison Message Handling) ✅ Completed
 

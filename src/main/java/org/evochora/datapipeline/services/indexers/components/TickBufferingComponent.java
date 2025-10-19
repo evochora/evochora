@@ -151,7 +151,7 @@ public class TickBufferingComponent {
      * are included in the returned completedMessages list. Partially flushed
      * batches remain in pendingBatches until completion.
      * <p>
-     * <strong>Phase 14.2.7:</strong> Also returns completedBatchIds for idempotency tracking.
+     * Also returns completedBatchIds for idempotency tracking.
      *
      * @param <ACK> ACK token type
      * @return FlushResult containing ticks to flush and completed messages to ACK
@@ -179,7 +179,7 @@ public class TickBufferingComponent {
         
         // Update batch flush counts and collect completed batches
         List<TopicMessage<?, ACK>> completedMessages = new ArrayList<>();
-        List<String> completedBatchIds = new ArrayList<>();  // Phase 14.2.7
+        List<String> completedBatchIds = new ArrayList<>();
         for (Map.Entry<String, Integer> entry : batchTickCounts.entrySet()) {
             String batchId = entry.getKey();
             int ticksFlushed = entry.getValue();
@@ -192,7 +192,7 @@ public class TickBufferingComponent {
                 @SuppressWarnings("unchecked")
                 TopicMessage<?, ACK> msg = (TopicMessage<?, ACK>) state.message;
                 completedMessages.add(msg);
-                completedBatchIds.add(batchId);  // Phase 14.2.7: Track batch ID
+                completedBatchIds.add(batchId);
                 pendingBatches.remove(batchId);
             }
         }
@@ -227,9 +227,8 @@ public class TickBufferingComponent {
      * <p>
      * Contains ticks to be flushed and TopicMessages to be acknowledged.
      * Only batches that are fully flushed are included in completedMessages.
-     * <p>
-     * <strong>Phase 14.2.7:</strong> Added completedBatchIds for idempotency tracking.
-     * The batch IDs correspond to the messages in completedMessages (parallel lists).
+         * <p>
+         * The batch IDs correspond to the messages in completedMessages (parallel lists).
      *
      * @param <ACK> ACK token type
      */
@@ -243,7 +242,7 @@ public class TickBufferingComponent {
          *
          * @param ticks Ticks to flush (must not be null)
          * @param completedMessages Messages to ACK (must not be null)
-         * @param completedBatchIds Batch IDs for completed batches (must not be null, Phase 14.2.7)
+         * @param completedBatchIds Batch IDs for completed batches (must not be null)
          */
         public FlushResult(List<TickData> ticks, 
                           List<TopicMessage<?, ACK>> completedMessages,
@@ -276,7 +275,7 @@ public class TickBufferingComponent {
         /**
          * Returns the batch IDs for completed batches.
          * <p>
-         * Phase 14.2.7: Used by IdempotencyComponent to mark batches as processed
+         * Used by IdempotencyComponent to mark batches as processed
          * AFTER successful ACK. This list is parallel to completedMessages.
          * <p>
          * Only includes batches where ALL ticks have been flushed.
