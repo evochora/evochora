@@ -1189,46 +1189,55 @@ private void flushAndAcknowledge() throws Exception {
 **Step 3: Add idempotency check in processBatchMessage (before storage read):**
 
 ```java
-private void processBatchMessage(TopicMessage<BatchInfo, ACK> msg) throws Exception {
-    BatchInfo batch = msg.payload();
-    String batchId = batch.getStorageKey();
-    
-    log.debug("Received BatchInfo: storageKey={}, ticks=[{}-{}]", ...);
-    
-    // Idempotency check (skip storage read if already processed)
-    if (components != null && components.idempotency != null) {
-        if (components.idempotency.isProcessed(batchId)) {
-    log.debug("Skipping duplicate batch (performance optimization): {}", batchId);
-            topic.ack(msg);
-            return;
-        }
-    }
-    
-    try {
-        // Storage handles length-delimited format automatically
-        List<TickData> ticks = storage.readBatch(batch.getStorageKey());
+    private void processBatchMessage(TopicMessage<BatchInfo, ACK> msg) {
+        BatchInfo batch = msg.payload();
+        String batchId = batch.getStorageKey();
         
-        if (components.buffering != null) {
-            components.buffering.addTicksFromBatch(ticks, batchId, msg);
-            if (components.buffering.shouldFlush()) {
-                flushAndAcknowledge();  // This will mark processed after ACK
-            }
-        } else {
-            // WITHOUT buffering: Safe to mark immediately after ACK
-            for (TickData tick : ticks) {
-                flushTicks(List.of(tick));
-            }
-            topic.ack(msg);
-            
-            if (components.idempotency != null) {
-                components.idempotency.markProcessed(batchId);
+        log.debug("Received BatchInfo: storageKey={}, ticks=[{}-{}]", ...);
+        
+        // Idempotency check (skip storage read if already processed)
+        if (components != null && components.idempotency != null) {
+            if (components.idempotency.isProcessed(batchId)) {
+    log.debug("Skipping duplicate batch (performance optimization): {}", batchId);
+                topic.ack(msg);
+                return;
             }
         }
-    } catch (Exception e) {
-        log.error("Failed to process batch: {}", batchId);
-        throw e;
+        
+        try {
+            // Storage handles length-delimited format automatically
+            List<TickData> ticks = storage.readBatch(batch.getStorageKey());
+            
+            if (components.buffering != null) {
+                components.buffering.addTicksFromBatch(ticks, batchId, msg);
+                if (components.buffering.shouldFlush()) {
+                    flushAndAcknowledge();  // This will mark processed after ACK
+                }
+            } else {
+                // WITHOUT buffering: Safe to mark immediately after ACK
+                for (TickData tick : ticks) {
+                    flushTicks(List.of(tick));
+                }
+                topic.ack(msg);
+                
+                if (components.idempotency != null) {
+                    components.idempotency.markProcessed(batchId);
+                }
+            }
+        } catch (InterruptedException e) {
+            // Normal shutdown - re-throw to stop service
+            log.debug("Interrupted while processing batch: {}", batchId);
+            throw e;
+            
+        } catch (Exception e) {
+            // Transient error - log, track, but DON'T stop indexer
+            log.warn("Failed to process batch (will be redelivered after claimTimeout): {}: {}", batchId, e.getMessage());
+            recordError("BATCH_PROCESSING_FAILED", "Batch processing failed", 
+                       "BatchId: " + batchId + ", Error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            // NO throw - indexer continues processing other batches!
+            // NO ack - batch remains unclaimed, topic will reassign after claimTimeout
+        }
     }
-}
 ```
 
 **Why this is safe:**
@@ -1833,7 +1842,7 @@ public class DlqComponent<T extends Message, ACK> {
 **AbstractBatchIndexer Integration:**
 
 ```java
-private void processBatchMessage(TopicMessage<BatchInfo, ACK> msg) throws Exception {
+private void processBatchMessage(TopicMessage<BatchInfo, ACK> msg) {
     BatchInfo batch = msg.payload();
     String batchId = batch.getStorageKey();
     
@@ -1860,20 +1869,35 @@ private void processBatchMessage(TopicMessage<BatchInfo, ACK> msg) throws Except
             components.dlq.resetRetryCount(batchId);
         }
         
+    } catch (InterruptedException e) {
+        // Normal shutdown - re-throw to stop service
+        log.debug("Interrupted while processing batch: {}", batchId);
+        throw e;
+        
     } catch (Exception e) {
-        log.error("Failed to process batch: {}", batchId);
+        // Transient error - log, track, but DON'T stop indexer
+        log.warn("Failed to process batch (will be redelivered after claimTimeout): {}: {}", batchId, e.getMessage());
+        recordError("BATCH_PROCESSING_FAILED", "Batch processing failed", 
+                   "BatchId: " + batchId + ", Error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
         
         // DLQ check (if component configured)
         if (components != null && components.dlq != null) {
             if (components.dlq.shouldMoveToDlq(batchId)) {
                 log.warn("Moving batch to DLQ after max retries: {}", batchId);
-                components.dlq.moveToDlq(msg, e, batchId);
-                topic.ack(msg);  // ACK original - now in DLQ
-                return;  // Don't rethrow
+                try {
+                    components.dlq.moveToDlq(msg, e, batchId);
+                    topic.ack(msg);  // ACK original - now in DLQ
+                    return;  // Successfully moved to DLQ
+                } catch (InterruptedException ie) {
+                    log.debug("Interrupted while moving DLQ: {}", batchId);
+                    Thread.currentThread().interrupt();
+                    return;  // Exit gracefully
+                }
             }
         }
         
-        throw e;  // NO ACK - redelivery
+        // NO throw - indexer continues processing other batches!
+        // NO ack - batch remains unclaimed, topic will reassign after claimTimeout
     }
 }
 ```

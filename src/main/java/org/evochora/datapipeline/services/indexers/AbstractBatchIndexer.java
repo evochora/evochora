@@ -342,11 +342,20 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * <p>
      * Reads TickDataBatch from storage, processes ticks (buffered or tick-by-tick),
      * and acknowledges message after successful processing.
+     * <p>
+     * <strong>Error Handling:</strong> Transient errors (storage read failures, database
+     * write failures) are logged as WARN and tracked. The batch is NOT acknowledged,
+     * causing topic redelivery after claimTimeout. The indexer continues processing
+     * other batches, allowing recovery from transient failures without service restart.
+     * <p>
+     * <strong>Buffer Recovery:</strong> If buffering is enabled and {@code flushTicks()}
+     * fails, the buffer is already empty (ticks removed by {@code buffering.flush()}).
+     * Batch redelivery will re-read ticks from storage. MERGE ensures no duplicates.
      *
      * @param msg Topic message containing BatchInfo
-     * @throws Exception if processing fails (batch will be redelivered)
+     * @throws InterruptedException if service is shutting down
      */
-    private void processBatchMessage(TopicMessage<BatchInfo, ACK> msg) throws Exception {
+    private void processBatchMessage(TopicMessage<BatchInfo, ACK> msg) throws InterruptedException {
         BatchInfo batch = msg.payload();
         String batchId = batch.getStoragePath();
         
@@ -408,24 +417,39 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 components.dlq.resetRetryCount(batchId);
             }
             
+        } catch (InterruptedException e) {
+            // Normal shutdown - re-throw to stop service
+            log.debug("Interrupted while processing batch: {}", batchId);
+            throw e;
+            
         } catch (Exception e) {
-            log.error("Failed to process batch: {}", batchId);
+            // Transient error - log, track, but DON'T stop indexer
+            log.warn("Failed to process batch (will be redelivered after claimTimeout): {}: {}", batchId, e.getMessage());
+            recordError("BATCH_PROCESSING_FAILED", "Batch processing failed", 
+                       "BatchId: " + batchId + ", Error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
             
             // DLQ check (if component configured)
             if (components != null && components.dlq != null) {
                 if (components.dlq.shouldMoveToDlq(batchId)) {
                     log.warn("Moving batch to DLQ after max retries: {}", batchId);
-                    @SuppressWarnings("unchecked")
-                    DlqComponent<BatchInfo, ACK> dlqComponent = (DlqComponent<BatchInfo, ACK>) components.dlq;
-                    dlqComponent.moveToDlq(msg, e, batchId);
-                    topic.ack(msg);  // ACK original - now in DLQ
-                    batchesProcessed.incrementAndGet();  // Count as processed
-                    batchesMovedToDlq.incrementAndGet();  // Track DLQ moves
-                    return;  // Don't rethrow
+                    try {
+                        @SuppressWarnings("unchecked")
+                        DlqComponent<BatchInfo, ACK> dlqComponent = (DlqComponent<BatchInfo, ACK>) components.dlq;
+                        dlqComponent.moveToDlq(msg, e, batchId);
+                        topic.ack(msg);  // ACK original - now in DLQ
+                        batchesProcessed.incrementAndGet();  // Count as processed
+                        batchesMovedToDlq.incrementAndGet();  // Track DLQ moves
+                        return;  // Successfully moved to DLQ
+                    } catch (InterruptedException ie) {
+                        log.debug("Interrupted while moving batch to DLQ: {}", batchId);
+                        Thread.currentThread().interrupt();  // Restore interrupt status
+                        return;  // Exit gracefully on shutdown
+                    }
                 }
             }
             
-            throw e;  // NO acknowledge - redelivery!
+            // NO throw - indexer continues processing other batches!
+            // NO ack - batch remains unclaimed, topic will reassign after claimTimeout
         }
     }
     
@@ -434,6 +458,11 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * <p>
      * Called when buffer is full or timeout occurs. Flushes ticks to database,
      * acknowledges only fully completed batches, and updates metrics.
+     * <p>
+     * <strong>Buffer State:</strong> The {@code buffering.flush()} call removes ticks
+     * from the buffer BEFORE calling {@code flushTicks()}. If {@code flushTicks()}
+     * throws an exception, the buffer is already empty and ticks must be re-read
+     * from storage on batch redelivery.
      * <p>
      * Marks batches as processed AFTER ACK (critical for correctness!).
      *

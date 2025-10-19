@@ -123,7 +123,12 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
     protected void doInsertMetadata(Object connection, SimulationMetadata metadata) throws Exception {
         Connection conn = (Connection) connection;
         try {
-            conn.createStatement().execute("CREATE TABLE IF NOT EXISTS metadata (\"key\" VARCHAR PRIMARY KEY, \"value\" TEXT)");
+            // Use H2SchemaUtil for CREATE TABLE to handle concurrent initialization race conditions
+            H2SchemaUtil.executeTableCreation(
+                conn.createStatement(),
+                "CREATE TABLE IF NOT EXISTS metadata (\"key\" VARCHAR PRIMARY KEY, \"value\" TEXT)",
+                "metadata"
+            );
             
             Gson gson = new Gson();
             Map<String, String> kvPairs = new HashMap<>();
@@ -156,15 +161,13 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
             diskWrites.incrementAndGet();
             diskWritesCounter.recordCount();  // O(1) recording
         } catch (SQLException e) {
+            // Rollback to keep connection clean for pool reuse
             try {
                 conn.rollback();
-            } catch (SQLException re) {
-                log.warn("Rollback failed", re);
+            } catch (SQLException rollbackEx) {
+                log.warn("Rollback failed (connection may be closed): {}", rollbackEx.getMessage());
             }
-            writeErrors.incrementAndGet();
-            log.warn("Failed to insert metadata");
-            recordError("INSERT_METADATA_FAILED", "Failed to insert metadata", "Error: " + e.getMessage());
-            throw e;
+            throw e;  // Re-throw for wrapper to handle (wrapper will log + recordError)
         }
     }
 

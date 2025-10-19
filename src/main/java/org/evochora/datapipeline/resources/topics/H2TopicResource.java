@@ -278,9 +278,10 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
         
         // Execute all CREATE statements (connection already provided by H2SchemaUtil.setupRunSchema)
         try (Statement stmt = connection.createStatement()) {
-            stmt.execute(createMessagesSql);
+            // Use H2SchemaUtil for CREATE TABLE to handle concurrent initialization race conditions
+            H2SchemaUtil.executeTableCreation(stmt, createMessagesSql, "topic_messages");
             executeIndexCreation(stmt, createIndexMessages, "idx_topic_messages");
-            stmt.execute(createConsumerGroupSql);
+            H2SchemaUtil.executeTableCreation(stmt, createConsumerGroupSql, "topic_consumer_group");
             executeIndexCreation(stmt, createIndexUnclaimed, "idx_consumer_group_unclaimed");
             executeIndexCreation(stmt, createIndexClaimed, "idx_consumer_group_claimed");
             log.debug("Created centralized topic tables for resource '{}'", getResourceName());

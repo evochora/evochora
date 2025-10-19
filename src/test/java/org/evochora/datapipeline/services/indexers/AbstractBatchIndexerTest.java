@@ -124,9 +124,7 @@ class AbstractBatchIndexerTest {
     }
     
     @Test
-    @AllowLog(level = LogLevel.ERROR, messagePattern = "Failed to process batch:.*")
-    @AllowLog(level = LogLevel.ERROR, messagePattern = "Indexing failed for run:.*")
-    @AllowLog(level = LogLevel.ERROR, messagePattern = ".*stopped with ERROR.*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = "Failed to process batch.*")
     void testNoAckOnStorageReadError() throws Exception {
         // Given: Mock setup with storage read error
         String runId = "test-run-002";
@@ -138,8 +136,8 @@ class AbstractBatchIndexerTest {
         lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
         lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
-            .thenReturn(message)  // First call: return batch
-            .thenReturn(null);    // Subsequent calls: null
+            .thenReturn(message)  // First call: return batch with error
+            .thenReturn(null);    // Subsequent calls: null (indexer continues polling)
         
         // Storage read fails
         when(mockStorage.readBatch(StoragePath.of(batchInfo.getStoragePath())))
@@ -149,11 +147,20 @@ class AbstractBatchIndexerTest {
         indexer = createIndexer(runId, true);
         indexer.start();
         
-        // Wait for ERROR state (use await, not Thread.sleep!)
+        // Wait for error to be tracked (indexer stays RUNNING)
         await().atMost(3, TimeUnit.SECONDS)
-            .until(() -> indexer.getCurrentState() == org.evochora.datapipeline.api.services.IService.State.ERROR);
+            .until(() -> !indexer.getErrors().isEmpty());
         
-        // Then: Verify NO ACK was sent
+        // Then: Verify indexer is still RUNNING (not ERROR)
+        assertEquals(org.evochora.datapipeline.api.services.IService.State.RUNNING, indexer.getCurrentState(),
+            "Indexer should continue running after transient error");
+        
+        // Verify error was tracked
+        assertEquals(1, indexer.getErrors().size(), "Error should be tracked");
+        assertEquals("BATCH_PROCESSING_FAILED", indexer.getErrors().get(0).errorType(), 
+            "Error type should be BATCH_PROCESSING_FAILED");
+        
+        // Verify NO ACK was sent
         verify(mockTopic, never()).ack(any());
         
         // Verify no ticks were flushed
@@ -161,9 +168,7 @@ class AbstractBatchIndexerTest {
     }
     
     @Test
-    @AllowLog(level = LogLevel.ERROR, messagePattern = "Failed to process batch:.*")
-    @AllowLog(level = LogLevel.ERROR, messagePattern = "Indexing failed for run:.*")
-    @AllowLog(level = LogLevel.ERROR, messagePattern = ".*stopped with ERROR.*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = "Failed to process batch.*")
     void testNoAckOnFlushError() throws Exception {
         // Given: Mock setup with flush error
         String runId = "test-run-003";
@@ -176,8 +181,8 @@ class AbstractBatchIndexerTest {
         lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
         lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
-            .thenReturn(message)
-            .thenReturn(null);
+            .thenReturn(message)  // First call: return batch with error
+            .thenReturn(null);    // Subsequent calls: null (indexer continues polling)
         when(mockStorage.readBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(ticks);
         
         // Configure test indexer to throw error on flush
@@ -190,13 +195,21 @@ class AbstractBatchIndexerTest {
         // Wait for flush attempt
         assertTrue(flushLatch.await(5, TimeUnit.SECONDS), "Flush should be attempted");
         
-        // Then: Verify NO ACK was sent
-        await().atMost(2, TimeUnit.SECONDS)
-            .untilAsserted(() -> verify(mockTopic, never()).ack(any()));
-        
-        // Verify indexer transitions to ERROR state
+        // Wait for error to be tracked (indexer stays RUNNING)
         await().atMost(3, TimeUnit.SECONDS)
-            .until(() -> indexer.getCurrentState() == org.evochora.datapipeline.api.services.IService.State.ERROR);
+            .until(() -> !indexer.getErrors().isEmpty());
+        
+        // Then: Verify indexer is still RUNNING (not ERROR)
+        assertEquals(org.evochora.datapipeline.api.services.IService.State.RUNNING, indexer.getCurrentState(),
+            "Indexer should continue running after transient flush error");
+        
+        // Verify error was tracked
+        assertEquals(1, indexer.getErrors().size(), "Error should be tracked");
+        assertEquals("BATCH_PROCESSING_FAILED", indexer.getErrors().get(0).errorType(), 
+            "Error type should be BATCH_PROCESSING_FAILED");
+        
+        // Verify NO ACK was sent
+        verify(mockTopic, never()).ack(any());
     }
     
     @Test

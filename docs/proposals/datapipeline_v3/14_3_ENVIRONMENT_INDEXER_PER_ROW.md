@@ -1,30 +1,31 @@
-# Data Pipeline V3 - Environment Indexer (Phase 14.3)
+# Data Pipeline V3 - Environment Indexer (Phase 14.3) - SingleBlobStrategy
 
 ## Overview
 
-This document specifies the **EnvironmentIndexer**, the first indexer that writes structured data from storage into a database. It indexes environment cell states from TickData for efficient spatial queries by the HTTP API.
+This document specifies the **EnvironmentIndexer** with **SingleBlobStrategy** (default storage strategy). This is the first indexer that writes structured data from storage into a database. It indexes environment cell states from TickData using a **single-blob-per-tick** storage model with BLOB serialization for compact storage.
 
 ## Goal
 
-Implement EnvironmentIndexer that:
+Implement EnvironmentIndexer with SingleBlobStrategy that:
 - Reads TickData batches from storage (via topic notifications)
-- Converts flat_index to coordinates using EnvironmentProperties
-- Writes cell states to database with MERGE for idempotency
-- Supports dimension-agnostic schema (1D to N-D)
+- Serializes cells to BLOB for compact storage
+- Writes ticks to database with MERGE for idempotency (on tick_number)
+- Supports dimension-agnostic BLOB format (1D to N-D)
 - Enables competing consumers pattern
-- Provides foundation for HTTP API area queries
+- Provides foundation for HTTP API queries (Phase 14.5)
+- Achieves 1000× storage reduction compared to row-per-cell
 
 ## Success Criteria
 
 Upon completion:
 1. EnvironmentIndexer extends AbstractBatchIndexer with METADATA + BUFFERING components
-2. Database schema created idempotently with variable dimension columns
-3. flat_index → coordinate conversion using EnvironmentProperties
-4. MERGE-based writes ensure 100% idempotency
-5. Sparse cell storage (only non-empty cells)
+2. Database schema created idempotently (environment_ticks table)
+3. SingleBlobStrategy serializes cells to BLOB (protobuf format)
+4. MERGE-based writes ensure 100% idempotency (on tick_number)
+5. Sparse cell storage (only non-empty cells in BLOB)
 6. Competing consumers work correctly (multiple indexer instances)
 7. All tests pass (unit + integration)
-8. HTTP API can query cells by area: `WHERE tick_number = T AND pos_0 BETWEEN x1 AND x2`
+8. Storage efficiency: ~1 GB for 10^6 ticks (vs. 5 TB with row-per-cell)
 
 ## Prerequisites
 
@@ -32,6 +33,7 @@ Upon completion:
 - Phase 14.2.5: DummyIndexer as reference implementation (completed)
 - AbstractDatabaseWrapper supports URI parameters (consistency with Storage/Queue resources)
 - EnvironmentProperties extended with flatIndexToCoordinates() method
+- **CellStateList protobuf message** added to tickdata_contracts.proto (used by SingleBlobStrategy)
 
 ## Architectural Design
 
@@ -79,9 +81,9 @@ EnvironmentIndexer → Read TickData from Storage
 **100% idempotent via MERGE:**
 
 ```sql
-MERGE INTO environment_data (tick_number, pos_0, pos_1, molecule_type, molecule_value, owner_id)
-KEY (tick_number, pos_0, pos_1)
-VALUES (?, ?, ?, ?, ?, ?)
+MERGE INTO environment_ticks (tick_number, cells_blob)
+KEY (tick_number)
+VALUES (?, ?)
 ```
 
 **Crash Recovery:**
@@ -143,18 +145,37 @@ When `flushTicks()` throws an exception, the error is handled by `AbstractBatchI
  * Flushes ticks to database using MERGE for idempotency.
  * <p>
  * <strong>Exception Handling:</strong> Implementations should let exceptions
- * propagate - AbstractBatchIndexer handles them gracefully:
+ * propagate to AbstractBatchIndexer for graceful error handling:
  * <ul>
  *   <li>SQLException: Database errors → batch redelivered after claimTimeout</li>
  *   <li>RuntimeException: Logic errors → batch redelivered after claimTimeout</li>
  * </ul>
+ * <p>
+ * <strong>IMPORTANT for Database Layer:</strong> Lower-level implementations
+ * (e.g., IH2EnvStorageStrategy.writeTicks()) MUST use try-catch to rollback
+ * transactions before re-throwing exceptions. This ensures the database
+ * connection is returned to the pool in a clean state:
+ * <pre>
+ * // In Strategy.writeTicks():
+ * try {
+ *     // ... write operations ...
+ *     conn.commit();
+ * } catch (SQLException e) {
+ *     try {
+ *         conn.rollback();  // REQUIRED - clean connection!
+ *     } catch (SQLException ex) {
+ *         log.warn("Rollback failed: {}", ex.getMessage());
+ *     }
+ *     throw e;  // Re-throw for AbstractBatchIndexer
+ * }
+ * </pre>
  * <p>
  * The indexer service continues running even if this method throws an exception.
  * Failed batches are reassigned by the topic system for automatic recovery.
  *
  * @param ticks Ticks to flush (already buffered by TickBufferingComponent)
  * @throws SQLException if database write fails (transient - will be retried)
- * @throws RuntimeException if coordinate conversion fails (should never happen)
+ * @throws RuntimeException if logic errors occur (should never happen)
  */
 protected abstract void flushTicks(List<TickData> ticks) throws Exception;
 ```
@@ -277,7 +298,7 @@ Add methods for flat_index → coordinate conversion:
  * Converts a flat index to coordinates.
  * <p>
  * This is the inverse operation of the linearization used by Environment.
- * Uses row-major order: flatIndex = pos_0 + pos_1*stride_1 + pos_2*stride_2 + ...
+ * Uses row-major order: flatIndex = coord[0] + coord[1]*stride[1] + coord[2]*stride[2] + ...
  * <p>
  * <strong>Performance:</strong> Strides are cached on first call for O(1) conversion.
  *
@@ -361,19 +382,14 @@ import java.util.List;
 public interface IEnvironmentDataWriter extends ISchemaAwareDatabase, IMonitorable, AutoCloseable {
     
     /**
-     * Creates the environment_data table idempotently with variable dimension columns.
+     * Creates the environment_ticks table idempotently.
      * <p>
-     * Table schema adapts to number of dimensions:
+     * Table schema (dimension-agnostic via BLOB):
      * <pre>
-     * CREATE TABLE IF NOT EXISTS environment_data (
-     *     tick_number BIGINT NOT NULL,
-     *     pos_0 INT NOT NULL,
-     *     pos_1 INT NOT NULL,
-     *     -- pos_2, pos_3, ... (dynamically added based on dimensions)
-     *     molecule_type INT NOT NULL,
-     *     molecule_value INT NOT NULL,
-     *     owner_id INT NOT NULL,
-     *     PRIMARY KEY (tick_number, pos_0, pos_1, ...)
+     * CREATE TABLE IF NOT EXISTS environment_ticks (
+     *     tick_number BIGINT PRIMARY KEY,
+     *     dimension_count INT NOT NULL,
+     *     cells_blob BLOB NOT NULL
      * )
      * </pre>
      * <p>
@@ -390,28 +406,30 @@ public interface IEnvironmentDataWriter extends ISchemaAwareDatabase, IMonitorab
     void createEnvironmentDataTable(int dimensions) throws SQLException;
     
     /**
-     * Writes environment cells using MERGE for idempotency.
+     * Writes environment cells for multiple ticks using MERGE for idempotency.
      * <p>
-     * Each cell is identified by (tick_number, coordinates) and written with MERGE:
+     * All ticks are written in one JDBC batch with one commit for maximum performance.
+     * Delegates to IH2EnvStorageStrategy for actual storage implementation.
+     * <p>
+     * Each tick is identified by tick_number and written with MERGE:
      * <ul>
-     *   <li>If row exists: UPDATE (noop if same data)</li>
-     *   <li>If row missing: INSERT</li>
+     *   <li>If tick exists: UPDATE (overwrite with new data)</li>
+     *   <li>If tick missing: INSERT</li>
      * </ul>
      * <p>
      * This ensures 100% idempotency even with topic redeliveries.
      * <p>
-     * <strong>Performance:</strong> Uses batch operations for efficient writes.
-     * Typical batch size: 1000 cells.
+     * <strong>Performance:</strong> All ticks written in one JDBC batch with one commit.
+     * This reduces commit overhead by ~1000× compared to per-tick commits.
      * <p>
-     * <strong>Coordinate Conversion:</strong> Converts flat_index to coordinates internally
-     * using EnvironmentProperties.flatIndexToCoordinates() (O(1) with cached strides).
+     * <strong>Strategy-Specific:</strong> SingleBlobStrategy serializes cells to BLOB.
+     * EnvironmentProperties passed for strategies that need coordinate conversion.
      *
-     * @param tickNumber The tick number for all cells
-     * @param cells List of CellState protobuf messages (with flat_index)
-     * @param envProps Environment properties for coordinate conversion
-     * @throws SQLException if write fails
+     * @param ticks List of ticks with their cell data to write
+     * @param envProps Environment properties for coordinate conversion (if needed by strategy)
+     * @throws SQLException if database write fails
      */
-    void writeEnvironmentCells(long tickNumber, List<CellState> cells, EnvironmentProperties envProps) 
+    void writeEnvironmentCells(List<TickData> ticks, EnvironmentProperties envProps) 
             throws SQLException;
     
     /**
@@ -484,10 +502,10 @@ class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implements IE
     public void createEnvironmentDataTable(int dimensions) throws SQLException {
         try {
             database.doCreateEnvironmentDataTable(ensureConnection(), dimensions);
-            log.debug("Environment data table created with {} dimensions", dimensions);
+            log.debug("Environment ticks table created with {} dimensions", dimensions);
         } catch (Exception e) {
-            log.error("Failed to create environment_data table with {} dimensions: {}", dimensions, e.getMessage());
-            throw new SQLException("Failed to create environment_data table", e);
+            log.error("Failed to create environment_ticks table with {} dimensions: {}", dimensions, e.getMessage());
+            throw new SQLException("Failed to create environment_ticks table", e);
         }
     }
     
@@ -543,7 +561,7 @@ class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implements IE
 }
 ```
 
-### 4. Storage Strategy Interface
+### 4. Storage Strategy Architecture
 
 **File:** `src/main/java/org/evochora/datapipeline/resources/database/h2/IH2EnvStorageStrategy.java`
 
@@ -603,9 +621,56 @@ public interface IH2EnvStorageStrategy {
 }
 ```
 
+**Abstract Base Class:**
+
+**File:** `src/main/java/org/evochora/datapipeline/resources/database/h2/AbstractH2EnvStorageStrategy.java`
+
+```java
+package org.evochora.datapipeline.resources.database.h2;
+
+import com.typesafe.config.Config;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Abstract base class for H2 environment storage strategies.
+ * <p>
+ * Enforces constructor contract: All strategies MUST accept Config parameter.
+ * <p>
+ * Provides common infrastructure:
+ * <ul>
+ *   <li>Config options access (protected final)</li>
+ *   <li>Logger instance (protected final)</li>
+ * </ul>
+ * <p>
+ * <strong>Rationale:</strong> Ensures all strategies can be instantiated via reflection
+ * with consistent constructor signature. The compiler enforces that subclasses call
+ * super(options), preventing runtime errors from missing constructors.
+ */
+public abstract class AbstractH2EnvStorageStrategy implements IH2EnvStorageStrategy {
+    
+    protected final Logger log = LoggerFactory.getLogger(getClass());
+    protected final Config options;
+    
+    /**
+     * Creates storage strategy with configuration.
+     * <p>
+     * <strong>Subclass Requirement:</strong> All subclasses MUST call super(options).
+     * The compiler enforces this.
+     * 
+     * @param options Strategy configuration (may be empty, never null)
+     */
+    protected AbstractH2EnvStorageStrategy(Config options) {
+        this.options = java.util.Objects.requireNonNull(options, "options cannot be null");
+    }
+    
+    // createSchema() and writeTicks() remain abstract - too strategy-specific
+}
+```
+
 **Default Strategy Implementation:**
 
-For Phase 14.3, implement `RowPerTickStrategy` (compact storage):
+For Phase 14.3, implement `SingleBlobStrategy` (compact storage):
 
 ```java
 package org.evochora.datapipeline.resources.database.h2;
@@ -629,19 +694,95 @@ package org.evochora.datapipeline.resources.database.h2;
  * <p>
  * <strong>Implementation Details:</strong> To be specified (table schema, blob format, etc.)
  */
-public class RowPerTickStrategy implements IH2EnvStorageStrategy {
+public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
+    
+    private final ICompressionCodec codec;
+    private PreparedStatement mergeStatement;
+    
+    /**
+     * Creates SingleBlobStrategy with optional compression.
+     * 
+     * @param options Config with optional compression block
+     */
+    public SingleBlobStrategy(Config options) {
+        super(options);  // Required by abstract base class
+        
+        // Load compression codec (optional - defaults to NoneCodec if missing)
+        this.codec = CompressionCodecFactory.create(options);
+        
+        log.debug("SingleBlobStrategy initialized with compression: {}", codec.getName());
+    }
     
     @Override
     public void createSchema(Connection conn, int dimensions) throws SQLException {
-        // TODO: Specify exact table schema
-        // Details to be discussed and documented
+        // Create table (dimension_count NOT stored - retrieved from metadata)
+        conn.createStatement().execute(
+            "CREATE TABLE IF NOT EXISTS environment_ticks (" +
+            "  tick_number BIGINT PRIMARY KEY," +
+            "  cells_blob BLOB NOT NULL" +
+            ")"
+        );
+        
+        // Create index (primary key index is automatic)
+        conn.createStatement().execute(
+            "CREATE INDEX IF NOT EXISTS idx_env_tick ON environment_ticks (tick_number)"
+        );
+        
+        // Prepare reusable MERGE statement
+        this.mergeStatement = conn.prepareStatement(
+            "MERGE INTO environment_ticks (tick_number, cells_blob) " +
+            "KEY (tick_number) VALUES (?, ?)"
+        );
     }
     
     @Override
     public void writeTicks(Connection conn, List<TickData> ticks, 
                           EnvironmentProperties envProps) throws SQLException {
-        // TODO: Specify exact serialization format and write logic
-        // Details to be discussed and documented
+        try {
+            for (TickData tick : ticks) {
+                // Serialize cells to protobuf bytes with optional compression
+                byte[] cellsBlob = serializeTickCells(tick);
+                
+                mergeStatement.setLong(1, tick.getTickNumber());
+                mergeStatement.setBytes(2, cellsBlob);
+                mergeStatement.addBatch();
+            }
+            
+            // ONE executeBatch() for ALL ticks
+            mergeStatement.executeBatch();
+            
+            // ONE commit() for ALL ticks - massive performance gain!
+            conn.commit();
+            
+        } catch (SQLException e) {
+            // Rollback to keep connection clean for pool reuse
+            try {
+                conn.rollback();
+            } catch (SQLException rollbackEx) {
+                log.warn("Rollback failed (connection may be closed): {}", rollbackEx.getMessage());
+            }
+            throw e;
+        }
+    }
+    
+    private byte[] serializeTickCells(TickData tick) throws SQLException {
+        try {
+            // Build CellStateList message
+            CellStateList cellsList = CellStateList.newBuilder()
+                .addAllCells(tick.getCellsList())
+                .build();
+            
+            // Serialize to bytes with optional compression
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            try (OutputStream compressed = codec.wrapOutputStream(baos)) {
+                cellsList.writeTo(compressed);
+            }
+            
+            return baos.toByteArray();
+            
+        } catch (IOException e) {
+            throw new SQLException("Failed to serialize cells for tick: " + tick.getTickNumber(), e);
+        }
     }
 }
 ```
@@ -656,12 +797,13 @@ public class RowPerTickStrategy implements IH2EnvStorageStrategy {
 
 ```java
 /**
- * Creates environment_data table with dimension-agnostic schema.
+ * Creates environment_ticks table with BLOB-based schema.
  * <p>
  * <strong>Transaction Handling:</strong> Must commit on success, rollback on failure.
+ * <strong>Storage Strategy:</strong> Delegates to IH2EnvStorageStrategy for actual schema creation.
  * 
  * @param connection Database connection (from acquireDedicatedConnection)
- * @param dimensions Number of spatial dimensions (1-N)
+ * @param dimensions Number of spatial dimensions (stored in table for validation)
  * @throws Exception if table creation fails
  */
 protected abstract void doCreateEnvironmentDataTable(Object connection, int dimensions) 
@@ -695,21 +837,48 @@ public H2Database(String name, Config options) {
     
     // ... existing HikariCP initialization ...
     
-    // Load storage strategy via reflection
-    String strategyClassName = options.hasPath("environmentStorageStrategy")
-        ? options.getString("environmentStorageStrategy")
-        : "org.evochora.datapipeline.resources.database.h2.RowPerTickStrategy";
-    
-    this.envStorageStrategy = createStorageStrategy(strategyClassName);
-    log.debug("Loaded environment storage strategy: {}", strategyClassName);
+    // Load storage strategy via reflection (with options)
+    if (options.hasPath("h2EnvironmentStrategy")) {
+        Config strategyConfig = options.getConfig("h2EnvironmentStrategy");
+        String strategyClassName = strategyConfig.getString("className");
+        
+        // Extract options for strategy (defaults to empty config if missing)
+        Config strategyOptions = strategyConfig.hasPath("options")
+            ? strategyConfig.getConfig("options")
+            : ConfigFactory.empty();
+        
+        this.envStorageStrategy = createStorageStrategy(strategyClassName, strategyOptions);
+        log.debug("Loaded environment storage strategy: {} with compression: {}", 
+                 strategyClassName, strategyOptions.hasPath("compression.codec") 
+                     ? strategyOptions.getString("compression.codec") 
+                     : "none");
+    } else {
+        // Default: SingleBlobStrategy without compression
+        Config emptyConfig = ConfigFactory.empty();
+        this.envStorageStrategy = createStorageStrategy(
+            "org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy",
+            emptyConfig
+        );
+        log.debug("Using default SingleBlobStrategy (no compression)");
+    }
 }
 
-private IH2EnvStorageStrategy createStorageStrategy(String className) {
+private IH2EnvStorageStrategy createStorageStrategy(String className, Config strategyConfig) {
     try {
         Class<?> strategyClass = Class.forName(className);
-        return (IH2EnvStorageStrategy) strategyClass
-            .getDeclaredConstructor()
-            .newInstance();
+        
+        // Try constructor with Config parameter first
+        try {
+            return (IH2EnvStorageStrategy) strategyClass
+                .getDeclaredConstructor(Config.class)
+                .newInstance(strategyConfig);
+        } catch (NoSuchMethodException e) {
+            // Fallback: no-args constructor (for simple strategies)
+            return (IH2EnvStorageStrategy) strategyClass
+                .getDeclaredConstructor()
+                .newInstance();
+        }
+        
     } catch (ClassNotFoundException e) {
         throw new IllegalArgumentException(
             "Storage strategy class not found: " + className + 
@@ -720,7 +889,7 @@ private IH2EnvStorageStrategy createStorageStrategy(String className) {
     } catch (Exception e) {
         throw new IllegalArgumentException(
             "Failed to instantiate storage strategy: " + className + 
-            ". Make sure the class has a public no-args constructor.", e);
+            ". Make sure the class has a public constructor(Config) or no-args constructor.", e);
     }
 }
 
@@ -732,92 +901,8 @@ protected void doCreateEnvironmentDataTable(Object connection, int dimensions) t
     envStorageStrategy.createSchema(conn, dimensions);
 }
 
-// Example implementation for RowPerCellStrategy (if that strategy is selected):
-// This is just for reference - actual implementation is in the strategy class
-private void createRowPerCellSchema(Connection conn, int dimensions) throws SQLException {
-    // Build dynamic CREATE TABLE statement
-    StringBuilder sql = new StringBuilder();
-    sql.append("CREATE TABLE IF NOT EXISTS environment_data (");
-    sql.append("tick_number BIGINT NOT NULL, ");
-    
-    for (int i = 0; i < dimensions; i++) {
-        sql.append("pos_").append(i).append(" INT NOT NULL, ");
-    }
-    
-    sql.append("molecule_type INT NOT NULL, ");
-    sql.append("molecule_value INT NOT NULL, ");
-    sql.append("owner_id INT NOT NULL, ");
-    
-    // Primary key - composite key for MERGE
-    sql.append("PRIMARY KEY (tick_number");
-    for (int i = 0; i < dimensions; i++) {
-        sql.append(", pos_").append(i);
-    }
-    sql.append(")");
-    sql.append(")");
-    
-    try (Statement stmt = conn.createStatement()) {
-        stmt.execute(sql.toString());
-    }
-    
-    // Create indexes for area queries
-    createEnvironmentIndexes(conn, dimensions);
-    
-    // Prepare MERGE statement
-    prepareEnvironmentMergeStatement(conn, dimensions);
-    
-    this.cachedDimensions = dimensions;
-}
-
-private void createEnvironmentIndexes(Connection conn, int dimensions) throws SQLException {
-    // Index for tick-based queries (most common)
-    conn.createStatement().execute(
-        "CREATE INDEX IF NOT EXISTS idx_env_tick ON environment_data (tick_number)"
-    );
-    
-    // Index for spatial queries (area queries)
-    StringBuilder idxSql = new StringBuilder();
-    idxSql.append("CREATE INDEX IF NOT EXISTS idx_env_spatial ON environment_data (tick_number");
-    for (int i = 0; i < dimensions; i++) {
-        idxSql.append(", pos_").append(i);
-    }
-    idxSql.append(")");
-    
-    conn.createStatement().execute(idxSql.toString());
-}
-
-private void prepareEnvironmentMergeStatement(Connection conn, int dimensions) throws SQLException {
-    // Close old statement if exists
-    if (environmentMergeStatement != null) {
-        environmentMergeStatement.close();
-    }
-    
-    // Build dynamic MERGE statement
-    StringBuilder sql = new StringBuilder();
-    sql.append("MERGE INTO environment_data (tick_number");
-    
-    for (int i = 0; i < dimensions; i++) {
-        sql.append(", pos_").append(i);
-    }
-    
-    sql.append(", molecule_type, molecule_value, owner_id) ");
-    
-    // KEY clause - defines unique constraint for MERGE
-    sql.append("KEY (tick_number");
-    for (int i = 0; i < dimensions; i++) {
-        sql.append(", pos_").append(i);
-    }
-    sql.append(") ");
-    
-    // VALUES clause
-    sql.append("VALUES (?");  // tick_number
-    for (int i = 0; i < dimensions; i++) {
-        sql.append(", ?");    // pos_i
-    }
-    sql.append(", ?, ?, ?)"); // molecule_type, value, owner_id
-    
-    this.environmentMergeStatement = conn.prepareStatement(sql.toString());
-}
+// NOTE: Actual implementation is in SingleBlobStrategy class
+// H2Database only delegates to the strategy
 
 @Override
 protected void doWriteEnvironmentCells(Object connection, List<TickData> ticks,
@@ -829,23 +914,7 @@ protected void doWriteEnvironmentCells(Object connection, List<TickData> ticks,
     envStorageStrategy.writeTicks(conn, ticks, envProps);
 }
 
-@Override
-protected void closeConnectionPool() throws Exception {
-    // Clean up prepared statement
-    if (environmentMergeStatement != null) {
-        try {
-            environmentMergeStatement.close();
-        } catch (SQLException e) {
-            log.debug("Error closing environment merge statement: {}", e.getMessage());
-        }
-        environmentMergeStatement = null;
-    }
-    
-    // Existing cleanup code...
-    if (dataSource != null && !dataSource.isClosed()) {
-        dataSource.close();
-    }
-}
+// NOTE: closeConnectionPool() remains unchanged - no strategy-specific cleanup needed
 ```
 
 Update `getWrappedResource()` in AbstractDatabaseResource:
@@ -1063,11 +1132,24 @@ resources {
       maxPoolSize = 10
       minIdle = 2
       
-      # Storage strategy (default: RowPerTickStrategy for compact storage)
-      environmentStorageStrategy = "org.evochora.datapipeline.resources.database.h2.RowPerTickStrategy"
+      # Storage strategy (optional - defaults to SingleBlobStrategy without compression)
+      h2EnvironmentStrategy {
+        className = "org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy"
+        options {
+          # Compression is optional - if section missing, no compression used
+          compression {
+            enabled = true
+            codec = "zstd"
+            level = 3  # 1 (fastest) to 22 (best compression), default: 3
+          }
+        }
+      }
       
       # Alternative strategies can be implemented later:
-      # environmentStorageStrategy = "com.mycompany.custom.MyCustomStrategy"  # Custom implementations allowed!
+      # h2EnvironmentStrategy {
+      #   className = "com.mycompany.custom.MyCustomStrategy"
+      #   options { /* custom options */ }
+      # }
     }
   }
 }
@@ -1108,113 +1190,214 @@ services {
 - **Database:** MERGE ensures idempotent writes (concurrent writes safe)
 - **Schema:** CREATE TABLE IF NOT EXISTS ensures only one instance creates table
 
-## Database Schema
+## Database Schema (SingleBlobStrategy)
 
-**Table Structure (dimension-agnostic):**
+**Table Structure:**
 
 ```sql
--- 2D Example
-CREATE TABLE IF NOT EXISTS environment_data (
-    tick_number BIGINT NOT NULL,
-    pos_0 INT NOT NULL,
-    pos_1 INT NOT NULL,
-    molecule_type INT NOT NULL,
-    molecule_value INT NOT NULL,
-    owner_id INT NOT NULL,
-    PRIMARY KEY (tick_number, pos_0, pos_1)
-);
-
--- 3D Example (automatically adapts)
-CREATE TABLE IF NOT EXISTS environment_data (
-    tick_number BIGINT NOT NULL,
-    pos_0 INT NOT NULL,
-    pos_1 INT NOT NULL,
-    pos_2 INT NOT NULL,
-    molecule_type INT NOT NULL,
-    molecule_value INT NOT NULL,
-    owner_id INT NOT NULL,
-    PRIMARY KEY (tick_number, pos_0, pos_1, pos_2)
+CREATE TABLE IF NOT EXISTS environment_ticks (
+    tick_number BIGINT PRIMARY KEY,
+    cells_blob BLOB NOT NULL
 );
 ```
 
-**Indexes for Performance:**
+**Note:** dimension_count is NOT stored - it's retrieved from metadata table per run_id.
+This avoids redundancy (all ticks in a run have same dimension count).
+
+**Index:**
 
 ```sql
--- Tick-based queries (most common)
-CREATE INDEX IF NOT EXISTS idx_env_tick ON environment_data (tick_number);
-
--- Spatial queries (area queries)
-CREATE INDEX IF NOT EXISTS idx_env_spatial ON environment_data (
-    tick_number, pos_0, pos_1 /*, pos_2, ... */
-);
+-- Primary key index on tick_number (automatic)
+-- Enables fast tick-based queries
+CREATE INDEX IF NOT EXISTS idx_env_tick ON environment_ticks (tick_number);
 ```
+
+**BLOB Format:**
+
+The `cells_blob` column contains a serialized `CellStateList` protobuf message:
+
+```protobuf
+// In tickdata_contracts.proto
+message CellStateList {
+  repeated CellState cells = 1;
+}
+```
+
+**Serialization:**
+```java
+// Write: Serialize to bytes
+CellStateList cellsList = CellStateList.newBuilder()
+    .addAllCells(tick.getCellsList())
+    .build();
+byte[] blob = cellsList.toByteArray();
+```
+
+**Deserialization:**
+```java
+// Read: Parse from bytes
+CellStateList cellsList = CellStateList.parseFrom(blob);
+List<CellState> cells = cellsList.getCellsList();
+```
+
+Each CellState in the list contains:
+- `flat_index` - Position in environment (converted to coordinates for queries)
+- `molecule_type` - Type of molecule at this cell
+- `molecule_value` - Value of molecule
+- `owner_id` - Organism ID owning this cell
 
 **Storage Characteristics:**
 
-- **Sparse:** Only non-empty cells stored (typ. 50% space savings)
-- **Composite Primary Key:** (tick_number, pos_0, pos_1, ...) ensures uniqueness
-- **MERGE-friendly:** Primary key enables efficient MERGE operations
+- **Compact:** One row per tick (~1-2 KB per tick with compression)
+- **Sparse:** Only non-empty cells included in blob (same as protobuf)
+- **Simple Primary Key:** tick_number only (no composite key needed)
+- **MERGE-friendly:** Simple tick_number key enables efficient MERGE
+- **Dimension-agnostic:** Blob format works for any number of dimensions
 
-## HTTP API Query Examples
+**Storage Size Comparison:**
 
-**Area Query (primary use case):**
+| Strategy | Rows | Size per Tick | 10^6 Ticks | 10^8 Ticks |
+|----------|------|---------------|------------|------------|
+| **Row-Per-Tick** | 10^6 | ~1 KB | ~1 GB | ~100 GB |
+| Row-Per-Cell | 10^9 | ~50 bytes | ~5 TB | ~500 TB |
+
+**→ Row-Per-Tick is 1000× more compact!**
+
+## HTTP API Query Examples (Phase 14.5 - Future)
+
+**Note:** With SingleBlobStrategy, HTTP API queries require deserialization:
 
 ```sql
--- Get all cells in region at specific tick
-SELECT * FROM environment_data
-WHERE tick_number = 1000
-  AND pos_0 BETWEEN 10 AND 20
-  AND pos_1 BETWEEN 30 AND 40;
+-- Step 1: Read tick blob
+SELECT cells_blob FROM environment_ticks WHERE tick_number = 1000;
+
+-- Step 2: Deserialize blob in Java
+List<CellState> cells = deserializeCellsBlob(blob);
+
+-- Step 3: Filter cells by area in Java
+List<CellState> filtered = cells.stream()
+    .filter(cell -> {
+        int[] coords = envProps.flatIndexToCoordinates(cell.getFlatIndex());
+        return coords[0] >= 10 && coords[0] <= 20
+            && coords[1] >= 30 && coords[1] <= 40;
+    })
+    .collect(Collectors.toList());
 ```
+
+**Performance:**
+- ✅ Excellent for "get entire tick" queries
+- ⚠️ Slower for small area queries (must deserialize entire tick)
+- ✅ Much better storage efficiency (1000× reduction)
 
 **Single Cell Query:**
 
 ```sql
--- Get specific cell at specific tick
-SELECT * FROM environment_data
-WHERE tick_number = 1000
-  AND pos_0 = 15
-  AND pos_1 = 35;
-  
--- Returns 0 rows if cell is empty (sparse storage)
+-- Get specific cell at specific tick (requires deserialization)
+SELECT cells_blob FROM environment_ticks WHERE tick_number = 1000;
+
+-- Then in Java: deserialize and find by flat_index or coordinates
 ```
 
 **Tick Diff (future feature):**
 
 ```sql
--- Client-side: Query tick X and Y, compute diff
--- Tick 1000
-SELECT * FROM environment_data WHERE tick_number = 1000 AND pos_0 BETWEEN ... ;
+-- Query both ticks
+SELECT cells_blob FROM environment_ticks WHERE tick_number IN (1000, 2000);
 
--- Tick 2000
-SELECT * FROM environment_data WHERE tick_number = 2000 AND pos_0 BETWEEN ... ;
-
--- Client computes diff
+-- Then in Java: deserialize both, compute diff
 ```
 
 ## Performance Considerations
 
 ### Memory Usage
 
-**Per Tick (100×100 2D, 50% occupied = 5,000 cells):**
+**Indexer Memory (Write Path):**
 
-- CellState protobuf: ~30 bytes per cell
-- **Total:** ~30 bytes × 5,000 = 150 KB per tick
+Per Tick (100×100 2D, 50% occupied = 5,000 cells):
+- CellState protobuf: ~20 bytes per cell
+- CellStateList overhead: ~10 bytes
+- **Total per tick:** ~100 KB
 
-**With insertBatchSize=1000:**
-- Buffer holds ~10 ticks = 1.5 MB
-- Negligible compared to JVM heap
-- Coordinates converted on-the-fly (no additional memory)
+With insertBatchSize=1000:
+- Buffer holds ~1000 ticks = 100 MB in memory
+- Serialized to BLOB: ~1000 × 100 KB = 100 MB
+- Acceptable for JVM heap (configure with -Xmx2G or more)
 
-### Database Performance
+**API Server Memory (Read Path - Phase 14.5):**
 
-**MERGE Batch (1,000 cells):**
-- H2 Batch MERGE: ~10-20ms (SSD)
-- Expected throughput: ~50,000-100,000 cells/sec per indexer
+Per Request for one tick:
+- Must load entire BLOB into memory
+- Deserialize to List<CellState>
+- Filter in Java
+- **Memory spike: ~100 KB to ~8 MB** depending on environment size
+- High traffic → multiple concurrent requests → significant memory pressure
 
-**Scalability:**
+### Write Performance (Indexer)
+
+**MERGE Batch (1,000 ticks with SingleBlobStrategy):**
+- Serialization (CellStateList.toByteArray()): ~10 ms for 1000 ticks
+- H2 Batch MERGE: ~50 ms for 1000 rows (SSD)
+- Commit: ~5 ms
+- **Total: ~70 ms = ~14,000 ticks/sec per indexer**
+- **Cell throughput: ~14k ticks × 5k cells = 70M cells/sec** 🚀
+
+**Write Scalability:**
 - Competing consumers: Linear scalability up to ~4-8 instances
 - Bottleneck: Database connection pool (increase maxPoolSize)
+- **Storage:** ~1 GB per 10^6 ticks (vs. 5 TB with row-per-cell)
+
+### Read Performance (HTTP API - Phase 14.5)
+
+**Critical Trade-off:** The storage savings come at the cost of read performance and memory.
+
+**Read Path for Area Query:**
+```
+1. SQL: SELECT cells_blob FROM environment_ticks WHERE tick_number = ?
+   → ~5 ms (fast - single row lookup)
+   
+2. Deserialize BLOB: CellStateList.parseFrom(blob)
+   → ~50 ms for 5,000 cells (CPU-bound)
+   
+3. Filter in Java: Stream filter by coordinates
+   → ~10 ms for 5,000 cells
+   
+Total: ~65 ms per tick query
+```
+
+**Memory Impact on API Server:**
+
+| Environment Size | Cells/Tick (10% occupied) | BLOB Size | API Server Memory |
+|------------------|---------------------------|-----------|-------------------|
+| 100×100 | 1,000 | ~20 KB | Negligible |
+| 1000×1000 | 100,000 | ~2 MB | Acceptable |
+| 2000×2000 | 400,000 | ~8 MB | ⚠️ Significant per request |
+| 10000×10000 | 10,000,000 | ~200 MB | ❌ Problematic! |
+
+**Implications for HTTP API (Phase 14.5):**
+- ✅ **Small environments (<1000×1000):** SingleBlobStrategy works well
+- ⚠️ **Medium environments (2000×2000):** Consider caching, request throttling
+- ❌ **Large environments (>5000×5000):** May need different strategy (RegionBasedStrategy)
+
+**Read Scalability:**
+- API server must handle BLOB deserialization + filtering per request
+- High query load → high CPU usage (deserialization) + memory (BLOB in RAM)
+- Mitigation: Result caching, query rate limiting, CDN for static ticks
+
+**The Design Trade-off:**
+
+| Aspect | SingleBlobStrategy | RowPerCellStrategy |
+|--------|-------------------|-------------------|
+| **Database Storage** | ~1 GB (10^6 ticks) | ~5 TB (10^6 ticks) |
+| **Write Performance** | Excellent (14k ticks/sec) | Good (slower commits) |
+| **Read Performance** | Slow (deserialize entire tick) | Fast (SQL filtered) |
+| **API Server Memory** | High (~200 MB for large tick) | Low (only filtered rows) |
+| **API Server CPU** | High (deserialization) | Low (DB does filtering) |
+
+**Recommendation:** SingleBlobStrategy is optimal for workstation/development use where:
+- Storage is limited (laptop SSD)
+- Write performance is critical (simulation can't wait)
+- Read queries are infrequent (mostly offline analysis)
+
+For production with high-traffic HTTP API, consider RegionBasedStrategy (future work).
 
 **Performance Monitoring:**
 
@@ -1458,10 +1641,12 @@ void testEnvironmentIndexerEndToEnd() throws Exception {
     // Verify: All cells in database with correct coordinates
     assertThat(getCellCountInDb()).isEqualTo(185);
     
-    // Verify: Coordinates converted correctly
-    CellRecord cell = queryCellByFlatIndex(tick=0, flatIndex=25);
-    assertThat(cell.pos_0).isEqualTo(25); // 25 % 100 = 25
-    assertThat(cell.pos_1).isEqualTo(0);  // 25 / 100 = 0
+    // Verify: Tick written to database with correct blob
+    byte[] blob = queryTickBlob(tick=0);
+    List<CellState> cells = deserializeBlob(blob);
+    
+    // Verify flat_index 25 is in the blob
+    assertThat(cells).anyMatch(c -> c.getFlatIndex() == 25);
 }
 
 @Test
@@ -1586,16 +1771,18 @@ Upon completion, verify:
 
 1. ✅ AbstractDatabaseWrapper supports URI parameters (all database wrappers benefit)
 2. ✅ EnvironmentProperties.flatIndexToCoordinates() with O(1) cached strides
-3. ✅ IEnvironmentDataWriter interface (dimension-agnostic)
+3. ✅ IEnvironmentDataWriter interface (delegates to strategy)
 4. ✅ EnvironmentDataWriterWrapper with O(1) throughput/latency metrics
-5. ✅ H2Database dynamic schema (pos_0...pos_N based on dimensions)
-6. ✅ H2Database MERGE implementation (100% idempotency)
-7. ✅ EnvironmentIndexer extends AbstractBatchIndexer (METADATA + BUFFERING)
-8. ✅ Only non-empty cells stored (sparse)
-9. ✅ Competing consumers work (multiple indexer instances)
-10. ✅ Unit tests pass (coordinate conversion, schema creation)
-11. ✅ Integration tests pass (end-to-end, idempotency, competing consumers, dimensions)
-12. ✅ HTTP API can query: `SELECT * FROM environment_data WHERE tick_number = ? AND pos_0 BETWEEN ? AND ?`
+5. ✅ IH2EnvStorageStrategy interface (createSchema, writeTicks)
+6. ✅ SingleBlobStrategy implementation (BLOB-based storage)
+7. ✅ H2Database: Strategy loading via reflection + delegation
+8. ✅ H2Database MERGE implementation (100% idempotency on tick_number)
+9. ✅ EnvironmentIndexer extends AbstractBatchIndexer (METADATA + BUFFERING)
+10. ✅ Only non-empty cells stored (sparse in BLOB)
+11. ✅ Competing consumers work (multiple indexer instances)
+12. ✅ Unit tests pass (serialization, schema creation, MERGE idempotency)
+13. ✅ Integration tests pass (end-to-end, idempotency, competing consumers, dimensions)
+14. ✅ Storage efficiency: ~1 GB for 10^6 ticks (1000× better than row-per-cell)
 
 ## Implementation Notes
 
@@ -1604,16 +1791,18 @@ Upon completion, verify:
 **Implementation order:**
 1. ✅ AbstractDatabaseWrapper URI parameter support (benefits all database wrappers)
 2. ✅ Transaction contract (AbstractDatabaseResource JavaDoc + H2Database rollback in doInsertMetadata)
-3. EnvironmentProperties.flatIndexToCoordinates() (with tests)
-4. IH2EnvStorageStrategy interface (minimal: createSchema, writeTicks)
-5. RowPerTickStrategy implementation (default - compact storage)
-6. IEnvironmentDataWriter interface
-7. EnvironmentDataWriterWrapper (with log.warn + recordError for transient errors)
-8. H2Database: Strategy loading via reflection + delegation
-9. AbstractDatabaseResource.getWrappedResource() (add "db-env-write" case)
-10. EnvironmentIndexer
-11. Integration tests (including error recovery scenarios, strategy switching)
-12. Configuration update
+3. ✅ CellStateList protobuf message (wrapper for repeated CellState)
+4. EnvironmentProperties.flatIndexToCoordinates() (with tests)
+5. IH2EnvStorageStrategy interface (minimal: createSchema, writeTicks)
+6. AbstractH2EnvStorageStrategy base class (Config + Logger infrastructure)
+7. SingleBlobStrategy implementation (default - compact storage with optional compression)
+8. IEnvironmentDataWriter interface
+9. EnvironmentDataWriterWrapper (with log.warn + recordError for transient errors)
+10. H2Database: Strategy loading via reflection + delegation
+11. AbstractDatabaseResource.getWrappedResource() (add "db-env-write" case)
+12. EnvironmentIndexer
+13. Integration tests (including error recovery scenarios, strategy switching, compression)
+14. Configuration update
 
 **Testing priorities:**
 1. Coordinate conversion correctness (all dimensions)

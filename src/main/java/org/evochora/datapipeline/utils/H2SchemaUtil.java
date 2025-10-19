@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Statement;
 
 /**
  * H2-specific utility for schema management in simulation runs.
@@ -298,6 +299,44 @@ public final class H2SchemaUtil {
          * @throws SQLException if setup fails.
          */
         void setup(Connection connection, String schemaName) throws SQLException;
+    }
+    
+    /**
+     * Executes a CREATE TABLE IF NOT EXISTS statement with H2-specific error handling.
+     * <p>
+     * <strong>H2 Bug Workaround (v2.2.224):</strong>
+     * "CREATE TABLE IF NOT EXISTS" can fail with "object already exists" when multiple
+     * connections create the same table concurrently. This method catches that specific
+     * error and treats it as success (table was created by another connection).
+     * <p>
+     * This is the recommended way to create tables in H2 when competing consumers
+     * may initialize concurrently.
+     *
+     * @param statement The statement to execute with (must not be null).
+     * @param sql The CREATE TABLE IF NOT EXISTS SQL (must not be null).
+     * @param tableName The table name for logging (must not be null).
+     * @throws SQLException if table creation fails for reasons other than "already exists".
+     */
+    public static void executeTableCreation(Statement statement, String sql, String tableName) throws SQLException {
+        if (statement == null || sql == null || tableName == null) {
+            throw new IllegalArgumentException("statement, sql, and tableName must not be null");
+        }
+        
+        try {
+            statement.execute(sql);
+            log.debug("Created table: {}", tableName);
+        } catch (SQLException e) {
+            // H2 bug workaround: "CREATE TABLE IF NOT EXISTS" can fail with "object already exists"
+            // Error code 42101 = Table/View already exists
+            // Error code 50000 = General error (may include "object already exists")
+            if ((e.getErrorCode() == 42101 || e.getErrorCode() == 50000) 
+                && e.getMessage() != null 
+                && e.getMessage().contains("already exists")) {
+                log.debug("Table '{}' already exists (created by another connection)", tableName);
+            } else {
+                throw e;  // Re-throw if it's a different error
+            }
+        }
     }
     
     /**

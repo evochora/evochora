@@ -85,6 +85,30 @@ public abstract class AbstractDatabaseResource extends AbstractResource
         activeWrappers.clear();
     }
 
+    /**
+     * Acquires a dedicated database connection for capability-specific operations.
+     * <p>
+     * <strong>Transaction Contract:</strong>
+     * <ul>
+     *   <li>Connection MUST be configured with {@code autoCommit=false}</li>
+     *   <li>Each {@code doWrite*()} method is responsible for its own {@code commit()}</li>
+     *   <li>Each {@code doWrite*()} method MUST {@code rollback()} on Exception (in try-catch)</li>
+     *   <li>Connection must be returned to pool in clean state (committed or rolled back)</li>
+     * </ul>
+     * <p>
+     * This contract ensures ACID properties and prevents connection pool pollution
+     * with uncommitted transactions.
+     * <p>
+     * <strong>Error Handling in doWrite* methods:</strong>
+     * <ul>
+     *   <li>NO logging in doWrite* - wrapper handles logging and error tracking</li>
+     *   <li>Rollback on SQLException, then re-throw for wrapper</li>
+     *   <li>Wrapper will log.warn() + recordError() for transient errors</li>
+     * </ul>
+     *
+     * @return Database connection with autoCommit=false
+     * @throws Exception if connection acquisition fails
+     */
     protected abstract Object acquireDedicatedConnection() throws Exception;
 
     protected abstract void doInsertMetadata(Object connection, SimulationMetadata metadata) throws Exception;

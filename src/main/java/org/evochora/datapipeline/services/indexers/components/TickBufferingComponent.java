@@ -151,6 +151,11 @@ public class TickBufferingComponent {
      * are included in the returned completedMessages list. Partially flushed
      * batches remain in pendingBatches until completion.
      * <p>
+     * <strong>Destructive Operation:</strong> This method REMOVES ticks from the buffer.
+     * If the caller fails to persist the returned ticks (e.g., database write fails),
+     * the ticks are lost from the buffer and must be re-read from storage on batch
+     * redelivery. This design ensures clean buffer state and avoids complex rollback logic.
+     * <p>
      * Also returns completedBatchIds for idempotency tracking.
      *
      * @param <ACK> ACK token type
