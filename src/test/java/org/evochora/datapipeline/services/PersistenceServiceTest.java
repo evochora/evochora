@@ -184,7 +184,7 @@ class PersistenceServiceTest {
             })
             .thenThrow(new InterruptedException("Test shutdown"));
         when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn("001/batch_0000000000000000100_0000000000000000102.pb.zst");
+            .thenReturn("001/batch_0000000000000000100_0000000000000000102.pb");
 
         // Start service in background
         service.start();
@@ -338,7 +338,7 @@ class PersistenceServiceTest {
             })
             .thenThrow(new InterruptedException("Test shutdown"));
         when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn("batch_file.pb.zst");
+            .thenReturn("batch_file.pb");
 
         // Mock idempotency tracker - uses atomic checkAndMarkProcessed()
         // First tick is duplicate (returns false), others are new (returns true)
@@ -385,7 +385,7 @@ class PersistenceServiceTest {
         // First call fails, second succeeds
         when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
             .thenThrow(new IOException("Transient failure"))
-            .thenReturn("batch_file.pb.zst");
+            .thenReturn("batch_file.pb");
         
         service.start();
         
@@ -492,7 +492,7 @@ class PersistenceServiceTest {
             })
             .thenThrow(new InterruptedException("Shutdown signal"));
         when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn("batch_file.pb.zst");
+            .thenReturn("batch_file.pb");
         
         service.start();
 
@@ -522,7 +522,7 @@ class PersistenceServiceTest {
             })
             .thenThrow(new InterruptedException("Test shutdown"));
         when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn("batch_file.pb.zst");
+            .thenReturn("batch_file.pb");
         
         service.start();
         
@@ -729,7 +729,7 @@ class PersistenceServiceTest {
             .thenReturn(0) // Empty drain
             .thenThrow(new InterruptedException("Test shutdown"));
         when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn("batch_file.pb.zst");
+            .thenReturn("batch_file.pb");
 
         service.start();
 
@@ -822,7 +822,7 @@ class PersistenceServiceTest {
             .thenReturn(0); // Then return 0 to prevent infinite loop
             
         when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn("run-123/batch_0000000000000000000_0000000000000000099.pb.zst");
+            .thenReturn("run-123/batch_0000000000000000000_0000000000000000099.pb");
         
         // When
         service.start();
@@ -834,7 +834,7 @@ class PersistenceServiceTest {
         verify(mockStorage).writeBatch(anyList(), eq(0L), eq(99L));
         verify(mockBatchTopic).send(argThat(notification -> 
             notification.getSimulationRunId().equals("run-123") &&
-            notification.getStorageKey().equals("run-123/batch_0000000000000000000_0000000000000000099.pb.zst") &&
+            notification.getStorageKey().equals("run-123/batch_0000000000000000000_0000000000000000099.pb") &&
             notification.getTickStart() == 0 &&
             notification.getTickEnd() == 99 &&
             notification.getWrittenAtMs() > 0
@@ -861,7 +861,7 @@ class PersistenceServiceTest {
             .thenReturn(0);
             
         when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn("run-123/batch_0000000000000000000_0000000000000000099.pb.zst");
+            .thenReturn("run-123/batch_0000000000000000000_0000000000000000099.pb");
         
         // Topic always fails (InterruptedException)
         doThrow(new InterruptedException("Topic unavailable"))
@@ -941,7 +941,7 @@ class PersistenceServiceTest {
             .thenReturn(0);
             
         when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn("run-abc-def/batch_0000000000000001000_0000000000000001099.pb.zst");
+            .thenReturn("run-abc-def/batch_0000000000000001000_0000000000000001099.pb");
         
         // When
         service.start();
@@ -954,7 +954,7 @@ class PersistenceServiceTest {
         // Then
         verify(mockBatchTopic).send(argThat(notification -> {
             assertEquals("run-abc-def", notification.getSimulationRunId());
-            assertEquals("run-abc-def/batch_0000000000000001000_0000000000000001099.pb.zst", notification.getStorageKey());
+            assertEquals("run-abc-def/batch_0000000000000001000_0000000000000001099.pb", notification.getStorageKey());
             assertEquals(1000, notification.getTickStart());
             assertEquals(1099, notification.getTickEnd());
             assertTrue(notification.getWrittenAtMs() >= beforeWrite);

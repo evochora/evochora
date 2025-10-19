@@ -43,7 +43,7 @@ class MonitoredStorageWriterTest {
         );
 
         when(mockDelegate.writeBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn("001/batch.pb.zst");
+            .thenReturn("001/batch.pb");
 
         monitoredWriter.writeBatch(batch, 100, 102);
 
@@ -74,8 +74,8 @@ class MonitoredStorageWriterTest {
     @Test
     void testMultipleBatchesTracked() throws IOException {
         when(mockDelegate.writeBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn("batch1.pb.zst")
-            .thenReturn("batch2.pb.zst");
+            .thenReturn("batch1.pb")
+            .thenReturn("batch2.pb");
 
         List<TickData> batch1 = Arrays.asList(
             TickData.newBuilder().setTickNumber(1).build(),

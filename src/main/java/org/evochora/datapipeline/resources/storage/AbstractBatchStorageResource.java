@@ -149,11 +149,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         // Write batch (handles compression, atomicity, and metrics)
         put(logicalPath, data);
 
-        // Return physical path for reference (with compression extension)
-        String physicalPath = toPhysicalPath(logicalPath);
-        log.debug("Wrote batch {} with {} ticks", physicalPath, batch.size());
+        // Return logical path (external API contract: always logical paths without compression)
+        log.debug("Wrote batch {} with {} ticks", logicalPath, batch.size());
 
-        return physicalPath;
+        return logicalPath;
     }
 
     @Override

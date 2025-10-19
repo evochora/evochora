@@ -56,7 +56,8 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
             }
         }
         
-        File tempFile = new File(parentDir, ".tmp-" + java.util.UUID.randomUUID() + "-" + file.getName());
+        // Use suffix .UUID.tmp instead of prefix to ensure temp files are filtered correctly
+        File tempFile = new File(parentDir, file.getName() + "." + java.util.UUID.randomUUID() + ".tmp");
         Files.write(tempFile.toPath(), data);
         
         try {
@@ -135,8 +136,9 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
             List<String> allFiles = stream
                     // Filter .tmp files BEFORE checking isRegularFile to avoid race conditions
                     .filter(p -> {
-                        String pathStr = p.toString();
-                        return !pathStr.contains("/.tmp") && !pathStr.endsWith(".tmp");
+                        String filename = p.getFileName().toString();
+                        // Filter out temporary files (.UUID.tmp suffix)
+                        return !filename.endsWith(".tmp");
                     })
                     .filter(Files::isRegularFile)
                     .map(p -> rootPath.relativize(p))
