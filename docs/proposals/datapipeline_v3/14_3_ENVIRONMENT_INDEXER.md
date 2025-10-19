@@ -30,6 +30,7 @@ Upon completion:
 
 - Phase 14.2.6: AbstractBatchIndexer with TickBufferingComponent (completed)
 - Phase 14.2.5: DummyIndexer as reference implementation (completed)
+- AbstractDatabaseWrapper supports URI parameters (consistency with Storage/Queue resources)
 - EnvironmentProperties extended with flatIndexToCoordinates() method
 
 ## Architectural Design
@@ -235,16 +236,15 @@ public interface IEnvironmentDataWriter extends ISchemaAwareDatabase, IMonitorab
      * <strong>Performance:</strong> Uses batch operations for efficient writes.
      * Typical batch size: 1000 cells.
      * <p>
-     * <strong>Coordinate Conversion:</strong> Caller must convert flat_index to
-     * coordinates before calling this method (using EnvironmentProperties).
+     * <strong>Coordinate Conversion:</strong> Converts flat_index to coordinates internally
+     * using EnvironmentProperties.flatIndexToCoordinates() (O(1) with cached strides).
      *
      * @param tickNumber The tick number for all cells
      * @param cells List of CellState protobuf messages (with flat_index)
-     * @param coordinates Pre-computed coordinates for each cell (parallel to cells list)
+     * @param envProps Environment properties for coordinate conversion
      * @throws SQLException if write fails
-     * @throws IllegalArgumentException if cells and coordinates list lengths don't match
      */
-    void writeEnvironmentCells(long tickNumber, List<CellState> cells, List<int[]> coordinates) 
+    void writeEnvironmentCells(long tickNumber, List<CellState> cells, EnvironmentProperties envProps) 
             throws SQLException;
     
     /**
@@ -268,6 +268,7 @@ package org.evochora.datapipeline.resources.database;
 import org.evochora.datapipeline.api.contracts.CellState;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter;
+import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -293,12 +294,22 @@ class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implements IE
     private final AtomicLong batchesWritten = new AtomicLong(0);
     private final AtomicLong writeErrors = new AtomicLong(0);
     
+    // Performance tracking (O(1) recording)
+    private final SlidingWindowCounter cellThroughput;
+    private final SlidingWindowCounter batchThroughput;
+    
     // Latency tracking (O(1) recording)
     private final SlidingWindowPercentiles writeLatency;
     
     EnvironmentDataWriterWrapper(AbstractDatabaseResource db, ResourceContext context) {
-        super(db, context);  // Parent handles connection, error tracking, metrics window
+        super(db, context);  // Parent handles connection, error tracking, metricsWindowSeconds
         
+        // Note: metricsWindowSeconds inherited from parent (AbstractDatabaseWrapper)
+        // Configuration hierarchy: URI parameter > Resource option > Default (60)
+        
+        // Initialize throughput trackers (same window as latency for consistency)
+        this.cellThroughput = new SlidingWindowCounter(metricsWindowSeconds);
+        this.batchThroughput = new SlidingWindowCounter(metricsWindowSeconds);
         this.writeLatency = new SlidingWindowPercentiles(metricsWindowSeconds);
     }
     
@@ -308,34 +319,29 @@ class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implements IE
             database.doCreateEnvironmentDataTable(ensureConnection(), dimensions);
             log.debug("Environment data table created with {} dimensions", dimensions);
         } catch (Exception e) {
-            log.error("Failed to create environment_data table");
-            recordError("CREATE_TABLE_FAILED", "Failed to create environment_data table",
-                       "Dimensions: " + dimensions + ", Error: " + e.getMessage());
+            log.error("Failed to create environment_data table with {} dimensions: {}", dimensions, e.getMessage());
             throw new SQLException("Failed to create environment_data table", e);
         }
     }
     
     @Override
-    public void writeEnvironmentCells(long tickNumber, List<CellState> cells, List<int[]> coordinates) 
+    public void writeEnvironmentCells(long tickNumber, List<CellState> cells, EnvironmentProperties envProps) 
             throws SQLException {
-        if (cells.size() != coordinates.size()) {
-            throw new IllegalArgumentException(
-                "Cells and coordinates list lengths must match: " + cells.size() + " vs " + coordinates.size());
-        }
-        
         long startNanos = System.nanoTime();
         
         try {
-            database.doWriteEnvironmentCells(ensureConnection(), tickNumber, cells, coordinates);
+            database.doWriteEnvironmentCells(ensureConnection(), tickNumber, cells, envProps);
+            
+            // Update metrics
             cellsWritten.addAndGet(cells.size());
             batchesWritten.incrementAndGet();
+            cellThroughput.recordSum(cells.size());  // O(1) - track cells/sec
+            batchThroughput.recordCount();           // O(1) - track batches/sec
             writeLatency.record(System.nanoTime() - startNanos);
             
         } catch (Exception e) {
             writeErrors.incrementAndGet();
-            log.warn("Failed to write {} cells for tick {}", cells.size(), tickNumber);
-            recordError("WRITE_CELLS_FAILED", "Failed to write environment cells",
-                       "Tick: " + tickNumber + ", Cells: " + cells.size() + ", Error: " + e.getMessage());
+            log.error("Failed to write {} cells for tick {}: {}", cells.size(), tickNumber, e.getMessage());
             throw new SQLException("Failed to write environment cells", e);
         }
     }
@@ -348,6 +354,10 @@ class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implements IE
         metrics.put("cells_written", cellsWritten.get());
         metrics.put("batches_written", batchesWritten.get());
         metrics.put("write_errors", writeErrors.get());
+        
+        // Throughput - O(windowSeconds) = O(60) = O(constant)
+        metrics.put("cells_per_second", cellThroughput.getRate());
+        metrics.put("batches_per_second", batchThroughput.getRate());
         
         // Latency percentiles in milliseconds - O(windowSeconds × buckets) = O(constant)
         metrics.put("write_latency_p50_ms", writeLatency.getPercentile(50) / 1_000_000.0);
@@ -370,7 +380,7 @@ protected abstract void doCreateEnvironmentDataTable(Object connection, int dime
         throws Exception;
 
 protected abstract void doWriteEnvironmentCells(Object connection, long tickNumber, 
-        List<CellState> cells, List<int[]> coordinates) throws Exception;
+        List<CellState> cells, EnvironmentProperties envProps) throws Exception;
 ```
 
 Add to H2Database implementation:
@@ -469,7 +479,7 @@ private void prepareEnvironmentMergeStatement(Connection conn, int dimensions) t
 
 @Override
 protected void doWriteEnvironmentCells(Object connection, long tickNumber,
-                                       List<CellState> cells, List<int[]> coordinates) 
+                                       List<CellState> cells, EnvironmentProperties envProps) 
         throws Exception {
     Connection conn = (Connection) connection;
     
@@ -480,9 +490,9 @@ protected void doWriteEnvironmentCells(Object connection, long tickNumber,
     }
     
     // Batch insert with MERGE
-    for (int i = 0; i < cells.size(); i++) {
-        CellState cell = cells.get(i);
-        int[] coord = coordinates.get(i);
+    for (CellState cell : cells) {
+        // Convert flat_index to coordinates
+        int[] coord = envProps.flatIndexToCoordinates(cell.getFlatIndex());
         
         int paramIdx = 1;
         environmentMergeStatement.setLong(paramIdx++, tickNumber);
@@ -629,44 +639,32 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     
     @Override
     protected void flushTicks(List<TickData> ticks) throws Exception {
-        // Extract all cells from all ticks
-        List<CellEntry> allCells = new ArrayList<>();
+        // Group cells by tick number for efficient writes
+        Map<Long, List<CellState>> cellsByTick = new java.util.LinkedHashMap<>();
         
         for (TickData tick : ticks) {
             long tickNumber = tick.getTickNumber();
             
             // Extract cells (already sparse in protobuf - only non-empty cells)
-            for (CellState cell : tick.getCellsList()) {
-                allCells.add(new CellEntry(tickNumber, cell));
+            if (!tick.getCellsList().isEmpty()) {
+                cellsByTick.put(tickNumber, tick.getCellsList());
             }
         }
         
-        if (allCells.isEmpty()) {
+        if (cellsByTick.isEmpty()) {
             log.debug("No cells to flush (all ticks empty)");
             return;
         }
         
-        // Convert flat_index to coordinates (batch operation)
-        List<int[]> coordinates = new ArrayList<>(allCells.size());
-        for (CellEntry entry : allCells) {
-            int flatIndex = entry.cell.getFlatIndex();
-            int[] coord = envProps.flatIndexToCoordinates(flatIndex);
-            coordinates.add(coord);
-        }
-        
-        // Group by tick number for efficient writes
-        Map<Long, TickCellBatch> batches = groupByTick(allCells, coordinates);
-        
         // Write to database (MERGE ensures idempotency)
-        for (TickCellBatch batch : batches.values()) {
-            database.writeEnvironmentCells(
-                batch.tickNumber,
-                batch.cells,
-                batch.coordinates
-            );
+        // Coordinate conversion happens inside database layer
+        int totalCells = 0;
+        for (Map.Entry<Long, List<CellState>> entry : cellsByTick.entrySet()) {
+            database.writeEnvironmentCells(entry.getKey(), entry.getValue(), envProps);
+            totalCells += entry.getValue().size();
         }
         
-        log.debug("Flushed {} cells from {} ticks", allCells.size(), ticks.size());
+        log.debug("Flushed {} cells from {} ticks", totalCells, ticks.size());
     }
     
     /**
@@ -686,45 +684,6 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> {
         return new EnvironmentProperties(worldShape, isToroidal);
     }
     
-    /**
-     * Groups cells by tick number for efficient batch writes.
-     */
-    private Map<Long, TickCellBatch> groupByTick(List<CellEntry> cells, List<int[]> coordinates) {
-        Map<Long, TickCellBatch> batches = new java.util.LinkedHashMap<>();
-        
-        for (int i = 0; i < cells.size(); i++) {
-            CellEntry entry = cells.get(i);
-            int[] coord = coordinates.get(i);
-            
-            batches.computeIfAbsent(entry.tickNumber, TickCellBatch::new)
-                   .add(entry.cell, coord);
-        }
-        
-        return batches;
-    }
-    
-    /**
-     * Helper record for cell with tick number.
-     */
-    private record CellEntry(long tickNumber, CellState cell) {}
-    
-    /**
-     * Helper class for grouping cells by tick.
-     */
-    private static class TickCellBatch {
-        final long tickNumber;
-        final List<CellState> cells = new ArrayList<>();
-        final List<int[]> coordinates = new ArrayList<>();
-        
-        TickCellBatch(long tickNumber) {
-            this.tickNumber = tickNumber;
-        }
-        
-        void add(CellState cell, int[] coord) {
-            cells.add(cell);
-            coordinates.add(coord);
-        }
-    }
 }
 ```
 
@@ -736,7 +695,7 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> {
 resources {
   # Existing resources...
   
-  indexDatabase {
+  index-database {
     className = "org.evochora.datapipeline.resources.database.H2Database"
     options {
       jdbcUrl = "jdbc:h2:${user.home}/evochora/data/evochora;MODE=PostgreSQL;AUTO_SERVER=TRUE"
@@ -744,6 +703,7 @@ resources {
       password = ""
       maxPoolSize = 10
       minIdle = 2
+      metricsWindowSeconds = 60  # Time window for throughput/latency metrics (default: 60)
     }
   }
 }
@@ -751,21 +711,23 @@ resources {
 services {
   # Existing services...
   
-  environmentIndexer {
+  environment-indexer {
     className = "org.evochora.datapipeline.services.indexers.EnvironmentIndexer"
     
     resources {
       # Topic for batch notifications (competing consumer pattern)
-      topic = "topic-read:batchTopic?consumerGroup=environmentIndexer"
+      topic = "topic-read:batch-topic?consumerGroup=environment"
       
       # Storage for reading TickData batches
-      storage = "storage-read:tickStorage"
+      storage = "storage-read:tick-storage"
       
       # Metadata for simulation configuration
-      metadata = "db-meta-read:indexDatabase"
+      metadata = "db-meta-read:index-database"
       
       # Database for writing environment cells
-      database = "db-env-write:indexDatabase"
+      # URI parameters: metricsWindowSeconds (optional, overrides resource-level config)
+      # Example with override: database = "db-env-write:index-database?metricsWindowSeconds=30"
+      database = "db-env-write:index-database"
     }
     
     options {
@@ -791,24 +753,24 @@ To run multiple indexer instances for higher throughput:
 
 ```hocon
 services {
-  environmentIndexer1 {
+  environment-indexer-1 {
     className = "org.evochora.datapipeline.services.indexers.EnvironmentIndexer"
     resources {
-      topic = "topic-read:batchTopic?consumerGroup=environmentIndexer"  # Same group!
-      storage = "storage-read:tickStorage"
-      metadata = "db-meta-read:indexDatabase"
-      database = "db-env-write:indexDatabase"
+      topic = "topic-read:batch-topic?consumerGroup=environment"  # Same group!
+      storage = "storage-read:tick-storage"
+      metadata = "db-meta-read:index-database"
+      database = "db-env-write:index-database"
     }
     options { /* same as above */ }
   }
   
-  environmentIndexer2 {
+  environment-indexer-2 {
     className = "org.evochora.datapipeline.services.indexers.EnvironmentIndexer"
     resources {
-      topic = "topic-read:batchTopic?consumerGroup=environmentIndexer"  # Same group!
-      storage = "storage-read:tickStorage"
-      metadata = "db-meta-read:indexDatabase"
-      database = "db-env-write:indexDatabase"
+      topic = "topic-read:batch-topic?consumerGroup=environment"  # Same group!
+      storage = "storage-read:tick-storage"
+      metadata = "db-meta-read:index-database"
+      database = "db-env-write:index-database"
     }
     options { /* same as above */ }
   }
@@ -910,13 +872,13 @@ SELECT * FROM environment_data WHERE tick_number = 2000 AND pos_0 BETWEEN ... ;
 
 **Per Tick (100×100 2D, 50% occupied = 5,000 cells):**
 
-- CellEntry object: ~40 bytes
-- Coordinate array: ~16 bytes (2D)
-- **Total:** ~56 bytes × 5,000 = 280 KB per tick
+- CellState protobuf: ~30 bytes per cell
+- **Total:** ~30 bytes × 5,000 = 150 KB per tick
 
 **With insertBatchSize=1000:**
-- Buffer holds ~10 ticks = 2.8 MB
+- Buffer holds ~10 ticks = 1.5 MB
 - Negligible compared to JVM heap
+- Coordinates converted on-the-fly (no additional memory)
 
 ### Database Performance
 
@@ -927,6 +889,30 @@ SELECT * FROM environment_data WHERE tick_number = 2000 AND pos_0 BETWEEN ... ;
 **Scalability:**
 - Competing consumers: Linear scalability up to ~4-8 instances
 - Bottleneck: Database connection pool (increase maxPoolSize)
+
+**Performance Monitoring:**
+
+Available metrics provide comprehensive performance visibility:
+
+| Metric | Type | Purpose |
+|--------|------|---------|
+| `cells_written` | Counter | Total cells written (lifetime) |
+| `batches_written` | Counter | Total DB batches written (lifetime) |
+| `cells_per_second` | Throughput | Real-time write throughput (configurable window, default: 60s) |
+| `batches_per_second` | Throughput | Real-time batch rate (configurable window, default: 60s) |
+| `write_latency_p50_ms` | Latency | Median write latency |
+| `write_latency_p95_ms` | Latency | 95th percentile latency |
+| `write_latency_p99_ms` | Latency | 99th percentile latency |
+| `write_errors` | Counter | Failed write operations |
+
+**Configuration Hierarchy:**
+1. **URI Parameter** (highest priority): `database = "db-env-write:indexDatabase?metricsWindowSeconds=30"`
+2. **Resource Option**: `indexDatabase.options.metricsWindowSeconds = 60`
+3. **Default**: 60 seconds
+
+This allows per-service override of metrics window when needed (e.g., shorter window for high-frequency indexers).
+
+**All metrics use O(1) recording** - no performance impact on critical path.
 
 ### Coordinate Conversion Performance
 
@@ -955,18 +941,169 @@ void testExtractEnvironmentProperties_2D() {
 
 @Test
 @Tag("unit")
-void testGroupByTick() {
-    List<CellEntry> cells = List.of(
-        new CellEntry(1000, createCell(0, 1, 2)),
-        new CellEntry(1000, createCell(1, 3, 4)),
-        new CellEntry(2000, createCell(2, 5, 6))
+void testExtractEnvironmentProperties_3D() {
+    SimulationMetadata metadata = createMetadata(new int[]{10, 20, 30}, "BOUNDED");
+    
+    EnvironmentProperties props = indexer.extractEnvironmentProperties(metadata);
+    
+    assertThat(props.getWorldShape()).isEqualTo(new int[]{10, 20, 30});
+    assertThat(props.isToroidal()).isFalse();
+}
+
+@Test
+@Tag("unit")
+void testFlushTicks_SingleTick() throws Exception {
+    // Setup: Mock database
+    IEnvironmentDataWriter mockDatabase = mock(IEnvironmentDataWriter.class);
+    EnvironmentIndexer indexer = createIndexerWithMockDatabase(mockDatabase);
+    
+    // Create tick with 3 cells
+    TickData tick = TickData.newBuilder()
+        .setTickNumber(1000)
+        .addCells(createCell(0, 1, 5))
+        .addCells(createCell(1, 2, 10))
+        .addCells(createCell(2, 3, 15))
+        .build();
+    
+    // Execute
+    indexer.flushTicks(List.of(tick));
+    
+    // Verify: database.writeEnvironmentCells() called with correct parameters
+    ArgumentCaptor<Long> tickCaptor = ArgumentCaptor.forClass(Long.class);
+    ArgumentCaptor<List> cellsCaptor = ArgumentCaptor.forClass(List.class);
+    ArgumentCaptor<EnvironmentProperties> envPropsCaptor = ArgumentCaptor.forClass(EnvironmentProperties.class);
+    
+    verify(mockDatabase).writeEnvironmentCells(
+        tickCaptor.capture(),
+        cellsCaptor.capture(),
+        envPropsCaptor.capture()
     );
     
-    Map<Long, TickCellBatch> batches = indexer.groupByTick(cells, coordinates);
+    assertThat(tickCaptor.getValue()).isEqualTo(1000L);
+    assertThat(cellsCaptor.getValue()).hasSize(3);
+}
+
+@Test
+@Tag("unit")
+void testFlushTicks_MultipleTicks() throws Exception {
+    IEnvironmentDataWriter mockDatabase = mock(IEnvironmentDataWriter.class);
+    EnvironmentIndexer indexer = createIndexerWithMockDatabase(mockDatabase);
     
-    assertThat(batches).hasSize(2);
-    assertThat(batches.get(1000L).cells).hasSize(2);
-    assertThat(batches.get(2000L).cells).hasSize(1);
+    // Create 3 ticks with different cell counts
+    TickData tick1 = createTickWithCells(1000, 5);
+    TickData tick2 = createTickWithCells(1001, 3);
+    TickData tick3 = createTickWithCells(1002, 7);
+    
+    // Execute
+    indexer.flushTicks(List.of(tick1, tick2, tick3));
+    
+    // Verify: writeEnvironmentCells() called 3 times (once per tick)
+    verify(mockDatabase, times(3)).writeEnvironmentCells(anyLong(), anyList(), any());
+    
+    // Verify correct tick numbers
+    ArgumentCaptor<Long> tickCaptor = ArgumentCaptor.forClass(Long.class);
+    verify(mockDatabase, times(3)).writeEnvironmentCells(
+        tickCaptor.capture(), anyList(), any()
+    );
+    assertThat(tickCaptor.getAllValues()).containsExactly(1000L, 1001L, 1002L);
+}
+
+@Test
+@Tag("unit")
+void testFlushTicks_EmptyTicks() throws Exception {
+    IEnvironmentDataWriter mockDatabase = mock(IEnvironmentDataWriter.class);
+    EnvironmentIndexer indexer = createIndexerWithMockDatabase(mockDatabase);
+    
+    // Create ticks with NO cells (empty environment)
+    TickData emptyTick = TickData.newBuilder()
+        .setTickNumber(1000)
+        .build();  // No cells added
+    
+    // Execute
+    indexer.flushTicks(List.of(emptyTick));
+    
+    // Verify: database NOT called (no cells to write)
+    verify(mockDatabase, never()).writeEnvironmentCells(anyLong(), anyList(), any());
+}
+
+@Test
+@Tag("unit")
+void testFlushTicks_MixedEmptyAndNonEmpty() throws Exception {
+    IEnvironmentDataWriter mockDatabase = mock(IEnvironmentDataWriter.class);
+    EnvironmentIndexer indexer = createIndexerWithMockDatabase(mockDatabase);
+    
+    // Mix: empty tick, non-empty, empty, non-empty
+    TickData tick1 = TickData.newBuilder().setTickNumber(1000).build(); // Empty
+    TickData tick2 = createTickWithCells(1001, 5);  // 5 cells
+    TickData tick3 = TickData.newBuilder().setTickNumber(1002).build(); // Empty
+    TickData tick4 = createTickWithCells(1003, 3);  // 3 cells
+    
+    // Execute
+    indexer.flushTicks(List.of(tick1, tick2, tick3, tick4));
+    
+    // Verify: Only 2 calls (for non-empty ticks)
+    verify(mockDatabase, times(2)).writeEnvironmentCells(anyLong(), anyList(), any());
+    
+    // Verify correct tick numbers (only non-empty)
+    ArgumentCaptor<Long> tickCaptor = ArgumentCaptor.forClass(Long.class);
+    verify(mockDatabase, times(2)).writeEnvironmentCells(
+        tickCaptor.capture(), anyList(), any()
+    );
+    assertThat(tickCaptor.getAllValues()).containsExactly(1001L, 1003L);
+}
+
+@Test
+@Tag("unit")
+void testPrepareSchema() throws Exception {
+    IEnvironmentDataWriter mockDatabase = mock(IEnvironmentDataWriter.class);
+    EnvironmentIndexer indexer = createIndexerWithMockDatabase(mockDatabase);
+    
+    // Create metadata with 3 dimensions
+    SimulationMetadata metadata = createMetadata(new int[]{10, 20, 30}, "TORUS");
+    
+    // Mock component to return metadata
+    when(indexer.components.metadata.getMetadata()).thenReturn(metadata);
+    
+    // Execute
+    indexer.prepareSchema("test-run-id");
+    
+    // Verify: createEnvironmentDataTable called with 3 dimensions
+    verify(mockDatabase).createEnvironmentDataTable(3);
+    
+    // Verify: envProps cached correctly
+    assertThat(indexer.envProps).isNotNull();
+    assertThat(indexer.envProps.getWorldShape()).isEqualTo(new int[]{10, 20, 30});
+}
+
+// Helper methods
+private CellState createCell(int flatIndex, int type, int value) {
+    return CellState.newBuilder()
+        .setFlatIndex(flatIndex)
+        .setMoleculeType(type)
+        .setMoleculeValue(value)
+        .setOwnerId(0)
+        .build();
+}
+
+private TickData createTickWithCells(long tickNumber, int cellCount) {
+    TickData.Builder builder = TickData.newBuilder().setTickNumber(tickNumber);
+    for (int i = 0; i < cellCount; i++) {
+        builder.addCells(createCell(i, 1, i * 10));
+    }
+    return builder.build();
+}
+
+private SimulationMetadata createMetadata(int[] shape, String topology) {
+    SimulationMetadata.Builder builder = SimulationMetadata.newBuilder();
+    EnvironmentConfig.Builder envBuilder = EnvironmentConfig.newBuilder();
+    envBuilder.setTopology(topology);
+    for (int size : shape) {
+        envBuilder.addDimensions(
+            SimulationMetadata.EnvironmentDimension.newBuilder().setSize(size)
+        );
+    }
+    builder.setEnvironment(envBuilder);
+    return builder.build();
 }
 ```
 
@@ -1121,29 +1258,33 @@ private List<CellState> createCells(int count, int nonEmpty) {
 
 Upon completion, verify:
 
-1. ✅ EnvironmentIndexer extends AbstractBatchIndexer
-2. ✅ Uses METADATA + BUFFERING components (default)
-3. ✅ Database schema created idempotently with variable dimensions
-4. ✅ EnvironmentProperties.flatIndexToCoordinates() implemented with caching
-5. ✅ MERGE-based writes ensure 100% idempotency
-6. ✅ Only non-empty cells stored (sparse)
-7. ✅ Competing consumers work (multiple indexer instances)
-8. ✅ Unit tests pass (extraction, grouping, conversion)
-9. ✅ Integration tests pass (end-to-end, idempotency, competing consumers, dimensions)
-10. ✅ HTTP API can query: `SELECT * FROM environment_data WHERE tick_number = ? AND pos_0 BETWEEN ? AND ?`
+1. ✅ AbstractDatabaseWrapper supports URI parameters (all database wrappers benefit)
+2. ✅ EnvironmentProperties.flatIndexToCoordinates() with O(1) cached strides
+3. ✅ IEnvironmentDataWriter interface (dimension-agnostic)
+4. ✅ EnvironmentDataWriterWrapper with O(1) throughput/latency metrics
+5. ✅ H2Database dynamic schema (pos_0...pos_N based on dimensions)
+6. ✅ H2Database MERGE implementation (100% idempotency)
+7. ✅ EnvironmentIndexer extends AbstractBatchIndexer (METADATA + BUFFERING)
+8. ✅ Only non-empty cells stored (sparse)
+9. ✅ Competing consumers work (multiple indexer instances)
+10. ✅ Unit tests pass (coordinate conversion, schema creation)
+11. ✅ Integration tests pass (end-to-end, idempotency, competing consumers, dimensions)
+12. ✅ HTTP API can query: `SELECT * FROM environment_data WHERE tick_number = ? AND pos_0 BETWEEN ? AND ?`
 
 ## Implementation Notes
 
 **No backward compatibility** - this is a new indexer.
 
 **Implementation order:**
-1. EnvironmentProperties.flatIndexToCoordinates() (with tests)
-2. IEnvironmentDataWriter interface
-3. EnvironmentDataWriterWrapper
-4. H2Database implementation
-5. EnvironmentIndexer
-6. Integration tests
-7. Configuration
+1. AbstractDatabaseWrapper URI parameter support (benefits all database wrappers)
+2. EnvironmentProperties.flatIndexToCoordinates() (with tests)
+3. IEnvironmentDataWriter interface
+4. EnvironmentDataWriterWrapper
+5. H2Database implementation (doCreateEnvironmentDataTable, doWriteEnvironmentCells)
+6. AbstractDatabaseResource.getWrappedResource() (add "db-env-write" case)
+7. EnvironmentIndexer
+8. Integration tests
+9. Configuration update
 
 **Testing priorities:**
 1. Coordinate conversion correctness (all dimensions)

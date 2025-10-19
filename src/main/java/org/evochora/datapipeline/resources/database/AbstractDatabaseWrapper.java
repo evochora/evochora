@@ -65,10 +65,13 @@ public abstract class AbstractDatabaseWrapper extends org.evochora.datapipeline.
         this.database = db;
         this.context = context;
         
-        // Get metrics window from database resource config (default: 5 seconds)
-        this.metricsWindowSeconds = db.getOptions().hasPath("metricsWindowSeconds")
-            ? db.getOptions().getInt("metricsWindowSeconds")
-            : 5;
+        // Configuration hierarchy: URI parameter > Resource option > Default
+        // Allows per-service override: database = "db-meta-read:indexDatabase?metricsWindowSeconds=30"
+        this.metricsWindowSeconds = context.parameters().containsKey("metricsWindowSeconds")
+            ? Integer.parseInt(context.parameters().get("metricsWindowSeconds"))
+            : (db.getOptions().hasPath("metricsWindowSeconds")
+                ? db.getOptions().getInt("metricsWindowSeconds")
+                : 60);
     }
     
     /**
