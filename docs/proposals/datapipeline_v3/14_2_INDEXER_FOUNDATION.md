@@ -1062,17 +1062,17 @@ dummyIndexer {
 
 ### Phase 14.2.7: IdempotencyComponent (Optional Performance Optimization)
 
-**Status:** ⚠️ **Specification ready - Implementation deferred (YAGNI)**
+**Status:** ✅ **Completed**
 
-**Rationale for deferral:**
+**Implementation Notes:**
 - IdempotencyComponent is **only a performance optimization** (skip duplicate storage reads)
 - MERGE already guarantees correctness (tick-level idempotency)
+- Component is **optional** - DummyIndexer default remains METADATA + BUFFERING only
 - Performance gain is minimal (only on rare Topic redeliveries)
-- **Complexity not justified** without measurable performance problems
-- **Implementation risk:** Must be implemented correctly or causes data loss (see below)
-- **Recommendation:** Implement only if performance monitoring shows storage reads are bottleneck
+- **Critical safety:** markProcessed() called ONLY AFTER ACK to prevent data loss
+- Configuration provided as commented example in evochora.conf
 
-**Goal (if implemented later):** Add optional `IdempotencyComponent` for performance optimization (skip duplicate storage reads).
+**Goal:** Add optional `IdempotencyComponent` for performance optimization (skip duplicate storage reads).
 
 **Critical Implementation Requirement:**
 
@@ -1407,17 +1407,37 @@ Without MERGE (only INSERT):
 → tick_0-249 would fail as duplicates or be inserted twice ❌
 ```
 
-**Deliverables (if implemented later):**
-- `IdempotencyComponent` implementation with **Thread-Safety JavaDoc**
-- Extended `TickBufferingComponent.FlushResult` with `completedBatchIds`
-- Updated `AbstractBatchIndexer.flushAndAcknowledge()` - markProcessed AFTER ACK
-- Updated `AbstractBatchIndexer.processBatchMessage()` - idempotency check before storage read
-- Updated `BatchIndexerComponents` with idempotency field
-- Integration tests (MERGE idempotency, duplicates, failures, redelivery, buffer-loss recovery)
+**Deliverables:**
+- ✅ `IdempotencyComponent` implementation with **Thread-Safety JavaDoc**
+  - Wraps `IIdempotencyTracker<String>` with indexer-specific scoping
+  - Safe error handling (returns false on failure, never throws)
+  - Constructor validation (null checks)
+- ✅ Extended `TickBufferingComponent.FlushResult` with `completedBatchIds`
+  - Parallel list to track which batch IDs are fully flushed
+  - Used for safe markProcessed() AFTER ACK
+- ✅ Updated `AbstractBatchIndexer.flushAndAcknowledge()` - markProcessed AFTER ACK
+  - Critical safety: Flush → ACK → markProcessed (prevents data loss)
+- ✅ Updated `AbstractBatchIndexer.processBatchMessage()` - idempotency check before storage read
+  - Skips duplicate batches (performance optimization)
+  - ACKs immediately if already processed
+- ✅ Updated `BatchIndexerComponents` with idempotency field and Builder
+  - Added `ComponentType.IDEMPOTENCY` enum value
+  - Extended component creation logic in `createComponents()`
+- ✅ Unit tests: `IdempotencyComponentTest` (10 tests)
+  - Constructor validation, normal operation, error handling
+  - All tests pass
+- ✅ Unit tests: `TickBufferingComponentTest` extended (2 new tests)
+  - `completedBatchIds` verification
+  - Partial batch exclusion
+- ✅ Configuration: Commented examples in `evochora.conf`
+  - Resource definition for `index-idempotency`
+  - Service resource binding examples
+- ⚠️ Integration tests: Buffer loss recovery deferred
+  - Requires real indexer with DB writes (not DummyIndexer)
+  - Will be implemented with EnvironmentIndexer/OrganismIndexer
+  - MERGE idempotency is the real safety guarantee
 
-**Current Priority:** Focus on Phase 14.2.5 and 14.2.6. Phase 14.2.7 only if performance monitoring shows need.
-
-**Note:** `IIdempotencyTracker` interface and H2 implementation with `idempotency_tracking` table already exist!
+**Note:** `IIdempotencyTracker` interface and `InMemoryIdempotencyTracker` implementation already exist and are used by PersistenceService!
 
 ---
 
@@ -2544,8 +2564,9 @@ Upon completion of Phase 14.2.5 and 14.2.6:
 - ✅ **Buffer-loss recovery:** Crash + redelivery works correctly (MERGE re-inserts missing ticks)
 
 **Deferred Phases:**
-- **Phase 14.2.7 (deferred):** IdempotencyComponent only if performance monitoring shows storage reads are bottleneck
 - **Phase 14.2.8 (deferred):** DlqComponent only if monitoring shows specific batches (poison messages) failing repeatedly
+
+**Note:** Phase 14.2.7 (IdempotencyComponent) has been completed despite YAGNI concerns. It is available as an optional component for future use.
 
 ## Implementation Notes
 
@@ -2570,6 +2591,6 @@ Upon completion of Phase 14.2.5 and 14.2.6:
 - Phase 14.2.4: Batch Notification Write ✅ Completed
 - Phase 14.2.5: AbstractBatchIndexer + DummyIndexer (Metadata + Storage-Read + Tick-by-Tick) ✅ Completed
 - Phase 14.2.6: TickBufferingComponent (Cross-Batch Buffering) ✅ Completed
-- Phase 14.2.7: IdempotencyComponent (Performance Optimization) - ⚠️ **Specification ready - Implementation deferred (YAGNI)**
+- Phase 14.2.7: IdempotencyComponent (Performance Optimization) ✅ Completed
 - Phase 14.2.8: DlqComponent (Poison Message Handling) - ⚠️ **Specification ready - Implementation deferred (YAGNI)**
 

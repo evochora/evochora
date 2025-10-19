@@ -150,13 +150,15 @@ public class TickBufferingComponent {
      * <strong>Critical:</strong> Only batches where ALL ticks have been flushed
      * are included in the returned completedMessages list. Partially flushed
      * batches remain in pendingBatches until completion.
+     * <p>
+     * <strong>Phase 14.2.7:</strong> Also returns completedBatchIds for idempotency tracking.
      *
      * @param <ACK> ACK token type
      * @return FlushResult containing ticks to flush and completed messages to ACK
      */
     public <ACK> FlushResult<ACK> flush() {
         if (buffer.isEmpty()) {
-            return new FlushResult<>(Collections.emptyList(), Collections.emptyList());
+            return new FlushResult<>(Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
         }
         
         int ticksToFlush = Math.min(buffer.size(), insertBatchSize);
@@ -177,6 +179,7 @@ public class TickBufferingComponent {
         
         // Update batch flush counts and collect completed batches
         List<TopicMessage<?, ACK>> completedMessages = new ArrayList<>();
+        List<String> completedBatchIds = new ArrayList<>();  // Phase 14.2.7
         for (Map.Entry<String, Integer> entry : batchTickCounts.entrySet()) {
             String batchId = entry.getKey();
             int ticksFlushed = entry.getValue();
@@ -189,13 +192,14 @@ public class TickBufferingComponent {
                 @SuppressWarnings("unchecked")
                 TopicMessage<?, ACK> msg = (TopicMessage<?, ACK>) state.message;
                 completedMessages.add(msg);
+                completedBatchIds.add(batchId);  // Phase 14.2.7: Track batch ID
                 pendingBatches.remove(batchId);
             }
         }
         
         lastFlushMs = System.currentTimeMillis();
         
-        return new FlushResult<>(ticksForFlush, completedMessages);
+        return new FlushResult<>(ticksForFlush, completedMessages, completedBatchIds);
     }
     
     /**
@@ -223,22 +227,30 @@ public class TickBufferingComponent {
      * <p>
      * Contains ticks to be flushed and TopicMessages to be acknowledged.
      * Only batches that are fully flushed are included in completedMessages.
+     * <p>
+     * <strong>Phase 14.2.7:</strong> Added completedBatchIds for idempotency tracking.
+     * The batch IDs correspond to the messages in completedMessages (parallel lists).
      *
      * @param <ACK> ACK token type
      */
     public static class FlushResult<ACK> {
         private final List<TickData> ticks;
         private final List<TopicMessage<?, ACK>> completedMessages;
+        private final List<String> completedBatchIds;
         
         /**
          * Creates a flush result.
          *
          * @param ticks Ticks to flush (must not be null)
          * @param completedMessages Messages to ACK (must not be null)
+         * @param completedBatchIds Batch IDs for completed batches (must not be null, Phase 14.2.7)
          */
-        public FlushResult(List<TickData> ticks, List<TopicMessage<?, ACK>> completedMessages) {
+        public FlushResult(List<TickData> ticks, 
+                          List<TopicMessage<?, ACK>> completedMessages,
+                          List<String> completedBatchIds) {
             this.ticks = List.copyOf(ticks);
             this.completedMessages = List.copyOf(completedMessages);
+            this.completedBatchIds = List.copyOf(completedBatchIds);
         }
         
         /**
@@ -259,6 +271,20 @@ public class TickBufferingComponent {
          */
         public List<TopicMessage<?, ACK>> completedMessages() {
             return completedMessages;
+        }
+        
+        /**
+         * Returns the batch IDs for completed batches.
+         * <p>
+         * Phase 14.2.7: Used by IdempotencyComponent to mark batches as processed
+         * AFTER successful ACK. This list is parallel to completedMessages.
+         * <p>
+         * Only includes batches where ALL ticks have been flushed.
+         *
+         * @return Immutable list of batch IDs
+         */
+        public List<String> completedBatchIds() {
+            return completedBatchIds;
         }
     }
 }

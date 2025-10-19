@@ -6,9 +6,11 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
+import org.evochora.datapipeline.services.indexers.components.IdempotencyComponent;
 import org.evochora.datapipeline.services.indexers.components.MetadataReadingComponent;
 import org.evochora.datapipeline.services.indexers.components.TickBufferingComponent;
 import org.evochora.datapipeline.api.resources.database.IMetadataReader;
+import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
 
 import java.util.EnumSet;
 import java.util.List;
@@ -100,7 +102,10 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         METADATA,
         
         /** Tick buffering component (buffers ticks for batch inserts). Phase 14.2.6. */
-        BUFFERING
+        BUFFERING,
+        
+        /** Idempotency component (skip duplicate storage reads). Phase 14.2.7. */
+        IDEMPOTENCY
         
         // Phase 14.2.8: DLQ will be added
     }
@@ -170,6 +175,14 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             builder.withBuffering(new TickBufferingComponent(insertBatchSize, flushTimeoutMs));
         }
         
+        // Component 3: Idempotency (Phase 14.2.7)
+        if (required.contains(ComponentType.IDEMPOTENCY)) {
+            IIdempotencyTracker<String> tracker = 
+                getRequiredResource("idempotency", IIdempotencyTracker.class);
+            String indexerClass = this.getClass().getSimpleName();
+            builder.withIdempotency(new IdempotencyComponent(tracker, indexerClass));
+        }
+        
         // Phase 14.2.8: DLQ component handling will be added here
         
         return builder.build();
@@ -232,6 +245,16 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         log.debug("Received BatchInfo: storagePath={}, ticks=[{}-{}]", 
             batch.getStoragePath(), batch.getTickStart(), batch.getTickEnd());
         
+        // Idempotency check (skip storage read if already processed)
+        if (components != null && components.idempotency != null) {
+            if (components.idempotency.isProcessed(batchId)) {
+                log.debug("Skipping duplicate batch (performance optimization): {}", batchId);
+                topic.ack(msg);
+                batchesProcessed.incrementAndGet();
+                return;
+            }
+        }
+        
         try {
             // Read from storage (GENERIC for all batch indexers!)
             // Storage handles length-delimited format automatically
@@ -259,6 +282,11 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 // ACK after ALL ticks from batch are processed
                 topic.ack(msg);
                 
+                // Safe to mark immediately after ACK (no buffering = no cross-batch risk)
+                if (components != null && components.idempotency != null) {
+                    components.idempotency.markProcessed(batchId);
+                }
+                
                 // Track metrics
                 batchesProcessed.incrementAndGet();
                 ticksProcessed.addAndGet(ticks.size());
@@ -280,6 +308,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * acknowledges only fully completed batches, and updates metrics.
      * <p>
      * Phase 14.2.6+: Used by buffering logic only.
+     * <p>
+     * Phase 14.2.7: Marks batches as processed AFTER ACK (critical for correctness!).
      *
      * @throws Exception if flush or ACK fails
      */
@@ -289,17 +319,25 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             return;
         }
         
-        // Call indexer-specific flush
+        // 1. Flush ticks to DB (MERGE ensures idempotency)
         flushTicks(result.ticks());
         
-        // ACK all completed batches
+        // 2. ACK completed batches
         for (TopicMessage<?, ACK> completedMsg : result.completedMessages()) {
             @SuppressWarnings("unchecked")
             TopicMessage<BatchInfo, ACK> batchMsg = (TopicMessage<BatchInfo, ACK>) completedMsg;
             topic.ack(batchMsg);
         }
         
-        // Update metrics
+        // 3. CRITICAL: Mark processed ONLY AFTER ACK (safe!)
+        // This prevents data loss: Read → Buffer → Flush → ACK → markProcessed()
+        if (components != null && components.idempotency != null) {
+            for (String batchId : result.completedBatchIds()) {
+                components.idempotency.markProcessed(batchId);
+            }
+        }
+        
+        // 4. Update metrics
         batchesProcessed.addAndGet(result.completedMessages().size());
         ticksProcessed.addAndGet(result.ticks().size());
     }
@@ -339,6 +377,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * <p>
      * Phase 14.2.5: Only contains MetadataReadingComponent.
      * Phase 14.2.6+: TickBufferingComponent added.
+     * Phase 14.2.7+: IdempotencyComponent added.
      * <p>
      * <strong>Thread Safety:</strong> Components are <strong>NOT thread-safe</strong>.
      * Each service instance creates its own component instances. Never share
@@ -349,6 +388,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * BatchIndexerComponents.builder()
      *     .withMetadata(...)
      *     .withBuffering(...)
+     *     .withIdempotency(...)
      *     .build()
      * </pre>
      */
@@ -359,10 +399,15 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         /** Tick buffering component (optional, Phase 14.2.6). */
         public final TickBufferingComponent buffering;
         
+        /** Idempotency component (optional, Phase 14.2.7). */
+        public final IdempotencyComponent idempotency;
+        
         private BatchIndexerComponents(MetadataReadingComponent metadata,
-                                       TickBufferingComponent buffering) {
+                                       TickBufferingComponent buffering,
+                                       IdempotencyComponent idempotency) {
             this.metadata = metadata;
             this.buffering = buffering;
+            this.idempotency = idempotency;
         }
         
         /**
@@ -383,6 +428,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         public static class Builder {
             private MetadataReadingComponent metadata;
             private TickBufferingComponent buffering;
+            private IdempotencyComponent idempotency;
             
             /**
              * Configures metadata reading component.
@@ -407,12 +453,23 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             }
             
             /**
+             * Configures idempotency component (Phase 14.2.7).
+             *
+             * @param c Idempotency component (may be null)
+             * @return this builder for chaining
+             */
+            public Builder withIdempotency(IdempotencyComponent c) {
+                this.idempotency = c;
+                return this;
+            }
+            
+            /**
              * Builds the component configuration.
              *
              * @return new BatchIndexerComponents instance
              */
             public BatchIndexerComponents build() {
-                return new BatchIndexerComponents(metadata, buffering);
+                return new BatchIndexerComponents(metadata, buffering, idempotency);
             }
         }
     }

@@ -147,7 +147,71 @@ class TickBufferingComponentTest {
         // Then: Returns empty result
         assertTrue(result.ticks().isEmpty(), "Should return empty ticks list");
         assertTrue(result.completedMessages().isEmpty(), "Should return empty messages list");
+        assertTrue(result.completedBatchIds().isEmpty(), "Should return empty batch IDs list (Phase 14.2.7)");
         assertEquals(0, component.getBufferSize(), "Buffer should still be empty");
+    }
+    
+    @Test
+    void testFlush_ReturnsCompletedBatchIds() {
+        // Given: 3 batches, insertBatchSize=250 → first 2 batches fully flushed
+        List<TickData> batch1 = createTestTicks("run-001", 0, 100);
+        List<TickData> batch2 = createTestTicks("run-001", 100, 100);
+        List<TickData> batch3 = createTestTicks("run-001", 200, 100);
+        
+        TopicMessage<BatchInfo, String> msg1 = createTestMessage("batch-001");
+        TopicMessage<BatchInfo, String> msg2 = createTestMessage("batch-002");
+        TopicMessage<BatchInfo, String> msg3 = createTestMessage("batch-003");
+        
+        component.addTicksFromBatch(batch1, "batch-001", msg1);
+        component.addTicksFromBatch(batch2, "batch-002", msg2);
+        component.addTicksFromBatch(batch3, "batch-003", msg3);
+        
+        // When: Flush
+        TickBufferingComponent.FlushResult<String> result = component.flush();
+        
+        // Then: completedBatchIds should match completedMessages (Phase 14.2.7)
+        assertEquals(2, result.completedMessages().size(), 
+            "Should have 2 completed messages");
+        assertEquals(2, result.completedBatchIds().size(), 
+            "Should have 2 completed batch IDs (Phase 14.2.7)");
+        
+        // Verify batch IDs are correct
+        assertTrue(result.completedBatchIds().contains("batch-001"), 
+            "Should contain batch-001 ID");
+        assertTrue(result.completedBatchIds().contains("batch-002"), 
+            "Should contain batch-002 ID");
+        assertFalse(result.completedBatchIds().contains("batch-003"), 
+            "Should NOT contain batch-003 ID (partial)");
+    }
+    
+    @Test
+    void testFlush_PartialBatch_NoCompletedBatchIds() {
+        // Given: One batch partially flushed
+        List<TickData> ticks = createTestTicks("run-001", 0, 100);
+        TopicMessage<BatchInfo, String> msg = createTestMessage("batch-001");
+        
+        component = new TickBufferingComponent(50, 5000);  // insertBatchSize=50
+        component.addTicksFromBatch(ticks, "batch-001", msg);
+        
+        // When: Flush only 50 ticks (partial)
+        TickBufferingComponent.FlushResult<String> result = component.flush();
+        
+        // Then: completedBatchIds should be empty (Phase 14.2.7)
+        assertEquals(50, result.ticks().size(), "Should flush 50 ticks");
+        assertTrue(result.completedMessages().isEmpty(), 
+            "Partial batch should NOT have completed messages");
+        assertTrue(result.completedBatchIds().isEmpty(), 
+            "Partial batch should NOT have completed batch IDs (Phase 14.2.7)");
+        
+        // When: Flush remaining ticks
+        TickBufferingComponent.FlushResult<String> secondFlush = component.flush();
+        
+        // Then: Now batch ID should be in completedBatchIds
+        assertEquals(1, secondFlush.completedMessages().size());
+        assertEquals(1, secondFlush.completedBatchIds().size(), 
+            "Completed batch should have batch ID (Phase 14.2.7)");
+        assertTrue(secondFlush.completedBatchIds().contains("batch-001"), 
+            "Should contain batch-001 ID after completion");
     }
     
     // ========== Helper Methods ==========
