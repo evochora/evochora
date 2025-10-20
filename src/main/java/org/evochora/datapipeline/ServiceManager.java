@@ -431,13 +431,26 @@ public class ServiceManager implements IMonitorable {
 
     public void stopService(String name) {
         IService service = services.get(name);
-        if (service != null) {
-            stopAndAwait(service, name);
-            // NOTE: Service remains in 'services' map with State STOPPED for monitoring.
-            // It will be removed on next startService() or during shutdown().
-        } else {
+        if (service == null) {
             log.warn("Attempted to stop service '{}', but it was not found among services.", name);
+            return;
         }
+        
+        log.info("Stopping service '{}'...", name);
+        service.stop();  // Already blocks until thread terminates (max 5 sec)
+        
+        // Check final state and log
+        IService.State finalState = service.getCurrentState();
+        if (finalState == IService.State.STOPPED) {
+            log.debug("Service '{}' stopped successfully.", name);
+        } else if (finalState == IService.State.ERROR) {
+            log.warn("Service '{}' stopped with ERROR state.", name);
+        } else {
+            log.error("Service '{}' in unexpected state after stop(): {}", name, finalState);
+        }
+        
+        // NOTE: Service remains in 'services' map with State STOPPED for monitoring.
+        // It will be removed on next startService() or during shutdown().
     }
 
     public void pauseService(String serviceName) {
@@ -452,30 +465,6 @@ public class ServiceManager implements IMonitorable {
         log.info("Restarting service '{}'...", serviceName);
         stopService(serviceName);
         startService(serviceName);
-    }
-
-    private void stopAndAwait(IService service, String serviceName) {
-        log.info("Stopping service '{}'...", serviceName);
-        service.stop();
-
-        try {
-            // Wait for up to 5 seconds for the service to stop.
-            for (int i = 0; i < 100; i++) {
-                if (service.getCurrentState() == IService.State.STOPPED) {
-                    log.debug("Service '{}' has stopped.", serviceName);
-                    return; // Exit successfully
-                }
-                Thread.sleep(50);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.warn("Interrupted while waiting for service '{}' to stop.", serviceName);
-        }
-
-        // If the loop finishes without the service stopping, log a warning.
-        if (service.getCurrentState() != IService.State.STOPPED) {
-            log.warn("Service '{}' did not stop within the allocated time.", serviceName);
-        }
     }
 
     private IService getServiceOrFail(String serviceName) {

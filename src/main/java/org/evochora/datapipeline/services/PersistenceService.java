@@ -56,7 +56,6 @@ public class PersistenceService extends AbstractService {
     private final int batchTimeoutSeconds;
     private final int maxRetries;
     private final int retryBackoffMs;
-    private final int shutdownBatchTimeoutSeconds;
 
     // Metrics
     private final AtomicLong batchesWritten = new AtomicLong(0);
@@ -70,6 +69,9 @@ public class PersistenceService extends AbstractService {
     
     // State tracking
     private volatile boolean topicInitialized = false;
+    
+    // Track current batch for shutdown cleanup in finally-block
+    private List<TickData> currentBatch = null;
 
     public PersistenceService(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
@@ -93,7 +95,6 @@ public class PersistenceService extends AbstractService {
         this.batchTimeoutSeconds = options.hasPath("batchTimeoutSeconds") ? options.getInt("batchTimeoutSeconds") : 5;
         this.maxRetries = options.hasPath("maxRetries") ? options.getInt("maxRetries") : 3;
         this.retryBackoffMs = options.hasPath("retryBackoffMs") ? options.getInt("retryBackoffMs") : 1000;
-        this.shutdownBatchTimeoutSeconds = options.hasPath("shutdownBatchTimeoutSeconds") ? options.getInt("shutdownBatchTimeoutSeconds") : 15;
 
         // Validation
         if (maxBatchSize <= 0) {
@@ -108,12 +109,9 @@ public class PersistenceService extends AbstractService {
         if (retryBackoffMs < 0) {
             throw new IllegalArgumentException("retryBackoffMs cannot be negative");
         }
-        if (shutdownBatchTimeoutSeconds <= 0) {
-            throw new IllegalArgumentException("shutdownBatchTimeoutSeconds must be positive");
-        }
 
-        log.debug("PersistenceService initialized: maxBatchSize={}, batchTimeout={}s, maxRetries={}, shutdownBatchTimeout={}s, idempotency={}",
-            maxBatchSize, batchTimeoutSeconds, maxRetries, shutdownBatchTimeoutSeconds, idempotencyTracker != null ? "enabled" : "disabled");
+        log.debug("PersistenceService initialized: maxBatchSize={}, batchTimeout={}s, maxRetries={}, idempotency={}",
+            maxBatchSize, batchTimeoutSeconds, maxRetries, idempotencyTracker != null ? "enabled" : "disabled");
     }
 
     @Override
@@ -125,33 +123,50 @@ public class PersistenceService extends AbstractService {
 
     @Override
     protected void run() throws InterruptedException {
-        while (!Thread.currentThread().isInterrupted()) {
-            checkPause();
+        try {
+            while (!Thread.currentThread().isInterrupted()) {
+                checkPause();
 
-            List<TickData> batch = new ArrayList<>();
+                currentBatch = new ArrayList<>();
 
-            try {
-                // Drain batch from queue with timeout
-                int count = inputQueue.drainTo(batch, maxBatchSize, batchTimeoutSeconds, TimeUnit.SECONDS);
-                currentBatchSize.set(count); // Always update, even if zero
+                try {
+                    // Drain batch from queue with timeout
+                    int count = inputQueue.drainTo(currentBatch, maxBatchSize, batchTimeoutSeconds, TimeUnit.SECONDS);
+                    currentBatchSize.set(count); // Always update, even if zero
 
-                if (count == 0) {
-                    continue; // No data available, loop again
+                    if (count == 0) {
+                        currentBatch = null;  // No batch to clean up
+                        continue; // No data available, loop again
+                    }
+
+                    log.debug("Drained {} ticks from queue", count);
+
+                    // Process and persist batch
+                    processBatch(currentBatch);
+                    currentBatch = null;  // Successfully processed
+                    
+                } catch (InterruptedException e) {
+                    // Keep currentBatch for finally-block (even if partially filled by drainTo)
+                    // drainTo() may have transferred data to collection before interruption!
+                    throw e;  // Re-throw to exit loop
                 }
-
-                log.debug("Drained {} ticks from queue", count);
-
-                // Process and persist batch
-                processBatch(batch);
-
-            } catch (InterruptedException e) {
-                // Shutdown signal received during drain
-                if (!batch.isEmpty()) {
-                    log.debug("Interrupted during drain, completing batch of {} ticks with {}s timeout",
-                        batch.size(), shutdownBatchTimeoutSeconds);
-                    completeShutdownBatchWithTimeout(batch);
+            }
+        } finally {
+            // Final batch completion (if interrupted during processing)
+            if (currentBatch != null && !currentBatch.isEmpty()) {
+                log.info("Shutdown: Completing batch of {} ticks", currentBatch.size());
+                
+                // Clear interrupt flag to allow DB operations
+                boolean wasInterrupted = Thread.interrupted();
+                try {
+                    processBatch(currentBatch);
+                } catch (Exception e) {
+                    log.warn("Failed to complete shutdown batch of {} ticks", currentBatch.size());
+                } finally {
+                    if (wasInterrupted) {
+                        Thread.currentThread().interrupt();
+                    }
                 }
-                throw e; // Re-throw to signal clean shutdown
             }
         }
     }
@@ -426,61 +441,6 @@ public class PersistenceService extends AbstractService {
         }
     }
 
-    /**
-     * Completes shutdown batch write with a bounded timeout to prevent hanging shutdown.
-     * <p>
-     * This method temporarily clears the interrupt flag to allow the batch write to complete,
-     * then restores it afterward. If the write exceeds the timeout, the batch may be lost
-     * but the .tmp file will remain as evidence.
-     * <p>
-     * This bounded approach is critical for spot instances where shutdown must complete
-     * within 2 minutes or the instance is forcefully terminated.
-     *
-     * @param batch the batch of ticks to persist during shutdown
-     */
-    private void completeShutdownBatchWithTimeout(List<TickData> batch) {
-        // Clear interrupt flag temporarily to allow write to complete
-        boolean wasInterrupted = Thread.interrupted();
-
-        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newSingleThreadExecutor();
-        java.util.concurrent.Future<?> future = executor.submit(() -> {
-            try {
-                processBatch(batch);
-                log.debug("Successfully completed shutdown batch of {} ticks", batch.size());
-            } catch (Exception ex) {
-                log.warn("Failed to complete shutdown batch of {} ticks", batch.size());
-            }
-        });
-
-        try {
-            future.get(shutdownBatchTimeoutSeconds, TimeUnit.SECONDS);
-        } catch (java.util.concurrent.TimeoutException e) {
-            log.warn("Shutdown batch write exceeded {}s timeout, {} ticks may be lost (tmp file remains)",
-                shutdownBatchTimeoutSeconds, batch.size());
-            future.cancel(true);
-            recordError(
-                "SHUTDOWN_BATCH_TIMEOUT",
-                "Shutdown batch write exceeded timeout",
-                String.format("Timeout: %ds, Batch size: %d ticks", shutdownBatchTimeoutSeconds, batch.size())
-            );
-        } catch (java.util.concurrent.ExecutionException e) {
-            log.warn("Error during shutdown batch completion");
-            recordError(
-                "SHUTDOWN_BATCH_ERROR",
-                "Error during shutdown batch write",
-                String.format("Batch size: %d ticks, Exception: %s", batch.size(), e.getCause() != null ? e.getCause().getMessage() : "Unknown")
-            );
-        } catch (InterruptedException e) {
-            log.debug("Interrupted while waiting for shutdown batch completion");
-            future.cancel(true);
-        } finally {
-            executor.shutdownNow();
-            // Restore interrupt flag
-            if (wasInterrupted) {
-                Thread.currentThread().interrupt();
-            }
-        }
-    }
 
     @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {

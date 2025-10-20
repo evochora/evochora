@@ -7,6 +7,7 @@ import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.services.IService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -189,6 +190,8 @@ public abstract class AbstractService implements IService, IMonitorable {
      * </pre>
      */
     private void runService() {
+        // Set MDC context for this service thread - allows distinguishing competing consumers in logs
+        MDC.put("service", serviceName);
         try {
             run();
         } catch (InterruptedException e) {
@@ -206,6 +209,8 @@ public abstract class AbstractService implements IService, IMonitorable {
                 currentState.set(State.STOPPED);
             }
             log.debug("Service thread for {} has terminated.", this.getClass().getSimpleName());
+            // Clean up MDC context
+            MDC.remove("service");
         }
     }
 

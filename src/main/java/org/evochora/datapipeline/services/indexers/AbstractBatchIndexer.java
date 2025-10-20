@@ -333,11 +333,23 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             // Final flush of remaining buffered ticks (always executed, even on interrupt!)
             if (components != null && components.buffering != null 
                 && components.buffering.getBufferSize() > 0) {
+                int ticksToFlush = components.buffering.getBufferSize();
+                log.info("Shutdown: Flushing {} buffered ticks", ticksToFlush);
+                
+                // Clear interrupt flag temporarily to allow final flush to complete.
+                // H2 Database's internal locking mechanism fails if thread is interrupted
+                // (MVMap.tryLock() uses Thread.sleep() which throws InterruptedException).
+                boolean wasInterrupted = Thread.interrupted();
                 try {
                     flushAndAcknowledge();
                 } catch (Exception e) {
-                    log.error("Final flush failed during shutdown");
+                    log.warn("Final flush failed during shutdown");
                     throw e;
+                } finally {
+                    // Restore interrupt flag for proper shutdown handling in AbstractService
+                    if (wasInterrupted) {
+                        Thread.currentThread().interrupt();
+                    }
                 }
             }
         }
