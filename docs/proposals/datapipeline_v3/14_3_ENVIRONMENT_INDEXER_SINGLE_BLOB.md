@@ -2094,9 +2094,112 @@ This utility is used consistently across:
 
 ---
 
+## Implementation Notes
+
+This section documents key decisions and deviations from the original specification that were made during implementation.
+
+### BYTEA vs BLOB Data Type
+
+**Decision:** Use `BYTEA` instead of `BLOB` for the `cells_blob` column.
+
+**Rationale:**
+- H2 Database in `MODE=PostgreSQL` (required for MERGE support) has compatibility issues with `BLOB` type
+- `BYTEA` is the PostgreSQL-native binary data type and works correctly in H2's PostgreSQL mode
+- Functionally equivalent: Both store binary data, same performance characteristics
+- All references in this spec have been updated to reflect `BYTEA`
+
+**SQL:**
+```sql
+CREATE TABLE IF NOT EXISTS environment_ticks (
+    tick_number BIGINT PRIMARY KEY,
+    cells_blob BYTEA NOT NULL  -- BYTEA instead of BLOB for PostgreSQL MODE
+);
+```
+
+### Component Access Pattern
+
+**Decision:** AbstractBatchIndexer provides `protected final SimulationMetadata getMetadata()` method instead of exposing `components` field.
+
+**Rationale:**
+- Better encapsulation: `components` remains `private`, not exposed to subclasses
+- Cleaner API: Indexers get only what they need (metadata), not entire component structure
+- Future-proof: Component implementation can change without breaking subclasses
+- Type-safe: Returns `SimulationMetadata` directly, no null checks needed
+
+**Usage in EnvironmentIndexer:**
+```java
+@Override
+protected void prepareSchema(String runId) throws Exception {
+    SimulationMetadata metadata = getMetadata();  // Clean API!
+    this.envProps = extractEnvironmentProperties(metadata);
+    // ...
+}
+```
+
+### PreparedStatement Caching
+
+**Decision:** Connection-safe PreparedStatement caching in SingleBlobStrategy.
+
+**Implementation:**
+- Cache `PreparedStatement` per active connection (not globally)
+- Track cached connection to detect pool rotation
+- Recreate `PreparedStatement` if connection changes
+- Call `clearBatch()` before reuse to avoid state pollution
+
+**Benefits:**
+- Avoids per-call statement creation overhead (~10-50ms per call)
+- Connection pool safe: Works correctly with HikariCP rotation
+- Memory efficient: Only one cached statement per strategy instance
+
+### Empty Cell List Resilience
+
+**Decision:** Skip ticks with empty cell lists, log WARN, don't execute SQL.
+
+**Rationale:**
+- Ticks should never have empty cell lists in normal operation
+- System must be resilient to unexpected data
+- Skipping is safer than creating empty BLOBs or failing the entire batch
+- WARN log provides visibility for debugging
+
+**Behavior:**
+```java
+if (tick.getCellsList().isEmpty()) {
+    log.warn("Tick {} has empty cell list - skipping database write", tick.getTickNumber());
+    return false;  // Filter out
+}
+```
+
+### Metadata Extraction from Protobuf
+
+**Actual API:**
+```java
+// Extract world shape
+int[] worldShape = metadata.getEnvironment().getShapeList().stream()
+    .mapToInt(Integer::intValue)
+    .toArray();
+
+// Extract topology (check first dimension)
+boolean isToroidal = !metadata.getEnvironment().getToroidalList().isEmpty() 
+    && metadata.getEnvironment().getToroidal(0);
+```
+
+**Note:** The protobuf schema uses `repeated int32 shape` and `repeated bool toroidal`, not nested message types.
+
+### DDL Race Condition Handling
+
+**Decision:** Use `H2SchemaUtil.executeDdlIfNotExists()` for ALL DDL statements (tables AND indexes).
+
+**Rationale:**
+- Both `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` have race conditions in H2
+- Concurrent execution can fail with "object already exists" despite IF NOT EXISTS clause
+- Unified helper handles both cases consistently
+- Critical for competing consumers (multiple indexer instances)
+
+---
+
 **Phase Tracking:**
 - Phase 14.2: Indexer Foundation ✅ Completed
-- Phase 14.3: Environment Indexer ⏳ This Document
+- Phase 14.3: Environment Indexer ✅ **Completed**
 - Phase 14.4: Organism Indexer (future)
 - Phase 14.5: HTTP API (future)
 
