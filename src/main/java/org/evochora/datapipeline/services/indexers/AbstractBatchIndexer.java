@@ -2,6 +2,7 @@ package org.evochora.datapipeline.services.indexers;
 
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
@@ -495,6 +496,26 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         // 4. Update metrics
         batchesProcessed.addAndGet(result.completedMessages().size());
         ticksProcessed.addAndGet(result.ticks().size());
+    }
+    
+    /**
+     * Gets the simulation metadata.
+     * <p>
+     * This method provides access to metadata loaded by the MetadataReadingComponent.
+     * Only available after the component has successfully loaded metadata.
+     * <p>
+     * <strong>Usage:</strong> Typically called in {@link #prepareSchema(String)} to extract
+     * environment properties, organism configurations, or other metadata needed for indexing.
+     *
+     * @return The simulation metadata
+     * @throws IllegalStateException if metadata component is not configured or metadata not yet loaded
+     */
+    protected final SimulationMetadata getMetadata() {
+        if (components == null || components.metadata == null) {
+            throw new IllegalStateException(
+                "Metadata component not available. Override getRequiredComponents() to include IndexerComponent.METADATA.");
+        }
+        return components.metadata.getMetadata();
     }
     
     /**

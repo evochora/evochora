@@ -302,37 +302,39 @@ public final class H2SchemaUtil {
     }
     
     /**
-     * Executes a CREATE TABLE IF NOT EXISTS statement with H2-specific error handling.
+     * Executes a DDL statement with IF NOT EXISTS clause and H2-specific error handling.
+     * <p>
+     * Works for: CREATE TABLE IF NOT EXISTS, CREATE INDEX IF NOT EXISTS, etc.
      * <p>
      * <strong>H2 Bug Workaround (v2.2.224):</strong>
-     * "CREATE TABLE IF NOT EXISTS" can fail with "object already exists" when multiple
-     * connections create the same table concurrently. This method catches that specific
-     * error and treats it as success (table was created by another connection).
+     * IF NOT EXISTS can fail with "object already exists" when multiple
+     * connections execute the same DDL concurrently. This method catches that specific
+     * error and treats it as success (object was created by another connection).
      * <p>
-     * This is the recommended way to create tables in H2 when competing consumers
+     * This is the recommended way to execute DDL in H2 when competing consumers
      * may initialize concurrently.
      *
      * @param statement The statement to execute with (must not be null).
-     * @param sql The CREATE TABLE IF NOT EXISTS SQL (must not be null).
-     * @param tableName The table name for logging (must not be null).
-     * @throws SQLException if table creation fails for reasons other than "already exists".
+     * @param sql The DDL statement with IF NOT EXISTS clause (must not be null).
+     * @param objectName The object name for logging (must not be null).
+     * @throws SQLException if DDL execution fails for reasons other than "already exists".
      */
-    public static void executeTableCreation(Statement statement, String sql, String tableName) throws SQLException {
-        if (statement == null || sql == null || tableName == null) {
-            throw new IllegalArgumentException("statement, sql, and tableName must not be null");
+    public static void executeDdlIfNotExists(Statement statement, String sql, String objectName) throws SQLException {
+        if (statement == null || sql == null || objectName == null) {
+            throw new IllegalArgumentException("statement, sql, and objectName must not be null");
         }
         
         try {
             statement.execute(sql);
-            log.debug("Created table: {}", tableName);
+            log.debug("Created DDL object: {}", objectName);
         } catch (SQLException e) {
-            // H2 bug workaround: "CREATE TABLE IF NOT EXISTS" can fail with "object already exists"
+            // H2 bug workaround: DDL with IF NOT EXISTS can fail with "object already exists"
             // Error code 42101 = Table/View already exists
             // Error code 50000 = General error (may include "object already exists")
             if ((e.getErrorCode() == 42101 || e.getErrorCode() == 50000) 
                 && e.getMessage() != null 
                 && e.getMessage().contains("already exists")) {
-                log.debug("Table '{}' already exists (created by another connection)", tableName);
+                log.debug("DDL object '{}' already exists (created by another connection)", objectName);
             } else {
                 throw e;  // Re-throw if it's a different error
             }

@@ -2,13 +2,17 @@ package org.evochora.datapipeline.resources.database;
 
 import com.google.gson.Gson;
 import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.datapipeline.utils.PathExpansion;
 import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,6 +22,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -34,6 +39,9 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
     private final HikariDataSource dataSource;
     private final AtomicLong diskWrites = new AtomicLong(0);
     private final SlidingWindowCounter diskWritesCounter;
+    
+    // Environment storage strategy (loaded via reflection)
+    private final IH2EnvStorageStrategy envStorageStrategy;
 
     public H2Database(String name, Config options) {
         super(name, options);
@@ -82,6 +90,94 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
             : 5;
         
         this.diskWritesCounter = new SlidingWindowCounter(metricsWindowSeconds);
+        
+        // Load environment storage strategy via reflection
+        this.envStorageStrategy = loadEnvironmentStorageStrategy(options);
+    }
+
+    /**
+     * Loads environment storage strategy via reflection.
+     * <p>
+     * Configuration:
+     * <pre>
+     * h2EnvironmentStrategy {
+     *   className = "org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy"
+     *   options {
+     *     compression {
+     *       codec = "zstd"
+     *       level = 3
+     *     }
+     *   }
+     * }
+     * </pre>
+     * 
+     * @param options Database configuration
+     * @return Loaded strategy instance
+     */
+    private IH2EnvStorageStrategy loadEnvironmentStorageStrategy(Config options) {
+        if (options.hasPath("h2EnvironmentStrategy")) {
+            Config strategyConfig = options.getConfig("h2EnvironmentStrategy");
+            String strategyClassName = strategyConfig.getString("className");
+            
+            // Extract options for strategy (defaults to empty config if missing)
+            Config strategyOptions = strategyConfig.hasPath("options")
+                ? strategyConfig.getConfig("options")
+                : ConfigFactory.empty();
+            
+            IH2EnvStorageStrategy strategy = createStorageStrategy(strategyClassName, strategyOptions);
+            log.debug("Loaded environment storage strategy: {} with options: {}", 
+                     strategyClassName, strategyOptions.hasPath("compression.codec") 
+                         ? strategyOptions.getString("compression.codec") 
+                         : "none");
+            return strategy;
+        } else {
+            // Default: SingleBlobStrategy without compression
+            Config emptyConfig = ConfigFactory.empty();
+            IH2EnvStorageStrategy strategy = createStorageStrategy(
+                "org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy",
+                emptyConfig
+            );
+            log.debug("Using default SingleBlobStrategy (no compression)");
+            return strategy;
+        }
+    }
+
+    /**
+     * Creates storage strategy instance via reflection.
+     * <p>
+     * Enforces constructor contract: Strategy MUST have public constructor(Config).
+     * This is guaranteed by AbstractH2EnvStorageStrategy base class.
+     * 
+     * @param className Fully qualified strategy class name
+     * @param strategyConfig Configuration for strategy
+     * @return Strategy instance
+     * @throws IllegalArgumentException if class not found, wrong type, or missing constructor
+     */
+    private IH2EnvStorageStrategy createStorageStrategy(String className, Config strategyConfig) {
+        try {
+            Class<?> strategyClass = Class.forName(className);
+            
+            // Try constructor with Config parameter (enforced by AbstractH2EnvStorageStrategy)
+            return (IH2EnvStorageStrategy) strategyClass
+                .getDeclaredConstructor(Config.class)
+                .newInstance(strategyConfig);
+            
+        } catch (ClassNotFoundException e) {
+            throw new IllegalArgumentException(
+                "Storage strategy class not found: " + className + 
+                ". Make sure the class exists and is in the classpath.", e);
+        } catch (ClassCastException e) {
+            throw new IllegalArgumentException(
+                "Storage strategy class must implement IH2EnvStorageStrategy: " + className, e);
+        } catch (NoSuchMethodException e) {
+            throw new IllegalArgumentException(
+                "Storage strategy must have public constructor(Config): " + className + 
+                ". Extend AbstractH2EnvStorageStrategy to satisfy this contract.", e);
+        } catch (Exception e) {
+            throw new IllegalArgumentException(
+                "Failed to instantiate storage strategy: " + className + 
+                ". Error: " + e.getMessage(), e);
+        }
     }
 
     private String getJdbcUrl(Config options) {
@@ -124,7 +220,7 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
         Connection conn = (Connection) connection;
         try {
             // Use H2SchemaUtil for CREATE TABLE to handle concurrent initialization race conditions
-            H2SchemaUtil.executeTableCreation(
+            H2SchemaUtil.executeDdlIfNotExists(
                 conn.createStatement(),
                 "CREATE TABLE IF NOT EXISTS metadata (\"key\" VARCHAR PRIMARY KEY, \"value\" TEXT)",
                 "metadata"
@@ -168,6 +264,55 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
                 log.warn("Rollback failed (connection may be closed): {}", rollbackEx.getMessage());
             }
             throw e;  // Re-throw for wrapper to handle (wrapper will log + recordError)
+        }
+    }
+
+    // ========================================================================
+    // IEnvironmentDataWriter Capability
+    // ========================================================================
+
+    /**
+     * Implements environment_ticks table creation via storage strategy.
+     * <p>
+     * Delegates to {@link IH2EnvStorageStrategy#createSchema(Connection, int)}.
+     */
+    @Override
+    protected void doCreateEnvironmentDataTable(Object connection, int dimensions) throws Exception {
+        Connection conn = (Connection) connection;
+        
+        // Delegate to storage strategy
+        envStorageStrategy.createSchema(conn, dimensions);
+        
+        // Commit transaction
+        conn.commit();
+    }
+
+    /**
+     * Implements environment cells write via storage strategy.
+     * <p>
+     * Delegates to {@link IH2EnvStorageStrategy#writeTicks(Connection, List, EnvironmentProperties)}.
+     * Strategy performs SQL operations, this method handles transaction lifecycle.
+     */
+    @Override
+    protected void doWriteEnvironmentCells(Object connection, List<TickData> ticks,
+                                           EnvironmentProperties envProps) throws Exception {
+        Connection conn = (Connection) connection;
+        
+        try {
+            // Delegate to storage strategy for SQL operations
+            envStorageStrategy.writeTicks(conn, ticks, envProps);
+            
+            // Commit transaction on success
+            conn.commit();
+            
+        } catch (SQLException e) {
+            // Rollback transaction on failure to keep connection clean
+            try {
+                conn.rollback();
+            } catch (SQLException rollbackEx) {
+                log.warn("Rollback failed (connection may be closed): {}", rollbackEx.getMessage());
+            }
+            throw e;
         }
     }
 

@@ -2,15 +2,15 @@
 
 ## Overview
 
-This document specifies the **EnvironmentIndexer** with **SingleBlobStrategy** (default storage strategy). This is the first indexer that writes structured data from storage into a database. It indexes environment cell states from TickData using a **single-blob-per-tick** storage model with BLOB serialization for compact storage.
+This document specifies the **EnvironmentIndexer** with **SingleBlobStrategy** (default storage strategy). This is the first indexer that writes structured data from storage into a database. It indexes environment cell states from TickData using a **single-blob-per-tick** storage model with BYTEA serialization for compact storage.
 
 ## Goal
 
 Implement EnvironmentIndexer with SingleBlobStrategy that:
 - Reads TickData batches from storage (via topic notifications)
-- Serializes cells to BLOB for compact storage
+- Serializes cells to BYTEA for compact storage
 - Writes ticks to database with MERGE for idempotency (on tick_number)
-- Supports dimension-agnostic BLOB format (1D to N-D)
+- Supports dimension-agnostic BYTEA format (1D to N-D)
 - Enables competing consumers pattern
 - Provides foundation for HTTP API queries (Phase 14.5)
 - Achieves 1000× storage reduction compared to row-per-cell
@@ -20,9 +20,9 @@ Implement EnvironmentIndexer with SingleBlobStrategy that:
 Upon completion:
 1. EnvironmentIndexer extends AbstractBatchIndexer with METADATA + BUFFERING components
 2. Database schema created idempotently (environment_ticks table)
-3. SingleBlobStrategy serializes cells to BLOB (protobuf format)
+3. SingleBlobStrategy serializes cells to BYTEA (protobuf format)
 4. MERGE-based writes ensure 100% idempotency (on tick_number)
-5. Sparse cell storage (only non-empty cells in BLOB)
+5. Sparse cell storage (only non-empty cells in BYTEA)
 6. Competing consumers work correctly (multiple indexer instances)
 7. All tests pass (unit + integration)
 8. Storage efficiency: ~1 GB for 10^6 ticks (vs. 5 TB with row-per-cell)
@@ -427,14 +427,15 @@ public interface IEnvironmentDataWriter extends ISchemaAwareDatabase, IMonitorab
     /**
      * Creates the environment_ticks table idempotently.
      * <p>
-     * Table schema (dimension-agnostic via BLOB):
+     * Table schema (dimension-agnostic via BYTEA):
      * <pre>
      * CREATE TABLE IF NOT EXISTS environment_ticks (
      *     tick_number BIGINT PRIMARY KEY,
-     *     dimension_count INT NOT NULL,
-     *     cells_blob BLOB NOT NULL
+     *     cells_blob BYTEA NOT NULL
      * )
      * </pre>
+     * 
+     * <strong>Note:</strong> BYTEA is used instead of BLOB for PostgreSQL MODE compatibility in H2.
      * <p>
      * Implementations should:
      * <ul>
@@ -465,7 +466,7 @@ public interface IEnvironmentDataWriter extends ISchemaAwareDatabase, IMonitorab
      * <strong>Performance:</strong> All ticks written in one JDBC batch with one commit.
      * This reduces commit overhead by ~1000× compared to per-tick commits.
      * <p>
-     * <strong>Strategy-Specific:</strong> SingleBlobStrategy serializes cells to BLOB.
+     * <strong>Strategy-Specific:</strong> SingleBlobStrategy serializes cells to BYTEA.
      * EnvironmentProperties passed for strategies that need coordinate conversion.
      *
      * @param ticks List of ticks with their cell data to write
@@ -725,7 +726,7 @@ For Phase 14.3, implement `SingleBlobStrategy` (compact storage):
 package org.evochora.datapipeline.resources.database.h2;
 
 /**
- * Stores environment data as one row per tick with cells serialized in a BLOB.
+ * Stores environment data as one row per tick with cells serialized in a BYTEA.
  * <p>
  * <strong>Storage:</strong> ~1 KB per tick (with compression)
  * <ul>
@@ -746,7 +747,9 @@ package org.evochora.datapipeline.resources.database.h2;
 public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
     
     private final ICompressionCodec codec;
-    private String mergeSql;
+    private String mergeSql;  // SQL string
+    private PreparedStatement cachedStmt;  // Cached PreparedStatement
+    private Connection cachedConn;  // Track which connection owns the cached stmt
     
     /**
      * Creates SingleBlobStrategy with optional compression.
@@ -767,17 +770,21 @@ public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
         // Create table (dimension_count NOT stored - retrieved from metadata)
         // Use H2SchemaUtil to handle concurrent initialization race conditions
         Statement stmt = conn.createStatement();
-        H2SchemaUtil.executeTableCreation(
+        H2SchemaUtil.executeDdlIfNotExists(
             stmt,
             "CREATE TABLE IF NOT EXISTS environment_ticks (" +
             "  tick_number BIGINT PRIMARY KEY," +
-            "  cells_blob BLOB NOT NULL" +
+            "  cells_blob BYTEA NOT NULL" +
             ")",
             "environment_ticks"
         );
         
-        // Create index (primary key index is automatic, but explicit index for queries)
-        stmt.execute("CREATE INDEX IF NOT EXISTS idx_env_tick ON environment_ticks (tick_number)");
+        // Create index (also use DDL helper for race condition)
+        H2SchemaUtil.executeDdlIfNotExists(
+            stmt,
+            "CREATE INDEX IF NOT EXISTS idx_env_tick ON environment_ticks (tick_number)",
+            "idx_env_tick"
+        );
         
         // Cache SQL string for PreparedStatement creation per connection
         // NOTE: PreparedStatement objects are bound to specific Connection instances!
@@ -789,22 +796,48 @@ public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
     @Override
     public void writeTicks(Connection conn, List<TickData> ticks, 
                           EnvironmentProperties envProps) throws SQLException {
-        // Create PreparedStatement for THIS connection (not cached!)
-        // CRITICAL: PreparedStatement objects are bound to specific Connection instances.
-        // Each writeTicks() call may use a different connection from the pool.
-        try (PreparedStatement stmt = conn.prepareStatement(mergeSql)) {
-            for (TickData tick : ticks) {
-                // Serialize cells to protobuf bytes with optional compression
-                byte[] cellsBlob = serializeTickCells(tick);
-                
-                stmt.setLong(1, tick.getTickNumber());
-                stmt.setBytes(2, cellsBlob);
-                stmt.addBatch();
-            }
-            
-            // ONE executeBatch() for ALL ticks
-            stmt.executeBatch();
+        if (ticks.isEmpty()) {
+            return;
         }
+        
+        // Skip ticks with empty cell lists (resilience - shouldn't happen in practice)
+        List<TickData> validTicks = ticks.stream()
+            .filter(tick -> {
+                if (tick.getCellsList().isEmpty()) {
+                    log.warn("Tick {} has empty cell list - skipping database write", tick.getTickNumber());
+                    return false;
+                }
+                return true;
+            })
+            .toList();
+        
+        if (validTicks.isEmpty()) {
+            log.warn("All {} ticks had empty cell lists - no database writes performed", ticks.size());
+            return;
+        }
+        
+        // Connection-safe PreparedStatement caching
+        // If connection changed (pool rotation), recreate PreparedStatement
+        if (cachedStmt == null || cachedConn != conn) {
+            cachedStmt = conn.prepareStatement(mergeSql);
+            cachedConn = conn;
+            log.debug("Created new PreparedStatement for connection");
+        }
+        
+        cachedStmt.clearBatch();  // Clear previous batch state
+        
+        for (TickData tick : validTicks) {
+            byte[] cellsBlob = serializeTickCells(tick);
+            
+            cachedStmt.setLong(1, tick.getTickNumber());
+            cachedStmt.setBytes(2, cellsBlob);
+            cachedStmt.addBatch();
+        }
+        
+        cachedStmt.executeBatch();
+        
+        log.debug("Wrote {} ticks to environment_ticks table (skipped {} empty ticks)", 
+                 validTicks.size(), ticks.size() - validTicks.size());
         // NOTE: Transaction management (commit/rollback) is handled by H2Database caller
     }
     
@@ -840,7 +873,7 @@ public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
 
 ```java
 /**
- * Creates environment_ticks table with BLOB-based schema.
+ * Creates environment_ticks table with BYTEA-based schema.
  * <p>
  * <strong>Transaction Handling:</strong> Must commit on success, rollback on failure.
  * <strong>Storage Strategy:</strong> Delegates to IH2EnvStorageStrategy for actual schema creation.
@@ -910,17 +943,10 @@ private IH2EnvStorageStrategy createStorageStrategy(String className, Config str
     try {
         Class<?> strategyClass = Class.forName(className);
         
-        // Try constructor with Config parameter first
-        try {
+        // Try constructor with Config parameter (enforced by AbstractH2EnvStorageStrategy)
             return (IH2EnvStorageStrategy) strategyClass
                 .getDeclaredConstructor(Config.class)
                 .newInstance(strategyConfig);
-        } catch (NoSuchMethodException e) {
-            // Fallback: no-args constructor (for simple strategies)
-            return (IH2EnvStorageStrategy) strategyClass
-                .getDeclaredConstructor()
-                .newInstance();
-        }
         
     } catch (ClassNotFoundException e) {
         throw new IllegalArgumentException(
@@ -929,10 +955,14 @@ private IH2EnvStorageStrategy createStorageStrategy(String className, Config str
     } catch (ClassCastException e) {
         throw new IllegalArgumentException(
             "Storage strategy class must implement IH2EnvStorageStrategy: " + className, e);
+    } catch (NoSuchMethodException e) {
+        throw new IllegalArgumentException(
+            "Storage strategy must have public constructor(Config): " + className + 
+            ". Extend AbstractH2EnvStorageStrategy to satisfy this contract.", e);
     } catch (Exception e) {
         throw new IllegalArgumentException(
             "Failed to instantiate storage strategy: " + className + 
-            ". Make sure the class has a public constructor(Config) or no-args constructor.", e);
+            ". Error: " + e.getMessage(), e);
     }
 }
 
@@ -955,7 +985,7 @@ protected void doWriteEnvironmentCells(Object connection, List<TickData> ticks,
     
     try {
         // Delegate to storage strategy for SQL operations
-        envStorageStrategy.writeTicks(conn, ticks, envProps);
+    envStorageStrategy.writeTicks(conn, ticks, envProps);
         
         // Commit transaction on success
         conn.commit();
@@ -1066,8 +1096,8 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     
     @Override
     protected void prepareSchema(String runId) throws Exception {
-        // Load metadata (provided by MetadataReadingComponent)
-        SimulationMetadata metadata = components.metadata.getMetadata();
+        // Load metadata (provided by MetadataReadingComponent via getMetadata())
+        SimulationMetadata metadata = getMetadata();
         
         // Extract environment properties for coordinate conversion
         this.envProps = extractEnvironmentProperties(metadata);
@@ -1102,14 +1132,14 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> {
      */
     private EnvironmentProperties extractEnvironmentProperties(SimulationMetadata metadata) {
         // Extract world shape from metadata
-        int[] worldShape = metadata.getEnvironment().getDimensionsList().stream()
-            .mapToInt(SimulationMetadata.EnvironmentDimension::getSize)
+        int[] worldShape = metadata.getEnvironment().getShapeList().stream()
+            .mapToInt(Integer::intValue)
             .toArray();
         
-        // Extract topology
-        boolean isToroidal = "TORUS".equalsIgnoreCase(
-            metadata.getEnvironment().getTopology()
-        );
+        // Extract topology - check if ALL dimensions are toroidal
+        // (In practice, all dimensions have same topology for now)
+        boolean isToroidal = !metadata.getEnvironment().getToroidalList().isEmpty() 
+            && metadata.getEnvironment().getToroidal(0);
         
         return new EnvironmentProperties(worldShape, isToroidal);
     }
@@ -1245,7 +1275,7 @@ services {
 **Coordination:**
 - **Topic:** Consumer group ensures each batch processed by exactly ONE instance
 - **Database:** MERGE ensures idempotent writes (concurrent writes safe)
-- **Schema:** `H2SchemaUtil.executeTableCreation()` handles concurrent CREATE TABLE race conditions (H2 bug workaround)
+- **Schema:** `H2SchemaUtil.executeDdlIfNotExists()` handles concurrent DDL race conditions (H2 bug workaround)
 
 ## Database Schema (SingleBlobStrategy)
 
@@ -1254,8 +1284,10 @@ services {
 ```sql
 CREATE TABLE IF NOT EXISTS environment_ticks (
     tick_number BIGINT PRIMARY KEY,
-    cells_blob BLOB NOT NULL
+    cells_blob BYTEA NOT NULL
 );
+
+-- Note: BYTEA is PostgreSQL-compatible and works in H2 with MODE=PostgreSQL
 ```
 
 **Note:** dimension_count is NOT stored - it's retrieved from metadata table per run_id.
@@ -1269,7 +1301,7 @@ This avoids redundancy (all ticks in a run have same dimension count).
 CREATE INDEX IF NOT EXISTS idx_env_tick ON environment_ticks (tick_number);
 ```
 
-**BLOB Format:**
+**BYTEA Format:**
 
 The `cells_blob` column contains a serialized `CellStateList` protobuf message:
 
@@ -1376,13 +1408,13 @@ Per Tick (100×100 2D, 50% occupied = 5,000 cells):
 
 With insertBatchSize=1000:
 - Buffer holds ~1000 ticks = 100 MB in memory
-- Serialized to BLOB: ~1000 × 100 KB = 100 MB
+- Serialized to BYTEA: ~1000 × 100 KB = 100 MB
 - Acceptable for JVM heap (configure with -Xmx2G or more)
 
 **API Server Memory (Read Path - Phase 14.5):**
 
 Per Request for one tick:
-- Must load entire BLOB into memory
+- Must load entire BYTEA into memory
 - Deserialize to List<CellState>
 - Filter in Java
 - **Memory spike: ~100 KB to ~8 MB** depending on environment size
@@ -1411,7 +1443,7 @@ Per Request for one tick:
 1. SQL: SELECT cells_blob FROM environment_ticks WHERE tick_number = ?
    → ~5 ms (fast - single row lookup)
    
-2. Deserialize BLOB: CellStateList.parseFrom(blob)
+2. Deserialize BYTEA: CellStateList.parseFrom(blob)
    → ~50 ms for 5,000 cells (CPU-bound)
    
 3. Filter in Java: Stream filter by coordinates
@@ -1422,7 +1454,7 @@ Total: ~65 ms per tick query
 
 **Memory Impact on API Server:**
 
-| Environment Size | Cells/Tick (10% occupied) | BLOB Size | API Server Memory |
+| Environment Size | Cells/Tick (10% occupied) | BYTEA Size | API Server Memory |
 |------------------|---------------------------|-----------|-------------------|
 | 100×100 | 1,000 | ~20 KB | Negligible |
 | 1000×1000 | 100,000 | ~2 MB | Acceptable |
@@ -1435,8 +1467,8 @@ Total: ~65 ms per tick query
 - ❌ **Large environments (>5000×5000):** May need different strategy (RegionBasedStrategy)
 
 **Read Scalability:**
-- API server must handle BLOB deserialization + filtering per request
-- High query load → high CPU usage (deserialization) + memory (BLOB in RAM)
+- API server must handle BYTEA deserialization + filtering per request
+- High query load → high CPU usage (deserialization) + memory (BYTEA in RAM)
 - Mitigation: Result caching, query rate limiting, CDN for static ticks
 
 **The Design Trade-off:**
@@ -1832,11 +1864,11 @@ Upon completion, verify:
 3. ✅ IEnvironmentDataWriter interface (delegates to strategy)
 4. ✅ EnvironmentDataWriterWrapper with O(1) throughput/latency metrics
 5. ✅ IH2EnvStorageStrategy interface (createSchema, writeTicks)
-6. ✅ SingleBlobStrategy implementation (BLOB-based storage)
+6. ✅ SingleBlobStrategy implementation (BYTEA-based storage)
 7. ✅ H2Database: Strategy loading via reflection + delegation
 8. ✅ H2Database MERGE implementation (100% idempotency on tick_number)
 9. ✅ EnvironmentIndexer extends AbstractBatchIndexer (METADATA + BUFFERING)
-10. ✅ Only non-empty cells stored (sparse in BLOB)
+10. ✅ Only non-empty cells stored (sparse in BYTEA)
 11. ✅ Competing consumers work (multiple indexer instances)
 12. ✅ Unit tests pass (serialization, schema creation, MERGE idempotency)
 13. ✅ Integration tests pass (end-to-end, idempotency, competing consumers, dimensions)
@@ -1855,13 +1887,13 @@ Instance 1: Creates table ✅
 Instance 2: Creates table ❌ ERROR: Table already exists (code 42101 or 50000)
 ```
 
-**Solution: H2SchemaUtil.executeTableCreation()**
+**Solution: H2SchemaUtil.executeDdlIfNotExists()**
 
-All CREATE TABLE statements must use `H2SchemaUtil.executeTableCreation()` which catches and ignores "already exists" errors:
+All DDL statements with IF NOT EXISTS must use `H2SchemaUtil.executeDdlIfNotExists()` which catches and ignores "already exists" errors:
 
 ```java
 // ✅ CORRECT - Handles concurrent initialization
-H2SchemaUtil.executeTableCreation(
+H2SchemaUtil.executeDdlIfNotExists(
     stmt,
     "CREATE TABLE IF NOT EXISTS environment_ticks (...)",
     "environment_ticks"
@@ -1869,7 +1901,7 @@ H2SchemaUtil.executeTableCreation(
 
 // ❌ WRONG - May fail with competing consumers
 stmt.execute("CREATE TABLE IF NOT EXISTS environment_ticks (...)");
-```
+``` 
 
 This utility is used consistently across:
 - `H2Database.doInsertMetadata()` (metadata table)
@@ -1883,7 +1915,7 @@ This utility is used consistently across:
 **Prerequisites (Already Completed):**
 - ✅ AbstractDatabaseWrapper URI parameter support
 - ✅ Transaction contract (AbstractDatabaseResource JavaDoc + H2Database rollback)
-- ✅ H2SchemaUtil.executeTableCreation() utility (H2 DDL race condition workaround)
+- ✅ H2SchemaUtil.executeDdlIfNotExists() utility (H2 DDL race condition workaround)
 - ✅ CellStateList protobuf message (wrapper for repeated CellState)
 
 ---
@@ -1936,11 +1968,11 @@ This utility is used consistently across:
 
 ### **Phase 3: Storage Implementation - SingleBlobStrategy**
 
-**Goal:** Implement BLOB-based storage with compression support.
+**Goal:** Implement BYTEA-based storage with compression support.
 
 **Deliverables:**
 1. `SingleBlobStrategy` class (createSchema + writeTicks)
-2. BLOB serialization with CellStateList protobuf
+2. BYTEA serialization with CellStateList protobuf
 3. Optional compression via CompressionCodecFactory
 4. Unit tests for serialization and schema creation
 

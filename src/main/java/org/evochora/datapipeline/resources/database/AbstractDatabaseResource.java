@@ -51,8 +51,9 @@ public abstract class AbstractDatabaseResource extends AbstractResource
         IWrappedResource wrapper = switch (usageType) {
             case "db-meta-write" -> new MetadataWriterWrapper(this, context);
             case "db-meta-read" -> new MetadataReaderWrapper(this, context);
+            case "db-env-write" -> new EnvironmentDataWriterWrapper(this, context);
             default -> throw new IllegalArgumentException(
-                    "Unknown database usage type: " + usageType + ". Supported: db-meta-write, db-meta-read");
+                    "Unknown database usage type: " + usageType + ". Supported: db-meta-write, db-meta-read, db-env-write");
         };
         
         // Track wrapper for cleanup
@@ -116,6 +117,44 @@ public abstract class AbstractDatabaseResource extends AbstractResource
     protected abstract void doSetSchema(Object connection, String runId) throws Exception;
 
     protected abstract void doCreateSchema(Object connection, String runId) throws Exception;
+
+    // ========================================================================
+    // IEnvironmentDataWriter Capability
+    // ========================================================================
+
+    /**
+     * Creates environment_ticks table with storage strategy-specific schema.
+     * <p>
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter#writeEnvironmentCells(java.util.List, org.evochora.runtime.model.EnvironmentProperties)}
+     * <p>
+     * <strong>Transaction Handling:</strong> Must commit on success, rollback on failure.
+     * <strong>Storage Strategy:</strong> Delegates to IH2EnvStorageStrategy for actual schema creation.
+     * <p>
+     * Implementation is idempotent - calling multiple times is safe.
+     * 
+     * @param connection Database connection (from acquireDedicatedConnection)
+     * @param dimensions Number of spatial dimensions (for validation/metadata)
+     * @throws Exception if table creation fails
+     */
+    protected abstract void doCreateEnvironmentDataTable(Object connection, int dimensions) 
+            throws Exception;
+
+    /**
+     * Writes environment cells for multiple ticks to database using MERGE for idempotency.
+     * <p>
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter#writeEnvironmentCells(java.util.List, org.evochora.runtime.model.EnvironmentProperties)}
+     * <p>
+     * <strong>Transaction Handling:</strong> Must commit on success, rollback on failure.
+     * <strong>Performance:</strong> All ticks written in one JDBC batch with one commit.
+     * 
+     * @param connection Database connection (from acquireDedicatedConnection)
+     * @param ticks List of ticks with their cell data to write
+     * @param envProps Environment properties for coordinate conversion
+     * @throws Exception if write fails
+     */
+    protected abstract void doWriteEnvironmentCells(Object connection, 
+            java.util.List<org.evochora.datapipeline.api.contracts.TickData> ticks,
+            org.evochora.runtime.model.EnvironmentProperties envProps) throws Exception;
 
     // ========================================================================
     // IMetadataReader Capability

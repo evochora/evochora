@@ -11,6 +11,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public class EnvironmentProperties {
     private final int[] worldShape;
     private final boolean isToroidal;
+    private final int[] strides;
     
     /**
      * Creates new environment properties.
@@ -22,6 +23,7 @@ public class EnvironmentProperties {
     public EnvironmentProperties(@JsonProperty("worldShape") int[] worldShape, @JsonProperty("isToroidal") boolean isToroidal) {
         this.worldShape = worldShape.clone();
         this.isToroidal = isToroidal;
+        this.strides = calculateStrides();
     }
     
     /**
@@ -98,5 +100,57 @@ public class EnvironmentProperties {
             return normalizePosition(targetPos);
         }
         return targetPos;
+    }
+    
+    /**
+     * Calculates strides for flat index conversion.
+     * <p>
+     * Row-major order: stride[i] = product of all dimensions to the right of i.
+     * Example: [100, 200, 50] → strides = [10000, 50, 1]
+     * <p>
+     * Called once during construction for eager initialization.
+     *
+     * @return Strides array
+     */
+    private int[] calculateStrides() {
+        int[] s = new int[worldShape.length];
+        int stride = 1;
+        for (int i = worldShape.length - 1; i >= 0; i--) {
+            s[i] = stride;
+            stride *= worldShape[i];
+        }
+        return s;
+    }
+    
+    /**
+     * Converts a flat index to coordinates.
+     * <p>
+     * This is the inverse operation of the linearization used by Environment:
+     * flatIndex = coord[0]*strides[0] + coord[1]*strides[1] + ...
+     * <p>
+     * Uses row-major order with strides calculated as: stride[i] = product of dimensions[i+1..n]
+     * <p>
+     * <strong>Performance:</strong> Strides are eagerly initialized in constructor for O(1) conversion.
+     * <p>
+     * <strong>Thread Safety:</strong> This method is thread-safe because strides is final and immutable.
+     *
+     * @param flatIndex The flat index to convert (must be non-negative)
+     * @return Coordinate array with same length as worldShape
+     * @throws IllegalArgumentException if flatIndex is negative
+     */
+    public int[] flatIndexToCoordinates(int flatIndex) {
+        if (flatIndex < 0) {
+            throw new IllegalArgumentException("Flat index must be non-negative: " + flatIndex);
+        }
+        
+        int[] coord = new int[worldShape.length];
+        int remaining = flatIndex;
+        
+        for (int i = 0; i < worldShape.length; i++) {
+            coord[i] = remaining / strides[i];
+            remaining %= strides[i];
+        }
+        
+        return coord;
     }
 }
