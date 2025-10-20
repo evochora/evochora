@@ -36,7 +36,7 @@ public abstract class AbstractH2EnvStorageStrategy implements IH2EnvStorageStrat
         this.options = java.util.Objects.requireNonNull(options, "options cannot be null");
     }
     
-    // createSchema() and writeTicks() remain abstract - too strategy-specific
+    // createTables() and writeTicks() remain abstract - too strategy-specific
 }
 
 

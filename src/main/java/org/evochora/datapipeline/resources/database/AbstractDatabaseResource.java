@@ -198,11 +198,6 @@ public abstract class AbstractDatabaseResource extends AbstractResource
     }
 
     @Override
-    public void createSimulationRun(String simulationRunId) {
-        throw new UnsupportedOperationException("This operation must be called on a wrapped resource.");
-    }
-
-    @Override
     public void insertMetadata(SimulationMetadata metadata) {
         throw new UnsupportedOperationException("This operation must be called on a wrapped resource.");
     }

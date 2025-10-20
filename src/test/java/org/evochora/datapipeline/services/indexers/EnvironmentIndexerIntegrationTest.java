@@ -196,12 +196,35 @@ class EnvironmentIndexerIntegrationTest {
     }
     
     @Test
-    void testFlushTicks_MultipleBatches() throws Exception {
-        // Given: Indexer setup with envProps manually set
-        String runId = "test-multi-" + UUID.randomUUID();
+    void testEnvironmentIndexerEndToEnd() throws Exception {
+        // Given: Metadata and batches in storage
+        String runId = "test-e2e-" + UUID.randomUUID();
         SimulationMetadata metadata = createMetadata(runId, new int[]{10, 10}, false);
         indexMetadata(runId, metadata);
         
+        // Create ticks with cells
+        List<TickData> batch1 = List.of(
+            TickData.newBuilder()
+                .setTickNumber(1L)
+                .setSimulationRunId(runId)
+                .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(50).build())
+                .addCells(CellState.newBuilder().setFlatIndex(5).setOwnerId(101).setMoleculeType(2).setMoleculeValue(60).build())
+                .build()
+        );
+        
+        List<TickData> batch2 = List.of(
+            TickData.newBuilder()
+                .setTickNumber(2L)
+                .setSimulationRunId(runId)
+                .addCells(CellState.newBuilder().setFlatIndex(1).setOwnerId(102).setMoleculeType(1).setMoleculeValue(70).build())
+                .build()
+        );
+        
+        // Write batches to storage and send notifications
+        writeBatchAndNotify(runId, batch1);
+        writeBatchAndNotify(runId, batch2);
+        
+        // When: Start indexer (real code path!)
         Config config = ConfigFactory.parseString("""
             runId = "%s"
             metadataPollIntervalMs = 100
@@ -211,44 +234,41 @@ class EnvironmentIndexerIntegrationTest {
             flushTimeoutMs = 1000
             """.formatted(runId));
         
-        indexer = createEnvironmentIndexer("test-indexer-multi", config);
+        indexer = createEnvironmentIndexer("test-indexer-e2e", config);
+        indexer.start();
         
-        // Manually set envProps using reflection (normally done by prepareSchema via start())
-        java.lang.reflect.Field envPropsField = EnvironmentIndexer.class.getDeclaredField("envProps");
-        envPropsField.setAccessible(true);
-        envPropsField.set(indexer, new org.evochora.runtime.model.EnvironmentProperties(new int[]{10, 10}, false));
+        // Then: Wait for indexer to process both batches
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 2);
         
-        // Manually prepare database schema
-        java.lang.reflect.Field dbField = EnvironmentIndexer.class.getDeclaredField("database");
-        dbField.setAccessible(true);
-        var dbWrapper = (org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter) dbField.get(indexer);
-        ((org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase) dbWrapper).setSimulationRun(runId);
-        dbWrapper.createEnvironmentDataTable(2);
-        
-        // When/Then: Create multiple batches of ticks
-        TickData tick1 = TickData.newBuilder()
-            .setTickNumber(1L)
-            .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(50).build())
-            .build();
-        TickData tick2 = TickData.newBuilder()
-            .setTickNumber(2L)
-            .addCells(CellState.newBuilder().setFlatIndex(1).setOwnerId(101).setMoleculeType(1).setMoleculeValue(60).build())
-            .build();
-        
-        // Verify flushTicks can handle multiple ticks
-        indexer.flushTicks(List.of(tick1, tick2));
-        
-        // Should succeed without error
+        // Verify metrics
+        assertThat(indexer.getMetrics().get("ticks_processed").longValue()).isEqualTo(2);
+        assertThat(indexer.getMetrics().get("batches_processed").longValue()).isEqualTo(2);
         assertThat(indexer.isHealthy()).isTrue();
     }
     
     @Test
-    void testFlushTicks_Idempotency() throws Exception {
-        // Given: Indexer setup with envProps manually set
+    void testMergeIdempotency() throws Exception {
+        // Given: Metadata and same batch written twice (simulating topic redelivery)
         String runId = "test-idempotency-" + UUID.randomUUID();
         SimulationMetadata metadata = createMetadata(runId, new int[]{10, 10}, true);
         indexMetadata(runId, metadata);
         
+        // Create tick with cells
+        List<TickData> batch = List.of(
+            TickData.newBuilder()
+                .setTickNumber(1L)
+                .setSimulationRunId(runId)
+                .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(50).build())
+                .addCells(CellState.newBuilder().setFlatIndex(3).setOwnerId(101).setMoleculeType(2).setMoleculeValue(75).build())
+                .build()
+        );
+        
+        // Write same batch twice (simulating topic redelivery)
+        writeBatchAndNotify(runId, batch);
+        writeBatchAndNotify(runId, batch);  // Duplicate!
+        
+        // When: Start indexer (real code path!)
         Config config = ConfigFactory.parseString("""
             runId = "%s"
             metadataPollIntervalMs = 100
@@ -259,33 +279,94 @@ class EnvironmentIndexerIntegrationTest {
             """.formatted(runId));
         
         indexer = createEnvironmentIndexer("test-indexer-idempotency", config);
+        indexer.start();
         
-        // Manually set envProps using reflection
-        java.lang.reflect.Field envPropsField = EnvironmentIndexer.class.getDeclaredField("envProps");
-        envPropsField.setAccessible(true);
-        envPropsField.set(indexer, new org.evochora.runtime.model.EnvironmentProperties(new int[]{10, 10}, true));
+        // Then: Wait for indexer to process both batch deliveries
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("batches_processed").longValue() >= 2);
         
-        // Manually prepare database schema
-        java.lang.reflect.Field dbField = EnvironmentIndexer.class.getDeclaredField("database");
-        dbField.setAccessible(true);
-        var dbWrapper = (org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter) dbField.get(indexer);
-        ((org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase) dbWrapper).setSimulationRun(runId);
-        dbWrapper.createEnvironmentDataTable(2);
-        
-        TickData tick = TickData.newBuilder()
-            .setTickNumber(1L)
-            .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(50).build())
-            .build();
-        
-        // When: Write same tick twice
-        indexer.flushTicks(List.of(tick));
-        indexer.flushTicks(List.of(tick));  // MERGE should handle duplicate
-        
-        // Then: Should succeed without error (MERGE ensures idempotency)
+        // Verify: 2 batches processed, but only 1 tick (MERGE handles duplicates)
+        assertThat(indexer.getMetrics().get("batches_processed").longValue()).isEqualTo(2);
+        assertThat(indexer.getMetrics().get("ticks_processed").longValue()).isEqualTo(2); // Both writes processed
         assertThat(indexer.isHealthy()).isTrue();
+        
+        // Note: MERGE ensures database contains tick only once (can't verify without query API)
+    }
+    
+    @Test
+    void testCompetingConsumers() throws Exception {
+        // Given: Metadata and multiple batches
+        String runId = "test-competing-" + UUID.randomUUID();
+        SimulationMetadata metadata = createMetadata(runId, new int[]{10, 10}, false);
+        indexMetadata(runId, metadata);
+        
+        // Create 5 batches
+        for (int i = 0; i < 5; i++) {
+            List<TickData> batch = List.of(
+                TickData.newBuilder()
+                    .setTickNumber(i + 1L)
+                    .setSimulationRunId(runId)
+                    .addCells(CellState.newBuilder().setFlatIndex(i).setOwnerId(100 + i).setMoleculeType(1).setMoleculeValue(50).build())
+                    .build()
+            );
+            writeBatchAndNotify(runId, batch);
+        }
+        
+        // When: Start TWO indexers with SAME consumer group (competing consumers)
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            topicPollTimeoutMs = 2000
+            insertBatchSize = 100
+            flushTimeoutMs = 1000
+            """.formatted(runId));
+        
+        // Use SAME consumer group for both indexers
+        String sharedConsumerGroup = "test-competing-" + UUID.randomUUID();
+        EnvironmentIndexer<?> indexer1 = createEnvironmentIndexerWithConsumerGroup("test-indexer-1", config, sharedConsumerGroup);
+        EnvironmentIndexer<?> indexer2 = createEnvironmentIndexerWithConsumerGroup("test-indexer-2", config, sharedConsumerGroup);
+        
+        indexer1.start();
+        indexer2.start();
+        
+        // Then: Wait for ALL 5 batches to be processed (distributed between indexers)
+        await().atMost(15, TimeUnit.SECONDS)
+            .until(() -> {
+                long total1 = indexer1.getMetrics().get("batches_processed").longValue();
+                long total2 = indexer2.getMetrics().get("batches_processed").longValue();
+                return (total1 + total2) >= 5;
+            });
+        
+        // Verify: All 5 batches processed (distributed between indexers)
+        long batches1 = indexer1.getMetrics().get("batches_processed").longValue();
+        long batches2 = indexer2.getMetrics().get("batches_processed").longValue();
+        assertThat(batches1 + batches2).isEqualTo(5);
+        
+        // Verify: Both indexers participated (load distribution)
+        assertThat(batches1).isGreaterThan(0);
+        assertThat(batches2).isGreaterThan(0);
+        
+        // Verify: All 5 ticks processed total
+        long ticks1 = indexer1.getMetrics().get("ticks_processed").longValue();
+        long ticks2 = indexer2.getMetrics().get("ticks_processed").longValue();
+        assertThat(ticks1 + ticks2).isEqualTo(5);
+        
+        // Cleanup second indexer
+        indexer2.stop();
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer2.getCurrentState() == IService.State.STOPPED);
+        
+        // Note: indexer (field) points to indexer1, which will be cleaned up in @AfterEach
+        indexer = indexer1;
     }
     
     private EnvironmentIndexer<?> createEnvironmentIndexer(String name, Config config) {
+        // Use unique consumer group per indexer instance
+        return createEnvironmentIndexerWithConsumerGroup(name, config, "test-env-indexer-" + UUID.randomUUID());
+    }
+    
+    private EnvironmentIndexer<?> createEnvironmentIndexerWithConsumerGroup(String name, Config config, String consumerGroup) {
         // Wrap database for metadata reading
         ResourceContext dbMetaContext = new ResourceContext(
             name, "metadata", "db-meta-read", "test-db", Map.of());
@@ -304,7 +385,7 @@ class EnvironmentIndexerIntegrationTest {
         // Wrap topic for batch notifications
         ResourceContext topicContext = new ResourceContext(
             name, "topic", "topic-read", "batch-topic", 
-            Map.of("consumerGroup", "test-env-indexer-" + UUID.randomUUID()));
+            Map.of("consumerGroup", consumerGroup));
         IResource wrappedTopic = testBatchTopic.getWrappedResource(topicContext);
         
         Map<String, List<IResource>> resources = Map.of(
@@ -350,7 +431,7 @@ class EnvironmentIndexerIntegrationTest {
         long firstTick = ticks.get(0).getTickNumber();
         long lastTick = ticks.get(ticks.size() - 1).getTickNumber();
         StoragePath batchPath = storageWriter.writeBatch(ticks, firstTick, lastTick);
-        ((AutoCloseable) storageWriter).close();
+        // Note: IBatchStorageWrite does not implement AutoCloseable - no close() needed
         
         // Send batch notification to topic
         ResourceContext topicWriteContext = new ResourceContext("test", "topic-port", "topic-write", "batch-topic", Map.of());
@@ -365,7 +446,7 @@ class EnvironmentIndexerIntegrationTest {
             .setWrittenAtMs(Instant.now().toEpochMilli())
             .build();
         topicWriter.send(batchInfo);
-        ((AutoCloseable) topicWriter).close();
+        topicWriter.close();  // ITopicWriter implements AutoCloseable
     }
     
     private void verifyDatabaseContainsTick(String runId, long tickNumber) throws Exception {

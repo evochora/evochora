@@ -28,7 +28,7 @@ import static org.mockito.Mockito.*;
 /**
  * Unit tests for EnvironmentIndexer using mocked dependencies.
  * <p>
- * Tests individual methods (prepareSchema, flushTicks, extractEnvironmentProperties) in isolation.
+ * Tests individual methods (prepareTables, flushTicks, extractEnvironmentProperties) in isolation.
  */
 @Tag("unit")
 @ExtendWith(LogWatchExtension.class)
@@ -99,7 +99,7 @@ class EnvironmentIndexerTest {
         // Given: Indexer with ticks
         EnvironmentIndexer<Object> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
         
-        // Set envProps manually (normally set by prepareSchema)
+        // Set envProps manually (normally set by prepareTables)
         java.lang.reflect.Field envPropsField = EnvironmentIndexer.class.getDeclaredField("envProps");
         envPropsField.setAccessible(true);
         envPropsField.set(indexer, new EnvironmentProperties(new int[]{10, 10}, false));
@@ -203,6 +203,104 @@ class EnvironmentIndexerTest {
         // Then: Should extract correct values
         assertThat(props.getWorldShape()).containsExactly(1000);
         assertThat(props.isToroidal()).isTrue();
+    }
+    
+    @Test
+    void testFlushTicks_MultipleTicks() throws Exception {
+        // Given: Indexer with multiple ticks
+        EnvironmentIndexer<Object> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
+        
+        // Set envProps manually (normally set by prepareSchema)
+        java.lang.reflect.Field envPropsField = EnvironmentIndexer.class.getDeclaredField("envProps");
+        envPropsField.setAccessible(true);
+        envPropsField.set(indexer, new EnvironmentProperties(new int[]{10, 10}, false));
+        
+        // Create 3 ticks with different cell counts
+        TickData tick1 = TickData.newBuilder()
+            .setTickNumber(1L)
+            .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(10).build())
+            .addCells(CellState.newBuilder().setFlatIndex(1).setOwnerId(101).setMoleculeType(2).setMoleculeValue(20).build())
+            .build();
+        
+        TickData tick2 = TickData.newBuilder()
+            .setTickNumber(2L)
+            .addCells(CellState.newBuilder().setFlatIndex(2).setOwnerId(102).setMoleculeType(1).setMoleculeValue(30).build())
+            .build();
+        
+        TickData tick3 = TickData.newBuilder()
+            .setTickNumber(3L)
+            .addCells(CellState.newBuilder().setFlatIndex(3).setOwnerId(103).setMoleculeType(3).setMoleculeValue(40).build())
+            .addCells(CellState.newBuilder().setFlatIndex(4).setOwnerId(104).setMoleculeType(1).setMoleculeValue(50).build())
+            .addCells(CellState.newBuilder().setFlatIndex(5).setOwnerId(105).setMoleculeType(2).setMoleculeValue(60).build())
+            .build();
+        
+        // When: Flush all ticks in one call
+        indexer.flushTicks(List.of(tick1, tick2, tick3));
+        
+        // Then: Should call database.writeEnvironmentCells ONCE with all 3 ticks
+        ArgumentCaptor<List<TickData>> ticksCaptor = ArgumentCaptor.forClass(List.class);
+        verify(mockDatabase, times(1)).writeEnvironmentCells(ticksCaptor.capture(), any(EnvironmentProperties.class));
+        
+        // Verify all ticks passed in one call
+        assertThat(ticksCaptor.getValue()).hasSize(3);
+        assertThat(ticksCaptor.getValue().get(0).getTickNumber()).isEqualTo(1L);
+        assertThat(ticksCaptor.getValue().get(1).getTickNumber()).isEqualTo(2L);
+        assertThat(ticksCaptor.getValue().get(2).getTickNumber()).isEqualTo(3L);
+    }
+    
+    @Test
+    void testFlushTicks_EmptyTicks() throws Exception {
+        // Given: Indexer with tick containing NO cells
+        EnvironmentIndexer<Object> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
+        
+        // Set envProps manually
+        java.lang.reflect.Field envPropsField = EnvironmentIndexer.class.getDeclaredField("envProps");
+        envPropsField.setAccessible(true);
+        envPropsField.set(indexer, new EnvironmentProperties(new int[]{10, 10}, false));
+        
+        // Create tick with NO cells
+        TickData emptyTick = TickData.newBuilder()
+            .setTickNumber(1L)
+            .build();  // No cells added
+        
+        // When: Flush empty tick
+        indexer.flushTicks(List.of(emptyTick));
+        
+        // Then: Should still call database (database handles empty efficiently via filtering)
+        verify(mockDatabase, times(1)).writeEnvironmentCells(anyList(), any(EnvironmentProperties.class));
+    }
+    
+    @Test
+    void testFlushTicks_MixedEmptyAndNonEmpty() throws Exception {
+        // Given: Indexer with mix of empty and non-empty ticks
+        EnvironmentIndexer<Object> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
+        
+        // Set envProps manually
+        java.lang.reflect.Field envPropsField = EnvironmentIndexer.class.getDeclaredField("envProps");
+        envPropsField.setAccessible(true);
+        envPropsField.set(indexer, new EnvironmentProperties(new int[]{10, 10}, false));
+        
+        // Create mix: empty tick, non-empty, empty, non-empty
+        TickData tick1 = TickData.newBuilder().setTickNumber(1L).build(); // Empty
+        TickData tick2 = TickData.newBuilder()
+            .setTickNumber(2L)
+            .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(10).build())
+            .build();
+        TickData tick3 = TickData.newBuilder().setTickNumber(3L).build(); // Empty
+        TickData tick4 = TickData.newBuilder()
+            .setTickNumber(4L)
+            .addCells(CellState.newBuilder().setFlatIndex(1).setOwnerId(101).setMoleculeType(2).setMoleculeValue(20).build())
+            .build();
+        
+        // When: Flush all ticks
+        indexer.flushTicks(List.of(tick1, tick2, tick3, tick4));
+        
+        // Then: Should call database ONCE with all 4 ticks (including empty ones)
+        ArgumentCaptor<List<TickData>> ticksCaptor = ArgumentCaptor.forClass(List.class);
+        verify(mockDatabase, times(1)).writeEnvironmentCells(ticksCaptor.capture(), any(EnvironmentProperties.class));
+        
+        // Verify all ticks passed (database layer will filter empty ones)
+        assertThat(ticksCaptor.getValue()).hasSize(4);
     }
 }
 

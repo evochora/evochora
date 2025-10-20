@@ -57,7 +57,7 @@ public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
     }
     
     @Override
-    public void createSchema(Connection conn, int dimensions) throws SQLException {
+    public void createTables(Connection conn, int dimensions) throws SQLException {
         try (Statement stmt = conn.createStatement()) {
             // Use H2SchemaUtil for concurrent-safe DDL execution
             H2SchemaUtil.executeDdlIfNotExists(
@@ -81,7 +81,7 @@ public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
         this.mergeSql = "MERGE INTO environment_ticks (tick_number, cells_blob) " +
                        "KEY (tick_number) VALUES (?, ?)";
         
-        log.debug("Environment ticks table created for {} dimensions", dimensions);
+        log.debug("Environment tables created for {} dimensions", dimensions);
     }
     
     @Override

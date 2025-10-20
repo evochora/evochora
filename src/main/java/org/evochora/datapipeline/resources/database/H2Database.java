@@ -274,14 +274,15 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
     /**
      * Implements environment_ticks table creation via storage strategy.
      * <p>
-     * Delegates to {@link IH2EnvStorageStrategy#createSchema(Connection, int)}.
+     * Delegates to {@link IH2EnvStorageStrategy#createTables(Connection, int)}.
+     * Strategy creates tables using idempotent CREATE TABLE IF NOT EXISTS.
      */
     @Override
     protected void doCreateEnvironmentDataTable(Object connection, int dimensions) throws Exception {
         Connection conn = (Connection) connection;
         
         // Delegate to storage strategy
-        envStorageStrategy.createSchema(conn, dimensions);
+        envStorageStrategy.createTables(conn, dimensions);
         
         // Commit transaction
         conn.commit();

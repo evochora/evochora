@@ -68,16 +68,16 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     // No override needed - AbstractBatchIndexer provides correct defaults
     
     /**
-     * Prepares the database schema for environment data storage.
+     * Prepares database tables for environment data storage.
      * <p>
      * Extracts environment properties from metadata and creates the environment_ticks table.
-     * <strong>Idempotent:</strong> Safe to call multiple times.
+     * <strong>Idempotent:</strong> Safe to call multiple times (uses CREATE TABLE IF NOT EXISTS).
      *
-     * @param runId The simulation run ID
-     * @throws Exception if schema preparation fails
+     * @param runId The simulation run ID (schema already set by AbstractIndexer)
+     * @throws Exception if table preparation fails
      */
     @Override
-    protected void prepareSchema(String runId) throws Exception {
+    protected void prepareTables(String runId) throws Exception {
         // Load metadata (provided by MetadataReadingComponent via getMetadata())
         SimulationMetadata metadata = getMetadata();
         
@@ -88,7 +88,7 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> {
         int dimensions = envProps.getWorldShape().length;
         database.createEnvironmentDataTable(dimensions);
         
-        log.debug("Environment schema prepared: {} dimensions", dimensions);
+        log.debug("Environment tables prepared: {} dimensions", dimensions);
     }
     
     /**

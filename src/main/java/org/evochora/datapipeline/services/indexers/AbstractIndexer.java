@@ -97,46 +97,28 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
             }
         }
         
-        // Prepare schema (MetadataIndexer creates it, others do nothing)
-        try {
-            prepareSchema(runId);
-        } catch (Exception e) {
-            log.error("Failed to prepare schema for run: {}", runId);
-            throw new RuntimeException("Failed to prepare schema for run: " + runId, e);
-        }
-        
         // Set schema for all database resources of this indexer
+        // This creates the schema if it doesn't exist and switches to it
         setSchemaForAllDatabaseResources(runId);
         
         return runId;
-    }
-    
-    /**
-     * Template method hook for schema preparation before setting schema.
-     * <p>
-     * Default implementation does nothing (assumes schema already exists).
-     * MetadataIndexer overrides this to create the schema via createSimulationRun().
-     * <p>
-     * Called automatically by discoverRunId() before setSchemaForAllDatabaseResources().
-     *
-     * @param runId The simulation run ID
-     * @throws Exception if schema preparation fails
-     */
-    protected void prepareSchema(String runId) throws Exception {
-        // Default: no-op (schema already exists)
     }
 
     /**
      * Sets the schema for all schema-aware resources of this indexer.
      * <p>
-     * Called automatically by discoverRunId() after prepareSchema().
+     * Called automatically by discoverRunId() after run discovery.
      * Iterates through this indexer's resources and calls setSimulationRun() on:
      * <ul>
-     *   <li>{@link ISchemaAwareDatabase} instances (coordinator, metadata reader, etc.)</li>
-     *   <li>{@link ISimulationRunAwareTopic} instances (topic readers)</li>
+     *   <li>{@link ISchemaAwareDatabase} instances - creates schema if needed and sets it</li>
+     *   <li>{@link ISimulationRunAwareTopic} instances - switches to schema-specific tables</li>
      * </ul>
      * <p>
      * Each indexer instance only sets schema for its own resources, not for other indexers.
+     * <p>
+     * <strong>Schema Creation:</strong> The schema is created automatically by
+     * {@link org.evochora.datapipeline.resources.database.AbstractDatabaseWrapper#setSimulationRun(String)}
+     * using idempotent CREATE SCHEMA IF NOT EXISTS.
      *
      * @param runId The simulation run ID
      */

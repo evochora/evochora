@@ -32,7 +32,7 @@ import org.evochora.junit.extensions.logging.ExpectLog;
 /**
  * Unit tests for SingleBlobStrategy.
  * <p>
- * Tests compression configuration, schema creation, PreparedStatement caching,
+ * Tests compression configuration, table creation, PreparedStatement caching,
  * and serialization behavior.
  */
 @Tag("unit")
@@ -84,12 +84,12 @@ class SingleBlobStrategyTest {
     }
     
     @Test
-    void testCreateSchema_CreatesTableAndIndex() throws SQLException {
+    void testCreateTables_CreatesTableAndIndex() throws SQLException {
         // Given: Strategy with no compression
         strategy = new SingleBlobStrategy(ConfigFactory.empty());
         
-        // When: Create schema
-        strategy.createSchema(mockConnection, 2);
+        // When: Create tables
+        strategy.createTables(mockConnection, 2);
         
         // Then: Should execute both CREATE TABLE and CREATE INDEX
         verify(mockStatement, times(2)).execute(anyString());
@@ -114,12 +114,12 @@ class SingleBlobStrategyTest {
     }
     
     @Test
-    void testCreateSchema_CachesSqlString() throws SQLException {
+    void testCreateTables_CachesSqlString() throws SQLException {
         // Given: Strategy
         strategy = new SingleBlobStrategy(ConfigFactory.empty());
         
-        // When: Create schema
-        strategy.createSchema(mockConnection, 3);
+        // When: Create tables
+        strategy.createTables(mockConnection, 3);
         
         // Then: mergeSql should be cached
         assertThat(strategy.mergeSql)

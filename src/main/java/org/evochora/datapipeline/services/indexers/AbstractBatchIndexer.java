@@ -309,7 +309,12 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 log.debug("Metadata loaded for run: {}", runId);
             }
             
-            // Step 2: Topic loop
+            // Step 2: Prepare tables (template method hook for subclasses)
+            // Called AFTER metadata is loaded, so subclasses can use getMetadata()
+            // for schema-dependent table creation (e.g., dimensions for EnvironmentIndexer)
+            prepareTables(runId);
+            
+            // Step 3: Topic loop
             while (!Thread.currentThread().isInterrupted()) {
                 TopicMessage<BatchInfo, ACK> msg = topic.poll(topicPollTimeoutMs, TimeUnit.MILLISECONDS);
                 
@@ -504,7 +509,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * This method provides access to metadata loaded by the MetadataReadingComponent.
      * Only available after the component has successfully loaded metadata.
      * <p>
-     * <strong>Usage:</strong> Typically called in {@link #prepareSchema(String)} to extract
+     * <strong>Usage:</strong> Typically called in {@link #prepareTables(String)} to extract
      * environment properties, organism configurations, or other metadata needed for indexing.
      *
      * @return The simulation metadata
@@ -516,6 +521,27 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 "Metadata component not available. Override getRequiredComponents() to include IndexerComponent.METADATA.");
         }
         return components.metadata.getMetadata();
+    }
+    
+    /**
+     * Template method hook for table preparation before batch processing.
+     * <p>
+     * Called automatically by {@link #indexRun(String)} after metadata is loaded
+     * (if {@link ComponentType#METADATA} is enabled) but before topic processing begins.
+     * <p>
+     * <strong>Default implementation:</strong> Does nothing (no-op).
+     * <p>
+     * <strong>Usage:</strong> Override to create tables with metadata-dependent schemas.
+     * Use {@link #getMetadata()} to access loaded metadata.
+     * <p>
+     * <strong>Idempotency:</strong> Must use CREATE TABLE IF NOT EXISTS for safety.
+     * Multiple indexer instances may call this concurrently.
+     *
+     * @param runId The simulation run ID (schema already set by AbstractIndexer)
+     * @throws Exception if table preparation fails
+     */
+    protected void prepareTables(String runId) throws Exception {
+        // Default: no-op (subclasses override to create tables)
     }
     
     /**

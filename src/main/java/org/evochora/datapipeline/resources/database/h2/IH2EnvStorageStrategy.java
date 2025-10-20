@@ -28,15 +28,21 @@ import java.util.List;
 public interface IH2EnvStorageStrategy {
     
     /**
-     * Creates the necessary schema (tables, indexes) for this storage strategy.
+     * Creates the necessary tables and indexes for this storage strategy.
      * <p>
-     * Must be idempotent - calling multiple times should be safe.
+     * <strong>Note:</strong> This creates TABLE schema (columns, indexes), not database schema
+     * (namespace). The database schema (SIM_xxx) is already created and set by AbstractIndexer
+     * before this method is called.
+     * <p>
+     * <strong>Idempotency:</strong> Must use CREATE TABLE IF NOT EXISTS and CREATE INDEX IF NOT EXISTS.
+     * Multiple indexer instances may call this concurrently. Use {@link org.evochora.datapipeline.utils.H2SchemaUtil#executeDdlIfNotExists(java.sql.Statement, String, String)}
+     * for race-safe DDL execution.
      *
-     * @param conn Database connection (with autoCommit=false)
-     * @param dimensions Number of spatial dimensions
-     * @throws SQLException if schema creation fails
+     * @param conn Database connection (schema already set to SIM_xxx, autoCommit=false)
+     * @param dimensions Number of spatial dimensions (for validation or metadata)
+     * @throws SQLException if table creation fails
      */
-    void createSchema(Connection conn, int dimensions) throws SQLException;
+    void createTables(Connection conn, int dimensions) throws SQLException;
     
     /**
      * Writes environment data for multiple ticks using this storage strategy.
