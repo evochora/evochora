@@ -88,23 +88,39 @@ public abstract class AbstractService implements IService, IMonitorable {
     public final void stop() {
         State state = getCurrentState();
         if (state == State.RUNNING || state == State.PAUSED) {
-            if (currentState.compareAndSet(state, State.STOPPED)) {
-                if (state == State.PAUSED) {
-                    synchronized (pauseLock) {
-                        pauseLock.notifyAll();
-                    }
+            // First, wake up paused threads
+            if (state == State.PAUSED) {
+                synchronized (pauseLock) {
+                    pauseLock.notifyAll();
                 }
-                if (serviceThread != null) {
-                    serviceThread.interrupt();
-                    try {
-                        serviceThread.join(5000); // 5-second timeout
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        log.warn("{} interrupted while waiting for service thread to stop", this.getClass().getSimpleName());
-                    }
-                }
-                log.debug("{} stopped", this.getClass().getSimpleName());
             }
+
+            // Interrupt the service thread to signal shutdown
+            if (serviceThread != null) {
+                serviceThread.interrupt();
+                try {
+                    serviceThread.join(5000); // 5-second timeout
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.warn("{} interrupted while waiting for service thread to stop", this.getClass().getSimpleName());
+                }
+
+                // Check if thread actually terminated
+                if (serviceThread.isAlive()) {
+                    log.error("{} thread did not stop within 5 seconds! Forcing ERROR state.", this.getClass().getSimpleName());
+                    currentState.set(State.ERROR);
+                    return;
+                }
+            }
+
+            // Thread has terminated - status should already be STOPPED (set by finally block)
+            // Defensive check in case of unexpected state
+            if (getCurrentState() != State.STOPPED && getCurrentState() != State.ERROR) {
+                log.warn("{} thread terminated but state is {}, setting to STOPPED",
+                    this.getClass().getSimpleName(), getCurrentState());
+                currentState.set(State.STOPPED);
+            }
+            log.debug("{} stopped", this.getClass().getSimpleName());
         } else {
             throw new IllegalStateException(String.format("Cannot stop service '%s' as it is in state %s", serviceName, state));
         }
