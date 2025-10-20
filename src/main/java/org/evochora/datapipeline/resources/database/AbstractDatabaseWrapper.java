@@ -5,8 +5,6 @@ import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.sql.Connection;
-import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -114,11 +112,11 @@ public abstract class AbstractDatabaseWrapper extends org.evochora.datapipeline.
      * Connection will be re-acquired automatically on next operation.
      */
     public void releaseConnection() {
-        if (cachedConnection != null && cachedConnection instanceof Connection) {
+        if (cachedConnection != null) {
             try {
-                ((Connection) cachedConnection).close();
+                database.closeConnection(cachedConnection);
                 log.debug("Released database connection for service: {}", context.serviceName());
-            } catch (SQLException e) {
+            } catch (Exception e) {
                 log.debug("Failed to release connection (may already be closed): {}", e.getMessage());
             } finally {
                 cachedConnection = null;
@@ -130,14 +128,7 @@ public abstract class AbstractDatabaseWrapper extends org.evochora.datapipeline.
      * Checks if connection is closed.
      */
     private boolean isConnectionClosed(Object conn) {
-        if (conn instanceof Connection) {
-            try {
-                return ((Connection) conn).isClosed();
-            } catch (SQLException e) {
-                return true; // Assume closed on error
-            }
-        }
-        return true;
+        return database.isConnectionClosed(conn);
     }
     
     // ========== ISchemaAwareDatabase Implementation (DRY!) ==========

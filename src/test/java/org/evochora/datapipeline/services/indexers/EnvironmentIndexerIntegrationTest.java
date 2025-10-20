@@ -100,6 +100,7 @@ class EnvironmentIndexerIntegrationTest {
                 .until(() -> indexer.getCurrentState() == IService.State.STOPPED || indexer.getCurrentState() == IService.State.ERROR);
         }
         
+        // Close resources (services must be stopped first!)
         if (testBatchTopic != null) {
             testBatchTopic.close();
         }
@@ -249,7 +250,7 @@ class EnvironmentIndexerIntegrationTest {
     
     @Test
     void testMergeIdempotency() throws Exception {
-        // Given: Metadata and same batch written twice (simulating topic redelivery)
+        // Given: Metadata and batch in storage
         String runId = "test-idempotency-" + UUID.randomUUID();
         SimulationMetadata metadata = createMetadata(runId, new int[]{10, 10}, true);
         indexMetadata(runId, metadata);
@@ -264,11 +265,12 @@ class EnvironmentIndexerIntegrationTest {
                 .build()
         );
         
-        // Write same batch twice (simulating topic redelivery)
-        writeBatchAndNotify(runId, batch);
-        writeBatchAndNotify(runId, batch);  // Duplicate!
+        // Write batch to storage ONCE
+        ResourceContext storageWriteContext = new ResourceContext("test", "storage-port", "storage-write", "test-storage", Map.of("simulationRunId", runId));
+        IBatchStorageWrite storageWriter = (IBatchStorageWrite) testStorage.getWrappedResource(storageWriteContext);
+        StoragePath batchPath = storageWriter.writeBatch(batch, 1L, 1L);
         
-        // When: Start indexer (real code path!)
+        // When: Start indexer FIRST (real code path!)
         Config config = ConfigFactory.parseString("""
             runId = "%s"
             metadataPollIntervalMs = 100
@@ -281,13 +283,34 @@ class EnvironmentIndexerIntegrationTest {
         indexer = createEnvironmentIndexer("test-indexer-idempotency", config);
         indexer.start();
         
+        // Wait for indexer to be RUNNING before sending messages
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+        
+        // Then: Send SAME BatchInfo notification TWICE (simulating topic redelivery)
+        ResourceContext topicWriteContext = new ResourceContext("test", "topic-port", "topic-write", "batch-topic", Map.of());
+        ITopicWriter<BatchInfo> topicWriter = (ITopicWriter<BatchInfo>) testBatchTopic.getWrappedResource(topicWriteContext);
+        topicWriter.setSimulationRun(runId);
+        
+        BatchInfo batchInfo = BatchInfo.newBuilder()
+            .setSimulationRunId(runId)
+            .setStoragePath(batchPath.asString())
+            .setTickStart(1L)
+            .setTickEnd(1L)
+            .setWrittenAtMs(Instant.now().toEpochMilli())
+            .build();
+        
+        topicWriter.send(batchInfo);  // First delivery
+        topicWriter.send(batchInfo);  // Second delivery (duplicate!)
+        topicWriter.close();
+        
         // Then: Wait for indexer to process both batch deliveries
         await().atMost(10, TimeUnit.SECONDS)
             .until(() -> indexer.getMetrics().get("batches_processed").longValue() >= 2);
         
-        // Verify: 2 batches processed, but only 1 tick (MERGE handles duplicates)
+        // Verify: 2 batches processed (same tick written twice)
         assertThat(indexer.getMetrics().get("batches_processed").longValue()).isEqualTo(2);
-        assertThat(indexer.getMetrics().get("ticks_processed").longValue()).isEqualTo(2); // Both writes processed
+        assertThat(indexer.getMetrics().get("ticks_processed").longValue()).isEqualTo(2); // Both writes executed
         assertThat(indexer.isHealthy()).isTrue();
         
         // Note: MERGE ensures database contains tick only once (can't verify without query API)
@@ -327,38 +350,42 @@ class EnvironmentIndexerIntegrationTest {
         EnvironmentIndexer<?> indexer1 = createEnvironmentIndexerWithConsumerGroup("test-indexer-1", config, sharedConsumerGroup);
         EnvironmentIndexer<?> indexer2 = createEnvironmentIndexerWithConsumerGroup("test-indexer-2", config, sharedConsumerGroup);
         
-        indexer1.start();
-        indexer2.start();
-        
-        // Then: Wait for ALL 5 batches to be processed (distributed between indexers)
-        await().atMost(15, TimeUnit.SECONDS)
-            .until(() -> {
-                long total1 = indexer1.getMetrics().get("batches_processed").longValue();
-                long total2 = indexer2.getMetrics().get("batches_processed").longValue();
-                return (total1 + total2) >= 5;
-            });
-        
-        // Verify: All 5 batches processed (distributed between indexers)
-        long batches1 = indexer1.getMetrics().get("batches_processed").longValue();
-        long batches2 = indexer2.getMetrics().get("batches_processed").longValue();
-        assertThat(batches1 + batches2).isEqualTo(5);
-        
-        // Verify: Both indexers participated (load distribution)
-        assertThat(batches1).isGreaterThan(0);
-        assertThat(batches2).isGreaterThan(0);
-        
-        // Verify: All 5 ticks processed total
-        long ticks1 = indexer1.getMetrics().get("ticks_processed").longValue();
-        long ticks2 = indexer2.getMetrics().get("ticks_processed").longValue();
-        assertThat(ticks1 + ticks2).isEqualTo(5);
-        
-        // Cleanup second indexer
-        indexer2.stop();
-        await().atMost(5, TimeUnit.SECONDS)
-            .until(() -> indexer2.getCurrentState() == IService.State.STOPPED);
-        
-        // Note: indexer (field) points to indexer1, which will be cleaned up in @AfterEach
-        indexer = indexer1;
+        try {
+            indexer1.start();
+            indexer2.start();
+            
+            // Then: Wait for ALL 5 batches to be processed (distributed between indexers)
+            await().atMost(15, TimeUnit.SECONDS)
+                .until(() -> {
+                    long total1 = indexer1.getMetrics().get("batches_processed").longValue();
+                    long total2 = indexer2.getMetrics().get("batches_processed").longValue();
+                    return (total1 + total2) >= 5;
+                });
+            
+            // Verify: All 5 batches processed (distributed between indexers)
+            long batches1 = indexer1.getMetrics().get("batches_processed").longValue();
+            long batches2 = indexer2.getMetrics().get("batches_processed").longValue();
+            assertThat(batches1 + batches2).isEqualTo(5);
+            
+            // Verify: Both indexers participated (load distribution)
+            assertThat(batches1).isGreaterThan(0);
+            assertThat(batches2).isGreaterThan(0);
+            
+            // Verify: All 5 ticks processed total
+            long ticks1 = indexer1.getMetrics().get("ticks_processed").longValue();
+            long ticks2 = indexer2.getMetrics().get("ticks_processed").longValue();
+            assertThat(ticks1 + ticks2).isEqualTo(5);
+        } finally {
+            // CRITICAL: Always stop both indexers in finally block to prevent thread leaks
+            if (indexer2 != null && indexer2.getCurrentState() != IService.State.STOPPED && indexer2.getCurrentState() != IService.State.ERROR) {
+                indexer2.stop();
+                await().atMost(5, TimeUnit.SECONDS)
+                    .until(() -> indexer2.getCurrentState() == IService.State.STOPPED || indexer2.getCurrentState() == IService.State.ERROR);
+            }
+            
+            // Note: indexer (field) points to indexer1, which will be cleaned up in @AfterEach
+            indexer = indexer1;
+        }
     }
     
     private EnvironmentIndexer<?> createEnvironmentIndexer(String name, Config config) {

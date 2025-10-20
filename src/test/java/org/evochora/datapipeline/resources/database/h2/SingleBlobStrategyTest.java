@@ -135,10 +135,10 @@ class SingleBlobStrategyTest {
                            "KEY (tick_number) VALUES (?, ?)";
         
         // When: Write empty list
-        strategy.writeTicks(mockConnection, List.of(), new EnvironmentProperties(new int[]{10, 10}, false));
+        strategy.writeTicks(mockConnection, mockPreparedStatement, List.of(), new EnvironmentProperties(new int[]{10, 10}, false));
         
         // Then: Should not execute any database operations
-        verify(mockConnection, never()).prepareStatement(anyString());
+        verify(mockPreparedStatement, never()).setLong(anyInt(), anyLong());
         verify(mockPreparedStatement, never()).executeBatch();
     }
     
@@ -152,10 +152,9 @@ class SingleBlobStrategyTest {
         TickData tick = createTickWithCells(1000L, 3);
         
         // When: Write single tick
-        strategy.writeTicks(mockConnection, List.of(tick), new EnvironmentProperties(new int[]{10, 10}, false));
+        strategy.writeTicks(mockConnection, mockPreparedStatement, List.of(tick), new EnvironmentProperties(new int[]{10, 10}, false));
         
-        // Then: Should prepare statement and execute batch
-        verify(mockConnection).prepareStatement(strategy.mergeSql);
+        // Then: Should use PreparedStatement and execute batch
         verify(mockPreparedStatement).setLong(eq(1), eq(1000L));
         verify(mockPreparedStatement).setBytes(eq(2), any(byte[].class));
         verify(mockPreparedStatement).addBatch();
@@ -174,7 +173,7 @@ class SingleBlobStrategyTest {
         TickData tick3 = createTickWithCells(1002L, 1);
         
         // When: Write multiple ticks
-        strategy.writeTicks(mockConnection, List.of(tick1, tick2, tick3), 
+        strategy.writeTicks(mockConnection, mockPreparedStatement, List.of(tick1, tick2, tick3), 
                            new EnvironmentProperties(new int[]{10, 10}, false));
         
         // Then: Should add all ticks to batch and execute once
@@ -185,60 +184,17 @@ class SingleBlobStrategyTest {
     }
     
     @Test
-    void testWriteTicks_CachesStatement() throws SQLException {
-        // Given: Strategy
+    void testGetMergeSql_ReturnsCorrectSql() throws SQLException {
+        // Given: Strategy with tables created
         strategy = new SingleBlobStrategy(ConfigFactory.empty());
-        strategy.mergeSql = "MERGE INTO environment_ticks (tick_number, cells_blob) " +
-                           "KEY (tick_number) VALUES (?, ?)";
+        strategy.createTables(mockConnection, 2);
         
-        TickData tick = createTickWithCells(1000L, 1);
+        // When: Get SQL
+        String sql = strategy.getMergeSql();
         
-        // When: Write ticks twice with same connection
-        strategy.writeTicks(mockConnection, List.of(tick), new EnvironmentProperties(new int[]{10, 10}, false));
-        strategy.writeTicks(mockConnection, List.of(tick), new EnvironmentProperties(new int[]{10, 10}, false));
-        
-        // Then: Should only prepare statement once
-        verify(mockConnection, times(1)).prepareStatement(strategy.mergeSql);
-        verify(mockPreparedStatement, times(2)).executeBatch();
-    }
-    
-    @Test
-    void testWriteTicks_RecreatesStatementOnNewConnection() throws SQLException {
-        // Given: Strategy and two different connections
-        strategy = new SingleBlobStrategy(ConfigFactory.empty());
-        strategy.mergeSql = "MERGE INTO environment_ticks (tick_number, cells_blob) " +
-                           "KEY (tick_number) VALUES (?, ?)";
-        
-        Connection mockConnection2 = mock(Connection.class);
-        PreparedStatement mockPreparedStatement2 = mock(PreparedStatement.class);
-        when(mockConnection2.prepareStatement(anyString())).thenReturn(mockPreparedStatement2);
-        
-        TickData tick = createTickWithCells(1000L, 1);
-        
-        // When: Write with first connection, then second connection
-        strategy.writeTicks(mockConnection, List.of(tick), new EnvironmentProperties(new int[]{10, 10}, false));
-        strategy.writeTicks(mockConnection2, List.of(tick), new EnvironmentProperties(new int[]{10, 10}, false));
-        
-        // Then: Should prepare statement for each connection
-        verify(mockConnection).prepareStatement(strategy.mergeSql);
-        verify(mockConnection2).prepareStatement(strategy.mergeSql);
-    }
-    
-    @Test
-    void testWriteTicks_ClearsBatch() throws SQLException {
-        // Given: Strategy
-        strategy = new SingleBlobStrategy(ConfigFactory.empty());
-        strategy.mergeSql = "MERGE INTO environment_ticks (tick_number, cells_blob) " +
-                           "KEY (tick_number) VALUES (?, ?)";
-        
-        TickData tick = createTickWithCells(1000L, 1);
-        
-        // When: Write ticks twice with same connection
-        strategy.writeTicks(mockConnection, List.of(tick), new EnvironmentProperties(new int[]{10, 10}, false));
-        strategy.writeTicks(mockConnection, List.of(tick), new EnvironmentProperties(new int[]{10, 10}, false));
-        
-        // Then: Should clear batch before second execution
-        verify(mockPreparedStatement, times(2)).clearBatch();
+        // Then: Should return correct MERGE statement
+        assertThat(sql).isEqualTo("MERGE INTO environment_ticks (tick_number, cells_blob) " +
+                                 "KEY (tick_number) VALUES (?, ?)");
     }
     
     @Test
@@ -251,7 +207,7 @@ class SingleBlobStrategyTest {
         TickData tick = createTickWithCells(1000L, 2);
         
         // When: Write tick
-        strategy.writeTicks(mockConnection, List.of(tick), new EnvironmentProperties(new int[]{10, 10}, false));
+        strategy.writeTicks(mockConnection, mockPreparedStatement, List.of(tick), new EnvironmentProperties(new int[]{10, 10}, false));
         
         // Then: Should serialize cells to protobuf
         ArgumentCaptor<byte[]> blobCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -286,7 +242,7 @@ class SingleBlobStrategyTest {
         TickData tick = createTickWithCells(1000L, 2);
         
         // When: Write tick
-        strategy.writeTicks(mockConnection, List.of(tick), new EnvironmentProperties(new int[]{10, 10}, false));
+        strategy.writeTicks(mockConnection, mockPreparedStatement, List.of(tick), new EnvironmentProperties(new int[]{10, 10}, false));
         
         // Then: Should serialize and compress cells
         ArgumentCaptor<byte[]> blobCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -318,10 +274,9 @@ class SingleBlobStrategyTest {
             .build(); // No cells
         
         // When: Write empty tick
-        strategy.writeTicks(mockConnection, List.of(emptyTick), new EnvironmentProperties(new int[]{10, 10}, false));
+        strategy.writeTicks(mockConnection, mockPreparedStatement, List.of(emptyTick), new EnvironmentProperties(new int[]{10, 10}, false));
         
         // Then: Should skip empty tick (no database operations)
-        verify(mockConnection, never()).prepareStatement(anyString());
         verify(mockPreparedStatement, never()).setBytes(anyInt(), any(byte[].class));
         verify(mockPreparedStatement, never()).executeBatch();
     }
@@ -338,7 +293,7 @@ class SingleBlobStrategyTest {
         TickData tick = createTickWithCells(1000L, 1);
         
         // When/Then: Should propagate SQLException
-        assertThatThrownBy(() -> strategy.writeTicks(mockConnection, List.of(tick), 
+        assertThatThrownBy(() -> strategy.writeTicks(mockConnection, mockPreparedStatement, List.of(tick), 
                                                     new EnvironmentProperties(new int[]{10, 10}, false)))
             .isInstanceOf(SQLException.class)
             .hasMessageContaining("Database error");

@@ -112,6 +112,28 @@ public abstract class AbstractDatabaseResource extends AbstractResource
      */
     protected abstract Object acquireDedicatedConnection() throws Exception;
 
+    /**
+     * Checks if a database connection is closed.
+     * <p>
+     * This method is used by wrappers to determine if a cached connection needs to be re-acquired.
+     * Implementations should handle database-specific connection types.
+     *
+     * @param connection The connection to check (from acquireDedicatedConnection)
+     * @return true if connection is closed or invalid, false if open and valid
+     */
+    protected abstract boolean isConnectionClosed(Object connection);
+
+    /**
+     * Closes a database connection and returns it to the pool.
+     * <p>
+     * This method is used by wrappers to release connections back to the pool.
+     * Implementations should handle database-specific connection types and cleanup.
+     *
+     * @param connection The connection to close (from acquireDedicatedConnection)
+     * @throws Exception if connection close fails
+     */
+    protected abstract void closeConnection(Object connection) throws Exception;
+
     protected abstract void doInsertMetadata(Object connection, SimulationMetadata metadata) throws Exception;
 
     protected abstract void doSetSchema(Object connection, String runId) throws Exception;

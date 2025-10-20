@@ -104,9 +104,10 @@ public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implem
             
         } catch (Exception e) {
             writeErrors.incrementAndGet();
-            log.warn("Failed to write {} ticks with {} total cells", 
+            log.warn("Failed to write {} ticks with {} total cells: {}", 
                     ticks.size(), 
-                    ticks.stream().mapToInt(t -> t.getCellsList().size()).sum());
+                    ticks.stream().mapToInt(t -> t.getCellsList().size()).sum(),
+                    e.getMessage());
             recordError("WRITE_ENV_CELLS_FAILED", "Failed to write environment cells",
                        "Ticks: " + ticks.size() + ", Error: " + e.getMessage());
             throw new RuntimeException("Failed to write environment cells for " + ticks.size() + " ticks", e);

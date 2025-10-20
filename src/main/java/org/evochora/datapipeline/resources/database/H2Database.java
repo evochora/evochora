@@ -42,6 +42,9 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
     
     // Environment storage strategy (loaded via reflection)
     private final IH2EnvStorageStrategy envStorageStrategy;
+    
+    // PreparedStatement cache for environment writes (per connection)
+    private final Map<Connection, PreparedStatement> envWriteStmtCache = new ConcurrentHashMap<>();
 
     public H2Database(String name, Config options) {
         super(name, options);
@@ -199,6 +202,25 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
         return conn;
     }
 
+    @Override
+    protected boolean isConnectionClosed(Object connection) {
+        if (connection instanceof Connection) {
+            try {
+                return ((Connection) connection).isClosed();
+            } catch (SQLException e) {
+                return true; // Assume closed on error
+            }
+        }
+        return true;
+    }
+
+    @Override
+    protected void closeConnection(Object connection) throws Exception {
+        if (connection instanceof Connection) {
+            ((Connection) connection).close();
+        }
+    }
+
 
     @Override
     protected void doSetSchema(Object connection, String runId) throws Exception {
@@ -291,8 +313,8 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
     /**
      * Implements environment cells write via storage strategy.
      * <p>
-     * Delegates to {@link IH2EnvStorageStrategy#writeTicks(Connection, List, EnvironmentProperties)}.
-     * Strategy performs SQL operations, this method handles transaction lifecycle.
+     * Delegates to {@link IH2EnvStorageStrategy#writeTicks(Connection, PreparedStatement, List, EnvironmentProperties)}.
+     * Strategy performs SQL operations, this method handles transaction lifecycle and PreparedStatement caching.
      */
     @Override
     protected void doWriteEnvironmentCells(Object connection, List<TickData> ticks,
@@ -300,8 +322,17 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
         Connection conn = (Connection) connection;
         
         try {
-            // Delegate to storage strategy for SQL operations
-            envStorageStrategy.writeTicks(conn, ticks, envProps);
+            // Get or create PreparedStatement for this connection
+            PreparedStatement stmt = envWriteStmtCache.computeIfAbsent(conn, c -> {
+                try {
+                    return c.prepareStatement(envStorageStrategy.getMergeSql());
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to prepare statement", e);
+                }
+            });
+            
+            // Delegate to storage strategy for SQL operations with prepared statement
+            envStorageStrategy.writeTicks(conn, stmt, ticks, envProps);
             
             // Commit transaction on success
             conn.commit();
