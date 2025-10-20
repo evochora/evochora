@@ -34,13 +34,6 @@ public class MetadataWriterWrapper extends AbstractDatabaseWrapper implements IM
     }
 
     @Override
-    public void createSimulationRun(String simulationRunId) {
-        // Schema creation now handled transparently by AbstractDatabaseWrapper.setSimulationRun()
-        // This method is kept for API compatibility but does nothing
-        // Schema is created automatically on first setSimulationRun() call
-    }
-
-    @Override
     public void insertMetadata(SimulationMetadata metadata) {
         long startNanos = System.nanoTime();
         try {
