@@ -37,6 +37,54 @@ import java.util.List;
  * <strong>PreparedStatement Caching:</strong> Caches PreparedStatement per connection.
  * When connection changes (pool rotation), automatically recreates the statement.
  * This provides performance benefits while remaining pool-safe.
+ * <p>
+ * <strong>Future Optimization: ChunkedBlobStrategy with Parallel Decompression</strong>
+ * <p>
+ * For very large environments (10k×10k+), a ChunkedBlobStrategy could partition
+ * the environment into spatial chunks, enabling parallel decompression and selective
+ * chunk loading for viewport queries:
+ * <pre>{@code
+ * // ChunkedBlobStrategy concept (NOT IMPLEMENTED):
+ * public List<CellState> readTick(Connection conn, long tick, SpatialRegion region) {
+ *     // 1. Determine which chunks overlap with region
+ *     List<ChunkId> relevantChunks = getChunksForRegion(region, envProps);
+ *     
+ *     // 2. Read relevant chunks in parallel (not entire tick!)
+ *     List<CompletableFuture<byte[]>> futures = relevantChunks.stream()
+ *         .map(chunkId -> CompletableFuture.supplyAsync(() -> {
+ *             return readChunkBlob(conn, tick, chunkId);  // SQL per chunk
+ *         }, decompressorPool))
+ *         .toList();
+ *     
+ *     // 3. Decompress chunks in parallel
+ *     List<byte[]> decompressedChunks = futures.stream()
+ *         .map(CompletableFuture::join)
+ *         .toList();
+ *     
+ *     // 4. Deserialize and merge (parallel possible)
+ *     return decompressedChunks.parallelStream()
+ *         .map(bytes -> CellStateList.parseFrom(bytes).getCellsList())
+ *         .flatMap(List::stream)
+ *         .filter(cell -> isInRegion(cell, region))
+ *         .toList();
+ * }
+ * }</pre>
+ * <strong>Benefits of ChunkedBlobStrategy:</strong>
+ * <ul>
+ *   <li>Selective chunk loading: Only read chunks overlapping viewport (not entire tick)</li>
+ *   <li>Parallel decompression: N chunks = N cores = ~N× speedup</li>
+ *   <li>Better scalability: 10k×10k environments become feasible</li>
+ *   <li>Estimated: ~60% faster for viewport queries (12-15ms vs 30-40ms)</li>
+ * </ul>
+ * <strong>Trade-offs:</strong>
+ * <ul>
+ *   <li>More complex implementation (chunk management, spatial indexing)</li>
+ *   <li>Higher write complexity (multiple BLOBs per tick)</li>
+ *   <li>Only worthwhile for very large environments where SingleBlobStrategy becomes bottleneck</li>
+ * </ul>
+ * 
+ * @see IH2EnvStorageStrategy
+ * @see AbstractH2EnvStorageStrategy
  */
 public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
     
