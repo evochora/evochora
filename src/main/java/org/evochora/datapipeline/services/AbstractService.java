@@ -7,7 +7,6 @@ import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.services.IService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -33,6 +32,7 @@ public abstract class AbstractService implements IService, IMonitorable {
     private final AtomicReference<State> currentState = new AtomicReference<>(State.STOPPED);
     private final Object pauseLock = new Object();
     private Thread serviceThread;
+    private final int shutdownTimeoutSeconds;
     
     /**
      * Collection of operational errors that occurred during service execution.
@@ -64,6 +64,11 @@ public abstract class AbstractService implements IService, IMonitorable {
         this.serviceName = name;
         this.options = options;
         this.resources = resources;
+        
+        // Read shutdown timeout from service options (default: 5 seconds)
+        this.shutdownTimeoutSeconds = options.hasPath("shutdownTimeout")
+            ? options.getInt("shutdownTimeout")
+            : 5;
     }
 
     @Override
@@ -72,7 +77,7 @@ public abstract class AbstractService implements IService, IMonitorable {
             throw new IllegalStateException(String.format("Cannot start service '%s' as it is already in state %s", serviceName, getCurrentState()));
         }
         serviceThread = new Thread(this::runService);
-        serviceThread.setName(this.getClass().getSimpleName());
+        serviceThread.setName(serviceName);
         serviceThread.start();
         logStarted();
     }
@@ -100,7 +105,7 @@ public abstract class AbstractService implements IService, IMonitorable {
             if (serviceThread != null) {
                 serviceThread.interrupt();
                 try {
-                    serviceThread.join(5000); // 5-second timeout
+                    serviceThread.join(shutdownTimeoutSeconds * 1000L);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     log.warn("{} interrupted while waiting for service thread to stop", this.getClass().getSimpleName());
@@ -108,7 +113,8 @@ public abstract class AbstractService implements IService, IMonitorable {
 
                 // Check if thread actually terminated
                 if (serviceThread.isAlive()) {
-                    log.error("{} thread did not stop within 5 seconds! Forcing ERROR state.", this.getClass().getSimpleName());
+                    log.error("{} thread did not stop within {} seconds! Forcing ERROR state.", 
+                        this.getClass().getSimpleName(), shutdownTimeoutSeconds);
                     currentState.set(State.ERROR);
                     return;
                 }
@@ -190,8 +196,6 @@ public abstract class AbstractService implements IService, IMonitorable {
      * </pre>
      */
     private void runService() {
-        // Set MDC context for this service thread - allows distinguishing competing consumers in logs
-        MDC.put("service", serviceName);
         try {
             run();
         } catch (InterruptedException e) {
@@ -209,8 +213,6 @@ public abstract class AbstractService implements IService, IMonitorable {
                 currentState.set(State.STOPPED);
             }
             log.debug("Service thread for {} has terminated.", this.getClass().getSimpleName());
-            // Clean up MDC context
-            MDC.remove("service");
         }
     }
 

@@ -1,66 +1,64 @@
 <configuration>
-  <!-- Suppress SLF4J replay warnings at JVM level -->
-  <contextListener class="ch.qos.logback.classic.jul.LevelChangePropagator">
-    <resetJUL>true</resetJUL>
-  </contextListener>
-  
-  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
-    <target>System.out</target>
-    <encoder class="net.logstash.logback.encoder.LogstashEncoder" />
-  </appender>
+    <!-- Suppress SLF4J replay warnings at JVM level -->
+    <contextListener class="ch.qos.logback.classic.jul.LevelChangePropagator">
+        <resetJUL>true</resetJUL>
+    </contextListener>
 
-  <appender name="STDOUT_PLAIN" class="ch.qos.logback.core.ConsoleAppender">
-    <target>System.out</target>
-    <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
-      <pattern>%d{yyyy-MM-dd HH:mm:ss} %highlight(%-5level) [%thread] %replace(%X{service}){'^(.+)$', '[$1] '}%logger{1.}: %msg%n</pattern>
-    </encoder>
-  </appender>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.out</target>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder" />
+    </appender>
 
-  <!-- Suppress ALL framework logs completely -->
-  <logger name="SLF4J" level="OFF" additivity="false"/>
-  <logger name="org.slf4j" level="OFF" additivity="false"/>
-  <logger name="ch.qos.logback" level="OFF" additivity="false"/>
-  <logger name="ch.qos.logback.classic" level="OFF" additivity="false"/>
-  <logger name="ch.qos.logback.core" level="OFF" additivity="false"/>
-  <logger name="ch.qos.logback.classic.joran" level="OFF" additivity="false"/>
-  
-  <!-- Suppress Javalin/Jetty completely -->
-  <logger name="io.javalin" level="OFF" additivity="false"/>
-  <logger name="org.eclipse.jetty" level="OFF" additivity="false"/>
-  <logger name="org.eclipse.jetty.server" level="OFF" additivity="false"/>
-  <logger name="org.eclipse.jetty.util" level="OFF" additivity="false"/>
-  <logger name="org.eclipse.jetty.io" level="OFF" additivity="false"/>
-  <logger name="org.eclipse.jetty.http" level="OFF" additivity="false"/>
-  
-  <!-- Suppress HikariCP verbose logging (use WARN to show only errors) -->
-  <logger name="com.zaxxer.hikari" level="WARN" additivity="false"/>
-  <logger name="com.zaxxer.hikari.HikariDataSource" level="WARN" additivity="false"/>
-  <logger name="com.zaxxer.hikari.pool.HikariPool" level="WARN" additivity="false"/>
+    <appender name="STDOUT_PLAIN" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.out</target>
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} %highlight(%-5level) %-40([%thread] %logger{30}:) %msg%n</pattern>
+        </encoder>
+    </appender>
 
-<!-- Evochora-spezifische Logger - Level wird zur Laufzeit konfiguriert -->
-  <logger name="org.evochora" additivity="false">
-    <appender-ref ref="${evochora.logging.format:-STDOUT}" />
-  </logger>
+    <!-- Suppress ALL framework logs completely -->
+    <logger name="SLF4J" level="OFF" additivity="false"/>
+    <logger name="org.slf4j" level="OFF" additivity="false"/>
+    <logger name="ch.qos.logback" level="OFF" additivity="false"/>
+    <logger name="ch.qos.logback.classic" level="OFF" additivity="false"/>
+    <logger name="ch.qos.logback.core" level="OFF" additivity="false"/>
+    <logger name="ch.qos.logback.classic.joran" level="OFF" additivity="false"/>
 
-  <logger name="org.evochora.compiler" additivity="false">
-    <appender-ref ref="${evochora.logging.format:-STDOUT}" />
-  </logger>
+    <!-- Suppress Javalin/Jetty completely -->
+    <logger name="io.javalin" level="OFF" additivity="false"/>
+    <logger name="org.eclipse.jetty" level="OFF" additivity="false"/>
+    <logger name="org.eclipse.jetty.server" level="OFF" additivity="false"/>
+    <logger name="org.eclipse.jetty.util" level="OFF" additivity="false"/>
+    <logger name="org.eclipse.jetty.io" level="OFF" additivity="false"/>
+    <logger name="org.eclipse.jetty.http" level="OFF" additivity="false"/>
 
-  <logger name="org.evochora.datapipeline" additivity="false">
-    <appender-ref ref="${evochora.logging.format:-STDOUT}" />
-  </logger>
+    <!-- Suppress HikariCP verbose logging (use WARN to show only errors) -->
+    <logger name="com.zaxxer.hikari" level="WARN" additivity="false"/>
+    <logger name="com.zaxxer.hikari.HikariDataSource" level="WARN" additivity="false"/>
+    <logger name="com.zaxxer.hikari.pool.HikariPool" level="WARN" additivity="false"/>
 
-  <logger name="org.evochora.server" additivity="false">
-    <appender-ref ref="${evochora.logging.format:-STDOUT}" />
-  </logger>
+    <!-- Evochora-spezifische Logger - Level wird zur Laufzeit konfiguriert -->
+    <logger name="org.evochora" additivity="false">
+        <appender-ref ref="${evochora.logging.format:-STDOUT}" />
+    </logger>
 
-  <!-- Root logger auf WARN setzen um nur wichtige Logs zu zeigen -->
-  <root level="WARN">
-    <appender-ref ref="${evochora.logging.format:-STDOUT}" />
-  </root>
-  
-  <!-- Status listener um Logback-Konfigurations-Logs zu unterdrücken -->
-  <statusListener class="ch.qos.logback.core.status.NopStatusListener" />
+    <logger name="org.evochora.compiler" additivity="false">
+        <appender-ref ref="${evochora.logging.format:-STDOUT}" />
+    </logger>
+
+    <logger name="org.evochora.datapipeline" additivity="false">
+        <appender-ref ref="${evochora.logging.format:-STDOUT}" />
+    </logger>
+
+    <logger name="org.evochora.server" additivity="false">
+        <appender-ref ref="${evochora.logging.format:-STDOUT}" />
+    </logger>
+
+    <!-- Root logger auf WARN setzen um nur wichtige Logs zu zeigen -->
+    <root level="WARN">
+        <appender-ref ref="${evochora.logging.format:-STDOUT}" />
+    </root>
+
+    <!-- Status listener um Logback-Konfigurations-Logs zu unterdrücken -->
+    <statusListener class="ch.qos.logback.core.status.NopStatusListener" />
 </configuration>
-
-
