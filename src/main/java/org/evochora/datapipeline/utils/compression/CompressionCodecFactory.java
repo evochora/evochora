@@ -169,6 +169,43 @@ public class CompressionCodecFactory {
     }
 
     /**
+     * Auto-detects codec from magic bytes in compressed data.
+     * <p>
+     * This method is used when reading database BLOBs or other binary data
+     * where no filename extension is available. It inspects the first bytes
+     * of the data to identify the compression format.
+     * <p>
+     * Supported formats:
+     * <ul>
+     *   <li>ZSTD: Magic bytes {@code 0x28 0xB5 0x2F 0xFD} → {@link ZstdCodec}</li>
+     *   <li>No magic bytes or unrecognized → {@link NoneCodec} (uncompressed)</li>
+     * </ul>
+     * <p>
+     * <strong>Note:</strong> Compression level is irrelevant for decompression.
+     * ZSTD automatically detects the compression parameters from the frame header.
+     *
+     * @param data the compressed data (must be at least 4 bytes for ZSTD detection)
+     * @return the appropriate codec for the data format (never null)
+     */
+    public static ICompressionCodec detectFromMagicBytes(byte[] data) {
+        if (data == null || data.length < 4) {
+            return new NoneCodec();  // Not enough data for magic byte check
+        }
+
+        // Check for ZSTD magic bytes: 0x28 0xB5 0x2F 0xFD
+        // These 4 bytes uniquely identify ZSTD-compressed data
+        if (data[0] == 0x28 && 
+            data[1] == (byte)0xB5 && 
+            data[2] == 0x2F && 
+            data[3] == (byte)0xFD) {
+            return new ZstdCodec();  // Default level (irrelevant for reading)
+        }
+
+        // No recognized magic bytes - assume uncompressed
+        return new NoneCodec();
+    }
+
+    /**
      * Private constructor to prevent instantiation of utility class.
      */
     private CompressionCodecFactory() {

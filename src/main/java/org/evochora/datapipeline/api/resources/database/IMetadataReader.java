@@ -40,6 +40,24 @@ public interface IMetadataReader extends ISchemaAwareDatabase, IMonitorable, Aut
     boolean hasMetadata(String simulationRunId);
     
     /**
+     * Retrieves the simulation run ID from metadata in the current schema.
+     * <p>
+     * This method reads the run-id from the metadata table without requiring
+     * the run-id as a parameter. Used for run-id discovery scenarios where
+     * the schema is known but the original run-id needs to be retrieved.
+     * <p>
+     * <strong>Use Case:</strong> HTTP API controllers discovering the latest
+     * run-id by querying the latest schema's metadata.
+     * <p>
+     * <strong>Precondition:</strong> Schema must be set via {@code setSimulationRun()}
+     * before calling this method.
+     *
+     * @return The simulation run ID stored in current schema's metadata
+     * @throws MetadataNotFoundException if metadata doesn't exist in current schema
+     */
+    String getRunIdInCurrentSchema() throws MetadataNotFoundException;
+    
+    /**
      * Releases the cached database connection back to the pool.
      * <p>
      * Call before long idle periods (e.g., during polling sleeps) to reduce

@@ -153,4 +153,47 @@ public class EnvironmentProperties {
         
         return coord;
     }
+    
+    /**
+     * Converts a flat index to N-dimensional coordinates, reusing an existing array.
+     * <p>
+     * This method is optimized for hot paths where allocations must be minimized.
+     * Instead of allocating a new array, it writes coordinates into the provided array.
+     * <p>
+     * <strong>Use Case:</strong> Filtering large datasets where the same coordinate array
+     * can be reused for millions of conversions (e.g., HTTP API viewport filtering).
+     * <p>
+     * <strong>Thread Safety:</strong> This method is thread-safe for reading, but the
+     * caller must ensure exclusive access to the {@code outCoord} array during the call.
+     *
+     * @param flatIndex The flat index to convert (must be non-negative)
+     * @param outCoord Output array to write coordinates into (must have length == worldShape.length)
+     * @throws IllegalArgumentException if flatIndex is negative or outCoord has wrong length
+     */
+    public void flatIndexToCoordinates(int flatIndex, int[] outCoord) {
+        if (flatIndex < 0) {
+            throw new IllegalArgumentException("Flat index must be non-negative: " + flatIndex);
+        }
+        if (outCoord.length != worldShape.length) {
+            throw new IllegalArgumentException(
+                "Output coordinate array length (" + outCoord.length + 
+                ") must match worldShape dimensions (" + worldShape.length + ")");
+        }
+        
+        int remaining = flatIndex;
+        
+        for (int i = 0; i < worldShape.length; i++) {
+            outCoord[i] = remaining / strides[i];
+            remaining %= strides[i];
+        }
+    }
+    
+    /**
+     * Gets the number of dimensions.
+     *
+     * @return Number of dimensions
+     */
+    public int getDimensions() {
+        return worldShape.length;
+    }
 }

@@ -214,6 +214,26 @@ public abstract class AbstractDatabaseResource extends AbstractResource
     protected abstract boolean doHasMetadata(Object connection, String simulationRunId) 
             throws Exception;
 
+    /**
+     * Retrieves the simulation run ID from metadata in the current schema.
+     * <p>
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IMetadataReader#getRunIdInCurrentSchema()}
+     * <p>
+     * This method reads the run-id from the metadata table without requiring
+     * the run-id as a parameter. Used for run-id discovery scenarios where
+     * the schema is known but the original run-id needs to be retrieved.
+     * <p>
+     * <strong>Implementation Note:</strong> Must extract simulation_run_id from
+     * metadata table in the current schema (set via doSetSchema).
+     *
+     * @param connection Database connection (with schema already set)
+     * @return Simulation run ID stored in current schema's metadata
+     * @throws MetadataNotFoundException if metadata doesn't exist in current schema
+     * @throws Exception for other database errors
+     */
+    protected abstract String doGetRunIdInCurrentSchema(Object connection) 
+            throws Exception;
+
     @Override
     public void setSimulationRun(String simulationRunId) {
         throw new UnsupportedOperationException("This operation must be called on a wrapped resource.");

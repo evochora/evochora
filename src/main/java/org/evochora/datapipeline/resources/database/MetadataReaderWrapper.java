@@ -80,6 +80,24 @@ class MetadataReaderWrapper extends AbstractDatabaseWrapper implements IMetadata
         }
     }
     
+    @Override
+    public String getRunIdInCurrentSchema() throws MetadataNotFoundException {
+        try {
+            return database.doGetRunIdInCurrentSchema(ensureConnection());
+            
+        } catch (MetadataNotFoundException e) {
+            metadataNotFound.incrementAndGet();
+            throw e;
+            
+        } catch (Exception e) {
+            readErrors.incrementAndGet();
+            log.warn("Failed to get run-id from current schema");
+            recordError("GET_RUNID_FAILED", "Failed to get run-id from schema",
+                       "Error: " + e.getMessage());
+            throw new RuntimeException("Failed to get run-id from current schema", e);
+        }
+    }
+    
     // Note: close(), isHealthy(), getErrors(), clearErrors(), getResourceName(), 
     // getUsageState(), releaseConnection() are inherited from AbstractDatabaseWrapper
     

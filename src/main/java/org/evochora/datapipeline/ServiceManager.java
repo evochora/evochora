@@ -92,7 +92,13 @@ public class ServiceManager implements IMonitorable {
                 resources.put(resourceName, resource);
                 log.info("Instantiated resource '{}' of type {}", resourceName, className);
             } catch (Exception e) {
-                log.error("Failed to instantiate resource '{}': {}. Skipping this resource.", resourceName, e.getMessage(), e);
+                // Extract root cause for clear error message (no stack trace)
+                Throwable cause = e;
+                while (cause.getCause() != null && cause.getCause() != cause) {
+                    cause = cause.getCause();
+                }
+                String errorMsg = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
+                log.error("Failed to instantiate resource '{}': {}. Skipping this resource.", resourceName, errorMsg);
             }
         }
     }
@@ -145,7 +151,13 @@ public class ServiceManager implements IMonitorable {
 
                 log.info("Built factory for service '{}' of type {}", serviceName, className);
             } catch (Exception e) {
-                log.error("Failed to build factory for service '{}': {}. Skipping this service.", serviceName, e.getMessage(), e);
+                // Extract root cause for clear error message (no stack trace)
+                Throwable cause = e;
+                while (cause.getCause() != null && cause.getCause() != cause) {
+                    cause = cause.getCause();
+                }
+                String errorMsg = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
+                log.error("Failed to build factory for service '{}': {}. Skipping this service.", serviceName, errorMsg);
             }
         }
     }

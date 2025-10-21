@@ -9,7 +9,7 @@ import java.sql.SQLException;
 import java.util.List;
 
 /**
- * H2-specific strategy interface for storing environment data.
+ * H2-specific strategy interface for storing and reading environment data.
  * <p>
  * Different strategies trade off between storage size, query performance,
  * and write performance. This interface is H2-specific and cannot be used
@@ -22,9 +22,6 @@ import java.util.List;
  *   <li>Large runs (10000×10000, 10^8 ticks): ~500 TB with row-per-cell ❌</li>
  * </ul>
  * Different storage strategies enable different trade-offs without code changes.
- * <p>
- * <strong>Phase 14.3:</strong> Only write operations needed. Query methods
- * will be added in Phase 14.5 (HTTP API implementation).
  */
 public interface IH2EnvStorageStrategy {
     

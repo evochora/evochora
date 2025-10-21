@@ -230,4 +230,79 @@ class CompressionCodecFactoryTest {
             assertThat(codec.getName()).isEqualTo("zstd");
         }
     }
+
+    @Nested
+    @DisplayName("Magic Byte Detection Tests")
+    class MagicByteDetection {
+
+        @Test
+        @DisplayName("ZSTD magic bytes are detected correctly")
+        void zstdMagicBytes_returnsZstdCodec() {
+            // Arrange: Data starting with ZSTD magic bytes
+            byte[] zstdData = new byte[]{
+                0x28, (byte)0xB5, 0x2F, (byte)0xFD,  // ZSTD magic
+                0x01, 0x02, 0x03  // Dummy compressed data
+            };
+
+            // Act
+            ICompressionCodec codec = CompressionCodecFactory.detectFromMagicBytes(zstdData);
+
+            // Assert
+            assertThat(codec).isInstanceOf(ZstdCodec.class);
+            assertThat(codec.getName()).isEqualTo("zstd");
+        }
+
+        @Test
+        @DisplayName("Uncompressed data returns NoneCodec")
+        void noMagicBytes_returnsNoneCodec() {
+            // Arrange: Random data without magic bytes
+            byte[] uncompressedData = new byte[]{
+                0x00, 0x01, 0x02, 0x03, 0x04
+            };
+
+            // Act
+            ICompressionCodec codec = CompressionCodecFactory.detectFromMagicBytes(uncompressedData);
+
+            // Assert
+            assertThat(codec).isInstanceOf(NoneCodec.class);
+        }
+
+        @Test
+        @DisplayName("Null data returns NoneCodec")
+        void nullData_returnsNoneCodec() {
+            // Act
+            ICompressionCodec codec = CompressionCodecFactory.detectFromMagicBytes(null);
+
+            // Assert
+            assertThat(codec).isInstanceOf(NoneCodec.class);
+        }
+
+        @Test
+        @DisplayName("Data shorter than 4 bytes returns NoneCodec")
+        void shortData_returnsNoneCodec() {
+            // Arrange: Data with only 3 bytes (not enough for ZSTD magic)
+            byte[] shortData = new byte[]{0x28, (byte)0xB5, 0x2F};
+
+            // Act
+            ICompressionCodec codec = CompressionCodecFactory.detectFromMagicBytes(shortData);
+
+            // Assert
+            assertThat(codec).isInstanceOf(NoneCodec.class);
+        }
+
+        @Test
+        @DisplayName("Partial ZSTD magic bytes return NoneCodec")
+        void partialMagicBytes_returnsNoneCodec() {
+            // Arrange: Data starting with partial ZSTD magic (only first 2 bytes match)
+            byte[] partialMagic = new byte[]{
+                0x28, (byte)0xB5, 0x00, 0x00  // First 2 match, last 2 don't
+            };
+
+            // Act
+            ICompressionCodec codec = CompressionCodecFactory.detectFromMagicBytes(partialMagic);
+
+            // Assert
+            assertThat(codec).isInstanceOf(NoneCodec.class);
+        }
+    }
 }

@@ -75,16 +75,32 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
                 cause = cause.getCause();
             }
             
+            String causeMsg = cause.getMessage() != null ? cause.getMessage() : "";
+            
+            // Known error: database already in use (file locked)
+            if (causeMsg.contains("already in use") || causeMsg.contains("file is locked")) {
+                // Extract database file path from JDBC URL for helpful message
+                String dbFilePath = jdbcUrl.replace("jdbc:h2:", "");
+                String errorMsg = String.format(
+                    "Cannot open H2 database '%s': file already in use by another process. File: %s.mv.db. Solutions: (1) Stop other instances: ps aux | grep evochora, (2) Kill stale processes, (3) Remove lock files if no other process running",
+                    name, dbFilePath);
+                log.error(errorMsg);
+                throw new RuntimeException(errorMsg, e);
+            }
+            
             // Known error: wrong credentials
-            if (cause.getMessage() != null && cause.getMessage().contains("Wrong user name or password")) {
+            if (causeMsg.contains("Wrong user name or password")) {
                 String errorMsg = String.format("Failed to connect to H2 database '%s': Wrong username/password. URL=%s, User=%s, Password=%s. Hint: Delete database files or use original credentials.", 
                     name, jdbcUrl, username.isEmpty() ? "(empty)" : username, password.isEmpty() ? "(empty)" : "***");
                 log.error(errorMsg);
-                throw new RuntimeException(errorMsg);
+                throw new RuntimeException(errorMsg, e);
             }
             
-            // Unknown error - rethrow for debugging
-            throw e;
+            // Unknown error - provide helpful message
+            String errorMsg = String.format("Failed to initialize H2 database '%s': %s. Database: %s. Error: %s",
+                name, cause.getClass().getSimpleName(), jdbcUrl, causeMsg);
+            log.error(errorMsg);
+            throw new RuntimeException(errorMsg, e);
         }
         
         // Configuration: metricsWindowSeconds (default: 5)
@@ -419,6 +435,67 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
             }
             throw e; // Other SQL errors
         }
+    }
+
+    /**
+     * Implements {@link org.evochora.datapipeline.api.resources.database.IMetadataReader#getRunIdInCurrentSchema()}.
+     * Extracts simulation run ID from metadata table in current schema.
+     */
+    @Override
+    protected String doGetRunIdInCurrentSchema(Object connection) throws Exception {
+        Connection conn = (Connection) connection;
+        
+        try {
+            // Query 'simulation_info' (small, indexed key-value - much faster than 'full_metadata')
+            // This key is written by doInsertMetadata() with runId, startTime, seed, samplingInterval
+            PreparedStatement stmt = conn.prepareStatement(
+                "SELECT \"value\" FROM metadata WHERE \"key\" = ?"
+            );
+            stmt.setString(1, "simulation_info");
+            ResultSet rs = stmt.executeQuery();
+            
+            queriesExecuted.incrementAndGet();
+            
+            if (!rs.next()) {
+                throw new org.evochora.datapipeline.api.resources.database.MetadataNotFoundException(
+                    "Metadata not found in current schema"
+                );
+            }
+            
+            // Parse small JSON (~100 bytes) with Gson (type-safe with POJO)
+            String json = rs.getString("value");
+            Gson gson = new Gson();
+            SimulationInfo simInfo = gson.fromJson(json, SimulationInfo.class);
+            
+            if (simInfo.runId == null || simInfo.runId.isEmpty()) {
+                throw new org.evochora.datapipeline.api.resources.database.MetadataNotFoundException(
+                    "Metadata exists but runId field is missing or empty"
+                );
+            }
+            
+            return simInfo.runId;
+            
+        } catch (SQLException e) {
+            // Table doesn't exist yet (MetadataIndexer hasn't run)
+            if (e.getErrorCode() == 42104 || e.getErrorCode() == 42102 || 
+                (e.getMessage().contains("Table") && e.getMessage().contains("not found"))) {
+                throw new org.evochora.datapipeline.api.resources.database.MetadataNotFoundException(
+                    "Metadata table not yet created in current schema"
+                );
+            }
+            throw e; // Other SQL errors
+        }
+    }
+    
+    /**
+     * POJO for deserializing 'simulation_info' metadata key.
+     * Matches structure written in doInsertMetadata().
+     */
+    private static class SimulationInfo {
+        String runId;
+        long startTime;
+        long seed;
+        int samplingInterval;
     }
 
     /**
