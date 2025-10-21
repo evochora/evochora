@@ -2182,18 +2182,434 @@ WHERE tick_number = ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ?;
 
 ## Implementation Steps
 
-1. **Define Interfaces** (`IDatabaseReader`, `IDatabaseReaderProvider`, `IEnvironmentDataReader`)
-2. **Extend H2Database** to implement `IDatabaseReaderProvider`
-3. **Create H2DatabaseReader** implementing `IDatabaseReader` (in `h2/` subpackage)
-4. **Extend IH2EnvStorageStrategy** with read capability (readTick method)
-5. **Implement SingleBlobStrategy.readTick()** with BLOB deserialization + region filtering
-6. **Update H2Database.createReader()** to pass strategy to reader
-7. **Update HttpServerProcess** to register provider in ServiceRegistry
-8. **Create EnvironmentController** using the factory
-9. **Add routes configuration** in evochora.conf
-10. **Write unit tests** (provider, reader, strategy, conversion logic)
-11. **Write integration tests** (concurrent access, connection leaks, performance)
-12. **Test with real simulation data** (EnvironmentIndexer → API query)
+**Recommended: 3 testable phases with clear verification points**
+
+### Phase 1: Database Reader Infrastructure (2-3 hours)
+
+**Implementation:**
+1. Create API interfaces in `api/resources/database/`:
+   - `IDatabaseReaderProvider.java`
+   - `IDatabaseReader.java`
+   - `IEnvironmentDataReader.java`
+   - `SpatialRegion.java` (data class only)
+   - `CellWithCoordinates.java` (Record, stub for now)
+
+2. Extend `H2Database.java`:
+   - Implement `IDatabaseReaderProvider`
+   - Add `createReader(String runId)` method
+   - Add `findLatestRunId()` method (use existing `doGetRunIdInCurrentSchema`)
+   - Add metadata cache (LinkedHashMap with LRU)
+   - Update `getMetadataInternal()` to use cache
+
+3. Create `H2DatabaseReader.java`:
+   - Constructor with Connection, H2Database, Strategy, runId
+   - Implement `close()` (return connection to pool)
+   - Implement `getMetadata()` delegation
+   - Stub `readEnvironmentRegion()` (throw UnsupportedOperationException)
+
+**Verification Tests (can run immediately):**
+```java
+/**
+ * Phase 1 tests: Database reader infrastructure
+ * Uses in-memory H2 database (AGENTS.md: "If database needed: use in-memory")
+ */
+@Tag("integration")  // Uses database (H2 in-memory)
+class DatabaseReaderInfrastructureTest {
+    
+    private H2Database database;
+    private String testRunId;
+    
+    @BeforeEach
+    void setUp() {
+        // In-memory H2 database (no filesystem I/O, fast tests)
+        Config config = ConfigFactory.parseString(
+            "jdbcUrl = \"jdbc:h2:mem:test-phase1-" + System.nanoTime() + ";MODE=PostgreSQL\"\n" +
+            "maxPoolSize = 5\n" +
+            "metadataCacheSize = 10\n"
+        );
+        database = new H2Database("test-db", config);
+        testRunId = "20251021_140000_TEST";
+        
+        // Setup: Create schema + metadata for tests
+        setupTestMetadata(testRunId);
+    }
+    
+    @AfterEach
+    void tearDown() {
+        if (database != null) {
+            database.close();  // Close connection pool
+        }
+    }
+    
+    @Test
+    void createReader_setsSchemaAndReturnsReader() {
+        try (IDatabaseReader reader = database.createReader(testRunId)) {
+            assertNotNull(reader);
+            assertEquals(testRunId, reader.getRunIdInCurrentSchema());
+        }
+    }
+    
+    @Test
+    void metadataCache_cachesResults() {
+        try (Connection conn = database.getConnection()) {
+            long t1 = measureTime(() -> database.getMetadataInternal(conn, testRunId));
+            long t2 = measureTime(() -> database.getMetadataInternal(conn, testRunId));
+            assertTrue(t2 < t1 / 10);  // Cache >10× faster
+        }
+    }
+    
+    @Test
+    void findLatestRunId_returnsNewestRun() {
+        setupTestMetadata("20251020_120000");
+        setupTestMetadata("20251021_140000");  // Newer
+        assertEquals("20251021_140000", database.findLatestRunId());
+    }
+    
+    @Test
+    void connectionReturnedToPoolOnClose() {
+        IDatabaseReader r1 = database.createReader(testRunId);
+        r1.close();
+        IDatabaseReader r2 = database.createReader(testRunId);  // Should reuse
+        r2.close();
+        // Verify no connection leak via HikariCP metrics
+    }
+}
+```
+
+**Success Criteria:** All Phase 1 tests green, no connection leaks.
+
+---
+
+### Phase 2: Strategy Read & Filtering (3-4 hours)
+
+**Implementation:**
+1. Extend `IH2EnvStorageStrategy.java`:
+   - Add `readTick(Connection, long, SpatialRegion, EnvironmentProperties)` method
+
+2. Implement `SingleBlobStrategy.readTick()`:
+   - Read BLOB from database
+   - Auto-detect compression (CompressionCodecFactory.detectFromMagicBytes) ✅
+   - Decompress BLOB
+   - Deserialize Protobuf CellStateList
+   - Filter by region: `filterByRegion()` dispatcher
+   - `filterByRegion2D()`: 2D-optimized with bit-ops auto-tuning
+   - `filterByRegionND()`: N-D with array reuse
+
+3. Implement `CellWithCoordinates` (Record with @JsonAutoDetect)
+
+4. Complete `H2DatabaseReader.readEnvironmentRegion()`:
+   - Call `envStrategy.readTick()`
+   - Convert flatIndex → coordinates
+   - Return `List<CellWithCoordinates>`
+
+5. Extend `EnvironmentProperties.java` (if not done):
+   - `flatIndexToCoordinates(int, int[])` ✅ already implemented
+   - `getDimensions()` ✅ already implemented
+
+**Verification Tests (isolated from HTTP):**
+```java
+/**
+ * Phase 2 tests: Strategy read and filtering
+ * Uses in-memory H2 database with real EnvironmentIndexer for test data
+ */
+@Tag("integration")  // Uses database + EnvironmentIndexer
+class StrategyReadAndFilteringTest {
+    
+    private H2Database database;
+    private String testRunId;
+    
+    @BeforeEach
+    void setUp() {
+        // In-memory H2 database (no filesystem I/O)
+        Config config = ConfigFactory.parseString(
+            "jdbcUrl = \"jdbc:h2:mem:test-phase2-" + System.nanoTime() + ";MODE=PostgreSQL\"\n" +
+            "maxPoolSize = 5\n" +
+            "h2EnvironmentStrategy {\n" +
+            "  className = \"org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy\"\n" +
+            "  options {\n" +
+            "    compression { enabled = true, codec = \"zstd\", level = 3 }\n" +
+            "  }\n" +
+            "}\n"
+        );
+        database = new H2Database("test-db", config);
+        testRunId = "20251021_140000_TEST";
+        
+        // Setup test data via EnvironmentIndexer (realistic data)
+        indexTestEnvironmentData(testRunId);
+    }
+    
+    @AfterEach
+    void tearDown() {
+        if (database != null) {
+            database.close();
+        }
+    }
+    
+    @Test
+    void readTick_returnsAllCells() {
+        try (IDatabaseReader reader = database.createReader(testRunId)) {
+            List<CellWithCoordinates> cells = reader.readEnvironmentRegion(100, null);
+            assertEquals(500_000, cells.size());
+            // Verify coordinates converted (not flatIndex)
+            assertTrue(cells.get(0).coordinates().length == 2);
+        }
+    }
+    
+    @Test
+    void readTick_filtersBy2DRegion() {
+        SpatialRegion viewport = new SpatialRegion(new int[]{100, 350, 100, 350});
+        
+        try (IDatabaseReader reader = database.createReader(testRunId)) {
+            List<CellWithCoordinates> cells = reader.readEnvironmentRegion(100, viewport);
+            
+            // Verify all within bounds
+            for (CellWithCoordinates cell : cells) {
+                assertTrue(cell.coordinates()[0] >= 100 && cell.coordinates()[0] <= 350);
+                assertTrue(cell.coordinates()[1] >= 100 && cell.coordinates()[1] <= 350);
+            }
+        }
+    }
+    
+    @Test
+    void readTick_bitOpsOptimization_powerOf2Width() {
+        // Test with 1024×1000 environment (power-of-2 width enables bit-ops)
+        String runId1024 = "20251021_150000_1024x1000";
+        indexTestEnvironment1024x1000(runId1024);
+        
+        SpatialRegion region = new SpatialRegion(new int[]{0, 256, 0, 256});
+        
+        try (IDatabaseReader reader = database.createReader(runId1024)) {
+            List<CellWithCoordinates> cells = reader.readEnvironmentRegion(100, region);
+            assertFalse(cells.isEmpty());
+            // Performance should be ~57% faster than non-power-of-2
+        }
+    }
+    
+    @Test
+    void readTick_compressionAutoDetection() {
+        // Verify ZSTD magic bytes are detected and decompression works
+        try (IDatabaseReader reader = database.createReader(testRunId)) {
+            List<CellWithCoordinates> result = reader.readEnvironmentRegion(100, null);
+            assertFalse(result.isEmpty());  // Auto-detection + decompression worked
+        }
+    }
+    
+    @Test
+    void cellWithCoordinates_jsonSerialization() {
+        CellWithCoordinates cell = new CellWithCoordinates(
+            new int[]{42, 73}, 1, 255, 7
+        );
+        
+        // Test Jackson serialization with @JsonAutoDetect
+        ObjectMapper mapper = new ObjectMapper();
+        String json = mapper.writeValueAsString(cell);
+        assertTrue(json.contains("\"coordinates\":[42,73]"));
+        assertTrue(json.contains("\"moleculeType\":1"));
+    }
+}
+```
+
+**Success Criteria:** All filtering tests green, compression auto-detection works, coordinates correct.
+
+---
+
+### Phase 3: HTTP Controller & Integration (2-3 hours)
+
+**Implementation:**
+1. Create `EnvironmentController.java`:
+   - `getEnvironmentRegion()` with early connection release
+   - `getMetadata()` 
+   - HTTP Cache-Headers (immutable)
+   - Error handling (400, 404, 500)
+   - Run-ID resolution (query → config → latest)
+
+2. Update `HttpServerProcess.java`:
+   - Get `IDatabaseReaderProvider` from ServiceManager
+   - Register in controller ServiceRegistry
+   - Parse routes from config
+
+3. Update `evochora.conf`:
+   - Add http.options.databaseProviderResourceName
+   - Add routes for /visualizer/api
+   - Add EnvironmentController config
+
+**Verification Tests (End-to-End):**
+```java
+/**
+ * Phase 3 tests: HTTP Controller integration
+ * Uses in-memory H2 + embedded Javalin server (no external dependencies)
+ * Target: <1s per test (AGENTS.md integration test guideline)
+ */
+@Tag("integration")  // Uses database + HTTP server
+class EnvironmentControllerIntegrationTest {
+    
+    private H2Database database;
+    private Javalin app;
+    private String baseUrl;
+    private String testRunId;
+    
+    @BeforeEach
+    void setUp() {
+        // In-memory H2 database
+        Config dbConfig = ConfigFactory.parseString(
+            "jdbcUrl = \"jdbc:h2:mem:test-phase3-" + System.nanoTime() + ";MODE=PostgreSQL\"\n" +
+            "maxPoolSize = 20\n" +  // Support concurrent test requests
+            "h2EnvironmentStrategy {\n" +
+            "  className = \"org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy\"\n" +
+            "  options { compression { enabled = true, codec = \"zstd\", level = 3 } }\n" +
+            "}\n"
+        );
+        database = new H2Database("test-db", dbConfig);
+        testRunId = "20251021_140000_TEST";
+        
+        // Index test environment data
+        indexTestEnvironment(testRunId, ticks0to100);
+        
+        // Start embedded Javalin server on random port
+        app = Javalin.create().start(0);
+        int port = app.port();
+        baseUrl = "http://localhost:" + port;
+        
+        // Register EnvironmentController
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IDatabaseReaderProvider.class, database);
+        EnvironmentController controller = new EnvironmentController(registry, ConfigFactory.empty());
+        controller.registerRoutes(app, "/visualizer/api");
+    }
+    
+    @AfterEach
+    void tearDown() {
+        if (app != null) {
+            app.stop();
+        }
+        if (database != null) {
+            database.close();
+        }
+    }
+    
+    @Test
+    void httpEndpoint_returnsEnvironmentData() {
+        Response resp = given()
+            .queryParam("region", "0,250,0,250")
+            .get(baseUrl + "/visualizer/api/100/environment");
+        
+        resp.then()
+            .statusCode(200)
+            .body("tick", equalTo(100))
+            .body("runId", notNullValue())
+            .body("cells.size()", greaterThan(0))
+            .header("Cache-Control", containsString("immutable"));
+    }
+    
+    @Test
+    void httpEndpoint_cacheHeadersSet() {
+        Response resp = given()
+            .queryParam("region", "0,100,0,100")
+            .get(baseUrl + "/visualizer/api/100/environment");
+        
+        assertEquals("public, max-age=31536000, immutable", 
+                     resp.header("Cache-Control"));
+        assertNotNull(resp.header("ETag"));
+        assertTrue(resp.header("ETag").contains(testRunId));
+    }
+    
+    @Test
+    void httpEndpoint_errorHandling_invalidRegion() {
+        Response resp = given()
+            .queryParam("region", "0,100,0")  // Odd number (invalid)
+            .get(baseUrl + "/visualizer/api/100/environment");
+        
+        resp.then()
+            .statusCode(400)
+            .body("error", containsString("Invalid region"));
+    }
+    
+    @Test
+    void httpEndpoint_runIdFallback_usesLatest() {
+        // No runId in query → should use latest from database
+        Response resp = given()
+            .queryParam("region", "0,100,0,100")
+            .get(baseUrl + "/visualizer/api/100/environment");
+        
+        resp.then().statusCode(200);
+    }
+    
+    @Test
+    void concurrentRequests_noConnectionLeaks() {
+        // 20 parallel requests (pool size = 20)
+        List<CompletableFuture<Response>> futures = IntStream.range(0, 20)
+            .mapToObj(i -> CompletableFuture.supplyAsync(() -> 
+                given().queryParam("region", "0,100,0,100")
+                       .get(baseUrl + "/visualizer/api/" + i + "/environment")))
+            .toList();
+        
+        List<Response> responses = futures.stream()
+            .map(CompletableFuture::join)
+            .toList();
+        
+        // All succeeded (200 or 404 if tick doesn't exist)
+        assertTrue(responses.stream().allMatch(r -> 
+            r.statusCode() == 200 || r.statusCode() == 404));
+        
+        // Verify no connection leaks (all connections returned to pool)
+        // HikariCP metrics: activeConnections should be 0 after requests complete
+    }
+}
+```
+
+**Success Criteria:** All HTTP tests green, cache headers correct, no connection leaks under load.
+
+---
+
+## Summary: Testable 3-Phase Approach
+
+| Phase | Duration | Tests | Can Verify |
+|-------|----------|-------|------------|
+| **1: Infrastructure** | 2-3h | 4-5 integration tests | Connection handling, caching, schema switching |
+| **2: Strategy Read** | 3-4h | 5-6 integration tests | BLOB read, filtering, compression, coordinates |
+| **3: HTTP API** | 2-3h | 5-7 integration tests | End-to-end, errors, concurrency, cache headers |
+| **Total** | 7-10h | 14-18 tests | Full system verified step-by-step |
+
+**Each phase builds on the previous, with independent verification at every step.**
+
+---
+
+## AGENTS.md Compliance
+
+This specification follows all architectural principles and guidelines from AGENTS.md:
+
+**Testing Guidelines:**
+- ✅ All tests tagged with `@Tag("integration")` (use database)
+- ✅ In-memory H2 database (no filesystem I/O, fast execution)
+- ✅ `@BeforeEach` / `@AfterEach` cleanup (no artifacts left)
+- ✅ Target: <1s per integration test
+- ✅ No `Thread.sleep()` in tests
+- ✅ Test data constructed inline (no separate files)
+
+**Logging Guidelines:**
+- ✅ Single-line logs only (no multi-line output)
+- ✅ Resources use DEBUG-level for operations (connection pool, schema setup)
+- ✅ WARN for transient errors (with `recordError()`)
+- ✅ ERROR for fatal errors (connection pool init failed)
+- ✅ No stack traces in error logs (framework logs at DEBUG)
+
+**JavaDoc Requirements:**
+- ✅ All public interfaces/classes have complete JavaDoc in English
+- ✅ All methods document `@param`, `@return`, `@throws`
+- ✅ Thread-safety guarantees documented
+- ✅ Performance characteristics documented
+
+**Data Pipeline Principles:**
+- ✅ Resources implement `IResource` with lifecycle management
+- ✅ Factory Pattern for per-request database readers
+- ✅ ServiceRegistry for dependency injection
+- ✅ Constructor DI: `(String name, Config options)`
+- ✅ O(1) metrics recording (no lists, no iteration)
+
+**Code Quality:**
+- ✅ Minimal diffs (extends existing H2Database, doesn't replace)
+- ✅ Comprehensive tests (14-18 tests across 3 phases)
+- ✅ Maintains existing code style
 
 ## Future Extensions
 
