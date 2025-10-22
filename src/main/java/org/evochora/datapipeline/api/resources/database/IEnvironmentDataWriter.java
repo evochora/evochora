@@ -1,7 +1,6 @@
 package org.evochora.datapipeline.api.resources.database;
 
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 import java.sql.SQLException;
@@ -13,13 +12,17 @@ import java.util.List;
  * Provides write operations for environment cells with dimension-agnostic schema.
  * Used by EnvironmentIndexer to persist cell states for HTTP API queries.
  * <p>
+ * <strong>Pure Capability Interface:</strong> This interface defines only the environment writing
+ * operations, without resource management concerns (IMonitorable). Implementations that ARE
+ * resources (like wrappers) will get those concerns from their base classes (AbstractResource).
+ * <p>
  * Extends {@link ISchemaAwareDatabase} - AbstractIndexer automatically calls
  * {@code setSimulationRun()} after run discovery to set the schema.
  * <p>
  * Implements {@link AutoCloseable} to enable try-with-resources pattern for
  * automatic connection cleanup.
  */
-public interface IEnvironmentDataWriter extends ISchemaAwareDatabase, IMonitorable, AutoCloseable {
+public interface IEnvironmentDataWriter extends ISchemaAwareDatabase, AutoCloseable {
     
     /**
      * Creates the environment_ticks table idempotently.

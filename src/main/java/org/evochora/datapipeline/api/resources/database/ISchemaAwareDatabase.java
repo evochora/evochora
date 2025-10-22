@@ -1,13 +1,15 @@
 package org.evochora.datapipeline.api.resources.database;
 
-import org.evochora.datapipeline.api.resources.IResource;
-
 /**
  * Base capability for database operations that work within a simulation run schema.
  * <p>
  * All database capabilities that operate on run-specific data extend this interface.
  * The schema is set once per wrapper instance by {@link org.evochora.datapipeline.services.indexers.AbstractIndexer}
  * after run discovery.
+ * <p>
+ * <strong>Pure Capability Interface:</strong> This interface defines only the schema-setting
+ * capability, without any resource management concerns (IResource, IMonitorable). Implementations
+ * that ARE resources (like wrappers) will get those concerns from their base classes.
  * <p>
  * <strong>Lifecycle:</strong>
  * <ol>
@@ -21,7 +23,7 @@ import org.evochora.datapipeline.api.resources.IResource;
  * This provides complete data isolation between runs and eliminates the need for
  * run_id columns in tables.
  */
-public interface ISchemaAwareDatabase extends IResource {
+public interface ISchemaAwareDatabase {
     /**
      * Sets the active database schema for this wrapper's connection.
      * <p>

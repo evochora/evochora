@@ -38,13 +38,8 @@ import static org.mockito.Mockito.*;
 @ExtendWith(LogWatchExtension.class)
 class MetadataIndexerTest {
 
-    @Mock
     private IBatchStorageRead mockStorage;
-
-    @Mock
     private IMetadataWriter mockDatabase;
-
-    @Mock
     private ITopicReader<MetadataInfo, Object> mockTopic;
 
     @Mock
@@ -55,10 +50,16 @@ class MetadataIndexerTest {
 
     @BeforeEach
     void setUp() {
+        // Create mocks that implement both capability interfaces AND IResource
+        // This simulates production where wrappers implement IResource via AbstractResource
+        mockStorage = mock(IBatchStorageRead.class, withSettings().extraInterfaces(IResource.class));
+        mockDatabase = mock(IMetadataWriter.class, withSettings().extraInterfaces(IResource.class));
+        mockTopic = mock(ITopicReader.class, withSettings().extraInterfaces(IResource.class));
+
         resources = Map.of(
-            "storage", List.of(mockStorage), 
-            "database", List.of(mockDatabase),
-            "topic", List.of(mockTopic)
+            "storage", List.of((IResource) mockStorage),
+            "database", List.of((IResource) mockDatabase),
+            "topic", List.of((IResource) mockTopic)
         );
     }
 

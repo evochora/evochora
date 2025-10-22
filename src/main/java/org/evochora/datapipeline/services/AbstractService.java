@@ -280,6 +280,10 @@ public abstract class AbstractService implements IService, IMonitorable {
 
     /**
      * Gets a single required resource for a given port, ensuring it matches the expected type.
+     * <p>
+     * <strong>Type Safety:</strong> While this method accepts any Class<T>, it is intended for
+     * resource and capability interfaces. The runtime cast ensures type safety. Typically used
+     * with IResource implementations or capability interfaces (e.g., IMetadataReader).
      *
      * @param portName     The name of the resource port.
      * @param expectedType The class of the expected resource type.
@@ -288,7 +292,7 @@ public abstract class AbstractService implements IService, IMonitorable {
      * @throws IllegalStateException if the port is not configured, has no resources,
      *                               has more than one resource, or if the resource is of the wrong type.
      */
-    protected <T extends IResource> T getRequiredResource(String portName, Class<T> expectedType) {
+    protected <T> T getRequiredResource(String portName, Class<T> expectedType) {
         List<IResource> resourceList = resources.get(portName);
         if (resourceList == null) {
             throw new IllegalStateException("Resource port '" + portName + "' is not configured.");
@@ -329,6 +333,10 @@ public abstract class AbstractService implements IService, IMonitorable {
 
     /**
      * Gets a single optional resource for a given port, ensuring it matches the expected type.
+     * <p>
+     * <strong>Type Safety:</strong> While this method accepts any Class<T>, it is intended for
+     * resource and capability interfaces. The runtime cast ensures type safety. Typically used
+     * with IResource implementations or capability interfaces (e.g., IMetadataReader).
      *
      * @param portName     The name of the resource port.
      * @param expectedType The class of the expected resource type.
@@ -336,7 +344,7 @@ public abstract class AbstractService implements IService, IMonitorable {
      * @return An Optional containing the single resource instance, or empty if not configured.
      * @throws IllegalStateException if the port has more than one resource or if the resource is of the wrong type.
      */
-    protected <T extends IResource> java.util.Optional<T> getOptionalResource(String portName, Class<T> expectedType) {
+    protected <T> java.util.Optional<T> getOptionalResource(String portName, Class<T> expectedType) {
         List<IResource> resourceList = resources.get(portName);
         if (resourceList == null || resourceList.isEmpty()) {
             return java.util.Optional.empty();

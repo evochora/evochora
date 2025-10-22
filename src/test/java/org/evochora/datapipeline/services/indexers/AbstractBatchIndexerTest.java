@@ -19,8 +19,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -44,26 +42,26 @@ import static org.mockito.Mockito.*;
  * using mocks (no real database, topic, or storage).
  */
 @Tag("unit")
-@ExtendWith(MockitoExtension.class)
 @ExtendWith(LogWatchExtension.class)
 class AbstractBatchIndexerTest {
-    
-    @Mock
+
     private ITopicReader<BatchInfo, String> mockTopic;
-    
-    @Mock
     private IBatchStorageRead mockStorage;
-    
-    @Mock
     private IMetadataReader mockMetadataReader;
-    
+
     private TestBatchIndexer indexer;
     private List<List<TickData>> flushedBatches;
     private CountDownLatch flushLatch;
     private AtomicInteger flushCount;
-    
+
     @BeforeEach
     void setup() {
+        // Create mocks that implement both capability interfaces AND IResource
+        // This simulates production where wrappers implement IResource via AbstractResource
+        mockTopic = mock(ITopicReader.class, withSettings().extraInterfaces(IResource.class));
+        mockStorage = mock(IBatchStorageRead.class, withSettings().extraInterfaces(IResource.class));
+        mockMetadataReader = mock(IMetadataReader.class, withSettings().extraInterfaces(IResource.class));
+
         flushedBatches = new ArrayList<>();
         flushCount = new AtomicInteger(0);
         flushLatch = new CountDownLatch(0);
@@ -340,11 +338,13 @@ class AbstractBatchIndexerTest {
             topicPollTimeoutMs = 100
             """.formatted(runId));
         
+        // Cast capability mocks to IResource for test setup
+        // In production, these are wrapped in classes that implement IResource
         Map<String, List<IResource>> resources = new java.util.HashMap<>();
-        resources.put("storage", List.of(mockStorage));
-        resources.put("topic", List.of(mockTopic));
+        resources.put("storage", List.of((IResource) mockStorage));
+        resources.put("topic", List.of((IResource) mockTopic));
         if (withMetadata) {
-            resources.put("metadata", List.of(mockMetadataReader));
+            resources.put("metadata", List.of((IResource) mockMetadataReader));
         }
         
         return new TestBatchIndexer("test-indexer", config, resources, withMetadata, false);
@@ -358,10 +358,12 @@ class AbstractBatchIndexerTest {
             topicPollTimeoutMs = 100
             """.formatted(runId));
         
+        // Cast capability mocks to IResource for test setup
+        // In production, these are wrapped in classes that implement IResource
         Map<String, List<IResource>> resources = Map.of(
-            "storage", List.of(mockStorage),
-            "topic", List.of(mockTopic),
-            "metadata", List.of(mockMetadataReader)
+            "storage", List.of((IResource) mockStorage),
+            "topic", List.of((IResource) mockTopic),
+            "metadata", List.of((IResource) mockMetadataReader)
         );
         
         return new TestBatchIndexer("test-indexer", config, resources, true, true);

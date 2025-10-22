@@ -1,7 +1,6 @@
 package org.evochora.datapipeline.api.resources.database;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.resources.IMonitorable;
 
 /**
  * Database capability for reading simulation metadata.
@@ -9,13 +8,17 @@ import org.evochora.datapipeline.api.resources.IMonitorable;
  * Provides read-only access to metadata written by MetadataIndexer.
  * Used by other indexers to access simulation configuration (e.g., samplingInterval for gap detection).
  * <p>
+ * <strong>Pure Capability Interface:</strong> This interface defines only the metadata reading
+ * operations, without resource management concerns (IMonitorable). Implementations that ARE
+ * resources (like wrappers) will get those concerns from their base classes (AbstractResource).
+ * <p>
  * Extends {@link ISchemaAwareDatabase} - AbstractIndexer automatically calls
  * {@code setSimulationRun()} after run discovery to set the schema.
  * <p>
  * Implements {@link AutoCloseable} to enable try-with-resources pattern for
  * automatic connection cleanup.
  */
-public interface IMetadataReader extends ISchemaAwareDatabase, IMonitorable, AutoCloseable {
+public interface IMetadataReader extends ISchemaAwareDatabase, AutoCloseable {
     
     /**
      * Retrieves simulation metadata for the current schema.

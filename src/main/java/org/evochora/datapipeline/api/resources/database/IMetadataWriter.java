@@ -1,11 +1,14 @@
 package org.evochora.datapipeline.api.resources.database;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.resources.IMonitorable;
 
 /**
  * Defines the capability interface for a database that can store and retrieve
  * simulation metadata. This interface is used by the MetadataIndexer service.
+ * <p>
+ * <strong>Pure Capability Interface:</strong> This interface defines only the metadata writing
+ * operations, without resource management concerns (IMonitorable). Implementations that ARE
+ * resources (like wrappers) will get those concerns from their base classes (AbstractResource).
  * <p>
  * Extends {@link ISchemaAwareDatabase} - AbstractIndexer automatically calls
  * {@code setSimulationRun()} after run discovery to create and set the schema.
@@ -24,7 +27,7 @@ import org.evochora.datapipeline.api.resources.IMonitorable;
  * table is created lazily on first {@link #insertMetadata(SimulationMetadata)} call using
  * idempotent CREATE TABLE IF NOT EXISTS.
  */
-public interface IMetadataWriter extends ISchemaAwareDatabase, IMonitorable, AutoCloseable {
+public interface IMetadataWriter extends ISchemaAwareDatabase, AutoCloseable {
 
     /**
      * Writes the complete simulation metadata to the database. This operation

@@ -40,13 +40,16 @@ class EnvironmentIndexerTest {
     private IMetadataReader mockMetadata;
     private Config config;
     private Map<String, List<IResource>> resources;
-    
+
     @BeforeEach
     void setUp() {
-        mockDatabase = mock(IEnvironmentDataWriter.class);
-        mockStorage = mock(IBatchStorageRead.class);
-        mockTopic = mock(ITopicReader.class);
-        mockMetadata = mock(IMetadataReader.class);
+        // Create mocks that implement both capability interfaces AND IResource
+        // This simulates production where wrappers implement IResource via AbstractResource
+        mockDatabase = mock(IEnvironmentDataWriter.class, withSettings().extraInterfaces(IResource.class));
+        mockStorage = mock(IBatchStorageRead.class, withSettings().extraInterfaces(IResource.class));
+        mockTopic = mock(ITopicReader.class, withSettings().extraInterfaces(IResource.class));
+        mockMetadata = mock(IMetadataReader.class, withSettings().extraInterfaces(IResource.class));
+
         config = ConfigFactory.parseString("""
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
@@ -54,11 +57,12 @@ class EnvironmentIndexerTest {
             insertBatchSize = 100
             flushTimeoutMs = 1000
             """);
+
         resources = Map.of(
-            "database", List.of(mockDatabase),
-            "storage", List.of(mockStorage),
-            "topic", List.of(mockTopic),
-            "metadata", List.of(mockMetadata)
+            "database", List.of((IResource) mockDatabase),
+            "storage", List.of((IResource) mockStorage),
+            "topic", List.of((IResource) mockTopic),
+            "metadata", List.of((IResource) mockMetadata)
         );
     }
     
