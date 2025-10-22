@@ -7,6 +7,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
@@ -654,7 +655,7 @@ class DummyIndexerIntegrationTest {
         IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
         
         if (wrappedDatabase instanceof org.evochora.datapipeline.api.resources.database.IMetadataWriter metadataWriter) {
-            metadataWriter.setSimulationRun(runId);
+            ((ISchemaAwareDatabase) metadataWriter).setSimulationRun(runId);
             metadataWriter.insertMetadata(metadata);
             metadataWriter.close();
         } else {

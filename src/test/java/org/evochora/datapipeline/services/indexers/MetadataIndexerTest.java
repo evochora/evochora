@@ -7,6 +7,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
+import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
@@ -53,7 +54,7 @@ class MetadataIndexerTest {
         // Create mocks that implement both capability interfaces AND IResource
         // This simulates production where wrappers implement IResource via AbstractResource
         mockStorage = mock(IBatchStorageRead.class, withSettings().extraInterfaces(IResource.class));
-        mockDatabase = mock(IMetadataWriter.class, withSettings().extraInterfaces(IResource.class));
+        mockDatabase = mock(IMetadataWriter.class, withSettings().extraInterfaces(IResource.class, ISchemaAwareDatabase.class));
         mockTopic = mock(ITopicReader.class, withSettings().extraInterfaces(IResource.class));
 
         resources = Map.of(
@@ -95,7 +96,7 @@ class MetadataIndexerTest {
         verify(mockTopic).ack(mockMessage);
         
         // Verify database operations
-        verify(mockDatabase).setSimulationRun(testRunId);
+        verify((ISchemaAwareDatabase) mockDatabase).setSimulationRun(testRunId);
         verify(mockDatabase).insertMetadata(metadata);
         
         // Verify metrics
@@ -139,7 +140,7 @@ class MetadataIndexerTest {
         verify(mockTopic, never()).ack(any());
         
         // Verify database operations
-        verify(mockDatabase).setSimulationRun(testRunId);
+        verify((ISchemaAwareDatabase) mockDatabase).setSimulationRun(testRunId);
         verify(mockDatabase).insertMetadata(metadata);
         
         // Verify metrics

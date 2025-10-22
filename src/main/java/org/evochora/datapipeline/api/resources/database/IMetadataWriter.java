@@ -27,7 +27,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
  * table is created lazily on first {@link #insertMetadata(SimulationMetadata)} call using
  * idempotent CREATE TABLE IF NOT EXISTS.
  */
-public interface IMetadataWriter extends ISchemaAwareDatabase, AutoCloseable {
+public interface IMetadataWriter extends AutoCloseable {
 
     /**
      * Writes the complete simulation metadata to the database. This operation

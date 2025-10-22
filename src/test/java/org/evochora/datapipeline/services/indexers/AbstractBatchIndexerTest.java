@@ -7,6 +7,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IMetadataReader;
+import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
@@ -60,7 +61,7 @@ class AbstractBatchIndexerTest {
         // This simulates production where wrappers implement IResource via AbstractResource
         mockTopic = mock(ITopicReader.class, withSettings().extraInterfaces(IResource.class));
         mockStorage = mock(IBatchStorageRead.class, withSettings().extraInterfaces(IResource.class));
-        mockMetadataReader = mock(IMetadataReader.class, withSettings().extraInterfaces(IResource.class));
+        mockMetadataReader = mock(IMetadataReader.class, withSettings().extraInterfaces(IResource.class, ISchemaAwareDatabase.class));
 
         flushedBatches = new ArrayList<>();
         flushCount = new AtomicInteger(0);

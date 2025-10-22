@@ -22,7 +22,7 @@ import java.util.List;
  * Implements {@link AutoCloseable} to enable try-with-resources pattern for
  * automatic connection cleanup.
  */
-public interface IEnvironmentDataWriter extends ISchemaAwareDatabase, AutoCloseable {
+public interface IEnvironmentDataWriter extends AutoCloseable {
     
     /**
      * Creates the environment_ticks table idempotently.

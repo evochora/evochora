@@ -7,6 +7,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IMetadataReader;
 import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
+import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
 import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,7 +56,7 @@ class MetadataReaderRunIdTest {
         try (IMetadataWriter writer = (IMetadataWriter) database.getWrappedResource(
                 new ResourceContext("test", "meta-port", "db-meta-write", "test-db", Map.of()))) {
             
-            writer.setSimulationRun(runId);
+            ((ISchemaAwareDatabase) writer).setSimulationRun(runId);
             
             SimulationMetadata metadata = SimulationMetadata.newBuilder()
                 .setSimulationRunId(runId)
@@ -79,7 +80,7 @@ class MetadataReaderRunIdTest {
                 new ResourceContext("test", "meta-port", "db-meta-read", "test-db", Map.of()))) {
             
             // Set schema directly (simulating HTTP API scenario where we know schema name)
-            reader.setSimulationRun(runId);
+            ((ISchemaAwareDatabase) reader).setSimulationRun(runId);
             
             // Get run-id from metadata
             String retrievedRunId = reader.getRunIdInCurrentSchema();
@@ -96,7 +97,7 @@ class MetadataReaderRunIdTest {
         try (IMetadataReader reader = (IMetadataReader) database.getWrappedResource(
                 new ResourceContext("test", "meta-port", "db-meta-read", "test-db", Map.of()))) {
             
-            reader.setSimulationRun(runId);
+            ((ISchemaAwareDatabase) reader).setSimulationRun(runId);
             
             // Metadata doesn't exist yet (schema not created)
             assertThrows(MetadataNotFoundException.class, () -> {
@@ -120,7 +121,7 @@ class MetadataReaderRunIdTest {
             try (IMetadataWriter writer = (IMetadataWriter) database.getWrappedResource(
                     new ResourceContext("test", "meta-port", "db-meta-write", "test-db", Map.of()))) {
                 
-                writer.setSimulationRun(runId);
+                ((ISchemaAwareDatabase) writer).setSimulationRun(runId);
                 
                 SimulationMetadata metadata = SimulationMetadata.newBuilder()
                     .setSimulationRunId(runId)
@@ -141,7 +142,7 @@ class MetadataReaderRunIdTest {
             try (IMetadataReader reader = (IMetadataReader) database.getWrappedResource(
                     new ResourceContext("test", "meta-port", "db-meta-read", "test-db", Map.of()))) {
                 
-                reader.setSimulationRun(runId);
+                ((ISchemaAwareDatabase) reader).setSimulationRun(runId);
                 String retrievedRunId = reader.getRunIdInCurrentSchema();
                 
                 assertEquals(runId, retrievedRunId, 

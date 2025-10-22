@@ -3,6 +3,7 @@ package org.evochora.datapipeline.resources.database;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.*;
 import org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter;
+import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -26,7 +27,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li>{@link SlidingWindowPercentiles} for latency (write_latency_p50/p95/p99/avg_ms)</li>
  * </ul>
  */
-public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implements IEnvironmentDataWriter {
+public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implements IEnvironmentDataWriter, ISchemaAwareDatabase {
     private static final Logger log = LoggerFactory.getLogger(EnvironmentDataWriterWrapper.class);
     
     // Counters - O(1) atomic operations

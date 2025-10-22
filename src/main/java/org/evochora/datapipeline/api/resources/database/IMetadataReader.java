@@ -18,7 +18,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
  * Implements {@link AutoCloseable} to enable try-with-resources pattern for
  * automatic connection cleanup.
  */
-public interface IMetadataReader extends ISchemaAwareDatabase, AutoCloseable {
+public interface IMetadataReader extends AutoCloseable {
     
     /**
      * Retrieves simulation metadata for the current schema.

@@ -3,6 +3,7 @@ package org.evochora.datapipeline.resources.database;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IMetadataReader;
+import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
 import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
 import org.slf4j.Logger;
@@ -19,7 +20,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>
  * <strong>Performance Contract:</strong> All metrics use O(1) recording.
  */
-class MetadataReaderWrapper extends AbstractDatabaseWrapper implements IMetadataReader {
+class MetadataReaderWrapper extends AbstractDatabaseWrapper implements IMetadataReader, ISchemaAwareDatabase {
     private static final Logger log = LoggerFactory.getLogger(MetadataReaderWrapper.class);
     
     // Metrics (O(1) atomic operations)

@@ -9,6 +9,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter;
 import org.evochora.datapipeline.api.resources.database.IMetadataReader;
+import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -45,10 +46,10 @@ class EnvironmentIndexerTest {
     void setUp() {
         // Create mocks that implement both capability interfaces AND IResource
         // This simulates production where wrappers implement IResource via AbstractResource
-        mockDatabase = mock(IEnvironmentDataWriter.class, withSettings().extraInterfaces(IResource.class));
+        mockDatabase = mock(IEnvironmentDataWriter.class, withSettings().extraInterfaces(IResource.class, ISchemaAwareDatabase.class));
         mockStorage = mock(IBatchStorageRead.class, withSettings().extraInterfaces(IResource.class));
         mockTopic = mock(ITopicReader.class, withSettings().extraInterfaces(IResource.class));
-        mockMetadata = mock(IMetadataReader.class, withSettings().extraInterfaces(IResource.class));
+        mockMetadata = mock(IMetadataReader.class, withSettings().extraInterfaces(IResource.class, ISchemaAwareDatabase.class));
 
         config = ConfigFactory.parseString("""
             metadataPollIntervalMs = 100
