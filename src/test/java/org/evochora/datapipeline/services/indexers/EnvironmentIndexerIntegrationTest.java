@@ -7,7 +7,7 @@ import org.evochora.datapipeline.api.resources.IResource;
 import java.time.Instant;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
-import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
+import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
@@ -437,7 +437,7 @@ class EnvironmentIndexerIntegrationTest {
         // Write metadata to database
         ResourceContext metaWriteContext = new ResourceContext("test", "metadata-port", "db-meta-write", "test-db", Map.of());
         IMetadataWriter metaWriter = (IMetadataWriter) testDatabase.getWrappedResource(metaWriteContext);
-        ((ISchemaAwareDatabase) metaWriter).setSimulationRun(runId);
+        ((IResourceSchemaAwareMetadataWriter) metaWriter).setSimulationRun(runId);
         metaWriter.insertMetadata(metadata);
         ((AutoCloseable) metaWriter).close();
     }

@@ -8,10 +8,10 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter;
-import org.evochora.datapipeline.api.resources.database.IMetadataReader;
-import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
-import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
-import org.evochora.datapipeline.api.resources.topics.ITopicReader;
+import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader;
+import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareEnvironmentDataWriter;
+import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
+import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -35,10 +35,10 @@ import static org.mockito.Mockito.*;
 @ExtendWith(LogWatchExtension.class)
 class EnvironmentIndexerTest {
     
-    private IEnvironmentDataWriter mockDatabase;
-    private IBatchStorageRead mockStorage;
-    private ITopicReader mockTopic;
-    private IMetadataReader mockMetadata;
+    private IResourceSchemaAwareEnvironmentDataWriter mockDatabase;
+    private IResourceBatchStorageRead mockStorage;
+    private IResourceTopicReader mockTopic;
+    private IResourceSchemaAwareMetadataReader mockMetadata;
     private Config config;
     private Map<String, List<IResource>> resources;
 
@@ -46,10 +46,10 @@ class EnvironmentIndexerTest {
     void setUp() {
         // Create mocks that implement both capability interfaces AND IResource
         // This simulates production where wrappers implement IResource via AbstractResource
-        mockDatabase = mock(IEnvironmentDataWriter.class, withSettings().extraInterfaces(IResource.class, ISchemaAwareDatabase.class));
-        mockStorage = mock(IBatchStorageRead.class, withSettings().extraInterfaces(IResource.class));
-        mockTopic = mock(ITopicReader.class, withSettings().extraInterfaces(IResource.class));
-        mockMetadata = mock(IMetadataReader.class, withSettings().extraInterfaces(IResource.class, ISchemaAwareDatabase.class));
+        mockDatabase = mock(IResourceSchemaAwareEnvironmentDataWriter.class);
+        mockStorage = mock(IResourceBatchStorageRead.class);
+        mockTopic = mock(IResourceTopicReader.class);
+        mockMetadata = mock(IResourceSchemaAwareMetadataReader.class);
 
         config = ConfigFactory.parseString("""
             metadataPollIntervalMs = 100

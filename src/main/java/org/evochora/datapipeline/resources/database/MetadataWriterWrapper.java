@@ -2,8 +2,7 @@ package org.evochora.datapipeline.resources.database;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.*;
-import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
-import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
+import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +16,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Extends {@link AbstractDatabaseWrapper} to inherit common functionality:
  * connection management, schema setting, error tracking, metrics infrastructure.
  */
-public class MetadataWriterWrapper extends AbstractDatabaseWrapper implements IMetadataWriter, ISchemaAwareDatabase {
+public class MetadataWriterWrapper extends AbstractDatabaseWrapper implements IResourceSchemaAwareMetadataWriter {
     private static final Logger log = LoggerFactory.getLogger(MetadataWriterWrapper.class);
     
     // Metrics (O(1) atomic operations)

@@ -6,11 +6,10 @@ import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
-import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
-import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
-import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
+import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
-import org.evochora.datapipeline.api.resources.topics.ITopicReader;
+import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.junit.extensions.logging.AllowLog;
@@ -39,9 +38,9 @@ import static org.mockito.Mockito.*;
 @ExtendWith(LogWatchExtension.class)
 class MetadataIndexerTest {
 
-    private IBatchStorageRead mockStorage;
-    private IMetadataWriter mockDatabase;
-    private ITopicReader<MetadataInfo, Object> mockTopic;
+    private IResourceBatchStorageRead mockStorage;
+    private IResourceSchemaAwareMetadataWriter mockDatabase;
+    private IResourceTopicReader<MetadataInfo, Object> mockTopic;
 
     @Mock
     private TopicMessage<MetadataInfo, Object> mockMessage;
@@ -53,9 +52,9 @@ class MetadataIndexerTest {
     void setUp() {
         // Create mocks that implement both capability interfaces AND IResource
         // This simulates production where wrappers implement IResource via AbstractResource
-        mockStorage = mock(IBatchStorageRead.class, withSettings().extraInterfaces(IResource.class));
-        mockDatabase = mock(IMetadataWriter.class, withSettings().extraInterfaces(IResource.class, ISchemaAwareDatabase.class));
-        mockTopic = mock(ITopicReader.class, withSettings().extraInterfaces(IResource.class));
+        mockStorage = mock(IResourceBatchStorageRead.class);
+        mockDatabase = mock(IResourceSchemaAwareMetadataWriter.class);
+        mockTopic = mock(IResourceTopicReader.class);
 
         resources = Map.of(
             "storage", List.of((IResource) mockStorage),
@@ -96,7 +95,7 @@ class MetadataIndexerTest {
         verify(mockTopic).ack(mockMessage);
         
         // Verify database operations
-        verify((ISchemaAwareDatabase) mockDatabase).setSimulationRun(testRunId);
+        verify(mockDatabase).setSimulationRun(testRunId);
         verify(mockDatabase).insertMetadata(metadata);
         
         // Verify metrics
@@ -140,7 +139,7 @@ class MetadataIndexerTest {
         verify(mockTopic, never()).ack(any());
         
         // Verify database operations
-        verify((ISchemaAwareDatabase) mockDatabase).setSimulationRun(testRunId);
+        verify(mockDatabase).setSimulationRun(testRunId);
         verify(mockDatabase).insertMetadata(metadata);
         
         // Verify metrics
