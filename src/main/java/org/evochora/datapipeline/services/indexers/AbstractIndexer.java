@@ -4,9 +4,9 @@ import com.google.protobuf.Message;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
-import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.topics.ISimulationRunAwareTopic;
-import org.evochora.datapipeline.api.resources.topics.ITopicReader;
+import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
 import org.evochora.datapipeline.services.AbstractService;
 
 import java.io.IOException;
@@ -32,8 +32,8 @@ import java.util.concurrent.TimeoutException;
  */
 public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractService {
 
-    protected final IBatchStorageRead storage;
-    protected final ITopicReader<T, ACK> topic;
+    protected final IResourceBatchStorageRead storage;
+    protected final IResourceTopicReader<T, ACK> topic;
     protected final Config indexerOptions;
 
     private final String configuredRunId;
@@ -47,8 +47,8 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
 
     protected AbstractIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
-        this.storage = getRequiredResource("storage", IBatchStorageRead.class);
-        this.topic = getOptionalResource("topic", ITopicReader.class).orElse(null);
+        this.storage = getRequiredResource("storage", IResourceBatchStorageRead.class);
+        this.topic = getOptionalResource("topic", IResourceTopicReader.class).orElse(null);
         this.indexerOptions = options;
         this.configuredRunId = options.hasPath("runId") ? options.getString("runId") : null;
         this.pollIntervalMs = options.hasPath("pollIntervalMs") ? options.getInt("pollIntervalMs") : 1000;

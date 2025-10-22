@@ -1,7 +1,7 @@
 package org.evochora.datapipeline.services.indexers.components;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.resources.database.IMetadataReader;
+import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader;
 import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,7 +28,7 @@ import static org.mockito.Mockito.*;
 class MetadataReadingComponentTest {
     
     @Mock
-    private IMetadataReader mockReader;
+    private IResourceSchemaAwareMetadataReader mockReader;
     
     private MetadataReadingComponent component;
     private SimulationMetadata testMetadata;

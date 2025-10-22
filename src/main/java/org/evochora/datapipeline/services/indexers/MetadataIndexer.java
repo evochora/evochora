@@ -4,7 +4,7 @@ import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
+import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
 
-    private final IMetadataWriter database;
+    private final IResourceSchemaAwareMetadataWriter database;
     private final int topicPollTimeoutMs;
     
     // Metrics
@@ -38,7 +38,7 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
 
     public MetadataIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
-        this.database = getRequiredResource("database", IMetadataWriter.class);
+        this.database = getRequiredResource("database", IResourceSchemaAwareMetadataWriter.class);
         this.topicPollTimeoutMs = options.hasPath("topicPollTimeoutMs") 
             ? options.getInt("topicPollTimeoutMs") 
             : 30000;  // Default: 30 seconds
@@ -67,7 +67,7 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
         SimulationMetadata metadata = storage.readMessage(storagePath, SimulationMetadata.parser());
         
         // Index metadata to database
-        try (IMetadataWriter db = database) {
+        try (IResourceSchemaAwareMetadataWriter db = database) {
             db.insertMetadata(metadata);
             metadataIndexed.incrementAndGet();
             log.debug("Successfully indexed metadata for run: {}, service stopping", runId);

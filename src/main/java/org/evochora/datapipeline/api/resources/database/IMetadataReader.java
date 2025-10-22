@@ -60,13 +60,6 @@ public interface IMetadataReader extends AutoCloseable {
      */
     String getRunIdInCurrentSchema() throws MetadataNotFoundException;
     
-    /**
-     * Releases the cached database connection back to the pool.
-     * <p>
-     * Call before long idle periods (e.g., during polling sleeps) to reduce
-     * connection pool pressure. Connection will be re-acquired automatically on next operation.
-     */
-    void releaseConnection();
     
     @Override
     void close();

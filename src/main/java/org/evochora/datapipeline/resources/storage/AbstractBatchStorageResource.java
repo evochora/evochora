@@ -8,7 +8,7 @@ import org.evochora.datapipeline.api.resources.IContextualResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
-import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.resources.AbstractResource;
@@ -49,7 +49,7 @@ import java.util.stream.Collectors;
  * for implementation-specific metrics.
  */
 public abstract class AbstractBatchStorageResource extends AbstractResource
-    implements IBatchStorageWrite, IBatchStorageRead, IContextualResource {
+    implements IBatchStorageWrite, IResourceBatchStorageRead, IContextualResource {
 
     private static final Logger log = LoggerFactory.getLogger(AbstractBatchStorageResource.class);
 

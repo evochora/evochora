@@ -2,6 +2,7 @@ package org.evochora.datapipeline.resources.database;
 
 import org.evochora.datapipeline.api.resources.*;
 import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
+import org.evochora.datapipeline.api.resources.database.IConnectionManageable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,7 +35,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
  * <strong>Design Pattern:</strong> Template Method Pattern (same as AbstractDatabaseResource)
  */
 public abstract class AbstractDatabaseWrapper extends org.evochora.datapipeline.resources.AbstractResource
-        implements ISchemaAwareDatabase, IWrappedResource, AutoCloseable {
+        implements ISchemaAwareDatabase, IWrappedResource, AutoCloseable, IConnectionManageable {
     
     private static final Logger log = LoggerFactory.getLogger(AbstractDatabaseWrapper.class);
     

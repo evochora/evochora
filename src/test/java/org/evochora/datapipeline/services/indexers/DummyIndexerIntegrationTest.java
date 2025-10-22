@@ -8,7 +8,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
-import org.evochora.datapipeline.api.resources.topics.ITopicReader;
+import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.api.services.IService;
@@ -57,7 +57,7 @@ import static org.mockito.Mockito.*;
 class DummyIndexerIntegrationTest {
     
     @Mock
-    private ITopicReader<BatchInfo, Object> mockTopic;
+    private IResourceTopicReader<BatchInfo, Object> mockTopic;
     
     private H2Database testDatabase;
     private FileSystemStorageResource testStorage;

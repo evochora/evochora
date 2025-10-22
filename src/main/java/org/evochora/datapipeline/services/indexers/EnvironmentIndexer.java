@@ -4,7 +4,7 @@ import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter;
+import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareEnvironmentDataWriter;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,7 +47,7 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     
     private static final Logger log = LoggerFactory.getLogger(EnvironmentIndexer.class);
     
-    private final IEnvironmentDataWriter database;
+    private final IResourceSchemaAwareEnvironmentDataWriter database;
     private EnvironmentProperties envProps;
     
     /**
@@ -61,7 +61,7 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> {
      */
     public EnvironmentIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
-        this.database = getRequiredResource("database", IEnvironmentDataWriter.class);
+        this.database = getRequiredResource("database", IResourceSchemaAwareEnvironmentDataWriter.class);
     }
     
     // Use default components: METADATA + BUFFERING

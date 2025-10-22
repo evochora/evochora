@@ -5,7 +5,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
@@ -36,7 +36,7 @@ import static org.mockito.Mockito.when;
 class AbstractIndexerTest {
 
     @Mock
-    private IBatchStorageRead mockStorage;
+    private IResourceBatchStorageRead mockStorage;
 
     private Map<String, List<IResource>> resources;
 

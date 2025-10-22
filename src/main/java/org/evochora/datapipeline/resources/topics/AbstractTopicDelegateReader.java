@@ -5,7 +5,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 import org.evochora.datapipeline.api.resources.ResourceContext;
-import org.evochora.datapipeline.api.resources.topics.ITopicReader;
+import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.slf4j.Logger;
@@ -45,7 +45,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * @param <ACK> The acknowledgment token type.
  */
 public abstract class AbstractTopicDelegateReader<P extends AbstractTopicResource<T, ACK>, T extends Message, ACK> 
-    extends AbstractTopicDelegate<P> implements ITopicReader<T, ACK> {
+    extends AbstractTopicDelegate<P> implements IResourceTopicReader<T, ACK> {
     
     private static final Logger log = LoggerFactory.getLogger(AbstractTopicDelegateReader.class);
     

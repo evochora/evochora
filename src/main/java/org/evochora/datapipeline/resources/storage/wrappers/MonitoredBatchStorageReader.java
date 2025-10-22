@@ -9,7 +9,7 @@ import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
-import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
@@ -27,9 +27,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * Tracks per-service read metrics: batches queried, batches read, bytes read, query errors.
  * Used by services that read batches (e.g., future indexer services).
  */
-public class MonitoredBatchStorageReader implements IBatchStorageRead, IWrappedResource, IMonitorable {
+public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, IWrappedResource, IMonitorable {
 
-    private final IBatchStorageRead delegate;
+    private final IResourceBatchStorageRead delegate;
     private final ResourceContext context;
 
     // Read metrics (cumulative)
@@ -43,7 +43,7 @@ public class MonitoredBatchStorageReader implements IBatchStorageRead, IWrappedR
     private final SlidingWindowCounter bytesCounter;
     private final SlidingWindowPercentiles latencyTracker;
 
-    public MonitoredBatchStorageReader(IBatchStorageRead delegate, ResourceContext context) {
+    public MonitoredBatchStorageReader(IResourceBatchStorageRead delegate, ResourceContext context) {
         this.delegate = delegate;
         this.context = context;
         

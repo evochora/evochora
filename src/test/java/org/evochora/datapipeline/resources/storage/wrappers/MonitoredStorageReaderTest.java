@@ -2,7 +2,7 @@ package org.evochora.datapipeline.resources.storage.wrappers;
 
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
-import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -27,12 +27,12 @@ import static org.mockito.Mockito.*;
 @ExtendWith(LogWatchExtension.class)
 class MonitoredStorageReaderTest {
 
-    private IBatchStorageRead mockDelegate;
+    private IResourceBatchStorageRead mockDelegate;
     private MonitoredBatchStorageReader monitoredReader;
 
     @BeforeEach
     void setUp() {
-        mockDelegate = mock(IBatchStorageRead.class);
+        mockDelegate = mock(IResourceBatchStorageRead.class);
         ResourceContext context = new ResourceContext("test-service", "test-port", "storage-read", "test-resource", Collections.emptyMap());
         monitoredReader = new MonitoredBatchStorageReader(mockDelegate, context);
     }

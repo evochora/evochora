@@ -11,7 +11,7 @@ import org.evochora.datapipeline.services.indexers.components.DlqComponent;
 import org.evochora.datapipeline.services.indexers.components.IdempotencyComponent;
 import org.evochora.datapipeline.services.indexers.components.MetadataReadingComponent;
 import org.evochora.datapipeline.services.indexers.components.TickBufferingComponent;
-import org.evochora.datapipeline.api.resources.database.IMetadataReader;
+import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
 import org.evochora.datapipeline.api.resources.IRetryTracker;
 import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
@@ -213,7 +213,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         // Component 1: Metadata Reading
         // REQUIRED component - exception if resource missing
         if (required.contains(ComponentType.METADATA)) {
-            IMetadataReader metadataReader = getRequiredResource("metadata", IMetadataReader.class);
+            IResourceSchemaAwareMetadataReader metadataReader = getRequiredResource("metadata", IResourceSchemaAwareMetadataReader.class);
             int pollIntervalMs = indexerOptions.getInt("metadataPollIntervalMs");
             int maxPollDurationMs = indexerOptions.getInt("metadataMaxPollDurationMs");
             builder.withMetadata(new MetadataReadingComponent(
@@ -221,7 +221,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         }
         // OPTIONAL metadata component - graceful skip if resource missing
         else if (optional.contains(ComponentType.METADATA)) {
-            getOptionalResource("metadata", IMetadataReader.class).ifPresent(metadataReader -> {
+            getOptionalResource("metadata", IResourceSchemaAwareMetadataReader.class).ifPresent(metadataReader -> {
                 int pollIntervalMs = indexerOptions.getInt("metadataPollIntervalMs");
                 int maxPollDurationMs = indexerOptions.getInt("metadataMaxPollDurationMs");
                 builder.withMetadata(new MetadataReadingComponent(

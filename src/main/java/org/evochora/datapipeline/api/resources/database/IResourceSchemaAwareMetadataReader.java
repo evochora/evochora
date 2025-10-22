@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.api.resources.database;
 
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.database.IConnectionManageable;
 
 /**
  * Combination interface that provides both metadata reading capability and resource management.
@@ -22,7 +23,7 @@ import org.evochora.datapipeline.api.resources.IResource;
  *   <li>Explicit contracts: Clear what capabilities are available</li>
  * </ul>
  */
-public interface IResourceSchemaAwareMetadataReader extends IMetadataReader, IResource, ISchemaAwareDatabase {
+public interface IResourceSchemaAwareMetadataReader extends IMetadataReader, IResource, ISchemaAwareDatabase, IConnectionManageable {
     // Combination interface - inherits all methods from the three base interfaces
     // No additional methods needed
 }

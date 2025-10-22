@@ -1,7 +1,7 @@
 package org.evochora.datapipeline.services.indexers.components;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.resources.database.IMetadataReader;
+import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader;
 import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,7 +19,7 @@ import java.util.concurrent.TimeoutException;
 public class MetadataReadingComponent {
     private static final Logger log = LoggerFactory.getLogger(MetadataReadingComponent.class);
     
-    private final IMetadataReader metadataReader;
+    private final IResourceSchemaAwareMetadataReader metadataReader;
     private final int pollIntervalMs;
     private final int maxPollDurationMs;
     
@@ -32,7 +32,7 @@ public class MetadataReadingComponent {
      * @param pollIntervalMs Interval between polling attempts (milliseconds)
      * @param maxPollDurationMs Maximum time to wait for metadata (milliseconds)
      */
-    public MetadataReadingComponent(IMetadataReader metadataReader, 
+    public MetadataReadingComponent(IResourceSchemaAwareMetadataReader metadataReader, 
                                    int pollIntervalMs, 
                                    int maxPollDurationMs) {
         this.metadataReader = metadataReader;
