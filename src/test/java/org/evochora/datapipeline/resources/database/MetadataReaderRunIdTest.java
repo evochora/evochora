@@ -84,7 +84,7 @@ class MetadataReaderRunIdTest {
             ((IResourceSchemaAwareMetadataReader) reader).setSimulationRun(runId);
             
             // Get run-id from metadata
-            String retrievedRunId = reader.getRunIdInCurrentSchema();
+            String retrievedRunId = ((IResourceSchemaAwareMetadataReader) reader).getRunIdInCurrentSchema();
             
             assertEquals(runId, retrievedRunId);
         }
@@ -102,7 +102,7 @@ class MetadataReaderRunIdTest {
             
             // Metadata doesn't exist yet (schema not created)
             assertThrows(MetadataNotFoundException.class, () -> {
-                reader.getRunIdInCurrentSchema();
+                ((IResourceSchemaAwareMetadataReader) reader).getRunIdInCurrentSchema();
             });
         }
     }
@@ -144,7 +144,7 @@ class MetadataReaderRunIdTest {
                     new ResourceContext("test", "meta-port", "db-meta-read", "test-db", Map.of()))) {
                 
                 ((IResourceSchemaAwareMetadataReader) reader).setSimulationRun(runId);
-                String retrievedRunId = reader.getRunIdInCurrentSchema();
+                String retrievedRunId = ((IResourceSchemaAwareMetadataReader) reader).getRunIdInCurrentSchema();
                 
                 assertEquals(runId, retrievedRunId, 
                     "Run-ID should be retrieved correctly regardless of format");

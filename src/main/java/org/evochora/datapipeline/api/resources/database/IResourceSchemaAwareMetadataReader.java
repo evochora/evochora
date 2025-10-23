@@ -24,6 +24,19 @@ import org.evochora.datapipeline.api.resources.database.IConnectionManageable;
  * </ul>
  */
 public interface IResourceSchemaAwareMetadataReader extends IMetadataReader, IResource, ISchemaAwareDatabase, IConnectionManageable {
-    // Combination interface - inherits all methods from the three base interfaces
-    // No additional methods needed
+    
+    /**
+     * Gets the simulation run ID from the current database schema.
+     * <p>
+     * This method reads the run-id from the metadata table in the currently
+     * set schema. It is used by wrappers and indexers that need to discover
+     * the run-id after schema switching.
+     * <p>
+     * <strong>Note:</strong> This method is NOT needed by {@link IDatabaseReader}
+     * implementations because they already know their runId from construction.
+     * 
+     * @return Simulation run ID from current schema
+     * @throws MetadataNotFoundException if metadata doesn't exist in current schema
+     */
+    String getRunIdInCurrentSchema() throws MetadataNotFoundException;
 }
