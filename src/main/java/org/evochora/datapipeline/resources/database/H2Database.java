@@ -7,6 +7,9 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
+import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
+import org.evochora.datapipeline.resources.database.H2DatabaseReader;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.datapipeline.utils.PathExpansion;
@@ -21,7 +24,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,7 +38,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Implements {@link AutoCloseable} to ensure proper cleanup of database connections
  * and connection pool resources during shutdown.
  */
-public class H2Database extends AbstractDatabaseResource implements AutoCloseable {
+public class H2Database extends AbstractDatabaseResource implements AutoCloseable, IDatabaseReaderProvider {
 
     private static final Logger log = LoggerFactory.getLogger(H2Database.class);
     private final HikariDataSource dataSource;
@@ -45,6 +50,10 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
     
     // PreparedStatement cache for environment writes (per connection)
     private final Map<Connection, PreparedStatement> envWriteStmtCache = new ConcurrentHashMap<>();
+    
+    // Metadata cache (LRU with automatic eviction)
+    private final Map<String, SimulationMetadata> metadataCache;
+    private final int maxCacheSize;
 
     public H2Database(String name, Config options) {
         super(name, options);
@@ -112,6 +121,19 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
         
         // Load environment storage strategy via reflection
         this.envStorageStrategy = loadEnvironmentStorageStrategy(options);
+        
+        // Initialize metadata cache
+        this.maxCacheSize = options.hasPath("metadataCacheSize") 
+            ? options.getInt("metadataCacheSize") 
+            : 100;
+        this.metadataCache = Collections.synchronizedMap(
+            new LinkedHashMap<String, SimulationMetadata>(maxCacheSize, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, SimulationMetadata> eldest) {
+                    return size() > maxCacheSize;
+                }
+            }
+        );
     }
 
     /**
@@ -576,6 +598,64 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
             log.debug("H2 database '{}' connection pool closed", getResourceName());
+        }
+    }
+    
+    @Override
+    public IDatabaseReader createReader(String runId) throws SQLException {
+        try {
+            Connection conn = dataSource.getConnection();
+            H2SchemaUtil.setSchema(conn, runId);
+            return new H2DatabaseReader(conn, this, envStorageStrategy, runId);
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to create reader for runId: " + runId, e);
+        }
+    }
+
+    @Override
+    public String findLatestRunId() throws SQLException {
+        try (Connection conn = dataSource.getConnection()) {
+            return doGetRunIdInCurrentSchema(conn);
+        } catch (Exception e) {
+            if (e instanceof SQLException) {
+                throw (SQLException) e;
+            }
+            throw new SQLException("Failed to find latest run ID", e);
+        }
+    }
+
+    SimulationMetadata getMetadataInternal(Connection conn, String runId) 
+            throws SQLException, org.evochora.datapipeline.api.resources.database.MetadataNotFoundException {
+        try {
+            return metadataCache.computeIfAbsent(runId, key -> {
+                try {
+                    return doGetMetadata(conn, key);
+                } catch (org.evochora.datapipeline.api.resources.database.MetadataNotFoundException e) {
+                    // Re-throw MetadataNotFoundException directly (no wrapping)
+                    throw new RuntimeException(e);
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to load metadata for runId: " + key, e);
+                }
+            });
+        } catch (RuntimeException e) {
+            if (e.getCause() instanceof org.evochora.datapipeline.api.resources.database.MetadataNotFoundException) {
+                throw (org.evochora.datapipeline.api.resources.database.MetadataNotFoundException) e.getCause();
+            }
+            if (e.getCause() instanceof SQLException) {
+                throw (SQLException) e.getCause();
+            }
+            throw e;
+        }
+    }
+
+    boolean hasMetadataInternal(Connection conn, String runId) throws SQLException {
+        try {
+            return doHasMetadata(conn, runId);
+        } catch (Exception e) {
+            if (e instanceof SQLException) {
+                throw (SQLException) e;
+            }
+            throw new SQLException("Failed to check metadata existence", e);
         }
     }
 }

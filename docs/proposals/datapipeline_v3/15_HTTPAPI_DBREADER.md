@@ -72,8 +72,9 @@ org.evochora.datapipeline
 │       └── h2
 │           ├── IH2EnvStorageStrategy.java         // Strategy interface (existing, extended)
 │           ├── AbstractH2EnvStorageStrategy.java  // Base class (existing)
-│           ├── SingleBlobStrategy.java            // BLOB storage strategy (extended with read)
-│           └── H2DatabaseReader.java              // Per-request reader (all capabilities)
+│           └── SingleBlobStrategy.java            // BLOB storage strategy (extended with read)
+│
+├── H2DatabaseReader.java              // Per-request reader (all capabilities)
 │
 └── utils
     └── H2SchemaUtil.java                          // Schema operations (existing)
@@ -1050,17 +1051,17 @@ class H2DatabaseReader implements IDatabaseReader {
     // ========================================================================
     
     @Override
-    public SimulationMetadata getMetadata(String simulationRunId) throws SQLException {
+    public SimulationMetadata getMetadata() throws SQLException, MetadataNotFoundException {
         ensureNotClosed();
         // Delegate to H2Database (shared implementation with MetadataIndexer)
-        return database.getMetadataInternal(connection, simulationRunId);
+        return database.getMetadataInternal(connection, runId);
     }
     
     @Override
-    public boolean hasMetadata(String simulationRunId) throws SQLException {
+    public boolean hasMetadata() throws SQLException {
         ensureNotClosed();
         // Delegate to H2Database (shared implementation with MetadataIndexer)
-        return database.hasMetadataInternal(connection, simulationRunId);
+        return database.hasMetadataInternal(connection, runId);
     }
     
     // ========================================================================
@@ -1397,7 +1398,7 @@ public class EnvironmentController extends AbstractController {
         }
         
         try (IDatabaseReader reader = dbProvider.createReader(runId)) {
-            SimulationMetadata metadata = reader.getMetadata(runId);
+            SimulationMetadata metadata = reader.getMetadata();
             
             // HTTP Cache Headers: Metadata is IMMUTABLE after simulation start
             ctx.header("Cache-Control", "public, max-age=31536000, immutable");
@@ -1518,7 +1519,7 @@ try (IDatabaseReader reader = dbProvider.createReader(runId)) {
 ```java
 // ❌ Multiple queries need connection
 try (IDatabaseReader reader = dbProvider.createReader(runId)) {
-    metadata = reader.getMetadata(runId);              // Query 1
+    metadata = reader.getMetadata();                    // Query 1
     cells = reader.readEnvironmentRegion(tick, region); // Query 2
     organisms = reader.readOrganisms(tick);            // Query 3
 } // Keep connection for all queries
@@ -1870,9 +1871,9 @@ api/resources/database/
 └── (future) IOrganismDataReader.java
 
 resources/database/
-├── H2Database.java               (implements IDatabaseReaderProvider, IMetadataReader)
+├── H2Database.java               (implements IDatabaseReaderProvider)
+├── H2DatabaseReader.java         (implements IDatabaseReader)
 └── h2/
-    ├── H2DatabaseReader.java     (implements IDatabaseReader)
     └── (existing) SingleBlobStrategy.java
 
 node/processes/http/api/visualizer/
@@ -2262,7 +2263,7 @@ WHERE tick_number = ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ?;
    - Add metadata cache (LinkedHashMap with LRU)
    - Update `getMetadataInternal()` to use cache
 
-3. Create `H2DatabaseReader.java`:
+3. Create `H2DatabaseReader.java` in `database/` package:
    - Constructor with Connection, H2Database, Strategy, runId
    - Implement `close()` (return connection to pool)
    - Implement `getMetadata()` delegation
