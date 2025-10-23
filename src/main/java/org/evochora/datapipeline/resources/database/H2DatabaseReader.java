@@ -4,6 +4,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.database.*;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,7 +38,49 @@ public class H2DatabaseReader implements IDatabaseReader {
     @Override
     public List<CellWithCoordinates> readEnvironmentRegion(long tickNumber, SpatialRegion region) 
             throws SQLException {
-        throw new UnsupportedOperationException("Implemented in Phase 2");
+        ensureNotClosed();
+        
+        // Get metadata to extract environment properties
+        SimulationMetadata metadata;
+        try {
+            metadata = getMetadata();
+        } catch (org.evochora.datapipeline.api.resources.database.MetadataNotFoundException e) {
+            throw new SQLException("Metadata not found for runId: " + runId, e);
+        }
+        EnvironmentProperties envProps = extractEnvironmentProperties(metadata);
+        
+        // Read cells via strategy
+        List<org.evochora.datapipeline.api.contracts.CellState> cells = 
+            envStrategy.readTick(connection, tickNumber, region, envProps);
+        
+        // Convert flatIndex to coordinates
+        return cells.stream()
+            .map(cell -> {
+                int[] coords = envProps.flatIndexToCoordinates(cell.getFlatIndex());
+                return new CellWithCoordinates(
+                    coords,
+                    cell.getMoleculeType(),
+                    cell.getMoleculeValue(),
+                    cell.getOwnerId()
+                );
+            })
+            .collect(java.util.stream.Collectors.toList());
+    }
+
+    private EnvironmentProperties extractEnvironmentProperties(SimulationMetadata metadata) {
+        org.evochora.datapipeline.api.contracts.EnvironmentConfig envConfig = 
+            metadata.getEnvironment();
+        
+        int[] shape = new int[envConfig.getShapeCount()];
+        for (int i = 0; i < envConfig.getShapeCount(); i++) {
+            shape[i] = envConfig.getShape(i);
+        }
+        
+        // For now, assume all dimensions have same toroidal setting
+        // TODO: Support per-dimension toroidal settings in future
+        boolean isToroidal = envConfig.getToroidalCount() > 0 && envConfig.getToroidal(0);
+        
+        return new EnvironmentProperties(shape, isToroidal);
     }
     
     @Override

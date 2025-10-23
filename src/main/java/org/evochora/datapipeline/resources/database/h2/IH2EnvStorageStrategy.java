@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.resources.database.h2;
 
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.database.SpatialRegion;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 import java.sql.Connection;
@@ -75,6 +76,24 @@ public interface IH2EnvStorageStrategy {
      */
     void writeTicks(Connection conn, PreparedStatement stmt, List<TickData> ticks, 
                     EnvironmentProperties envProps) throws SQLException;
+
+    /**
+     * Reads environment cells for a specific tick with optional region filtering.
+     * <p>
+     * This method enables HTTP API controllers to query environment data with
+     * spatial filtering. The strategy handles database-specific optimizations
+     * (e.g., BLOB decompression, spatial indexes) transparently.
+     * 
+     * @param conn Database connection (schema already set)
+     * @param tickNumber Tick to read
+     * @param region Spatial bounds (null = all cells)
+     * @param envProps Environment properties for coordinate conversion
+     * @return List of cells with flatIndex (coordinates converted by caller)
+     * @throws SQLException if database read fails
+     */
+    List<org.evochora.datapipeline.api.contracts.CellState> readTick(Connection conn, long tickNumber, 
+                                                                      SpatialRegion region, 
+                                                                      EnvironmentProperties envProps) throws SQLException;
 }
 
 

@@ -13,9 +13,13 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
+import org.evochora.datapipeline.api.resources.database.SpatialRegion;
 
 /**
  * SingleBlobStrategy: Stores all cells of a tick in a single BLOB.
@@ -200,5 +204,119 @@ public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
         } catch (IOException e) {
             throw new SQLException("Failed to serialize cells for tick: " + tick.getTickNumber(), e);
         }
+    }
+
+    @Override
+    public List<org.evochora.datapipeline.api.contracts.CellState> readTick(Connection conn, long tickNumber, 
+                                                                           SpatialRegion region, 
+                                                                           EnvironmentProperties envProps) throws SQLException {
+        // 1. Read BLOB from database
+        PreparedStatement stmt = conn.prepareStatement(
+            "SELECT cells_blob FROM environment_ticks WHERE tick_number = ?"
+        );
+        stmt.setLong(1, tickNumber);
+        ResultSet rs = stmt.executeQuery();
+        
+        if (!rs.next()) {
+            throw new SQLException("Tick " + tickNumber + " not found");
+        }
+        
+        byte[] blobData = rs.getBytes("cells_blob");
+        if (blobData == null || blobData.length == 0) {
+            return Collections.emptyList();  // Empty tick
+        }
+        
+        // 2. Auto-detect compression
+        ICompressionCodec detectedCodec = CompressionCodecFactory.detectFromMagicBytes(blobData);
+        
+        // 3. Decompress BLOB
+        byte[] decompressed;
+        try {
+            java.io.ByteArrayInputStream bis = new java.io.ByteArrayInputStream(blobData);
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            try (java.io.InputStream decompressedStream = detectedCodec.wrapInputStream(bis)) {
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = decompressedStream.read(buffer)) != -1) {
+                    bos.write(buffer, 0, bytesRead);
+                }
+                decompressed = bos.toByteArray();
+            }
+        } catch (IOException e) {
+            throw new SQLException("Failed to decompress BLOB for tick " + tickNumber, e);
+        }
+        
+        // 4. Deserialize Protobuf
+        CellStateList cellStateList;
+        try {
+            cellStateList = CellStateList.parseFrom(decompressed);
+        } catch (Exception e) {
+            throw new SQLException("Failed to deserialize CellStateList for tick " + tickNumber, e);
+        }
+        
+        List<org.evochora.datapipeline.api.contracts.CellState> allCells = cellStateList.getCellsList();
+        
+        // 5. Filter by region (if provided)
+        if (region == null) {
+            return allCells;
+        }
+        
+        return filterByRegion(allCells, region, envProps);
+    }
+
+    private List<org.evochora.datapipeline.api.contracts.CellState> filterByRegion(
+            List<org.evochora.datapipeline.api.contracts.CellState> cells,
+            SpatialRegion region,
+            EnvironmentProperties envProps) {
+        
+        int dimensions = envProps.getDimensions();
+        
+        if (dimensions == 2) {
+            return filterByRegion2D(cells, region, envProps);
+        } else {
+            return filterByRegionND(cells, region, envProps);
+        }
+    }
+
+    private List<org.evochora.datapipeline.api.contracts.CellState> filterByRegion2D(
+            List<org.evochora.datapipeline.api.contracts.CellState> cells,
+            SpatialRegion region,
+            EnvironmentProperties envProps) {
+        
+        int[] bounds = region.bounds;
+        int xMin = bounds[0], xMax = bounds[1];
+        int yMin = bounds[2], yMax = bounds[3];
+        
+        return cells.stream()
+            .filter(cell -> {
+                int[] coords = envProps.flatIndexToCoordinates(cell.getFlatIndex());
+                int x = coords[0], y = coords[1];
+                return x >= xMin && x <= xMax && y >= yMin && y <= yMax;
+            })
+            .collect(Collectors.toList());
+    }
+
+    private List<org.evochora.datapipeline.api.contracts.CellState> filterByRegionND(
+            List<org.evochora.datapipeline.api.contracts.CellState> cells,
+            SpatialRegion region,
+            EnvironmentProperties envProps) {
+        
+        int[] bounds = region.bounds;
+        int dimensions = envProps.getDimensions();
+        
+        return cells.stream()
+            .filter(cell -> {
+                int[] coords = envProps.flatIndexToCoordinates(cell.getFlatIndex());
+                
+                for (int d = 0; d < dimensions; d++) {
+                    int min = bounds[d * 2];
+                    int max = bounds[d * 2 + 1];
+                    if (coords[d] < min || coords[d] > max) {
+                        return false;
+                    }
+                }
+                return true;
+            })
+            .collect(Collectors.toList());
     }
 }
