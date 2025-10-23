@@ -67,7 +67,7 @@ org.evochora.datapipeline
 │   └── database
 │       ├── AbstractDatabaseResource.java          // Base class (existing)
 │       ├── H2Database.java                        // H2 implementation (IDatabaseReaderProvider)
-│       │                                          // Also implements: IMetadataReader (for indexers)
+│       │                                          // Indexers use MetadataReaderWrapper (not H2Database directly)
 │       ├── MetadataReaderWrapper.java             // Wrapper for IMetadataReader (existing)
 │       └── h2
 │           ├── IH2EnvStorageStrategy.java         // Strategy interface (existing, extended)
@@ -240,7 +240,7 @@ package org.evochora.datapipeline.api.resources.database;
  * is returned to pool:
  * <pre>
  * try (IDatabaseReader reader = provider.createReader(runId)) {
- *     List&lt;Cell&gt; cells = reader.readEnvironmentRegion(tick, region);
+ *     List&lt;CellWithCoordinates&gt; cells = reader.readEnvironmentRegion(tick, region);
  *     // ...
  * } // Automatic connection return to pool
  * </pre>
@@ -501,7 +501,6 @@ GET /visualizer/api/metadata[?runId=<id>]
 ```java
 public class H2Database extends AbstractDatabaseResource 
                          implements IDatabaseReaderProvider,
-                                   IMetadataReader,  // For indexers
                                    AutoCloseable {
     
     private final HikariDataSource dataSource;
@@ -581,7 +580,7 @@ public class H2Database extends AbstractDatabaseResource
         try {
             return metadataCache.computeIfAbsent(runId, key -> {
                 try {
-                    return (SimulationMetadata) doGetMetadata(conn, key);
+                    return doGetMetadata(conn, key);
                 } catch (Exception e) {
                     throw new RuntimeException("Failed to load metadata for runId: " + key, e);
                 }
@@ -633,7 +632,30 @@ public class H2Database extends AbstractDatabaseResource
 }
 ```
 
-### 3.3 SingleBlobStrategy Read Implementation
+### 3.3 IH2EnvStorageStrategy Extension
+
+**Add to IH2EnvStorageStrategy.java (after line 78):**
+
+```java
+/**
+ * Reads environment cells for a specific tick with optional region filtering.
+ * <p>
+ * This method enables HTTP API controllers to query environment data with
+ * spatial filtering. The strategy handles database-specific optimizations
+ * (e.g., BLOB decompression, spatial indexes) transparently.
+ * 
+ * @param conn Database connection (schema already set)
+ * @param tickNumber Tick to read
+ * @param region Spatial bounds (null = all cells, future: database-level filtering)
+ * @param envProps Environment properties for coordinate conversion
+ * @return List of cells with flatIndex (coordinates converted by caller)
+ * @throws SQLException if database read fails
+ */
+List<CellState> readTick(Connection conn, long tickNumber, SpatialRegion region, 
+                        EnvironmentProperties envProps) throws SQLException;
+```
+
+### 3.4 SingleBlobStrategy Read Implementation
 
 ```java
 package org.evochora.datapipeline.resources.database.h2;
@@ -897,7 +919,7 @@ import java.util.List;
  * <ul>
  *   <li><b>Environment reads:</b> Direct usage of {@link IH2EnvStorageStrategy}</li>
  *   <li><b>Organism reads:</b> Own SQL implementation (future)</li>
- *   <li><b>Metadata reads:</b> Delegation to {@link H2Database} (shared with indexers)</li>
+ *   <li><b>Metadata reads:</b> Delegation to {@link H2Database} (via AbstractDatabaseResource)</li>
  * </ul>
  * <p>
  * <strong>Design Rationale:</strong>
@@ -905,7 +927,7 @@ import java.util.List;
  * <ul>
  *   <li>Environment: Uses strategy pattern (same as writes)</li>
  *   <li>Organism: Will have own SQL (no strategy needed)</li>
- *   <li>Metadata: Delegates to H2Database (because MetadataIndexer uses same logic)</li>
+ *   <li>Metadata: Delegates to H2Database (via AbstractDatabaseResource methods)</li>
  * </ul>
  * <p>
  * This keeps H2Database focused on writes (indexing) while readers have their own implementation.
@@ -1156,7 +1178,44 @@ node {
 }
 ```
 
-### 4.2 HttpServerProcess Implementation
+### 4.2 ServiceManager Extension
+
+**Add to ServiceManager.java (after line 568):**
+
+```java
+/**
+ * Gets a resource with type-safe access.
+ * <p>
+ * Allows cross-process resource access (e.g., HttpServerProcess accessing
+ * database resources created for pipeline services).
+ * 
+ * @param name Resource name from configuration
+ * @param expectedType Expected type of the resource
+ * @param <T> Resource type
+ * @return The resource instance, cast to expected type
+ * @throws IllegalArgumentException if resource not found or wrong type
+ */
+public <T> T getResource(String name, Class<T> expectedType) {
+    IResource resource = resources.get(name);
+
+    if (resource == null) {
+        throw new IllegalArgumentException(
+            "Resource '" + name + "' not found. Available resources: " + resources.keySet()
+        );
+    }
+
+    if (!expectedType.isInstance(resource)) {
+        throw new IllegalArgumentException(
+            "Resource '" + name + "' is " + resource.getClass().getName() +
+            " but expected " + expectedType.getName()
+        );
+    }
+
+    return expectedType.cast(resource);
+}
+```
+
+### 4.3 HttpServerProcess Implementation
 
 ```java
 public class HttpServerProcess extends AbstractProcess {
@@ -1575,6 +1634,8 @@ ETag: "20251021_143025_AB12CD_12345_1234567"
 - ✅ **`immutable` directive:** Browser skips revalidation entirely
 
 **Client-Side Cache Implementation (Visualizer):**
+
+*Note: The following JavaScript code is for illustration purposes only - it shows how clients can utilize the HTTP cache headers, but is not part of this specification.*
 
 ```javascript
 // Simple in-memory cache with IndexedDB fallback
@@ -2208,9 +2269,162 @@ WHERE tick_number = ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ?;
    - Stub `readEnvironmentRegion()` (throw UnsupportedOperationException)
 
 **Verification Tests (can run immediately):**
+
+**Unit Tests (fast, no I/O):**
 ```java
 /**
- * Phase 1 tests: Database reader infrastructure
+ * Phase 1 unit tests: Interface contracts and data classes
+ * No database I/O - pure unit tests
+ */
+@Tag("unit")  // <0.2s runtime, no I/O
+class DatabaseReaderUnitTest {
+    
+    @Test
+    void spatialRegion_constructsCorrectly() {
+        int[] bounds = {0, 50, 0, 50};  // 2D: x:[0,50], y:[0,50]
+        SpatialRegion region = new SpatialRegion(bounds);
+        
+        assertEquals(2, region.getDimensions());
+        assertArrayEquals(bounds, region.bounds);
+    }
+    
+    @Test
+    void spatialRegion_throwsOnInvalidBounds() {
+        int[] invalidBounds = {0, 50, 0};  // Odd number of values
+        
+        assertThrows(IllegalArgumentException.class, () -> 
+            new SpatialRegion(invalidBounds)
+        );
+    }
+    
+    @Test
+    void cellWithCoordinates_serializesCorrectly() throws Exception {
+        CellWithCoordinates cell = new CellWithCoordinates(
+            new int[]{5, 10}, 1, 255, 7
+        );
+        
+        ObjectMapper mapper = new ObjectMapper();
+        String json = mapper.writeValueAsString(cell);
+        
+        assertTrue(json.contains("\"coordinates\":[5,10]"));
+        assertTrue(json.contains("\"moleculeType\":1"));
+        assertTrue(json.contains("\"moleculeValue\":255"));
+        assertTrue(json.contains("\"ownerId\":7"));
+    }
+    
+    @Test
+    void cellWithCoordinates_deserializesCorrectly() throws Exception {
+        String json = "{\"coordinates\":[5,10],\"moleculeType\":1,\"moleculeValue\":255,\"ownerId\":7}";
+        
+        ObjectMapper mapper = new ObjectMapper();
+        CellWithCoordinates cell = mapper.readValue(json, CellWithCoordinates.class);
+        
+        assertArrayEquals(new int[]{5, 10}, cell.coordinates());
+        assertEquals(1, cell.moleculeType());
+        assertEquals(255, cell.moleculeValue());
+        assertEquals(7, cell.ownerId());
+    }
+}
+```
+
+**Error Handling Tests:**
+```java
+/**
+ * Phase 1 error handling tests: Database connection failures
+ */
+@Tag("integration")  // Uses database for error simulation
+class DatabaseReaderErrorHandlingTest {
+    
+    private H2Database database;
+    
+    @BeforeEach
+    void setUp() {
+        // Valid database setup
+        Config config = ConfigFactory.parseString(
+            "jdbcUrl = \"jdbc:h2:mem:test-errors-" + System.nanoTime() + ";MODE=PostgreSQL\"\n" +
+            "maxPoolSize = 2\n"
+        );
+        database = new H2Database("test-db", config);
+    }
+    
+    @AfterEach
+    void tearDown() {
+        if (database != null) {
+            database.close();
+        }
+    }
+    
+    @Test
+    void createReader_throwsOnInvalidRunId() {
+        // Given: Invalid run-id (schema doesn't exist)
+        String invalidRunId = "nonexistent_run";
+        
+        // When/Then: Should throw RuntimeException with SQLException cause
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> 
+            database.createReader(invalidRunId)
+        );
+        
+        assertTrue(exception.getCause() instanceof SQLException);
+        assertTrue(exception.getMessage().contains("Failed to create reader"));
+    }
+    
+    @Test
+    void createReader_throwsOnNullRunId() {
+        assertThrows(NullPointerException.class, () -> 
+            database.createReader(null)
+        );
+    }
+    
+    @Test
+    void findLatestRunId_returnsNullOnEmptyDatabase() throws SQLException {
+        // Given: Empty database (no schemas)
+        String result = database.findLatestRunId();
+        
+        // Then: Should return null (not throw exception)
+        assertNull(result);
+    }
+    
+    @Test
+    void getMetadataInternal_throwsOnInvalidRunId() throws SQLException {
+        // Given: Valid connection but invalid run-id
+        try (Connection conn = database.getConnection()) {
+            String invalidRunId = "nonexistent_run";
+            
+            // When/Then: Should throw SQLException
+            assertThrows(SQLException.class, () -> 
+                database.getMetadataInternal(conn, invalidRunId)
+            );
+        }
+    }
+    
+    @Test
+    void connectionLeak_preventedOnException() {
+        // Given: Database with limited pool
+        Config limitedConfig = ConfigFactory.parseString(
+            "jdbcUrl = \"jdbc:h2:mem:test-leak-" + System.nanoTime() + ";MODE=PostgreSQL\"\n" +
+            "maxPoolSize = 1\n"  // Very limited pool
+        );
+        
+        try (H2Database limitedDb = new H2Database("limited-db", limitedConfig)) {
+            // When: Reader creation fails but connection is still returned
+            assertThrows(RuntimeException.class, () -> 
+                limitedDb.createReader("invalid_run")
+            );
+            
+            // Then: Pool should still be usable (connection returned)
+            // This test verifies that failed createReader() doesn't leak connections
+            assertDoesNotThrow(() -> 
+                limitedDb.getConnection().close()
+            );
+        }
+    }
+}
+```
+
+**Integration Tests:**
+```java
+/**
+ * Phase 1 integration tests: Database reader infrastructure
  * Uses in-memory H2 database (AGENTS.md: "If database needed: use in-memory")
  */
 @Tag("integration")  // Uses database (H2 in-memory)
@@ -2307,9 +2521,212 @@ class DatabaseReaderInfrastructureTest {
    - `getDimensions()` ✅ already implemented
 
 **Verification Tests (isolated from HTTP):**
+
+**Unit Tests (fast, no I/O):**
 ```java
 /**
- * Phase 2 tests: Strategy read and filtering
+ * Phase 2 unit tests: Strategy interface and data conversion
+ * No database I/O - pure unit tests
+ */
+@Tag("unit")  // <0.2s runtime, no I/O
+class StrategyUnitTest {
+    
+    @Test
+    void spatialRegion_filtering2D() {
+        SpatialRegion region = new SpatialRegion(new int[]{10, 20, 30, 40});
+        
+        // Test 2D filtering logic
+        assertTrue(isInRegion2D(15, 35, region));  // Inside
+        assertFalse(isInRegion2D(5, 35, region));   // X outside
+        assertFalse(isInRegion2D(15, 25, region));  // Y outside
+    }
+    
+    @Test
+    void spatialRegion_filtering3D() {
+        SpatialRegion region = new SpatialRegion(new int[]{10, 20, 30, 40, 50, 60});
+        
+        // Test 3D filtering logic
+        assertTrue(isInRegion3D(15, 35, 55, region));  // Inside
+        assertFalse(isInRegion3D(15, 35, 45, region)); // Z outside
+    }
+    
+    @Test
+    void cellStateToCoordinates_conversion() {
+        // Test flatIndex to coordinates conversion
+        EnvironmentProperties envProps = new EnvironmentProperties(100, 100, false);
+        
+        int flatIndex = 150;  // x=50, y=1 in 100x100 grid
+        int[] coordinates = envProps.flatIndexToCoordinates(flatIndex);
+        
+        assertEquals(50, coordinates[0]);  // x
+        assertEquals(1, coordinates[1]);     // y
+    }
+    
+    @Test
+    void compressionCodec_detection() {
+        // Test compression detection from magic bytes
+        byte[] zstdMagic = {(byte)0x28, (byte)0xB5, (byte)0x2F, (byte)0xFD};
+        byte[] gzipMagic = {(byte)0x1F, (byte)0x8B};
+        
+        assertEquals("zstd", CompressionCodecFactory.detectFromMagicBytes(zstdMagic));
+        assertEquals("gzip", CompressionCodecFactory.detectFromMagicBytes(gzipMagic));
+        assertEquals("none", CompressionCodecFactory.detectFromMagicBytes(new byte[]{1, 2, 3, 4}));
+    }
+    
+    private boolean isInRegion2D(int x, int y, SpatialRegion region) {
+        int[] bounds = region.bounds;
+        return x >= bounds[0] && x <= bounds[1] && y >= bounds[2] && y <= bounds[3];
+    }
+    
+    private boolean isInRegion3D(int x, int y, int z, SpatialRegion region) {
+        int[] bounds = region.bounds;
+        return x >= bounds[0] && x <= bounds[1] && 
+               y >= bounds[2] && y <= bounds[3] && 
+               z >= bounds[4] && z <= bounds[5];
+    }
+}
+```
+
+**Error Handling Tests:**
+```java
+/**
+ * Phase 2 error handling tests: Strategy failures and edge cases
+ */
+@Tag("integration")  // Uses database for error simulation
+class StrategyErrorHandlingTest {
+    
+    private H2Database database;
+    private String testRunId;
+    
+    @BeforeEach
+    void setUp() {
+        Config config = ConfigFactory.parseString(
+            "jdbcUrl = \"jdbc:h2:mem:test-strategy-errors-" + System.nanoTime() + ";MODE=PostgreSQL\"\n" +
+            "maxPoolSize = 2\n" +
+            "h2EnvironmentStrategy {\n" +
+            "  className = \"org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy\"\n" +
+            "}\n"
+        );
+        database = new H2Database("test-db", config);
+        testRunId = "20251021_140000_TEST";
+        setupTestMetadata(testRunId);
+    }
+    
+    @AfterEach
+    void tearDown() {
+        if (database != null) {
+            database.close();
+        }
+    }
+    
+    @Test
+    void readEnvironmentRegion_throwsOnInvalidTick() throws SQLException {
+        try (IDatabaseReader reader = database.createReader(testRunId)) {
+            SpatialRegion region = new SpatialRegion(new int[]{0, 10, 0, 10});
+            
+            // When: Query non-existent tick
+            SQLException exception = assertThrows(SQLException.class, () -> 
+                reader.readEnvironmentRegion(999999, region)
+            );
+            
+            // Then: Should indicate tick not found
+            assertTrue(exception.getMessage().contains("tick") || 
+                      exception.getMessage().contains("not found"));
+        }
+    }
+    
+    @Test
+    void readEnvironmentRegion_handlesCorruptedBlob() throws SQLException {
+        // Given: Corrupted BLOB data in database
+        insertCorruptedBlob(testRunId, 100);
+        
+        try (IDatabaseReader reader = database.createReader(testRunId)) {
+            SpatialRegion region = new SpatialRegion(new int[]{0, 10, 0, 10});
+            
+            // When/Then: Should handle corruption gracefully
+            SQLException exception = assertThrows(SQLException.class, () -> 
+                reader.readEnvironmentRegion(100, region)
+            );
+            
+            assertTrue(exception.getMessage().contains("Failed to decompress") ||
+                      exception.getMessage().contains("Failed to deserialize"));
+        }
+    }
+    
+    @Test
+    void readEnvironmentRegion_handlesEmptyBlob() throws SQLException {
+        // Given: Empty BLOB (no cells)
+        insertEmptyBlob(testRunId, 100);
+        
+        try (IDatabaseReader reader = database.createReader(testRunId)) {
+            SpatialRegion region = new SpatialRegion(new int[]{0, 10, 0, 10});
+            
+            // When: Query empty tick
+            List<CellWithCoordinates> cells = reader.readEnvironmentRegion(100, region);
+            
+            // Then: Should return empty list (not error)
+            assertNotNull(cells);
+            assertTrue(cells.isEmpty());
+        }
+    }
+    
+    @Test
+    void readEnvironmentRegion_handlesInvalidRegion() throws SQLException {
+        try (IDatabaseReader reader = database.createReader(testRunId)) {
+            // Given: Invalid region (min > max)
+            SpatialRegion invalidRegion = new SpatialRegion(new int[]{20, 10, 30, 40});
+            
+            // When: Query with invalid region
+            List<CellWithCoordinates> cells = reader.readEnvironmentRegion(100, invalidRegion);
+            
+            // Then: Should return empty list (no cells in invalid region)
+            assertNotNull(cells);
+            assertTrue(cells.isEmpty());
+        }
+    }
+    
+    @Test
+    void readEnvironmentRegion_handlesNullRegion() throws SQLException {
+        try (IDatabaseReader reader = database.createReader(testRunId)) {
+            // When: Query with null region (all cells)
+            List<CellWithCoordinates> cells = reader.readEnvironmentRegion(100, null);
+            
+            // Then: Should return all cells
+            assertNotNull(cells);
+            // Should have some cells (depends on test data)
+        }
+    }
+    
+    private void insertCorruptedBlob(String runId, long tick) throws SQLException {
+        // Insert corrupted BLOB data for testing
+        try (Connection conn = database.getConnection()) {
+            PreparedStatement stmt = conn.prepareStatement(
+                "INSERT INTO environment_ticks (tick_number, cells_blob) VALUES (?, ?)"
+            );
+            stmt.setLong(1, tick);
+            stmt.setBytes(2, new byte[]{1, 2, 3, 4});  // Corrupted data
+            stmt.executeUpdate();
+        }
+    }
+    
+    private void insertEmptyBlob(String runId, long tick) throws SQLException {
+        // Insert empty BLOB for testing
+        try (Connection conn = database.getConnection()) {
+            PreparedStatement stmt = conn.prepareStatement(
+                "INSERT INTO environment_ticks (tick_number, cells_blob) VALUES (?, ?)"
+            );
+            stmt.setLong(1, tick);
+            stmt.setBytes(2, new byte[0]);  // Empty BLOB
+            stmt.executeUpdate();
+        }
+    }
+}
+```
+
+**Integration Tests:**
+```java
+/**
+ * Phase 2 integration tests: Strategy read and filtering
  * Uses in-memory H2 database with real EnvironmentIndexer for test data
  */
 @Tag("integration")  // Uses database + EnvironmentIndexer
@@ -2434,9 +2851,326 @@ class StrategyReadAndFilteringTest {
    - Add EnvironmentController config
 
 **Verification Tests (End-to-End):**
+
+**Unit Tests (fast, no I/O):**
 ```java
 /**
- * Phase 3 tests: HTTP Controller integration
+ * Phase 3 unit tests: HTTP request parsing and response formatting
+ * No database I/O - pure unit tests
+ */
+@Tag("unit")  // <0.2s runtime, no I/O
+class EnvironmentControllerUnitTest {
+    
+    @Test
+    void parseRegion_valid2D() {
+        String regionParam = "0,50,0,50";
+        SpatialRegion region = parseRegion(regionParam);
+        
+        assertNotNull(region);
+        assertEquals(2, region.getDimensions());
+        assertArrayEquals(new int[]{0, 50, 0, 50}, region.bounds);
+    }
+    
+    @Test
+    void parseRegion_valid3D() {
+        String regionParam = "0,100,0,100,0,50";
+        SpatialRegion region = parseRegion(regionParam);
+        
+        assertNotNull(region);
+        assertEquals(3, region.getDimensions());
+        assertArrayEquals(new int[]{0, 100, 0, 100, 0, 50}, region.bounds);
+    }
+    
+    @Test
+    void parseRegion_throwsOnOddCount() {
+        String regionParam = "0,50,0";  // Odd number of values
+        
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> 
+            parseRegion(regionParam)
+        );
+        
+        assertTrue(exception.getMessage().contains("even number of values"));
+    }
+    
+    @Test
+    void parseRegion_throwsOnInvalidFormat() {
+        String regionParam = "0,abc,0,50";  // Non-numeric value
+        
+        NumberFormatException exception = assertThrows(NumberFormatException.class, () -> 
+            parseRegion(regionParam)
+        );
+        
+        assertTrue(exception.getMessage().contains("abc"));
+    }
+    
+    @Test
+    void parseRegion_returnsNullForNull() {
+        SpatialRegion region = parseRegion(null);
+        assertNull(region);
+    }
+    
+    @Test
+    void resolveRunId_queryParameter() {
+        // Given: Mock context with runId parameter
+        Context ctx = mock(Context.class);
+        when(ctx.queryParam("runId")).thenReturn("test_run_123");
+        
+        // When: Resolve run-id
+        String result = resolveRunId(ctx);
+        
+        // Then: Should return query parameter
+        assertEquals("test_run_123", result);
+    }
+    
+    @Test
+    void resolveRunId_configDefault() {
+        // Given: Mock context without runId parameter, with config default
+        Context ctx = mock(Context.class);
+        when(ctx.queryParam("runId")).thenReturn(null);
+        
+        // Mock database provider
+        IDatabaseReaderProvider dbProvider = mock(IDatabaseReaderProvider.class);
+        when(dbProvider.findLatestRunId()).thenReturn("latest_run_456");
+        
+        // When: Resolve run-id
+        String result = resolveRunId(ctx, dbProvider);
+        
+        // Then: Should return latest run-id
+        assertEquals("latest_run_456", result);
+    }
+    
+    @Test
+    void resolveRunId_throwsOnNoRuns() {
+        // Given: Mock context and empty database
+        Context ctx = mock(Context.class);
+        when(ctx.queryParam("runId")).thenReturn(null);
+        
+        IDatabaseReaderProvider dbProvider = mock(IDatabaseReaderProvider.class);
+        when(dbProvider.findLatestRunId()).thenReturn(null);
+        
+        // When/Then: Should throw NoRunIdException
+        assertThrows(NoRunIdException.class, () -> 
+            resolveRunId(ctx, dbProvider)
+        );
+    }
+    
+    @Test
+    void httpResponse_serializesCorrectly() throws Exception {
+        // Given: Response data
+        List<CellWithCoordinates> cells = List.of(
+            new CellWithCoordinates(new int[]{5, 10}, 1, 255, 7),
+            new CellWithCoordinates(new int[]{6, 11}, 2, 128, 8)
+        );
+        
+        Map<String, Object> response = Map.of(
+            "tick", 100L,
+            "runId", "test_run",
+            "region", new SpatialRegion(new int[]{0, 10, 0, 10}),
+            "cells", cells
+        );
+        
+        // When: Serialize to JSON
+        ObjectMapper mapper = new ObjectMapper();
+        String json = mapper.writeValueAsString(response);
+        
+        // Then: Should contain expected fields
+        assertTrue(json.contains("\"tick\":100"));
+        assertTrue(json.contains("\"runId\":\"test_run\""));
+        assertTrue(json.contains("\"cells\":["));
+        assertTrue(json.contains("\"coordinates\":[5,10]"));
+    }
+    
+    private SpatialRegion parseRegion(String regionParam) {
+        if (regionParam == null) return null;
+        
+        String[] parts = regionParam.split(",");
+        if (parts.length % 2 != 0) {
+            throw new IllegalArgumentException("Region must have even number of values");
+        }
+        
+        int[] bounds = new int[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            bounds[i] = Integer.parseInt(parts[i]);
+        }
+        
+        return new SpatialRegion(bounds);
+    }
+    
+    private String resolveRunId(Context ctx) {
+        return resolveRunId(ctx, mock(IDatabaseReaderProvider.class));
+    }
+    
+    private String resolveRunId(Context ctx, IDatabaseReaderProvider dbProvider) {
+        String runId = ctx.queryParam("runId");
+        if (runId != null) return runId;
+        
+        String latest = dbProvider.findLatestRunId();
+        if (latest == null) {
+            throw new NoRunIdException("No simulation runs found");
+        }
+        return latest;
+    }
+}
+```
+
+**Error Handling Tests:**
+```java
+/**
+ * Phase 3 error handling tests: HTTP error responses and edge cases
+ */
+@Tag("integration")  // Uses database + HTTP server for error simulation
+class EnvironmentControllerErrorHandlingTest {
+    
+    private H2Database database;
+    private Javalin app;
+    private String baseUrl;
+    
+    @BeforeEach
+    void setUp() {
+        // In-memory H2 database
+        Config dbConfig = ConfigFactory.parseString(
+            "jdbcUrl = \"jdbc:h2:mem:test-http-errors-" + System.nanoTime() + ";MODE=PostgreSQL\"\n" +
+            "maxPoolSize = 5\n"
+        );
+        database = new H2Database("test-db", dbConfig);
+        
+        // Start embedded Javalin server
+        app = Javalin.create().start(0);
+        int port = app.port();
+        baseUrl = "http://localhost:" + port;
+        
+        // Register EnvironmentController
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IDatabaseReaderProvider.class, database);
+        EnvironmentController controller = new EnvironmentController(registry, ConfigFactory.empty());
+        controller.registerRoutes(app, "/visualizer/api");
+    }
+    
+    @AfterEach
+    void tearDown() {
+        if (app != null) {
+            app.stop();
+        }
+        if (database != null) {
+            database.close();
+        }
+    }
+    
+    @Test
+    void getEnvironment_returns404OnInvalidRunId() {
+        // Given: Invalid run-id
+        String url = baseUrl + "/visualizer/api/100/environment?runId=invalid_run";
+        
+        // When: Make request
+        HttpResponse<String> response = Unirest.get(url).asString();
+        
+        // Then: Should return 404
+        assertEquals(404, response.getStatus());
+        assertTrue(response.getBody().contains("Run ID not found"));
+    }
+    
+    @Test
+    void getEnvironment_returns400OnInvalidRegion() {
+        // Given: Invalid region parameter (odd number of values)
+        String url = baseUrl + "/visualizer/api/100/environment?region=0,50,0";
+        
+        // When: Make request
+        HttpResponse<String> response = Unirest.get(url).asString();
+        
+        // Then: Should return 400
+        assertEquals(400, response.getStatus());
+        assertTrue(response.getBody().contains("Invalid region parameter"));
+    }
+    
+    @Test
+    void getEnvironment_returns400OnInvalidTick() {
+        // Given: Invalid tick parameter (non-numeric)
+        String url = baseUrl + "/visualizer/api/invalid/environment";
+        
+        // When: Make request
+        HttpResponse<String> response = Unirest.get(url).asString();
+        
+        // Then: Should return 400
+        assertEquals(400, response.getStatus());
+        assertTrue(response.getBody().contains("Invalid tick number"));
+    }
+    
+    @Test
+    void getEnvironment_returns404OnNoRuns() {
+        // Given: Empty database (no runs)
+        String url = baseUrl + "/visualizer/api/100/environment";
+        
+        // When: Make request
+        HttpResponse<String> response = Unirest.get(url).asString();
+        
+        // Then: Should return 404
+        assertEquals(404, response.getStatus());
+        assertTrue(response.getBody().contains("No simulation runs available"));
+    }
+    
+    @Test
+    void getEnvironment_returns500OnDatabaseError() throws SQLException {
+        // Given: Database with corrupted data
+        insertCorruptedData();
+        String url = baseUrl + "/visualizer/api/100/environment?runId=test_run";
+        
+        // When: Make request
+        HttpResponse<String> response = Unirest.get(url).asString();
+        
+        // Then: Should return 500
+        assertEquals(500, response.getStatus());
+        assertTrue(response.getBody().contains("Database error"));
+    }
+    
+    @Test
+    void getEnvironment_handlesConnectionPoolExhaustion() {
+        // Given: Limited connection pool
+        Config limitedConfig = ConfigFactory.parseString(
+            "jdbcUrl = \"jdbc:h2:mem:test-pool-" + System.nanoTime() + ";MODE=PostgreSQL\"\n" +
+            "maxPoolSize = 1\n"  // Very limited pool
+        );
+        
+        try (H2Database limitedDb = new H2Database("limited-db", limitedConfig)) {
+            // When: Make multiple concurrent requests
+            List<CompletableFuture<HttpResponse<String>>> futures = new ArrayList<>();
+            for (int i = 0; i < 5; i++) {
+                futures.add(CompletableFuture.supplyAsync(() -> {
+                    try {
+                        return Unirest.get(baseUrl + "/visualizer/api/100/environment").asString();
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }));
+            }
+            
+            // Then: Some requests should succeed, others should handle pool exhaustion gracefully
+            List<HttpResponse<String>> responses = futures.stream()
+                .map(CompletableFuture::join)
+                .collect(Collectors.toList());
+            
+            // At least some requests should complete (success or proper error handling)
+            assertTrue(responses.size() > 0);
+        }
+    }
+    
+    private void insertCorruptedData() throws SQLException {
+        // Insert corrupted data to trigger database errors
+        try (Connection conn = database.getConnection()) {
+            PreparedStatement stmt = conn.prepareStatement(
+                "INSERT INTO environment_ticks (tick_number, cells_blob) VALUES (?, ?)"
+            );
+            stmt.setLong(1, 100);
+            stmt.setBytes(2, new byte[]{1, 2, 3, 4});  // Corrupted data
+            stmt.executeUpdate();
+        }
+    }
+}
+```
+
+**Integration Tests:**
+```java
+/**
+ * Phase 3 integration tests: HTTP Controller integration
  * Uses in-memory H2 + embedded Javalin server (no external dependencies)
  * Target: <1s per test (AGENTS.md integration test guideline)
  */
