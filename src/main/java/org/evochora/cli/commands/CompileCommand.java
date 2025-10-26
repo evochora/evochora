@@ -47,7 +47,7 @@ public class CompileCommand implements Callable<Integer> {
         EnvironmentProperties envProps = parseEnvironmentProperties(env);
 
         Compiler compiler = new Compiler();
-        ProgramArtifact artifact = compiler.compile(sourceLines, file.getName(), envProps);
+        ProgramArtifact artifact = compiler.compile(sourceLines, file.getPath(), envProps);
         LinearizedProgramArtifact linearizedArtifact = artifact.toLinearized(envProps);
 
         Gson gson = new GsonBuilder().setPrettyPrinting().create();

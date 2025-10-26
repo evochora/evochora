@@ -13,6 +13,10 @@ The Evochora CLI provides the main entry point for running the simulation node a
 # Show help for specific command
 ./gradlew run --args="help node"
 ./gradlew run --args="help compile"
+./gradlew run --args="help inspect"
+
+# Show help for inspect storage subcommand
+./gradlew run --args="inspect storage --help"
 ```
 
 ### Start Simulation Node
@@ -40,6 +44,56 @@ The node will:
 ```
 
 See `ASSEMBLY_COMPILE_USAGE.md` for detailed compilation documentation.
+
+### Inspect Storage Data
+```bash
+# Inspect tick data from storage (summary format)
+./gradlew run --args="inspect storage --tick=1000 --run=my-simulation-run"
+
+# Inspect with JSON output format
+./gradlew run --args="inspect storage --tick=1000 --run=my-simulation-run --format=json"
+
+# Inspect with raw protobuf output
+./gradlew run --args="inspect storage --tick=1000 --run=my-simulation-run --format=raw"
+
+# Use custom storage resource
+./gradlew run --args="inspect storage --tick=1000 --run=my-simulation-run --storage=custom-storage"
+```
+
+The `inspect storage` command allows you to examine tick data that has been persisted to storage for debugging purposes. It supports three output formats:
+
+- **summary** (default): Human-readable summary with key information
+- **json**: Complete tick data in JSON format
+- **raw**: Raw protobuf message output
+
+**Parameters:**
+- `--tick, -t`: Tick number to inspect (required)
+- `--run, -r`: Simulation run ID (required)
+- `--format, -f`: Output format: json, summary, raw (default: summary)
+- `--storage, -s`: Storage resource name (default: tick-storage)
+
+**Example output (summary format):**
+```
+Found batch file: my-simulation-run/batch_0000000000000001000_0000000000000001999.pb
+=== Tick Data Summary ===
+Simulation Run ID: my-simulation-run
+Tick Number: 1000
+Capture Time: 2024-01-15T10:30:45.123Z
+Organisms: 150 alive
+Cells: 2500 non-empty
+RNG State: 32 bytes
+Strategy States: 5
+
+=== Organism Summary ===
+  ID: 1, Energy: 100, Dead: false
+  ID: 2, Energy: 85, Dead: false
+  ...
+
+=== Cell Summary ===
+  Index: 100, Type: 1, Value: 5, Owner: 1
+  Index: 101, Type: 2, Value: 3, Owner: 2
+  ...
+```
 
 ## Configuration
 
@@ -110,6 +164,9 @@ java -jar build/libs/evochora.jar --config my-config.conf node run
 
 # Compile assembly
 java -jar build/libs/evochora.jar compile --file=assembly/examples/simple.s
+
+# Inspect storage data
+java -jar build/libs/evochora.jar inspect storage --tick=1000 --run=my-simulation-run
 ```
 
 ## Exit Codes
@@ -134,3 +191,9 @@ java -jar build/libs/evochora.jar compile --file=assembly/examples/simple.s
 - Verify the configuration file uses valid HOCON syntax
 - Check that all required configuration keys are present
 - See `evochora.conf` for a complete configuration example
+
+### Inspect storage fails
+- Verify the simulation run ID exists in storage
+- Check that the specified tick number exists in the batch files
+- Ensure the storage resource is properly configured
+- Use `--format=summary` for human-readable output or `--format=json` for detailed inspection

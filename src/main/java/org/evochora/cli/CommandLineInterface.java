@@ -3,6 +3,7 @@ package org.evochora.cli;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.cli.commands.CompileCommand;
+import org.evochora.cli.commands.InspectCommand;
 import org.evochora.cli.commands.node.NodeCommand;
 import org.evochora.cli.config.LoggingConfigurator;
 import org.slf4j.Logger;
@@ -22,6 +23,7 @@ import java.util.concurrent.Callable;
     subcommands = {
         NodeCommand.class,
         CompileCommand.class,
+        InspectCommand.class,
         CommandLine.HelpCommand.class
     }
 )
