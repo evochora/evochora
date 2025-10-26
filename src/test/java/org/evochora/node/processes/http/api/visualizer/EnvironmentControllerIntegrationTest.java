@@ -1,4 +1,4 @@
-package org.evochora.datapipeline.services.indexers;
+package org.evochora.node.processes.http.api.visualizer;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
@@ -13,7 +13,7 @@ import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.datapipeline.resources.topics.H2TopicResource;
-import org.evochora.node.processes.http.api.visualizer.EnvironmentController;
+import org.evochora.datapipeline.services.indexers.EnvironmentIndexer;
 import org.evochora.node.spi.ServiceRegistry;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
@@ -48,7 +48,7 @@ import static org.hamcrest.Matchers.*;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
-class EnvironmentIndexerControllerIntegrationTest {
+class EnvironmentControllerIntegrationTest {
 
     private H2Database testDatabase;
     private FileSystemStorageResource testStorage;
