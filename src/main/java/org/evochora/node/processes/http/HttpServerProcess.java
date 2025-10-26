@@ -8,6 +8,7 @@ import com.typesafe.config.ConfigValueType;
 import io.javalin.Javalin;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.evochora.datapipeline.ServiceManager;
+import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.node.spi.IController;
 import org.evochora.node.processes.AbstractProcess;
 import org.evochora.node.spi.ServiceRegistry;
@@ -56,6 +57,18 @@ public class HttpServerProcess extends AbstractProcess {
         // Create internal ServiceRegistry for controllers (backward compatibility)
         this.controllerRegistry = new ServiceRegistry();
         this.controllerRegistry.register(ServiceManager.class, serviceManager);
+        
+        // Register IDatabaseReaderProvider if configured
+        if (options.hasPath("databaseProviderResourceName")) {
+            final String dbProviderName = options.getString("databaseProviderResourceName");
+            try {
+                final IDatabaseReaderProvider dbProvider = serviceManager.getResource(dbProviderName, IDatabaseReaderProvider.class);
+                this.controllerRegistry.register(IDatabaseReaderProvider.class, dbProvider);
+                LOGGER.debug("Registered database provider '{}' for controllers", dbProviderName);
+            } catch (final Exception e) {
+                LOGGER.warn("Failed to register database provider '{}': {}", dbProviderName, e.getMessage());
+            }
+        }
 
         parseRoutes();
         LOGGER.debug("HttpServerProcess '{}' initialized with ServiceManager dependency.", processName);

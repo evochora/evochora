@@ -615,12 +615,30 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
     @Override
     public String findLatestRunId() throws SQLException {
         try (Connection conn = dataSource.getConnection()) {
-            return doGetRunIdInCurrentSchema(conn);
-        } catch (Exception e) {
-            if (e instanceof SQLException) {
-                throw (SQLException) e;
+            // Step 1: Find latest simulation schema
+            String latestSchema;
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(
+                     "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA " +
+                     "WHERE SCHEMA_NAME LIKE 'SIM\\_%' ESCAPE '\\' " +
+                     "ORDER BY SCHEMA_NAME DESC " +
+                     "LIMIT 1")) {
+                if (!rs.next()) {
+                    return null;  // No simulation runs found
+                }
+                latestSchema = rs.getString("SCHEMA_NAME");
             }
-            throw new SQLException("Failed to find latest run ID", e);
+            
+            // Step 2: Set schema and read run-id (maintains encapsulation)
+            conn.createStatement().execute("SET SCHEMA \"" + latestSchema + "\"");
+            
+            try {
+                return doGetRunIdInCurrentSchema(conn);
+            } catch (org.evochora.datapipeline.api.resources.database.MetadataNotFoundException e) {
+                return null;  // Schema exists but no metadata yet
+            } catch (Exception e) {
+                throw new SQLException("Failed to read run ID from schema: " + latestSchema, e);
+            }
         }
     }
 

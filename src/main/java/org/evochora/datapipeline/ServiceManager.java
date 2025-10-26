@@ -568,6 +568,37 @@ public class ServiceManager implements IMonitorable {
         return Collections.unmodifiableMap(resources);
     }
 
+    /**
+     * Gets a resource with type-safe access.
+     * <p>
+     * Allows cross-process resource access (e.g., HttpServerProcess accessing
+     * database resources created for pipeline services).
+     * 
+     * @param name Resource name from configuration
+     * @param expectedType Expected type of the resource
+     * @param <T> Resource type
+     * @return The resource instance, cast to expected type
+     * @throws IllegalArgumentException if resource not found or wrong type
+     */
+    public <T> T getResource(String name, Class<T> expectedType) {
+        IResource resource = resources.get(name);
+
+        if (resource == null) {
+            throw new IllegalArgumentException(
+                "Resource '" + name + "' not found. Available resources: " + resources.keySet()
+            );
+        }
+
+        if (!expectedType.isInstance(resource)) {
+            throw new IllegalArgumentException(
+                "Resource '" + name + "' is " + resource.getClass().getName() +
+                " but expected " + expectedType.getName()
+            );
+        }
+
+        return expectedType.cast(resource);
+    }
+
     public ServiceStatus getServiceStatus(String serviceName) {
         if (!serviceFactories.containsKey(serviceName)) {
             throw new IllegalArgumentException("Service not found: " + serviceName);

@@ -92,13 +92,14 @@ class DatabaseReaderErrorHandlingTest {
     }
     
     @Test
-    void findLatestRunId_throwsOnEmptyDatabase() {
+    void findLatestRunId_returnsNullOnEmptyDatabase() throws SQLException {
         // Given: Empty database (no schemas)
         
-        // When/Then: Should throw SQLException (not return null)
-        assertThrows(SQLException.class, () -> 
-            database.findLatestRunId()
-        );
+        // When: Find latest run ID
+        String result = database.findLatestRunId();
+        
+        // Then: Should return null (no simulation runs found)
+        assertNull(result);
     }
     
     @Test
