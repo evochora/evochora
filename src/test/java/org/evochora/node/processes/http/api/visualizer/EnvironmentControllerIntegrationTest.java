@@ -15,6 +15,8 @@ import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.datapipeline.resources.topics.H2TopicResource;
 import org.evochora.datapipeline.services.indexers.EnvironmentIndexer;
 import org.evochora.node.spi.ServiceRegistry;
+import org.evochora.junit.extensions.logging.ExpectLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,12 +29,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.*;
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import io.restassured.response.Response;
 
 /**
  * Integration test for EnvironmentIndexer and EnvironmentController.
@@ -182,23 +188,373 @@ class EnvironmentControllerIntegrationTest {
         controller.registerRoutes(app, "/visualizer/api");
 
         // Query data via HTTP API using RestAssured
-        given()
+        Response resp = given()
             .port(port)
             .basePath("/visualizer/api")
-        .when()
-            .get("/{tick}/environment?runId={runId}&region=0,10,0,10", 1, runId)
-        .then()
+            .queryParam("region", "0,10,0,10")
+            .queryParam("runId", runId)
+            .get("/1/environment");
+        
+        // Verify HTTP response structure and headers
+        resp.then()
             .statusCode(200)
             .body("tick", equalTo(1))
             .body("runId", equalTo(runId))
             .body("cells", hasSize(3))  // Should have 3 cells
+            .header("Cache-Control", containsString("immutable"));  // HTTP cache header check
+        
+        // Verify detailed cell data
+        resp.then()
             .body("cells[0].coordinates", equalTo(Arrays.asList(0, 0)))  // Cell at flatIndex=0 → (0,0)
             .body("cells[0].ownerId", equalTo(100))
             .body("cells[1].coordinates", equalTo(Arrays.asList(0, 5)))  // Cell at flatIndex=5 → (0,5)
             .body("cells[2].coordinates", equalTo(Arrays.asList(1, 5))); // Cell at flatIndex=15 → (1,5) in row-major
     }
 
+    @Test
+    void httpEndpoint_cacheHeadersSet() throws Exception {
+        // Given: Set up test data
+        String runId = "test-run-" + UUID.randomUUID();
+        SimulationMetadata metadata = createMetadata(runId, new int[]{10, 10}, false);
+        
+        indexMetadata(runId, metadata);
+        
+        List<TickData> batch1 = List.of(
+            TickData.newBuilder()
+                .setTickNumber(1L)
+                .setSimulationRunId(runId)
+                .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(50).build())
+                .build()
+        );
+        
+        writeBatchAndNotify(runId, batch1);
+        
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            topicPollTimeoutMs = 2000
+            insertBatchSize = 100
+            flushTimeoutMs = 1000
+            """.formatted(runId));
+        
+        indexer = createEnvironmentIndexer("test-indexer", config);
+        indexer.start();
+        
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 1);
+        
+        // Setup HTTP server
+        app = Javalin.create().start(0);
+        int port = app.port();
+        
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IDatabaseReaderProvider.class, testDatabase);
+        
+        Config controllerConfig = ConfigFactory.empty();
+        EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
+        controller.registerRoutes(app, "/visualizer/api");
+        
+        // When: Make HTTP request
+        Response resp = given()
+            .port(port)
+            .basePath("/visualizer/api")
+            .queryParam("region", "0,10,0,10")
+            .queryParam("runId", runId)
+            .get("/1/environment");
+        
+        // Then: Verify cache headers are set correctly
+        resp.then()
+            .statusCode(200)
+            .header("Cache-Control", equalTo("public, max-age=31536000, immutable"))
+            .header("ETag", notNullValue());
+        
+        // ETag should contain runId and tick
+        assertThat(resp.header("ETag")).contains(runId);
+        assertThat(resp.header("ETag")).contains("_1");
+    }
+
+    @Test
+    void httpEndpoint_runIdFallback_usesLatest() throws Exception {
+        // Given: Set up test data with two runs (older and newer)
+        // IMPORTANT: "findLatestRunId" sorts by SCHEMA_NAME alphabetically DESC.
+        // Schema names are created as "SIM_" + sanitized(runId).uppercase().
+        // To ensure the newer run comes first in DESC order, we need it to be lexicographically LAST.
+        // Prefix "A" for older (comes BEFORE), "B" for newer (comes AFTER).
+        String baseUuid = UUID.randomUUID().toString();
+        String oldRunId = "A-older-" + baseUuid;
+        String newRunId = "B-newer-" + baseUuid;
+        
+        // Setup separate topic for older run
+        String oldTopicJdbcUrl = "jdbc:h2:mem:test-batch-topic-old-" + UUID.randomUUID();
+        Config oldTopicConfig = ConfigFactory.parseString(
+            "jdbcUrl = \"" + oldTopicJdbcUrl + "\"\n" +
+            "username = \"sa\"\n" +
+            "password = \"\"\n" +
+            "claimTimeout = 300"
+        );
+        H2TopicResource oldBatchTopic = new H2TopicResource("batch-topic-old", oldTopicConfig);
+        
+        // Setup older run
+        SimulationMetadata oldMetadata = createMetadata(oldRunId, new int[]{10, 10}, false);
+        indexMetadata(oldRunId, oldMetadata);
+        
+        List<TickData> oldBatch = List.of(
+            TickData.newBuilder()
+                .setTickNumber(1L)
+                .setSimulationRunId(oldRunId)
+                .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(50).build())
+                .build()
+        );
+        
+        writeBatchAndNotifyWithTopic(oldRunId, oldBatch, oldBatchTopic);
+        
+        Config oldConfig = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            topicPollTimeoutMs = 2000
+            insertBatchSize = 100
+            flushTimeoutMs = 1000
+            """.formatted(oldRunId));
+        
+        EnvironmentIndexer<?> oldIndexer = createEnvironmentIndexerWithTopic("old-indexer", oldConfig, oldBatchTopic);
+        oldIndexer.start();
+        
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> oldIndexer.getMetrics().get("ticks_processed").longValue() >= 1);
+        oldIndexer.stop();
+        oldBatchTopic.close();
+        
+        // Setup newer run (reuses testBatchTopic from setUp)
+        // Note: We don't need a delay for different timestamps because schema names
+        // are sorted alphabetically and our run IDs ensure the newer one sorts last
+        SimulationMetadata newMetadata = createMetadata(newRunId, new int[]{10, 10}, false);
+        indexMetadata(newRunId, newMetadata);
+        
+        List<TickData> newBatch = List.of(
+            TickData.newBuilder()
+                .setTickNumber(1L)
+                .setSimulationRunId(newRunId)
+                .addCells(CellState.newBuilder().setFlatIndex(5).setOwnerId(200).setMoleculeType(2).setMoleculeValue(75).build())
+                .build()
+        );
+        
+        writeBatchAndNotify(newRunId, newBatch);
+        
+        Config newConfig = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            topicPollTimeoutMs = 2000
+            insertBatchSize = 100
+            flushTimeoutMs = 1000
+            """.formatted(newRunId));
+        
+        indexer = createEnvironmentIndexer("new-indexer", newConfig);
+        indexer.start();
+        
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 1);
+        
+        // Setup HTTP server
+        app = Javalin.create().start(0);
+        int port = app.port();
+        
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IDatabaseReaderProvider.class, testDatabase);
+        
+        Config controllerConfig = ConfigFactory.empty();
+        EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
+        controller.registerRoutes(app, "/visualizer/api");
+        
+        // When: Make HTTP request WITHOUT runId parameter (should fallback to latest)
+        Response resp = given()
+            .port(port)
+            .basePath("/visualizer/api")
+            .queryParam("region", "0,10,0,10")
+            // Note: NO runId parameter!
+            .get("/1/environment");
+        
+        // Then: Should return data from the NEWER run (latest)
+        resp.then()
+            .statusCode(200)
+            .body("tick", equalTo(1))
+            .body("runId", equalTo(newRunId))  // Should use the newer run
+            .body("cells", hasSize(1))
+            .body("cells[0].ownerId", equalTo(200)); // Newer run has ownerId=200
+    }
+
+    @Test
+    @ExpectLog(level = LogLevel.WARN, messagePattern = ".*Region must have even number.*")
+    void httpEndpoint_errorHandling_invalidRegion() throws Exception {
+        // Given: Set up test data
+        String runId = "test-run-" + UUID.randomUUID();
+        SimulationMetadata metadata = createMetadata(runId, new int[]{10, 10}, false);
+        
+        indexMetadata(runId, metadata);
+        
+        List<TickData> batch1 = List.of(
+            TickData.newBuilder()
+                .setTickNumber(1L)
+                .setSimulationRunId(runId)
+                .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(50).build())
+                .build()
+        );
+        
+        writeBatchAndNotify(runId, batch1);
+        
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            topicPollTimeoutMs = 2000
+            insertBatchSize = 100
+            flushTimeoutMs = 1000
+            """.formatted(runId));
+        
+        indexer = createEnvironmentIndexer("test-indexer", config);
+        indexer.start();
+        
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 1);
+        
+        // Setup HTTP server
+        app = Javalin.create().start(0);
+        int port = app.port();
+        
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IDatabaseReaderProvider.class, testDatabase);
+        
+        Config controllerConfig = ConfigFactory.empty();
+        EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
+        controller.registerRoutes(app, "/visualizer/api");
+        
+        // When: Make HTTP request with invalid region (odd number of values)
+        Response resp = given()
+            .port(port)
+            .basePath("/visualizer/api")
+            .queryParam("region", "0,10,0")  // Only 3 values (invalid - must be even)
+            .queryParam("runId", runId)
+            .get("/1/environment");
+        
+        // Then: Should return 400 with error message
+        resp.then()
+            .statusCode(400);
+        
+        // Check error message in response body (the actual error text from the spec)
+        String body = resp.body().asString();
+        assertThat(body).containsIgnoringCase("Region");
+    }
+
+    @Test
+    void concurrentRequests_noConnectionLeaks() throws Exception {
+        // Given: Set up test data with multiple ticks
+        String runId = "test-run-" + UUID.randomUUID();
+        SimulationMetadata metadata = createMetadata(runId, new int[]{10, 10}, false);
+        
+        indexMetadata(runId, metadata);
+        
+        // Create 10 ticks of data
+        List<TickData> batches = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            batches.add(TickData.newBuilder()
+                .setTickNumber(i + 1)
+                .setSimulationRunId(runId)
+                .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100 + i).setMoleculeType(1).setMoleculeValue(50 + i).build())
+                .build());
+        }
+        
+        for (TickData batch : batches) {
+            writeBatchAndNotify(runId, List.of(batch));
+        }
+        
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            topicPollTimeoutMs = 2000
+            insertBatchSize = 100
+            flushTimeoutMs = 1000
+            """.formatted(runId));
+        
+        indexer = createEnvironmentIndexer("test-indexer", config);
+        indexer.start();
+        
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 10);
+        
+        // Setup HTTP server
+        app = Javalin.create().start(0);
+        int port = app.port();
+        
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IDatabaseReaderProvider.class, testDatabase);
+        
+        Config controllerConfig = ConfigFactory.empty();
+        EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
+        controller.registerRoutes(app, "/visualizer/api");
+        
+        // Get baseline connection count before HTTP requests
+        Map<String, Number> baselineMetrics = testDatabase.getMetrics();
+        int baselineActive = baselineMetrics.get("h2_pool_active_connections").intValue();
+        int baselineTotal = baselineMetrics.get("h2_pool_total_connections").intValue();
+        
+        // When: Make 20 concurrent requests
+        List<CompletableFuture<Response>> futures = IntStream.range(1, 21)
+            .mapToObj(i -> CompletableFuture.supplyAsync(() -> 
+                given()
+                    .port(port)
+                    .basePath("/visualizer/api")
+                    .queryParam("region", "0,10,0,10")
+                    .queryParam("runId", runId)
+                    .get("/" + Math.min(i, 10) + "/environment")))  // Request ticks 1-10, repeat
+            .toList();
+        
+        List<Response> responses = futures.stream()
+            .map(CompletableFuture::join)
+            .toList();
+        
+        // Then: All requests succeeded (200)
+        assertTrue(responses.stream().allMatch(r -> r.statusCode() == 200),
+            "All concurrent requests should return 200");
+        
+        // Verify no connection leaks by checking that connections don't increase
+        // The try-with-resources in EnvironmentController should close connections properly
+        // Use Awaitility to poll metrics until connections stabilize
+        Map<String, Number> afterMetrics = await()
+            .atMost(2, TimeUnit.SECONDS)
+            .pollInterval(50, TimeUnit.MILLISECONDS)
+            .until(() -> {
+                Map<String, Number> metrics = testDatabase.getMetrics();
+                // Metrics should be stable - wait a bit for cleanup
+                return metrics;
+            }, metrics -> {
+                // Verify that connections are properly managed
+                int afterTotal = metrics.get("h2_pool_total_connections").intValue();
+                // The pool max size is 10, so we should not exceed this
+                return afterTotal <= 10;
+            });
+        
+        int afterActive = afterMetrics.get("h2_pool_active_connections").intValue();
+        int afterTotal = afterMetrics.get("h2_pool_total_connections").intValue();
+        
+        // Verify that connections are properly managed
+        // The pool max size is 10, so we should not exceed this
+        assertTrue(afterTotal <= 10,
+            "Total connections should not exceed pool max size (10). Was: " + afterTotal);
+        
+        // Verify that active connections did not increase (indicating no leaks)
+        // We allow a small tolerance (+1) for timing/cleanup delays
+        assertTrue(afterActive <= baselineActive + 1,
+            "Active connections should not increase after requests. Baseline: " + baselineActive + ", After: " + afterActive);
+    }
+
     private EnvironmentIndexer<?> createEnvironmentIndexer(String name, Config config) {
+        return createEnvironmentIndexerWithTopic(name, config, testBatchTopic);
+    }
+
+    private EnvironmentIndexer<?> createEnvironmentIndexerWithTopic(String name, Config config, H2TopicResource topic) {
         // Wrap database for metadata reading
         ResourceContext dbMetaContext = new ResourceContext(
             name, "metadata", "db-meta-read", "test-db", Map.of());
@@ -218,7 +574,7 @@ class EnvironmentControllerIntegrationTest {
         ResourceContext topicContext = new ResourceContext(
             name, "topic", "topic-read", "batch-topic",
             Map.of("consumerGroup", "test-consumer-" + UUID.randomUUID()));
-        IResource wrappedTopic = testBatchTopic.getWrappedResource(topicContext);
+        IResource wrappedTopic = topic.getWrappedResource(topicContext);
 
         Map<String, List<IResource>> resources = Map.of(
             "database", List.of(wrappedDbEnv),
@@ -259,6 +615,10 @@ class EnvironmentControllerIntegrationTest {
     }
 
     private void writeBatchAndNotify(String runId, List<TickData> ticks) throws Exception {
+        writeBatchAndNotifyWithTopic(runId, ticks, testBatchTopic);
+    }
+
+    private void writeBatchAndNotifyWithTopic(String runId, List<TickData> ticks, H2TopicResource topic) throws Exception {
         // Write batch to storage
         ResourceContext storageWriteContext = new ResourceContext("test", "storage-port", "storage-write", "test-storage", Map.of("simulationRunId", runId));
         var storageWriter = testStorage.getWrappedResource(storageWriteContext);
@@ -270,7 +630,7 @@ class EnvironmentControllerIntegrationTest {
 
         // Send batch notification to topic (CRITICAL: Set simulation run BEFORE sending!)
         ResourceContext topicWriteContext = new ResourceContext("test", "topic-port", "topic-write", "batch-topic", Map.of());
-        var topicWriterResource = testBatchTopic.getWrappedResource(topicWriteContext);
+        var topicWriterResource = topic.getWrappedResource(topicWriteContext);
         @SuppressWarnings("unchecked")
         ITopicWriter<BatchInfo> topicWriter = (ITopicWriter<BatchInfo>) topicWriterResource;
         

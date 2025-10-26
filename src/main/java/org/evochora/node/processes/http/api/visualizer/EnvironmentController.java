@@ -68,6 +68,10 @@ public class EnvironmentController extends AbstractController {
             LOGGER.warn("No run ID available for request {}: {}", ctx.path(), e.getMessage());
             ctx.status(HttpStatus.NOT_FOUND).json(createErrorBody(HttpStatus.NOT_FOUND, e.getMessage()));
         });
+        app.exception(PoolExhaustionException.class, (e, ctx) -> {
+            LOGGER.warn("Connection pool exhausted for request {}: {}", ctx.path(), e.getMessage());
+            ctx.status(HttpStatus.TOO_MANY_REQUESTS).json(createErrorBody(HttpStatus.TOO_MANY_REQUESTS, "Server is under heavy load, please try again later"));
+        });
         app.exception(SQLException.class, (e, ctx) -> {
             LOGGER.error("Database error for request {}", ctx.path(), e);
             ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(createErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, "Database error occurred"));
@@ -130,13 +134,48 @@ public class EnvironmentController extends AbstractController {
             response.put("region", region);
             response.put("cells", cells);
             
-            // Set HTTP cache headers for immutable past ticks
-            if (tickNumber < System.currentTimeMillis() / 1000) { // Rough heuristic: past ticks are immutable
-                ctx.header("Cache-Control", "public, max-age=3600"); // 1 hour cache
-                ctx.header("ETag", "\"tick-" + tickNumber + "-" + runId + "\"");
-            }
+            // HTTP Cache Headers: Tick data is IMMUTABLE after indexing
+            // Aggressive caching enables client-side cache with 0ms latency on repeated queries
+            // Browser/Client can cache indefinitely - data NEVER changes once indexed
+            ctx.header("Cache-Control", "public, max-age=31536000, immutable"); // 1 year + immutable
+            ctx.header("ETag", String.format("\"%s_%d\"", runId, tickNumber));
             
             ctx.status(HttpStatus.OK).json(response);
+        } catch (RuntimeException e) {
+            // Check if the error is due to non-existent schema (run ID not found)
+            if (e.getCause() instanceof SQLException) {
+                SQLException sqlEx = (SQLException) e.getCause();
+                String msg = sqlEx.getMessage();
+                
+                if (msg != null) {
+                    String lowerMsg = msg.toLowerCase();
+                    
+                    // Check for schema errors FIRST (before pool exhaustion)
+                    if (msg.contains("schema") || msg.contains("Schema")) {
+                        // Schema doesn't exist - run ID not found
+                        throw new NoRunIdException("Run ID not found: " + runId);
+                    }
+                    
+                    // Check for connection pool timeout/exhaustion (specific patterns only)
+                    if (lowerMsg.contains("timeout") || 
+                        lowerMsg.contains("connection is not available") ||
+                        lowerMsg.contains("connection pool")) {
+                        // Connection pool exhausted or timeout
+                        throw new PoolExhaustionException("Connection pool exhausted or timeout", sqlEx);
+                    }
+                }
+            }
+            // Other runtime errors - wrap to provide better context
+            throw new RuntimeException("Error retrieving environment data for runId: " + runId, e);
+        } catch (SQLException e) {
+            // Check if the error is due to non-existent schema (run ID not found)
+            if (e.getMessage() != null && 
+                (e.getMessage().contains("schema") || e.getMessage().contains("Schema"))) {
+                // Schema doesn't exist - run ID not found
+                throw new NoRunIdException("Run ID not found: " + runId);
+            }
+            // Other database errors
+            throw e;
         }
     }
 
@@ -253,6 +292,23 @@ public class EnvironmentController extends AbstractController {
     public static class NoRunIdException extends RuntimeException {
         public NoRunIdException(final String message) {
             super(message);
+        }
+        
+        public NoRunIdException(final String message, final Throwable cause) {
+            super(message, cause);
+        }
+    }
+    
+    /**
+     * Exception thrown when the connection pool is exhausted.
+     */
+    public static class PoolExhaustionException extends RuntimeException {
+        public PoolExhaustionException(final String message) {
+            super(message);
+        }
+        
+        public PoolExhaustionException(final String message, final Throwable cause) {
+            super(message, cause);
         }
     }
 }
