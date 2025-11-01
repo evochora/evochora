@@ -12,7 +12,10 @@ import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.ir.*;
 import org.evochora.runtime.model.Molecule;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -110,13 +113,19 @@ public class Emitter {
         Map<Integer, String> labelAddressToName = new HashMap<>();
         layout.labelToAddress().forEach((name, addr) -> labelAddressToName.put(addr, name));
 
+        // Sort both machineCodeLayout and initialObjects by coordinate to ensure deterministic iteration.
+        // HashMap<int[], V> has non-deterministic iteration order because int[] uses identity-based hashCode.
+        // Sorting here at compile time ensures any consumer gets consistent, deterministic iteration order.
+        Map<int[], Integer> sortedMachineCodeLayout = sortMapByCoordinate(machineCodeLayout);
+        Map<int[], PlacedMolecule> sortedInitialObjects = sortMapByCoordinate(initialObjects);
+
         String programId = Integer.toHexString(machineCodeLayout.hashCode());
 
         return new ProgramArtifact(
                 programId,
                 sources,
-                machineCodeLayout,
-                initialObjects,
+                sortedMachineCodeLayout,
+                sortedInitialObjects,
                 sourceMap,
                 linkingContext.callSiteBindings(),
                 coordToLinear,
@@ -158,6 +167,25 @@ public class Emitter {
             return new Molecule(Config.TYPE_DATA, vec.components()[0]).toInt();
         }
         throw new CompilationException(formatSource(ctx, "Unsupported operand type: " + op.getClass().getSimpleName()));
+    }
+
+    /**
+     * Sorts a map with int[] keys by coordinate values to ensure deterministic iteration.
+     * Creates a new LinkedHashMap with entries sorted lexicographically by coordinate.
+     *
+     * @param <V> The value type of the map
+     * @param unsortedMap The map to sort
+     * @return A new LinkedHashMap with sorted entries
+     */
+    private <V> Map<int[], V> sortMapByCoordinate(Map<int[], V> unsortedMap) {
+        List<Map.Entry<int[], V>> sortedEntries = new ArrayList<>(unsortedMap.entrySet());
+        sortedEntries.sort((e1, e2) -> Arrays.compare(e1.getKey(), e2.getKey()));
+
+        Map<int[], V> sortedMap = new LinkedHashMap<>();
+        for (Map.Entry<int[], V> entry : sortedEntries) {
+            sortedMap.put(entry.getKey(), entry.getValue());
+        }
+        return sortedMap;
     }
 
     /**

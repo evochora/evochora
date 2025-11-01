@@ -87,16 +87,18 @@ class SimulationToPersistenceIntegrationTest {
         
         // Start all services
         serviceManager.startAll();
-        
+
         // Wait for batches to be written
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> countBatchFiles(tempStorageDir) > 0);
-        
-        // Verify data integrity
+
+        // Verify data integrity (this implicitly verifies that batch files exist)
         verifyAllTicksPersisted();
-        
-        // Verify that batch files were created (indicating successful persistence)
-        assertTrue(countBatchFiles(tempStorageDir) > 0);
+
+        // Note: No need to re-check countBatchFiles() here - the await() already guaranteed files exist,
+        // and verifyAllTicksPersisted() reads those files successfully. Re-checking introduces a race condition:
+        // countBatchFiles() can transiently return 0 if Files.walk() encounters concurrent file operations
+        // (e.g., temp files being renamed), even though files actually exist.
     }
 
     @Test

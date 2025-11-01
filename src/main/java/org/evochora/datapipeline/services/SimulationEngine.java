@@ -638,21 +638,21 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     
     private void placeOrganismCodeAndObjects(Organism organism, ProgramArtifact artifact, int[] startPosition) {
         // Place code in environment
-        /****************** FLAKY TESTS!!!! ************************/
-        /*for (Map.Entry<int[], Integer> entry : artifact.machineCodeLayout().entrySet()) {
+        // ProgramArtifact guarantees deterministic iteration order (sorted by coordinate in Emitter)
+        for (Map.Entry<int[], Integer> entry : artifact.machineCodeLayout().entrySet()) {
             int[] relativePos = entry.getKey();
             int[] absolutePos = new int[startPosition.length];
             for (int i = 0; i < startPosition.length; i++) {
                 absolutePos[i] = startPosition[i] + relativePos[i];
             }
-            
+
             simulation.getEnvironment().setMolecule(
                 org.evochora.runtime.model.Molecule.fromInt(entry.getValue()),
                 organism.getId(),
                 absolutePos
             );
-        }*/
-        
+        }
+
         // Place initial world objects
         for (Map.Entry<int[], org.evochora.compiler.api.PlacedMolecule> entry : artifact.initialWorldObjects().entrySet()) {
             int[] relativePos = entry.getKey();
@@ -660,7 +660,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
             for (int i = 0; i < startPosition.length; i++) {
                 absolutePos[i] = startPosition[i] + relativePos[i];
             }
-            
+
             org.evochora.compiler.api.PlacedMolecule pm = entry.getValue();
             simulation.getEnvironment().setMolecule(
                 new org.evochora.runtime.model.Molecule(pm.type(), pm.value()),
