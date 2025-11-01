@@ -123,11 +123,14 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
 
         for (Config orgConfig : organismConfigs) {
             ProgramArtifact artifact = compiledPrograms.get(orgConfig.getString("program"));
-            Organism org = Organism.create(simulation,
-                    orgConfig.getIntList("placement.positions").stream().mapToInt(i -> i).toArray(),
-                    orgConfig.getInt("initialEnergy"), log);
-            org.setProgramId(artifact.programId());
-            this.simulation.addOrganism(org);
+            int[] startPosition = orgConfig.getIntList("placement.positions").stream().mapToInt(i -> i).toArray();
+            
+            Organism organism = Organism.create(simulation, startPosition, orgConfig.getInt("initialEnergy"), log);
+            organism.setProgramId(artifact.programId());
+            this.simulation.addOrganism(organism);
+            
+            // Place code and initial world objects in environment
+            placeOrganismCodeAndObjects(organism, artifact, startPosition);
         }
         // Generate run ID with timestamp prefix: YYYYMMDD-HHiissmm-UUID
         LocalDateTime now = LocalDateTime.now();
@@ -631,5 +634,39 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
                 throw new NoSuchElementException();
             }
         };
+    }
+    
+    private void placeOrganismCodeAndObjects(Organism organism, ProgramArtifact artifact, int[] startPosition) {
+        // Place code in environment
+        /****************** FLAKY TESTS!!!! ************************/
+        /*for (Map.Entry<int[], Integer> entry : artifact.machineCodeLayout().entrySet()) {
+            int[] relativePos = entry.getKey();
+            int[] absolutePos = new int[startPosition.length];
+            for (int i = 0; i < startPosition.length; i++) {
+                absolutePos[i] = startPosition[i] + relativePos[i];
+            }
+            
+            simulation.getEnvironment().setMolecule(
+                org.evochora.runtime.model.Molecule.fromInt(entry.getValue()),
+                organism.getId(),
+                absolutePos
+            );
+        }*/
+        
+        // Place initial world objects
+        for (Map.Entry<int[], org.evochora.compiler.api.PlacedMolecule> entry : artifact.initialWorldObjects().entrySet()) {
+            int[] relativePos = entry.getKey();
+            int[] absolutePos = new int[startPosition.length];
+            for (int i = 0; i < startPosition.length; i++) {
+                absolutePos[i] = startPosition[i] + relativePos[i];
+            }
+            
+            org.evochora.compiler.api.PlacedMolecule pm = entry.getValue();
+            simulation.getEnvironment().setMolecule(
+                new org.evochora.runtime.model.Molecule(pm.type(), pm.value()),
+                organism.getId(),
+                absolutePos
+            );
+        }
     }
 }

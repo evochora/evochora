@@ -9,6 +9,7 @@ import org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.runtime.isa.Instruction;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -19,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -46,6 +48,7 @@ class SimulationEngineIntegrationTest {
     private Path programFile;
     private Path programFile1D;
     private Path programFile3D;
+    private List<SimulationEngine> startedEngines;
 
     @TempDir
     Path tempDir;
@@ -57,10 +60,12 @@ class SimulationEngineIntegrationTest {
 
     @BeforeEach
     void setUp() throws IOException {
+        startedEngines = new ArrayList<>();
+        
         tickDataQueue = new InMemoryBlockingQueue<>("tick-test", 
-                ConfigFactory.parseMap(Map.of("capacity", 2000)));
+                ConfigFactory.parseMap(Map.of("capacity", 10000)));
         metadataQueue = new InMemoryBlockingQueue<>("meta-test", 
-                ConfigFactory.parseMap(Map.of("capacity", 10)));
+                ConfigFactory.parseMap(Map.of("capacity", 100)));
 
         resources = new HashMap<>();
         resources.put("tickData", Collections.singletonList(tickDataQueue));
@@ -90,6 +95,31 @@ class SimulationEngineIntegrationTest {
                 "energyStrategies", Collections.emptyList(),
                 "seed", 12345L
         ));
+    }
+
+    @AfterEach
+    void tearDown() {
+        // Stop any engines that weren't explicitly stopped
+        if (startedEngines != null) {
+            for (SimulationEngine engine : startedEngines) {
+                try {
+                    if (engine.getCurrentState() != AbstractService.State.STOPPED) {
+                        engine.stop();
+                    }
+                } catch (Exception e) {
+                    // Ignore stop failures in cleanup
+                }
+            }
+            startedEngines.clear();
+        }
+        
+        // Clean up queues to ensure test isolation
+        if (tickDataQueue != null) {
+            tickDataQueue.drainTo(new ArrayList<>(), Integer.MAX_VALUE);
+        }
+        if (metadataQueue != null) {
+            metadataQueue.drainTo(new ArrayList<>(), Integer.MAX_VALUE);
+        }
     }
 
     // ============ Basic Execution Tests ============
