@@ -66,6 +66,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     protected final java.util.concurrent.atomic.AtomicLong writeErrors = new java.util.concurrent.atomic.AtomicLong(0);
     protected final java.util.concurrent.atomic.AtomicLong readErrors = new java.util.concurrent.atomic.AtomicLong(0);
 
+    // Batch size tracking metrics (O(1) operations only, helps diagnose memory issues)
+    protected final java.util.concurrent.atomic.AtomicLong lastReadBatchSizeMB = new java.util.concurrent.atomic.AtomicLong(0);
+    protected final java.util.concurrent.atomic.AtomicLong maxReadBatchSizeMB = new java.util.concurrent.atomic.AtomicLong(0);
+
     // Performance metrics (sliding window using unified utils)
     private final SlidingWindowCounter writeOpsCounter;
     private final SlidingWindowCounter writeBytesCounter;
@@ -170,19 +174,36 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             throw new IllegalArgumentException("path cannot be null");
         }
 
-        // Read directly from physical path (no search needed!)
+        // Read compressed bytes
         long readStart = System.nanoTime();
         byte[] compressed = getRaw(path.asString());
         long readLatency = System.nanoTime() - readStart;
 
-        // Decompress based on file extension
-        byte[] data = decompressBatch(compressed, path.asString());
+        // Detect compression codec from file extension
+        ICompressionCodec detectedCodec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory.detectFromExtension(path.asString());
+
+        // Stream directly: decompress → parse in one pass (no intermediate byte array!)
+        // This eliminates double-buffering and reduces peak memory by ~50%
+        List<TickData> batch = new ArrayList<>();
+        try (InputStream decompressedStream = detectedCodec.wrapInputStream(new ByteArrayInputStream(compressed))) {
+            while (true) {
+                TickData tick = TickData.parseDelimitedFrom(decompressedStream);
+                if (tick == null) break;  // End of stream
+                batch.add(tick);
+            }
+        } catch (Exception e) {
+            throw new IOException("Failed to decompress and parse batch: " + path.asString(), e);
+        }
+
+        // Record batch size metrics (O(1) operations only)
+        long batchSizeMB = compressed.length / 1_048_576;
+        lastReadBatchSizeMB.set(batchSizeMB);
+        maxReadBatchSizeMB.updateAndGet(current -> Math.max(current, batchSizeMB));
 
         // Record metrics
         recordRead(compressed.length, readLatency);
 
-        // Deserialize
-        return deserializeBatch(data);
+        return batch;
     }
 
     @Override
@@ -225,32 +246,36 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             throw new IllegalArgumentException("parser cannot be null");
         }
 
-        // Read directly from physical path (no search needed!)
+        // Read compressed bytes
         long readStart = System.nanoTime();
         byte[] compressed = getRaw(path.asString());
         long readLatency = System.nanoTime() - readStart;
 
-        // Decompress based on file extension
-        byte[] data = decompressBatch(compressed, path.asString());
+        // Detect compression codec from file extension
+        ICompressionCodec detectedCodec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory.detectFromExtension(path.asString());
+
+        // Stream directly: decompress → parse in one pass (no intermediate byte array!)
+        T message;
+        try (InputStream decompressedStream = detectedCodec.wrapInputStream(new ByteArrayInputStream(compressed))) {
+            message = parser.parseDelimitedFrom(decompressedStream);
+
+            if (message == null) {
+                throw new IOException("File is empty: " + path.asString());
+            }
+
+            // Verify exactly one message
+            if (decompressedStream.available() > 0) {
+                T secondMessage = parser.parseDelimitedFrom(decompressedStream);
+                if (secondMessage != null) {
+                    throw new IOException("File contains multiple messages: " + path.asString());
+                }
+            }
+        } catch (Exception e) {
+            throw new IOException("Failed to decompress and parse message: " + path.asString(), e);
+        }
 
         // Record metrics
         recordRead(compressed.length, readLatency);
-
-        // Deserialize single message
-        ByteArrayInputStream bis = new ByteArrayInputStream(data);
-        T message = parser.parseDelimitedFrom(bis);
-
-        if (message == null) {
-            throw new IOException("File is empty: " + path.asString());
-        }
-
-        // Verify exactly one message
-        if (bis.available() > 0) {
-            T secondMessage = parser.parseDelimitedFrom(bis);
-            if (secondMessage != null) {
-                throw new IOException("File contains multiple messages: " + path.asString());
-            }
-        }
 
         return message;
     }
@@ -379,24 +404,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     }
 
     /**
-     * Deserializes a batch from bytes using length-delimited protobuf format.
-     */
-    private List<TickData> deserializeBatch(byte[] data) throws IOException {
-        List<TickData> batch = new ArrayList<>();
-        ByteArrayInputStream bis = new ByteArrayInputStream(data);
-
-        while (bis.available() > 0) {
-            TickData tick = TickData.parseDelimitedFrom(bis);
-            if (tick == null) {
-                break; // End of stream
-            }
-            batch.add(tick);
-        }
-
-        return batch;
-    }
-
-    /**
      * Compresses data using the configured compression codec.
      * <p>
      * This method is implemented generically in the abstract class to avoid
@@ -419,39 +426,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         }
     }
 
-    /**
-     * Decompresses data based on filename extension.
-     * <p>
-     * This method is implemented generically in the abstract class to avoid
-     * code duplication across storage backends. It auto-detects compression
-     * from the filename extension, independent of the configured codec for writing.
-     * <p>
-     * NoneCodec is treated like any other codec - it simply returns the stream unchanged.
-     *
-     * @param compressedData potentially compressed data
-     * @param filename filename used to auto-detect compression by extension
-     * @return decompressed data (or original data if no compression detected)
-     * @throws IOException if decompression fails
-     */
-    private byte[] decompressBatch(byte[] compressedData, String filename) throws IOException {
-        // Auto-detect codec from file extension (independent of configured codec!)
-        ICompressionCodec detectedCodec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory.detectFromExtension(filename);
-
-        try {
-            ByteArrayInputStream bis = new ByteArrayInputStream(compressedData);
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            try (InputStream decompressedStream = detectedCodec.wrapInputStream(bis)) {
-                byte[] buffer = new byte[8192];
-                int bytesRead;
-                while ((bytesRead = decompressedStream.read(buffer)) != -1) {
-                    bos.write(buffer, 0, bytesRead);
-                }
-            }
-            return bos.toByteArray();
-        } catch (Exception e) {
-            throw new IOException("Failed to decompress batch: " + filename, e);
-        }
-    }
 
     @Override
     public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults) throws IOException {
@@ -570,6 +544,8 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      *   <li>read_bytes_per_sec - sliding window read throughput (O(1))</li>
      *   <li>write_latency_ms - sliding window average write latency (O(1))</li>
      *   <li>read_latency_ms - sliding window average read latency (O(1))</li>
+     *   <li>last_read_batch_size_mb - most recent batch read size in MB (O(1))</li>
+     *   <li>max_read_batch_size_mb - maximum observed batch read size in MB (O(1))</li>
      * </ul>
      *
      * @param metrics Mutable map to add metrics to (already contains base error_count from AbstractResource)
@@ -577,7 +553,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {
         super.addCustomMetrics(metrics);  // Include parent metrics
-        
+
         // Cumulative metrics
         metrics.put("write_operations", writeOperations.get());
         metrics.put("read_operations", readOperations.get());
@@ -585,7 +561,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         metrics.put("bytes_read", bytesRead.get());
         metrics.put("write_errors", writeErrors.get());
         metrics.put("read_errors", readErrors.get());
-        
+
         // Performance metrics (sliding window using unified utils - O(1))
         metrics.put("writes_per_sec", writeOpsCounter.getRate());
         metrics.put("reads_per_sec", readOpsCounter.getRate());
@@ -593,6 +569,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         metrics.put("read_bytes_per_sec", readBytesCounter.getRate());
         metrics.put("write_latency_ms", writeLatencyTracker.getAverage() / 1_000_000.0);
         metrics.put("read_latency_ms", readLatencyTracker.getAverage() / 1_000_000.0);
+
+        // Batch size tracking metrics (O(1) operations, helps diagnose memory issues)
+        metrics.put("last_read_batch_size_mb", lastReadBatchSizeMB.get());
+        metrics.put("max_read_batch_size_mb", maxReadBatchSizeMB.get());
     }
 
     /**
