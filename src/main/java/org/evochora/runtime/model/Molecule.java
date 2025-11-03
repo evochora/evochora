@@ -99,13 +99,7 @@ public record Molecule(int type, int value) {
 
     @Override
     public String toString() {
-        String typePrefix = switch (this.type()) {
-            case Config.TYPE_CODE -> "CODE";
-            case Config.TYPE_DATA -> "DATA";
-            case Config.TYPE_ENERGY -> "ENERGY";
-            case Config.TYPE_STRUCTURE -> "STRUCTURE";
-            default -> "UNKNOWN";
-        };
+        String typePrefix = MoleculeTypeRegistry.typeToName(this.type());
         return typePrefix + ":" + this.toScalarValue();
     }
 }

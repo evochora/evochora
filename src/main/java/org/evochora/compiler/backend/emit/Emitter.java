@@ -11,6 +11,7 @@ import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.ir.*;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MoleculeTypeRegistry;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -155,12 +156,12 @@ public class Emitter {
             return new Molecule(Config.TYPE_DATA, (int) imm.value()).toInt();
         }
         if (op instanceof IrTypedImm ti) {
-            int type = switch (ti.typeName().toUpperCase()) {
-                case "CODE" -> Config.TYPE_CODE;
-                case "ENERGY" -> Config.TYPE_ENERGY;
-                case "STRUCTURE" -> Config.TYPE_STRUCTURE;
-                default -> Config.TYPE_DATA;
-            };
+            int type;
+            try {
+                type = MoleculeTypeRegistry.nameToType(ti.typeName());
+            } catch (IllegalArgumentException e) {
+                throw new CompilationException(formatSource(ctx, "Unknown molecule type: " + ti.typeName() + ". " + e.getMessage()));
+            }
             return new Molecule(type, (int) ti.value()).toInt();
         }
         if (op instanceof IrVec vec) {

@@ -10,6 +10,7 @@ import org.evochora.compiler.ir.IrValue;
 import org.evochora.compiler.ir.placement.*;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.MoleculeTypeRegistry;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -37,16 +38,15 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
         }
     }
 
-    private PlacedMolecule createMolecule(IrDirective directive) {
+    private PlacedMolecule createMolecule(IrDirective directive) throws CompilationException {
         IrValue val = directive.args().get("value");
         IrValue.Str t = (IrValue.Str) directive.args().get("type");
-        int type;
         String ts = t != null ? t.value() : "DATA";
-        switch (ts.toUpperCase()) {
-            case "CODE" -> type = Config.TYPE_CODE;
-            case "ENERGY" -> type = Config.TYPE_ENERGY;
-            case "STRUCTURE" -> type = Config.TYPE_STRUCTURE;
-            default -> type = Config.TYPE_DATA;
+        int type;
+        try {
+            type = MoleculeTypeRegistry.nameToType(ts);
+        } catch (IllegalArgumentException e) {
+            throw new CompilationException("Unknown molecule type in .PLACE directive: " + ts + ". " + e.getMessage());
         }
         long value = val instanceof IrValue.Int64 iv ? iv.value() : 0L;
         return new PlacedMolecule(type, (int) value);

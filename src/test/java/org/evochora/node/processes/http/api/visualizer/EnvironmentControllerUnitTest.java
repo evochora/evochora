@@ -152,8 +152,8 @@ class EnvironmentControllerUnitTest {
         @DisplayName("Should serialize environment response correctly")
         void serializeEnvironmentResponse_correctly() throws Exception {
             // Create test data
-            CellWithCoordinates cell1 = createCellWithCoordinates(new int[]{5, 10}, 1, 255, 7);
-            CellWithCoordinates cell2 = createCellWithCoordinates(new int[]{6, 11}, 2, 128, 8);
+            CellWithCoordinates cell1 = createCellWithCoordinates(new int[]{5, 10}, "DATA", 255, 7);
+            CellWithCoordinates cell2 = createCellWithCoordinates(new int[]{6, 11}, "ENERGY", 128, 8);
             
             // Create mock response structure
             var response = new Object() {
@@ -169,8 +169,8 @@ class EnvironmentControllerUnitTest {
             assertThat(json).contains("\"cells\":[");
             assertThat(json).contains("\"coordinates\":[5,10]");
             assertThat(json).contains("\"coordinates\":[6,11]");
-            assertThat(json).contains("\"moleculeType\":1");
-            assertThat(json).contains("\"moleculeType\":2");
+            assertThat(json).contains("\"moleculeType\":\"DATA\"");
+            assertThat(json).contains("\"moleculeType\":\"ENERGY\"");
             assertThat(json).contains("\"moleculeValue\":255");
             assertThat(json).contains("\"moleculeValue\":128");
             assertThat(json).contains("\"ownerId\":7");
@@ -180,12 +180,12 @@ class EnvironmentControllerUnitTest {
         @Test
         @DisplayName("Should serialize single cell correctly")
         void serializeSingleCell_correctly() throws Exception {
-            CellWithCoordinates cell = createCellWithCoordinates(new int[]{42, 73}, 1, 255, 7);
+            CellWithCoordinates cell = createCellWithCoordinates(new int[]{42, 73}, "DATA", 255, 7);
             
             String json = objectMapper.writeValueAsString(cell);
             
             assertThat(json).contains("\"coordinates\":[42,73]");
-            assertThat(json).contains("\"moleculeType\":1");
+            assertThat(json).contains("\"moleculeType\":\"DATA\"");
             assertThat(json).contains("\"moleculeValue\":255");
             assertThat(json).contains("\"ownerId\":7");
         }
@@ -228,9 +228,9 @@ class EnvironmentControllerUnitTest {
         @Test
         @DisplayName("Should validate CellWithCoordinates with different dimensions")
         void validateCellWithCoordinatesWithDifferentDimensions() {
-            CellWithCoordinates cell2D = createCellWithCoordinates(new int[]{5, 10}, 1, 255, 7);
-            CellWithCoordinates cell3D = createCellWithCoordinates(new int[]{5, 10, 15}, 2, 128, 8);
-            CellWithCoordinates cell4D = createCellWithCoordinates(new int[]{1, 2, 3, 4}, 3, 64, 9);
+            CellWithCoordinates cell2D = createCellWithCoordinates(new int[]{5, 10}, "DATA", 255, 7);
+            CellWithCoordinates cell3D = createCellWithCoordinates(new int[]{5, 10, 15}, "ENERGY", 128, 8);
+            CellWithCoordinates cell4D = createCellWithCoordinates(new int[]{1, 2, 3, 4}, "STRUCTURE", 64, 9);
             
             assertThat(cell2D.coordinates()).isEqualTo(new int[]{5, 10});
             assertThat(cell3D.coordinates()).isEqualTo(new int[]{5, 10, 15});
@@ -240,10 +240,10 @@ class EnvironmentControllerUnitTest {
         @Test
         @DisplayName("Should validate CellWithCoordinates with zero values")
         void validateCellWithCoordinatesWithZeroValues() {
-            CellWithCoordinates cell = createCellWithCoordinates(new int[]{0, 0}, 0, 0, 0);
+            CellWithCoordinates cell = createCellWithCoordinates(new int[]{0, 0}, "CODE", 0, 0);
             
             assertThat(cell.coordinates()).isEqualTo(new int[]{0, 0});
-            assertThat(cell.moleculeType()).isEqualTo(0);
+            assertThat(cell.moleculeType()).isEqualTo("CODE");
             assertThat(cell.moleculeValue()).isEqualTo(0);
             assertThat(cell.ownerId()).isEqualTo(0);
         }
@@ -254,7 +254,7 @@ class EnvironmentControllerUnitTest {
         return new SpatialRegion(bounds);
     }
 
-    private CellWithCoordinates createCellWithCoordinates(int[] coordinates, int moleculeType, int moleculeValue, int ownerId) {
+    private CellWithCoordinates createCellWithCoordinates(int[] coordinates, String moleculeType, int moleculeValue, int ownerId) {
         return new CellWithCoordinates(coordinates, moleculeType, moleculeValue, ownerId);
     }
 }

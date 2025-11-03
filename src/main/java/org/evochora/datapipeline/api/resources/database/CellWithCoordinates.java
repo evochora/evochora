@@ -8,7 +8,7 @@ import com.fasterxml.jackson.annotation.JsonAutoDetect;
 @JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
 public record CellWithCoordinates(
     int[] coordinates,
-    int moleculeType,
+    String moleculeType,
     int moleculeValue,
     int ownerId
 ) {}

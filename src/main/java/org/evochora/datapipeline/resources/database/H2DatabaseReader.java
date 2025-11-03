@@ -5,6 +5,7 @@ import org.evochora.datapipeline.api.resources.database.*;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,13 +54,14 @@ public class H2DatabaseReader implements IDatabaseReader {
         List<org.evochora.datapipeline.api.contracts.CellState> cells = 
             envStrategy.readTick(connection, tickNumber, region, envProps);
         
-        // Convert flatIndex to coordinates
+        // Convert flatIndex to coordinates and molecule type int to string
         return cells.stream()
             .map(cell -> {
                 int[] coords = envProps.flatIndexToCoordinates(cell.getFlatIndex());
+                String moleculeTypeName = MoleculeTypeRegistry.typeToName(cell.getMoleculeType());
                 return new CellWithCoordinates(
                     coords,
-                    cell.getMoleculeType(),
+                    moleculeTypeName,
                     cell.getMoleculeValue(),
                     cell.getOwnerId()
                 );

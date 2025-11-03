@@ -359,6 +359,10 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
                                            EnvironmentProperties envProps) throws Exception {
         Connection conn = (Connection) connection;
         
+        // Clear interrupt flag temporarily to allow H2 operations
+        // H2 Database's internal locking mechanism (MVMap.tryLock()) uses Thread.sleep()
+        // which throws InterruptedException if thread is interrupted
+        boolean wasInterrupted = Thread.interrupted();
         try {
             // Get or create PreparedStatement for this connection
             PreparedStatement stmt = envWriteStmtCache.computeIfAbsent(conn, c -> {
@@ -383,6 +387,11 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
                 log.warn("Rollback failed (connection may be closed): {}", rollbackEx.getMessage());
             }
             throw e;
+        } finally {
+            // Restore interrupt flag for proper shutdown handling
+            if (wasInterrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 

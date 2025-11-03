@@ -233,10 +233,14 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
     private ReceivedEnvelope<AckToken> tryReadMessage() {
         int claimTimeout = parent.getClaimTimeoutSeconds();
         
-        // Use same statement for both (timeout is always in WHERE clause, just with 0 or actual value)
-        PreparedStatement stmt = readStatementWithTimeout;
-        
+        // Clear interrupt flag temporarily to allow H2 operations
+        // H2 Database's internal locking mechanism (MVMap.tryLock()) uses Thread.sleep()
+        // which throws InterruptedException if thread is interrupted
+        boolean wasInterrupted = Thread.interrupted();
         try {
+            // Use same statement for both (timeout is always in WHERE clause, just with 0 or actual value)
+            PreparedStatement stmt = readStatementWithTimeout;
+            
             // Step 1: SELECT candidate messages (up to 10)
             stmt.setString(1, consumerGroup);                    // consumer_group filter in JOIN
             stmt.setString(2, parent.getResourceName());         // topic_name filter
@@ -333,8 +337,8 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
             }
         } catch (SQLException e) {
             readErrors.incrementAndGet();
-            log.warn("Failed to query/claim message from topic '{}': consumerGroup={}", 
-                parent.getResourceName(), consumerGroup);
+            log.warn("Failed to query/claim message from topic '{}': consumerGroup={}, errorCode={}, sqlState={}, message='{}'", 
+                parent.getResourceName(), consumerGroup, e.getErrorCode(), e.getSQLState(), e.getMessage());
             recordError("CLAIM_FAILED", "SQL error during claim attempt", 
                 "Topic: " + parent.getResourceName() + ", ConsumerGroup: " + consumerGroup);
         } catch (InvalidProtocolBufferException e) {
@@ -343,6 +347,11 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
                 parent.getResourceName(), consumerGroup);
             recordError("PARSE_FAILED", "Protobuf parse failed", 
                 "Topic: " + parent.getResourceName() + ", ConsumerGroup: " + consumerGroup);
+        } finally {
+            // Restore interrupt flag for proper shutdown handling
+            if (wasInterrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
         
         return null;  // No message available or all claims failed
@@ -353,6 +362,10 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
         long rowId = token.rowId();
         int claimVersion = token.claimVersion();
         
+        // Clear interrupt flag temporarily to allow H2 operations
+        // H2 Database's internal locking mechanism (MVMap.tryLock()) uses Thread.sleep()
+        // which throws InterruptedException if thread is interrupted
+        boolean wasInterrupted = Thread.interrupted();
         try {
             // Start transaction - all 3 steps must be atomic
             connection.setAutoCommit(false);
@@ -377,8 +390,8 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
             } catch (SQLException e) {
                 connection.rollback();
                 connection.setAutoCommit(true);
-                log.warn("Failed to get message_id for acknowledgment in topic '{}': rowId={}", 
-                    parent.getResourceName(), rowId);
+                log.warn("Failed to get message_id for acknowledgment in topic '{}': rowId={}, errorCode={}, sqlState={}, message='{}'", 
+                    parent.getResourceName(), rowId, e.getErrorCode(), e.getSQLState(), e.getMessage());
                 recordError("ACK_LOOKUP_FAILED", "Failed to get message_id", 
                     "Topic: " + parent.getResourceName() + ", RowId: " + rowId);
                 return;
@@ -419,8 +432,8 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
                 connection.rollback();
                 connection.setAutoCommit(true);
                 ackErrors.incrementAndGet();
-                log.warn("Failed to acknowledge message in topic '{}': messageId={}", 
-                    parent.getResourceName(), messageId);
+                log.warn("Failed to acknowledge message in topic '{}': messageId={}, errorCode={}, sqlState={}, message='{}'", 
+                    parent.getResourceName(), messageId, e.getErrorCode(), e.getSQLState(), e.getMessage());
                 recordError("ACK_FAILED", "Failed to acknowledge message", 
                     "Topic: " + parent.getResourceName() + ", MessageId: " + messageId);
             }
@@ -431,12 +444,19 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
                 connection.rollback();
                 connection.setAutoCommit(true);
             } catch (SQLException rollbackEx) {
-                log.warn("Failed to rollback transaction in topic '{}'", parent.getResourceName());
+                log.warn("Failed to rollback transaction in topic '{}': errorCode={}, sqlState={}, message='{}'", 
+                    parent.getResourceName(), rollbackEx.getErrorCode(), rollbackEx.getSQLState(), rollbackEx.getMessage());
             }
             ackErrors.incrementAndGet();  // Track errors
-            log.warn("Failed to acknowledge message in topic '{}': rowId={}", parent.getResourceName(), rowId);
+            log.warn("Failed to acknowledge message in topic '{}': rowId={}, errorCode={}, sqlState={}, message='{}'", 
+                parent.getResourceName(), rowId, e.getErrorCode(), e.getSQLState(), e.getMessage());
             recordError("ACK_TRANSACTION_FAILED", "Transaction management failed", 
                 "Topic: " + parent.getResourceName() + ", RowId: " + rowId);
+        } finally {
+            // Restore interrupt flag for proper shutdown handling
+            if (wasInterrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
     

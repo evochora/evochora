@@ -123,6 +123,10 @@ public class H2TopicWriterDelegate<T extends Message> extends AbstractTopicDeleg
     
     @Override
     protected void sendEnvelope(TopicEnvelope envelope) throws InterruptedException {
+        // Clear interrupt flag temporarily to allow H2 operations
+        // H2 Database's internal locking mechanism (MVMap.tryLock()) uses Thread.sleep()
+        // which throws InterruptedException if thread is interrupted
+        boolean wasInterrupted = Thread.interrupted();
         try {
             // Note: No explicit transaction management needed here.
             // Single INSERT is atomic (ACID guarantee). Connection is in auto-commit mode (set in constructor).
@@ -150,6 +154,11 @@ public class H2TopicWriterDelegate<T extends Message> extends AbstractTopicDeleg
             recordError("WRITE_FAILED", "SQL INSERT failed", 
                 "Topic: " + parent.getResourceName() + ", MessageId: " + envelope.getMessageId());
             throw new RuntimeException("Failed to write message to H2 topic", e);
+        } finally {
+            // Restore interrupt flag for proper shutdown handling
+            if (wasInterrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
     

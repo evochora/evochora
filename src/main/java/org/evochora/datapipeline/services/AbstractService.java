@@ -105,10 +105,11 @@ public abstract class AbstractService implements IService, IMonitorable {
             if (serviceThread != null) {
                 serviceThread.interrupt();
                 try {
+                    // Wait for thread to terminate
                     serviceThread.join(shutdownTimeoutSeconds * 1000L);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    log.warn("{} interrupted while waiting for service thread to stop", this.getClass().getSimpleName());
+                    log.warn("{} interrupted while waiting for service shutdown", this.getClass().getSimpleName());
                 }
 
                 // Check if thread actually terminated

@@ -129,4 +129,14 @@ public class PlaceDirectiveExtensionTest {
         assertThat(artifact.initialWorldObjects()).hasSize(1);
         assertThat(artifact.initialWorldObjects().keySet()).containsExactly(new int[]{10, 20});
     }
+
+    @Test
+    @Tag("unit")
+    void testPlaceWithUnknownType() {
+        String source = ".PLACE FOOD:1 5|5";
+        Compiler compiler = new Compiler();
+        assertThatThrownBy(() -> compiler.compile(List.of(source), "test.s", testEnvProps))
+            .isInstanceOf(CompilationException.class)
+            .hasMessageContaining("Unknown molecule type in .PLACE directive: FOOD");
+    }
 }
