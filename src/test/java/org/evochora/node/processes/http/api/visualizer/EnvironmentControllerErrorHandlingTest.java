@@ -64,7 +64,7 @@ class EnvironmentControllerErrorHandlingTest {
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, database);
         EnvironmentController controller = new EnvironmentController(registry, ConfigFactory.empty());
-        controller.registerRoutes(app, "/visualizer/api");
+        controller.registerRoutes(app, "/visualizer/api/environment");
     }
 
     @AfterEach
@@ -83,10 +83,10 @@ class EnvironmentControllerErrorHandlingTest {
         // When: Make request with non-existent runId
         given()
             .port(port)
-            .basePath("/visualizer/api")
+            .basePath("/visualizer/api/environment")
             .queryParam("region", "0,10,0,10")
             .queryParam("runId", "invalid_run")
-            .get("/100/environment")
+            .get("/100")
         .then()
             .statusCode(404);
     }
@@ -97,10 +97,10 @@ class EnvironmentControllerErrorHandlingTest {
         // When: Make request with invalid region (odd number of values)
         given()
             .port(port)
-            .basePath("/visualizer/api")
+            .basePath("/visualizer/api/environment")
             .queryParam("region", "0,50,0")  // Only 3 values (invalid)
             .queryParam("runId", "test_run")
-            .get("/100/environment")
+            .get("/100")
         .then()
             .statusCode(400);
     }
@@ -111,9 +111,9 @@ class EnvironmentControllerErrorHandlingTest {
         // When: Make request with non-numeric tick
         given()
             .port(port)
-            .basePath("/visualizer/api")
+            .basePath("/visualizer/api/environment")
             .queryParam("region", "0,10,0,10")
-            .get("/invalid/environment")
+            .get("/invalid")
         .then()
             .statusCode(400);
     }
@@ -125,10 +125,10 @@ class EnvironmentControllerErrorHandlingTest {
         // When: Make request without runId parameter
         given()
             .port(port)
-            .basePath("/visualizer/api")
+            .basePath("/visualizer/api/environment")
             .queryParam("region", "0,10,0,10")
             // Note: NO runId parameter - should try to find latest run
-            .get("/100/environment")
+            .get("/100")
         .then()
             .statusCode(404);
     }
@@ -141,10 +141,10 @@ class EnvironmentControllerErrorHandlingTest {
         // Then: Should return 404 (run ID not found)
         given()
             .port(port)
-            .basePath("/visualizer/api")
+            .basePath("/visualizer/api/environment")
             .queryParam("region", "0,10,0,10")
             .queryParam("runId", "test_run")
-            .get("/100/environment")
+            .get("/100")
         .then()
             .statusCode(404);
     }

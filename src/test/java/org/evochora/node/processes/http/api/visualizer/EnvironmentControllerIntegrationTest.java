@@ -185,15 +185,15 @@ class EnvironmentControllerIntegrationTest {
         // Create and register EnvironmentController
         Config controllerConfig = ConfigFactory.empty();
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api");
+        controller.registerRoutes(app, "/visualizer/api/environment");
 
         // Query data via HTTP API using RestAssured
         Response resp = given()
             .port(port)
-            .basePath("/visualizer/api")
+            .basePath("/visualizer/api/environment")
             .queryParam("region", "0,10,0,10")
             .queryParam("runId", runId)
-            .get("/1/environment");
+            .get("/1");
         
         // Verify HTTP response structure and headers
         resp.then()
@@ -253,15 +253,15 @@ class EnvironmentControllerIntegrationTest {
         
         Config controllerConfig = ConfigFactory.empty();
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api");
+        controller.registerRoutes(app, "/visualizer/api/environment");
         
         // When: Make HTTP request
         Response resp = given()
             .port(port)
-            .basePath("/visualizer/api")
+            .basePath("/visualizer/api/environment")
             .queryParam("region", "0,10,0,10")
             .queryParam("runId", runId)
-            .get("/1/environment");
+            .get("/1");
         
         // Then: Verify cache headers are set correctly
         resp.then()
@@ -366,15 +366,15 @@ class EnvironmentControllerIntegrationTest {
         
         Config controllerConfig = ConfigFactory.empty();
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api");
+        controller.registerRoutes(app, "/visualizer/api/environment");
         
         // When: Make HTTP request WITHOUT runId parameter (should fallback to latest)
         Response resp = given()
             .port(port)
-            .basePath("/visualizer/api")
+            .basePath("/visualizer/api/environment")
             .queryParam("region", "0,10,0,10")
             // Note: NO runId parameter!
-            .get("/1/environment");
+            .get("/1");
         
         // Then: Should return data from the NEWER run (latest)
         resp.then()
@@ -428,15 +428,15 @@ class EnvironmentControllerIntegrationTest {
         
         Config controllerConfig = ConfigFactory.empty();
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api");
+        controller.registerRoutes(app, "/visualizer/api/environment");
         
         // When: Make HTTP request with invalid region (odd number of values)
         Response resp = given()
             .port(port)
-            .basePath("/visualizer/api")
+            .basePath("/visualizer/api/environment")
             .queryParam("region", "0,10,0")  // Only 3 values (invalid - must be even)
             .queryParam("runId", runId)
-            .get("/1/environment");
+            .get("/1");
         
         // Then: Should return 400 with error message
         resp.then()
@@ -493,7 +493,7 @@ class EnvironmentControllerIntegrationTest {
         
         Config controllerConfig = ConfigFactory.empty();
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api");
+        controller.registerRoutes(app, "/visualizer/api/environment");
         
         // Get baseline connection count before HTTP requests
         Map<String, Number> baselineMetrics = testDatabase.getMetrics();
@@ -505,10 +505,10 @@ class EnvironmentControllerIntegrationTest {
             .mapToObj(i -> CompletableFuture.supplyAsync(() -> 
                 given()
                     .port(port)
-                    .basePath("/visualizer/api")
+                    .basePath("/visualizer/api/environment")
                     .queryParam("region", "0,10,0,10")
                     .queryParam("runId", runId)
-                    .get("/" + Math.min(i, 10) + "/environment")))  // Request ticks 1-10, repeat
+                    .get("/" + Math.min(i, 10))))  // Request ticks 1-10, repeat
             .toList();
         
         List<Response> responses = futures.stream()

@@ -45,7 +45,7 @@ class DatabaseReaderUnitTest {
     @Test
     void cellWithCoordinates_serializesCorrectly() throws Exception {
         CellWithCoordinates cell = new CellWithCoordinates(
-            new int[]{5, 10}, "DATA", 255, 7
+            new int[]{5, 10}, "DATA", 255, 7, null
         );
         
         ObjectMapper mapper = new ObjectMapper();
@@ -59,7 +59,7 @@ class DatabaseReaderUnitTest {
     
     @Test
     void cellWithCoordinates_deserializesCorrectly() throws Exception {
-        String json = "{\"coordinates\":[5,10],\"moleculeType\":\"DATA\",\"moleculeValue\":255,\"ownerId\":7}";
+        String json = "{\"coordinates\":[5,10],\"moleculeType\":\"DATA\",\"moleculeValue\":255,\"ownerId\":7,\"opcodeName\":null}";
         
         ObjectMapper mapper = new ObjectMapper();
         CellWithCoordinates cell = mapper.readValue(json, CellWithCoordinates.class);
@@ -68,12 +68,13 @@ class DatabaseReaderUnitTest {
         assertEquals("DATA", cell.moleculeType());
         assertEquals(255, cell.moleculeValue());
         assertEquals(7, cell.ownerId());
+        assertNull(cell.opcodeName());
     }
     
     @Test
     void cellWithCoordinates_handles3DCoordinates() throws Exception {
         CellWithCoordinates cell = new CellWithCoordinates(
-            new int[]{5, 10, 15}, "ENERGY", 128, 42
+            new int[]{5, 10, 15}, "ENERGY", 128, 42, null
         );
         
         ObjectMapper mapper = new ObjectMapper();
@@ -83,5 +84,6 @@ class DatabaseReaderUnitTest {
         assertEquals("ENERGY", cell.moleculeType());
         assertEquals(128, cell.moleculeValue());
         assertEquals(42, cell.ownerId());
+        assertNull(cell.opcodeName());
     }
 }

@@ -255,6 +255,6 @@ class EnvironmentControllerUnitTest {
     }
 
     private CellWithCoordinates createCellWithCoordinates(int[] coordinates, String moleculeType, int moleculeValue, int ownerId) {
-        return new CellWithCoordinates(coordinates, moleculeType, moleculeValue, ownerId);
+        return new CellWithCoordinates(coordinates, moleculeType, moleculeValue, ownerId, null);
     }
 }

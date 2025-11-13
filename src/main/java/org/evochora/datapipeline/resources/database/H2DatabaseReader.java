@@ -4,6 +4,8 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.database.*;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
+import org.evochora.runtime.Config;
+import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.slf4j.Logger;
@@ -59,11 +61,17 @@ public class H2DatabaseReader implements IDatabaseReader {
             .map(cell -> {
                 int[] coords = envProps.flatIndexToCoordinates(cell.getFlatIndex());
                 String moleculeTypeName = MoleculeTypeRegistry.typeToName(cell.getMoleculeType());
+                // For CODE molecules, resolve opcode name from value
+                String opcodeName = null;
+                if (cell.getMoleculeType() == Config.TYPE_CODE) {
+                    opcodeName = Instruction.getInstructionNameById(cell.getMoleculeValue());
+                }
                 return new CellWithCoordinates(
                     coords,
                     moleculeTypeName,
                     cell.getMoleculeValue(),
-                    cell.getOwnerId()
+                    cell.getOwnerId(),
+                    opcodeName
                 );
             })
             .collect(java.util.stream.Collectors.toList());
@@ -95,6 +103,12 @@ public class H2DatabaseReader implements IDatabaseReader {
     public boolean hasMetadata() throws SQLException {
         ensureNotClosed();
         return database.hasMetadataInternal(connection, runId);
+    }
+    
+    @Override
+    public org.evochora.datapipeline.api.resources.database.TickRange getTickRange() throws SQLException {
+        ensureNotClosed();
+        return database.getTickRangeInternal(connection, runId);
     }
     
     @Override

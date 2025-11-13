@@ -6,10 +6,7 @@ import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 import org.evochora.datapipeline.api.resources.database.CellWithCoordinates;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
-import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.api.resources.database.SpatialRegion;
-import org.evochora.node.processes.http.AbstractController;
-import org.evochora.node.spi.ServiceRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,11 +31,9 @@ import java.util.Map;
  * <p>
  * Thread Safety: This controller is thread-safe and can handle concurrent requests.
  */
-public class EnvironmentController extends AbstractController {
+public class EnvironmentController extends VisualizerBaseController {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EnvironmentController.class);
-    
-    private final IDatabaseReaderProvider databaseProvider;
 
     /**
      * Constructs a new EnvironmentController.
@@ -46,46 +41,26 @@ public class EnvironmentController extends AbstractController {
      * @param registry The central service registry for accessing shared services.
      * @param options  The HOCON configuration specific to this controller instance.
      */
-    public EnvironmentController(final ServiceRegistry registry, final Config options) {
+    public EnvironmentController(final org.evochora.node.spi.ServiceRegistry registry, final Config options) {
         super(registry, options);
-        this.databaseProvider = registry.get(IDatabaseReaderProvider.class);
     }
 
     @Override
     public void registerRoutes(final Javalin app, final String basePath) {
-        final String fullPath = (basePath + "/{tick}/environment").replaceAll("//", "/");
+        final String fullPath = (basePath + "/{tick}").replaceAll("//", "/");
         
         LOGGER.debug("Registering environment endpoint at: {}", fullPath);
         
         app.get(fullPath, this::getEnvironment);
         
-        // Exception handling
-        app.exception(IllegalArgumentException.class, (e, ctx) -> {
-            LOGGER.warn("Invalid request parameters for {}: {}", ctx.path(), e.getMessage());
-            ctx.status(HttpStatus.BAD_REQUEST).json(createErrorBody(HttpStatus.BAD_REQUEST, e.getMessage()));
-        });
-        app.exception(NoRunIdException.class, (e, ctx) -> {
-            LOGGER.warn("No run ID available for request {}: {}", ctx.path(), e.getMessage());
-            ctx.status(HttpStatus.NOT_FOUND).json(createErrorBody(HttpStatus.NOT_FOUND, e.getMessage()));
-        });
-        app.exception(PoolExhaustionException.class, (e, ctx) -> {
-            LOGGER.warn("Connection pool exhausted for request {}: {}", ctx.path(), e.getMessage());
-            ctx.status(HttpStatus.TOO_MANY_REQUESTS).json(createErrorBody(HttpStatus.TOO_MANY_REQUESTS, "Server is under heavy load, please try again later"));
-        });
-        app.exception(SQLException.class, (e, ctx) -> {
-            LOGGER.error("Database error for request {}", ctx.path(), e);
-            ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(createErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, "Database error occurred"));
-        });
-        app.exception(Exception.class, (e, ctx) -> {
-            LOGGER.error("Unhandled exception for request {}", ctx.path(), e);
-            ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(createErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, "An internal server error occurred"));
-        });
+        // Setup common exception handlers from base class
+        setupExceptionHandlers(app);
     }
 
     /**
      * Handles GET requests for environment data at a specific tick.
      * <p>
-     * Route: GET /{tick}/environment?region=x1,x2,y1,y2&runId=...
+     * Route: GET /{tick}?region=x1,x2,y1,y2&runId=...
      * <p>
      * Query parameters:
      * <ul>
@@ -107,7 +82,7 @@ public class EnvironmentController extends AbstractController {
      *
      * @param ctx The Javalin context containing request and response data.
      * @throws IllegalArgumentException if tick parameter is invalid
-     * @throws NoRunIdException if no run ID is available
+     * @throws VisualizerBaseController.NoRunIdException if no run ID is available
      * @throws SQLException if database operation fails
      */
     void getEnvironment(final Context ctx) throws SQLException {
@@ -153,7 +128,7 @@ public class EnvironmentController extends AbstractController {
                     // Check for schema errors FIRST (before pool exhaustion)
                     if (msg.contains("schema") || msg.contains("Schema")) {
                         // Schema doesn't exist - run ID not found
-                        throw new NoRunIdException("Run ID not found: " + runId);
+                        throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
                     }
                     
                     // Check for connection pool timeout/exhaustion (specific patterns only)
@@ -161,7 +136,7 @@ public class EnvironmentController extends AbstractController {
                         lowerMsg.contains("connection is not available") ||
                         lowerMsg.contains("connection pool")) {
                         // Connection pool exhausted or timeout
-                        throw new PoolExhaustionException("Connection pool exhausted or timeout", sqlEx);
+                        throw new VisualizerBaseController.PoolExhaustionException("Connection pool exhausted or timeout", sqlEx);
                     }
                 }
             }
@@ -172,7 +147,7 @@ public class EnvironmentController extends AbstractController {
             if (e.getMessage() != null && 
                 (e.getMessage().contains("schema") || e.getMessage().contains("Schema"))) {
                 // Schema doesn't exist - run ID not found
-                throw new NoRunIdException("Run ID not found: " + runId);
+                throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
             }
             // Other database errors
             throw e;
@@ -239,76 +214,4 @@ public class EnvironmentController extends AbstractController {
         }
     }
 
-    /**
-     * Resolves the run ID from query parameters or falls back to the latest run.
-     * <p>
-     * Resolution order:
-     * <ol>
-     *   <li>Query parameter "runId" (if provided)</li>
-     *   <li>Latest run from database (if available)</li>
-     *   <li>Throw NoRunIdException (if no runs exist)</li>
-     * </ol>
-     *
-     * @param ctx The Javalin context for accessing query parameters
-     * @return The resolved run ID
-     * @throws NoRunIdException if no run ID is available
-     * @throws SQLException if database query fails
-     */
-    private String resolveRunId(final Context ctx) throws SQLException {
-        // Check query parameter first
-        final String queryRunId = ctx.queryParam("runId");
-        if (queryRunId != null && !queryRunId.trim().isEmpty()) {
-            return queryRunId.trim();
-        }
-        
-        // Fall back to latest run
-        final String latestRunId = databaseProvider.findLatestRunId();
-        if (latestRunId == null) {
-            throw new NoRunIdException("No simulation runs available");
-        }
-        
-        return latestRunId;
-    }
-
-    /**
-     * Creates a standardized error response body.
-     *
-     * @param status  The HTTP status code
-     * @param message The error message
-     * @return Map containing error details
-     */
-    private Map<String, Object> createErrorBody(final HttpStatus status, final String message) {
-        final Map<String, Object> errorBody = new HashMap<>();
-        errorBody.put("timestamp", java.time.Instant.now().toString());
-        errorBody.put("status", status.getCode());
-        errorBody.put("error", status.getMessage());
-        errorBody.put("message", message);
-        return errorBody;
-    }
-
-    /**
-     * Exception thrown when no run ID is available for the request.
-     */
-    public static class NoRunIdException extends RuntimeException {
-        public NoRunIdException(final String message) {
-            super(message);
-        }
-        
-        public NoRunIdException(final String message, final Throwable cause) {
-            super(message, cause);
-        }
-    }
-    
-    /**
-     * Exception thrown when the connection pool is exhausted.
-     */
-    public static class PoolExhaustionException extends RuntimeException {
-        public PoolExhaustionException(final String message) {
-            super(message);
-        }
-        
-        public PoolExhaustionException(final String message, final Throwable cause) {
-            super(message, cause);
-        }
-    }
 }
