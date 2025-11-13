@@ -98,6 +98,17 @@ public class EnvironmentController extends VisualizerBaseController {
         
         LOGGER.debug("Retrieving environment data: tick={}, runId={}, region={}", tickNumber, runId, region);
         
+        // Generate ETag for this request (before database query for early validation)
+        final String etag = String.format("\"%s_%d\"", runId, tickNumber);
+        
+        // Check if client has cached version (ETag validation)
+        final String ifNoneMatch = ctx.header("If-None-Match");
+        if (ifNoneMatch != null && ifNoneMatch.equals(etag)) {
+            // Client has current version - return 304 Not Modified (skip database query)
+            ctx.status(HttpStatus.NOT_MODIFIED);
+            return;
+        }
+        
         // Query database for environment data
         try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
             final List<CellWithCoordinates> cells = reader.readEnvironmentRegion(tickNumber, region);
@@ -109,11 +120,13 @@ public class EnvironmentController extends VisualizerBaseController {
             response.put("region", region);
             response.put("cells", cells);
             
-            // HTTP Cache Headers: Tick data is IMMUTABLE after indexing
-            // Aggressive caching enables client-side cache with 0ms latency on repeated queries
-            // Browser/Client can cache indefinitely - data NEVER changes once indexed
-            ctx.header("Cache-Control", "public, max-age=31536000, immutable"); // 1 year + immutable
-            ctx.header("ETag", String.format("\"%s_%d\"", runId, tickNumber));
+            // HTTP Cache Headers: Aggressive caching with ETag validation
+            // Data is immutable once indexed, but ETag changes when runId changes
+            // Browser will cache aggressively but always validate with server via ETag
+            // When a new simulation starts, runId changes → ETag changes → browser gets new data
+            // Use must-revalidate instead of immutable to ensure browser always validates
+            ctx.header("Cache-Control", "public, max-age=31536000, must-revalidate");
+            ctx.header("ETag", etag);
             
             ctx.status(HttpStatus.OK).json(response);
         } catch (RuntimeException e) {

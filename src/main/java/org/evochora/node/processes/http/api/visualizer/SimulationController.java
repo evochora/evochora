@@ -84,6 +84,17 @@ public class SimulationController extends VisualizerBaseController {
         
         LOGGER.debug("Retrieving simulation metadata: runId={}", runId);
         
+        // Generate ETag for this request (before database query for early validation)
+        final String etag = String.format("\"%s_metadata\"", runId);
+        
+        // Check if client has cached version (ETag validation)
+        final String ifNoneMatch = ctx.header("If-None-Match");
+        if (ifNoneMatch != null && ifNoneMatch.equals(etag)) {
+            // Client has current version - return 304 Not Modified (skip database query)
+            ctx.status(HttpStatus.NOT_MODIFIED);
+            return;
+        }
+        
         // Query database for metadata
         try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
             final SimulationMetadata metadata = reader.getMetadata();
@@ -91,10 +102,13 @@ public class SimulationController extends VisualizerBaseController {
             // Convert Protobuf to JSON string directly (no unnecessary conversion)
             final String jsonString = ProtobufConverter.toJson(metadata);
             
-            // HTTP Cache Headers: Metadata is IMMUTABLE (never changes after creation)
-            // Aggressive caching enables client-side cache with 0ms latency on repeated queries
-            ctx.header("Cache-Control", "public, max-age=31536000, immutable"); // 1 year + immutable
-            ctx.header("ETag", String.format("\"%s_metadata\"", runId));
+            // HTTP Cache Headers: Aggressive caching with ETag validation
+            // Metadata is immutable once created, but ETag changes when runId changes
+            // Browser will cache aggressively but always validate with server via ETag
+            // When a new simulation starts, runId changes → ETag changes → browser gets new data
+            // Use must-revalidate instead of immutable to ensure browser always validates
+            ctx.header("Cache-Control", "public, max-age=31536000, must-revalidate"); // 1 year + immutable
+            ctx.header("ETag", etag);
             ctx.contentType("application/json");
             
             ctx.status(HttpStatus.OK).result(jsonString);

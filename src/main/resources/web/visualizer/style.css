@@ -1,0 +1,131 @@
+/* Grundlegende Stile und Farbschema */
+body {
+    font-family: 'Monospaced', 'Courier New', Courier, monospace;
+    background-color: #0a0a14;
+    color: #e0e0e0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Header-Bereich für die Steuerung */
+header {
+    background-color: #191923;
+    padding: 8px 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+    border-bottom: 1px solid #333;
+}
+
+/* Tooltip */
+.cell-tooltip {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.9);
+    color: #ffffff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: 'Courier New', monospace;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+    /* Position wird dynamisch gesetzt */
+}
+
+.cell-tooltip.show {
+    opacity: 1;
+}
+
+.cell-tooltip .tooltip-coords {
+    color: #a0e0a0;
+    font-weight: bold;
+}
+
+.cell-tooltip .tooltip-type {
+    color: #ffd700;
+}
+
+.cell-tooltip .tooltip-owner {
+    color: #87ceeb;
+}
+
+.cell-tooltip .tooltip-opcode {
+    color: #dda0dd;
+}
+
+.cell-tooltip .tooltip-separator {
+    color: #666;
+    margin: 0 4px;
+}
+
+.controls-left, .controls-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+button {
+    background-color: #3a3a5a;
+    border: 1px solid #5a5a7a;
+    color: #e0e0e0;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+button:hover { background-color: #4a4a6a; }
+
+.tick-input-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+.tick-input-wrapper input[type="number"] {
+    width: 120px;
+    background-color: #222;
+    border: 1px solid #555;
+    color: #e0e0e0;
+    padding: 8px 44px 8px 8px; /* space for suffix */
+    border-radius: 4px;
+}
+.tick-input-wrapper .tick-total-suffix {
+    position: absolute;
+    right: 8px;
+    pointer-events: none;
+    color: #aaa;
+    font-size: 0.95em;
+}
+
+/* Hauptcontainer (ohne Header) */
+main.container {
+    display: flex;
+    flex-grow: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Welt-Container, der das Canvas oben links ausrichtet und Scrollen erlaubt */
+.world-container {
+    flex-grow: 1;
+    display: flex;
+    justify-content: flex-start;
+    align-items: flex-start;
+    overflow: auto;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+#worldCanvas {
+    background-color: #14141e;
+    border: 1px solid #333;
+    flex-shrink: 0;
+}
+

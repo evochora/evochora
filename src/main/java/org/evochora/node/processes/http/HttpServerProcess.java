@@ -171,7 +171,10 @@ public class HttpServerProcess extends AbstractProcess {
                 }
             } else if (key.equals(STATIC_ACTION_KEY.replace("\"", ""))) {
                 if (value.valueType() == ConfigValueType.STRING) {
-                    routeDefinitions.add(new RouteDefinition(currentPath, RouteType.STATIC, value));
+                    final String staticBasePath = currentPath.endsWith("/") && currentPath.length() > 1 
+                        ? currentPath.substring(0, currentPath.length() - 1) 
+                        : currentPath;
+                    routeDefinitions.add(new RouteDefinition(staticBasePath, RouteType.STATIC, value));
                 } else {
                     LOGGER.error("Invalid config for '$static' at path '{}'. Expected a string.", currentPath);
                 }

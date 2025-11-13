@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evochora Visualizer</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@8.12.0/dist/pixi.min.js"></script>
+</head>
+<body>
+
+<!-- Tooltip für Zell-Informationen -->
+<div id="cell-tooltip" class="cell-tooltip"></div>
+
+<header>
+    <div class="controls-left">
+        <div class="tick-input-wrapper">
+            <input type="number" id="tick-input" min="0" value="0" aria-label="Tick">
+            <span class="tick-total-suffix" id="tick-total-suffix">/N/A</span>
+        </div>
+        <button id="btn-goto">Gehe zu</button>
+        <button id="btn-prev">&lt; Zurück</button>
+        <button id="btn-next">Weiter &gt;</button>
+    </div>
+</header>
+
+<main class="container">
+    <div class="world-container">
+        <canvas id="worldCanvas"></canvas>
+    </div>
+</main>
+
+<script src="js/api/SimulationApi.js"></script>
+<script src="js/api/EnvironmentApi.js"></script>
+<script src="js/HeaderbarView.js"></script>
+<script src="js/EnvironmentGrid.js"></script>
+<script src="js/AppController.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
+
