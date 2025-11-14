@@ -84,14 +84,15 @@ public class SimulationController extends VisualizerBaseController {
         
         LOGGER.debug("Retrieving simulation metadata: runId={}", runId);
         
-        // Generate ETag for this request (before database query for early validation)
-        final String etag = String.format("\"%s_metadata\"", runId);
+        // Parse cache configuration
+        final CacheConfig cacheConfig = CacheConfig.fromConfig(options, "metadata");
         
-        // Check if client has cached version (ETag validation)
-        final String ifNoneMatch = ctx.header("If-None-Match");
-        if (ifNoneMatch != null && ifNoneMatch.equals(etag)) {
-            // Client has current version - return 304 Not Modified (skip database query)
-            ctx.status(HttpStatus.NOT_MODIFIED);
+        // Generate ETag: only runId (endpoint path identifies resource, so _metadata suffix is redundant)
+        final String etag = "\"" + runId + "\"";
+        
+        // Apply cache headers (may return 304 Not Modified if ETag matches)
+        if (applyCacheHeaders(ctx, cacheConfig, etag)) {
+            // 304 Not Modified was sent - return early (skip database query)
             return;
         }
         
@@ -102,15 +103,7 @@ public class SimulationController extends VisualizerBaseController {
             // Convert Protobuf to JSON string directly (no unnecessary conversion)
             final String jsonString = ProtobufConverter.toJson(metadata);
             
-            // HTTP Cache Headers: Aggressive caching with ETag validation
-            // Metadata is immutable once created, but ETag changes when runId changes
-            // Browser will cache aggressively but always validate with server via ETag
-            // When a new simulation starts, runId changes → ETag changes → browser gets new data
-            // Use must-revalidate instead of immutable to ensure browser always validates
-            ctx.header("Cache-Control", "public, max-age=31536000, must-revalidate"); // 1 year + immutable
-            ctx.header("ETag", etag);
             ctx.contentType("application/json");
-            
             ctx.status(HttpStatus.OK).result(jsonString);
         } catch (org.evochora.datapipeline.api.resources.database.MetadataNotFoundException e) {
             // Metadata not found - return 404
@@ -185,7 +178,10 @@ public class SimulationController extends VisualizerBaseController {
         
         LOGGER.debug("Retrieving tick range: runId={}", runId);
         
-        // Query database for tick range
+        // Parse cache configuration
+        final CacheConfig cacheConfig = CacheConfig.fromConfig(options, "ticks");
+        
+        // Query database for tick range (needed for ETag generation if useETag=true)
         try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
             final TickRange tickRange = reader.getTickRange();
             
@@ -194,12 +190,20 @@ public class SimulationController extends VisualizerBaseController {
                 throw new VisualizerBaseController.NoRunIdException("No ticks available for run: " + runId);
             }
             
+            // Generate ETag: runId_maxTick (maxTick can change during simulation)
+            final String etag = "\"" + runId + "_" + tickRange.maxTick() + "\"";
+            
+            // Apply cache headers (may return 304 Not Modified if ETag matches)
+            if (applyCacheHeaders(ctx, cacheConfig, etag)) {
+                // 304 Not Modified was sent - return early
+                return;
+            }
+            
             // Build response
             final Map<String, Object> response = new HashMap<>();
             response.put("minTick", tickRange.minTick());
             response.put("maxTick", tickRange.maxTick());
             
-            // No caching - ticks can change during simulation
             ctx.status(HttpStatus.OK).json(response);
         } catch (VisualizerBaseController.NoRunIdException e) {
             // Re-throw NoRunIdException directly (will be handled by exception handler)

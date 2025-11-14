@@ -170,7 +170,16 @@ class SimulationControllerIntegrationTest {
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
 
-        Config controllerConfig = ConfigFactory.empty();
+        // Configure cache for testing (enabled with ETag)
+        Config controllerConfig = ConfigFactory.parseString("""
+            cache {
+              metadata {
+                enabled = true
+                maxAge = 31536000
+                useETag = true
+              }
+            }
+            """);
         SimulationController controller = new SimulationController(registry, controllerConfig);
         controller.registerRoutes(app, "/visualizer/api/simulation");
 
@@ -189,12 +198,11 @@ class SimulationControllerIntegrationTest {
             .body("environment.shape[0]", equalTo(10))  // int32 from Protobuf
             .body("environment.shape[1]", equalTo(10))  // int32 from Protobuf
             .body("samplingInterval", equalTo(5))
-            .header("Cache-Control", equalTo("public, max-age=31536000, immutable"))
+            .header("Cache-Control", equalTo("public, max-age=31536000, must-revalidate"))
             .header("ETag", notNullValue());
 
-        // ETag should contain runId
+        // ETag should contain runId (not _metadata suffix, as per new implementation)
         assertThat(resp.header("ETag")).contains(runId);
-        assertThat(resp.header("ETag")).contains("_metadata");
     }
 
     @Test

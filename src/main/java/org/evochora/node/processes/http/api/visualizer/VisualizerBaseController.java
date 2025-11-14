@@ -134,6 +134,137 @@ public abstract class VisualizerBaseController extends AbstractController {
     }
 
     /**
+     * Applies HTTP cache headers based on the provided cache configuration.
+     * <p>
+     * This method handles:
+     * <ul>
+     *   <li>Cache-Control header (no-cache if disabled, or max-age if enabled)</li>
+     *   <li>ETag header (if useETag is enabled)</li>
+     *   <li>If-None-Match validation (returns 304 Not Modified if ETag matches)</li>
+     * </ul>
+     * <p>
+     * If cache is disabled, sets {@code Cache-Control: no-cache, no-store, must-revalidate}
+     * and returns early (no ETag processing).
+     * <p>
+     * If ETag validation is enabled and the client's If-None-Match header matches the provided
+     * ETag, sets status to 304 Not Modified and returns early (skips database query).
+     * <p>
+     * <strong>Thread Safety:</strong> This method is thread-safe and can be called concurrently.
+     *
+     * @param ctx    The Javalin context for setting headers and status
+     * @param config The cache configuration (enabled, maxAge, useETag)
+     * @param etag   The ETag value to use (only used if config.useETag is true)
+     * @return true if 304 Not Modified was sent (caller should return early), false otherwise
+     */
+    protected boolean applyCacheHeaders(final Context ctx, final CacheConfig config, final String etag) {
+        if (!config.enabled) {
+            // Cache disabled - set no-cache headers and return
+            ctx.header("Cache-Control", "no-cache, no-store, must-revalidate");
+            return false;
+        }
+
+        // Cache enabled - check ETag validation if configured
+        if (config.useETag) {
+            final String ifNoneMatch = ctx.header("If-None-Match");
+            if (ifNoneMatch != null && ifNoneMatch.equals(etag)) {
+                // Client has current version - return 304 Not Modified
+                ctx.status(HttpStatus.NOT_MODIFIED);
+                return true; // Indicate that 304 was sent
+            }
+            // Set ETag header for client to cache
+            ctx.header("ETag", etag);
+        }
+
+        // Set Cache-Control header with max-age
+        ctx.header("Cache-Control", String.format("public, max-age=%d, must-revalidate", config.maxAge));
+        return false; // Normal response should continue
+    }
+
+    /**
+     * Cache configuration for HTTP response headers.
+     * <p>
+     * Controls HTTP caching behavior for visualizer API endpoints.
+     * <p>
+     * <strong>Thread Safety:</strong> This class is immutable and thread-safe.
+     */
+    protected static class CacheConfig {
+        /**
+         * Whether HTTP caching is enabled for this endpoint.
+         */
+        final boolean enabled;
+
+        /**
+         * Maximum cache age in seconds (only used if enabled is true).
+         */
+        final int maxAge;
+
+        /**
+         * Whether ETag validation should be used (only used if enabled is true).
+         */
+        final boolean useETag;
+
+        /**
+         * Constructs a new CacheConfig.
+         *
+         * @param enabled Whether caching is enabled
+         * @param maxAge  Maximum cache age in seconds
+         * @param useETag Whether ETag validation should be used
+         */
+        CacheConfig(final boolean enabled, final int maxAge, final boolean useETag) {
+            this.enabled = enabled;
+            this.maxAge = maxAge;
+            this.useETag = useETag;
+        }
+
+        /**
+         * Parses cache configuration from HOCON Config.
+         * <p>
+         * Configuration structure:
+         * <ul>
+         *   <li>For single endpoint: {@code cache { enabled = false, maxAge = 0, useETag = false }}</li>
+         *   <li>For multiple endpoints: {@code cache { metadata { enabled = false, ... }, ticks { enabled = false, ... } }}</li>
+         * </ul>
+         * <p>
+         * Defaults (if config is missing or incomplete):
+         * <ul>
+         *   <li>{@code enabled = false}</li>
+         *   <li>{@code maxAge = 0}</li>
+         *   <li>{@code useETag = false}</li>
+         * </ul>
+         *
+         * @param options      The controller options Config
+         * @param endpointName The endpoint name ("environment", "metadata", or "ticks")
+         * @return CacheConfig with parsed values or defaults
+         */
+        static CacheConfig fromConfig(final com.typesafe.config.Config options, final String endpointName) {
+            // Default values: no caching
+            boolean enabled = false;
+            int maxAge = 0;
+            boolean useETag = false;
+
+            // Try to parse cache configuration
+            if (options.hasPath("cache")) {
+                final com.typesafe.config.Config cacheConfig = options.getConfig("cache");
+
+                // Check if this is a nested endpoint config (e.g., cache.metadata or cache.ticks)
+                if (cacheConfig.hasPath(endpointName)) {
+                    final com.typesafe.config.Config endpointConfig = cacheConfig.getConfig(endpointName);
+                    enabled = endpointConfig.hasPath("enabled") ? endpointConfig.getBoolean("enabled") : false;
+                    maxAge = endpointConfig.hasPath("maxAge") ? endpointConfig.getInt("maxAge") : 0;
+                    useETag = endpointConfig.hasPath("useETag") ? endpointConfig.getBoolean("useETag") : false;
+                } else {
+                    // Direct cache config (e.g., for environment endpoint)
+                    enabled = cacheConfig.hasPath("enabled") ? cacheConfig.getBoolean("enabled") : false;
+                    maxAge = cacheConfig.hasPath("maxAge") ? cacheConfig.getInt("maxAge") : 0;
+                    useETag = cacheConfig.hasPath("useETag") ? cacheConfig.getBoolean("useETag") : false;
+                }
+            }
+
+            return new CacheConfig(enabled, maxAge, useETag);
+        }
+    }
+
+    /**
      * Exception thrown when no run ID is available for the request.
      */
     public static class NoRunIdException extends RuntimeException {

@@ -182,8 +182,14 @@ class EnvironmentControllerIntegrationTest {
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
 
-        // Create and register EnvironmentController
-        Config controllerConfig = ConfigFactory.empty();
+        // Create and register EnvironmentController with cache enabled for testing
+        Config controllerConfig = ConfigFactory.parseString("""
+            cache {
+              enabled = true
+              maxAge = 31536000
+              useETag = true
+            }
+            """);
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
         controller.registerRoutes(app, "/visualizer/api/environment");
 
@@ -201,7 +207,7 @@ class EnvironmentControllerIntegrationTest {
             .body("tick", equalTo(1))
             .body("runId", equalTo(runId))
             .body("cells", hasSize(3))  // Should have 3 cells
-            .header("Cache-Control", containsString("immutable"));  // HTTP cache header check
+            .header("Cache-Control", containsString("must-revalidate"));  // HTTP cache header check
         
         // Verify detailed cell data
         resp.then()
@@ -251,7 +257,14 @@ class EnvironmentControllerIntegrationTest {
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
         
-        Config controllerConfig = ConfigFactory.empty();
+        // Configure cache for testing (enabled with ETag)
+        Config controllerConfig = ConfigFactory.parseString("""
+            cache {
+              enabled = true
+              maxAge = 31536000
+              useETag = true
+            }
+            """);
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
         controller.registerRoutes(app, "/visualizer/api/environment");
         
@@ -266,12 +279,11 @@ class EnvironmentControllerIntegrationTest {
         // Then: Verify cache headers are set correctly
         resp.then()
             .statusCode(200)
-            .header("Cache-Control", equalTo("public, max-age=31536000, immutable"))
+            .header("Cache-Control", equalTo("public, max-age=31536000, must-revalidate"))
             .header("ETag", notNullValue());
         
-        // ETag should contain runId and tick
+        // ETag should contain runId (not _tick suffix, as per new implementation)
         assertThat(resp.header("ETag")).contains(runId);
-        assertThat(resp.header("ETag")).contains("_1");
     }
 
     @Test

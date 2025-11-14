@@ -98,14 +98,15 @@ public class EnvironmentController extends VisualizerBaseController {
         
         LOGGER.debug("Retrieving environment data: tick={}, runId={}, region={}", tickNumber, runId, region);
         
-        // Generate ETag for this request (before database query for early validation)
-        final String etag = String.format("\"%s_%d\"", runId, tickNumber);
+        // Parse cache configuration
+        final CacheConfig cacheConfig = CacheConfig.fromConfig(options, "environment");
         
-        // Check if client has cached version (ETag validation)
-        final String ifNoneMatch = ctx.header("If-None-Match");
-        if (ifNoneMatch != null && ifNoneMatch.equals(etag)) {
-            // Client has current version - return 304 Not Modified (skip database query)
-            ctx.status(HttpStatus.NOT_MODIFIED);
+        // Generate ETag: only runId (tick is already in URL path, so redundant in ETag)
+        final String etag = "\"" + runId + "\"";
+        
+        // Apply cache headers (may return 304 Not Modified if ETag matches)
+        if (applyCacheHeaders(ctx, cacheConfig, etag)) {
+            // 304 Not Modified was sent - return early (skip database query)
             return;
         }
         
@@ -119,14 +120,6 @@ public class EnvironmentController extends VisualizerBaseController {
             response.put("runId", runId);
             response.put("region", region);
             response.put("cells", cells);
-            
-            // HTTP Cache Headers: Aggressive caching with ETag validation
-            // Data is immutable once indexed, but ETag changes when runId changes
-            // Browser will cache aggressively but always validate with server via ETag
-            // When a new simulation starts, runId changes → ETag changes → browser gets new data
-            // Use must-revalidate instead of immutable to ensure browser always validates
-            ctx.header("Cache-Control", "public, max-age=31536000, must-revalidate");
-            ctx.header("ETag", etag);
             
             ctx.status(HttpStatus.OK).json(response);
         } catch (RuntimeException e) {
