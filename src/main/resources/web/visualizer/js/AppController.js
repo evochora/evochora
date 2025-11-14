@@ -79,6 +79,28 @@ class AppController {
     }
     
     /**
+     * Updates maxTick from server.
+     * Called automatically on navigation, can also be called manually.
+     */
+    async updateMaxTick() {
+        try {
+            const tickRange = await this.simulationApi.fetchTickRange(this.state.runId);
+            if (tickRange && tickRange.maxTick !== undefined) {
+                const oldMaxTick = this.state.maxTick;
+                const newMaxTick = tickRange.maxTick;
+                
+                if (newMaxTick !== oldMaxTick) {
+                    this.state.maxTick = newMaxTick;
+                    this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+                }
+            }
+        } catch (error) {
+            // Silently fail - don't interrupt navigation if update fails
+            console.debug('Failed to update maxTick:', error);
+        }
+    }
+    
+    /**
      * Navigates to a specific tick and loads environment data.
      * 
      * @param {number} tick - Target tick number
@@ -89,8 +111,14 @@ class AppController {
         // Update state
         this.state.currentTick = target;
         
-        // Update headerbar
+        // Update headerbar with current values
         this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+        
+        // Update maxTick from server (non-blocking)
+        // Use .catch() to handle errors without blocking navigation
+        this.updateMaxTick().catch(error => {
+            console.error('updateMaxTick failed:', error);
+        });
         
         // Clear grid for new tick
         this.renderer.clear();
