@@ -37,9 +37,11 @@ class EnvironmentDataWriterWrapperTest {
     @BeforeEach
     void setUp() throws Exception {
         // Create H2Database with file-based database
+        // Use forward slashes in path (works on all platforms, avoids Config parsing issues with backslashes)
+        String dbPath = tempDir.toString().replace("\\", "/");
         var config = ConfigFactory.parseString("""
             jdbcUrl = "jdbc:h2:file:%s/test-wrapper"
-            """.formatted(tempDir.toString()));
+            """.formatted(dbPath));
         
         database = new H2Database("test-db", config);
         

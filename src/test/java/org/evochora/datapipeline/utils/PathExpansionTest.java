@@ -54,14 +54,19 @@ class PathExpansionTest {
 
     @Test
     void testExpandPath_SingleEnvironmentVariable() {
-        // Use a variable that likely exists (HOME on Unix, USERPROFILE on Windows)
-        String path = "${HOME}/data";
+        // Use a system property that exists on all platforms (java.io.tmpdir)
+        // This avoids platform-specific environment variables (HOME vs USERPROFILE)
+        String javaTmpDir = System.getProperty("java.io.tmpdir");
+        assertNotNull(javaTmpDir, "java.io.tmpdir should be defined on all platforms");
+        
+        String path = "${java.io.tmpdir}/data";
         String expanded = PathExpansion.expandPath(path);
         
         // Should not throw exception and should have expanded something
         // (We can't know exact value, but it shouldn't be the original string with ${})
         assertNotNull(expanded);
-        assertFalse(expanded.contains("${HOME}"));
+        assertFalse(expanded.contains("${java.io.tmpdir}"));
+        assertTrue(expanded.contains("/data") || expanded.contains("\\data"));
     }
 
     @Test

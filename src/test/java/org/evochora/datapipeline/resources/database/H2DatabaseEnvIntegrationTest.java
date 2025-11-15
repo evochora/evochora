@@ -6,15 +6,12 @@ import org.evochora.datapipeline.api.contracts.CellState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -44,9 +41,11 @@ class H2DatabaseEnvIntegrationTest {
     @Test
     void testStrategyLoading_DefaultStrategy() throws Exception {
         // Given: H2Database without h2EnvironmentStrategy config
+        // Use forward slashes in path (works on all platforms, avoids Config parsing issues with backslashes)
+        String dbPath = tempDir.toString().replace("\\", "/");
         Config config = ConfigFactory.parseString("""
             jdbcUrl = "jdbc:h2:file:%s/test-default-strategy"
-            """.formatted(tempDir.toString()));
+            """.formatted(dbPath));
         
         // When: Create database
         database = new H2Database("test-db", config);
@@ -80,6 +79,8 @@ class H2DatabaseEnvIntegrationTest {
     @Test
     void testStrategyLoading_WithCustomStrategy() throws Exception {
         // Given: H2Database with explicit SingleBlobStrategy and compression
+        // Use forward slashes in path (works on all platforms, avoids Config parsing issues with backslashes)
+        String dbPath = tempDir.toString().replace("\\", "/");
         Config config = ConfigFactory.parseString("""
             jdbcUrl = "jdbc:h2:file:%s/test-custom-strategy"
             h2EnvironmentStrategy {
@@ -91,7 +92,7 @@ class H2DatabaseEnvIntegrationTest {
                     }
                 }
             }
-            """.formatted(tempDir.toString()));
+            """.formatted(dbPath));
         
         // When: Create database
         database = new H2Database("test-db", config);
