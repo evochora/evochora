@@ -21,12 +21,24 @@
         <button id="btn-goto">Gehe zu</button>
         <button id="btn-prev">&lt; Zurück</button>
         <button id="btn-next">Weiter &gt;</button>
+        <div class="organism-selector-wrapper">
+            <select id="organism-selector" aria-label="Organismus auswählen">
+                <option value="">--- (0/0)</option>
+            </select>
+        </div>
     </div>
 </header>
 
 <main class="container">
     <div class="world-container">
         <canvas id="worldCanvas"></canvas>
+    </div>
+    <div id="sidebar" class="sidebar">
+        <button id="sidebar-toggle" class="sidebar-toggle-btn" style="display: none;">&lt;</button>
+        <div id="organism-details" class="details">
+            <div data-section="basic"></div>
+            <div data-section="state"></div>
+        </div>
     </div>
 </main>
 
@@ -35,6 +47,9 @@
 <script src="js/api/OrganismApi.js"></script>
 <script src="js/HeaderbarView.js"></script>
 <script src="js/EnvironmentGrid.js"></script>
+<script src="js/SidebarManager.js"></script>
+<script src="js/SidebarBasicInfoView.js"></script>
+<script src="js/SidebarStateView.js"></script>
 <script src="js/AppController.js"></script>
 <script src="main.js"></script>
 </body>
