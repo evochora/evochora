@@ -14,7 +14,8 @@ import java.sql.SQLException;
  * readers know their runId from construction and don't need {@code getRunIdInCurrentSchema()}.
  * That method is only needed by wrappers/indexers via {@link IResourceSchemaAwareMetadataReader}.
  */
-public interface IDatabaseReader extends IEnvironmentDataReader, 
+public interface IDatabaseReader extends IEnvironmentDataReader,
+                                        IOrganismDataReader,
                                         AutoCloseable {
     /**
      * Gets simulation metadata for the run this reader was created for.
