@@ -6,6 +6,7 @@ class AppController {
         // APIs
         this.simulationApi = new SimulationApi();
         this.environmentApi = new EnvironmentApi();
+        this.organismApi = new OrganismApi();
         
         // State
         this.state = {
@@ -44,9 +45,9 @@ class AppController {
         // Load initial state (runId, tick) from URL if present
         this.loadFromUrl();
         
-        // Setup viewport change handler
+        // Setup viewport change handler (environment only, organisms are cached per tick)
         this.renderer.onViewportChange = () => {
-            this.loadViewport();
+            this.loadEnvironmentForCurrentViewport();
         };
     }
     
@@ -132,6 +133,10 @@ class AppController {
         
         // Update state
         this.state.currentTick = target;
+
+        // Organismen-Overlays werden nicht hart gelöscht; renderOrganisms()
+        // entfernt bzw. aktualisiert Marker organismusweise basierend auf
+        // den Daten des neuen Ticks, um Flicker zu minimieren.
         
         // Update headerbar with current values
         this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
@@ -142,18 +147,40 @@ class AppController {
             console.error('updateMaxTick failed:', error);
         });
 
-        // Load viewport for new tick
+        // Load environment and organisms for new tick
         await this.loadViewport();
     }
     
     /**
-     * Loads environment data for the current viewport.
+     * Loads environment data and organism summaries for the current tick and viewport.
      */
     async loadViewport() {
         try {
+            // Load environment cells first (viewport-based)
             await this.renderer.loadViewport(this.state.currentTick, this.state.runId);
+
+            // Then load organisms for this tick (no region; filtering happens client-side)
+            const organisms = await this.organismApi.fetchOrganismsAtTick(
+                this.state.currentTick,
+                this.state.runId
+            );
+            this.renderer.renderOrganisms(organisms);
         } catch (error) {
             console.error('Failed to load viewport:', error);
+        }
+    }
+
+    /**
+     * Loads only environment data for the current viewport (no new organism HTTP call).
+     * Reuses cached organism data in the renderer for IP/DP overlay re-rendering.
+     */
+    async loadEnvironmentForCurrentViewport() {
+        try {
+            await this.renderer.loadViewport(this.state.currentTick, this.state.runId);
+            // Re-render organism markers for the new viewport using cached data
+            this.renderer.renderOrganisms(this.renderer.currentOrganisms || []);
+        } catch (error) {
+            console.error('Failed to load environment for viewport:', error);
         }
     }
 

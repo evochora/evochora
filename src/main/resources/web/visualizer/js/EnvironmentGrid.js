@@ -19,6 +19,7 @@ class EnvironmentGrid {
         this.app = new PIXI.Application();
         this.cellContainer = null;
         this.textContainer = null;
+        this.organismContainer = null;
 
         // World size (in cells) - set via updateWorldShape()
         this.worldWidthCells = this.config.worldSize?.[0] ?? null;
@@ -73,6 +74,17 @@ class EnvironmentGrid {
 
         // Debounce for viewport-based loading
         this.viewportLoadTimeout = null;
+
+        // Organism rendering state (filled by AppController later)
+        this.currentTick = 0;
+        this.currentRunId = null;
+        this.currentOrganisms = [];
+
+        // Incremental, non-flickering graphics caches for organisms
+        // ipGraphics: organismId -> PIXI.Graphics (IP marker for that organism)
+        // dpGraphics: "x,y" -> { graphics: PIXI.Graphics, text: PIXI.Text | null }
+        this.ipGraphics = new Map();
+        this.dpGraphics = new Map();
     }
 
     /**
@@ -114,7 +126,8 @@ class EnvironmentGrid {
 
         this.cellContainer = new PIXI.Container();
         this.textContainer = new PIXI.Container();
-        this.app.stage.addChild(this.cellContainer, this.textContainer);
+        this.organismContainer = new PIXI.Container();
+        this.app.stage.addChild(this.cellContainer, this.textContainer, this.organismContainer);
 
         this.setupTooltipEvents();
         this.setupInteractionEvents();
@@ -221,11 +234,6 @@ class EnvironmentGrid {
         const viewport = this.getVisibleRegion();
         const regionKey = `${tick}-${viewport.x1}-${viewport.x2}-${viewport.y1}-${viewport.y2}`;
 
-        // Check if region is already loaded
-        if (this.loadedRegions.has(regionKey)) {
-            return; // Skip API call
-        }
-
         // Abort previous request if still pending
         if (this.currentAbortController) {
             this.currentAbortController.abort();
@@ -243,8 +251,10 @@ class EnvironmentGrid {
             // Mark region as loaded
             this.loadedRegions.add(regionKey);
             
-            // Render / update cells (no full clear to avoid flicker)
-            this.renderCells(data.cells);
+            // Render / update cells (no full clear to avoid flicker) and
+            // then remove cells in this region that were not touched by
+            // this response (e.g., created only in a later tick).
+            this.renderCellsWithCleanup(data.cells, viewport);
         } catch (error) {
             if (error.name === 'AbortError') {
                 return;
@@ -273,16 +283,23 @@ class EnvironmentGrid {
     }
 
     /**
-     * Renders cells from API response (additive / overriding, ohne Full-Clear).
+     * Renders cells from API response (additive / overriding, ohne Full-Clear)
+     * and then removes cells in the given region that were not part of this
+     * response (z.B. Zellen, die nur in einem späteren Tick existierten).
      *
      * @param {Array} cells - Array of cell data from API
+     * @param {{x1:number,x2:number,y1:number,y2:number}} region - current viewport region
      */
-    renderCells(cells) {
+    renderCellsWithCleanup(cells, region) {
+        const updatedKeys = new Set();
+
+        // First pass: update or create all cells from response
         for (const cell of cells) {
             const coords = cell.coordinates;
             if (!Array.isArray(coords) || coords.length < 2) continue;
 
             const key = `${coords[0]},${coords[1]}`;
+            updatedKeys.add(key);
 
             // Convert moleculeType string to int
             const typeId = this.typeMapping[cell.moleculeType] ?? 0;
@@ -298,6 +315,37 @@ class EnvironmentGrid {
 
             // Draw / update cell
             this.drawCell(cellData, coords);
+        }
+
+        // Second pass: remove cells in this region that weren't updated
+        const { x1, x2, y1, y2 } = region;
+
+        for (const [key, entry] of this.cellObjects.entries()) {
+            if (updatedKeys.has(key)) {
+                continue; // touched in this tick for this region
+            }
+
+            const parts = key.split(",");
+            if (parts.length !== 2) {
+                continue;
+            }
+            const cx = Number.parseInt(parts[0], 10);
+            const cy = Number.parseInt(parts[1], 10);
+            if (Number.isNaN(cx) || Number.isNaN(cy)) {
+                continue;
+            }
+
+            if (cx >= x1 && cx < x2 && cy >= y1 && cy < y2) {
+                const { background, text } = entry;
+                if (background) {
+                    this.cellContainer.removeChild(background);
+                }
+                if (text) {
+                    this.textContainer.removeChild(text);
+                }
+                this.cellObjects.delete(key);
+                this.cellData.delete(key);
+            }
         }
     }
 
@@ -607,6 +655,326 @@ class EnvironmentGrid {
         if (this.tooltip) {
             this.tooltip.classList.remove('show');
         }
+    }
+
+    /**
+     * Clears all organism overlay graphics (IP + DP markers) and cached organism state.
+     * <p>
+     * Called when the tick changes so that markers from the previous tick
+     * are not shown on the new tick.
+     */
+    clearOrganisms() {
+        // Reset cached organism list; actual graphics cleanup happens
+        // incrementell innerhalb von renderOrganisms() basierend auf dem
+        // neuen Tick (kein massenweises Löschen vor dem Redraw).
+        this.currentOrganisms = [];
+    }
+
+    /**
+     * Renders organism IP and DP markers for the current tick.
+     * <p>
+     * This method only updates the PIXI graphics in organismContainer and
+     * does not perform any HTTP calls. It is safe to call on every camera
+     * movement with the same organismsForTick.
+     *
+     * @param {Array<Object>} organismsForTick - Array of organism summaries for one tick:
+     *   [{ organismId, energy, ip: [x,y], dv: [dx,dy], dataPointers: [[x,y],...], activeDpIndex }, ...]
+     */
+    renderOrganisms(organismsForTick) {
+        if (!Array.isArray(organismsForTick)) {
+            this.currentOrganisms = [];
+            return;
+        }
+        this.currentOrganisms = organismsForTick;
+
+        if (!this.organismContainer) {
+            return;
+        }
+
+        const cellSize = this.config.cellSize;
+
+        // Track which organisms and DP keys exist in this tick
+        const newOrganismIds = new Set();
+        for (const organism of organismsForTick) {
+            if (organism && typeof organism.organismId === 'number') {
+                newOrganismIds.add(organism.organismId);
+            }
+        }
+
+        // Remove IP graphics for organisms that no longer exist in this tick
+        for (const [orgId, g] of this.ipGraphics.entries()) {
+            if (!newOrganismIds.has(orgId)) {
+                g.clear();
+                this.organismContainer.removeChild(g);
+                this.ipGraphics.delete(orgId);
+            }
+        }
+
+        const ensureIpGraphics = (organismId) => {
+            let graphics = this.ipGraphics.get(organismId);
+            if (!graphics) {
+                graphics = new PIXI.Graphics();
+                this.ipGraphics.set(organismId, graphics);
+                this.organismContainer.addChild(graphics);
+            }
+            return graphics;
+        };
+
+        // Draw IP and DP markers for all organisms
+        for (const organism of organismsForTick) {
+            if (!organism || !Array.isArray(organism.ip) || !Array.isArray(organism.dv)) {
+                continue;
+            }
+
+            const organismId = organism.organismId;
+            const ipX = organism.ip[0];
+            const ipY = organism.ip[1];
+
+            // --- IP: one marker per organism ---
+            const ipGraphics = ensureIpGraphics(organismId);
+            ipGraphics.clear();
+
+            const ipColor = this._getOrganismColor(organismId, organism.energy);
+
+            const ipCellX = ipX * cellSize;
+            const ipCellY = ipY * cellSize;
+
+            // Semi-transparent background fill
+            ipGraphics.beginFill(ipColor, 0.2);
+            ipGraphics.drawRect(ipCellX, ipCellY, cellSize, cellSize);
+            ipGraphics.endFill();
+
+            const dvx = organism.dv[0];
+            const dvy = organism.dv[1];
+
+            if (dvx !== 0 || dvy !== 0) {
+                const length = Math.sqrt(dvx * dvx + dvy * dvy) || 1;
+                const dirX = dvx / length;
+                const dirY = dvy / length;
+
+                const cx = ipCellX + cellSize / 2;
+                const cy = ipCellY + cellSize / 2;
+                const half = cellSize / 2;
+
+                const tipX = cx + dirX * half;
+                const tipY = cy + dirY * half;
+
+                const base1X = cx - dirX * half + (-dirY) * half;
+                const base1Y = cy - dirY * half + dirX * half;
+                const base2X = cx - dirX * half - (-dirY) * half;
+                const base2Y = cy - dirY * half - dirX * half;
+
+                ipGraphics.beginFill(ipColor, 0.8);
+                ipGraphics.moveTo(tipX, tipY);
+                ipGraphics.lineTo(base1X, base1Y);
+                ipGraphics.lineTo(base2X, base2Y);
+                ipGraphics.lineTo(tipX, tipY);
+                ipGraphics.endFill();
+            } else {
+                // No DV: draw a filled circle in the cell center
+                const cx = ipCellX + cellSize / 2;
+                const cy = ipCellY + cellSize / 2;
+                const radius = cellSize * 0.4;
+
+                ipGraphics.beginFill(ipColor, 0.8);
+                ipGraphics.circle(cx, cy, radius);
+                ipGraphics.endFill();
+            }
+
+            // Draw data pointers (DPs)
+            if (Array.isArray(organism.dataPointers)) {
+                const activeIndex = typeof organism.activeDpIndex === 'number'
+                    ? organism.activeDpIndex
+                    : 0;
+
+                // First aggregate all DPs per cell position for this tick (across all organisms)
+                // to be able to show multiple indices in one cell.
+                const aggregatedDps = new Map(); // key "x,y" -> { indices:[], isActive:boolean, color:number }
+
+                for (const org of organismsForTick) {
+                    if (!org || !Array.isArray(org.dataPointers)) {
+                        continue;
+                    }
+                    const orgId = org.organismId;
+                    const orgColor = this._getOrganismColor(orgId, org.energy);
+                    const orgActiveIndex = typeof org.activeDpIndex === "number" ? org.activeDpIndex : 0;
+
+                    org.dataPointers.forEach((dp, idx) => {
+                        if (!Array.isArray(dp) || dp.length < 2) {
+                            return;
+                        }
+                        const dpX = dp[0];
+                        const dpY = dp[1];
+                        const cellKey = `${dpX},${dpY}`;
+
+                        let entry = aggregatedDps.get(cellKey);
+                        if (!entry) {
+                            entry = {
+                                indices: [],
+                                isActive: false,
+                                color: orgColor,
+                                x: dpX,
+                                y: dpY
+                            };
+                            aggregatedDps.set(cellKey, entry);
+                        }
+                        entry.indices.push(idx);
+                        if (idx === orgActiveIndex) {
+                            entry.isActive = true;
+                            // Prefer color of organism with active DP
+                            entry.color = orgColor;
+                        }
+                    });
+                }
+
+                // Track which DP graphics are actually used in this tick
+                const seenDpKeys = new Set();
+
+                for (const [cellKey, entry] of aggregatedDps.entries()) {
+                    const dpX = entry.x;
+                    const dpY = entry.y;
+                    const color = entry.color;
+                    const isActive = entry.isActive;
+                    const indices = entry.indices;
+
+                    let dpEntry = this.dpGraphics.get(cellKey);
+                    if (!dpEntry) {
+                        const graphics = new PIXI.Graphics();
+                        const text = new PIXI.Text({
+                            text: "",
+                            style: {
+                                ...this.cellFont,
+                                fontSize: this.config.cellSize * 0.45,
+                                fontWeight: "900",
+                                fill: color,
+                                dropShadow: true,
+                                dropShadowColor: "rgba(0,0,0,0.8)",
+                                dropShadowBlur: 1,
+                                dropShadowAngle: Math.PI / 4,
+                                dropShadowDistance: 1
+                            }
+                        });
+                        text.anchor.set(0.5);
+
+                        dpEntry = { graphics, text };
+                        this.dpGraphics.set(cellKey, dpEntry);
+                        this.organismContainer.addChild(graphics);
+                        this.organismContainer.addChild(text);
+                    }
+
+                    const g = dpEntry.graphics;
+                    const label = dpEntry.text;
+
+                    g.clear();
+
+                    const x = dpX * cellSize;
+                    const y = dpY * cellSize;
+
+                    // Draw border and fill, making active DP more prominent
+                    const borderAlpha = isActive ? 1.0 : 0.8;
+                    const borderWidth = isActive ? 2.0 : 1.0;
+                    const fillAlpha = isActive ? 0.45 : 0.15;
+
+                    g.lineStyle(borderWidth, color, borderAlpha);
+                    g.drawRect(x, y, cellSize, cellSize);
+
+                    g.beginFill(color, fillAlpha);
+                    g.drawRect(x, y, cellSize, cellSize);
+                    g.endFill();
+
+                    // Update label with indices (comma-separated)
+                    if (label) {
+                        label.text = indices.join(",");
+                        label.style.fill = color;
+                        label.position.set(x + cellSize / 2, y + cellSize / 2);
+                    }
+
+                    seenDpKeys.add(cellKey);
+                }
+
+                // Remove DP graphics that are no longer used in this tick
+                for (const [cellKey, dpEntry] of this.dpGraphics.entries()) {
+                    if (!seenDpKeys.has(cellKey)) {
+                        const { graphics, text } = dpEntry;
+                        if (graphics) {
+                            graphics.clear();
+                            this.organismContainer.removeChild(graphics);
+                        }
+                        if (text) {
+                            this.organismContainer.removeChild(text);
+                        }
+                        this.dpGraphics.delete(cellKey);
+                    }
+                }
+
+                // We handled DPs for the entire tick above; skip the per-organism DP
+                // handling below to avoid duplicate work.
+                break;
+
+                /*
+                organism.dataPointers.forEach((dp, idx) => {
+                    if (!Array.isArray(dp) || dp.length < 2) {
+                        return;
+                    }
+                    const dpX = dp[0];
+                    const dpY = dp[1];
+
+                    const key = `${organismId}:${idx}`;
+                    seenDpKeys.add(key);
+
+                    const g = ensureDpGraphics(key);
+                    g.clear();
+
+                    const color = this._getOrganismColor(organismId, organism.energy);
+                    const x = dpX * cellSize;
+                    const y = dpY * cellSize;
+
+                    const isActive = idx === activeIndex;
+
+                    // Border
+                    g.lineStyle(1.0, color, 0.8);
+                    g.drawRect(x, y, cellSize, cellSize);
+
+                    // Fill overlay
+                    const fillAlpha = isActive ? 0.3 : 0.15;
+                    g.beginFill(color, fillAlpha);
+                    g.drawRect(x, y, cellSize, cellSize);
+                    g.endFill();
+                });
+                */
+            }
+        }
+    }
+
+    /**
+     * Internal helper: assigns a stable color per organism id and handles dead organisms.
+     *
+     * @param {number} organismId
+     * @param {number} energy
+     * @returns {number} PIXI color
+     */
+    _getOrganismColor(organismId, energy) {
+        // Simple deterministic palette similar to old WebGLRenderer.organismColorPalette
+        if (!this._organismColorMap) {
+            this._organismColorMap = new Map();
+            this._organismPalette = [
+                0x32cd32, 0x1e90ff, 0xdc143c, 0xffd700,
+                0xffa500, 0x9370db, 0x00ffff
+            ];
+        }
+
+        if (!this._organismColorMap.has(organismId)) {
+            const idx = (organismId - 1) % this._organismPalette.length;
+            this._organismColorMap.set(organismId, this._organismPalette[idx]);
+        }
+
+        const baseColor = this._organismColorMap.get(organismId);
+
+        // If energy <= 0, fall back to a dimmed grayish color to indicate death
+        if (typeof energy === 'number' && energy <= 0) {
+            return 0x555555;
+        }
+        return baseColor;
     }
 }
 
