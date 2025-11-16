@@ -41,6 +41,9 @@ class AppController {
         this.renderer = new EnvironmentGrid(this.worldContainer, defaultConfig, this.environmentApi);
         this.headerbar = new HeaderbarView(this);
         
+        // Load initial state (runId, tick) from URL if present
+        this.loadFromUrl();
+        
         // Setup viewport change handler
         this.renderer.onViewportChange = () => {
             this.loadViewport();
@@ -59,6 +62,9 @@ class AppController {
             const metadata = await this.simulationApi.fetchMetadata(this.state.runId);
             if (metadata && metadata.environment && metadata.environment.shape) {
                 this.state.worldShape = Array.from(metadata.environment.shape);
+                // Wait a bit before updating world shape to ensure devicePixelRatio is stable
+                // This helps with monitor-specific initialization issues
+                await new Promise(resolve => requestAnimationFrame(resolve));
                 this.renderer.updateWorldShape(this.state.worldShape);
             }
             
@@ -69,8 +75,24 @@ class AppController {
                 this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
             }
             
+            // Wait for layout to be calculated before loading initial viewport
+            // This ensures correct viewport size calculation on first load,
+            // especially when browser window is on a high-DPI monitor.
+            // Use triple RAF to ensure layout is fully calculated, especially on first load
+            await new Promise(resolve => {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(resolve);
+                    });
+                });
+            });
+            
+            // Additional small delay to ensure container dimensions are stable
+            // This helps with monitor-specific timing issues
+            await new Promise(resolve => setTimeout(resolve, 50));
+            
             // Load initial tick
-            await this.navigateToTick(0);
+            await this.navigateToTick(this.state.currentTick);
             
         } catch (error) {
             console.error('Failed to initialize application:', error);
@@ -119,10 +141,7 @@ class AppController {
         this.updateMaxTick().catch(error => {
             console.error('updateMaxTick failed:', error);
         });
-        
-        // Clear grid for new tick
-        this.renderer.clear();
-        
+
         // Load viewport for new tick
         await this.loadViewport();
     }
@@ -135,6 +154,33 @@ class AppController {
             await this.renderer.loadViewport(this.state.currentTick, this.state.runId);
         } catch (error) {
             console.error('Failed to load viewport:', error);
+        }
+    }
+
+    /**
+     * Loads initial state (runId, tick) from the browser URL, if provided.
+     * Supported query parameters:
+     *  - runId: simulation run ID
+     *  - tick: initial tick number
+     */
+    loadFromUrl() {
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            const runId = urlParams.get('runId');
+            if (runId !== null && runId.trim() !== '') {
+                this.state.runId = runId.trim();
+            }
+            
+            const tick = urlParams.get('tick');
+            if (tick !== null) {
+                const tickNumber = parseInt(tick, 10);
+                if (!Number.isNaN(tickNumber) && tickNumber >= 0) {
+                    this.state.currentTick = tickNumber;
+                }
+            }
+        } catch (error) {
+            console.debug('Failed to parse URL parameters for visualizer state:', error);
         }
     }
 }

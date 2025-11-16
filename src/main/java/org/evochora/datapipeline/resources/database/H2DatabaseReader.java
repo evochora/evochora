@@ -24,6 +24,23 @@ public class H2DatabaseReader implements IDatabaseReader {
     
     private static final Logger log = LoggerFactory.getLogger(H2DatabaseReader.class);
     
+    /**
+     * Guard to ensure that the instruction set is initialized exactly once per JVM.
+     * <p>
+     * <strong>Rationale:</strong> When the simulation engine is not running, the
+     * Instruction registry may never be initialized. In that case, calls to
+     * {@link Instruction#getInstructionNameById(int)} would always return
+     * {@code "UNKNOWN"}. This affects the environment visualizer when it reads
+     * historical environment data via {@link H2DatabaseReader} without having
+     * started the simulation engine in the same process.
+     * <p>
+     * By lazily initializing the instruction set here, we ensure that opcode
+     * names are available regardless of whether the simulation engine has been
+     * constructed in the current JVM.
+     */
+    private static final java.util.concurrent.atomic.AtomicBoolean INSTRUCTION_INITIALIZED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+    
     private final Connection connection;
     private final H2Database database;
     private final IH2EnvStorageStrategy envStrategy;
@@ -42,6 +59,7 @@ public class H2DatabaseReader implements IDatabaseReader {
     public List<CellWithCoordinates> readEnvironmentRegion(long tickNumber, SpatialRegion region) 
             throws SQLException {
         ensureNotClosed();
+        ensureInstructionSetInitialized();
         
         // Get metadata to extract environment properties
         SimulationMetadata metadata;
@@ -75,6 +93,19 @@ public class H2DatabaseReader implements IDatabaseReader {
                 );
             })
             .collect(java.util.stream.Collectors.toList());
+    }
+
+    /**
+     * Lazily initializes the instruction set for this JVM if it has not yet been initialized.
+     * <p>
+     * This method is intentionally idempotent and thread-safe. It uses an
+     * {@link java.util.concurrent.atomic.AtomicBoolean} to ensure that
+     * {@link Instruction#init()} is called at most once, even under concurrent access.
+     */
+    private void ensureInstructionSetInitialized() {
+        if (INSTRUCTION_INITIALIZED.compareAndSet(false, true)) {
+            Instruction.init();
+        }
     }
 
     private EnvironmentProperties extractEnvironmentProperties(SimulationMetadata metadata) {

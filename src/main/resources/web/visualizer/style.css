@@ -96,6 +96,14 @@ button:hover { background-color: #4a4a6a; }
     padding: 8px 44px 8px 8px; /* space for suffix */
     border-radius: 4px;
 }
+.tick-input-wrapper input[type="number"]::-webkit-outer-spin-button,
+.tick-input-wrapper input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.tick-input-wrapper input[type="number"] {
+    -moz-appearance: textfield; /* Firefox: remove arrows */
+}
 .tick-input-wrapper .tick-total-suffix {
     position: absolute;
     right: 8px;
@@ -112,14 +120,12 @@ main.container {
     overflow: hidden;
 }
 
-/* Welt-Container, der das Canvas oben links ausrichtet und Scrollen erlaubt */
+/* Welt-Container, der den Viewport für das Canvas bereitstellt (keine DOM-Scrollbars für die Welt) */
 .world-container {
     flex-grow: 1;
-    display: flex;
-    justify-content: flex-start;
-    align-items: flex-start;
-    overflow: auto;
-    padding: 20px;
+    position: relative;
+    overflow: hidden; /* Welt wird über Kamera bewegt, nicht per DOM-Scrollbars */
+    padding: 0;
     box-sizing: border-box;
 }
 
