@@ -5,6 +5,9 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.evochora.datapipeline.api.contracts.DataPointerList;
+import org.evochora.datapipeline.api.contracts.OrganismRuntimeState;
+import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
@@ -13,12 +16,16 @@ import org.evochora.datapipeline.resources.database.H2DatabaseReader;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.datapipeline.utils.PathExpansion;
+import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
+import org.evochora.datapipeline.utils.compression.ICompressionCodec;
 import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -391,6 +398,180 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
             // Restore interrupt flag for proper shutdown handling
             if (wasInterrupted) {
                 Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    // ========================================================================
+    // IOrganismDataWriter Capability
+    // ========================================================================
+
+    /**
+     * Creates {@code organisms} and {@code organism_states} tables for the current schema.
+     * <p>
+     * Uses {@link H2SchemaUtil#executeDdlIfNotExists(Statement, String, String)} for
+     * concurrent-safe DDL execution.
+     */
+    @Override
+    protected void doCreateOrganismTables(Object connection) throws Exception {
+        Connection conn = (Connection) connection;
+
+        try (Statement stmt = conn.createStatement()) {
+            // Static organism metadata table
+            H2SchemaUtil.executeDdlIfNotExists(
+                stmt,
+                "CREATE TABLE IF NOT EXISTS organisms (" +
+                "  organism_id INT PRIMARY KEY," +
+                "  parent_id INT NULL," +
+                "  birth_tick BIGINT NOT NULL," +
+                "  program_id TEXT NOT NULL," +
+                "  initial_position BYTEA NOT NULL" +
+                ")",
+                "organisms"
+            );
+
+            // Per-tick organism state table
+            H2SchemaUtil.executeDdlIfNotExists(
+                stmt,
+                "CREATE TABLE IF NOT EXISTS organism_states (" +
+                "  tick_number BIGINT NOT NULL," +
+                "  organism_id INT NOT NULL," +
+                "  energy INT NOT NULL," +
+                "  ip BYTEA NOT NULL," +
+                "  dv BYTEA NOT NULL," +
+                "  data_pointers BYTEA NOT NULL," +
+                "  active_dp_index INT NOT NULL," +
+                "  runtime_state_blob BYTEA NOT NULL," +
+                "  PRIMARY KEY (tick_number, organism_id)" +
+                ")",
+                "organism_states"
+            );
+
+            // Optional helper index for per-organism history queries
+            H2SchemaUtil.executeDdlIfNotExists(
+                stmt,
+                "CREATE INDEX IF NOT EXISTS idx_organism_states_org ON organism_states (organism_id)",
+                "idx_organism_states_org"
+            );
+        }
+
+        conn.commit();
+    }
+
+    /**
+     * Writes organism static and per-tick state using MERGE for idempotency.
+     */
+    @Override
+    protected void doWriteOrganismStates(Object connection, List<TickData> ticks) throws Exception {
+        Connection conn = (Connection) connection;
+
+        if (ticks.isEmpty()) {
+            return;
+        }
+
+        ICompressionCodec codec = CompressionCodecFactory.create(
+                getOptions().hasPath("organismRuntimeStateCompression")
+                        ? getOptions().getConfig("organismRuntimeStateCompression")
+                        : ConfigFactory.empty()
+        );
+
+        PreparedStatement organismsStmt = null;
+        PreparedStatement statesStmt = null;
+
+        try {
+            organismsStmt = conn.prepareStatement(
+                    "MERGE INTO organisms (" +
+                            "organism_id, parent_id, birth_tick, program_id, initial_position" +
+                            ") KEY (organism_id) VALUES (?, ?, ?, ?, ?)"
+            );
+
+            statesStmt = conn.prepareStatement(
+                    "MERGE INTO organism_states (" +
+                            "tick_number, organism_id, energy, ip, dv, data_pointers, active_dp_index, runtime_state_blob" +
+                            ") KEY (tick_number, organism_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            );
+
+            for (TickData tick : ticks) {
+                long tickNumber = tick.getTickNumber();
+                for (OrganismState org : tick.getOrganismsList()) {
+                    // Static table MERGE
+                    organismsStmt.setInt(1, org.getOrganismId());
+                    if (org.hasParentId()) {
+                        organismsStmt.setInt(2, org.getParentId());
+                    } else {
+                        organismsStmt.setNull(2, java.sql.Types.INTEGER);
+                    }
+                    organismsStmt.setLong(3, org.getBirthTick());
+                    organismsStmt.setString(4, org.getProgramId());
+                    organismsStmt.setBytes(5, org.getInitialPosition().toByteArray());
+                    organismsStmt.addBatch();
+
+                    // Runtime state blob
+                    OrganismRuntimeState runtimeState = OrganismRuntimeState.newBuilder()
+                            .addAllDataRegisters(org.getDataRegistersList())
+                            .addAllProcedureRegisters(org.getProcedureRegistersList())
+                            .addAllFormalParamRegisters(org.getFormalParamRegistersList())
+                            .addAllLocationRegisters(org.getLocationRegistersList())
+                            .addAllDataStack(org.getDataStackList())
+                            .addAllLocationStack(org.getLocationStackList())
+                            .addAllCallStack(org.getCallStackList())
+                            .setInstructionFailed(org.getInstructionFailed())
+                            .setFailureReason(org.hasFailureReason() ? org.getFailureReason() : "")
+                            .addAllFailureCallStack(org.getFailureCallStackList())
+                            .build();
+
+                    byte[] blobBytes;
+                    try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                         OutputStream out = codec.wrapOutputStream(baos)) {
+                        runtimeState.writeTo(out);
+                        out.flush();
+                        blobBytes = baos.toByteArray();
+                    }
+
+                    // Per-tick state MERGE
+                    statesStmt.setLong(1, tickNumber);
+                    statesStmt.setInt(2, org.getOrganismId());
+                    statesStmt.setInt(3, org.getEnergy());
+                    statesStmt.setBytes(4, org.getIp().toByteArray());
+                    statesStmt.setBytes(5, org.getDv().toByteArray());
+
+                    // data_pointers: serialize list of Vectors into DataPointerList
+                    DataPointerList dpList = DataPointerList.newBuilder()
+                            .addAllDataPointers(org.getDataPointersList())
+                            .build();
+                    statesStmt.setBytes(6, dpList.toByteArray());
+
+                    statesStmt.setInt(7, org.getActiveDpIndex());
+                    statesStmt.setBytes(8, blobBytes);
+                    statesStmt.addBatch();
+                }
+            }
+
+            organismsStmt.executeBatch();
+            statesStmt.executeBatch();
+
+            conn.commit();
+
+        } catch (Exception e) {
+            try {
+                conn.rollback();
+            } catch (SQLException rollbackEx) {
+                log.warn("Rollback failed during organism state write: {}", rollbackEx.getMessage());
+            }
+            if (e instanceof SQLException) {
+                throw (SQLException) e;
+            }
+            throw new SQLException("Failed to write organism states", e);
+        } finally {
+            if (organismsStmt != null) {
+                try {
+                    organismsStmt.close();
+                } catch (SQLException ignored) { }
+            }
+            if (statesStmt != null) {
+                try {
+                    statesStmt.close();
+                } catch (SQLException ignored) { }
             }
         }
     }

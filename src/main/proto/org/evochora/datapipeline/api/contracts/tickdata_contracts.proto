@@ -177,6 +177,26 @@ message OrganismState {
   repeated ProcFrame failure_call_stack = 21;
 }
 
+// Aggregated runtime state for organism indexing.
+// Used by OrganismIndexer to store sidebar-only data in a single BLOB.
+message OrganismRuntimeState {
+  repeated RegisterValue data_registers = 1;
+  repeated RegisterValue procedure_registers = 2;
+  repeated RegisterValue formal_param_registers = 3;
+  repeated Vector        location_registers = 4;
+  repeated RegisterValue data_stack = 5;
+  repeated Vector        location_stack = 6;
+  repeated ProcFrame     call_stack = 7;
+  bool                   instruction_failed = 8;
+  string                 failure_reason = 9;
+  repeated ProcFrame     failure_call_stack = 10;
+}
+
+// Wrapper for encoding all data pointers in one column for indexing.
+message DataPointerList {
+  repeated Vector data_pointers = 1;
+}
+
 // Represents a procedure call frame on the call stack.
 // Maps to org.evochora.runtime.model.ProcFrame class.
 // Captures the state needed to return from a procedure call.

@@ -230,10 +230,14 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         }
         
         // Component 2: Tick Buffering
-        // REQUIRED component - exception if config missing
+        // REQUIRED component - uses sensible defaults if config missing
         if (required.contains(ComponentType.BUFFERING)) {
-            int insertBatchSize = indexerOptions.getInt("insertBatchSize");
-            long flushTimeoutMs = indexerOptions.getLong("flushTimeoutMs");
+            int insertBatchSize = indexerOptions.hasPath("insertBatchSize")
+                ? indexerOptions.getInt("insertBatchSize")
+                : 1000; // Default: 1000 ticks per buffer (balanced throughput/latency)
+            long flushTimeoutMs = indexerOptions.hasPath("flushTimeoutMs")
+                ? indexerOptions.getLong("flushTimeoutMs")
+                : 5000L; // Default: 5000ms flush timeout (aligned with docs)
             builder.withBuffering(new TickBufferingComponent(insertBatchSize, flushTimeoutMs));
         }
         // OPTIONAL buffering component - graceful skip if config missing

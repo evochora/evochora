@@ -53,8 +53,9 @@ public abstract class AbstractDatabaseResource extends AbstractResource
             case "db-meta-write" -> new MetadataWriterWrapper(this, context);
             case "db-meta-read" -> new MetadataReaderWrapper(this, context);
             case "db-env-write" -> new EnvironmentDataWriterWrapper(this, context);
+            case "db-organism-write" -> new OrganismDataWriterWrapper(this, context);
             default -> throw new IllegalArgumentException(
-                    "Unknown database usage type: " + usageType + ". Supported: db-meta-write, db-meta-read, db-env-write");
+                    "Unknown database usage type: " + usageType + ". Supported: db-meta-write, db-meta-read, db-env-write, db-organism-write");
         };
         
         // Track wrapper for cleanup
@@ -178,6 +179,38 @@ public abstract class AbstractDatabaseResource extends AbstractResource
     protected abstract void doWriteEnvironmentCells(Object connection, 
             java.util.List<org.evochora.datapipeline.api.contracts.TickData> ticks,
             org.evochora.runtime.model.EnvironmentProperties envProps) throws Exception;
+
+    // ========================================================================
+    // IOrganismDataWriter Capability
+    // ========================================================================
+
+    /**
+     * Creates organism tables ({@code organisms}, {@code organism_states}) in the
+     * current schema if they do not already exist.
+     * <p>
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IOrganismDataWriter#createOrganismTables()}.
+     * <p>
+     * <strong>Transaction Handling:</strong> Must commit on success, rollback on failure.
+     *
+     * @param connection Database connection (from {@link #acquireDedicatedConnection()})
+     * @throws Exception if table creation fails
+     */
+    protected abstract void doCreateOrganismTables(Object connection) throws Exception;
+
+    /**
+     * Writes organism state rows for all ticks to the index database using MERGE for
+     * idempotent upserts.
+     * <p>
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IOrganismDataWriter#writeOrganismStates(java.util.List)}.
+     * <p>
+     * <strong>Transaction Handling:</strong> Must commit on success, rollback on failure.
+     *
+     * @param connection Database connection (from {@link #acquireDedicatedConnection()})
+     * @param ticks List of ticks with their organism states to write
+     * @throws Exception if write fails
+     */
+    protected abstract void doWriteOrganismStates(Object connection,
+            java.util.List<org.evochora.datapipeline.api.contracts.TickData> ticks) throws Exception;
 
     // ========================================================================
     // IMetadataReader Capability
