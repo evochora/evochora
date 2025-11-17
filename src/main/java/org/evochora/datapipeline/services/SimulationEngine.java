@@ -367,6 +367,21 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
                 builder.addFailureCallStack(convertProcFrameReuse(frame, vectorBuilder, registerBuilder));
             }
         }
+
+        // Instruction execution data
+        Organism.InstructionExecutionData executionData = o.getLastInstructionExecution();
+        if (executionData != null) {
+            builder.setInstructionOpcodeId(executionData.opcodeId());
+            for (Integer arg : executionData.rawArguments()) {
+                builder.addInstructionRawArguments(arg);
+            }
+            builder.setInstructionEnergyCost(executionData.energyCost());
+        }
+
+        // IP and DV before fetch
+        builder.setIpBeforeFetch(convertVectorReuse(o.getIpBeforeFetch(), vectorBuilder));
+        builder.setDvBeforeFetch(convertVectorReuse(o.getDvBeforeFetch(), vectorBuilder));
+
         return builder.build();
     }
 

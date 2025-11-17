@@ -70,6 +70,10 @@ public class VirtualMachine {
 
         // Logic moved from Organism.processTickAction() here
         java.util.List<Integer> rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(this.environment), this.environment);
+        
+        // Track energy before execution to calculate total cost
+        int energyBefore = organism.getEr();
+        
         organism.takeEr(instruction.getCost(organism, this.environment, rawArgs));
 
         ExecutionContext context = new ExecutionContext(organism, this.environment, false); // Always run in debug mode
@@ -79,6 +83,18 @@ public class VirtualMachine {
         if (organism.isInstructionFailed()) {
             organism.takeEr(Config.ERROR_PENALTY_COST);
         }
+
+        // Calculate total energy cost
+        int energyAfter = organism.getEr();
+        int energyCost = energyBefore - energyAfter;
+
+        // Store instruction execution data for history tracking
+        Organism.InstructionExecutionData executionData = new Organism.InstructionExecutionData(
+            instruction.getFullOpcodeId(),
+            rawArgs,
+            energyCost
+        );
+        organism.setLastInstructionExecution(executionData);
 
         if (organism.getEr() <= 0) {
             organism.kill("Ran out of energy");

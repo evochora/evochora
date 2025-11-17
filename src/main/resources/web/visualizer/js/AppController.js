@@ -455,7 +455,7 @@ class AppController {
         const paletteIndex = (organismId - 1) % organismColorPalette.length;
         return organismColorPalette[paletteIndex];
     }
-    
+
     /**
      * Loads initial state (runId, tick) from the browser URL, if provided.
      * Supported query parameters:

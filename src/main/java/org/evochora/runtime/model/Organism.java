@@ -37,6 +37,17 @@ public class Organism {
      * @param nextIp The IP of the next instruction.
      */
     public record FetchResult(int value, int[] nextIp) {}
+    /**
+     * A record to hold instruction execution data for history tracking.
+     * @param opcodeId The opcode ID of the executed instruction.
+     * @param rawArguments The raw argument values from the environment.
+     * @param energyCost The total energy cost for executing this instruction.
+     */
+    public record InstructionExecutionData(
+        int opcodeId,
+        List<Integer> rawArguments,
+        int energyCost
+    ) {}
 
     private final int id;
     private Integer parentId = null;
@@ -90,6 +101,7 @@ public class Organism {
     private boolean skipIpAdvance = false;
     private int[] ipBeforeFetch;
     private int[] dvBeforeFetch;
+    private InstructionExecutionData lastInstructionExecution = null;
     private final Logger logger;
     private final Simulation simulation;
     private final int[] initialPosition;
@@ -173,6 +185,7 @@ public class Organism {
         this.skipIpAdvance = false;
         this.ipBeforeFetch = java.util.Arrays.copyOf(this.ip, this.ip.length);
         this.dvBeforeFetch = java.util.Arrays.copyOf(this.dv, this.dv.length);
+        this.lastInstructionExecution = null;
     }
 
     /**
@@ -554,6 +567,12 @@ public class Organism {
     public int[] getIpBeforeFetch() { return Arrays.copyOf(ipBeforeFetch, ipBeforeFetch.length); }
     /** @return A copy of the DV as it was at the beginning of the tick. */
     public int[] getDvBeforeFetch() { return Arrays.copyOf(dvBeforeFetch, dvBeforeFetch.length); }
+    /** @return The instruction execution data from the last executed instruction, or null if no instruction was executed. */
+    public InstructionExecutionData getLastInstructionExecution() { return lastInstructionExecution; }
+    /** Sets the instruction execution data for the last executed instruction.
+     * @param data The instruction execution data to store.
+     */
+    public void setLastInstructionExecution(InstructionExecutionData data) { this.lastInstructionExecution = data; }
     /** @return The current energy level (ER). */
     public int getEr() { return er; }
     /** @return A copy of the list of Data Registers (DRs). */

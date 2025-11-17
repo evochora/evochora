@@ -432,6 +432,12 @@ public abstract class Instruction {
     public final String getName() { return ID_TO_NAME.getOrDefault(this.fullOpcodeId, "UNKNOWN"); }
 
     /**
+     * Gets the full opcode ID of this instruction.
+     * @return The full opcode ID.
+     */
+    public int getFullOpcodeId() { return this.fullOpcodeId; }
+
+    /**
      * Gets the name of an instruction by its ID.
      * @param id The instruction ID.
      * @return The name of the instruction.

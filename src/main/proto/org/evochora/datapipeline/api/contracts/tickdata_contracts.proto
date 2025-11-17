@@ -175,6 +175,33 @@ message OrganismState {
   // Source: Organism.getFailureCallStack()
   // Only present if instruction_failed is true
   repeated ProcFrame failure_call_stack = 21;
+
+  // ===== Instruction Execution Data =====
+
+  // Opcode ID of the last executed instruction
+  // Source: InstructionExecutionData.opcodeId
+  // Only present if an instruction was executed in this tick
+  optional int32 instruction_opcode_id = 22;
+
+  // Raw argument values from the environment for the last executed instruction
+  // Source: InstructionExecutionData.rawArguments
+  // Only present if an instruction was executed in this tick
+  repeated int32 instruction_raw_arguments = 23;
+
+  // Total energy cost for executing the last instruction
+  // Source: InstructionExecutionData.energyCost
+  // Only present if an instruction was executed in this tick
+  optional int32 instruction_energy_cost = 24;
+
+  // Instruction pointer position at the beginning of the tick (before instruction execution)
+  // Source: Organism.getIpBeforeFetch()
+  // Used to reconstruct the position of the instruction in the program
+  Vector ip_before_fetch = 26;
+
+  // Direction vector at the beginning of the tick (before instruction execution)
+  // Source: Organism.getDvBeforeFetch()
+  // Used to reconstruct the position of the instruction in the program
+  Vector dv_before_fetch = 27;
 }
 
 // Aggregated runtime state for organism indexing.
