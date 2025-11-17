@@ -117,30 +117,40 @@ button:hover { background-color: #4a4a6a; }
 }
 
 #organism-selector {
-    width: 300px;
-    background-color: #222;
-    border: 1px solid #555;
-    color: #e0e0e0; /* Default color for select element itself */
-    padding: 8px 12px;
-    border-radius: 4px;
+    width: 620px; /* Same width as sidebar */
+    background-color: #000; /* Same as changeable-box */
+    border: 1px solid #333; /* Same as changeable-box */
+    color: #e0e0e0;
+    padding: 8px; /* Same as changeable-box */
+    border-radius: 3px; /* Same as changeable-box */
     cursor: pointer;
-    font-family: inherit;
-    font-size: inherit;
+    font-family: 'Monospaced', 'Courier New', Courier, monospace; /* Same as code-view */
+    font-size: 0.9em; /* Same as changeable-box */
+    white-space: pre; /* Preserve formatting like changeable-box */
+    overflow-x: auto;
 }
 
 #organism-selector:hover {
-    background-color: #333;
+    background-color: #0a0a0a; /* Slightly lighter black on hover */
+    border-color: #444;
 }
 
 #organism-selector:focus {
     outline: none;
-    border-color: #777;
-    box-shadow: 0 0 0 2px rgba(119, 119, 119, 0.2);
+    border-color: #555;
+    box-shadow: 0 0 0 2px rgba(85, 85, 85, 0.2);
 }
 
 /* Ensure option colors are respected (individual colors set via inline styles) */
 #organism-selector option {
-    background-color: #222;
+    background-color: #000 !important; /* Same as changeable-box */
+    font-family: 'Monospaced', 'Courier New', Courier, monospace !important;
+    font-size: 0.9em !important;
+    white-space: pre !important;
+    padding: 8px !important; /* Same padding as select element */
+    line-height: 1.4 !important;
+    width: 100% !important; /* Full width like select element */
+    box-sizing: border-box !important;
     /* Color is set individually via inline style in HTML with !important */
     /* Inline styles should override the select's color property */
 }
@@ -294,6 +304,37 @@ main.container.sidebar-visible .world-container {
     white-space: pre;
     overflow-x: auto;
     font-size: 0.9em;
+}
+
+/* Change highlighting styles */
+.changed {
+    color: #ffb366;
+    font-weight: bold;
+}
+
+.changed-field {
+    color: #ffb366;
+    font-weight: bold;
+    display: inline-block;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: 'Monospaced', 'Courier New', Courier, monospace !important;
+    white-space: pre !important;
+    letter-spacing: normal !important;
+    word-spacing: normal !important;
+    box-sizing: border-box !important;
+    line-height: inherit !important;
+    vertical-align: baseline !important;
+    width: fit-content !important;
+    min-width: fit-content !important;
+    max-width: fit-content !important;
+}
+
+.changed-line {
+    color: #ffb366;
+    font-weight: bold;
 }
 
 .injected-value {

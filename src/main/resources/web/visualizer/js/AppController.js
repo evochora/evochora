@@ -14,7 +14,10 @@ class AppController {
             maxTick: null,
             worldShape: null,
             runId: null,
-            selectedOrganismId: null // Track selected organism across tick changes
+            selectedOrganismId: null, // Track selected organism across tick changes
+            previousTick: null, // For change detection
+            previousOrganisms: null, // For change detection in dropdown
+            previousOrganismDetails: null // For change detection in sidebar
         };
         
         // Config for renderer
@@ -113,8 +116,9 @@ class AppController {
      * Loads detailed organism information and displays it in the sidebar.
      * 
      * @param {number} organismId - Organism ID to load
+     * @param {boolean} isForwardStep - Whether this is a forward step (x -> x+1)
      */
-    async loadOrganismDetails(organismId) {
+    async loadOrganismDetails(organismId, isForwardStep = false) {
         try {
             const details = await this.organismApi.fetchOrganismDetails(
                 this.state.currentTick,
@@ -127,13 +131,20 @@ class AppController {
             const state = details.state;
             
             if (details && staticInfo) {
-                // Update basic info view with static data and hot-path values (IP, DV, ER)
-                this.sidebarBasicInfo.update(staticInfo, details.organismId, state);
+                // Update basic info view with static data only (ID, IP, DV, ER, DPs are now in dropdown)
+                this.sidebarBasicInfo.update(staticInfo, details.organismId);
                 
                 // Update state view with runtime data (starts with DP, no IP/DV/ER)
                 if (state) {
-                    this.sidebarStateView.update(state);
+                    const previousState = (isForwardStep && this.state.previousOrganismDetails && 
+                                          this.state.previousOrganismDetails.organismId === organismId) 
+                                         ? this.state.previousOrganismDetails.state 
+                                         : null;
+                    this.sidebarStateView.update(state, isForwardStep, previousState);
                 }
+                
+                // Save current details for next comparison
+                this.state.previousOrganismDetails = details;
                 
                 // Show sidebar
                 this.sidebarManager.autoShow();
@@ -226,6 +237,10 @@ class AppController {
      */
     async navigateToTick(tick) {
         const target = Math.max(0, tick);
+        const previousTick = this.state.currentTick;
+        
+        // Check if this is a forward step (x -> x+1)
+        const isForwardStep = (target === previousTick + 1);
         
         // Update state
         this.state.currentTick = target;
@@ -244,13 +259,16 @@ class AppController {
         });
 
         // Load environment and organisms for new tick
-        await this.loadViewport();
+        await this.loadViewport(isForwardStep, previousTick);
     }
     
     /**
      * Loads environment data and organism summaries for the current tick and viewport.
+     * 
+     * @param {boolean} isForwardStep - Whether this is a forward step (x -> x+1)
+     * @param {number} previousTick - Previous tick number (for change detection)
      */
-    async loadViewport() {
+    async loadViewport(isForwardStep = false, previousTick = null) {
         try {
             // Load environment cells first (viewport-based)
             await this.renderer.loadViewport(this.state.currentTick, this.state.runId);
@@ -261,15 +279,19 @@ class AppController {
                 this.state.runId
             );
             this.renderer.renderOrganisms(organisms);
-            this.updateOrganismSelector(organisms);
+            this.updateOrganismSelector(organisms, isForwardStep);
             
             // Reload organism details if one is selected
             if (this.state.selectedOrganismId) {
                 const organismId = parseInt(this.state.selectedOrganismId, 10);
                 if (!isNaN(organismId)) {
-                    await this.loadOrganismDetails(organismId);
+                    await this.loadOrganismDetails(organismId, isForwardStep);
                 }
             }
+            
+            // Save current organisms for next comparison
+            this.state.previousOrganisms = organisms;
+            this.state.previousTick = this.state.currentTick;
         } catch (error) {
             console.error('Failed to load viewport:', error);
             // Update dropdown with empty list on error
@@ -294,11 +316,13 @@ class AppController {
     /**
      * Updates the organism selector dropdown with the current tick's organisms.
      * Preserves the selected organism if it still exists in the new tick.
+     * Shows changed values in bold for the selected element (when dropdown is closed).
      * 
      * @param {Array<Object>} organisms - Array of organism summaries:
      *   [{ organismId, energy, ip: [x,y], dv, dataPointers, activeDpIndex }, ...]
+     * @param {boolean} isForwardStep - Whether this is a forward step (x -> x+1)
      */
-    updateOrganismSelector(organisms) {
+    updateOrganismSelector(organisms, isForwardStep = false) {
         const selector = document.getElementById('organism-selector');
         if (!selector) return;
         
@@ -321,12 +345,12 @@ class AppController {
         }
         
         // Build options HTML with inline styles for colors
-        let optionsHtml = `<option value="">--- (${aliveCount}/${totalCount})</option>`;
+        let optionsHtml = `<option value="">(${aliveCount}/${totalCount})</option>`;
         
         // Track which organism IDs exist in the new tick
         const organismIdsInNewTick = new Set();
         
-        // Add organism options with formatting matching old WebDebugger
+        // Add organism options with formatting matching basic view: ID: 1     IP: x|y     DV: dx|dy DP: ...     ER: value
         organisms.forEach(organism => {
             if (!organism || typeof organism.organismId !== 'number') {
                 return;
@@ -337,13 +361,37 @@ class AppController {
             // Get organism color (as hex string for CSS)
             const color = this.getOrganismColor(organism.organismId, organism.energy);
             const energy = organism.energy || 0;
-            const ip = organism.ip || [];
-            const x = ip[0] ?? '?';
-            const y = ip[1] ?? '?';
             
-            // Format: <ID>: [x | y] (<ER wert>)
-            // Set color directly in HTML with inline style
-            const text = `${organism.organismId}: [${x} | ${y}] (${energy})`;
+            // Format IP
+            const ip = organism.ip || [];
+            const ipStr = ip.length >= 2 ? `${ip[0]}|${ip[1]}` : '?|?';
+            
+            // Format DV
+            const dv = organism.dv || [];
+            const dvStr = dv.length >= 2 ? `${dv[0]}|${dv[1]}` : '?|?';
+            
+            // Format DPs: show all DPs, active one in brackets
+            let dpStr = '';
+            if (organism.dataPointers && Array.isArray(organism.dataPointers) && organism.dataPointers.length > 0) {
+                const activeDpIndex = organism.activeDpIndex != null ? organism.activeDpIndex : -1;
+                const dpParts = [];
+                for (let i = 0; i < organism.dataPointers.length; i++) {
+                    const dp = organism.dataPointers[i];
+                    if (dp && Array.isArray(dp) && dp.length >= 2) {
+                        let value = `${dp[0]}|${dp[1]}`;
+                        if (i === activeDpIndex) {
+                            value = `[${value}]`;
+                        }
+                        dpParts.push(value);
+                    }
+                }
+                if (dpParts.length > 0) {
+                    dpStr = `${dpParts.join(' ')}`;
+                }
+            }
+            
+            // Format: ID: 1     IP: x|y     DV: dx|dy DP: ...     ER: value
+            const text = `ID: ${organism.organismId} &nbsp; IP: ${ipStr} &nbsp; DV: ${dvStr} &nbsp; DP: ${dpStr} &nbsp; ER: ${energy}`;
             optionsHtml += `<option value="${organism.organismId}" style="color: ${color} !important;">${text}</option>`;
         });
         
@@ -355,19 +403,25 @@ class AppController {
             selector.value = previouslySelected;
             // Update state to match
             this.state.selectedOrganismId = previouslySelected;
-            // Update select element color to match selected organism
-            const selectedOption = selector.options[selector.selectedIndex];
-            if (selectedOption) {
-                const styleAttr = selectedOption.getAttribute('style');
-                if (styleAttr) {
-                    const colorMatch = styleAttr.match(/color:\s*([^;!]+)/);
-                    if (colorMatch) {
-                        selector.style.color = colorMatch[1].trim();
+            
+            // Find selected organism
+            const selectedOrg = organisms.find(o => String(o.organismId) === previouslySelected);
+            
+            if (selectedOrg) {
+                // Update select element color to match selected organism
+                const selectedOption = selector.options[selector.selectedIndex];
+                if (selectedOption) {
+                    const styleAttr = selectedOption.getAttribute('style');
+                    if (styleAttr) {
+                        const colorMatch = styleAttr.match(/color:\s*([^;!]+)/);
+                        if (colorMatch) {
+                            selector.style.color = colorMatch[1].trim();
+                        }
                     }
                 }
             }
         } else {
-            // Reset to "---" if previously selected organism no longer exists
+            // Reset if previously selected organism no longer exists
             selector.value = '';
             this.state.selectedOrganismId = null;
             selector.style.color = '#e0e0e0';

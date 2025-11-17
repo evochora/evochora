@@ -13,13 +13,15 @@ class SidebarStateView {
      * @param {Object} state - Runtime state:
      *   { energy, ip, dv, dataPointers, activeDpIndex, dataRegisters, procedureRegisters,
      *     formalParamRegisters, locationRegisters, dataStack, locationStack, callStack }
+     * @param {boolean} isForwardStep - Whether this is a forward step (x -> x+1)
+     * @param {Object} previousState - Previous state for change detection (optional)
      */
-    update(state) {
+    update(state, isForwardStep = false, previousState = null) {
         const el = this.root.querySelector('[data-section="state"]');
         if (!state || !el) return;
 
         // Helper function for register formatting
-        const formatRegisters = (registers, removeBrackets = false) => {
+        const formatRegisters = (registers, removeBrackets = false, previousRegisters = null) => {
             if (!registers || registers.length === 0) return '';
 
             const formatted = [];
@@ -48,9 +50,44 @@ class SidebarStateView {
                     if (removeBrackets) {
                         value = value.replace(/^\[|\]$/g, '');
                     }
+                    
+                    // Check for changes (only on forward step)
+                    let isChanged = false;
+                    if (isForwardStep && previousRegisters && previousRegisters[i]) {
+                        let prevValue = '';
+                        if (previousRegisters[i].kind === 'VECTOR' && previousRegisters[i].vector) {
+                            prevValue = `[${previousRegisters[i].vector.join('|')}]`;
+                        } else if (previousRegisters[i].kind === 'MOLECULE') {
+                            const prevType = previousRegisters[i].type || 'UNKNOWN';
+                            const prevVal = previousRegisters[i].value !== undefined ? previousRegisters[i].value : '';
+                            prevValue = `${prevType}:${prevVal}`;
+                        } else if (Array.isArray(previousRegisters[i])) {
+                            prevValue = `[${previousRegisters[i].join('|')}]`;
+                        } else if (typeof previousRegisters[i] === 'string') {
+                            prevValue = previousRegisters[i];
+                        }
+                        prevValue = prevValue.replace(/CODE:/g, 'C:').replace(/DATA:/g, 'D:').replace(/ENERGY:/g, 'E:').replace(/STRUCTURE:/g, 'S:');
+                        if (removeBrackets) {
+                            prevValue = prevValue.replace(/^\[|\]$/g, '');
+                        }
+                        
+                        if (value !== prevValue) {
+                            isChanged = true;
+                        }
+                    }
+                    
+                    // Pad to 8 characters before adding HTML (to maintain alignment)
+                    const paddedValue = String(value).padEnd(8);
+                    
+                    // Add HTML for changed values
+                    if (isChanged) {
+                        value = `<span class="changed-field">${paddedValue}</span>`;
+                    } else {
+                        value = paddedValue;
+                    }
                 }
-                // Width: 8 characters for alignment
-                formatted.push(String(value).padEnd(8));
+                // Add to formatted array
+                formatted.push(value);
             }
 
             return formatted.join('');
@@ -199,8 +236,16 @@ class SidebarStateView {
             }
         };
 
+        // Check for stack changes (only on forward step)
+        const dataStackChanged = isForwardStep && previousState &&
+            (JSON.stringify(state.dataStack) !== JSON.stringify(previousState.dataStack));
+        const locationStackChanged = isForwardStep && previousState &&
+            (JSON.stringify(state.locationStack) !== JSON.stringify(previousState.locationStack));
+        const callStackChanged = isForwardStep && previousState &&
+            (JSON.stringify(state.callStack) !== JSON.stringify(previousState.callStack));
+        
         // Format state view (IP, DV, ER, DPs are shown in BasicInfoView changeable-box, not here)
-        const stateLines = `DR:  ${formatRegisters(state.dataRegisters, true)}\nPR:  ${formatRegisters(state.procedureRegisters, true)}\nFPR: ${formatRegisters(state.formalParamRegisters, true)}\nLR:  ${formatRegisters(state.locationRegisters, true)}\nDS:  ${formatStack(state.dataStack, state.dataRegisters?.length || 8, true)}\nLS:  ${formatStack(state.locationStack, state.dataRegisters?.length || 8, true)}\nCS:  ${formatCallStack(state.callStack)}`;
+        const stateLines = `DR:  ${formatRegisters(state.dataRegisters, true, previousState?.dataRegisters)}\nPR:  ${formatRegisters(state.procedureRegisters, true, previousState?.procedureRegisters)}\nFPR: ${formatRegisters(state.formalParamRegisters, true, previousState?.formalParamRegisters)}\nLR:  ${formatRegisters(state.locationRegisters, true, previousState?.locationRegisters)}\n${dataStackChanged ? '<div class="changed-line">DS:  ' : 'DS:  '}${formatStack(state.dataStack, state.dataRegisters?.length || 8, true)}${dataStackChanged ? '</div>' : ''}\n${locationStackChanged ? '<div class="changed-line">LS:  ' : 'LS:  '}${formatStack(state.locationStack, state.dataRegisters?.length || 8, true)}${locationStackChanged ? '</div>' : ''}\n${callStackChanged ? '<div class="changed-line">CS:  ' : 'CS:  '}${formatCallStack(state.callStack)}${callStackChanged ? '</div>' : ''}`;
 
         el.innerHTML = `<div class="code-view" style="font-size:0.9em;">${stateLines}</div>`;
 
