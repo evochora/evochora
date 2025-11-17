@@ -26,6 +26,8 @@ class SidebarManager {
         if (this.container) {
             this.container.classList.add('sidebar-visible');
         }
+        // Show toggle button when sidebar is visible
+        this.setToggleButtonVisible(true);
         this.isVisible = true;
     }
     
@@ -38,6 +40,8 @@ class SidebarManager {
         if (this.container) {
             this.container.classList.remove('sidebar-visible');
         }
+        // Hide toggle button when sidebar is hidden
+        this.setToggleButtonVisible(false);
         this.isVisible = false;
         
         // If manually hidden, deselect the organism to prevent auto-reopening
@@ -74,7 +78,7 @@ class SidebarManager {
     // Auto-show when organism is selected
     autoShow() {
         this.showSidebar();
-        this.setToggleButtonVisible(true);
+        // Button visibility is already handled in showSidebar()
     }
 }
 

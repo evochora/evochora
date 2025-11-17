@@ -21,6 +21,27 @@ header {
     border-bottom: 1px solid #333;
 }
 
+/* Logo Container - zwischen links und rechts zentriert */
+.logo-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+/* Logo Text - Doto Black 900, nutzt Header-Höhe aus */
+.logo-text {
+    font-family: 'Doto', sans-serif;
+    font-weight: 900;
+    font-size: 36px;
+    color: #e0e0e0;
+    letter-spacing: 2px;
+    line-height: 1;
+    opacity: 0.9;
+    white-space: nowrap;
+}
+
 /* Tooltip */
 .cell-tooltip {
     position: absolute;
@@ -283,6 +304,30 @@ main.container.sidebar-visible .world-container {
     text-decoration: line-through;
     cursor: not-allowed;
 }
+
+.clickable-tick {
+    color: #4a9eff;
+    cursor: pointer;
+    text-decoration: underline;
+    transition: color 0.2s;
+}
+
+.clickable-tick:hover {
+    color: #6bb3ff;
+}
+
+.clickable-position {
+    color: #4a9eff;
+    cursor: pointer;
+    text-decoration: underline;
+    transition: color 0.2s;
+    margin-right: 4px;
+}
+
+.clickable-position:hover {
+    color: #6bb3ff;
+}
+
 
 .changeable-box {
     background-color: #000;

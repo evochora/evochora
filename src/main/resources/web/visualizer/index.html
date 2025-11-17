@@ -4,6 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Evochora Visualizer</title>
+    <link rel="icon" type="image/x-icon" href="favicons/favicon.ico">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicons/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicons/favicon-32x32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="favicons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="favicons/android-chrome-192x192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="favicons/android-chrome-512x512.png">
+    <link rel="manifest" href="favicons/site.webmanifest">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Doto:wght@900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/pixi.js@8.12.0/dist/pixi.min.js"></script>
 </head>
@@ -18,9 +28,11 @@
             <input type="number" id="tick-input" min="0" value="0" aria-label="Tick">
             <span class="tick-total-suffix" id="tick-total-suffix">/N/A</span>
         </div>
-        <button id="btn-goto">Gehe zu</button>
-        <button id="btn-prev">&lt; Zurück</button>
-        <button id="btn-next">Weiter &gt;</button>
+        <button id="btn-prev">&lt;</button>
+        <button id="btn-next">&gt;</button>
+    </div>
+    <div class="logo-container">
+        <span class="logo-text">EVOCHORA</span>
     </div>
     <div class="controls-right">
         <div class="organism-selector-wrapper">
@@ -36,7 +48,7 @@
         <canvas id="worldCanvas"></canvas>
     </div>
     <div id="sidebar" class="sidebar">
-        <button id="sidebar-toggle" class="sidebar-toggle-btn" style="display: none;">&lt;</button>
+        <button id="sidebar-toggle" class="sidebar-toggle-btn" style="display: none;">X</button>
         <div id="organism-details" class="details">
             <div data-section="basic"></div>
             <div data-section="state"></div>

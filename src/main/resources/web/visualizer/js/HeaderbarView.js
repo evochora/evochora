@@ -20,12 +20,6 @@ class HeaderbarView {
         });
         
         const input = document.getElementById('tick-input');
-        document.getElementById('btn-goto').addEventListener('click', () => {
-            const v = parseInt(input.value, 10);
-            if (!Number.isNaN(v)) {
-                this.controller.navigateToTick(v);
-            }
-        });
         
         // Input field event listeners
         input.addEventListener('keydown', (e) => {

@@ -182,6 +182,35 @@ class EnvironmentGrid {
     }
 
     /**
+     * Centers the camera on a specific world coordinate (in cells).
+     * 
+     * @param {number} cellX - X coordinate in cells
+     * @param {number} cellY - Y coordinate in cells
+     */
+    centerOn(cellX, cellY) {
+        const cellSize = this.config.cellSize;
+        
+        // Convert cell coordinates to pixel coordinates
+        const worldX = cellX * cellSize;
+        const worldY = cellY * cellSize;
+        
+        // Center the camera on this position
+        this.cameraX = worldX - this.viewportWidth / 2;
+        this.cameraY = worldY - this.viewportHeight / 2;
+        
+        // Clamp camera to world bounds
+        this.clampCameraToWorld();
+        
+        // Update stage position
+        this.updateStagePosition();
+        
+        // Trigger viewport reload to show the new region
+        if (this.onViewportChange) {
+            this.onViewportChange();
+        }
+    }
+
+    /**
      * Calculates the visible region in grid coordinates based on camera and viewport.
      *
      * @returns {{x1: number, x2: number, y1: number, y2: number}} Viewport region in cells

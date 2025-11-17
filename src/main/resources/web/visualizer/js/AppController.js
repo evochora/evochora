@@ -52,7 +52,7 @@ class AppController {
             console.warn('Sidebar root element not found');
         }
         this.sidebarManager = new SidebarManager(this);
-        this.sidebarBasicInfo = new SidebarBasicInfoView(sidebarRoot);
+        this.sidebarBasicInfo = new SidebarBasicInfoView(sidebarRoot, this.renderer, this);
         this.sidebarStateView = new SidebarStateView(sidebarRoot);
         
         // Setup organism selector change handler
@@ -131,8 +131,8 @@ class AppController {
             const state = details.state;
             
             if (details && staticInfo) {
-                // Update basic info view with static data only (ID, IP, DV, ER, DPs are now in dropdown)
-                this.sidebarBasicInfo.update(staticInfo, details.organismId);
+                // Update basic info view with static data and clickable IP/DP coordinates
+                this.sidebarBasicInfo.update(staticInfo, details.organismId, state);
                 
                 // Update state view with runtime data (starts with DP, no IP/DV/ER)
                 if (state) {
