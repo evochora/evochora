@@ -394,28 +394,40 @@ public final class OrganismStateConverter {
             } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.LOCATION_REGISTER) {
                 // LOCATION_REGISTER: Extract register ID from raw argument
                 argumentTypesList.add("REGISTER"); // Frontend zeigt als REGISTER mit registerType="LR"
-                if (argIndex < rawArguments.size()) {
-                    int rawArg = rawArguments.get(argIndex);
-                    Molecule molecule = Molecule.fromInt(rawArg);
-                    int registerId = molecule.toScalarValue();
-                    
-                    // LOCATION_REGISTER arguments are always LR registers
-                    String registerType = "LR";
-                    
-                    // Resolve register value from locationRegisters
-                    int index = registerId; // LR registers use direct index (0-3)
-                    if (index >= 0 && index < locationRegisters.size()) {
-                        int[] vector = locationRegisters.get(index);
-                        RegisterValueView registerValue = RegisterValueView.vector(vector);
-                        resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue, registerType));
-                    } else {
-                        throw new IllegalStateException(
-                            String.format("LR register ID %d is out of bounds. " +
-                                "Valid LR range: 0-%d, but only %d LR registers available.",
-                                registerId, locationRegisters.size() - 1, locationRegisters.size()));
-                    }
-                    argIndex++;
+                if (argIndex >= rawArguments.size()) {
+                    throw new IllegalStateException(
+                        String.format("LOCATION_REGISTER argument missing for instruction %d (%s). " +
+                            "Expected %d arguments but only %d available in rawArguments.",
+                            opcodeId, opcodeName, argTypes.size(), rawArguments.size()));
                 }
+                
+                int rawArg = rawArguments.get(argIndex);
+                Molecule molecule = Molecule.fromInt(rawArg);
+                int registerId = molecule.toScalarValue();
+                
+                // LOCATION_REGISTER arguments are always LR registers
+                String registerType = "LR";
+                
+                // Resolve register value from locationRegisters
+                if (locationRegisters == null) {
+                    throw new IllegalStateException(
+                        String.format("Location registers not available for instruction %d (%s). " +
+                            "Cannot resolve LOCATION_REGISTER argument with registerId %d.",
+                            opcodeId, opcodeName, registerId));
+                }
+                
+                int index = registerId; // LR registers use direct index (0-3)
+                if (index < 0 || index >= locationRegisters.size()) {
+                    throw new IllegalStateException(
+                        String.format("LR register ID %d is out of bounds for instruction %d (%s). " +
+                            "Valid LR range: 0-%d, but only %d LR registers available.",
+                            registerId, opcodeId, opcodeName, locationRegisters.size() - 1, locationRegisters.size()));
+                }
+                
+                int[] vector = locationRegisters.get(index);
+                RegisterValueView registerValue = RegisterValueView.vector(vector);
+                resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue, registerType));
+                argIndex++;
             } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.LITERAL) {
                 // LITERAL: Decode molecule type and value (shown as IMMEDIATE in view)
                 argumentTypesList.add("IMMEDIATE");

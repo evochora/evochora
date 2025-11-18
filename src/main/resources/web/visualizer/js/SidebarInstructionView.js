@@ -19,23 +19,55 @@ class SidebarInstructionView {
         if (!el) return;
         
         if (!instructions || (!instructions.last && !instructions.next)) {
-            el.innerHTML = '<div class="code-view" style="font-size:0.9em;"></div>';
+            el.innerHTML = '<div class="code-view instruction-view" style="font-size:0.9em; white-space: pre-wrap;"></div>';
             return;
         }
+        
+        // Calculate position strings for both instructions to determine max width
+        let posStrings = [];
+        if (instructions.last) {
+            const pos = this.formatPosition(instructions.last.ipBeforeFetch, tick);
+            posStrings.push(pos);
+        }
+        if (instructions.next) {
+            const pos = this.formatPosition(instructions.next.ipBeforeFetch, tick + 1);
+            posStrings.push(pos);
+        }
+        
+        // Find maximum position width (default to 0 if no positions)
+        const maxPosWidth = posStrings.length > 0 ? Math.max(...posStrings.map(p => p.length)) : 0;
         
         let lines = [];
         
         // Last executed instruction
         if (instructions.last) {
-            lines.push(this.formatInstruction(instructions.last, tick, true));
+            lines.push(this.formatInstruction(instructions.last, tick, true, maxPosWidth));
         }
         
         // Next instruction
         if (instructions.next) {
-            lines.push(this.formatInstruction(instructions.next, tick + 1, false));
+            lines.push(this.formatInstruction(instructions.next, tick + 1, false, maxPosWidth));
         }
         
-        el.innerHTML = `<div class="code-view" style="font-size:0.9em;">${lines.join('\n')}</div>`;
+        // Join lines (no newlines needed, each line is a div)
+        el.innerHTML = `<div class="code-view instruction-view" style="font-size:0.9em;">${lines.join('')}</div>`;
+    }
+    
+    /**
+     * Formats position from IP before fetch: tick:x|y
+     * 
+     * @param {Array} ipBeforeFetch - IP coordinates array
+     * @param {number} tick - Tick number
+     * @returns {string} Formatted position string
+     */
+    formatPosition(ipBeforeFetch, tick) {
+        let pos = '?';
+        if (ipBeforeFetch && ipBeforeFetch.length >= 2) {
+            pos = `${ipBeforeFetch[0]}|${ipBeforeFetch[1]}`;
+        } else if (ipBeforeFetch && ipBeforeFetch.length === 1) {
+            pos = `${ipBeforeFetch[0]}`;
+        }
+        return `${tick}:${pos}`;
     }
     
     /**
@@ -46,40 +78,40 @@ class SidebarInstructionView {
      * @param {boolean} isLast - Whether this is the last executed instruction
      * @returns {string} Formatted instruction line
      */
-    formatInstruction(instruction, tick, isLast) {
+    formatInstruction(instruction, tick, isLast, maxPosWidth) {
         if (!instruction) return '';
         
-        // Format position from IP before fetch: tick:x|y
-        let pos = '?';
-        if (instruction.ipBeforeFetch && instruction.ipBeforeFetch.length >= 2) {
-            pos = `${instruction.ipBeforeFetch[0]}|${instruction.ipBeforeFetch[1]}`;
-        } else if (instruction.ipBeforeFetch && instruction.ipBeforeFetch.length === 1) {
-            pos = `${instruction.ipBeforeFetch[0]}`;
-        }
+        // Format position with dynamic width (based on max width of both lines)
+        const posStr = this.formatPosition(instruction.ipBeforeFetch, tick);
+        const posStrPadded = posStr.padEnd(maxPosWidth);
         
         // Format arguments
         const argsStr = this.formatArguments(instruction.arguments);
         
-        // Format energy cost
-        const energyStr = instruction.energyCost > 0 ? ` (-${instruction.energyCost})` : '';
+        // Format energy cost (right-aligned, no parentheses)
+        const energyStr = instruction.energyCost > 0 ? `-${instruction.energyCost}` : '';
         
         // Build instruction line with "Last: " or "Next: " prefix
         const prefix = isLast ? 'Last: ' : 'Next: ';
-        let line = `${prefix}${tick}:${pos} ${instruction.opcodeName}`;
+        let instructionPart = `${prefix}<span class="instruction-position">${posStrPadded}</span> ${instruction.opcodeName}`;
         if (argsStr) {
-            line += ` ${argsStr}`;
+            instructionPart += ` ${argsStr}`;
         }
-        line += energyStr;
         
-        // Add failed styling if needed
-        if (instruction.failed) {
-            const titleAttr = instruction.failureReason
+        // Use CSS for right-aligned energy
+        if (energyStr) {
+            const titleAttr = instruction.failed && instruction.failureReason
                 ? ` title="${this.escapeHtml(instruction.failureReason)}"`
                 : '';
-            return `<span class="failed-instruction"${titleAttr}>${line}</span>`;
+            const failedClass = instruction.failed ? ' failed-instruction' : '';
+            return `<div class="instruction-line${failedClass}"${titleAttr}><span class="instruction-content">${instructionPart}</span><span class="instruction-energy">${energyStr}</span></div>`;
+        } else {
+            const titleAttr = instruction.failed && instruction.failureReason
+                ? ` title="${this.escapeHtml(instruction.failureReason)}"`
+                : '';
+            const failedClass = instruction.failed ? ' failed-instruction' : '';
+            return `<div class="instruction-line${failedClass}"${titleAttr}><span class="instruction-content">${instructionPart}</span></div>`;
         }
-        
-        return line;
     }
     
     /**
@@ -109,7 +141,7 @@ class SidebarInstructionView {
         
         switch (arg.type) {
             case 'REGISTER':
-                // Format: %DR0[=D:123] or %PR1[=1|0] (vectors use | not ,)
+                // Format: %DR0=D:123 or %PR1=1|0 (no brackets, annotations in green)
                 // Use registerType from backend if available, otherwise fall back to heuristic
                 const regName = arg.registerType 
                     ? this.getRegisterNameFromType(arg.registerId, arg.registerType)
@@ -117,19 +149,22 @@ class SidebarInstructionView {
                 if (arg.registerValue) {
                     if (arg.registerValue.kind === 'MOLECULE') {
                         // Abbreviate types: CODE: -> C:, DATA: -> D:, etc.
-                        const type = (arg.registerValue.type || '').replace(/CODE:/g, 'C:').replace(/DATA:/g, 'D:').replace(/ENERGY:/g, 'E:').replace(/STRUCTURE:/g, 'S:');
-                        return `${regName}[=${type}${arg.registerValue.value}]`;
+                        const typeAbbr = this.abbreviateType(arg.registerValue.type || '');
+                        const annotation = `=${typeAbbr}${arg.registerValue.value}`;
+                        return `${regName}<span class="register-annotation">${annotation}</span>`;
                     } else if (arg.registerValue.kind === 'VECTOR') {
                         const vecStr = arg.registerValue.vector.join('|');
-                        return `${regName}[=${vecStr}]`;
+                        const annotation = `=${vecStr}`;
+                        return `${regName}<span class="register-annotation">${annotation}</span>`;
                     }
                 }
                 return regName;
                 
             case 'IMMEDIATE':
-                // Format: TYPE:VALUE (e.g., DATA:42)
+                // Format: D:0 (abbreviated type)
                 if (arg.moleculeType && arg.value !== undefined) {
-                    return `${arg.moleculeType}:${arg.value}`;
+                    const typeAbbr = this.abbreviateType(arg.moleculeType);
+                    return `${typeAbbr}${arg.value}`;
                 }
                 return `IMMEDIATE:${arg.rawValue || '?'}`;
                 
@@ -154,6 +189,23 @@ class SidebarInstructionView {
             default:
                 return `?(${arg.type})`;
         }
+    }
+    
+    /**
+     * Abbreviates molecule type names: DATA -> D, CODE -> C, STRUCTURE -> S, ENERGY -> E
+     * 
+     * @param {string} type - Full type name (e.g., "DATA", "CODE", "STRUCTURE", "ENERGY")
+     * @returns {string} Abbreviated type with colon (e.g., "D:", "C:", "S:", "E:")
+     */
+    abbreviateType(type) {
+        if (!type) return '';
+        const upper = type.toUpperCase();
+        if (upper.startsWith('DATA')) return 'D:';
+        if (upper.startsWith('CODE')) return 'C:';
+        if (upper.startsWith('STRUCTURE')) return 'S:';
+        if (upper.startsWith('ENERGY')) return 'E:';
+        // Fallback: return first letter if type is single word
+        return upper.charAt(0) + ':';
     }
     
     /**

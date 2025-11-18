@@ -53,7 +53,9 @@ public final class LayoutEngine {
                 var sigOpt = isa.getSignatureById(opcodeId);
                 if (sigOpt.isPresent()) {
                     for (IInstructionSet.ArgKind kind : sigOpt.get().argumentTypes()) {
-                        if (kind == IInstructionSet.ArgKind.REGISTER || kind == IInstructionSet.ArgKind.LITERAL) {
+                        if (kind == IInstructionSet.ArgKind.REGISTER || 
+                            kind == IInstructionSet.ArgKind.LOCATION_REGISTER ||
+                            kind == IInstructionSet.ArgKind.LITERAL) {
                             ctx.placeOperand(src);
                         } else if (kind == IInstructionSet.ArgKind.VECTOR || kind == IInstructionSet.ArgKind.LABEL) {
                             if (ctx.getEnvProps() == null || ctx.getEnvProps().getWorldShape() == null || ctx.getEnvProps().getWorldShape().length == 0) {

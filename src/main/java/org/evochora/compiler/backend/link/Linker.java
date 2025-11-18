@@ -67,6 +67,7 @@ public final class Linker {
                                 int worldDimensions = envProps.getWorldShape().length;
                                 for (int k = 0; k < worldDimensions; k++) context.nextAddress();
                             } else {
+                                // REGISTER, LOCATION_REGISTER, LITERAL → one slot each
                                 context.nextAddress();
                             }
                         }

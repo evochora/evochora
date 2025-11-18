@@ -29,10 +29,10 @@ public final class RuntimeInstructionSetAdapter implements IInstructionSet {
         Optional<InstructionSignature> sig = Instruction.getSignatureById(id);
         return sig.map(s -> (Signature) () -> s.argumentTypes().stream().map(a -> switch (a) {
             case REGISTER -> ArgKind.REGISTER;
+            case LOCATION_REGISTER -> ArgKind.LOCATION_REGISTER;
             case LITERAL -> ArgKind.LITERAL;
             case VECTOR -> ArgKind.VECTOR;
             case LABEL -> ArgKind.LABEL;
-            case LOCATION_REGISTER -> ArgKind.REGISTER; // Maps to REGISTER in compiler interface
         }).toList());
     }
 

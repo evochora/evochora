@@ -476,8 +476,9 @@ public abstract class Instruction {
         int length = 1;
         int dims = env.getShape().length;
         for (OperandSource s : sources) {
-            if (s == OperandSource.REGISTER || s == OperandSource.IMMEDIATE || s == OperandSource.STACK) {
+            if (s == OperandSource.REGISTER || s == OperandSource.IMMEDIATE || s == OperandSource.LOCATION_REGISTER || s == OperandSource.STACK) {
                 // For STACK we assume no encoded operand in code
+                // LOCATION_REGISTER is encoded like REGISTER (one slot)
                 if (s != OperandSource.STACK) length++;
             } else if (s == OperandSource.VECTOR || s == OperandSource.LABEL) {
                 length += dims;

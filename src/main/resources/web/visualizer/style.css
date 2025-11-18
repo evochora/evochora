@@ -50,6 +50,39 @@ header {
     cursor: help; /* Shows tooltip on hover */
 }
 
+/* Register annotations (e.g., =D:0) in green, smaller and italic */
+.register-annotation {
+    color: #4ade80; /* green-400 */
+    font-size: 0.85em;
+    font-style: italic;
+}
+
+/* Instruction line layout with fixed-width columns */
+.instruction-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: 'Monospaced', 'Courier New', Courier, monospace;
+    margin: 0; /* Remove default margin to keep spacing tight */
+    line-height: 1.4; /* Keep line height consistent */
+}
+
+.instruction-content {
+    flex: 0 0 auto;
+    min-width: 0; /* Allow shrinking if needed */
+}
+
+.instruction-position {
+    display: inline-block;
+    font-family: 'Monospaced', 'Courier New', Courier, monospace;
+}
+
+.instruction-energy {
+    flex: 0 0 auto;
+    margin-left: auto;
+    padding-left: 1em;
+}
+
 /* Tooltip */
 .cell-tooltip {
     position: absolute;
@@ -357,6 +390,7 @@ main.container.sidebar-visible .world-container {
     white-space: pre;
     overflow-x: auto;
     font-size: 0.9em;
+    line-height: 1.4; /* Fixed line height to prevent height changes when highlighting */
 }
 
 /* Change highlighting styles */
@@ -388,6 +422,11 @@ main.container.sidebar-visible .world-container {
 .changed-line {
     color: #ffb366;
     font-weight: bold;
+    display: inline;
+    margin: 0;
+    padding: 0;
+    line-height: inherit;
+    vertical-align: baseline;
 }
 
 .injected-value {
