@@ -206,8 +206,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                 );
                             }
                         } else if (symbol.type() == Symbol.Type.ALIAS) {
-                            // Register aliases are valid for REGISTER arguments (will be resolved later)
-                            if (expectedType != InstructionArgumentType.REGISTER) {
+                            // Register aliases are valid for REGISTER and LOCATION_REGISTER arguments (will be resolved later)
+                            if (expectedType != InstructionArgumentType.REGISTER && expectedType != InstructionArgumentType.LOCATION_REGISTER) {
                                 diagnostics.reportError(
                                         String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got ALIAS.",
                                                 i + 1, instructionName, expectedType),
@@ -334,6 +334,49 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                     regNode.registerToken().line()
                             );
                         }
+                    } else if (expectedType == InstructionArgumentType.LOCATION_REGISTER && argumentNode instanceof RegisterNode regNode) {
+                        String tokenText = regNode.registerToken().text();
+                        String u = tokenText.toUpperCase();
+                        
+                        if (u.startsWith("%LR")) {
+                            try {
+                                int regNum = Integer.parseInt(u.substring(3));
+                                if (regNum < 0 || regNum >= Config.NUM_LOCATION_REGISTERS) {
+                                    diagnostics.reportError(
+                                            String.format("Location register '%s' is out of bounds. Valid range: %%LR0-%%LR%d.", 
+                                                tokenText, Config.NUM_LOCATION_REGISTERS - 1),
+                                            regNode.registerToken().fileName(),
+                                            regNode.registerToken().line()
+                                    );
+                                    return;
+                                }
+                            } catch (NumberFormatException e) {
+                                diagnostics.reportError(
+                                        String.format("Invalid location register format '%s'.", tokenText),
+                                        regNode.registerToken().fileName(),
+                                        regNode.registerToken().line()
+                                );
+                                return;
+                            }
+                        } else {
+                            diagnostics.reportError(
+                                    String.format("Argument %d for instruction '%s' expects a location register (%%LRx), but got '%s'.",
+                                        i + 1, instructionName, tokenText),
+                                    regNode.registerToken().fileName(),
+                                    regNode.registerToken().line()
+                            );
+                            return;
+                        }
+                        
+                        // Resolve register token
+                        Optional<Integer> regId = Instruction.resolveRegToken(tokenText);
+                        if (regId.isEmpty()) {
+                            diagnostics.reportError(
+                                    String.format("Unknown location register '%s'.", tokenText),
+                                    regNode.registerToken().fileName(),
+                                    regNode.registerToken().line()
+                            );
+                        }
                     }
 
                     // 2) Strict typing: prohibit untyped literals when a type is expected
@@ -351,7 +394,13 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
     }
 
     private InstructionArgumentType getArgumentTypeFromNode(AstNode node) {
-        if (node instanceof RegisterNode) return InstructionArgumentType.REGISTER;
+        if (node instanceof RegisterNode regNode) {
+            String tokenText = regNode.registerToken().text().toUpperCase();
+            if (tokenText.startsWith("%LR")) {
+                return InstructionArgumentType.LOCATION_REGISTER;
+            }
+            return InstructionArgumentType.REGISTER;
+        }
         if (node instanceof NumberLiteralNode || node instanceof TypedLiteralNode) return InstructionArgumentType.LITERAL;
         if (node instanceof VectorLiteralNode) return InstructionArgumentType.VECTOR;
         if (node instanceof IdentifierNode) return InstructionArgumentType.LABEL; // Is treated as a label until the symbol is resolved

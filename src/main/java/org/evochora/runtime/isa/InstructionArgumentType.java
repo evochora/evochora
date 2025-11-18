@@ -12,5 +12,7 @@ public enum InstructionArgumentType {
     /** A vector literal (e.g., 1|0). */
     VECTOR,
     /** A label that resolves to an address. */
-    LABEL
+    LABEL,
+    /** A location register (e.g., %LR0, %LR3). */
+    LOCATION_REGISTER
 }

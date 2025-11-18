@@ -371,7 +371,7 @@ public final class OrganismStateConverter {
                     
                     // Determine register type based on register ID ranges
                     // Note: REGISTER arguments in instructions are always DR/PR/FPR, never LR.
-                    // LR registers are accessed differently (not via readOperand).
+                    // LR registers are accessed via LOCATION_REGISTER argument type.
                     // This matches the runtime's readOperand() method which treats all IDs < PR_BASE as DR.
                     String registerType;
                     if (registerId >= Instruction.FPR_BASE) {
@@ -389,6 +389,31 @@ public final class OrganismStateConverter {
                             registerId, dataRegisters, procRegisters, fprRegisters);
                     
                     resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue, registerType));
+                    argIndex++;
+                }
+            } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.LOCATION_REGISTER) {
+                // LOCATION_REGISTER: Extract register ID from raw argument
+                argumentTypesList.add("REGISTER"); // Frontend zeigt als REGISTER mit registerType="LR"
+                if (argIndex < rawArguments.size()) {
+                    int rawArg = rawArguments.get(argIndex);
+                    Molecule molecule = Molecule.fromInt(rawArg);
+                    int registerId = molecule.toScalarValue();
+                    
+                    // LOCATION_REGISTER arguments are always LR registers
+                    String registerType = "LR";
+                    
+                    // Resolve register value from locationRegisters
+                    int index = registerId; // LR registers use direct index (0-3)
+                    if (index >= 0 && index < locationRegisters.size()) {
+                        int[] vector = locationRegisters.get(index);
+                        RegisterValueView registerValue = RegisterValueView.vector(vector);
+                        resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue, registerType));
+                    } else {
+                        throw new IllegalStateException(
+                            String.format("LR register ID %d is out of bounds. " +
+                                "Valid LR range: 0-%d, but only %d LR registers available.",
+                                registerId, locationRegisters.size() - 1, locationRegisters.size()));
+                    }
                     argIndex++;
                 }
             } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.LITERAL) {

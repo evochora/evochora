@@ -27,7 +27,7 @@ public abstract class Instruction {
     /**
      * Defines the possible sources for an instruction's operands.
      */
-    public enum OperandSource { REGISTER, IMMEDIATE, STACK, VECTOR, LABEL }
+    public enum OperandSource { REGISTER, IMMEDIATE, STACK, VECTOR, LABEL, LOCATION_REGISTER }
 
     /**
      * Represents a resolved operand, containing its value and raw source ID.
@@ -134,6 +134,14 @@ public abstract class Instruction {
                         currentIp = res.nextIp();
                     }
                     resolved.add(new Operand(delta, -1));
+                    break;
+                }
+                case LOCATION_REGISTER: {
+                    Organism.FetchResult arg = organism.fetchArgument(currentIp, environment);
+                    int regId = Molecule.fromInt(arg.value()).toScalarValue();
+                    // LOCATION_REGISTER operands use rawSourceId() directly (no readOperand)
+                    resolved.add(new Operand(null, regId)); // Value resolved in LocationInstruction
+                    currentIp = arg.nextIp();
                     break;
                 }
             }
@@ -281,8 +289,9 @@ public abstract class Instruction {
 
         // Location instruction family registrations
         registerFamily(LocationInstruction.class, Map.of(112, "DUPL", 113, "SWPL", 114, "DRPL", 115, "ROTL", 116, "DPLS", 117, "SKLS", 122, "LSDS"), List.of());
-        registerFamily(LocationInstruction.class, Map.of(118, "DPLR", 120, "SKLR", 121, "PUSL", 123, "LRDS", 125, "POPL", 191, "CRLR"), List.of(OperandSource.REGISTER));
-        registerFamily(LocationInstruction.class, Map.of(124, "LRDR", 190, "LRLR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(LocationInstruction.class, Map.of(118, "DPLR", 120, "SKLR", 121, "PUSL", 123, "LRDS", 125, "POPL", 191, "CRLR"), List.of(OperandSource.LOCATION_REGISTER));
+        registerFamily(LocationInstruction.class, Map.of(190, "LRLR"), List.of(OperandSource.LOCATION_REGISTER, OperandSource.LOCATION_REGISTER));
+        registerFamily(LocationInstruction.class, Map.of(124, "LRDR"), List.of(OperandSource.REGISTER, OperandSource.LOCATION_REGISTER));
         registerFamily(LocationInstruction.class, Map.of(126, "LSDR"), List.of(OperandSource.REGISTER));
 
         // Vector Manipulation Instruction Family
@@ -328,6 +337,9 @@ public abstract class Instruction {
                 if (s == OperandSource.REGISTER) {
                     length++;
                     argTypesForSignature.add(InstructionArgumentType.REGISTER);
+                } else if (s == OperandSource.LOCATION_REGISTER) {
+                    length++;
+                    argTypesForSignature.add(InstructionArgumentType.LOCATION_REGISTER);
                 } else if (s == OperandSource.IMMEDIATE) {
                     length++;
                     argTypesForSignature.add(InstructionArgumentType.LITERAL);

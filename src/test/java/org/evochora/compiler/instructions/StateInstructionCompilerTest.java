@@ -27,25 +27,25 @@ class StateInstructionCompilerTest extends CompilerTestBase {
     @Test
     void testTURN_SYNC_NRG_POS_DIFF_RAND_SEEK_SCAN_FORK() {
         String source = String.join("\n",
-                "TURN %LR0",
+                "TURN %DR0",
                 "TRNI 1|0",
                 "TRNS",
                 "SYNC",
                 "NRG %DR0",
                 "NRGS",
-                "POS %LR0",
+                "POS %DR0",
                 "POSS",
-                "DIFF %LR0",
+                "DIFF %DR0",
                 "DIFS",
                 "RAND %DR0",
                 "RNDS",
-                "SEEK %LR0",
+                "SEEK %DR0",
                 "SEKI 1|0",
                 "SEKS",
-                "SCAN %DR0 %LR0",
+                "SCAN %DR0 %DR1",
                 "SCNI %DR0 1|0",
                 "SCNS",
-                "FORK %LR0 %DR0 %LR1",
+                "FORK %DR0 %DR1 %DR2",
                 "FRKI 1|0 DATA:100 0|1",
                 "FRKS"
         );
@@ -78,7 +78,7 @@ class StateInstructionCompilerTest extends CompilerTestBase {
     @Test
     void testGetDV_operations() {
         String source = String.join("\n",
-                "GDVR %LR0",
+                "GDVR %DR0",
                 "GDVS"
         );
         List<String> lines = List.of(source.split("\n"));

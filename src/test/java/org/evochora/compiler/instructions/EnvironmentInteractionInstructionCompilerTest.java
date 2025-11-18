@@ -27,10 +27,10 @@ class EnvironmentInteractionInstructionCompilerTest extends CompilerTestBase {
     @Test
     void testPEEK_POKE_variants() {
         String source = String.join("\n",
-                "PEEK %DR0 %LR0",
+                "PEEK %DR0 %DR1",
                 "PEKI %DR0 1|0",
                 "PEKS",
-                "POKE %DR0 %LR0",
+                "POKE %DR0 %DR1",
                 "POKI %DR0 1|0",
                 "POKS"
         );

@@ -30,7 +30,7 @@ class DataInstructionCompilerTest extends CompilerTestBase {
                 "LBL:",
                 "SETI %DR0 DATA:1",
                 "SETR %DR0 %DR1",
-                "SETV %LR0 LBL",
+                "SETV %DR0 LBL",
                 "PUSH %DR0",
                 "POP %DR0",
                 "PUSI DATA:1"

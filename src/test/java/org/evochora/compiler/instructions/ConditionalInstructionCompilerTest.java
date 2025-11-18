@@ -39,10 +39,10 @@ class ConditionalInstructionCompilerTest extends CompilerTestBase {
                 "IFTR %DR0 %DR1",
                 "IFTI %DR0 DATA:1",
                 "IFTS",
-                "IFMR %LR0",
+                "IFMR %DR0",
                 "IFMI 1|0",
                 "IFMS",
-                "IFPR %LR0",
+                "IFPR %DR0",
                 "IFPI 1|0",
                 "IFPS"
         );
@@ -69,10 +69,10 @@ class ConditionalInstructionCompilerTest extends CompilerTestBase {
                 "GETS",
                 "LETS",
                 "INTS",
-                "INMR %LR0",
+                "INMR %DR0",
                 "INMI 1|0",
                 "INMS",
-                "INPR %LR0",
+                "INPR %DR0",
                 "INPI 1|0",
                 "INPS"
         );

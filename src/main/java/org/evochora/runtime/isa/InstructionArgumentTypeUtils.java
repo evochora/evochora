@@ -29,6 +29,7 @@ public final class InstructionArgumentTypeUtils {
             case LITERAL -> "LITERAL";
             case VECTOR -> "VECTOR";
             case LABEL -> "LABEL";
+            case LOCATION_REGISTER -> "LOCATION_REGISTER";
         };
     }
     
@@ -49,6 +50,7 @@ public final class InstructionArgumentTypeUtils {
             case "LITERAL" -> InstructionArgumentType.LITERAL;
             case "VECTOR" -> InstructionArgumentType.VECTOR;
             case "LABEL" -> InstructionArgumentType.LABEL;
+            case "LOCATION_REGISTER" -> InstructionArgumentType.LOCATION_REGISTER;
             default -> null;
         };
     }

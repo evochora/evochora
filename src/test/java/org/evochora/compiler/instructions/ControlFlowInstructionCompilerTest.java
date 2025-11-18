@@ -29,7 +29,7 @@ class ControlFlowInstructionCompilerTest extends CompilerTestBase {
         String source = String.join("\n",
                 "LBL:",
                 "JMPI LBL",
-                "JMPR %LR0",
+                "JMPR %DR0",
                 "JMPS",
                 "CALL LBL",
                 "RET"

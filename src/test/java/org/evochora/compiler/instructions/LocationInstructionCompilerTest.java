@@ -46,11 +46,11 @@ class LocationInstructionCompilerTest extends CompilerTestBase {
     @Test
     void testLocationRegister_operations() {
         String source = String.join("\n",
-                "DPLR %DR0",
-                "SKLR %DR0",
-                "PUSL %DR0",
-                "LRDS %DR0",
-                "POPL %DR0"
+                "DPLR %LR0",
+                "SKLR %LR0",
+                "PUSL %LR0",
+                "LRDS %LR0",
+                "POPL %LR0"
         );
         List<String> lines = List.of(source.split("\n"));
         assertDoesNotThrow(() -> {
@@ -63,7 +63,7 @@ class LocationInstructionCompilerTest extends CompilerTestBase {
     @Test
     void testLocationRegisterPair_operations() {
         String source = String.join("\n",
-                "LRDR %DR0 %DR1",
+                "LRDR %DR0 %LR1",
                 "LSDR %DR0"
         );
         List<String> lines = List.of(source.split("\n"));

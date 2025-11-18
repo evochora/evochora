@@ -138,6 +138,32 @@ class H2DatabaseReaderInstructionResolutionTest {
     }
 
     @Test
+    void resolveInstruction_LOCATION_REGISTER_argument() throws Exception {
+        setupDatabase();
+        
+        // DPLR %LR0 - LOCATION_REGISTER argument
+        int dplrOpcode = Instruction.getInstructionIdByName("DPLR") | org.evochora.runtime.Config.TYPE_CODE;
+        int lrArg = new Molecule(org.evochora.runtime.Config.TYPE_DATA, 0).toInt(); // %LR0
+
+        writeOrganismWithInstructionAndLocationRegisters(1L, 1, dplrOpcode, java.util.List.of(lrArg), 3,
+                new int[][]{{5, 6}, {7, 8}, null, null}); // LR0=[5,6], LR1=[7,8], LR2/LR3=null
+
+        try (IDatabaseReader reader = provider.createReader(runId)) {
+            OrganismTickDetails details = reader.readOrganismDetails(1L, 1);
+
+            assertThat(details.state.instructions.last).isNotNull();
+            assertThat(details.state.instructions.last.opcodeName).isEqualTo("DPLR");
+            assertThat(details.state.instructions.last.arguments).hasSize(1);
+            assertThat(details.state.instructions.last.arguments.get(0).type).isEqualTo("REGISTER");
+            assertThat(details.state.instructions.last.arguments.get(0).registerId).isEqualTo(0);
+            assertThat(details.state.instructions.last.arguments.get(0).registerType).isEqualTo("LR");
+            assertThat(details.state.instructions.last.arguments.get(0).registerValue).isNotNull();
+            assertThat(details.state.instructions.last.arguments.get(0).registerValue.kind).isEqualTo(org.evochora.datapipeline.api.resources.database.dto.RegisterValueView.Kind.VECTOR);
+            assertThat(details.state.instructions.last.arguments.get(0).registerValue.vector).isEqualTo(new int[]{5, 6});
+        }
+    }
+
+    @Test
     void resolveNextInstruction_whenSamplingIntervalIsOne() throws Exception {
         setupDatabase();
         
@@ -218,6 +244,12 @@ class H2DatabaseReaderInstructionResolutionTest {
 
     private void writeOrganismWithInstruction(long tickNumber, int organismId, int opcodeId,
                                              java.util.List<Integer> rawArguments, int energyCost) throws Exception {
+        writeOrganismWithInstructionAndLocationRegisters(tickNumber, organismId, opcodeId, rawArguments, energyCost, null);
+    }
+
+    private void writeOrganismWithInstructionAndLocationRegisters(long tickNumber, int organismId, int opcodeId,
+                                                                  java.util.List<Integer> rawArguments, int energyCost,
+                                                                  int[][] locationRegisters) throws Exception {
         Object connObj = database.acquireDedicatedConnection();
         try (Connection conn = (Connection) connObj) {
             String schemaName = "SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_");
@@ -244,6 +276,22 @@ class H2DatabaseReaderInstructionResolutionTest {
 
             for (Integer arg : rawArguments) {
                 orgBuilder.addInstructionRawArguments(arg);
+            }
+
+            // Add location registers if provided
+            if (locationRegisters != null) {
+                for (int[] lr : locationRegisters) {
+                    if (lr != null) {
+                        Vector.Builder lrBuilder = Vector.newBuilder();
+                        for (int component : lr) {
+                            lrBuilder.addComponents(component);
+                        }
+                        orgBuilder.addLocationRegisters(lrBuilder.build());
+                    } else {
+                        // Add empty vector for null entries (to maintain index alignment)
+                        orgBuilder.addLocationRegisters(Vector.newBuilder().build());
+                    }
+                }
             }
 
             TickData tick = TickData.newBuilder()

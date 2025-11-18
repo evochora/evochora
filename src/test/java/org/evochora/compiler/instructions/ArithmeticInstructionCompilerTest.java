@@ -54,8 +54,8 @@ class ArithmeticInstructionCompilerTest extends CompilerTestBase {
     @Test
     void testVectorADD_SUB_register_variant() {
         String source = String.join("\n",
-                "ADDR %LR0 %LR1",
-                "SUBR %LR0 %LR1"
+                "ADDR %DR0 %DR1",
+                "SUBR %DR0 %DR1"
         );
         List<String> lines = List.of(source.split("\n"));
         assertDoesNotThrow(() -> {
@@ -68,8 +68,8 @@ class ArithmeticInstructionCompilerTest extends CompilerTestBase {
     @Test
     void testVectorDOT_CRS_operations() {
         String source = String.join("\n",
-                "DOTR %DR0 %LR0 %LR1",
-                "CRSR %LR0 %LR1 %LR2",
+                "DOTR %DR0 %DR1 %DR2",
+                "CRSR %DR0 %DR1 %DR2",
                 "DOTS",
                 "CRSS"
         );

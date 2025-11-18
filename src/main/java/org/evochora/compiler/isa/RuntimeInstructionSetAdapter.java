@@ -32,6 +32,7 @@ public final class RuntimeInstructionSetAdapter implements IInstructionSet {
             case LITERAL -> ArgKind.LITERAL;
             case VECTOR -> ArgKind.VECTOR;
             case LABEL -> ArgKind.LABEL;
+            case LOCATION_REGISTER -> ArgKind.REGISTER; // Maps to REGISTER in compiler interface
         }).toList());
     }
 

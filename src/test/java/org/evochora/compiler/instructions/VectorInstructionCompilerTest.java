@@ -27,8 +27,8 @@ class VectorInstructionCompilerTest extends CompilerTestBase {
     @Test
     void testVectorGet_operations() {
         String source = String.join("\n",
-                "VGTR %DR0 %LR0 %DR1",
-                "VGTI %DR0 %LR0 DATA:1",
+                "VGTR %DR0 %DR1 %DR2",
+                "VGTI %DR0 %DR1 DATA:1",
                 "VGTS"
         );
         List<String> lines = List.of(source.split("\n"));
@@ -42,8 +42,8 @@ class VectorInstructionCompilerTest extends CompilerTestBase {
     @Test
     void testVectorSet_operations() {
         String source = String.join("\n",
-                "VSTR %LR0 %DR0 %DR1",
-                "VSTI %LR0 DATA:1 DATA:2",
+                "VSTR %DR0 %DR1 %DR2",
+                "VSTI %DR0 DATA:1 DATA:2",
                 "VSTS"
         );
         List<String> lines = List.of(source.split("\n"));
@@ -57,7 +57,7 @@ class VectorInstructionCompilerTest extends CompilerTestBase {
     @Test
     void testVectorBuild_operations() {
         String source = String.join("\n",
-                "VBLD %LR0",
+                "VBLD %DR0",
                 "VBLS"
         );
         List<String> lines = List.of(source.split("\n"));
@@ -71,8 +71,8 @@ class VectorInstructionCompilerTest extends CompilerTestBase {
     @Test
     void testBitToVector_operations() {
         String source = String.join("\n",
-                "B2VR %LR0 %DR0",
-                "B2VI %LR0 DATA:1",
+                "B2VR %DR0 %DR1",
+                "B2VI %DR0 DATA:1",
                 "B2VS"
         );
         List<String> lines = List.of(source.split("\n"));
@@ -86,7 +86,7 @@ class VectorInstructionCompilerTest extends CompilerTestBase {
     @Test
     void testVectorToBit_operations() {
         String source = String.join("\n",
-                "V2BR %DR0 %LR0",
+                "V2BR %DR0 %DR1",
                 "V2BI %DR0 1|0",
                 "V2BS"
         );
@@ -101,8 +101,8 @@ class VectorInstructionCompilerTest extends CompilerTestBase {
     @Test
     void testVectorRotate_operations() {
         String source = String.join("\n",
-                "RTRR %LR0 %LR1 %LR2",
-                "RTRI %LR0 DATA:1 DATA:2",
+                "RTRR %DR0 %DR1 %DR2",
+                "RTRI %DR0 DATA:1 DATA:2",
                 "RTRS"
         );
         List<String> lines = List.of(source.split("\n"));
