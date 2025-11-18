@@ -293,6 +293,56 @@ class H2DatabaseReaderInstructionResolutionTest {
                     }
                 }
             }
+            
+            // Add register values before execution (required for annotation display)
+            // Extract register IDs from rawArguments based on instruction signature
+            java.util.Optional<org.evochora.runtime.isa.InstructionSignature> signatureOpt =
+                    org.evochora.runtime.isa.Instruction.getSignatureById(opcodeId);
+            if (signatureOpt.isPresent()) {
+                org.evochora.runtime.isa.InstructionSignature signature = signatureOpt.get();
+                java.util.List<org.evochora.runtime.isa.InstructionArgumentType> argTypes = signature.argumentTypes();
+                int argIndex = 0;
+                
+                for (org.evochora.runtime.isa.InstructionArgumentType argType : argTypes) {
+                    if (argType == org.evochora.runtime.isa.InstructionArgumentType.REGISTER ||
+                        argType == org.evochora.runtime.isa.InstructionArgumentType.LOCATION_REGISTER) {
+                        if (argIndex < rawArguments.size()) {
+                            int rawArg = rawArguments.get(argIndex);
+                            org.evochora.runtime.model.Molecule molecule = org.evochora.runtime.model.Molecule.fromInt(rawArg);
+                            int registerId = molecule.toScalarValue();
+                            
+                            // Get register value before execution from current registers
+                            if (argType == org.evochora.runtime.isa.InstructionArgumentType.REGISTER) {
+                                // DR/PR/FPR register - get from dataRegisters
+                                if (registerId == 0 && orgBuilder.getDataRegistersCount() > 0) {
+                                    orgBuilder.putInstructionRegisterValuesBefore(registerId, orgBuilder.getDataRegisters(0));
+                                }
+                            } else {
+                                // LOCATION_REGISTER - get from locationRegisters
+                                if (locationRegisters != null && registerId >= 0 && registerId < locationRegisters.length) {
+                                    int[] lr = locationRegisters[registerId];
+                                    if (lr != null) {
+                                        Vector.Builder lrBuilder = Vector.newBuilder();
+                                        for (int component : lr) {
+                                            lrBuilder.addComponents(component);
+                                        }
+                                        orgBuilder.putInstructionRegisterValuesBefore(registerId,
+                                                RegisterValue.newBuilder().setVector(lrBuilder.build()).build());
+                                    }
+                                }
+                            }
+                            
+                            argIndex++;
+                        }
+                    } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.VECTOR ||
+                               argType == org.evochora.runtime.isa.InstructionArgumentType.LABEL) {
+                        // VECTOR/LABEL have no register arguments encoded in rawArgs
+                    } else {
+                        // IMMEDIATE, LITERAL - no register arguments
+                        argIndex++;
+                    }
+                }
+            }
 
             TickData tick = TickData.newBuilder()
                     .setTickNumber(tickNumber)

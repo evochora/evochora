@@ -237,7 +237,7 @@ class H2DatabaseReaderTest {
             int regArg = new Molecule(org.evochora.runtime.Config.TYPE_DATA, 0).toInt();
             int immArg = new Molecule(org.evochora.runtime.Config.TYPE_DATA, 42).toInt();
 
-            OrganismState orgState = OrganismState.newBuilder()
+            OrganismState.Builder orgBuilder = OrganismState.newBuilder()
                     .setOrganismId(1)
                     .setBirthTick(0)
                     .setProgramId("prog-1")
@@ -253,8 +253,13 @@ class H2DatabaseReaderTest {
                     .addInstructionRawArguments(immArg)
                     .setInstructionEnergyCost(5)
                     .setIpBeforeFetch(ipBeforeFetch)
-                    .setDvBeforeFetch(dvBeforeFetch)
-                    .build();
+                    .setDvBeforeFetch(dvBeforeFetch);
+            
+            // Add register values before execution (required for annotation display)
+            // SETI %DR0, DATA:10 - first argument is REGISTER (registerId=0)
+            orgBuilder.putInstructionRegisterValuesBefore(0, RegisterValue.newBuilder().setScalar(42).build());
+            
+            OrganismState orgState = orgBuilder.build();
 
             TickData tick = TickData.newBuilder()
                     .setTickNumber(1L)

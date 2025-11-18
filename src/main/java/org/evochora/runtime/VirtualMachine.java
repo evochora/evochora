@@ -3,9 +3,15 @@ package org.evochora.runtime;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.InstructionArgumentType;
+import org.evochora.runtime.isa.InstructionSignature;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * The core of the execution environment.
@@ -71,6 +77,57 @@ public class VirtualMachine {
         // Logic moved from Organism.processTickAction() here
         java.util.List<Integer> rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(this.environment), this.environment);
         
+        // Collect register values BEFORE execution (for annotation display)
+        Map<Integer, Object> registerValuesBefore = new HashMap<>();
+        Optional<InstructionSignature> signatureOpt = Instruction.getSignatureById(instruction.getFullOpcodeId());
+        if (signatureOpt.isPresent()) {
+            InstructionSignature signature = signatureOpt.get();
+            java.util.List<InstructionArgumentType> argTypes = signature.argumentTypes();
+            int argIndex = 0;
+            
+            for (InstructionArgumentType argType : argTypes) {
+                if (argType == InstructionArgumentType.REGISTER) {
+                    if (argIndex < rawArgs.size()) {
+                        int rawArg = rawArgs.get(argIndex);
+                        Molecule molecule = Molecule.fromInt(rawArg);
+                        int registerId = molecule.toScalarValue();
+                        
+                        // Read register value BEFORE execution (DR/PR/FPR)
+                        Object registerValue = organism.readOperand(registerId);
+                        registerValuesBefore.put(registerId, registerValue);
+                        
+                        argIndex++;
+                    }
+                } else if (argType == InstructionArgumentType.LOCATION_REGISTER) {
+                    if (argIndex < rawArgs.size()) {
+                        int rawArg = rawArgs.get(argIndex);
+                        Molecule molecule = Molecule.fromInt(rawArg);
+                        int registerId = molecule.toScalarValue();
+                        
+                        // Read location register value BEFORE execution (LR - always int[])
+                        int[] lrValue = organism.getLr(registerId);
+                        if (lrValue != null) {
+                            registerValuesBefore.put(registerId, lrValue);
+                        } else {
+                            // LR is null - store empty vector with correct dimensions
+                            int dims = this.environment.getShape().length;
+                            registerValuesBefore.put(registerId, new int[dims]);
+                        }
+                        
+                        argIndex++;
+                    }
+                } else if (argType == InstructionArgumentType.VECTOR || 
+                           argType == InstructionArgumentType.LABEL) {
+                    // VECTOR/LABEL have no register arguments encoded in rawArgs
+                    // Skip the vector/label slots (they are encoded separately in environment)
+                    // argIndex is not incremented for VECTOR/LABEL in rawArgs
+                } else {
+                    // IMMEDIATE, LITERAL - no register arguments
+                    argIndex++;
+                }
+            }
+        }
+        
         // Track energy before execution to calculate total cost
         int energyBefore = organism.getEr();
         
@@ -92,7 +149,8 @@ public class VirtualMachine {
         Organism.InstructionExecutionData executionData = new Organism.InstructionExecutionData(
             instruction.getFullOpcodeId(),
             rawArgs,
-            energyCost
+            energyCost,
+            registerValuesBefore
         );
         organism.setLastInstructionExecution(executionData);
 

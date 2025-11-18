@@ -202,6 +202,13 @@ message OrganismState {
   // Source: Organism.getDvBeforeFetch()
   // Used to reconstruct the position of the instruction in the program
   Vector dv_before_fetch = 27;
+  
+  // Register values before instruction execution (for annotation display)
+  // Maps register ID to RegisterValue (only for registers used as arguments)
+  // Key: register ID (int32), Value: RegisterValue
+  // Source: InstructionExecutionData.registerValuesBefore
+  // Only present if an instruction was executed in this tick
+  map<int32, RegisterValue> instruction_register_values_before = 28;
 }
 
 // Aggregated runtime state for organism indexing.
@@ -244,6 +251,13 @@ message OrganismRuntimeState {
   // Source: Organism.getDvBeforeFetch()
   // Used to reconstruct the position of the instruction in the program
   optional Vector instruction_dv_before_fetch = 15;
+  
+  // Register values before instruction execution (for annotation display)
+  // Maps register ID to RegisterValue (only for registers used as arguments)
+  // Key: register ID (int32), Value: RegisterValue
+  // Source: InstructionExecutionData.registerValuesBefore
+  // Only present if an instruction was executed in this tick
+  map<int32, RegisterValue> instruction_register_values_before = 16;
 }
 
 // Wrapper for encoding all data pointers in one column for indexing.

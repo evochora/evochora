@@ -535,6 +535,9 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
                     if (org.hasDvBeforeFetch()) {
                         runtimeStateBuilder.setInstructionDvBeforeFetch(org.getDvBeforeFetch());
                     }
+                    if (org.getInstructionRegisterValuesBeforeCount() > 0) {
+                        runtimeStateBuilder.putAllInstructionRegisterValuesBefore(org.getInstructionRegisterValuesBeforeMap());
+                    }
                     
                     OrganismRuntimeState runtimeState = runtimeStateBuilder.build();
 

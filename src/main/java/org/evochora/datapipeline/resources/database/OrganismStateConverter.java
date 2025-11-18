@@ -333,7 +333,8 @@ public final class OrganismStateConverter {
             List<RegisterValueView> procRegisters,
             List<RegisterValueView> fprRegisters,
             List<int[]> locationRegisters,
-            int[] envDimensions) {
+            int[] envDimensions,
+            java.util.Map<Integer, RegisterValueView> registerValuesBefore) {
         
         ensureInstructionSetInitialized();
         
@@ -383,10 +384,14 @@ public final class OrganismStateConverter {
                         registerType = "DR";
                     }
                     
-                    // Resolve register value based on register ID
-                    // For REGISTER arguments, we only resolve DR/PR/FPR, not LR
-                    RegisterValueView registerValue = resolveRegisterValueForInstructionArgument(
-                            registerId, dataRegisters, procRegisters, fprRegisters);
+                    // Resolve register value: use value BEFORE execution (required, no fallback)
+                    if (registerValuesBefore == null || !registerValuesBefore.containsKey(registerId)) {
+                        throw new IllegalStateException(
+                            String.format("Register value before execution not available for register ID %d in instruction %d (%s). " +
+                                "This indicates corrupted data or missing registerValuesBefore map.",
+                                registerId, opcodeId, opcodeName));
+                    }
+                    RegisterValueView registerValue = registerValuesBefore.get(registerId);
                     
                     resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue, registerType));
                     argIndex++;
@@ -424,8 +429,15 @@ public final class OrganismStateConverter {
                             registerId, opcodeId, opcodeName, locationRegisters.size() - 1, locationRegisters.size()));
                 }
                 
-                int[] vector = locationRegisters.get(index);
-                RegisterValueView registerValue = RegisterValueView.vector(vector);
+                // Resolve register value: use value BEFORE execution (required, no fallback)
+                if (registerValuesBefore == null || !registerValuesBefore.containsKey(registerId)) {
+                    throw new IllegalStateException(
+                        String.format("Register value before execution not available for LR register ID %d in instruction %d (%s). " +
+                            "This indicates corrupted data or missing registerValuesBefore map.",
+                            registerId, opcodeId, opcodeName));
+                }
+                RegisterValueView registerValue = registerValuesBefore.get(registerId);
+                
                 resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue, registerType));
                 argIndex++;
             } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.LITERAL) {
@@ -580,6 +592,17 @@ public final class OrganismStateConverter {
                     "This indicates corrupted data - all executed instructions must have an energy cost.");
             }
             
+            // Read register values before execution from Protobuf
+            java.util.Map<Integer, RegisterValueView> registerValuesBefore = new java.util.HashMap<>();
+            if (state.getInstructionRegisterValuesBeforeCount() > 0) {
+                for (java.util.Map.Entry<Integer, org.evochora.datapipeline.api.contracts.RegisterValue> entry :
+                        state.getInstructionRegisterValuesBeforeMap().entrySet()) {
+                    int registerId = entry.getKey();
+                    RegisterValueView registerValue = convertRegisterValue(entry.getValue());
+                    registerValuesBefore.put(registerId, registerValue);
+                }
+            }
+            
             lastInstruction = resolveInstructionView(
                     state.getInstructionOpcodeId(),
                     state.getInstructionRawArgumentsList(),
@@ -592,7 +615,8 @@ public final class OrganismStateConverter {
                     procRegs,
                     fprRegs,
                     locationRegs,
-                    envDimensions
+                    envDimensions,
+                    registerValuesBefore
             );
         }
         InstructionsView instructions = new InstructionsView(lastInstruction, null);

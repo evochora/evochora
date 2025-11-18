@@ -44,16 +44,24 @@ header {
 
 /* Instruction View Styles - styled like State View */
 .failed-instruction {
+    position: relative;
     background-color: rgba(255, 0, 0, 0.15);
-    border-left: 2px solid #ff4444;
-    padding-left: 2px;
     cursor: help; /* Shows tooltip on hover */
 }
 
-/* Register annotations (e.g., =D:0) in green, smaller and italic */
+.failed-instruction::before {
+    content: '';
+    position: absolute;
+    left: -8px; /* Position left of .code-view padding */
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background-color: #ff4444;
+}
+
+/* Register annotations (e.g., =D:0) in green and italic */
 .register-annotation {
     color: #4ade80; /* green-400 */
-    font-size: 0.85em;
     font-style: italic;
 }
 
@@ -389,6 +397,7 @@ main.container.sidebar-visible .world-container {
     border: 1px solid #333;
     white-space: pre;
     overflow-x: auto;
+    overflow-y: visible; /* Allow red bar to extend left */
     font-size: 0.9em;
     line-height: 1.4; /* Fixed line height to prevent height changes when highlighting */
 }

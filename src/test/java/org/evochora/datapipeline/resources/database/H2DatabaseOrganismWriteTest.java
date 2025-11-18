@@ -206,6 +206,9 @@ class H2DatabaseOrganismWriteTest {
                 .setInstructionEnergyCost(5)
                 .setIpBeforeFetch(ipBeforeFetch)
                 .setDvBeforeFetch(dvBeforeFetch)
+                // Add register values before execution (required for annotation display)
+                // SETI %DR0, DATA:10 - first argument is REGISTER (registerId=0)
+                .putInstructionRegisterValuesBefore(0, RegisterValue.newBuilder().setScalar(42).build())
                 .build();
     }
 }

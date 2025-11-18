@@ -376,6 +376,17 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
                 builder.addInstructionRawArguments(arg);
             }
             builder.setInstructionEnergyCost(executionData.energyCost());
+            
+            // Register values before execution (for annotation display)
+            if (executionData.registerValuesBefore() != null && !executionData.registerValuesBefore().isEmpty()) {
+                for (java.util.Map.Entry<Integer, Object> entry : executionData.registerValuesBefore().entrySet()) {
+                    int registerId = entry.getKey();
+                    Object registerValue = entry.getValue();
+                    org.evochora.datapipeline.api.contracts.RegisterValue protoValue = 
+                        convertRegisterValueReuse(registerValue, registerBuilder, vectorBuilder);
+                    builder.putInstructionRegisterValuesBefore(registerId, protoValue);
+                }
+            }
         }
 
         // IP and DV before fetch
