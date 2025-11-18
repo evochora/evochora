@@ -25,6 +25,14 @@ public final class InstructionArgumentView {
      */
     public final RegisterValueView registerValue;
 
+    /**
+     * Register type name: "DR", "PR", "FPR", or "LR".
+     * Only present for REGISTER type.
+     * This is needed because DR and LR share the same index range (0-3),
+     * so we need to explicitly indicate which register type it is.
+     */
+    public final String registerType;
+
     // For IMMEDIATE type
     /**
      * Raw int32 value from instruction_raw_arguments.
@@ -54,6 +62,7 @@ public final class InstructionArgumentView {
     private InstructionArgumentView(String type,
                                     Integer registerId,
                                     RegisterValueView registerValue,
+                                    String registerType,
                                     Integer rawValue,
                                     String moleculeType,
                                     Integer value,
@@ -61,6 +70,7 @@ public final class InstructionArgumentView {
         this.type = type;
         this.registerId = registerId;
         this.registerValue = registerValue;
+        this.registerType = registerType;
         this.rawValue = rawValue;
         this.moleculeType = moleculeType;
         this.value = value;
@@ -72,10 +82,11 @@ public final class InstructionArgumentView {
      *
      * @param registerId    Register ID (e.g., 0 for %DR0)
      * @param registerValue Register value resolved from organism state
+     * @param registerType  Register type: "DR", "PR", "FPR", or "LR"
      * @return InstructionArgumentView for REGISTER type
      */
-    public static InstructionArgumentView register(int registerId, RegisterValueView registerValue) {
-        return new InstructionArgumentView("REGISTER", registerId, registerValue, null, null, null, null);
+    public static InstructionArgumentView register(int registerId, RegisterValueView registerValue, String registerType) {
+        return new InstructionArgumentView("REGISTER", registerId, registerValue, registerType, null, null, null, null);
     }
 
     /**
@@ -87,7 +98,7 @@ public final class InstructionArgumentView {
      * @return InstructionArgumentView for IMMEDIATE type
      */
     public static InstructionArgumentView immediate(int rawValue, String moleculeType, int value) {
-        return new InstructionArgumentView("IMMEDIATE", null, null, rawValue, moleculeType, value, null);
+        return new InstructionArgumentView("IMMEDIATE", null, null, null, rawValue, moleculeType, value, null);
     }
 
     /**
@@ -97,7 +108,7 @@ public final class InstructionArgumentView {
      * @return InstructionArgumentView for VECTOR type
      */
     public static InstructionArgumentView vector(int[] components) {
-        return new InstructionArgumentView("VECTOR", null, null, null, null, null, components);
+        return new InstructionArgumentView("VECTOR", null, null, null, null, null, null, components);
     }
 
     /**
@@ -107,7 +118,7 @@ public final class InstructionArgumentView {
      * @return InstructionArgumentView for LABEL type
      */
     public static InstructionArgumentView label(int[] components) {
-        return new InstructionArgumentView("LABEL", null, null, null, null, null, components);
+        return new InstructionArgumentView("LABEL", null, null, null, null, null, null, components);
     }
 
     /**
@@ -118,7 +129,7 @@ public final class InstructionArgumentView {
      * @return InstructionArgumentView for STACK type
      */
     public static InstructionArgumentView stack() {
-        return new InstructionArgumentView("STACK", null, null, null, null, null, null);
+        return new InstructionArgumentView("STACK", null, null, null, null, null, null, null);
     }
 }
 

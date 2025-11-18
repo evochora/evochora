@@ -87,7 +87,8 @@ class OrganismControllerUnitTest {
 
             // Create mock instruction data
             InstructionArgumentView regArg = InstructionArgumentView.register(0,
-                    org.evochora.datapipeline.api.resources.database.dto.RegisterValueView.molecule(42, 1, "DATA", 42));
+                    org.evochora.datapipeline.api.resources.database.dto.RegisterValueView.molecule(42, 1, "DATA", 42),
+                    "DR");
             InstructionArgumentView immArg = InstructionArgumentView.immediate(42, "DATA", 42);
             InstructionView lastInstruction = new InstructionView(
                     1, "SETI", List.of(regArg, immArg), List.of("REGISTER", "IMMEDIATE"),

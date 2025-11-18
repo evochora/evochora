@@ -245,6 +245,65 @@ public final class OrganismStateConverter {
     }
     
     /**
+     * Resolves a register value for instruction arguments (DR/PR/FPR only, not LR).
+     * <p>
+     * This method is used specifically for REGISTER arguments in instructions.
+     * REGISTER arguments in instructions are always DR/PR/FPR, never LR.
+     * LR registers are accessed via LOCATION_REGISTER argument type (to be implemented).
+     *
+     * @param registerId        Register ID (0-999 for DR, 1000-1999 for PR, 2000+ for FPR)
+     * @param dataRegisters     Data registers list
+     * @param procRegisters     Procedure registers list
+     * @param fprRegisters      Formal parameter registers list
+     * @return RegisterValueView
+     * @throws IllegalStateException if register ID is invalid or out of bounds
+     */
+    public static RegisterValueView resolveRegisterValueForInstructionArgument(
+            int registerId,
+            List<RegisterValueView> dataRegisters,
+            List<RegisterValueView> procRegisters,
+            List<RegisterValueView> fprRegisters) {
+        
+        if (registerId >= Instruction.FPR_BASE) {
+            // FPR register
+            int index = registerId - Instruction.FPR_BASE;
+            if (index >= 0 && index < fprRegisters.size()) {
+                return fprRegisters.get(index);
+            }
+            throw new IllegalStateException(
+                String.format("FPR register ID %d (index %d) is out of bounds. " +
+                    "Valid FPR range: %d-%d, but only %d FPR registers available.",
+                    registerId, index, Instruction.FPR_BASE, 
+                    Instruction.FPR_BASE + fprRegisters.size() - 1, fprRegisters.size()));
+        } else if (registerId >= Instruction.PR_BASE) {
+            // PR register
+            int index = registerId - Instruction.PR_BASE;
+            if (index >= 0 && index < procRegisters.size()) {
+                return procRegisters.get(index);
+            }
+            throw new IllegalStateException(
+                String.format("PR register ID %d (index %d) is out of bounds. " +
+                    "Valid PR range: %d-%d, but only %d PR registers available.",
+                    registerId, index, Instruction.PR_BASE,
+                    Instruction.PR_BASE + procRegisters.size() - 1, procRegisters.size()));
+        } else if (registerId >= 0 && registerId < dataRegisters.size()) {
+            // DR register
+            return dataRegisters.get(registerId);
+        }
+        
+        // Invalid register ID (negative or out of all valid ranges)
+        throw new IllegalStateException(
+            String.format("Invalid register ID %d for instruction argument. " +
+                "Valid ranges: DR=0-%d, PR=%d-%d, FPR=%d-%d. " +
+                "Available registers: DR=%d, PR=%d, FPR=%d",
+                registerId,
+                dataRegisters.size() - 1,
+                Instruction.PR_BASE, Instruction.PR_BASE + procRegisters.size() - 1,
+                Instruction.FPR_BASE, Instruction.FPR_BASE + fprRegisters.size() - 1,
+                dataRegisters.size(), procRegisters.size(), fprRegisters.size()));
+    }
+    
+    /**
      * Resolves instruction execution data into an InstructionView.
      *
      * @param opcodeId         Opcode ID of the instruction
@@ -310,11 +369,26 @@ public final class OrganismStateConverter {
                     Molecule molecule = Molecule.fromInt(rawArg);
                     int registerId = molecule.toScalarValue();
                     
-                    // Resolve register value based on register ID
-                    RegisterValueView registerValue = resolveRegisterValue(
-                            registerId, dataRegisters, procRegisters, fprRegisters, locationRegisters);
+                    // Determine register type based on register ID ranges
+                    // Note: REGISTER arguments in instructions are always DR/PR/FPR, never LR.
+                    // LR registers are accessed differently (not via readOperand).
+                    // This matches the runtime's readOperand() method which treats all IDs < PR_BASE as DR.
+                    String registerType;
+                    if (registerId >= Instruction.FPR_BASE) {
+                        registerType = "FPR";
+                    } else if (registerId >= Instruction.PR_BASE) {
+                        registerType = "PR";
+                    } else {
+                        // All register IDs < PR_BASE are DR registers (matching readOperand logic)
+                        registerType = "DR";
+                    }
                     
-                    resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue));
+                    // Resolve register value based on register ID
+                    // For REGISTER arguments, we only resolve DR/PR/FPR, not LR
+                    RegisterValueView registerValue = resolveRegisterValueForInstructionArgument(
+                            registerId, dataRegisters, procRegisters, fprRegisters);
+                    
+                    resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue, registerType));
                     argIndex++;
                 }
             } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.LITERAL) {
