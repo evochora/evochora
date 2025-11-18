@@ -19,7 +19,7 @@ import java.sql.Statement;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
-import org.evochora.datapipeline.api.resources.database.SpatialRegion;
+import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 
 /**
  * SingleBlobStrategy: Stores all cells of a tick in a single BLOB.

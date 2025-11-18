@@ -1,4 +1,4 @@
-package org.evochora.datapipeline.api.resources.database;
+package org.evochora.datapipeline.api.resources.database.dto;
 
 /**
  * Summary view of an organism at a specific tick.

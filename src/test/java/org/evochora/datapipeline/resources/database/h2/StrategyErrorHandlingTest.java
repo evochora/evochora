@@ -6,6 +6,7 @@ import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.database.*;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,7 +54,7 @@ class StrategyErrorHandlingTest {
     @Test
     void readEnvironmentRegion_throwsOnInvalidTick() throws SQLException {
         try (IDatabaseReader reader = database.createReader(testRunId)) {
-            SpatialRegion region = new SpatialRegion(new int[]{0, 10, 0, 10});
+            org.evochora.datapipeline.api.resources.database.dto.SpatialRegion region = new org.evochora.datapipeline.api.resources.database.dto.SpatialRegion(new int[]{0, 10, 0, 10});
             
             // When: Query non-existent tick
             SQLException exception = assertThrows(SQLException.class, () -> 
@@ -72,14 +73,14 @@ class StrategyErrorHandlingTest {
         insertCorruptedBlob(testRunId, 100);
         
         try (IDatabaseReader reader = database.createReader(testRunId)) {
-            SpatialRegion region = new SpatialRegion(new int[]{0, 10, 0, 10});
+            org.evochora.datapipeline.api.resources.database.dto.SpatialRegion region = new org.evochora.datapipeline.api.resources.database.dto.SpatialRegion(new int[]{0, 10, 0, 10});
             
             // When/Then: Should handle corruption gracefully
             // This test verifies that corrupted data doesn't crash the application
             // The exact behavior (exception vs empty list) depends on implementation
             assertDoesNotThrow(() -> {
                 try {
-                    List<CellWithCoordinates> cells = reader.readEnvironmentRegion(100, region);
+                    List<org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates> cells = reader.readEnvironmentRegion(100, region);
                     assertNotNull(cells);
                 } catch (SQLException e) {
                     // SQLException is acceptable for corrupted data
@@ -96,10 +97,10 @@ class StrategyErrorHandlingTest {
         insertEmptyBlob(testRunId, 100);
         
         try (IDatabaseReader reader = database.createReader(testRunId)) {
-            SpatialRegion region = new SpatialRegion(new int[]{0, 10, 0, 10});
+            org.evochora.datapipeline.api.resources.database.dto.SpatialRegion region = new org.evochora.datapipeline.api.resources.database.dto.SpatialRegion(new int[]{0, 10, 0, 10});
             
             // When: Query empty tick
-            List<CellWithCoordinates> cells = reader.readEnvironmentRegion(100, region);
+            List<org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates> cells = reader.readEnvironmentRegion(100, region);
             
             // Then: Should return empty list (not error)
             assertNotNull(cells);
@@ -114,10 +115,10 @@ class StrategyErrorHandlingTest {
         
         try (IDatabaseReader reader = database.createReader(testRunId)) {
             // Given: Out-of-bounds region
-            SpatialRegion outOfBoundsRegion = new SpatialRegion(new int[]{200, 300, 200, 300});
+            org.evochora.datapipeline.api.resources.database.dto.SpatialRegion outOfBoundsRegion = new SpatialRegion(new int[]{200, 300, 200, 300});
             
             // When: Query with out-of-bounds region
-            List<CellWithCoordinates> cells = reader.readEnvironmentRegion(100, outOfBoundsRegion);
+            List<org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates> cells = reader.readEnvironmentRegion(100, outOfBoundsRegion);
             
             // Then: Should return empty list (no cells in that region)
             assertNotNull(cells);
@@ -132,7 +133,7 @@ class StrategyErrorHandlingTest {
         
         try (IDatabaseReader reader = database.createReader(testRunId)) {
             // When: Query with null region (all cells)
-            List<CellWithCoordinates> cells = reader.readEnvironmentRegion(100, null);
+            List<org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates> cells = reader.readEnvironmentRegion(100, null);
             
             // Then: Should return all cells
             assertNotNull(cells);

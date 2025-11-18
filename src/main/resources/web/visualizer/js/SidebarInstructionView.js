@@ -1,5 +1,6 @@
 /**
  * Renders instruction execution view in the sidebar.
+ * Styled like State View (code-box, no heading).
  */
 class SidebarInstructionView {
     constructor(root) {
@@ -18,30 +19,23 @@ class SidebarInstructionView {
         if (!el) return;
         
         if (!instructions || (!instructions.last && !instructions.next)) {
-            el.innerHTML = '<div class="instruction-section"><h3>Instructions</h3><p>No instruction data available</p></div>';
+            el.innerHTML = '<div class="code-view" style="font-size:0.9em;"></div>';
             return;
         }
         
-        let html = '<div class="instruction-section"><h3>Instructions</h3>';
+        let lines = [];
         
         // Last executed instruction
         if (instructions.last) {
-            html += '<div class="instruction-group">';
-            html += '<h4>Last executed</h4>';
-            html += this.formatInstruction(instructions.last, tick, true);
-            html += '</div>';
+            lines.push(this.formatInstruction(instructions.last, tick, true));
         }
         
         // Next instruction
         if (instructions.next) {
-            html += '<div class="instruction-group">';
-            html += '<h4>Next</h4>';
-            html += this.formatInstruction(instructions.next, tick + 1, false);
-            html += '</div>';
+            lines.push(this.formatInstruction(instructions.next, tick + 1, false));
         }
         
-        html += '</div>';
-        el.innerHTML = html;
+        el.innerHTML = `<div class="code-view" style="font-size:0.9em;">${lines.join('\n')}</div>`;
     }
     
     /**
@@ -50,15 +44,18 @@ class SidebarInstructionView {
      * @param {Object} instruction - InstructionView object
      * @param {number} tick - Tick number
      * @param {boolean} isLast - Whether this is the last executed instruction
-     * @returns {string} HTML string
+     * @returns {string} Formatted instruction line
      */
     formatInstruction(instruction, tick, isLast) {
         if (!instruction) return '';
         
-        // Format position from IP before fetch
-        const pos = instruction.ipBeforeFetch && instruction.ipBeforeFetch.length > 0
-            ? instruction.ipBeforeFetch.join(':')
-            : '?';
+        // Format position from IP before fetch: [tick:x|y]
+        let pos = '?';
+        if (instruction.ipBeforeFetch && instruction.ipBeforeFetch.length >= 2) {
+            pos = `${instruction.ipBeforeFetch[0]}|${instruction.ipBeforeFetch[1]}`;
+        } else if (instruction.ipBeforeFetch && instruction.ipBeforeFetch.length === 1) {
+            pos = `${instruction.ipBeforeFetch[0]}`;
+        }
         
         // Format arguments
         const argsStr = this.formatArguments(instruction.arguments);
@@ -67,14 +64,21 @@ class SidebarInstructionView {
         const energyStr = instruction.energyCost > 0 ? ` (-${instruction.energyCost})` : '';
         
         // Build instruction line
-        const failedClass = instruction.failed ? ' failed' : '';
-        const titleAttr = instruction.failed && instruction.failureReason
-            ? ` title="${this.escapeHtml(instruction.failureReason)}"`
-            : '';
+        let line = `[${tick}:${pos}] ${instruction.opcodeName}`;
+        if (argsStr) {
+            line += ` ${argsStr}`;
+        }
+        line += energyStr;
         
-        return `<div class="instruction-line${failedClass}"${titleAttr}>` +
-               `[${tick}:${pos}] ${instruction.opcodeName} ${argsStr}${energyStr}` +
-               `</div>`;
+        // Add failed styling if needed
+        if (instruction.failed) {
+            const titleAttr = instruction.failureReason
+                ? ` title="${this.escapeHtml(instruction.failureReason)}"`
+                : '';
+            return `<span class="failed-instruction"${titleAttr}>${line}</span>`;
+        }
+        
+        return line;
     }
     
     /**
@@ -104,14 +108,16 @@ class SidebarInstructionView {
         
         switch (arg.type) {
             case 'REGISTER':
-                // Format: %DR0[=D:123] or %PR1[=V:[1,0]]
-                const regName = this.getRegisterName(arg.registerId);
+                // Format: %DR0[=D:123] or %PR1[=1|0] (vectors use | not ,)
+                const regName = this.getRegisterName(arg.registerId, arg.registerValue);
                 if (arg.registerValue) {
                     if (arg.registerValue.kind === 'MOLECULE') {
-                        return `${regName}[=${arg.registerValue.type}:${arg.registerValue.value}]`;
+                        // Abbreviate types: CODE: -> C:, DATA: -> D:, etc.
+                        const type = (arg.registerValue.type || '').replace(/CODE:/g, 'C:').replace(/DATA:/g, 'D:').replace(/ENERGY:/g, 'E:').replace(/STRUCTURE:/g, 'S:');
+                        return `${regName}[=${type}${arg.registerValue.value}]`;
                     } else if (arg.registerValue.kind === 'VECTOR') {
-                        const vecStr = arg.registerValue.vector.join(',');
-                        return `${regName}[=V:[${vecStr}]]`;
+                        const vecStr = arg.registerValue.vector.join('|');
+                        return `${regName}[=${vecStr}]`;
                     }
                 }
                 return regName;
@@ -124,18 +130,18 @@ class SidebarInstructionView {
                 return `IMMEDIATE:${arg.rawValue || '?'}`;
                 
             case 'VECTOR':
-                // Format: [1,0]
+                // Format: x|y (no brackets, no V: prefix)
                 if (arg.components && arg.components.length > 0) {
-                    return `[${arg.components.join(',')}]`;
+                    return arg.components.join('|');
                 }
-                return 'VECTOR:?';
+                return '?';
                 
             case 'LABEL':
-                // Format: [1,0]
+                // Format: x|y (no brackets)
                 if (arg.components && arg.components.length > 0) {
-                    return `[${arg.components.join(',')}]`;
+                    return arg.components.join('|');
                 }
-                return 'LABEL:?';
+                return '?';
                 
             case 'STACK':
                 // Format: STACK (no value)
@@ -150,9 +156,10 @@ class SidebarInstructionView {
      * Gets register name from register ID.
      * 
      * @param {number} registerId - Register ID
-     * @returns {string} Register name (e.g., "%DR0", "%PR1")
+     * @param {Object} registerValue - RegisterValueView (to determine if it's LR)
+     * @returns {string} Register name (e.g., "%DR0", "%PR1", "%LR0")
      */
-    getRegisterName(registerId) {
+    getRegisterName(registerId, registerValue) {
         if (registerId === null || registerId === undefined) {
             return '?';
         }
@@ -163,8 +170,16 @@ class SidebarInstructionView {
         } else if (registerId >= 1000) {
             return `%PR${registerId - 1000}`;
         } else if (registerId >= 0 && registerId < 4) {
-            // Assuming LR registers are 0-3
-            return `%LR${registerId}`;
+            // Check if it's LR: LR always have VECTOR kind, and are in range 0-3
+            // If registerValue is VECTOR and registerId < 4, it's likely LR
+            // But we need to be careful: DR can also have VECTOR values
+            // The backend resolveRegisterValue checks LR first if registerId < locationRegisters.size()
+            // So if we get a VECTOR with registerId 0-3, it's most likely LR
+            if (registerValue && registerValue.kind === 'VECTOR') {
+                return `%LR${registerId}`;
+            }
+            // Otherwise it's DR
+            return `%DR${registerId}`;
         } else {
             return `%DR${registerId}`;
         }

@@ -1,4 +1,4 @@
-package org.evochora.datapipeline.api.resources.database;
+package org.evochora.datapipeline.api.resources.database.dto;
 
 /**
  * View model for an instruction argument used by organism debugging APIs.

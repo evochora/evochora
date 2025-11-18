@@ -1,8 +1,8 @@
 package org.evochora.datapipeline.resources.database;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.evochora.datapipeline.api.resources.database.CellWithCoordinates;
-import org.evochora.datapipeline.api.resources.database.SpatialRegion;
+import org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates;
+import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 

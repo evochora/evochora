@@ -896,7 +896,7 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
      * @return TickRange with minTick and maxTick, or null if no ticks exist
      * @throws SQLException if database query fails
      */
-    org.evochora.datapipeline.api.resources.database.TickRange getTickRangeInternal(
+    org.evochora.datapipeline.api.resources.database.dto.TickRange getTickRangeInternal(
             Connection conn, String runId) throws SQLException {
         try {
             // Query min and max tick numbers from environment_ticks table
@@ -923,7 +923,7 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
                 return null;
             }
             
-            return new org.evochora.datapipeline.api.resources.database.TickRange(minTick, maxTick);
+            return new org.evochora.datapipeline.api.resources.database.dto.TickRange(minTick, maxTick);
             
         } catch (SQLException e) {
             // Table doesn't exist yet (no ticks written)

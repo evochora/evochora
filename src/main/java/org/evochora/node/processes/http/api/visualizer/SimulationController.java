@@ -6,7 +6,7 @@ import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
-import org.evochora.datapipeline.api.resources.database.TickRange;
+import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -4,9 +4,9 @@ import com.typesafe.config.Config;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
-import org.evochora.datapipeline.api.resources.database.CellWithCoordinates;
+import org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
-import org.evochora.datapipeline.api.resources.database.SpatialRegion;
+import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

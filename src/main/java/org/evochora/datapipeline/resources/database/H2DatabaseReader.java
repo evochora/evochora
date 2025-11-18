@@ -1,7 +1,9 @@
 package org.evochora.datapipeline.resources.database;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.resources.database.*;
+import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
+import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
+import org.evochora.datapipeline.api.resources.database.dto.*;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
@@ -110,7 +112,7 @@ public class H2DatabaseReader implements IDatabaseReader {
     }
     
     @Override
-    public org.evochora.datapipeline.api.resources.database.TickRange getTickRange() throws SQLException {
+    public org.evochora.datapipeline.api.resources.database.dto.TickRange getTickRange() throws SQLException {
         ensureNotClosed();
         return database.getTickRangeInternal(connection, runId);
     }

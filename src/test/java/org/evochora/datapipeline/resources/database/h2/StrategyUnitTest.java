@@ -1,6 +1,6 @@
 package org.evochora.datapipeline.resources.database.h2;
 
-import org.evochora.datapipeline.api.resources.database.SpatialRegion;
+import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
 import org.evochora.datapipeline.utils.compression.ICompressionCodec;
 import org.evochora.runtime.model.EnvironmentProperties;

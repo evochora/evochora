@@ -6,9 +6,9 @@ import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
-import org.evochora.datapipeline.api.resources.database.OrganismTickDetails;
-import org.evochora.datapipeline.api.resources.database.OrganismTickSummary;
-import org.evochora.datapipeline.api.resources.database.TickRange;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
+import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

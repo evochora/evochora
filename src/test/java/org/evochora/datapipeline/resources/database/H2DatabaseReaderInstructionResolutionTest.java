@@ -2,7 +2,7 @@ package org.evochora.datapipeline.resources.database;
 
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.*;
-import org.evochora.datapipeline.api.resources.database.OrganismTickDetails;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy;

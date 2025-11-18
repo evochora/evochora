@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.api.resources.database;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 
 import java.sql.SQLException;
 

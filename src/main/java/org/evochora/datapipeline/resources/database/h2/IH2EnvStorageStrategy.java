@@ -1,7 +1,7 @@
 package org.evochora.datapipeline.resources.database.h2;
 
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.resources.database.SpatialRegion;
+import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 import java.sql.Connection;

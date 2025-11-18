@@ -1,4 +1,4 @@
-package org.evochora.datapipeline.api.resources.database;
+package org.evochora.datapipeline.api.resources.database.dto;
 
 import java.util.List;
 import java.util.Map;

@@ -5,12 +5,12 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
-import org.evochora.datapipeline.api.resources.database.OrganismStaticInfo;
-import org.evochora.datapipeline.api.resources.database.OrganismTickDetails;
-import org.evochora.datapipeline.api.resources.database.OrganismRuntimeView;
-import org.evochora.datapipeline.api.resources.database.InstructionsView;
-import org.evochora.datapipeline.api.resources.database.InstructionView;
-import org.evochora.datapipeline.api.resources.database.InstructionArgumentView;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismStaticInfo;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismRuntimeView;
+import org.evochora.datapipeline.api.resources.database.dto.InstructionsView;
+import org.evochora.datapipeline.api.resources.database.dto.InstructionView;
+import org.evochora.datapipeline.api.resources.database.dto.InstructionArgumentView;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.node.spi.ServiceRegistry;
 import org.junit.jupiter.api.DisplayName;
@@ -87,7 +87,7 @@ class OrganismControllerUnitTest {
 
             // Create mock instruction data
             InstructionArgumentView regArg = InstructionArgumentView.register(0,
-                    org.evochora.datapipeline.api.resources.database.RegisterValueView.molecule(42, 1, "DATA", 42));
+                    org.evochora.datapipeline.api.resources.database.dto.RegisterValueView.molecule(42, 1, "DATA", 42));
             InstructionArgumentView immArg = InstructionArgumentView.immediate(42, "DATA", 42);
             InstructionView lastInstruction = new InstructionView(
                     1, "SETI", List.of(regArg, immArg), List.of("REGISTER", "IMMEDIATE"),

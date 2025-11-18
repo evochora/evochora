@@ -1,4 +1,4 @@
-package org.evochora.datapipeline.api.resources.database;
+package org.evochora.datapipeline.api.resources.database.dto;
 
 /**
  * Represents the range of available ticks in a simulation run.

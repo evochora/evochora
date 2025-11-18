@@ -1,5 +1,8 @@
 package org.evochora.datapipeline.api.resources.database;
 
+import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
+
 import java.sql.SQLException;
 import java.util.List;
 

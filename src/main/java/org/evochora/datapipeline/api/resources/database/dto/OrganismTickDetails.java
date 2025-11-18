@@ -1,4 +1,4 @@
-package org.evochora.datapipeline.api.resources.database;
+package org.evochora.datapipeline.api.resources.database.dto;
 
 /**
  * Combined static and runtime view of an organism at a specific tick.

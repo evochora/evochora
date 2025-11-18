@@ -1,5 +1,8 @@
 package org.evochora.datapipeline.api.resources.database;
 
+import org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates;
+import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
+
 import java.sql.SQLException;
 import java.util.List;
 
@@ -14,6 +17,6 @@ public interface IEnvironmentDataReader {
      * @return List of cells with coordinates within region
      * @throws SQLException if database read fails
      */
-    List<CellWithCoordinates> readEnvironmentRegion(long tickNumber, SpatialRegion region) 
+    List<CellWithCoordinates> readEnvironmentRegion(long tickNumber, SpatialRegion region)
         throws SQLException;
 }
