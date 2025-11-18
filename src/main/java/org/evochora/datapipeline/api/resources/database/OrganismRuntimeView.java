@@ -25,6 +25,7 @@ public final class OrganismRuntimeView {
     public final boolean instructionFailed;
     public final String failureReason;
     public final List<ProcFrameView> failureCallStack;
+    public final InstructionsView instructions;
 
     public OrganismRuntimeView(int energy,
                                int[] ip,
@@ -40,7 +41,8 @@ public final class OrganismRuntimeView {
                                List<ProcFrameView> callStack,
                                boolean instructionFailed,
                                String failureReason,
-                               List<ProcFrameView> failureCallStack) {
+                               List<ProcFrameView> failureCallStack,
+                               InstructionsView instructions) {
         this.energy = energy;
         this.ip = ip;
         this.dv = dv;
@@ -56,6 +58,7 @@ public final class OrganismRuntimeView {
         this.instructionFailed = instructionFailed;
         this.failureReason = failureReason;
         this.failureCallStack = failureCallStack;
+        this.instructions = instructions;
     }
 }
 

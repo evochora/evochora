@@ -507,7 +507,7 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
                     organismsStmt.addBatch();
 
                     // Runtime state blob
-                    OrganismRuntimeState runtimeState = OrganismRuntimeState.newBuilder()
+                    OrganismRuntimeState.Builder runtimeStateBuilder = OrganismRuntimeState.newBuilder()
                             .addAllDataRegisters(org.getDataRegistersList())
                             .addAllProcedureRegisters(org.getProcedureRegistersList())
                             .addAllFormalParamRegisters(org.getFormalParamRegistersList())
@@ -517,8 +517,26 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
                             .addAllCallStack(org.getCallStackList())
                             .setInstructionFailed(org.getInstructionFailed())
                             .setFailureReason(org.hasFailureReason() ? org.getFailureReason() : "")
-                            .addAllFailureCallStack(org.getFailureCallStackList())
-                            .build();
+                            .addAllFailureCallStack(org.getFailureCallStackList());
+                    
+                    // Instruction execution data
+                    if (org.hasInstructionOpcodeId()) {
+                        runtimeStateBuilder.setInstructionOpcodeId(org.getInstructionOpcodeId());
+                    }
+                    if (org.getInstructionRawArgumentsCount() > 0) {
+                        runtimeStateBuilder.addAllInstructionRawArguments(org.getInstructionRawArgumentsList());
+                    }
+                    if (org.hasInstructionEnergyCost()) {
+                        runtimeStateBuilder.setInstructionEnergyCost(org.getInstructionEnergyCost());
+                    }
+                    if (org.hasIpBeforeFetch()) {
+                        runtimeStateBuilder.setInstructionIpBeforeFetch(org.getIpBeforeFetch());
+                    }
+                    if (org.hasDvBeforeFetch()) {
+                        runtimeStateBuilder.setInstructionDvBeforeFetch(org.getDvBeforeFetch());
+                    }
+                    
+                    OrganismRuntimeState runtimeState = runtimeStateBuilder.build();
 
                     byte[] blobBytes;
                     try (ByteArrayOutputStream baos = new ByteArrayOutputStream();

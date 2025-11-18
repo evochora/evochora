@@ -2,14 +2,17 @@ package org.evochora.datapipeline.resources.database;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.contracts.CellState;
-import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.*;
+import org.evochora.datapipeline.api.resources.database.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.TickRange;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -38,6 +41,11 @@ class H2DatabaseReaderTest {
     private H2Database database;
     private IDatabaseReaderProvider provider;
     private String runId;
+
+    @BeforeAll
+    static void initInstructionSet() {
+        Instruction.init();
+    }
 
     @BeforeEach
     void setUp() {
@@ -187,6 +195,90 @@ class H2DatabaseReaderTest {
             assertThat(range).isNotNull();
             assertThat(range.minTick()).isEqualTo(42L);
             assertThat(range.maxTick()).isEqualTo(42L);
+        }
+    }
+
+    @Test
+    void readOrganismDetails_withInstructionData_resolvesInstructions() throws Exception {
+        // Given: Create schema, metadata, and write organism with instruction data
+        Object connObj = database.acquireDedicatedConnection();
+        try (Connection conn = (Connection) connObj) {
+            String schemaName = "SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_");
+            conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS \"" + schemaName + "\"");
+            conn.createStatement().execute("SET SCHEMA \"" + schemaName + "\"");
+
+            // Create metadata table and insert metadata
+            conn.createStatement().execute("CREATE TABLE IF NOT EXISTS metadata (\"key\" VARCHAR PRIMARY KEY, \"value\" TEXT)");
+            SimulationMetadata metadata = SimulationMetadata.newBuilder()
+                    .setSimulationRunId(runId)
+                    .setEnvironment(EnvironmentConfig.newBuilder()
+                            .setDimensions(2)
+                            .addShape(10)
+                            .addToroidal(false)
+                            .addShape(10)
+                            .addToroidal(false)
+                            .build())
+                    .setStartTimeMs(System.currentTimeMillis())
+                    .setInitialSeed(42L)
+                    .setSamplingInterval(1)
+                    .build();
+            String metadataJson = org.evochora.datapipeline.utils.protobuf.ProtobufConverter.toJson(metadata);
+            conn.createStatement().execute("INSERT INTO metadata (\"key\", \"value\") VALUES ('full_metadata', '" +
+                    metadataJson.replace("'", "''") + "')");
+
+            // Create organism tables
+            SingleBlobStrategy strategy = new SingleBlobStrategy(ConfigFactory.empty());
+            database.doCreateOrganismTables(conn);
+
+            // Write organism with instruction data
+            Vector ipBeforeFetch = Vector.newBuilder().addComponents(1).addComponents(2).build();
+            Vector dvBeforeFetch = Vector.newBuilder().addComponents(0).addComponents(1).build();
+            int setiOpcode = Instruction.getInstructionIdByName("SETI") | org.evochora.runtime.Config.TYPE_CODE;
+            int regArg = new Molecule(org.evochora.runtime.Config.TYPE_DATA, 0).toInt();
+            int immArg = new Molecule(org.evochora.runtime.Config.TYPE_DATA, 42).toInt();
+
+            OrganismState orgState = OrganismState.newBuilder()
+                    .setOrganismId(1)
+                    .setBirthTick(0)
+                    .setProgramId("prog-1")
+                    .setInitialPosition(Vector.newBuilder().addComponents(0).addComponents(0).build())
+                    .setEnergy(100)
+                    .setIp(Vector.newBuilder().addComponents(1).addComponents(2).build())
+                    .setDv(Vector.newBuilder().addComponents(0).addComponents(1).build())
+                    .addDataPointers(Vector.newBuilder().addComponents(5).addComponents(5).build())
+                    .setActiveDpIndex(0)
+                    .addDataRegisters(RegisterValue.newBuilder().setScalar(42).build())
+                    .setInstructionOpcodeId(setiOpcode)
+                    .addInstructionRawArguments(regArg)
+                    .addInstructionRawArguments(immArg)
+                    .setInstructionEnergyCost(5)
+                    .setIpBeforeFetch(ipBeforeFetch)
+                    .setDvBeforeFetch(dvBeforeFetch)
+                    .build();
+
+            TickData tick = TickData.newBuilder()
+                    .setTickNumber(1L)
+                    .setSimulationRunId(runId)
+                    .addOrganisms(orgState)
+                    .build();
+
+            database.doWriteOrganismStates(conn, java.util.List.of(tick));
+            conn.commit();
+        }
+
+        // When: Read organism details
+        try (IDatabaseReader reader = provider.createReader(runId)) {
+            OrganismTickDetails details = reader.readOrganismDetails(1L, 1);
+
+            // Then: Instructions should be resolved
+            assertThat(details).isNotNull();
+            assertThat(details.state.instructions).isNotNull();
+            assertThat(details.state.instructions.last).isNotNull();
+            assertThat(details.state.instructions.last.opcodeName).isEqualTo("SETI");
+            assertThat(details.state.instructions.last.arguments).hasSize(2);
+            assertThat(details.state.instructions.last.arguments.get(0).type).isEqualTo("REGISTER");
+            assertThat(details.state.instructions.last.arguments.get(1).type).isEqualTo("IMMEDIATE");
+            assertThat(details.state.instructions.last.energyCost).isEqualTo(5);
         }
     }
 }

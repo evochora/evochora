@@ -53,6 +53,7 @@ class AppController {
         }
         this.sidebarManager = new SidebarManager(this);
         this.sidebarBasicInfo = new SidebarBasicInfoView(sidebarRoot, this.renderer, this);
+        this.sidebarInstructionView = new SidebarInstructionView(sidebarRoot);
         this.sidebarStateView = new SidebarStateView(sidebarRoot);
         
         // Setup organism selector change handler
@@ -133,6 +134,11 @@ class AppController {
             if (details && staticInfo) {
                 // Update basic info view with static data and clickable IP/DP coordinates
                 this.sidebarBasicInfo.update(staticInfo, details.organismId, state);
+                
+                // Update instruction view with last and next instructions
+                if (details.instructions) {
+                    this.sidebarInstructionView.update(details.instructions, this.state.currentTick);
+                }
                 
                 // Update state view with runtime data (starts with DP, no IP/DV/ER)
                 if (state) {

@@ -4,7 +4,11 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.*;
 import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.evochora.runtime.Config;
+import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -31,6 +35,11 @@ class H2DatabaseOrganismWriteTest {
     Path tempDir;
 
     private H2Database database;
+
+    @BeforeAll
+    static void initInstructionSet() {
+        Instruction.init();
+    }
 
     @BeforeEach
     void setUp() {
@@ -113,6 +122,17 @@ class H2DatabaseOrganismWriteTest {
                     assertThat(state.getCallStackCount()).isEqualTo(1);
                     assertThat(state.getInstructionFailed()).isTrue();
                     assertThat(state.getFailureReason()).isEqualTo("test-failure");
+                    
+                    // Verify instruction execution data
+                    assertThat(state.hasInstructionOpcodeId()).isTrue();
+                    assertThat(state.getInstructionOpcodeId()).isEqualTo(Instruction.getInstructionIdByName("SETI") | Config.TYPE_CODE);
+                    assertThat(state.getInstructionRawArgumentsCount()).isEqualTo(2);
+                    assertThat(state.hasInstructionEnergyCost()).isTrue();
+                    assertThat(state.getInstructionEnergyCost()).isEqualTo(5);
+                    assertThat(state.hasInstructionIpBeforeFetch()).isTrue();
+                    assertThat(state.getInstructionIpBeforeFetch().getComponentsCount()).isEqualTo(2);
+                    assertThat(state.hasInstructionDvBeforeFetch()).isTrue();
+                    assertThat(state.getInstructionDvBeforeFetch().getComponentsCount()).isEqualTo(2);
                 }
             }
         }
@@ -144,6 +164,16 @@ class H2DatabaseOrganismWriteTest {
     private OrganismState buildOrganismState(int id) {
         Vector ip = Vector.newBuilder().addComponents(1).build();
         Vector dv = Vector.newBuilder().addComponents(0).addComponents(1).build();
+        Vector ipBeforeFetch = Vector.newBuilder().addComponents(1).addComponents(2).build();
+        Vector dvBeforeFetch = Vector.newBuilder().addComponents(0).addComponents(1).build();
+
+        // SETI %DR0, DATA:42 instruction
+        // Opcode: SETI (ID 1) | TYPE_CODE
+        int setiOpcode = Instruction.getInstructionIdByName("SETI") | Config.TYPE_CODE;
+        // Register argument: %DR0 encoded as DATA:0
+        int regArg = new Molecule(Config.TYPE_DATA, 0).toInt();
+        // Immediate argument: DATA:42
+        int immArg = new Molecule(Config.TYPE_DATA, 42).toInt();
 
         return OrganismState.newBuilder()
                 .setOrganismId(id)
@@ -169,6 +199,13 @@ class H2DatabaseOrganismWriteTest {
                         .setProcName("fail")
                         .setAbsoluteReturnIp(Vector.newBuilder().addComponents(11).build())
                         .build())
+                // Instruction execution data
+                .setInstructionOpcodeId(setiOpcode)
+                .addInstructionRawArguments(regArg)
+                .addInstructionRawArguments(immArg)
+                .setInstructionEnergyCost(5)
+                .setIpBeforeFetch(ipBeforeFetch)
+                .setDvBeforeFetch(dvBeforeFetch)
                 .build();
     }
 }

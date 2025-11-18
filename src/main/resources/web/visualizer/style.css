@@ -42,6 +42,45 @@ header {
     white-space: nowrap;
 }
 
+/* Instruction View Styles */
+.instruction-section {
+    margin: 10px 0;
+}
+
+.instruction-section h3 {
+    font-size: 14px;
+    font-weight: bold;
+    margin: 0 0 8px 0;
+    color: #e0e0e0;
+}
+
+.instruction-group {
+    margin: 8px 0;
+}
+
+.instruction-group h4 {
+    font-size: 12px;
+    font-weight: bold;
+    margin: 0 0 4px 0;
+    color: #b0b0b0;
+}
+
+.instruction-line {
+    padding: 4px 8px;
+    margin: 2px 0;
+    font-family: 'Monospaced', 'Courier New', Courier, monospace;
+    font-size: 12px;
+    color: #e0e0e0;
+    background-color: transparent;
+    border-left: 2px solid transparent;
+}
+
+.instruction-line.failed {
+    background-color: rgba(255, 0, 0, 0.15);
+    border-left: 2px solid #ff4444;
+    cursor: help; /* Shows tooltip on hover */
+}
+
 /* Tooltip */
 .cell-tooltip {
     position: absolute;

@@ -495,6 +495,7 @@ public abstract class Instruction {
      */
     public static Optional<InstructionSignature> getSignatureById(int id) { return Optional.ofNullable(SIGNATURES_BY_ID.get(id)); }
 
+
     // --- Conflict Resolution Logic ---
 
     protected boolean executedInTick = false;

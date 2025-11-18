@@ -191,6 +191,7 @@ public class OrganismController extends VisualizerBaseController {
             response.put("organismId", details.organismId);
             response.put("static", details.staticInfo);
             response.put("state", details.state);
+            response.put("instructions", details.state.instructions);
 
             ctx.status(HttpStatus.OK).json(response);
         } catch (OrganismNotFoundException e) {

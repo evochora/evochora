@@ -108,8 +108,28 @@ class H2DatabaseOrganismReaderTest {
                 .build();
 
         try (Connection conn = getConnectionWithSchema("run-reader-3")) {
+            // Create metadata table and insert metadata (required for instruction resolution)
+            conn.createStatement().execute("CREATE TABLE IF NOT EXISTS metadata (\"key\" VARCHAR PRIMARY KEY, \"value\" TEXT)");
+            SimulationMetadata metadata = SimulationMetadata.newBuilder()
+                    .setSimulationRunId("run-reader-3")
+                    .setEnvironment(EnvironmentConfig.newBuilder()
+                            .setDimensions(2)
+                            .addShape(10)
+                            .addToroidal(false)
+                            .addShape(10)
+                            .addToroidal(false)
+                            .build())
+                    .setStartTimeMs(System.currentTimeMillis())
+                    .setInitialSeed(42L)
+                    .setSamplingInterval(1)
+                    .build();
+            String metadataJson = org.evochora.datapipeline.utils.protobuf.ProtobufConverter.toJson(metadata);
+            conn.createStatement().execute("INSERT INTO metadata (\"key\", \"value\") VALUES ('full_metadata', '" +
+                    metadataJson.replace("'", "''") + "')");
+
             database.doCreateOrganismTables(conn);
             database.doWriteOrganismStates(conn, java.util.List.of(tick));
+            conn.commit();
         }
 
         try (IDatabaseReader reader = database.createReader("run-reader-3")) {

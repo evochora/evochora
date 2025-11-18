@@ -13,7 +13,10 @@ import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.datapipeline.resources.topics.H2TopicResource;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -53,6 +56,11 @@ class OrganismIndexerIntegrationTest {
     private H2TopicResource testBatchTopic;
     private OrganismIndexer<?> indexer;
     private Path tempStorageDir;
+
+    @BeforeAll
+    static void initInstructionSet() {
+        Instruction.init();
+    }
 
     @BeforeEach
     void setUp() throws IOException {
@@ -260,6 +268,13 @@ class OrganismIndexerIntegrationTest {
         Vector ip = Vector.newBuilder().addComponents(1).addComponents(2).build();
         Vector dv = Vector.newBuilder().addComponents(0).addComponents(1).build();
         Vector initialPos = Vector.newBuilder().addComponents(0).addComponents(0).build();
+        Vector ipBeforeFetch = Vector.newBuilder().addComponents(1).addComponents(2).build();
+        Vector dvBeforeFetch = Vector.newBuilder().addComponents(0).addComponents(1).build();
+
+        // SETI %DR0, DATA:100 instruction
+        int setiOpcode = Instruction.getInstructionIdByName("SETI") | org.evochora.runtime.Config.TYPE_CODE;
+        int regArg = new Molecule(org.evochora.runtime.Config.TYPE_DATA, 0).toInt();
+        int immArg = new Molecule(org.evochora.runtime.Config.TYPE_DATA, 100).toInt();
 
         return OrganismState.newBuilder()
                 .setOrganismId(id)
@@ -285,6 +300,13 @@ class OrganismIndexerIntegrationTest {
                         .setProcName("fail")
                         .setAbsoluteReturnIp(Vector.newBuilder().addComponents(11).addComponents(11).build())
                         .build())
+                // Instruction execution data
+                .setInstructionOpcodeId(setiOpcode)
+                .addInstructionRawArguments(regArg)
+                .addInstructionRawArguments(immArg)
+                .setInstructionEnergyCost(5)
+                .setIpBeforeFetch(ipBeforeFetch)
+                .setDvBeforeFetch(dvBeforeFetch)
                 .build();
     }
 }

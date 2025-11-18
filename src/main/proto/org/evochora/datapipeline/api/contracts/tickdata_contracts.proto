@@ -217,6 +217,33 @@ message OrganismRuntimeState {
   bool                   instruction_failed = 8;
   string                 failure_reason = 9;
   repeated ProcFrame     failure_call_stack = 10;
+  
+  // ===== Instruction Execution Data =====
+  
+  // Opcode ID of the last executed instruction
+  // Source: InstructionExecutionData.opcodeId
+  // Only present if an instruction was executed in this tick
+  optional int32 instruction_opcode_id = 11;
+  
+  // Raw argument values from the environment for the last executed instruction
+  // Source: InstructionExecutionData.rawArguments
+  // Only present if an instruction was executed in this tick
+  repeated int32 instruction_raw_arguments = 12;
+  
+  // Total energy cost for executing the last instruction
+  // Source: InstructionExecutionData.energyCost
+  // Only present if an instruction was executed in this tick
+  optional int32 instruction_energy_cost = 13;
+  
+  // Instruction pointer position at the beginning of the tick (before instruction execution)
+  // Source: Organism.getIpBeforeFetch()
+  // Used to reconstruct the position of the instruction in the program
+  optional Vector instruction_ip_before_fetch = 14;
+  
+  // Direction vector at the beginning of the tick (before instruction execution)
+  // Source: Organism.getDvBeforeFetch()
+  // Used to reconstruct the position of the instruction in the program
+  optional Vector instruction_dv_before_fetch = 15;
 }
 
 // Wrapper for encoding all data pointers in one column for indexing.
