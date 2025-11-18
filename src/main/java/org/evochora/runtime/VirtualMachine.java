@@ -105,13 +105,17 @@ public class VirtualMachine {
                         int registerId = molecule.toScalarValue();
                         
                         // Read location register value BEFORE execution (LR - always int[])
-                        int[] lrValue = organism.getLr(registerId);
-                        if (lrValue != null) {
-                            registerValuesBefore.put(registerId, lrValue);
-                        } else {
-                            // LR is null - store empty vector with correct dimensions
-                            int dims = this.environment.getShape().length;
-                            registerValuesBefore.put(registerId, new int[dims]);
+                        // Safely check bounds to avoid failing the instruction during debug data collection
+                        // The instruction's own execute() method will handle validation and specific error messages
+                        if (registerId >= 0 && registerId < Config.NUM_LOCATION_REGISTERS) {
+                            int[] lrValue = organism.getLr(registerId);
+                            if (lrValue != null) {
+                                registerValuesBefore.put(registerId, lrValue);
+                            } else {
+                                // LR is null - store empty vector with correct dimensions
+                                int dims = this.environment.getShape().length;
+                                registerValuesBefore.put(registerId, new int[dims]);
+                            }
                         }
                         
                         argIndex++;
