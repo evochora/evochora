@@ -271,28 +271,22 @@ class EnvironmentGrid {
         // Create new AbortController for this request
         this.currentAbortController = new AbortController();
 
-        try {
-            const data = await this.environmentApi.fetchEnvironmentData(tick, viewport, {
-                runId: runId,
-                signal: this.currentAbortController.signal
-            });
+        const data = await this.environmentApi.fetchEnvironmentData(tick, viewport, {
+            runId: runId,
+            signal: this.currentAbortController.signal
+        });
 
-            // Mark region as loaded
-            this.loadedRegions.add(regionKey);
-            
-            // Render / update cells (no full clear to avoid flicker) and
-            // then remove cells in this region that were not touched by
-            // this response (e.g., created only in a later tick).
-            this.renderCellsWithCleanup(data.cells, viewport);
-        } catch (error) {
-            if (error.name === 'AbortError') {
-                return;
-            }
-            console.error('Failed to load environment data:', error);
-        } finally {
-            if (this.currentAbortController && !this.currentAbortController.signal.aborted) {
-                this.currentAbortController = null;
-            }
+        // Mark region as loaded
+        this.loadedRegions.add(regionKey);
+        
+        // Render / update cells (no full clear to avoid flicker) and
+        // then remove cells in this region that were not touched by
+        // this response (e.g., created only in a later tick).
+        this.renderCellsWithCleanup(data.cells, viewport);
+
+        // Reset abort controller if request completed successfully
+        if (this.currentAbortController && !this.currentAbortController.signal.aborted) {
+            this.currentAbortController = null;
         }
     }
 

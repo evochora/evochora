@@ -121,6 +121,7 @@ class AppController {
      */
     async loadOrganismDetails(organismId, isForwardStep = false) {
         try {
+            hideError();
             const details = await this.organismApi.fetchOrganismDetails(
                 this.state.currentTick,
                 organismId,
@@ -158,9 +159,15 @@ class AppController {
                 console.warn('No static info in details:', details);
             }
         } catch (error) {
+            // Ignore AbortError, as it's an expected cancellation
+            if (error.name === 'AbortError') {
+                console.debug('Request aborted by user navigation.');
+                return;
+            }
             console.error('Failed to load organism details:', error);
             // Hide sidebar on error
             this.sidebarManager.hideSidebar(true);
+            showError('Failed to load organism details: ' + error.message);
         }
     }
     
@@ -169,6 +176,7 @@ class AppController {
      */
     async init() {
         try {
+            hideError();
             // Initialize renderer
             await this.renderer.init();
             
@@ -209,8 +217,13 @@ class AppController {
             await this.navigateToTick(this.state.currentTick);
             
         } catch (error) {
+            // Ignore AbortError, as it's an expected cancellation
+            if (error.name === 'AbortError') {
+                console.debug('Request aborted by user navigation.');
+                return;
+            }
             console.error('Failed to initialize application:', error);
-            alert('Failed to initialize: ' + error.message);
+            showError('Failed to initialize: ' + error.message);
         }
     }
     
@@ -276,6 +289,7 @@ class AppController {
      */
     async loadViewport(isForwardStep = false, previousTick = null) {
         try {
+            hideError();
             // Load environment cells first (viewport-based)
             await this.renderer.loadViewport(this.state.currentTick, this.state.runId);
 
@@ -299,7 +313,13 @@ class AppController {
             this.state.previousOrganisms = organisms;
             this.state.previousTick = this.state.currentTick;
         } catch (error) {
+            // Ignore AbortError, as it's an expected cancellation
+            if (error.name === 'AbortError') {
+                console.debug('Request aborted by user navigation.');
+                return;
+            }
             console.error('Failed to load viewport:', error);
+            showError('Failed to load viewport: ' + error.message);
             // Update dropdown with empty list on error
             this.updateOrganismSelector([]);
         }
@@ -311,11 +331,18 @@ class AppController {
      */
     async loadEnvironmentForCurrentViewport() {
         try {
+            hideError();
             await this.renderer.loadViewport(this.state.currentTick, this.state.runId);
             // Re-render organism markers for the new viewport using cached data
             this.renderer.renderOrganisms(this.renderer.currentOrganisms || []);
         } catch (error) {
+            // Ignore AbortError, as it's an expected cancellation
+            if (error.name === 'AbortError') {
+                console.debug('Request aborted by user navigation.');
+                return;
+            }
             console.error('Failed to load environment for viewport:', error);
+            showError('Failed to load environment for viewport: ' + error.message);
         }
     }
 
@@ -492,4 +519,16 @@ class AppController {
 
 // Export for global availability
 window.AppController = AppController;
+
+// Wait for the UI to be ready before initializing the controller
+document.addEventListener('uiReady', () => {
+    window.visualizer = window.visualizer || {};
+    window.visualizer.controller = new AppController();
+    
+    // Auto-initialize
+    window.visualizer.controller.init().catch(error => {
+        console.error('Failed to initialize visualizer:', error);
+        showError('Failed to initialize visualizer: ' + error.message);
+    });
+});
 

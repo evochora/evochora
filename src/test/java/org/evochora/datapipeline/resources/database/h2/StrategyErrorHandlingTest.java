@@ -54,16 +54,15 @@ class StrategyErrorHandlingTest {
     @Test
     void readEnvironmentRegion_throwsOnInvalidTick() throws SQLException {
         try (IDatabaseReader reader = database.createReader(testRunId)) {
+            // Ensure table exists, otherwise we get a SQLSyntaxErrorException instead
+            insertEmptyBlob(testRunId, 1); 
+
             org.evochora.datapipeline.api.resources.database.dto.SpatialRegion region = new org.evochora.datapipeline.api.resources.database.dto.SpatialRegion(new int[]{0, 10, 0, 10});
             
-            // When: Query non-existent tick
-            SQLException exception = assertThrows(SQLException.class, () -> 
+            // When/Then: Query non-existent tick should throw specific exception
+            assertThrows(TickNotFoundException.class, () -> 
                 reader.readEnvironmentRegion(999999, region)
             );
-            
-            // Then: Should indicate tick not found
-            assertTrue(exception.getMessage().contains("tick") || 
-                      exception.getMessage().contains("not found"));
         }
     }
     
@@ -92,7 +91,7 @@ class StrategyErrorHandlingTest {
     }
     
     @Test
-    void readEnvironmentRegion_handlesEmptyBlob() throws SQLException {
+    void readEnvironmentRegion_handlesEmptyBlob() throws SQLException, TickNotFoundException {
         // Given: Empty BLOB (no cells)
         insertEmptyBlob(testRunId, 100);
         
@@ -109,7 +108,7 @@ class StrategyErrorHandlingTest {
     }
     
     @Test
-    void readEnvironmentRegion_handlesInvalidRegion() throws SQLException {
+    void readEnvironmentRegion_handlesInvalidRegion() throws SQLException, TickNotFoundException {
         // Given: Valid tick with data
         insertTestData(testRunId, 100);
         
@@ -127,7 +126,7 @@ class StrategyErrorHandlingTest {
     }
     
     @Test
-    void readEnvironmentRegion_handlesNullRegion() throws SQLException {
+    void readEnvironmentRegion_handlesNullRegion() throws SQLException, TickNotFoundException {
         // Given: Valid tick with data
         insertTestData(testRunId, 100);
         

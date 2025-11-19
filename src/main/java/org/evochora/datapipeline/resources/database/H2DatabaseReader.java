@@ -3,6 +3,7 @@ package org.evochora.datapipeline.resources.database;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
+import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.*;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.runtime.Config;
@@ -45,7 +46,7 @@ public class H2DatabaseReader implements IDatabaseReader {
     
     @Override
     public List<CellWithCoordinates> readEnvironmentRegion(long tickNumber, SpatialRegion region) 
-            throws SQLException {
+            throws SQLException, TickNotFoundException {
         ensureNotClosed();
         
         // Get metadata to extract environment properties

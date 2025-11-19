@@ -2,6 +2,7 @@ package org.evochora.datapipeline.resources.database.h2;
 
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
+import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 import java.sql.Connection;
@@ -90,10 +91,11 @@ public interface IH2EnvStorageStrategy {
      * @param envProps Environment properties for coordinate conversion
      * @return List of cells with flatIndex (coordinates converted by caller)
      * @throws SQLException if database read fails
+     * @throws TickNotFoundException if the tick itself does not exist in the database
      */
     List<org.evochora.datapipeline.api.contracts.CellState> readTick(Connection conn, long tickNumber, 
                                                                       SpatialRegion region, 
-                                                                      EnvironmentProperties envProps) throws SQLException;
+                                                                      EnvironmentProperties envProps) throws SQLException, TickNotFoundException;
 }
 
 

@@ -92,12 +92,6 @@ public class OrganismController extends VisualizerBaseController {
         final CacheConfig cacheConfig = CacheConfig.fromConfig(options, "organisms");
 
         try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
-            // Validate tick range first to distinguish 404 (out of range) from empty list
-            final TickRange tickRange = reader.getTickRange();
-            if (tickRange == null || tickNumber < tickRange.minTick() || tickNumber > tickRange.maxTick()) {
-                throw new NoRunIdException("Tick " + tickNumber + " is outside available range for run: " + runId);
-            }
-
             // Generate ETag: "runId_tick"
             final String etag = "\"" + runId + "_" + tickNumber + "\"";
 
@@ -165,7 +159,7 @@ public class OrganismController extends VisualizerBaseController {
      * @throws NoRunIdException if no run ID is available
      * @throws SQLException if database operations fail
      */
-    void getOrganismDetails(final Context ctx) throws SQLException {
+    void getOrganismDetails(final Context ctx) throws SQLException, OrganismNotFoundException {
         final long tickNumber = parseTickNumber(ctx.pathParam("tick"));
         final int organismId = parseOrganismId(ctx.pathParam("organismId"));
         final String runId = resolveRunId(ctx);
@@ -195,9 +189,8 @@ public class OrganismController extends VisualizerBaseController {
 
             ctx.status(HttpStatus.OK).json(response);
         } catch (OrganismNotFoundException e) {
-            // Specific 404 for missing organism or tick row
-            throw new NoRunIdException("Organism " + organismId + " not found at tick " + tickNumber
-                    + " for run: " + runId, e);
+            // Specific 404 for missing organism or tick row, re-throw for central handler
+            throw e;
         } catch (RuntimeException e) {
             if (e.getCause() instanceof SQLException) {
                 final SQLException sqlEx = (SQLException) e.getCause();

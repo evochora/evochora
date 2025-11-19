@@ -7,6 +7,7 @@ import io.javalin.http.HttpStatus;
 import org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
+import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -84,8 +85,9 @@ public class EnvironmentController extends VisualizerBaseController {
      * @throws IllegalArgumentException if tick parameter is invalid
      * @throws VisualizerBaseController.NoRunIdException if no run ID is available
      * @throws SQLException if database operation fails
+     * @throws TickNotFoundException if the tick does not exist
      */
-    void getEnvironment(final Context ctx) throws SQLException {
+    void getEnvironment(final Context ctx) throws SQLException, TickNotFoundException {
         // Parse and validate tick parameter
         final long tickNumber = parseTickNumber(ctx.pathParam("tick"));
         

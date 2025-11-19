@@ -14,24 +14,7 @@ class SimulationApi {
             ? `/visualizer/api/simulation/metadata?runId=${encodeURIComponent(runId)}`
             : `/visualizer/api/simulation/metadata`;
         
-        try {
-            const response = await fetch(url);
-            
-            if (!response.ok) {
-                if (response.status === 404) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.message || 'Metadata not found');
-                }
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            return await response.json();
-        } catch (error) {
-            if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                throw new Error('Server not reachable - is it running?');
-            }
-            throw error;
-        }
+        return apiClient.fetch(url);
     }
     
     /**
@@ -46,24 +29,7 @@ class SimulationApi {
             ? `/visualizer/api/simulation/ticks?runId=${encodeURIComponent(runId)}`
             : `/visualizer/api/simulation/ticks`;
         
-        try {
-            const response = await fetch(url);
-            
-            if (!response.ok) {
-                if (response.status === 404) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.message || 'No ticks available');
-                }
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            return await response.json();
-        } catch (error) {
-            if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                throw new Error('Server not reachable - is it running?');
-            }
-            throw error;
-        }
+        return apiClient.fetch(url);
     }
 }
 

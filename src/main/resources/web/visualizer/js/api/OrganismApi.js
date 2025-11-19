@@ -16,19 +16,13 @@ class OrganismApi {
         const query = params.toString();
         const url = `/visualizer/api/organisms/${tick}${query ? `?${query}` : ''}`;
 
-        const response = await fetch(url, {
+        const data = await apiClient.fetch(url, {
             method: 'GET',
             headers: {
                 'Accept': 'application/json'
             }
         });
 
-        if (!response.ok) {
-            const text = await response.text().catch(() => '');
-            throw new Error(`Failed to fetch organisms for tick ${tick}: ${response.status} ${text}`);
-        }
-
-        const data = await response.json();
         // API response shape: { runId, tick, organisms: [...] }
         return Array.isArray(data.organisms) ? data.organisms : [];
     }
@@ -50,21 +44,12 @@ class OrganismApi {
         const query = params.toString();
         const url = `/visualizer/api/organisms/${tick}/${organismId}${query ? `?${query}` : ''}`;
 
-        const response = await fetch(url, {
+        return apiClient.fetch(url, {
             method: 'GET',
             headers: {
                 'Accept': 'application/json'
             }
         });
-
-        if (!response.ok) {
-            const text = await response.text().catch(() => '');
-            throw new Error(`Failed to fetch organism details for tick ${tick}, organism ${organismId}: ${response.status} ${text}`);
-        }
-
-        const data = await response.json();
-        // API response shape: { organismId, tick, staticInfo: {...}, state: {...} }
-        return data;
     }
 }
 

@@ -16,7 +16,8 @@ public interface IEnvironmentDataReader {
      * @param region Spatial bounds (null = all cells)
      * @return List of cells with coordinates within region
      * @throws SQLException if database read fails
+     * @throws TickNotFoundException if the tick itself does not exist in the database
      */
     List<CellWithCoordinates> readEnvironmentRegion(long tickNumber, SpatialRegion region)
-        throws SQLException;
+        throws SQLException, TickNotFoundException;
 }

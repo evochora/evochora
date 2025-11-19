@@ -78,6 +78,7 @@ application {
 
 // Konfiguriere den run-Task für interaktive Eingabe
 tasks.named<JavaExec>("run") {
+    dependsOn(tasks.processResources) // Ensure resources are updated before running
     group = "application"
     description = "Run the Evochora server CLI with interactive input"
     standardInput = System.`in`

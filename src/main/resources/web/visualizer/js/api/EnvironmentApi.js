@@ -25,43 +25,12 @@ class EnvironmentApi {
             url += `&runId=${encodeURIComponent(runId)}`;
         }
         
-        try {
-            const fetchOptions = {};
-            if (signal) {
-                fetchOptions.signal = signal;
-            }
-            
-            const response = await fetch(url, fetchOptions);
-            
-            if (!response.ok) {
-                // Handle AbortError separately
-                if (signal && signal.aborted) {
-                    throw new DOMException('Request aborted', 'AbortError');
-                }
-                
-                if (response.status === 404) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.message || `Tick ${tick} not found`);
-                }
-                if (response.status === 400) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.message || 'Invalid request parameters');
-                }
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            return await response.json();
-        } catch (error) {
-            // Re-throw AbortError as-is (should be ignored by caller)
-            if (error.name === 'AbortError') {
-                throw error;
-            }
-            
-            if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                throw new Error('Server not reachable - is it running?');
-            }
-            throw error;
+        const fetchOptions = {};
+        if (signal) {
+            fetchOptions.signal = signal;
         }
+
+        return apiClient.fetch(url, fetchOptions);
     }
 }
 

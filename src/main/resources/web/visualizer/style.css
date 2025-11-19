@@ -446,3 +446,40 @@ main.container.sidebar-visible .world-container {
     opacity: 0.8;
 }
 
+/* Error Banner */
+.error-banner {
+    position: fixed;
+    top: 54px; /* Positioned below the header */
+    left: 0;
+    width: 100%;
+    box-sizing: border-box; /* Include padding in the width calculation */
+    background-color: #d9534f; /* Bootstrap's danger color */
+    color: white;
+    padding: 10px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 1000;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.error-banner span {
+    flex-grow: 1;
+}
+
+.error-banner button {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 24px; /* Larger for better visibility */
+    font-weight: bold;
+    cursor: pointer;
+    padding: 0 10px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.error-banner button:hover {
+    opacity: 1;
+}
+

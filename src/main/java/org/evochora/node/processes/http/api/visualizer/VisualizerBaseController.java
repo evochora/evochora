@@ -5,6 +5,8 @@ import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
+import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
+import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.node.processes.http.AbstractController;
 import org.evochora.node.spi.ServiceRegistry;
 import org.slf4j.Logger;
@@ -67,6 +69,14 @@ public abstract class VisualizerBaseController extends AbstractController {
         });
         app.exception(NoRunIdException.class, (e, ctx) -> {
             LOGGER.warn("No run ID available for request {}: {}", ctx.path(), e.getMessage());
+            ctx.status(HttpStatus.NOT_FOUND).json(createErrorBody(HttpStatus.NOT_FOUND, e.getMessage()));
+        });
+        app.exception(TickNotFoundException.class, (e, ctx) -> {
+            LOGGER.debug("Client requested a tick that was not found for {}: {}", ctx.path(), e.getMessage());
+            ctx.status(HttpStatus.NOT_FOUND).json(createErrorBody(HttpStatus.NOT_FOUND, e.getMessage()));
+        });
+        app.exception(OrganismNotFoundException.class, (e, ctx) -> {
+            LOGGER.debug("Client requested an organism that was not found for {}: {}", ctx.path(), e.getMessage());
             ctx.status(HttpStatus.NOT_FOUND).json(createErrorBody(HttpStatus.NOT_FOUND, e.getMessage()));
         });
         app.exception(PoolExhaustionException.class, (e, ctx) -> {

@@ -20,6 +20,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
+import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 
 /**
  * SingleBlobStrategy: Stores all cells of a tick in a single BLOB.
@@ -209,7 +210,7 @@ public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
     @Override
     public List<org.evochora.datapipeline.api.contracts.CellState> readTick(Connection conn, long tickNumber, 
                                                                            SpatialRegion region, 
-                                                                           EnvironmentProperties envProps) throws SQLException {
+                                                                           EnvironmentProperties envProps) throws SQLException, TickNotFoundException {
         // 1. Read BLOB from database
         PreparedStatement stmt = conn.prepareStatement(
             "SELECT cells_blob FROM environment_ticks WHERE tick_number = ?"
@@ -218,7 +219,7 @@ public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
         ResultSet rs = stmt.executeQuery();
         
         if (!rs.next()) {
-            throw new SQLException("Tick " + tickNumber + " not found");
+            throw new TickNotFoundException("Tick " + tickNumber + " not found");
         }
         
         byte[] blobData = rs.getBytes("cells_blob");
