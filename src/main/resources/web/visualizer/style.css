@@ -446,40 +446,65 @@ main.container.sidebar-visible .world-container {
     opacity: 0.8;
 }
 
-/* Error Banner */
-.error-banner {
-    position: fixed;
-    top: 54px; /* Positioned below the header */
+/* Error bar for displaying API errors */
+.error-bar {
+    position: fixed; /* Take the element out of the normal document flow */
+    top: 54px; /* Position it directly below the header (approx. height) */
     left: 0;
     width: 100%;
-    box-sizing: border-box; /* Include padding in the width calculation */
-    background-color: #d9534f; /* Bootstrap's danger color */
-    color: white;
-    padding: 10px 20px;
+    box-sizing: border-box; /* Ensure padding is included in the width */
+    background-color: #8b1a1a; /* Dark red background */
+    color: #ffffff;
+    padding: 10px 40px 10px 15px;
+    display: none; /* Hidden by default */
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #aa2a2a;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    z-index: 1001; /* Ensure it's above the world-container and sidebar */
+}
+
+.error-bar.error-bar-visible {
+    display: flex;
+}
+
+.error-bar-message {
+    flex: 1;
+    font-size: 0.9em;
+    line-height: 1.4;
+}
+
+.error-bar-close {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    transition: background-color 0.2s;
+}
+
+.error-bar-close:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.error-bar-close:active {
+    background-color: rgba(255, 255, 255, 0.3);
+}
+
+.header-bar {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    z-index: 1000;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-}
-
-.error-banner span {
-    flex-grow: 1;
-}
-
-.error-banner button {
-    background: none;
-    border: none;
-    color: white;
-    font-size: 24px; /* Larger for better visibility */
-    font-weight: bold;
-    cursor: pointer;
-    padding: 0 10px;
-    opacity: 0.7;
-    transition: opacity 0.2s;
-}
-
-.error-banner button:hover {
-    opacity: 1;
 }
 

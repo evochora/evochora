@@ -25,11 +25,11 @@ class EnvironmentApi {
             url += `&runId=${encodeURIComponent(runId)}`;
         }
         
-        const fetchOptions = {};
-        if (signal) {
-            fetchOptions.signal = signal;
-        }
-
+            const fetchOptions = {};
+            if (signal) {
+                fetchOptions.signal = signal;
+            }
+            
         return apiClient.fetch(url, fetchOptions);
     }
 }

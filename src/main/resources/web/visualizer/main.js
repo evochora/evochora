@@ -8,15 +8,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const errorBanner = document.getElementById('error-banner');
     const errorMessageSpan = document.getElementById('error-message');
     const closeButton = document.getElementById('close-error-banner');
-
+    
     // Define global error functions BEFORE initializing the app
     window.showError = (message) => {
         errorMessageSpan.textContent = message;
-        errorBanner.style.display = 'flex';
+        // First, remove the inline style to allow the CSS class to take effect.
+        errorBanner.style.display = ''; 
+        // Then, add the class that makes the banner visible via the stylesheet.
+        errorBanner.classList.add('error-bar-visible');
     };
 
     window.hideError = () => {
-        errorBanner.style.display = 'none';
+        // Use the CSS class to hide the banner
+        errorBanner.classList.remove('error-bar-visible');
         errorMessageSpan.textContent = '';
     };
 

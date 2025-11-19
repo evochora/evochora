@@ -18,12 +18,12 @@
     <script src="https://cdn.jsdelivr.net/npm/pixi.js@8.12.0/dist/pixi.min.js"></script>
 </head>
 <body>
-    <div id="error-banner" class="error-banner" style="display: none;">
-        <span id="error-message"></span>
-        <button id="close-error-banner">&times;</button>
+    <div id="error-banner" class="error-bar" style="display: none;">
+        <span id="error-message" class="error-bar-message"></span>
+        <button id="close-error-banner" class="error-bar-close">&times;</button>
     </div>
 
-    <!-- Tooltip für Zell-Informationen -->
+<!-- Tooltip für Zell-Informationen -->
 <div id="cell-tooltip" class="cell-tooltip"></div>
 
 <header>
@@ -63,23 +63,23 @@
 
     <!-- API Clients -->
     <script src="js/api/ApiClient.js"></script>
-    <script src="js/api/SimulationApi.js"></script>
-    <script src="js/api/EnvironmentApi.js"></script>
-    <script src="js/api/OrganismApi.js"></script>
+<script src="js/api/SimulationApi.js"></script>
+<script src="js/api/EnvironmentApi.js"></script>
+<script src="js/api/OrganismApi.js"></script>
     
     <!-- UI Components -->
-    <script src="js/HeaderbarView.js"></script>
-    <script src="js/EnvironmentGrid.js"></script>
-    <script src="js/SidebarBasicInfoView.js"></script>
-    <script src="js/SidebarInstructionView.js"></script>
-    <script src="js/SidebarStateView.js"></script>
+<script src="js/HeaderbarView.js"></script>
+<script src="js/EnvironmentGrid.js"></script>
+<script src="js/SidebarBasicInfoView.js"></script>
+<script src="js/SidebarInstructionView.js"></script>
+<script src="js/SidebarStateView.js"></script>
     <script src="js/SidebarManager.js"></script>
     
     <!-- Application Logic -->
-    <script src="js/AppController.js"></script>
+<script src="js/AppController.js"></script>
     
     <!-- Main entry point - MUST BE LAST -->
-    <script src="main.js"></script>
+<script src="main.js"></script>
 </body>
 </html>
 
