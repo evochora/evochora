@@ -1,14 +1,18 @@
 /**
- * Centralized API client for handling fetch requests and error responses.
+ * Centralized API client for handling network requests and standardizing error responses.
+ * It wraps the native `fetch` API to provide consistent error handling for HTTP statuses
+ * and network failures.
+ *
+ * @class ApiClient
  */
 class ApiClient {
     /**
      * Performs a fetch request and handles standard success and error cases.
      * 
      * @param {string} url - The URL to fetch.
-     * @param {object} [options={}] - Optional fetch options (method, headers, etc.).
-     * @returns {Promise<any>} The JSON response data.
-     * @throws {Error} If the request fails due to network issues or an HTTP error status.
+     * @param {object} [options={}] - Optional fetch options (method, headers, signal, etc.).
+     * @returns {Promise<any>} A promise that resolves to the JSON response data, or null for 204 No Content responses.
+     * @throws {Error} If the request fails due to network issues, an HTTP error status, or if it's aborted.
      */
     async fetch(url, options = {}) {
         try {

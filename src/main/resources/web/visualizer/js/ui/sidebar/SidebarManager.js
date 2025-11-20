@@ -1,7 +1,16 @@
 /**
- * Manages sidebar visibility and toggle functionality.
+ * Manages the visibility and state of the main sidebar container.
+ * It controls the CSS classes that show/hide the sidebar and adjusts the main
+ * content area accordingly. It also handles the logic for the toggle button
+ * and auto-showing/hiding when an organism is selected or deselected.
+ *
+ * @class SidebarManager
  */
 class SidebarManager {
+    /**
+     * Initializes the SidebarManager, caching DOM elements and setting up event listeners.
+     * @param {AppController} appController - The main application controller, used to deselect organisms.
+     */
     constructor(appController) {
         this.sidebar = document.getElementById('sidebar');
         this.toggleBtn = document.getElementById('sidebar-toggle');
@@ -17,6 +26,9 @@ class SidebarManager {
         }
     }
     
+    /**
+     * Makes the sidebar visible by applying the appropriate CSS classes.
+     */
     showSidebar() {
         if (this.sidebar) {
             this.sidebar.classList.add('visible');
@@ -31,6 +43,12 @@ class SidebarManager {
         this.isVisible = true;
     }
     
+    /**
+     * Hides the sidebar. If hidden manually by the user, it also deselects the
+     * currently active organism to prevent it from immediately reopening.
+     *
+     * @param {boolean} [manual=false] - True if the action was triggered by a direct user interaction (e.g., toggle button).
+     */
     hideSidebar(manual = false) {
         if (this.sidebar) {
             this.sidebar.classList.remove('visible');
@@ -56,6 +74,9 @@ class SidebarManager {
         }
     }
     
+    /**
+     * Toggles the sidebar's visibility. Considers the action as manual.
+     */
     toggleSidebar() {
         if (this.isVisible) {
             this.hideSidebar(true); // Manual hide
@@ -64,18 +85,27 @@ class SidebarManager {
         }
     }
     
+    /**
+     * Shows or hides the sidebar toggle button.
+     * @param {boolean} visible - True to show the button, false to hide it.
+     * @private
+     */
     setToggleButtonVisible(visible) {
         if (this.toggleBtn) {
             this.toggleBtn.style.display = visible ? 'block' : 'none';
         }
     }
     
-    // Auto-hide when no organism is selected
+    /**
+     * Hides the sidebar as part of an automatic action (e.g., no organism selected).
+     */
     autoHide() {
         this.hideSidebar();
     }
     
-    // Auto-show when organism is selected
+    /**
+     * Shows the sidebar as part of an automatic action (e.g., an organism was selected).
+     */
     autoShow() {
         this.showSidebar();
         // Button visibility is already handled in showSidebar()

@@ -1,13 +1,17 @@
 /**
- * API client for simulation metadata and tick range endpoints.
+ * API client for simulation-level endpoints, such as retrieving metadata and tick ranges.
+ * This class provides a high-level interface for fetching data related to the overall simulation run.
+ *
+ * @class SimulationApi
  */
 class SimulationApi {
     /**
-     * Fetches simulation metadata for a given run ID.
-     * 
-     * @param {string|null} runId - Optional run ID (defaults to latest run if null)
-     * @returns {Promise<Object>} SimulationMetadata as JSON object
-     * @throws {Error} If the request fails
+     * Fetches the complete simulation metadata for a given run ID.
+     * If no run ID is provided, the server will default to the latest available run.
+     *
+     * @param {string|null} [runId=null] - The specific run ID to fetch metadata for.
+     * @returns {Promise<object>} A promise that resolves to the SimulationMetadata object.
+     * @throws {Error} If the network request fails or the server returns an error.
      */
     async fetchMetadata(runId = null) {
         const url = runId 
@@ -18,11 +22,12 @@ class SimulationApi {
     }
     
     /**
-     * Fetches tick range (minTick, maxTick) for a given run ID.
-     * 
-     * @param {string|null} runId - Optional run ID (defaults to latest run if null)
-     * @returns {Promise<{minTick: number, maxTick: number}>} Tick range
-     * @throws {Error} If the request fails
+     * Fetches the available tick range (minTick, maxTick) for a given run ID.
+     * If no run ID is provided, the server will default to the latest available run.
+     *
+     * @param {string|null} [runId=null] - The specific run ID to fetch the tick range for.
+     * @returns {Promise<{minTick: number, maxTick: number}>} A promise that resolves to an object containing the min and max tick.
+     * @throws {Error} If the network request fails or the server returns an error.
      */
     async fetchTickRange(runId = null) {
         const url = runId

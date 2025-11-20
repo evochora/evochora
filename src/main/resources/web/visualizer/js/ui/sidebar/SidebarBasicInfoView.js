@@ -1,7 +1,17 @@
 /**
- * Renders basic static organism information in the sidebar.
+ * Renders the basic static and positional information of an organism in the sidebar.
+ * This view displays details like parent ID, birth tick, IP, and DP coordinates,
+ * and makes them clickable to navigate the simulation.
+ *
+ * @class SidebarBasicInfoView
  */
 class SidebarBasicInfoView {
+    /**
+     * Initializes the view.
+     * @param {HTMLElement} root - The root element of the sidebar.
+     * @param {EnvironmentGrid} [renderer=null] - The world renderer, used for centering the view on coordinates.
+     * @param {AppController} [appController=null] - The main application controller, used for navigation.
+     */
     constructor(root, renderer = null, appController = null) {
         this.root = root;
         this.renderer = renderer;
@@ -10,12 +20,12 @@ class SidebarBasicInfoView {
     }
     
     /**
-     * Updates the basic info section with static organism data and clickable IP/DP coordinates.
-     * 
-     * @param {Object} staticInfo - Static organism info:
-     *   { parentId, birthTick, programId }
-     * @param {number} organismId - Organism ID
-     * @param {Object} state - Runtime state with IP, DV, ER, dataPointers (optional)
+     * Updates the view with the latest organism data.
+     * It dynamically creates clickable links for parent ID, birth tick, IP, and DPs.
+     *
+     * @param {object} staticInfo - Static organism info from the API, containing `parentId`, `birthTick`, etc.
+     * @param {number} organismId - The ID of the currently selected organism.
+     * @param {object|null} [state=null] - The dynamic runtime state of the organism, containing `ip`, `dataPointers`, etc.
      */
     update(staticInfo, organismId, state = null) {
         const el = this.root.querySelector('[data-section="basic"]');

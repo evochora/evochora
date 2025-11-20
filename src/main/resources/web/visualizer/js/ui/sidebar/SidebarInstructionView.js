@@ -1,68 +1,81 @@
 /**
- * Renders instruction execution view in the sidebar.
- * Styled like State View (code-box, no heading).
+ * Renders the instruction execution view in the sidebar.
+ * This view displays the last executed instruction and the next instruction to be executed,
+ * including their arguments, values, and energy costs. It is styled similarly to the
+ * state view for consistency.
+ *
+ * @class SidebarInstructionView
  */
 class SidebarInstructionView {
+    /**
+     * Initializes the view.
+     * @param {HTMLElement} root - The root element of the sidebar.
+     */
     constructor(root) {
         this.root = root;
     }
     
     /**
-     * Updates the instruction view with last and next executed instructions.
-     * 
-     * @param {Object} instructions - Instructions object:
-     *   { last: InstructionView, next: InstructionView }
-     * @param {number} tick - Current tick number
+     * Updates the instruction view with the last and next executed instructions.
+     *
+     * @param {object|null} instructions - An object containing `last` and `next` instruction data, or null.
+     * @param {number} tick - The current tick number.
      */
     update(instructions, tick) {
         const el = this.root.querySelector('[data-section="instructions"]');
         if (!el) return;
         
-        if (!instructions || (!instructions.last && !instructions.next)) {
-            el.innerHTML = '<div class="code-view instruction-view" style="font-size:0.9em; white-space: pre-wrap;"></div>';
-            return;
+        try {
+            if (!instructions || (!instructions.last && !instructions.next)) {
+                el.innerHTML = '<div class="code-view instruction-view" style="font-size:0.9em; white-space: pre-wrap;"></div>';
+                return;
+            }
+            
+            // Calculate position strings for both instructions to determine max width
+            let posStrings = [];
+            if (instructions.last) {
+                const pos = this.formatPosition(instructions.last.ipBeforeFetch, tick);
+                posStrings.push(pos);
+            }
+            if (instructions.next) {
+                const pos = this.formatPosition(instructions.next.ipBeforeFetch, tick + 1);
+                posStrings.push(pos);
+            }
+            
+            // Find maximum position width (default to 0 if no positions)
+            const maxPosWidth = posStrings.length > 0 ? Math.max(...posStrings.map(p => p.length)) : 0;
+            
+            let lines = [];
+            
+            // Last executed instruction
+            if (instructions.last) {
+                lines.push(this.formatInstruction(instructions.last, tick, true, maxPosWidth));
+            }
+            
+            // Next instruction
+            if (instructions.next) {
+                lines.push(this.formatInstruction(instructions.next, tick + 1, false, maxPosWidth));
+            }
+            
+            // Join lines (no newlines needed, each line is a div)
+            el.innerHTML = `<div class="code-view instruction-view" style="font-size:0.9em;">${lines.join('')}</div>`;
+        } catch (error) {
+            console.error("Failed to render SidebarInstructionView:", error);
+            el.innerHTML = `<div class="code-view instruction-view" style="font-size:0.9em; color: #ffaa00;">Error rendering instructions.</div>`;
         }
-        
-        // Calculate position strings for both instructions to determine max width
-        let posStrings = [];
-        if (instructions.last) {
-            const pos = this.formatPosition(instructions.last.ipBeforeFetch, tick);
-            posStrings.push(pos);
-        }
-        if (instructions.next) {
-            const pos = this.formatPosition(instructions.next.ipBeforeFetch, tick + 1);
-            posStrings.push(pos);
-        }
-        
-        // Find maximum position width (default to 0 if no positions)
-        const maxPosWidth = posStrings.length > 0 ? Math.max(...posStrings.map(p => p.length)) : 0;
-        
-        let lines = [];
-        
-        // Last executed instruction
-        if (instructions.last) {
-            lines.push(this.formatInstruction(instructions.last, tick, true, maxPosWidth));
-        }
-        
-        // Next instruction
-        if (instructions.next) {
-            lines.push(this.formatInstruction(instructions.next, tick + 1, false, maxPosWidth));
-        }
-        
-        // Join lines (no newlines needed, each line is a div)
-        el.innerHTML = `<div class="code-view instruction-view" style="font-size:0.9em;">${lines.join('')}</div>`;
     }
     
     /**
-     * Formats position from IP before fetch: tick:x|y
-     * 
-     * @param {Array} ipBeforeFetch - IP coordinates array
-     * @param {number} tick - Tick number
-     * @returns {string} Formatted position string
+     * Formats an instruction's IP and tick into a standard position string (e.g., "123:45|67").
+     *
+     * @param {number[]} ipBeforeFetch - The IP coordinates array `[x, y]`.
+     * @param {number} tick - The tick number.
+     * @returns {string} The formatted position string.
+     * @private
      */
     formatPosition(ipBeforeFetch, tick) {
         let pos = '?';
-        if (ipBeforeFetch && ipBeforeFetch.length >= 2) {
+        if (Array.isArray(ipBeforeFetch) && ipBeforeFetch.length > 0) {
             pos = `${ipBeforeFetch[0]}|${ipBeforeFetch[1]}`;
         } else if (ipBeforeFetch && ipBeforeFetch.length === 1) {
             pos = `${ipBeforeFetch[0]}`;
@@ -71,12 +84,14 @@ class SidebarInstructionView {
     }
     
     /**
-     * Formats an instruction for display.
-     * 
-     * @param {Object} instruction - InstructionView object
-     * @param {number} tick - Tick number
-     * @param {boolean} isLast - Whether this is the last executed instruction
-     * @returns {string} Formatted instruction line
+     * Formats a single instruction object into an HTML string for display.
+     *
+     * @param {object} instruction - The instruction data object.
+     * @param {number} tick - The tick number associated with this instruction.
+     * @param {boolean} isLast - True if this is the "last executed" instruction.
+     * @param {number} maxPosWidth - The maximum width for the position string, for alignment.
+     * @returns {string} The formatted HTML string for the instruction line.
+     * @private
      */
     formatInstruction(instruction, tick, isLast, maxPosWidth) {
         if (!instruction) return '';
@@ -91,48 +106,44 @@ class SidebarInstructionView {
         // Format energy cost (right-aligned, no parentheses)
         const energyStr = instruction.energyCost > 0 ? `-${instruction.energyCost}` : '';
         
-        // Build instruction line with "Last: " or "Next: " prefix
+        // Build instruction line
         const prefix = isLast ? 'Last: ' : 'Next: ';
         let instructionPart = `${prefix}<span class="instruction-position">${posStrPadded}</span> ${instruction.opcodeName}`;
         if (argsStr) {
             instructionPart += ` ${argsStr}`;
         }
         
-        // Use CSS for right-aligned energy
+        const titleAttr = instruction.failed && instruction.failureReason ? ` title="${this.escapeHtml(instruction.failureReason)}"` : '';
+        const failedClass = instruction.failed ? ' failed-instruction' : '';
+        
+        let html = `<div class="instruction-line${failedClass}"${titleAttr}><span class="instruction-content">${instructionPart}</span>`;
         if (energyStr) {
-            const titleAttr = instruction.failed && instruction.failureReason
-                ? ` title="${this.escapeHtml(instruction.failureReason)}"`
-                : '';
-            const failedClass = instruction.failed ? ' failed-instruction' : '';
-            return `<div class="instruction-line${failedClass}"${titleAttr}><span class="instruction-content">${instructionPart}</span><span class="instruction-energy">${energyStr}</span></div>`;
-        } else {
-            const titleAttr = instruction.failed && instruction.failureReason
-                ? ` title="${this.escapeHtml(instruction.failureReason)}"`
-                : '';
-            const failedClass = instruction.failed ? ' failed-instruction' : '';
-            return `<div class="instruction-line${failedClass}"${titleAttr}><span class="instruction-content">${instructionPart}</span></div>`;
+            html += `<span class="instruction-energy">${energyStr}</span>`;
         }
+        html += `</div>`;
+        return html;
     }
     
     /**
-     * Formats instruction arguments for display.
-     * 
-     * @param {Array} args - Array of InstructionArgumentView objects
-     * @returns {string} Formatted arguments string
+     * Formats an array of instruction arguments into a single string.
+     *
+     * @param {Array<object>} args - The array of argument data objects.
+     * @returns {string} A space-separated string of formatted arguments.
+     * @private
      */
     formatArguments(args) {
         if (!args || args.length === 0) {
             return '';
         }
-        
         return args.map(arg => this.formatArgument(arg)).join(' ');
     }
     
     /**
-     * Formats a single argument for display.
-     * 
-     * @param {Object} arg - InstructionArgumentView object
-     * @returns {string} Formatted argument string
+     * Formats a single instruction argument based on its type.
+     *
+     * @param {object} arg - The argument data object.
+     * @returns {string} An HTML string representing the formatted argument.
+     * @private
      */
     formatArgument(arg) {
         if (!arg || !arg.type) {
@@ -140,80 +151,46 @@ class SidebarInstructionView {
         }
         
         switch (arg.type) {
-            case 'REGISTER':
-                // Format: %DR0=D:123 or %PR1=1|0 (no brackets, annotations in green)
-                // Use registerType from backend if available, otherwise fall back to heuristic
+            case 'REGISTER': {
                 const regName = arg.registerType 
                     ? this.getRegisterNameFromType(arg.registerId, arg.registerType)
                     : this.getRegisterName(arg.registerId, arg.registerValue);
                 if (arg.registerValue) {
-                    if (arg.registerValue.kind === 'MOLECULE') {
-                        // Abbreviate types: CODE: -> C:, DATA: -> D:, etc.
-                        const typeAbbr = this.abbreviateType(arg.registerValue.type || '');
-                        const annotation = `=${typeAbbr}${arg.registerValue.value}`;
-                        return `${regName}<span class="register-annotation">${annotation}</span>`;
-                    } else if (arg.registerValue.kind === 'VECTOR') {
-                        const vecStr = arg.registerValue.vector.join('|');
-                        const annotation = `=${vecStr}`;
-                        return `${regName}<span class="register-annotation">${annotation}</span>`;
-                    }
+                    const valueStr = ValueFormatter.format(arg.registerValue);
+                    const annotation = `=${valueStr.replace(/^\[|\]$/g, '')}`; // Remove brackets for inline view
+                    return `${regName}<span class="register-annotation">${annotation}</span>`;
                 }
                 return regName;
-                
-            case 'IMMEDIATE':
-                // Format: D:0 (abbreviated type)
+            }
+            case 'IMMEDIATE': {
                 if (arg.moleculeType && arg.value !== undefined) {
-                    const typeAbbr = this.abbreviateType(arg.moleculeType);
-                    return `${typeAbbr}${arg.value}`;
+                    // Reconstruct a temporary molecule-like object for the formatter
+                    const molecule = { kind: 'MOLECULE', type: arg.moleculeType, value: arg.value };
+                    return ValueFormatter.format(molecule);
                 }
                 return `IMMEDIATE:${arg.rawValue || '?'}`;
-                
+            }
             case 'VECTOR':
-                // Format: x|y (no brackets, no V: prefix)
-                if (arg.components && arg.components.length > 0) {
-                    return arg.components.join('|');
-                }
-                return '?';
-                
             case 'LABEL':
-                // Format: x|y (no brackets)
                 if (arg.components && arg.components.length > 0) {
                     return arg.components.join('|');
                 }
                 return '?';
-                
             case 'STACK':
-                // Format: STACK (no value)
                 return 'STACK';
-                
             default:
                 return `?(${arg.type})`;
         }
     }
     
     /**
-     * Abbreviates molecule type names: DATA -> D, CODE -> C, STRUCTURE -> S, ENERGY -> E
-     * 
-     * @param {string} type - Full type name (e.g., "DATA", "CODE", "STRUCTURE", "ENERGY")
-     * @returns {string} Abbreviated type with colon (e.g., "D:", "C:", "S:", "E:")
-     */
-    abbreviateType(type) {
-        if (!type) return '';
-        const upper = type.toUpperCase();
-        if (upper.startsWith('DATA')) return 'D:';
-        if (upper.startsWith('CODE')) return 'C:';
-        if (upper.startsWith('STRUCTURE')) return 'S:';
-        if (upper.startsWith('ENERGY')) return 'E:';
-        // Fallback: return first letter if type is single word
-        return upper.charAt(0) + ':';
-    }
-    
-    /**
-     * Gets register name from register ID and register type (preferred method).
-     * 
-     * @param {number} registerId - Register ID
-     * @param {string} registerType - Register type: "DR", "PR", "FPR", or "LR"
-     * @returns {string} Register name (e.g., "%DR0", "%PR1", "%LR0")
+     * Gets the register name from its ID and a known type (e.g., "DR", "PR").
+     * This is the preferred and most reliable way to determine the register name.
+     *
+     * @param {number} registerId - The numeric ID of the register.
+     * @param {string} registerType - The type of the register ("DR", "PR", "FPR", "LR").
+     * @returns {string} The formatted register name (e.g., "%DR0").
+     * @private
      */
     getRegisterNameFromType(registerId, registerType) {
         if (registerId === null || registerId === undefined) {
@@ -234,24 +211,14 @@ class SidebarInstructionView {
     }
     
     /**
-     * Gets register name from register ID (fallback method using heuristic).
-     * 
-     * This method is used when registerType is not available (backward compatibility).
-     * It uses a heuristic to distinguish between LR and DR for registerId < 1000.
-     * 
-     * Register ID interpretation (matching backend resolveRegisterValue logic):
-     * - registerId >= 2000: FPR (Formal Parameter Register)
-     * - registerId >= 1000: PR (Procedure Register)
-     * - registerId >= 0 && registerId < locationRegisters.size(): LR (Location Register)
-     * - registerId >= 0 && registerId < dataRegisters.size(): DR (Data Register)
-     * 
-     * Since we don't have locationRegisters.size() in the frontend, we use a heuristic:
-     * - If registerId < 1000 and registerValue.kind === 'VECTOR' and registerId < 4: likely LR
-     * - Otherwise: DR
-     * 
-     * @param {number} registerId - Register ID
-     * @param {Object} registerValue - RegisterValueView (to determine if it's LR)
-     * @returns {string} Register name (e.g., "%DR0", "%PR1", "%LR0")
+     * Gets the register name from its ID using a heuristic.
+     * This is a fallback for older data where the explicit `registerType` is not available.
+     * It is not 100% reliable for distinguishing LRs from DRs.
+     *
+     * @param {number} registerId - The numeric ID of the register.
+     * @param {object} registerValue - The value of the register, used in the heuristic.
+     * @returns {string} The formatted register name.
+     * @private
      */
     getRegisterName(registerId, registerValue) {
         if (registerId === null || registerId === undefined) {
@@ -289,18 +256,20 @@ class SidebarInstructionView {
         // For registerId >= 4 and < 1000, it's always DR
         return `%DR${registerId}`;
     }
-    
+
     /**
-     * Escapes HTML special characters.
-     * 
-     * @param {string} text - Text to escape
-     * @returns {string} Escaped text
+     * Escapes HTML special characters to prevent XSS.
+     * @param {string} text The text to escape.
+     * @returns {string} The escaped text.
+     * @private
      */
     escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        if (typeof text !== 'string') return '';
+        return text.replace(/&/g, "&amp;")
+                   .replace(/</g, "&lt;")
+                   .replace(/>/g, "&gt;")
+                   .replace(/"/g, "&quot;")
+                   .replace(/'/g, "&#039;");
     }
 }
 

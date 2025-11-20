@@ -1,15 +1,25 @@
 /**
- * PIXI.js-based renderer for environment grid using a camera-based viewport.
- * <p>
- * Core ideas:
+ * Manages the PIXI.js-based rendering of the simulation environment grid.
+ *
+ * This class is responsible for:
  * <ul>
- *   <li>Canvas is always viewport-sized (no DOM scrolling for the world).</li>
- *   <li>A logical camera (cameraX, cameraY) defines which part of the world is visible.</li>
- *   <li>Right mouse button drag pans the camera.</li>
- *   <li>Only the visible region is requested from the server (viewport-based loading).</li>
+ *   <li>Setting up and managing the PIXI.js canvas.</li>
+ *   <li>Implementing a camera system for panning and viewport-based rendering.</li>
+ *   <li>Fetching and rendering only the visible portion of the world from the API.</li>
+ *   <li>Displaying cells, molecules, and organism markers (IP, DV, DP).</li>
+ *   <li>Handling user interactions like panning (right-mouse drag) and tooltips.</li>
  * </ul>
+ *
+ * @class EnvironmentGrid
  */
 class EnvironmentGrid {
+    /**
+     * Initializes the EnvironmentGrid instance.
+     *
+     * @param {HTMLElement} container - The DOM element to contain the PIXI.js canvas.
+     * @param {object} config - The application configuration object.
+     * @param {EnvironmentApi} environmentApi - The API client for fetching environment data.
+     */
     constructor(container, config, environmentApi) {
         this.container = container;
         this.config = config;
@@ -88,8 +98,10 @@ class EnvironmentGrid {
     }
 
     /**
-     * Initializes the PIXI.js application.
-     * Canvas is sized to viewport; camera defines what part of the world is visible.
+     * Initializes the PIXI.js application, sets up containers, and binds event listeners.
+     * The canvas is sized to the viewport, and the camera defines which part of the world is visible.
+     * This method must be called after the DOM is ready.
+     * @returns {Promise<void>} A promise that resolves when initialization is complete.
      */
     async init() {
         // Wait for layout to get viewport size
@@ -138,9 +150,9 @@ class EnvironmentGrid {
     }
 
     /**
-     * Updates the world shape.
+     * Updates the world shape (dimensions in cells) and adjusts the camera.
      *
-     * @param {number[]} worldShape [width,height] in cells
+     * @param {number[]} worldShape - An array representing the world size, e.g., `[width, height]`.
      */
     updateWorldShape(worldShape) {
         if (worldShape && Array.isArray(worldShape) && worldShape.length >= 2) {
@@ -155,7 +167,9 @@ class EnvironmentGrid {
     }
 
     /**
-     * Ensures camera stays within world bounds if world size is known.
+     * Ensures the camera stays within the world boundaries.
+     * Prevents panning outside the defined world area.
+     * @private
      */
     clampCameraToWorld() {
         if (this.worldWidthCells == null || this.worldHeightCells == null) {
@@ -182,10 +196,10 @@ class EnvironmentGrid {
     }
 
     /**
-     * Centers the camera on a specific world coordinate (in cells).
-     * 
-     * @param {number} cellX - X coordinate in cells
-     * @param {number} cellY - Y coordinate in cells
+     * Centers the camera on a specific world coordinate.
+     *
+     * @param {number} cellX - The target X coordinate in cells.
+     * @param {number} cellY - The target Y coordinate in cells.
      */
     centerOn(cellX, cellY) {
         const cellSize = this.config.cellSize;
@@ -213,7 +227,8 @@ class EnvironmentGrid {
     /**
      * Calculates the visible region in grid coordinates based on camera and viewport.
      *
-     * @returns {{x1: number, x2: number, y1: number, y2: number}} Viewport region in cells
+     * @returns {{x1: number, x2: number, y1: number, y2: number}} An object representing the visible region in cell coordinates.
+     * @private
      */
     getVisibleRegion() {
         const cellSize = this.config.cellSize;
@@ -225,7 +240,9 @@ class EnvironmentGrid {
     }
 
     /**
-     * Requests a viewport load via AppController (debounced).
+     * Triggers a debounced request to load data for the current viewport.
+     * This is called after camera movements to avoid excessive API calls.
+     * @private
      */
     requestViewportLoad() {
         if (!this.onViewportChange) {
@@ -240,10 +257,12 @@ class EnvironmentGrid {
     }
 
     /**
-     * Loads environment data for the current viewport.
+     * Fetches and renders environment data for the current viewport from the API.
+     * Manages an AbortController to cancel stale requests.
      *
-     * @param {number} tick - Current tick number
-     * @param {string|null} runId - Optional run ID
+     * @param {number} tick - The current tick number to load data for.
+     * @param {string|null} [runId=null] - The optional run ID.
+     * @returns {Promise<void>} A promise that resolves when the viewport data is loaded and rendered.
      */
     async loadViewport(tick, runId = null) {
         // Ensure viewport size is known
@@ -291,7 +310,8 @@ class EnvironmentGrid {
     }
 
     /**
-     * Clears all loaded regions and cell data (e.g., when switching ticks).
+     * Clears all rendered cell data and resets the loaded regions cache.
+     * This is typically called when switching to a completely new tick.
      */
     clear() {
         this.loadedRegions.clear();
@@ -306,12 +326,12 @@ class EnvironmentGrid {
     }
 
     /**
-     * Renders cells from API response (additive / overriding, ohne Full-Clear)
-     * and then removes cells in the given region that were not part of this
-     * response (z.B. Zellen, die nur in einem späteren Tick existierten).
+     * Renders a batch of cells from an API response and cleans up stale cells.
+     * This method performs an incremental update rather than a full clear to prevent flickering.
      *
-     * @param {Array} cells - Array of cell data from API
-     * @param {{x1:number,x2:number,y1:number,y2:number}} region - current viewport region
+     * @param {Array<object>} cells - An array of cell data objects from the API.
+     * @param {{x1:number, x2:number, y1:number, y2:number}} region - The current viewport region.
+     * @private
      */
     renderCellsWithCleanup(cells, region) {
         const updatedKeys = new Set();
@@ -375,8 +395,9 @@ class EnvironmentGrid {
     /**
      * Draws a single cell.
      *
-     * @param {Object} cell - Cell data with type, value, ownerId, opcodeName
-     * @param {number[]} pos - Cell coordinates [x, y]
+     * @param {object} cell - Cell data object with `type`, `value`, `ownerId`, etc.
+     * @param {number[]} pos - The cell's coordinates `[x, y]`.
+     * @private
      */
     drawCell(cell, pos) {
         const key = `${pos[0]},${pos[1]}`;
@@ -426,10 +447,11 @@ class EnvironmentGrid {
     }
 
     /**
-     * Gets background color for molecule type.
+     * Gets the appropriate background color for a given molecule type ID.
      *
-     * @param {number} typeId - Molecule type ID
-     * @returns {number} PIXI color value
+     * @param {number} typeId - The molecule type ID.
+     * @returns {number} The PIXI color value (e.g., 0xff0000).
+     * @private
      */
     getBackgroundColorForType(typeId) {
         const C = this.config;
@@ -443,10 +465,11 @@ class EnvironmentGrid {
     }
 
     /**
-     * Gets text color for molecule type.
+     * Gets the appropriate text color for a given molecule type ID.
      *
-     * @param {number} typeId - Molecule type ID
-     * @returns {number} PIXI color value
+     * @param {number} typeId - The molecule type ID.
+     * @returns {number} The PIXI color value.
+     * @private
      */
     getTextColorForType(typeId) {
         const C = this.config;
@@ -460,10 +483,11 @@ class EnvironmentGrid {
     }
 
     /**
-     * Gets type name for molecule type.
+     * Gets the string name for a given molecule type ID.
      *
-     * @param {number} typeId - Molecule type ID
-     * @returns {string} Type name
+     * @param {number} typeId - The molecule type ID.
+     * @returns {string} The name of the type (e.g., "CODE").
+     * @private
      */
     getTypeName(typeId) {
         const C = this.config;
@@ -477,7 +501,8 @@ class EnvironmentGrid {
     }
 
     /**
-     * Sets up right-mouse-drag interaction for camera panning.
+     * Sets up event listeners for camera panning (right-mouse drag).
+     * @private
      */
     setupInteractionEvents() {
         const canvas = this.app.view;
@@ -525,7 +550,9 @@ class EnvironmentGrid {
     }
 
     /**
-     * Sets up resize listener to reload viewport when container size changes.
+     * Sets up a resize listener to automatically adjust the canvas and reload data
+     * when the container size changes.
+     * @private
      */
     setupResizeListener() {
         let resizeTimeout = null;
@@ -570,7 +597,8 @@ class EnvironmentGrid {
     }
 
     /**
-     * Sets up tooltip events for cell information display.
+     * Sets up mouse move and leave events for displaying cell tooltips.
+     * @private
      */
     setupTooltipEvents() {
         this.app.view.addEventListener('mousemove', (event) => this.handleMouseMove(event));
@@ -582,9 +610,10 @@ class EnvironmentGrid {
     }
 
     /**
-     * Handles mouse move events for tooltip display.
+     * Handles mouse move events to determine when to show a tooltip.
      *
-     * @param {MouseEvent} event - Mouse event
+     * @param {MouseEvent} event - The mouse move event.
+     * @private
      */
     handleMouseMove(event) {
         const rect = this.app.view.getBoundingClientRect();
@@ -618,11 +647,12 @@ class EnvironmentGrid {
     }
 
     /**
-     * Finds cell at grid coordinates.
+     * Finds the cell data at a specific grid coordinate.
      *
-     * @param {number} gridX - Grid X coordinate
-     * @param {number} gridY - Grid Y coordinate
-     * @returns {Object|null} Cell data or default empty cell
+     * @param {number} gridX - The grid X coordinate.
+     * @param {number} gridY - The grid Y coordinate.
+     * @returns {object|null} The cell data object, or a default object for an empty cell.
+     * @private
      */
     findCellAt(gridX, gridY) {
         const key = `${gridX},${gridY}`;
@@ -635,12 +665,13 @@ class EnvironmentGrid {
     }
 
     /**
-     * Shows tooltip with cell information.
+     * Displays the tooltip with formatted information about a cell.
      *
-     * @param {MouseEvent} event - Mouse event
-     * @param {Object} cell - Cell data
-     * @param {number} gridX - Grid X coordinate
-     * @param {number} gridY - Grid Y coordinate
+     * @param {MouseEvent} event - The mouse event, used for positioning.
+     * @param {object} cell - The cell data object.
+     * @param {number} gridX - The cell's X coordinate.
+     * @param {number} gridY - The cell's Y coordinate.
+     * @private
      */
     showTooltip(event, cell, gridX, gridY) {
         if (!this.tooltip) return;
@@ -673,6 +704,7 @@ class EnvironmentGrid {
 
     /**
      * Hides the tooltip.
+     * @private
      */
     hideTooltip() {
         if (this.tooltip) {
@@ -681,27 +713,21 @@ class EnvironmentGrid {
     }
 
     /**
-     * Clears all organism overlay graphics (IP + DP markers) and cached organism state.
-     * <p>
-     * Called when the tick changes so that markers from the previous tick
-     * are not shown on the new tick.
+     * Clears the cached organism state. Called when the tick changes to ensure
+     * markers from the previous tick are not carried over.
      */
     clearOrganisms() {
         // Reset cached organism list; actual graphics cleanup happens
-        // incrementell innerhalb von renderOrganisms() basierend auf dem
-        // neuen Tick (kein massenweises Löschen vor dem Redraw).
+        // incrementally within renderOrganisms() based on the new tick's data.
         this.currentOrganisms = [];
     }
 
     /**
-     * Renders organism IP and DP markers for the current tick.
-     * <p>
-     * This method only updates the PIXI graphics in organismContainer and
-     * does not perform any HTTP calls. It is safe to call on every camera
-     * movement with the same organismsForTick.
+     * Renders organism markers (IP, DV, and DPs) for the current tick.
+     * This method performs incremental updates to the organism graphics layer to avoid
+     * flickering and is safe to call on every frame.
      *
-     * @param {Array<Object>} organismsForTick - Array of organism summaries for one tick:
-     *   [{ organismId, energy, ip: [x,y], dv: [dx,dy], dataPointers: [[x,y],...], activeDpIndex }, ...]
+     * @param {Array<object>} organismsForTick - An array of organism summary objects for the current tick.
      */
     renderOrganisms(organismsForTick) {
         if (!Array.isArray(organismsForTick)) {
@@ -926,11 +952,13 @@ class EnvironmentGrid {
     }
 
     /**
-     * Internal helper: assigns a stable color per organism id and handles dead organisms.
+     * Internal helper to assign a stable, deterministic color per organism ID.
+     * Returns a dimmed color for organisms with zero or less energy.
      *
-     * @param {number} organismId
-     * @param {number} energy
-     * @returns {number} PIXI color
+     * @param {number} organismId - The ID of the organism.
+     * @param {number} energy - The current energy of the organism.
+     * @returns {number} The PIXI color value.
+     * @private
      */
     _getOrganismColor(organismId, energy) {
         // Simple deterministic palette similar to old WebGLRenderer.organismColorPalette

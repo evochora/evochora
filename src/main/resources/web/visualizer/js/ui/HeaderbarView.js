@@ -1,7 +1,14 @@
 /**
- * View for the header bar with tick navigation controls.
+ * Manages the header bar component, including tick navigation controls,
+ * the organism selector, and associated keyboard shortcuts.
+ *
+ * @class HeaderbarView
  */
 class HeaderbarView {
+    /**
+     * Initializes the HeaderbarView and sets up all event listeners.
+     * @param {AppController} controller - The main application controller.
+     */
     constructor(controller) {
         this.controller = controller;
         
@@ -72,10 +79,10 @@ class HeaderbarView {
     }
     
     /**
-     * Updates the tick input field and suffix display.
-     * 
-     * @param {number} currentTick - Current tick number
-     * @param {number|null} maxTick - Maximum tick number (null if unknown)
+     * Updates the displayed tick number in the input field and the total tick suffix.
+     *
+     * @param {number} currentTick - The current tick number to display.
+     * @param {number|null} maxTick - The maximum available tick, or null if not yet known.
      */
     updateTickDisplay(currentTick, maxTick) {
         const input = document.getElementById('tick-input');
@@ -93,6 +100,14 @@ class HeaderbarView {
         }
     }
     
+    /**
+     * Handles the initial press of a navigation key (space or backspace).
+     * It triggers an immediate navigation action and sets up timeouts/intervals for
+     * continuous navigation if the key is held down.
+     *
+     * @param {('forward'|'backward')} direction - The direction to navigate.
+     * @private
+     */
     handleKeyPress(direction) {
         // If key is already being held, don't start a new sequence
         if (this.isKeyHeld) return;
@@ -111,6 +126,11 @@ class HeaderbarView {
         }, 300); // 300ms initial delay
     }
     
+    /**
+     * Handles the release of a navigation key.
+     * Clears all active timeouts and intervals to stop continuous navigation.
+     * @private
+     */
     handleKeyRelease() {
         this.isKeyHeld = false;
         
@@ -125,6 +145,11 @@ class HeaderbarView {
         }
     }
     
+    /**
+     * Navigates to the next or previous tick via the controller.
+     * @param {('forward'|'backward')} direction - The direction to navigate.
+     * @private
+     */
     navigateInDirection(direction) {
         if (direction === 'forward') {
             this.controller.navigateToTick(this.controller.state.currentTick + 1);

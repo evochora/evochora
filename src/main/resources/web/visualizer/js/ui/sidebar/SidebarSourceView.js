@@ -1,9 +1,16 @@
 /**
  * Manages the source code view in the sidebar.
- * Displays the assembly code of the selected organism, allows switching between
- * included files, and highlights the currently executing line.
+ * This class is responsible for displaying the assembly code of the selected organism,
+ * handling file switching for included files, highlighting the currently executing line,
+ * and applying runtime annotations to the active line.
+ *
+ * @class SidebarSourceView
  */
 class SidebarSourceView {
+    /**
+     * Initializes the view, caching DOM elements and creating the annotator instance.
+     * @param {HTMLElement} rootElement - The root element of the sidebar.
+     */
     constructor(rootElement) {
         this.root = rootElement;
         this.artifact = null;
@@ -21,9 +28,11 @@ class SidebarSourceView {
     }
 
     /**
-     * Sets the static program context.
-     * Checks internally if the artifact actually changed to avoid unnecessary re-renders.
-     * @param {object} artifact - The ProgramArtifact containing sources and mappings.
+     * Sets the static program context (the ProgramArtifact).
+     * This method triggers a full re-render of the source view. It includes an
+     * internal check to avoid unnecessary re-renders if the artifact has not changed.
+     *
+     * @param {object} artifact - The ProgramArtifact containing sources, mappings, and token info.
      */
     setProgram(artifact) {
         if (this.artifact === artifact) {
@@ -50,10 +59,12 @@ class SidebarSourceView {
     }
 
     /**
-     * Updates the dynamic execution state (IP position).
-     * This method is optimized for high-frequency calls (every tick).
-     * @param {object} organismState - Current state (includes IP).
-     * @param {object} staticInfo - Static info (includes initial position).
+     * Updates the dynamic execution state of the source view.
+     * This method is optimized for high-frequency calls (every tick). It handles
+     * status updates, auto-switching of files, line highlighting, and triggers annotations.
+     *
+     * @param {object} organismState - The current dynamic state of the organism (e.g., IP).
+     * @param {object} staticInfo - Static info for the organism, including `initialPosition`.
      */
     updateExecutionState(organismState, staticInfo) {
         if (!this.artifact || !this.dom.section) return;
@@ -79,13 +90,15 @@ class SidebarSourceView {
 
         // 4. Apply annotations to the active line
         if (activeLineNumber && activeLocation.fileName === this.selectedFile) {
-            this.applyAnnotations(activeLineNumber, organismState, activeLocation.fileName);
+            this.applyAnnotations(activeLocation.fileName, activeLineNumber, staticInfo, organismState);
         }
     }
 
     /**
-     * Renders the static structure (Dropdown + Source Code Text).
-     * Destroys and recreates the code view DOM.
+     * Renders the static structure of the source view, including the file dropdown
+     * and the code lines for the currently selected file.
+     * This is a destructive operation that rebuilds the inner DOM of the source section.
+     * @private
      */
     renderSourceStructure() {
         const el = this.dom.section;
@@ -158,7 +171,13 @@ class SidebarSourceView {
     }
 
     /**
-     * Efficiently updates CSS classes for highlighting without touching innerHTML.
+     * Efficiently updates the CSS classes for line highlighting.
+     * This method avoids re-rendering the entire code view by only manipulating
+     * CSS classes on the relevant line elements. It also handles restoring the
+     * original line text when an annotation is removed.
+     *
+     * @param {number|null} activeLineNumber - The 1-based line number to highlight, or null to remove all highlights.
+     * @private
      */
     updateHighlighting(activeLineNumber) {
         if (!this.dom.codeContainer) return;
@@ -193,14 +212,31 @@ class SidebarSourceView {
         }
     }
 
-    applyAnnotations(lineNumber, organismState, fileName) {
+    /**
+     * Applies runtime annotations to the currently active source line.
+     * It fetches annotations from the `SourceAnnotator` and dynamically rebuilds
+     * the HTML of the line to include the annotation spans.
+     *
+     * @param {string} fileName - The name of the file containing the line.
+     * @param {number} lineNumber - The 1-based line number to annotate.
+     * @param {object} staticInfo - Static info for the organism.
+     * @param {object} organismState - The current dynamic state of the organism.
+     * @private
+     */
+    applyAnnotations(fileName, lineNumber, staticInfo, organismState) {
         const lineElement = this.dom.codeContainer.querySelector(`.source-line[data-line="${lineNumber}"] .assembly-line`);
         if (!lineElement) return;
 
         const originalLine = this.getOriginalLine(lineNumber);
         if (originalLine === null) return;
 
-        const annotations = this.annotator.annotate(organismState, this.artifact, fileName, originalLine, lineNumber);
+        // Combine dynamic state with the static initialPosition for the annotator
+        const fullState = {
+            ...organismState,
+            initialPosition: staticInfo.initialPosition ? { components: staticInfo.initialPosition } : undefined
+        };
+
+        const annotations = this.annotator.annotate(fullState, this.artifact, fileName, originalLine, lineNumber);
         if (!annotations || annotations.length === 0) {
             // Ensure clean state just in case
             lineElement.textContent = originalLine;
@@ -240,6 +276,13 @@ class SidebarSourceView {
         this.lastAnnotatedLine = lineNumber;
     }
 
+    /**
+     * Retrieves the original, un-annotated text for a given line number from the artifact.
+     *
+     * @param {number} lineNumber - The 1-based line number.
+     * @returns {string|null} The original line text, or null if not found.
+     * @private
+     */
     getOriginalLine(lineNumber) {
         if (!this.artifact || !this.artifact.sources || !this.selectedFile) return null;
         const source = this.artifact.sources[this.selectedFile];
@@ -255,6 +298,11 @@ class SidebarSourceView {
         return null;
     }
 
+    /**
+     * Updates the status bar at the top of the source view, typically to display errors.
+     * @param {object|null} activeLocation - The location object which may contain an `error` property.
+     * @private
+     */
     updateStatusBar(activeLocation) {
         if (!this.dom.status) return;
         
@@ -271,8 +319,14 @@ class SidebarSourceView {
     }
 
     /**
-     * Calculates the active file and line based on IP.
-     * Returns { fileName, lineNumber } or { error } or null.
+     * Calculates the active source location (file and line number) based on the organism's IP.
+     * It translates the absolute IP into a relative program coordinate, then uses the
+     * artifact's source maps to find the corresponding line.
+     *
+     * @param {object} organismState - The organism's dynamic state, containing the `ip`.
+     * @param {object} staticInfo - The organism's static info, containing the `initialPosition`.
+     * @returns {{fileName: string, lineNumber: number}|{error: string}|null} The location object, an error object, or null.
+     * @private
      */
     calculateActiveLocation(organismState, staticInfo) {
         if (!organismState || !staticInfo || !this.artifact) return null;
@@ -281,6 +335,33 @@ class SidebarSourceView {
         const startPos = staticInfo.initialPosition;
         
         if (!Array.isArray(ip) || ip.length < 2 || !Array.isArray(startPos) || startPos.length < 2) {
+            // Correctly use the vector from staticInfo if available
+            if(staticInfo.initialPosition && staticInfo.initialPosition.components) {
+                 const relX = ip[0] - staticInfo.initialPosition.components[0];
+                 const relY = ip[1] - staticInfo.initialPosition.components[1];
+                 const coordKey = `${relX}|${relY}`;
+                 if (!this.artifact.relativeCoordToLinearAddress) {
+                     return { error: "Missing address mapping in artifact" };
+                 }
+                 const linearAddress = this.artifact.relativeCoordToLinearAddress[coordKey];
+                 if (linearAddress === undefined) {
+                     return { error: `IP ${ip[0]}|${ip[1]} not mapped to a source line` };
+                 }
+                 if (!this.artifact.sourceMap) {
+                     return { error: "Missing source map in artifact" };
+                 }
+                 let sourceInfo = this.artifact.sourceMap.find(sm => sm.linearAddress === linearAddress);
+                 if (!sourceInfo) {
+                     return { error: `Address ${linearAddress} has no source info` };
+                 }
+                 if (sourceInfo.sourceInfo) {
+                    sourceInfo = sourceInfo.sourceInfo;
+                 }
+                 return {
+                     fileName: sourceInfo.fileName,
+                     lineNumber: sourceInfo.lineNumber
+                 };
+            }
             return { error: "Invalid IP or Start Position data" };
         }
 
@@ -306,7 +387,8 @@ class SidebarSourceView {
             return { error: "Missing source map in artifact" };
         }
 
-        let sourceInfo = this.artifact.sourceMap[linearAddress];
+        let sourceInfo = this.artifact.sourceMap.find(sm => sm.linearAddress === linearAddress);
+        
         if (!sourceInfo) {
             return { error: `Address ${linearAddress} has no source info` };
         }
@@ -323,9 +405,12 @@ class SidebarSourceView {
     }
     
     /**
-     * Finds the longest common prefix (up to last slash) of all file paths.
-     * @param {string[]} paths - Array of file paths
-     * @return {string} The longest common prefix ending with '/' or empty string
+     * Finds the longest common prefix (up to the last slash) of an array of file paths.
+     * Used to shorten file paths displayed in the dropdown.
+     *
+     * @param {string[]} paths - An array of file paths.
+     * @returns {string} The longest common prefix ending with a '/', or an empty string.
+     * @private
      */
     findCommonPrefix(paths) {
         if (!paths || paths.length === 0) return '';
@@ -351,6 +436,12 @@ class SidebarSourceView {
         return lastSlash >= 0 ? prefix.substring(0, lastSlash + 1) : '';
     }
 
+    /**
+     * Escapes HTML special characters in a string to prevent XSS.
+     * @param {string} text The text to escape.
+     * @returns {string} The escaped string.
+     * @private
+     */
     escapeHtml(text) {
         if (!text) return '';
         return text.replace(/&/g, "&amp;")

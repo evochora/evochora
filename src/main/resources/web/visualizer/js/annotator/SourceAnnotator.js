@@ -1,13 +1,34 @@
 /**
  * Engine for token-level annotation in the source code view.
+ * This class orchestrates the annotation process by managing a list of specialized
+ * handlers. For a given line of code, it identifies tokens and delegates the
+ * analysis to the appropriate handler.
+ *
+ * @class SourceAnnotator
  */
 class SourceAnnotator {
+    /**
+     * Initializes the SourceAnnotator and its list of token handlers.
+     */
     constructor() {
         this.handlers = [
-            new RegisterTokenHandler()
+            new RegisterTokenHandler(),
+            new LabelReferenceTokenHandler()
         ];
     }
 
+    /**
+     * Generates annotations for a specific line of source code.
+     * It parses the line's token information from the artifact, finds the right
+     * handler for each token, and collects the results.
+     *
+     * @param {object} organismState The current dynamic state of the organism.
+     * @param {object} artifact The static program artifact.
+     * @param {string} fileName The name of the source file being annotated.
+     * @param {string} sourceLine The raw text of the source code line.
+     * @param {number} lineNumber The 1-based line number.
+     * @returns {Array<object>} A list of annotation spans ready for rendering.
+     */
     annotate(organismState, artifact, fileName, sourceLine, lineNumber) {
         if (!artifact || !organismState || !fileName) return [];
 
@@ -77,15 +98,19 @@ class SourceAnnotator {
                     if (this.checkTokenAt(sourceLine, tokenText, relColumn)) {
                         const handler = this.findHandler(tokenText, tokenInfo);
                         if (handler) {
-                            const result = handler.analyze(tokenText, tokenInfo, organismState, artifact);
-                            if (result) {
-                                annotations.push({
-                                    tokenText: tokenText,
-                                    annotationText: result.annotationText,
-                                    kind: result.kind,
-                                    column: absColumn, // absolute for sorting
-                                    relativeColumn: relColumn // relative for slicing
-                                });
+                            try {
+                                const result = handler.analyze(tokenText, tokenInfo, organismState, artifact);
+                                if (result) {
+                                    annotations.push({
+                                        tokenText: tokenText,
+                                        annotationText: result.annotationText,
+                                        kind: result.kind,
+                                        column: absColumn, // absolute for sorting
+                                        relativeColumn: relColumn // relative for slicing
+                                    });
+                                }
+                            } catch (error) {
+                                console.error(`Annotation Error for token '${tokenText}' (handler: ${handler.constructor.name}):`, error.message);
                             }
                         }
                     } else {
@@ -100,6 +125,15 @@ class SourceAnnotator {
         return this.convertToInlineSpans(annotations, lineNumber);
     }
     
+    /**
+     * Retrieves all source code lines for a given file from the artifact.
+     * Handles different possible structures for the source data.
+     *
+     * @param {object} artifact The program artifact.
+     * @param {string} fileName The name of the file to retrieve lines from.
+     * @returns {string[]|null} An array of source code lines or null if not found.
+     * @private
+     */
     getAllLines(artifact, fileName) {
         if (!artifact.sources || !artifact.sources[fileName]) return null;
         const source = artifact.sources[fileName];
@@ -108,16 +142,43 @@ class SourceAnnotator {
         return null;
     }
     
+    /**
+     * Verifies that a token's text matches the source line at a given column.
+     * This is a sanity check to ensure token data from the artifact aligns with the source.
+     *
+     * @param {string} line The full source code line.
+     * @param {string} token The token text to check.
+     * @param {number} index The 0-based column index where the token should start.
+     * @returns {boolean} True if the token is found at the specified position.
+     * @private
+     */
     checkTokenAt(line, token, index) {
         if (index < 0 || index >= line.length) return false;
         // Check if line starts with token at index
         return line.substring(index, index + token.length) === token;
     }
 
+    /**
+     * Finds the first registered handler that can process the given token.
+     *
+     * @param {string} tokenText The text of the token.
+     * @param {object} tokenInfo The metadata associated with the token.
+     * @returns {object|null} The handler instance or null if no handler is found.
+     * @private
+     */
     findHandler(tokenText, tokenInfo) {
         return this.handlers.find(h => h.canHandle(tokenText, tokenInfo));
     }
 
+    /**
+     * Converts a list of raw annotation results into a final list of spans,
+     * calculating occurrence counts for identical tokens on the same line.
+     *
+     * @param {Array<object>} rawAnnotations The list of results from the handlers.
+     * @param {number} lineNumber The current line number.
+     * @returns {Array<object>} A final list of annotation spans.
+     * @private
+     */
     convertToInlineSpans(rawAnnotations, lineNumber) {
         if (!rawAnnotations.length) return [];
 

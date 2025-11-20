@@ -1,7 +1,16 @@
 /**
- * Main application controller coordinating all components.
+ * The main application controller. It initializes all components, manages the application state,
+ * and orchestrates the data flow between the API clients and the UI views.
+ *
+ * This class is the central hub of the visualizer.
+ *
+ * @class AppController
  */
 class AppController {
+    /**
+     * Initializes the AppController, creating instances of all APIs, views, and
+     * setting up the initial state and event listeners.
+     */
     constructor() {
         // APIs
         this.simulationApi = new SimulationApi();
@@ -71,8 +80,9 @@ class AppController {
     }
     
     /**
-     * Sets up event listener for organism selector dropdown.
-     * Opens sidebar and loads organism details when an organism is selected.
+     * Sets up the event listener for the organism selector dropdown.
+     * Handles loading organism details and showing/hiding the sidebar when the selection changes.
+     * @private
      */
     setupOrganismSelector() {
         const selector = document.getElementById('organism-selector');
@@ -116,10 +126,12 @@ class AppController {
     }
     
     /**
-     * Loads detailed organism information and displays it in the sidebar.
-     * 
-     * @param {number} organismId - Organism ID to load
-     * @param {boolean} isForwardStep - Whether this is a forward step (x -> x+1)
+     * Fetches and displays detailed information for a specific organism in the sidebar.
+     * This includes static info, runtime state, instructions, and source code with annotations.
+     *
+     * @param {number} organismId - The ID of the organism to load.
+     * @param {boolean} [isForwardStep=false] - True if navigating forward, used for change highlighting.
+     * @returns {Promise<void>} A promise that resolves when the details are loaded and displayed.
      */
     async loadOrganismDetails(organismId, isForwardStep = false) {
         try {
@@ -189,7 +201,10 @@ class AppController {
     }
     
     /**
-     * Initializes the application by loading metadata and tick range.
+     * Initializes the entire application.
+     * It initializes the renderer, fetches initial metadata (like world shape and program artifacts),
+     * gets the available tick range, and loads the data for the initial tick.
+     * @returns {Promise<void>} A promise that resolves when the application is fully initialized.
      */
     async init() {
         try {
@@ -257,8 +272,11 @@ class AppController {
     }
     
     /**
-     * Updates maxTick from server.
-     * Called automatically on navigation, can also be called manually.
+     * Periodically fetches and updates the maximum tick value from the server.
+     * This method is designed to fail silently to avoid interrupting user navigation.
+     *
+     * @returns {Promise<void>} A promise that resolves when the update is attempted.
+     * @private
      */
     async updateMaxTick() {
         try {
@@ -279,9 +297,11 @@ class AppController {
     }
     
     /**
-     * Navigates to a specific tick and loads environment data.
-     * 
-     * @param {number} tick - Target tick number
+     * Navigates the application to a specific tick.
+     * This is the primary method for changing the current time point of the visualization.
+     * It updates the state, refreshes the UI, and triggers the loading of all data for the new tick.
+     *
+     * @param {number} tick - The target tick number to navigate to.
      */
     async navigateToTick(tick) {
         const target = Math.max(0, tick);
@@ -311,10 +331,14 @@ class AppController {
     }
     
     /**
-     * Loads environment data and organism summaries for the current tick and viewport.
-     * 
-     * @param {boolean} isForwardStep - Whether this is a forward step (x -> x+1)
-     * @param {number} previousTick - Previous tick number (for change detection)
+     * Loads all necessary data for the current tick and viewport.
+     * This includes both the environment cells and the organism summaries. It then
+     * triggers updates for the renderer and the organism selector.
+     *
+     * @param {boolean} [isForwardStep=false] - True if navigating forward, for change highlighting.
+     * @param {number|null} [previousTick=null] - The previous tick number, for change detection.
+     * @returns {Promise<void>} A promise that resolves when the viewport data is loaded.
+     * @private
      */
     async loadViewport(isForwardStep = false, previousTick = null) {
         try {
@@ -355,8 +379,11 @@ class AppController {
     }
 
     /**
-     * Loads only environment data for the current viewport (no new organism HTTP call).
-     * Reuses cached organism data in the renderer for IP/DP overlay re-rendering.
+     * Loads only the environment data for the current viewport, without re-fetching organisms.
+     * This is used for performance optimization when panning the camera, as it reuses the
+     * already-loaded organism data for the current tick to redraw markers.
+     * @returns {Promise<void>}
+     * @private
      */
     async loadEnvironmentForCurrentViewport() {
         try {
@@ -376,13 +403,12 @@ class AppController {
     }
 
     /**
-     * Updates the organism selector dropdown with the current tick's organisms.
-     * Preserves the selected organism if it still exists in the new tick.
-     * Shows changed values in bold for the selected element (when dropdown is closed).
-     * 
-     * @param {Array<Object>} organisms - Array of organism summaries:
-     *   [{ organismId, energy, ip: [x,y], dv, dataPointers, activeDpIndex }, ...]
-     * @param {boolean} isForwardStep - Whether this is a forward step (x -> x+1)
+     * Updates the organism selector dropdown with the list of organisms for the current tick.
+     * It preserves the user's selection if the organism still exists and updates the summary counts.
+     *
+     * @param {Array<object>} organisms - An array of organism summary objects for the current tick.
+     * @param {boolean} [isForwardStep=false] - True if navigating forward.
+     * @private
      */
     updateOrganismSelector(organisms, isForwardStep = false) {
         const selector = document.getElementById('organism-selector');
@@ -491,12 +517,13 @@ class AppController {
     }
     
     /**
-     * Gets the color for an organism based on its ID and energy state.
+     * Gets a deterministic color for an organism based on its ID and energy state.
      * Returns a hex color string suitable for CSS.
-     * 
-     * @param {number} organismId - Organism ID
-     * @param {number} energy - Current energy level
-     * @returns {string} Hex color string (e.g., "#32cd32")
+     *
+     * @param {number} organismId - The ID of the organism.
+     * @param {number} energy - The current energy level of the organism.
+     * @returns {string} A hex color string (e.g., "#32cd32").
+     * @private
      */
     getOrganismColor(organismId, energy) {
         // Same palette as EnvironmentGrid._getOrganismColor
@@ -519,10 +546,9 @@ class AppController {
     }
 
     /**
-     * Loads initial state (runId, tick) from the browser URL, if provided.
-     * Supported query parameters:
-     *  - runId: simulation run ID
-     *  - tick: initial tick number
+     * Loads the initial state (runId, tick) from the URL query parameters on page load.
+     * This allows for direct linking to a specific point in a specific simulation.
+     * @private
      */
     loadFromUrl() {
         try {

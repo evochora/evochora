@@ -1,10 +1,13 @@
 'use strict';
 
 /**
- * Main entry point for the visualizer application.
+ * @file Main entry point for the visualizer application.
+ * This script sets up global utilities like the error banner and then fires a 'uiReady'
+ * event to signal that the main application controller can be initialized.
+ * It must be the last script loaded to ensure the DOM is fully parsed.
  */
 document.addEventListener('DOMContentLoaded', () => {
-    // Setup error banner logic
+    // Setup global error banner logic
     const errorBanner = document.getElementById('error-banner');
     const errorMessageSpan = document.getElementById('error-message');
     const closeButton = document.getElementById('close-error-banner');
@@ -26,7 +29,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     closeButton.addEventListener('click', window.hideError);
 
-    // Fire a custom event to signal that basic UI functions are ready
+    /**
+     * A custom event fired when the DOM is ready and global helpers (like showError)
+     * have been initialized. The AppController listens for this event to begin its
+     * own initialization sequence.
+     * @event uiReady
+     */
     document.dispatchEvent(new Event('uiReady'));
 });
 
