@@ -77,29 +77,36 @@ public class Compiler implements ICompiler {
         }
         // org.evochora.compiler.diagnostics.CompilerLogger.info("Compiler: " + programName);
 
-        // Phase 1: Lexical Analysis
-        String fullSource = String.join("\n", sourceLines);
-        Lexer initialLexer = new Lexer(fullSource, diagnostics, programName);
-        List<Token> initialTokens = initialLexer.scanTokens();
-
+        // Calculate absolute program name first (needed for Lexer and sources map)
         Path basePath;
+        Path absoluteProgramName;
         try {
             Path pn = Path.of(programName);
             if (pn.isAbsolute()) {
+                absoluteProgramName = pn;
                 basePath = pn.getParent() != null ? pn.getParent() : pn.toAbsolutePath();
             } else {
                 Path abs = pn.toAbsolutePath();
+                absoluteProgramName = abs;
                 basePath = abs.getParent() != null ? abs.getParent() : Path.of("").toAbsolutePath();
             }
         } catch (Exception ignored) {
+            absoluteProgramName = Path.of(programName).toAbsolutePath();
             basePath = Path.of("").toAbsolutePath();
         }
+        
+        // Phase 1: Lexical Analysis
+        String fullSource = String.join("\n", sourceLines) + "\n";
+        Lexer initialLexer = new Lexer(fullSource, diagnostics, absoluteProgramName.toString().replace('\\', '/'));
+        List<Token> initialTokens = initialLexer.scanTokens();
+        
         // Phase 2: Preprocessing (includes, macros)
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, basePath);
         List<Token> processedTokens = preProcessor.expand();
 
         Map<String, List<String>> sources = new HashMap<>();
-        sources.put(programName, sourceLines);
+        // Use absolute path for main file to ensure consistency with included files
+        sources.put(absoluteProgramName.toString().replace('\\', '/'), sourceLines);
         preProcessor.getIncludedFileContents().forEach((path, content) ->
                 sources.put(path, Arrays.asList(content.split("\\r?\\n"))));
 

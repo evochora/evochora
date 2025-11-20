@@ -17,8 +17,9 @@ class AppController {
             selectedOrganismId: null, // Track selected organism across tick changes
             previousTick: null, // For change detection
             previousOrganisms: null, // For change detection in dropdown
-            previousOrganismDetails: null // For change detection in sidebar
+            previousOrganismDetails: null, // For change detection in sidebar
         };
+        this.programArtifactCache = new Map(); // Cache for program artifacts
         
         // Config for renderer
         const defaultConfig = {
@@ -55,6 +56,7 @@ class AppController {
         this.sidebarBasicInfo = new SidebarBasicInfoView(sidebarRoot, this.renderer, this);
         this.sidebarInstructionView = new SidebarInstructionView(sidebarRoot);
         this.sidebarStateView = new SidebarStateView(sidebarRoot);
+        this.sidebarSourceView = new SidebarSourceView(sidebarRoot);
         
         // Setup organism selector change handler
         this.setupOrganismSelector();
@@ -149,6 +151,21 @@ class AppController {
                                          : null;
                     this.sidebarStateView.update(state, isForwardStep, previousState);
                 }
+
+                // Update Source View (Clean Architecture)
+                const programId = staticInfo.programId;
+                if (programId) {
+                    // 1. Resolve Artifact (Controller responsibility)
+                    let artifact = this.programArtifactCache.get(programId) || null;
+                    
+                    // 2. Set Context (View decides if update needed)
+                    this.sidebarSourceView.setProgram(artifact);
+                    
+                    // 3. Update Dynamic State (Fast update)
+                    this.sidebarSourceView.updateExecutionState(state, staticInfo);
+                } else {
+                    this.sidebarSourceView.setProgram(null);
+                }
                 
                 // Save current details for next comparison
                 this.state.previousOrganismDetails = details;
@@ -182,12 +199,24 @@ class AppController {
             
             // Load metadata for world shape
             const metadata = await this.simulationApi.fetchMetadata(this.state.runId);
-            if (metadata && metadata.environment && metadata.environment.shape) {
-                this.state.worldShape = Array.from(metadata.environment.shape);
-                // Wait a bit before updating world shape to ensure devicePixelRatio is stable
-                // This helps with monitor-specific initialization issues
-                await new Promise(resolve => requestAnimationFrame(resolve));
-                this.renderer.updateWorldShape(this.state.worldShape);
+            if (metadata) {
+                if (metadata.environment && metadata.environment.shape) {
+                    this.state.worldShape = Array.from(metadata.environment.shape);
+                    // Wait a bit before updating world shape to ensure devicePixelRatio is stable
+                    // This helps with monitor-specific initialization issues
+                    await new Promise(resolve => requestAnimationFrame(resolve));
+                    this.renderer.updateWorldShape(this.state.worldShape);
+                }
+
+                // Cache program artifacts
+                if (Array.isArray(metadata.programs)) {
+                    for (const program of metadata.programs) {
+                        if (program && program.programId && program.sources) {
+                            this.programArtifactCache.set(program.programId, program);
+                        }
+                    }
+                    console.debug(`Cached ${this.programArtifactCache.size} program artifacts.`);
+                }
             }
             
             // Load tick range for maxTick
@@ -531,4 +560,3 @@ document.addEventListener('uiReady', () => {
         showError('Failed to initialize visualizer: ' + error.message);
     });
 });
-

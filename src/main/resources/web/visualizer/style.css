@@ -173,6 +173,7 @@ button:hover { background-color: #4a4a6a; }
 }
 .tick-input-wrapper input[type="number"] {
     -moz-appearance: textfield; /* Firefox: remove arrows */
+    appearance: textfield;
 }
 .tick-input-wrapper .tick-total-suffix {
     position: absolute;
@@ -299,14 +300,21 @@ main.container.sidebar-visible .world-container {
 
 .details {
     flex: 1;
-    min-height: 0;
+    min-height: 0; /* CRITICAL for allowing flex children to shrink and scroll */
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
+    overflow-y: hidden; /* Prevent this container from scrolling */
 }
 
 .details [data-section] {
     flex-shrink: 0;
+}
+
+.details [data-section="source"] {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Unchangeable info styles */
@@ -508,3 +516,71 @@ main.container.sidebar-visible .world-container {
     justify-content: space-between;
 }
 
+/* --- Source Code View --- */
+.source-view-container {
+    margin-top: 15px;
+    border-top: 1px solid #333;
+    padding-top: 15px;
+    display: flex; /* Enable flexbox for child elements */
+    flex-direction: column;
+    min-height: 0; /* Allow this container to shrink and take available space */
+    flex-grow: 1; /* Allow this container to grow */
+}
+
+.assembly-code-view {
+    background-color: #000;
+    border: 1px solid #333;
+    padding: 8px;
+    border-radius: 3px;
+    font-size: 0.9em;
+    line-height: 1.4;
+    overflow-y: auto; /* Make ONLY this element scrollable */
+    flex-grow: 1; /* Allow it to take up the remaining space */
+    min-height: 0; /* CRITICAL: Allow this element to shrink in flex container */
+}
+
+.source-line {
+    display: flex;
+    white-space: pre;
+    align-items: baseline;
+    line-height: 1.5;
+}
+
+.active-source-line {
+    background-color: #3c5078; /* Same blue as sidebar-toggle-btn */
+    color: #ffffff;
+    font-weight: bold;
+    width: 100%; /* Ensure background covers full width */
+}
+
+#source-status-bar {
+    /* Container for status messages */
+    flex-shrink: 0;
+}
+
+.line-number {
+    flex-shrink: 0;
+    width: 40px;
+    color: #888;
+    text-align: right;
+    padding-right: 10px;
+    user-select: none;
+}
+
+.assembly-line {
+    margin: 0;
+    padding: 0;
+    line-height: inherit;
+}
+
+.assembly-file-dropdown {
+    width: 100%;
+    background-color: #000;
+    border: 1px solid #333;
+    color: #e0e0e0;
+    padding: 8px;
+    border-radius: 3px;
+    margin-bottom: 10px;
+    font-family: 'Monospaced', 'Courier New', Courier, monospace;
+    flex-shrink: 0; /* Prevent dropdown from shrinking */
+}

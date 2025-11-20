@@ -56,7 +56,8 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
             if (Files.exists(resolvedPath)) {
                 // Filesystem path - use the resolved path
                 logicalName = resolvedPath.toString().replace('\\', '/');
-                content = Files.readString(resolvedPath);
+                // Explicitly normalize line endings to \n to ensure consistency with Lexer
+                content = String.join("\n", Files.readAllLines(resolvedPath)) + "\n";
             } else {
                 // Fallback to classpath resource resolution
                 String including = pathToken.fileName() != null ? pathToken.fileName().replace('\\', '/') : "";
@@ -83,13 +84,13 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
                                 throw new IOException("Resource not found in classpath: " + classpathCandidate + " or " + alternativeCandidate);
                             }
                             try (BufferedReader br = new BufferedReader(new InputStreamReader(altIs))) {
-                                content = br.lines().collect(Collectors.joining("\n"));
+                                content = br.lines().collect(Collectors.joining("\n")) + "\n";
                             }
                             logicalName = alternativeCandidate;
                         }
                     } else {
                         try (BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
-                            content = br.lines().collect(Collectors.joining("\n"));
+                            content = br.lines().collect(Collectors.joining("\n")) + "\n";
                         }
                         logicalName = classpathCandidate;
                     }

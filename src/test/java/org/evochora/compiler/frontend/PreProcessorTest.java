@@ -66,14 +66,16 @@ public class PreProcessorTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
 
-        // We now expect 4 tokens: PUSH_CTX, NOP, POP_CTX, and the final END_OF_FILE.
-        assertThat(expandedTokens).hasSize(4);
+        // We now expect 5 tokens: PUSH_CTX, NOP, NEWLINE, POP_CTX, and the final END_OF_FILE.
+        // The extra NEWLINE is due to the consistent normalization in IncludeDirectiveHandler which ensures files end with \n.
+        assertThat(expandedTokens).hasSize(5);
         assertThat(expandedTokens.get(0).type()).isEqualTo(TokenType.DIRECTIVE);
         assertThat(expandedTokens.get(0).text()).isEqualTo(".PUSH_CTX");
         assertThat(expandedTokens.get(1).type()).isEqualTo(TokenType.OPCODE);
         assertThat(expandedTokens.get(1).text()).isEqualTo("NOP");
-        assertThat(expandedTokens.get(2).type()).isEqualTo(TokenType.DIRECTIVE);
-        assertThat(expandedTokens.get(2).text()).isEqualTo(".POP_CTX");
-        assertThat(expandedTokens.get(3).type()).isEqualTo(TokenType.END_OF_FILE);
+        assertThat(expandedTokens.get(2).type()).isEqualTo(TokenType.NEWLINE);
+        assertThat(expandedTokens.get(3).type()).isEqualTo(TokenType.DIRECTIVE);
+        assertThat(expandedTokens.get(3).text()).isEqualTo(".POP_CTX");
+        assertThat(expandedTokens.get(4).type()).isEqualTo(TokenType.END_OF_FILE);
     }
 }
