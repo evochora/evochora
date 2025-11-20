@@ -4,8 +4,7 @@
 class SourceAnnotator {
     constructor() {
         this.handlers = [
-            new RegisterTokenHandler(),
-            new ParameterTokenHandler()
+            new RegisterTokenHandler()
         ];
     }
 
@@ -162,23 +161,25 @@ class RegisterTokenHandler {
         if (!token.startsWith('%')) return null;
 
         const canonicalReg = this.resolveToCanonicalRegister(token, artifact);
+        const lookupName = canonicalReg || token;
         
+        const value = this.getRegisterValue(lookupName, state);
+
+        if (value === null || value === undefined) return null;
+
+        const formattedValue = this.formatValue(value);
+
         if (canonicalReg) {
-            const value = this.getRegisterValue(canonicalReg, state);
             return {
-                annotationText: `=${this.formatValue(value)}`,
+                annotationText: `[${canonicalReg}=${formattedValue}]`,
                 kind: 'reg'
             };
         } else {
-            const value = this.getRegisterValue(token, state);
-            if (value !== null && value !== undefined) {
-                return {
-                    annotationText: `=${this.formatValue(value)}`,
-                    kind: 'reg'
-                };
-            }
+            return {
+                annotationText: `[=${formattedValue}]`,
+                kind: 'reg'
+            };
         }
-        return null;
     }
 
     resolveToCanonicalRegister(token, artifact) {
@@ -220,120 +221,30 @@ class RegisterTokenHandler {
         
         if (typeof value === 'object') {
             if (value.kind === 'MOLECULE') {
-                 const typeName = value.typeName || '';
-                 const typeAbbr = typeName.length > 0 ? typeName.charAt(0) + ':' : '';
+                 // Use 'type' property as seen in SidebarStateView.js
+                 const typeName = value.type || '';
+                 let typeAbbr = '';
+                 
+                 const upper = typeName.toUpperCase();
+                 if (upper.startsWith('DATA')) typeAbbr = 'D:';
+                 else if (upper.startsWith('CODE')) typeAbbr = 'C:';
+                 else if (upper.startsWith('STRUCTURE')) typeAbbr = 'S:';
+                 else if (upper.startsWith('ENERGY')) typeAbbr = 'E:';
+                 else typeAbbr = (typeName.length > 0 ? typeName.charAt(0) + ':' : '');
+                 
                  return `${typeAbbr}${value.value}`;
             }
-            if (value.kind === 'VECTOR') {
-                return value.vector.join('|');
-            }
-        }
-        
-        if (typeof value === 'number') return value.toString();
-        if (Array.isArray(value)) return value.join('|');
-        return value.toString();
-    }
-}
-
-class ParameterTokenHandler {
-    canHandle(token, tokenInfo) {
-        return tokenInfo.tokenType === 'VARIABLE' && 
-               tokenInfo.scope && 
-               tokenInfo.scope.toLowerCase() !== 'global';
-    }
-
-    analyze(token, tokenInfo, state, artifact) {
-        const procName = tokenInfo.scope; 
-        if (!procName) return null;
-
-        const paramNames = artifact.procNameToParamNames ? artifact.procNameToParamNames[procName.toUpperCase()] : null;
-        if (!paramNames) return null;
-
-        let paramIndex = -1;
-        for (let i = 0; i < paramNames.length; i++) {
-            if (paramNames[i].toUpperCase() === token.toUpperCase()) {
-                paramIndex = i;
-                break;
-            }
-        }
-
-        if (paramIndex === -1) return null;
-
-        if (state.callStack && state.callStack.length > 0) {
-            const finalRegId = this.resolveBindingChain(state.callStack, paramIndex);
-            if (finalRegId >= 0) {
-                const val = this.getRegisterValueById(finalRegId, state);
-                if (val !== null) {
-                     const formatted = this.formatValue(val);
-                     return {
-                         annotationText: `=${formatted}`,
-                         kind: 'param'
-                     };
-                }
-            }
-        }
-        return null;
-    }
-
-    resolveBindingChain(callStack, initialFprIndex) {
-        let currentRegId = INSTRUCTION_CONSTANTS.FPR_BASE + initialFprIndex; 
-        
-        for (let i = callStack.length - 1; i >= 0; i--) {
-            const frame = callStack[i];
-            const bindings = frame.fprBindings;
             
-            const key = currentRegId.toString();
-            if (bindings && bindings[key] !== undefined) {
-                const mappedId = bindings[key];
-                currentRegId = mappedId;
-                if (currentRegId < INSTRUCTION_CONSTANTS.FPR_BASE) { 
-                    return currentRegId;
-                }
-            } else {
-                break;
-            }
-        }
-        return currentRegId;
-    }
-    
-    idToCanonicalName(id) {
-        if (id >= INSTRUCTION_CONSTANTS.FPR_BASE) return `%FPR${id - INSTRUCTION_CONSTANTS.FPR_BASE}`;
-        if (id >= INSTRUCTION_CONSTANTS.PR_BASE) return `%PR${id - INSTRUCTION_CONSTANTS.PR_BASE}`;
-        if (id >= 0) return `%DR${id}`;
-        return "INVALID";
-    }
-
-    getRegisterValueById(id, state) {
-        if (id >= INSTRUCTION_CONSTANTS.FPR_BASE) {
-            const idx = id - INSTRUCTION_CONSTANTS.FPR_BASE;
-            return (state.formalParamRegisters && idx < state.formalParamRegisters.length) ? state.formalParamRegisters[idx] : null;
-        }
-        if (id >= INSTRUCTION_CONSTANTS.PR_BASE) {
-            const idx = id - INSTRUCTION_CONSTANTS.PR_BASE;
-            return (state.procedureRegisters && idx < state.procedureRegisters.length) ? state.procedureRegisters[idx] : null;
-        }
-        if (id >= 0) {
-            return (state.dataRegisters && id < state.dataRegisters.length) ? state.dataRegisters[id] : null;
-        }
-        return null;
-    }
-    
-    formatValue(value) {
-        if (value === null || value === undefined) return "null";
-        
-        if (typeof value === 'object') {
-            if (value.kind === 'MOLECULE') {
-                 const typeName = value.typeName || '';
-                 const typeAbbr = typeName.length > 0 ? typeName.charAt(0) + ':' : '';
-                 return `${typeAbbr}${value.value}`;
-            }
             if (value.kind === 'VECTOR') {
-                return value.vector.join('|');
+                if (value.vector) return value.vector.join('|');
             }
+            
+            // Fallbacks
+            if (value.scalar !== undefined) return value.scalar.toString();
+            if (Array.isArray(value)) return value.join('|');
+            if (value.x !== undefined && value.y !== undefined) return `${value.x}|${value.y}`;
         }
         
-        if (typeof value === 'number') return value.toString();
-        if (Array.isArray(value)) return value.join('|');
         return value.toString();
     }
 }
