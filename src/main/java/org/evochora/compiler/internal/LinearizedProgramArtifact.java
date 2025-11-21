@@ -51,7 +51,7 @@ import java.util.Map;
  *   <li><strong>linearAddressToCoord</strong>: Map<Integer, int[]> (unchanged)</li>
  *   <li><strong>labelAddressToName</strong>: Map<Integer, String> (unchanged)</li>
  *   <li><strong>registerAliasMap</strong>: Map<String, Integer> (unchanged)</li>
- *   <li><strong>procNameToParamNames</strong>: Map<String, List<String>> (unchanged)</li>
+ *   <li><strong>procNameToParamNames</strong>: Map<String, List<ParamInfo>> (unchanged)</li>
  *   <li><strong>tokenMap</strong>: Map<SerializableSourceInfo, TokenInfo> (unchanged)</li>
  *   <li><strong>tokenLookup</strong>: Map<String, Map<Integer, Map<Integer, List<TokenInfo>>> (unchanged)</li>
  * </ul>
@@ -79,7 +79,7 @@ public record LinearizedProgramArtifact(
         Map<Integer, int[]> linearAddressToCoord,
         Map<Integer, String> labelAddressToName,
         Map<String, Integer> registerAliasMap,
-        Map<String, List<String>> procNameToParamNames,
+        Map<String, List<org.evochora.compiler.api.ParamInfo>> procNameToParamNames,
         Map<SerializableSourceInfo, TokenInfo> tokenMap,
         Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup,
         EnvironmentProperties envProps

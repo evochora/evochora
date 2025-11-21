@@ -535,8 +535,20 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
 
         builder.putAllRegisterAliasMap(artifact.registerAliasMap());
 
-        artifact.procNameToParamNames().forEach((procName, params) ->
-                builder.putProcNameToParamNames(procName, ParameterNames.newBuilder().addAllNames(params).build()));
+        artifact.procNameToParamNames().forEach((procName, params) -> {
+            org.evochora.datapipeline.api.contracts.ParameterNames.Builder paramsBuilder = 
+                    org.evochora.datapipeline.api.contracts.ParameterNames.newBuilder();
+            for (org.evochora.compiler.api.ParamInfo param : params) {
+                // Always explicitly set type, even for default values (0 = PARAM_TYPE_REF),
+                // to ensure the field is serialized in JSON output
+                org.evochora.datapipeline.api.contracts.ParamInfo.Builder paramBuilder = 
+                        org.evochora.datapipeline.api.contracts.ParamInfo.newBuilder()
+                        .setName(param.name())
+                        .setType(param.type().toProtobuf());
+                paramsBuilder.addParams(paramBuilder.build());
+            }
+            builder.putProcNameToParamNames(procName, paramsBuilder.build());
+        });
 
         artifact.tokenMap().forEach((sourceInfo, tokenInfo) ->
                 builder.addTokenMap(TokenMapEntry.newBuilder()

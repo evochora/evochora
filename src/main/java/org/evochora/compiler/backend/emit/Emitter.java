@@ -37,7 +37,7 @@ public class Emitter {
      * @param linkingContext The context from the linking phase, containing call site bindings.
      * @param isa The instruction set architecture for opcode and register resolution.
      * @param registerAliasMap A map of register aliases to their physical indices.
-     * @param procNameToParamNames A map of procedure names to their parameter names.
+     * @param procNameToParamNames A map of procedure names to their parameter information (name and type).
      * @param sources A map of source file names to their content.
      * @return The final, compiled {@link ProgramArtifact}.
      * @throws CompilationException if an error occurs during emission.
@@ -47,7 +47,7 @@ public class Emitter {
                                 LinkingContext linkingContext,
                                 IInstructionSet isa,
                                 Map<String, Integer> registerAliasMap,
-                                Map<String, List<String>> procNameToParamNames,
+                                Map<String, List<org.evochora.compiler.api.ParamInfo>> procNameToParamNames,
                                 Map<String, List<String>> sources,
                                 Map<SourceInfo, TokenInfo> tokenMap,
                                 Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup) throws CompilationException {

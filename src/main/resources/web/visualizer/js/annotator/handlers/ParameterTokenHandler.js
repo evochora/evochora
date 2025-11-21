@@ -51,18 +51,20 @@ class ParameterTokenHandler {
             throw new Error(`Cannot annotate parameter "${tokenText}": token scope is not a procedure name (scope: "${procName}").`);
         }
 
-        // Get the procedure's parameter names
-        // Structure: procNameToParamNames["PROC1"] = { names: ["PARAM1", "PARAM2"] }
+        // Get the procedure's parameter information
+        // Structure: procNameToParamNames["PROC1"] = { params: [{name: "PARAM1", type: "REF"}, {name: "PARAM2", type: "VAL"}] }
         const paramNamesEntry = artifact.procNameToParamNames[procName.toUpperCase()];
         if (!paramNamesEntry || typeof paramNamesEntry !== 'object') {
             throw new Error(`Cannot annotate parameter "${tokenText}": procedure "${procName}" not found in procNameToParamNames.`);
         }
 
-        if (!paramNamesEntry.names || !Array.isArray(paramNamesEntry.names)) {
-            throw new Error(`Cannot annotate parameter "${tokenText}": procedure "${procName}" has no names array in parameter entry.`);
+        if (!paramNamesEntry.params || !Array.isArray(paramNamesEntry.params)) {
+            throw new Error(`Cannot annotate parameter "${tokenText}": procedure "${procName}" has no params array in parameter entry.`);
         }
 
-        const paramNames = paramNamesEntry.names;
+        // Extract parameter names from ParamInfo array
+        const params = paramNamesEntry.params;
+        const paramNames = params.map(p => p.name);
 
         // Find the parameter index
         let paramIndex = -1;
@@ -77,9 +79,9 @@ class ParameterTokenHandler {
             throw new Error(`Cannot annotate parameter "${tokenText}": not found in procedure "${procName}" parameter list.`);
         }
 
-        // Resolve the binding chain through the call stack
+        // Resolve the binding chain through the call stack using artifact bindings
         // resolveBindingChain now throws Error directly if invalid input or empty call stack
-        const finalRegId = AnnotationUtils.resolveBindingChain(paramIndex, organismState.callStack);
+        const finalRegId = AnnotationUtils.resolveBindingChain(paramIndex, organismState.callStack, artifact, organismState);
 
         // Get the register value
         // getRegisterValueById now throws Error directly if register not found or invalid input

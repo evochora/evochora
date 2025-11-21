@@ -22,7 +22,7 @@ import java.util.Map;
  * @param linearAddressToCoord A map from linear address to relative coordinates.
  * @param labelAddressToName A map from linear address of a label to its name.
  * @param registerAliasMap A map from register alias names (e.g., "%MY_REG") to their physical register index.
- * @param procNameToParamNames A map from procedure names to a list of their parameter names.
+ * @param procNameToParamNames A map from procedure names to a list of their parameter information (name and type).
  * @param tokenMap A map from SourceInfo to TokenInfo for deterministic token classification.
  * @param tokenLookup A map from fileName to lineNumber to columnNumber to List<TokenInfo> for efficient file-line-column-based lookup.
  */
@@ -37,7 +37,7 @@ public record ProgramArtifact(
         Map<Integer, int[]> linearAddressToCoord,
         Map<Integer, String> labelAddressToName,
         Map<String, Integer> registerAliasMap,
-        Map<String, List<String>> procNameToParamNames,
+        Map<String, List<ParamInfo>> procNameToParamNames,
         Map<SourceInfo, TokenInfo> tokenMap,
         Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup
 ) {
@@ -51,7 +51,9 @@ public record ProgramArtifact(
         linearAddressToCoord = Collections.unmodifiableMap(linearAddressToCoord);
         labelAddressToName = Collections.unmodifiableMap(labelAddressToName);
         registerAliasMap = Collections.unmodifiableMap(registerAliasMap);
-        procNameToParamNames = procNameToParamNames != null ? Collections.unmodifiableMap(procNameToParamNames) : Collections.emptyMap();
+        procNameToParamNames = procNameToParamNames != null 
+                ? Collections.unmodifiableMap(procNameToParamNames) 
+                : Collections.emptyMap();
         tokenMap = tokenMap != null ? Collections.unmodifiableMap(tokenMap) : Collections.emptyMap();
         tokenLookup = tokenLookup != null ? Collections.unmodifiableMap(tokenLookup) : Collections.emptyMap();
     }

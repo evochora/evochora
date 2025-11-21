@@ -120,32 +120,32 @@ public class Compiler implements ICompiler {
 
         // parser.getGlobalRegisterAliases() is used later when extracting aliases; no local copy needed here
 
-        Map<String, List<String>> procNameToParamNames = new HashMap<>();
+        Map<String, List<org.evochora.compiler.api.ParamInfo>> procNameToParamNames = new HashMap<>();
         parser.getProcedureTable().forEach((name, procNode) -> {
-            List<String> paramNames = new ArrayList<>();
+            List<org.evochora.compiler.api.ParamInfo> params = new ArrayList<>();
             
             // Add REF parameters first (they come first in the procedure definition)
             if (procNode.refParameters() != null) {
-                paramNames.addAll(procNode.refParameters().stream()
-                        .map(Token::text)
+                params.addAll(procNode.refParameters().stream()
+                        .map(token -> new org.evochora.compiler.api.ParamInfo(token.text(), org.evochora.compiler.api.ParamType.REF))
                         .collect(Collectors.toList()));
             }
             
             // Add VAL parameters second
             if (procNode.valParameters() != null) {
-                paramNames.addAll(procNode.valParameters().stream()
-                        .map(Token::text)
+                params.addAll(procNode.valParameters().stream()
+                        .map(token -> new org.evochora.compiler.api.ParamInfo(token.text(), org.evochora.compiler.api.ParamType.VAL))
                         .collect(Collectors.toList()));
             }
             
             // Add old WITH syntax parameters last (for backward compatibility)
             if (procNode.parameters() != null) {
-                paramNames.addAll(procNode.parameters().stream()
-                        .map(Token::text)
+                params.addAll(procNode.parameters().stream()
+                        .map(token -> new org.evochora.compiler.api.ParamInfo(token.text(), org.evochora.compiler.api.ParamType.WITH))
                         .collect(Collectors.toList()));
             }
             
-            procNameToParamNames.put(name.toUpperCase(), paramNames);
+            procNameToParamNames.put(name.toUpperCase(), params);
         });
 
         if (diagnostics.hasErrors()) {

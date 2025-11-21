@@ -296,10 +296,25 @@ message LabelMapping {
   string label_name = 2;
 }
 
+// Enumeration for parameter types (REF, VAL, or legacy WITH).
+enum ParamType {
+  PARAM_TYPE_REF = 0;   // Call-by-reference parameter
+  PARAM_TYPE_VAL = 1;   // Call-by-value parameter
+  PARAM_TYPE_WITH = 2;  // Legacy WITH syntax parameter
+}
+
+// Represents a single procedure parameter with its name and type.
+message ParamInfo {
+  // Parameter name (e.g., "PROC1REG1")
+  string name = 1;
+  // Parameter type (REF, VAL, or WITH)
+  ParamType type = 2;
+}
+
 // Container for procedure parameter names.
 message ParameterNames {
-  // Ordered list of parameter names
-  repeated string names = 1;
+  // Ordered list of parameter information (name + type)
+  repeated ParamInfo params = 1;
 }
 
 // Maps a source location to token classification.
