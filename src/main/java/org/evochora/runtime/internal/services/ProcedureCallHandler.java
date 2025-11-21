@@ -86,7 +86,7 @@ public class ProcedureCallHandler {
             }
         }
 
-        Organism.ProcFrame frame = new Organism.ProcFrame(procName, returnIp, prsSnapshot, fprsSnapshot, fprBindings);
+        Organism.ProcFrame frame = new Organism.ProcFrame(procName, returnIp, ipBeforeFetch, prsSnapshot, fprsSnapshot, fprBindings);
         organism.getCallStack().push(frame);
 
         if (bindings != null) {

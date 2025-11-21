@@ -192,22 +192,16 @@ class SidebarInstructionView {
      * @returns {string} The formatted register name (e.g., "%DR0").
      * @private
      */
+    /**
+     * Gets the register name from its ID and optional type using the central utility.
+     * 
+     * @param {number} registerId - The numeric ID of the register.
+     * @param {string} registerType - The explicit register type ('FPR', 'PR', 'DR', 'LR').
+     * @returns {string} The formatted register name.
+     * @private
+     */
     getRegisterNameFromType(registerId, registerType) {
-        if (registerId === null || registerId === undefined) {
-            return '?';
-        }
-        
-        switch (registerType) {
-            case 'FPR':
-                return `%FPR${registerId - 2000}`;
-            case 'PR':
-                return `%PR${registerId - 1000}`;
-            case 'LR':
-                return `%LR${registerId}`;
-            case 'DR':
-            default:
-                return `%DR${registerId}`;
-        }
+        return AnnotationUtils.formatRegisterName(registerId, registerType);
     }
     
     /**
@@ -225,14 +219,9 @@ class SidebarInstructionView {
             return '?';
         }
         
-        // FPR base: 2000
-        if (registerId >= 2000) {
-            return `%FPR${registerId - 2000}`;
-        }
-        
-        // PR base: 1000
-        if (registerId >= 1000) {
-            return `%PR${registerId - 1000}`;
+        // For registerId >= 1000, use central utility (can distinguish FPR/PR/DR)
+        if (registerId >= INSTRUCTION_CONSTANTS.PR_BASE) {
+            return AnnotationUtils.formatRegisterName(registerId);
         }
         
         // For registerId < 1000, we need to distinguish between LR and DR
@@ -253,8 +242,8 @@ class SidebarInstructionView {
             return `%DR${registerId}`;
         }
         
-        // For registerId >= 4 and < 1000, it's always DR
-        return `%DR${registerId}`;
+        // For registerId >= 4 and < PR_BASE, it's always DR - use central utility
+        return AnnotationUtils.formatRegisterName(registerId);
     }
 
     /**

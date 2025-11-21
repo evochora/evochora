@@ -292,6 +292,13 @@ message ProcFrame {
   // Source: ProcFrame.getFprBindings()
   // Key: FPR index, Value: actual parameter value
   map<int32, int32> fpr_bindings = 5;
+
+  // Absolute address of the CALL instruction that created this frame
+  // Source: ProcFrame.getAbsoluteCallIp()
+  // Stored as absolute coordinates, not relative to program
+  // Used for resolving parameter bindings from artifact at debug time
+  // This allows the frontend to look up callSiteBindings using the CALL instruction address
+  Vector absolute_call_ip = 6;
 }
 
 // Represents a register value that can be either scalar or vector.

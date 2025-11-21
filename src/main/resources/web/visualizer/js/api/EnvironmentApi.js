@@ -8,7 +8,7 @@ class EnvironmentApi {
     /**
      * Fetches environment data (cell states) for a specific tick and a given rectangular region.
      * Supports cancellation via an AbortSignal.
-     *
+     * 
      * @param {number} tick - The tick number to fetch data for.
      * @param {{x1: number, x2: number, y1: number, y2: number}} region - The viewport region to fetch.
      * @param {object} [options={}] - Optional parameters for the request.

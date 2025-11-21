@@ -58,6 +58,47 @@ class AnnotationUtils {
     }
 
     /**
+     * Formats a register ID to its canonical display name (e.g., 2000 -> "%FPR0", 1005 -> "%PR5", 3 -> "%DR3").
+     * This is a central utility for converting register IDs to their display format.
+     * 
+     * When an explicit registerType is provided, it takes precedence and can distinguish LR from DR.
+     * Without registerType, the method uses ID-based heuristics (FPR >= 2000, PR >= 1000, DR < 1000).
+     *
+     * @param {number} registerId - The numeric register ID.
+     * @param {string} [registerType] - Optional explicit register type ('FPR', 'PR', 'DR', 'LR'). If provided, takes precedence over ID-based heuristics.
+     * @returns {string} The canonical register name (e.g., "%FPR0", "%PR5", "%DR3", "%LR2").
+     */
+    static formatRegisterName(registerId, registerType = null) {
+        if (registerId === null || registerId === undefined) {
+            return '?';
+        }
+        
+        // If explicit type is provided, use it (needed for LR which can't be distinguished from DR by ID alone)
+        if (registerType) {
+            switch (registerType.toUpperCase()) {
+                case 'FPR':
+                    return `%FPR${registerId - INSTRUCTION_CONSTANTS.FPR_BASE}`;
+                case 'PR':
+                    return `%PR${registerId - INSTRUCTION_CONSTANTS.PR_BASE}`;
+                case 'LR':
+                    return `%LR${registerId}`;
+                case 'DR':
+                default:
+                    return `%DR${registerId}`;
+            }
+        }
+        
+        // ID-based heuristics (can't distinguish LR from DR)
+        if (registerId >= INSTRUCTION_CONSTANTS.FPR_BASE) {
+            return `%FPR${registerId - INSTRUCTION_CONSTANTS.FPR_BASE}`;
+        }
+        if (registerId >= INSTRUCTION_CONSTANTS.PR_BASE) {
+            return `%PR${registerId - INSTRUCTION_CONSTANTS.PR_BASE}`;
+        }
+        return `%DR${registerId}`;
+    }
+
+    /**
      * Resolves a label or procedure name to its world coordinates by searching the program artifact.
      *
      * @param {string} name - The name of the label or procedure to resolve.

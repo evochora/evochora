@@ -22,7 +22,7 @@ class SidebarBasicInfoView {
     /**
      * Updates the view with the latest organism data.
      * It dynamically creates clickable links for parent ID, birth tick, IP, and DPs.
-     *
+     * 
      * @param {object} staticInfo - Static organism info from the API, containing `parentId`, `birthTick`, etc.
      * @param {number} organismId - The ID of the currently selected organism.
      * @param {object|null} [state=null] - The dynamic runtime state of the organism, containing `ip`, `dataPointers`, etc.

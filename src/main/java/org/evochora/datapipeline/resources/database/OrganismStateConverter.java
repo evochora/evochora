@@ -162,7 +162,8 @@ public final class OrganismStateConverter {
     public static ProcFrameView convertProcFrame(
             org.evochora.datapipeline.api.contracts.ProcFrame frame) {
         String procName = frame.getProcName();
-        int[] absIp = vectorToArray(frame.getAbsoluteReturnIp());
+        int[] absReturnIp = vectorToArray(frame.getAbsoluteReturnIp());
+        int[] absCallIp = frame.hasAbsoluteCallIp() ? vectorToArray(frame.getAbsoluteCallIp()) : null;
         
         List<RegisterValueView> savedPrs = new ArrayList<>(frame.getSavedPrsCount());
         for (org.evochora.datapipeline.api.contracts.RegisterValue rv : frame.getSavedPrsList()) {
@@ -179,7 +180,7 @@ public final class OrganismStateConverter {
             bindings.put(entry.getKey(), entry.getValue());
         }
         
-        return new ProcFrameView(procName, absIp, savedPrs, savedFprs, bindings);
+        return new ProcFrameView(procName, absReturnIp, absCallIp, savedPrs, savedFprs, bindings);
     }
     
     /**

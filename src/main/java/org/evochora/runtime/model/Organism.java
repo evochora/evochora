@@ -82,6 +82,7 @@ public class Organism {
     public static final class ProcFrame {
         public final String procName;
         public final int[] absoluteReturnIp;
+        public final int[] absoluteCallIp;
         public final Object[] savedPrs;
         public final Object[] savedFprs;
         public final java.util.Map<Integer, Integer> fprBindings;
@@ -90,13 +91,15 @@ public class Organism {
          * Constructs a new ProcFrame.
          * @param procName The name of the procedure.
          * @param absoluteReturnIp The absolute return IP.
+         * @param absoluteCallIp The absolute address of the CALL instruction that created this frame.
          * @param savedPrs The saved PRs.
          * @param savedFprs The saved FPRs.
          * @param fprBindings The FPR bindings.
          */
-        public ProcFrame(String procName, int[] absoluteReturnIp, Object[] savedPrs, Object[] savedFprs, java.util.Map<Integer, Integer> fprBindings) {
+        public ProcFrame(String procName, int[] absoluteReturnIp, int[] absoluteCallIp, Object[] savedPrs, Object[] savedFprs, java.util.Map<Integer, Integer> fprBindings) {
             this.procName = procName;
             this.absoluteReturnIp = absoluteReturnIp;
+            this.absoluteCallIp = absoluteCallIp;
             this.savedPrs = savedPrs;
             this.savedFprs = savedFprs;
             this.fprBindings = fprBindings;

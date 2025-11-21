@@ -58,6 +58,12 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     private long lastMetricTime = System.currentTimeMillis();
     private long lastTickCount = 0;
     private double ticksPerSecond = 0.0;
+    
+    // Helper record bundling program path, ID, and artifact for initialization and metadata building
+    private record ProgramInfo(String programPath, String programId, ProgramArtifact artifact) {}
+    
+    // Mapping from programPath (config key) to ProgramInfo for initialization and metadata building
+    private final Map<String, ProgramInfo> programInfoByPath = new HashMap<>();
 
     private record StrategyWithConfig(IEnergyDistributionCreator strategy, Config config) {}
 
@@ -81,6 +87,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         // Initialize instruction set before compiling programs
         org.evochora.runtime.isa.Instruction.init();
 
+        // Map with programId as key (for runtime lookup)
         Map<String, ProgramArtifact> compiledPrograms = new HashMap<>();
         Compiler compiler = new Compiler();
 
@@ -89,10 +96,16 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
 
         for (Config orgConfig : organismConfigs) {
             String programPath = orgConfig.getString("program");
-            if (!compiledPrograms.containsKey(programPath)) {
+            // Check if we already compiled this program
+            if (!programInfoByPath.containsKey(programPath)) {
                 try {
                     String source = Files.readString(Paths.get(programPath));
-                    compiledPrograms.put(programPath, compiler.compile(List.of(source.split("\n")), programPath, envProps));
+                    ProgramArtifact artifact = compiler.compile(List.of(source.split("\n")), programPath, envProps);
+                    String programId = artifact.programId();
+                    // Store ProgramInfo for initialization and metadata building
+                    programInfoByPath.put(programPath, new ProgramInfo(programPath, programId, artifact));
+                    // Store artifact with programId as key (for runtime lookups)
+                    compiledPrograms.put(programId, artifact);
                 } catch (IOException | CompilationException e) {
                     throw new IllegalArgumentException("Failed to read or compile program file: " + programPath, e);
                 }
@@ -122,15 +135,19 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         }
 
         for (Config orgConfig : organismConfigs) {
-            ProgramArtifact artifact = compiledPrograms.get(orgConfig.getString("program"));
+            String programPath = orgConfig.getString("program");
+            ProgramInfo programInfo = programInfoByPath.get(programPath);
+            if (programInfo == null) {
+                throw new IllegalStateException("Program info not found for path: " + programPath);
+            }
             int[] startPosition = orgConfig.getIntList("placement.positions").stream().mapToInt(i -> i).toArray();
             
             Organism organism = Organism.create(simulation, startPosition, orgConfig.getInt("initialEnergy"), log);
-            organism.setProgramId(artifact.programId());
+            organism.setProgramId(programInfo.programId());
             this.simulation.addOrganism(organism);
             
             // Place code and initial world objects in environment
-            placeOrganismCodeAndObjects(organism, artifact, startPosition);
+            placeOrganismCodeAndObjects(organism, programInfo.artifact(), startPosition);
         }
         // Generate run ID with timestamp prefix: YYYYMMDD-HHiissmm-UUID
         LocalDateTime now = LocalDateTime.now();
@@ -278,9 +295,10 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
 
         options.getConfigList("organisms").forEach(orgConfig -> {
             InitialOrganismSetup.Builder orgSetupBuilder = InitialOrganismSetup.newBuilder();
-            ProgramArtifact artifact = simulation.getProgramArtifacts().get(orgConfig.getString("program"));
-            if (artifact != null) {
-                orgSetupBuilder.setProgramId(artifact.programId());
+            String programPath = orgConfig.getString("program");
+            ProgramInfo programInfo = programInfoByPath.get(programPath);
+            if (programInfo != null) {
+                orgSetupBuilder.setProgramId(programInfo.programId());
             }
             if (orgConfig.hasPath("id")) {
                 orgSetupBuilder.setOrganismId(orgConfig.getInt("id"));
@@ -493,10 +511,12 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
                         .setLinearAddress(address)
                         .setSourceInfo(convertSourceInfo(sourceInfo))));
 
-        artifact.callSiteBindings().forEach((address, target) ->
+        artifact.callSiteBindings().forEach((address, registerIds) ->
                 builder.addCallSiteBindings(CallSiteBinding.newBuilder()
                         .setLinearAddress(address)
-                        .setTargetCoord(convertVector(target))));
+                        .addAllRegisterIds(java.util.Arrays.stream(registerIds)
+                                .boxed()
+                                .collect(java.util.stream.Collectors.toList()))));
 
         builder.putAllRelativeCoordToLinearAddress(artifact.relativeCoordToLinearAddress());
 
@@ -572,6 +592,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
                 org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
                         .setProcName(frame.procName)
                         .setAbsoluteReturnIp(convertVector(frame.absoluteReturnIp))
+                        .setAbsoluteCallIp(convertVector(frame.absoluteCallIp))
                         .putAllFprBindings(frame.fprBindings);
 
         if (frame.savedPrs != null) {
@@ -616,6 +637,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
                 org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
                         .setProcName(frame.procName)
                         .setAbsoluteReturnIp(convertVectorReuse(frame.absoluteReturnIp, vectorBuilder))
+                        .setAbsoluteCallIp(convertVectorReuse(frame.absoluteCallIp, vectorBuilder))
                         .putAllFprBindings(frame.fprBindings);
 
         if (frame.savedPrs != null) {

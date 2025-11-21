@@ -197,7 +197,7 @@ class EnvironmentGrid {
 
     /**
      * Centers the camera on a specific world coordinate.
-     *
+     * 
      * @param {number} cellX - The target X coordinate in cells.
      * @param {number} cellY - The target Y coordinate in cells.
      */

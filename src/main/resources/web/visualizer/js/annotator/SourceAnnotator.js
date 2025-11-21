@@ -99,15 +99,15 @@ class SourceAnnotator {
                         const handler = this.findHandler(tokenText, tokenInfo);
                         if (handler) {
                             try {
-                                const result = handler.analyze(tokenText, tokenInfo, organismState, artifact);
-                                if (result) {
-                                    annotations.push({
-                                        tokenText: tokenText,
-                                        annotationText: result.annotationText,
-                                        kind: result.kind,
-                                        column: absColumn, // absolute for sorting
-                                        relativeColumn: relColumn // relative for slicing
-                                    });
+                            const result = handler.analyze(tokenText, tokenInfo, organismState, artifact);
+                            if (result) {
+                                annotations.push({
+                                    tokenText: tokenText,
+                                    annotationText: result.annotationText,
+                                    kind: result.kind,
+                                    column: absColumn, // absolute for sorting
+                                    relativeColumn: relColumn // relative for slicing
+                                });
                                 }
                             } catch (error) {
                                 console.error(`Annotation Error for token '${tokenText}' (handler: ${handler.constructor.name}):`, error.message);

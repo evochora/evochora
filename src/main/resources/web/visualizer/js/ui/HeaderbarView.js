@@ -80,7 +80,7 @@ class HeaderbarView {
     
     /**
      * Updates the displayed tick number in the input field and the total tick suffix.
-     *
+     * 
      * @param {number} currentTick - The current tick number to display.
      * @param {number|null} maxTick - The maximum available tick, or null if not yet known.
      */

@@ -138,10 +138,11 @@ public class VMControlFlowInstructionTest {
     @Tag("unit")
     void testRet() {
         int[] expectedIp = new int[]{6};
+        int[] callIp = new int[]{5}; // CALL instruction address
         Object[] prsSnapshot = org.getPrs().toArray(new Object[0]);
         Object[] fprsSnapshot = org.getFprs().toArray(new Object[0]);
 
-        org.getCallStack().push(new Organism.ProcFrame("TEST_PROC", expectedIp, prsSnapshot, fprsSnapshot, java.util.Collections.emptyMap()));
+        org.getCallStack().push(new Organism.ProcFrame("TEST_PROC", expectedIp, callIp, prsSnapshot, fprsSnapshot, java.util.Collections.emptyMap()));
 
         placeInstruction("RET");
 

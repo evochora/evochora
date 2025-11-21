@@ -1,128 +1,102 @@
 /**
- * Renders organism runtime state in the sidebar.
+ * Renders the dynamic runtime state of an organism in the sidebar.
+ * This includes registers (DR, PR, FPR, LR) and stacks (Data, Location, Call).
+ * It highlights changes between ticks to make debugging easier.
+ *
+ * @class SidebarStateView
  */
 class SidebarStateView {
+    /**
+     * Initializes the view.
+     * @param {HTMLElement} root - The root element of the sidebar.
+     */
     constructor(root) {
         this.root = root;
         this.previousState = null;
+        this.artifact = null;
     }
 
     /**
-     * Updates the state section with organism runtime data.
-     * 
-     * @param {Object} state - Runtime state:
-     *   { energy, ip, dv, dataPointers, activeDpIndex, dataRegisters, procedureRegisters,
-     *     formalParamRegisters, locationRegisters, dataStack, locationStack, callStack }
-     * @param {boolean} isForwardStep - Whether this is a forward step (x -> x+1)
-     * @param {Object} previousState - Previous state for change detection (optional)
+     * Sets the static program context (the ProgramArtifact).
+     * This allows the view to resolve fprBindings from the artifact for debugging purposes.
+     *
+     * @param {object} artifact - The ProgramArtifact containing call site bindings and coordinate mappings.
      */
-    update(state, isForwardStep = false, previousState = null) {
+    setProgram(artifact) {
+        this.artifact = artifact;
+    }
+
+    /**
+     * Updates the state view with the latest organism runtime data.
+     * It performs a diff against the previous state (if provided) to highlight
+     * changed registers and stacks.
+     *
+     * @param {object} state - The full dynamic state of the organism.
+     * @param {boolean} [isForwardStep=false] - True if navigating forward (e.g., tick N to N+1), enables change highlighting.
+     * @param {object|null} [previousState=null] - The state from the previous tick, used for comparison.
+     * @param {object|null} [staticInfo=null] - The static organism info containing initialPosition, needed for resolving bindings from artifact.
+     */
+    update(state, isForwardStep = false, previousState = null, staticInfo = null) {
         const el = this.root.querySelector('[data-section="state"]');
         if (!state || !el) return;
 
-        // Helper function for register formatting
+        /**
+         * @private
+         * Helper to format a list of registers using ValueFormatter with granular error handling.
+         */
         const formatRegisters = (registers, removeBrackets = false, previousRegisters = null) => {
             if (!registers || registers.length === 0) return '';
 
-            const formatted = [];
-            for (let i = 0; i < registers.length; i++) {
-                let value = '';
-                if (registers[i]) {
-                    if (registers[i].kind === 'VECTOR' && registers[i].vector) {
-                        // Vector: [x, y]
-                        value = `[${registers[i].vector.join('|')}]`;
-                    } else if (registers[i].kind === 'MOLECULE') {
-                        // Molecule: TYPE:value
-                        const type = registers[i].type || 'UNKNOWN';
-                        const val = registers[i].value !== undefined ? registers[i].value : '';
-                        value = `${type}:${val}`;
-                    } else if (Array.isArray(registers[i])) {
-                        // Location register: [x, y] (fallback for locationRegisters)
-                        value = `[${registers[i].join('|')}]`;
-                    } else if (typeof registers[i] === 'string') {
-                        value = registers[i];
-                    }
-                    
-                    // Abbreviate types: CODE: -> C:, DATA: -> D:, ENERGY: -> E:, STRUCTURE: -> S:
-                    value = value.replace(/CODE:/g, 'C:').replace(/DATA:/g, 'D:').replace(/ENERGY:/g, 'E:').replace(/STRUCTURE:/g, 'S:');
+            return registers.map((reg, i) => {
+                const errorHtml = '<span class="formatting-error">ERR&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>';
+                let currentValue;
 
-                    // Remove brackets if requested
-                    if (removeBrackets) {
-                        value = value.replace(/^\[|\]$/g, '');
+                try {
+                    currentValue = ValueFormatter.format(reg);
+                } catch (error) {
+                    console.error(`ValueFormatter failed for register at index ${i}:`, error.message, 'Value:', reg);
+                    return errorHtml;
+                }
+                
+                let finalValue = removeBrackets ? currentValue.replace(/^\[|\]$/g, '') : currentValue;
+                
+                let isChanged = false;
+                if (isForwardStep && previousRegisters && previousRegisters[i]) {
+                    let previousValue;
+                    try {
+                        previousValue = ValueFormatter.format(previousRegisters[i]);
+                    } catch (e) {
+                        isChanged = true; // If previous was invalid, consider it changed.
                     }
-                    
-                    // Check for changes (only on forward step)
-                    let isChanged = false;
-                    if (isForwardStep && previousRegisters && previousRegisters[i]) {
-                        let prevValue = '';
-                        if (previousRegisters[i].kind === 'VECTOR' && previousRegisters[i].vector) {
-                            prevValue = `[${previousRegisters[i].vector.join('|')}]`;
-                        } else if (previousRegisters[i].kind === 'MOLECULE') {
-                            const prevType = previousRegisters[i].type || 'UNKNOWN';
-                            const prevVal = previousRegisters[i].value !== undefined ? previousRegisters[i].value : '';
-                            prevValue = `${prevType}:${prevVal}`;
-                        } else if (Array.isArray(previousRegisters[i])) {
-                            prevValue = `[${previousRegisters[i].join('|')}]`;
-                        } else if (typeof previousRegisters[i] === 'string') {
-                            prevValue = previousRegisters[i];
-                        }
-                        prevValue = prevValue.replace(/CODE:/g, 'C:').replace(/DATA:/g, 'D:').replace(/ENERGY:/g, 'E:').replace(/STRUCTURE:/g, 'S:');
-                        if (removeBrackets) {
-                            prevValue = prevValue.replace(/^\[|\]$/g, '');
-                        }
-                        
-                        if (value !== prevValue) {
+
+                    if (!isChanged) {
+                        const finalPreviousValue = removeBrackets ? previousValue.replace(/^\[|\]$/g, '') : previousValue;
+                        if (finalValue !== finalPreviousValue) {
                             isChanged = true;
                         }
                     }
-                    
-                    // Pad to 8 characters before adding HTML (to maintain alignment)
-                    const paddedValue = String(value).padEnd(8);
-                    
-                    // Add HTML for changed values
-                    if (isChanged) {
-                        value = `<span class="changed-field">${paddedValue}</span>`;
-                    } else {
-                        value = paddedValue;
-                    }
                 }
-                // Add to formatted array
-                formatted.push(value);
-            }
-
-            return formatted.join('');
+                
+                const paddedValue = String(finalValue).padEnd(8);
+                return isChanged ? `<span class="changed-field">${paddedValue}</span>` : paddedValue;
+            }).join('');
         };
 
-        // Helper function for stack formatting
+        /**
+         * @private
+         * Helper to format a stack display using ValueFormatter with granular error handling.
+         */
         const formatStack = (stack, maxColumns = 8, removeBrackets = false) => {
             if (!stack || stack.length === 0) return '';
 
-            const formattedStack = stack.map(item => {
-                let value = '';
-                if (item && item.kind === 'VECTOR' && item.vector) {
-                    // Vector: [x, y]
-                    value = `[${item.vector.join('|')}]`;
-                } else if (item && item.kind === 'MOLECULE') {
-                    // Molecule: TYPE:value
-                    const type = item.type || 'UNKNOWN';
-                    const val = item.value !== undefined ? item.value : '';
-                    value = `${type}:${val}`;
-                } else if (Array.isArray(item)) {
-                    // Location stack: [x, y]
-                    value = `[${item.join('|')}]`;
-                } else if (typeof item === 'string') {
-                    value = item;
+            const formattedStack = stack.map((item, i) => {
+                try {
+                    const formatted = ValueFormatter.format(item);
+                    return removeBrackets ? formatted.replace(/^\[|\]$/g, '') : formatted;
+                } catch (error) {
+                    console.error(`ValueFormatter failed for stack item at index ${i}:`, error.message, 'Value:', item);
+                    return '<span class="formatting-error">ERR</span>';
                 }
-                
-                // Abbreviate types
-                value = value.replace(/CODE:/g, 'C:').replace(/DATA:/g, 'D:').replace(/ENERGY:/g, 'E:').replace(/STRUCTURE:/g, 'S:');
-
-                // Remove brackets if requested
-                if (removeBrackets) {
-                    value = value.replace(/^\[|\]$/g, '');
-                }
-
-                return value;
             });
 
             // Limit to maxColumns values
@@ -141,7 +115,10 @@ class SidebarStateView {
             return formattedValues.join('');
         };
 
-        // Helper function for call stack formatting
+        /**
+         * @private
+         * Helper for complex call stack formatting.
+         */
         const formatCallStack = (callStack) => {
             if (!callStack || callStack.length === 0) return '';
 
@@ -154,51 +131,54 @@ class SidebarStateView {
                     let result = entry.procName || 'UNKNOWN';
 
                     // Add return coordinates: [x|y] with injected-value styling
-                    if (entry.absoluteReturnIp && Array.isArray(entry.absoluteReturnIp) && entry.absoluteReturnIp.length >= 2) {
-                        result += ` <span class="injected-value">[${entry.absoluteReturnIp[0]}|${entry.absoluteReturnIp[1]}]</span>`;
+                    if (entry.absoluteReturnIp && Array.isArray(entry.absoluteReturnIp)) {
+                        try {
+                            const formattedIp = ValueFormatter.format(entry.absoluteReturnIp);
+                            result += ` <span class="injected-value">[${formattedIp}]</span>`;
+                        } catch (error) {
+                            console.error('ValueFormatter failed for absoluteReturnIp:', error.message, 'Value:', entry.absoluteReturnIp);
+                            result += ' <span class="formatting-error">ERR</span>';
+                        }
                     }
 
-                    // Add parameters from fprBindings
-                    if (entry.fprBindings && Object.keys(entry.fprBindings).length > 0) {
+                    // Add parameters from fprBindings (fallback to artifact if empty)
+                    let fprBindings = entry.fprBindings;
+                    if ((!fprBindings || Object.keys(fprBindings).length === 0) && this.artifact && staticInfo && entry.absoluteCallIp) {
+                        // Try to resolve bindings from artifact at debug time using the CALL instruction address
+                        fprBindings = resolveBindingsFromArtifact(entry.absoluteCallIp, staticInfo);
+                    }
+                    
+                    if (fprBindings && Object.keys(fprBindings).length > 0) {
                         result += ' WITH ';
                         const paramStrings = [];
-                        for (const [fprIdStr, boundRegisterId] of Object.entries(entry.fprBindings)) {
+                        for (const [fprIdStr, boundRegisterId] of Object.entries(fprBindings)) {
                             const fprId = parseInt(fprIdStr);
                             const boundId = typeof boundRegisterId === 'number' ? boundRegisterId : parseInt(boundRegisterId);
                             
-                            // Determine register display name
-                            let registerDisplay = '';
-                            if (boundId >= 2000) {
-                                registerDisplay = `%FPR${boundId - 2000}`;
-                            } else if (boundId >= 1000) {
-                                registerDisplay = `%PR${boundId - 1000}`;
-                            } else {
-                                registerDisplay = `%DR${boundId}`;
-                            }
+                            // Determine register display name using central utility
+                            const registerDisplay = AnnotationUtils.formatRegisterName(boundId);
                             
-                            // Get value from savedFprs if available
+                            // Get value from savedFprs if available, using ValueFormatter
                             let registerValue = '';
                             if (entry.savedFprs && Array.isArray(entry.savedFprs)) {
                                 // Find the FPR in savedFprs by matching the bound register
-                                const fprEntry = entry.savedFprs.find((fpr, idx) => {
-                                    // Check if this FPR corresponds to the bound register
-                                    // For now, try to find by index (fprId - 2000)
-                                    return idx === (fprId >= 2000 ? fprId - 2000 : fprId);
-                                });
+                                // Calculate FPR index: if fprId >= FPR_BASE, it's already the full ID, otherwise it's the index
+                                const fprIndex = fprId >= INSTRUCTION_CONSTANTS.FPR_BASE ? fprId - INSTRUCTION_CONSTANTS.FPR_BASE : fprId;
+                                const fprEntry = entry.savedFprs.find((fpr, idx) => idx === fprIndex);
                                 
                                 if (fprEntry) {
-                                    if (fprEntry.kind === 'VECTOR' && fprEntry.vector) {
-                                        registerValue = `[${fprEntry.vector.join('|')}]`;
-                                    } else if (fprEntry.kind === 'MOLECULE') {
-                                        const type = fprEntry.type || 'UNKNOWN';
-                                        const val = fprEntry.value !== undefined ? fprEntry.value : '';
-                                        registerValue = `${type}:${val}`;
+                                    try {
+                                        // ValueFormatter already returns abbreviated types (C:, D:, E:, S:)
+                                        registerValue = ValueFormatter.format(fprEntry);
+                                    } catch (error) {
+                                        console.error('ValueFormatter failed for savedFpr:', error.message, 'Value:', fprEntry);
+                                        registerValue = 'ERR';
                                     }
-                                    registerValue = registerValue.replace(/CODE:/g, 'C:').replace(/DATA:/g, 'D:').replace(/ENERGY:/g, 'E:').replace(/STRUCTURE:/g, 'S:');
                                 }
                             }
                             
-                            const fprDisplay = fprId >= 2000 ? `%FPR${fprId - 2000}` : `%FPR${fprId}`;
+                            // Format FPR display name using central utility
+                            const fprDisplay = AnnotationUtils.formatRegisterName(fprId);
                             paramStrings.push(`${fprDisplay}<span class="injected-value">[${registerDisplay}=${registerValue}]</span>`);
                         }
                         result += paramStrings.join(' ');
@@ -216,8 +196,13 @@ class SidebarStateView {
             } else {
                 // Without procedure names: all entries in one line like other stacks
                 const formattedEntries = callStack.map(entry => {
-                    if (entry.absoluteReturnIp && Array.isArray(entry.absoluteReturnIp) && entry.absoluteReturnIp.length >= 2) {
-                        return `${entry.absoluteReturnIp[0]}|${entry.absoluteReturnIp[1]}`;
+                    if (entry.absoluteReturnIp && Array.isArray(entry.absoluteReturnIp)) {
+                        try {
+                            return ValueFormatter.format(entry.absoluteReturnIp);
+                        } catch (error) {
+                            console.error('ValueFormatter failed for absoluteReturnIp:', error.message, 'Value:', entry.absoluteReturnIp);
+                            return 'ERR';
+                        }
                     }
                     return '';
                 }).filter(entry => entry !== '');
@@ -234,6 +219,66 @@ class SidebarStateView {
                 // Distribute across columns
                 return displayEntries.map(entry => String(entry).padEnd(8)).join('');
             }
+        };
+
+        /**
+         * Resolves fprBindings from artifact for a given absolute call IP.
+         * This is used at debug time to reconstruct parameter bindings that weren't
+         * available at runtime due to self-modifying code.
+         *
+         * @param {number[]} absoluteCallIp - The absolute coordinates of the CALL instruction.
+         * @param {object} staticInfo - The static organism info containing initialPosition.
+         * @returns {object|null} A map of FPR IDs to bound register IDs, or null if not resolvable.
+         * @private
+         */
+        const resolveBindingsFromArtifact = (absoluteCallIp, staticInfo) => {
+            if (!this.artifact || !staticInfo || !absoluteCallIp || !Array.isArray(absoluteCallIp)) {
+                return null;
+            }
+
+            const initialPosition = staticInfo.initialPosition;
+            if (!initialPosition || !Array.isArray(initialPosition)) {
+                return null;
+            }
+
+            // Calculate relative coordinates from absolute coordinates
+            // absoluteCallIp is the absolute coord of the CALL instruction
+            const relativeCoord = [];
+            for (let i = 0; i < absoluteCallIp.length && i < initialPosition.length; i++) {
+                relativeCoord.push(absoluteCallIp[i] - initialPosition[i]);
+            }
+
+            // Convert relative coord to string key (e.g., "10|20")
+            const coordKey = relativeCoord.join('|');
+
+            // Look up linear address for this coordinate
+            if (!this.artifact.relativeCoordToLinearAddress || !this.artifact.relativeCoordToLinearAddress[coordKey]) {
+                return null;
+            }
+
+            const linearAddress = this.artifact.relativeCoordToLinearAddress[coordKey];
+
+            // Look up bindings from callSiteBindings
+            if (!this.artifact.callSiteBindings || !Array.isArray(this.artifact.callSiteBindings)) {
+                return null;
+            }
+
+            // Find the callSiteBinding with matching linearAddress
+            const binding = this.artifact.callSiteBindings.find(csb => csb.linearAddress === linearAddress);
+            if (!binding || !binding.registerIds || !Array.isArray(binding.registerIds)) {
+                return null;
+            }
+
+            // Build fprBindings map: FPR index -> register ID
+            // registerIds array: [drId0, drId1, ...] maps to FPR0, FPR1, ...
+            const fprBindings = {};
+            for (let i = 0; i < binding.registerIds.length; i++) {
+                const registerId = binding.registerIds[i];
+                const fprId = INSTRUCTION_CONSTANTS.FPR_BASE + i;
+                fprBindings[fprId] = registerId;
+            }
+
+            return fprBindings;
         };
 
         // Check for stack changes (only on forward step)

@@ -128,7 +128,7 @@ class AppController {
     /**
      * Fetches and displays detailed information for a specific organism in the sidebar.
      * This includes static info, runtime state, instructions, and source code with annotations.
-     *
+     * 
      * @param {number} organismId - The ID of the organism to load.
      * @param {boolean} [isForwardStep=false] - True if navigating forward, used for change highlighting.
      * @returns {Promise<void>} A promise that resolves when the details are loaded and displayed.
@@ -161,7 +161,19 @@ class AppController {
                                           this.state.previousOrganismDetails.organismId === organismId) 
                                          ? this.state.previousOrganismDetails.state 
                                          : null;
-                    this.sidebarStateView.update(state, isForwardStep, previousState);
+                    this.sidebarStateView.update(state, isForwardStep, previousState, staticInfo);
+                }
+                
+                // Update State View Artifact (Clean Architecture)
+                const programIdForState = staticInfo.programId;
+                if (programIdForState) {
+                    // 1. Resolve Artifact (Controller responsibility)
+                    let artifactForState = this.programArtifactCache.get(programIdForState) || null;
+                    
+                    // 2. Set Context (View decides if update needed)
+                    this.sidebarStateView.setProgram(artifactForState);
+                } else {
+                    this.sidebarStateView.setProgram(null);
                 }
 
                 // Update Source View (Clean Architecture)
@@ -300,7 +312,7 @@ class AppController {
      * Navigates the application to a specific tick.
      * This is the primary method for changing the current time point of the visualization.
      * It updates the state, refreshes the UI, and triggers the loading of all data for the new tick.
-     *
+     * 
      * @param {number} tick - The target tick number to navigate to.
      */
     async navigateToTick(tick) {
@@ -334,7 +346,7 @@ class AppController {
      * Loads all necessary data for the current tick and viewport.
      * This includes both the environment cells and the organism summaries. It then
      * triggers updates for the renderer and the organism selector.
-     *
+     * 
      * @param {boolean} [isForwardStep=false] - True if navigating forward, for change highlighting.
      * @param {number|null} [previousTick=null] - The previous tick number, for change detection.
      * @returns {Promise<void>} A promise that resolves when the viewport data is loaded.
@@ -405,7 +417,7 @@ class AppController {
     /**
      * Updates the organism selector dropdown with the list of organisms for the current tick.
      * It preserves the user's selection if the organism still exists and updates the summary counts.
-     *
+     * 
      * @param {Array<object>} organisms - An array of organism summary objects for the current tick.
      * @param {boolean} [isForwardStep=false] - True if navigating forward.
      * @private
@@ -519,7 +531,7 @@ class AppController {
     /**
      * Gets a deterministic color for an organism based on its ID and energy state.
      * Returns a hex color string suitable for CSS.
-     *
+     * 
      * @param {number} organismId - The ID of the organism.
      * @param {number} energy - The current energy level of the organism.
      * @returns {string} A hex color string (e.g., "#32cd32").

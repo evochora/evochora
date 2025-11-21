@@ -263,14 +263,17 @@ message SourceInfo {
   int32 column_number = 3;
 }
 
-// Maps a CALL instruction to its target procedure coordinates.
+// Maps a CALL instruction to its parameter register bindings.
 // Protobuf-compatible representation of Map.Entry<Integer, int[]>.
+// The int[] contains register IDs (DR, PR, FPR) that are bound to the procedure's formal parameter registers.
 message CallSiteBinding {
   // Linear address of CALL instruction
   int32 linear_address = 1;
 
-  // Target coordinate of procedure being called
-  Vector target_coord = 2;
+  // Register IDs bound to the procedure's formal parameter registers (FPRs).
+  // These are the source register IDs (DR, PR, FPR) that are passed as parameters.
+  // Example: [0, 5] means DR0 and DR5 are bound to FPR0 and FPR1 respectively.
+  repeated int32 register_ids = 2;
 }
 
 // Maps a linear address back to coordinates.
