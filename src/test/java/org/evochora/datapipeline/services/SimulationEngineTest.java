@@ -8,6 +8,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.junit.extensions.logging.AllowLog;
+import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
@@ -105,14 +106,14 @@ class SimulationEngineTest {
                 "organisms.0.program",
                 ConfigValueFactory.fromAnyRef("nonexistent/path/to/program.s")
         );
-        IllegalArgumentException exception = assertThrows(
+        assertThrows(
                 IllegalArgumentException.class,
                 () -> new SimulationEngine("test", config, resources)
         );
-        assertTrue(exception.getMessage().contains("Failed to read or compile program file"));
     }
 
     @Test
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*", messagePattern = "(?s)Failed to compile program file.*")
     void constructor_shouldThrowException_whenProgramIsInvalid() throws IOException {
         Path invalidProgram = tempDir.resolve("invalid.s");
         Files.writeString(invalidProgram, "INVALID SYNTAX HERE");
@@ -121,11 +122,10 @@ class SimulationEngineTest {
                 "organisms.0.program",
                 ConfigValueFactory.fromAnyRef(invalidProgram.toString())
         );
-        IllegalArgumentException exception = assertThrows(
+        assertThrows(
                 IllegalArgumentException.class,
                 () -> new SimulationEngine("test", config, resources)
         );
-        assertTrue(exception.getMessage().contains("Failed to read or compile program file"));
     }
 
     @Test

@@ -58,7 +58,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
     private long lastMetricTime = System.currentTimeMillis();
     private long lastTickCount = 0;
     private double ticksPerSecond = 0.0;
-    
+
     // Helper record bundling program path, ID, and artifact for initialization and metadata building
     private record ProgramInfo(String programPath, String programId, ProgramArtifact artifact) {}
     
@@ -106,8 +106,11 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
                     programInfoByPath.put(programPath, new ProgramInfo(programPath, programId, artifact));
                     // Store artifact with programId as key (for runtime lookups)
                     compiledPrograms.put(programId, artifact);
-                } catch (IOException | CompilationException e) {
-                    throw new IllegalArgumentException("Failed to read or compile program file: " + programPath, e);
+                } catch (CompilationException e) {
+                    log.warn("Failed to compile program file '{}': {}", programPath, e.getMessage());
+                    throw new IllegalArgumentException("Failed to compile program file: " + programPath, e);
+                } catch (IOException e) {
+                    throw new IllegalArgumentException("Failed to read program file: " + programPath, e);
                 }
             }
         }

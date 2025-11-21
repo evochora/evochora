@@ -61,7 +61,7 @@ header {
 
 /* Register annotations (e.g., =D:0) in green and italic */
 .register-annotation {
-    color: #4ade80; /* green-400 */
+    color: #a0e0a0; /* Match injected-value color from call stack */
     font-style: italic;
 }
 

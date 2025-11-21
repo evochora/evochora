@@ -13,7 +13,10 @@ class SourceAnnotator {
     constructor() {
         this.handlers = [
             new RegisterTokenHandler(),
-            new LabelReferenceTokenHandler()
+            new LabelReferenceTokenHandler(),
+            new ProcedureTokenHandler(),
+            new ParameterTokenHandler(),
+            new RetInstructionHandler()
         ];
     }
 

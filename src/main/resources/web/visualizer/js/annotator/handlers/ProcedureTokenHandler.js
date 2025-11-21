@@ -1,27 +1,27 @@
 /**
- * Handles the annotation of tokens that are references to labels or procedures.
- * It identifies tokens classified as 'LABEL' and annotates them with the
+ * Handles the annotation of tokens that are procedure names.
+ * It identifies tokens classified as 'PROCEDURE' and annotates them with the
  * absolute world coordinates of their target location.
  */
-class LabelReferenceTokenHandler {
+class ProcedureTokenHandler {
     /**
      * Determines if this handler can process the given token.
-     * It specifically handles tokens identified by the compiler as 'LABEL' type.
+     * It specifically handles tokens identified by the compiler as 'PROCEDURE' type.
      *
      * @param {string} tokenText The text of the token.
      * @param {object} tokenInfo Metadata about the token from the compiler.
-     * @returns {boolean} True if the token is a 'LABEL' type, false otherwise.
+     * @returns {boolean} True if the token is a 'PROCEDURE' type, false otherwise.
      */
     canHandle(tokenText, tokenInfo) {
-        return tokenInfo.tokenType === 'LABEL';
+        return tokenInfo.tokenType === 'PROCEDURE';
     }
 
     /**
-     * Analyzes the label token to create a jump-target annotation.
-     * It resolves the label name to its relative coordinates using the artifact,
+     * Analyzes the procedure token to create a jump-target annotation.
+     * It resolves the procedure name to its relative coordinates using the artifact,
      * then calculates the absolute world coordinates using the organism's initial position.
      *
-     * @param {string} tokenText The text of the token (the label name).
+     * @param {string} tokenText The text of the token (the procedure name).
      * @param {object} tokenInfo Metadata about the token.
      * @param {object} organismState The current state of the organism, containing the `initialPosition`.
      * @param {object} artifact The program artifact containing lookup maps.
@@ -48,7 +48,10 @@ class LabelReferenceTokenHandler {
         
         return {
             annotationText: `[${formattedCoords}]`,
-            kind: 'label-ref'
+            kind: 'proc'
         };
     }
 }
+
+window.ProcedureTokenHandler = ProcedureTokenHandler;
+

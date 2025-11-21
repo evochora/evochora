@@ -25,18 +25,19 @@ class RegisterTokenHandler {
      * @param {object} tokenInfo Metadata about the token.
      * @param {object} state The current state of the organism.
      * @param {object} artifact The program artifact.
-     * @returns {object|null} An annotation object `{ annotationText, kind }` or null if no value is found.
+     * @returns {object} An annotation object `{ annotationText, kind }`.
+     * @throws {Error} If the token is not a register token, or if the register value cannot be found.
      */
     analyze(token, tokenInfo, state, artifact) {
-        if (!token.startsWith('%')) return null;
+        if (!token || !token.startsWith('%')) {
+            throw new Error(`Cannot annotate register token "${token}": token does not start with '%' (expected register token).`);
+        }
 
         const canonicalReg = AnnotationUtils.resolveToCanonicalRegister(token, artifact);
         const lookupName = canonicalReg || token;
         
+        // getRegisterValue now throws Error directly if register not found or invalid input
         const value = AnnotationUtils.getRegisterValue(lookupName, state);
-
-        if (value === null || value === undefined) return null;
-
         const formattedValue = ValueFormatter.format(value);
 
         if (canonicalReg) {

@@ -79,10 +79,7 @@ public final class CallerMarshallingRule implements IEmissionRule {
     }
 
     private void emitStandardMarshalling(List<IrItem> out, IrInstruction call) {
-        // Pre-call: Push arguments (REFs then VALs, in reverse order).
-        for (int j = call.refOperands().size() - 1; j >= 0; j--) {
-            out.add(new IrInstruction("PUSH", List.of(call.refOperands().get(j)), call.source()));
-        }
+        // Pre-call: Push arguments (VALs then REFs, in reverse order).
         for (int j = call.valOperands().size() - 1; j >= 0; j--) {
             IrOperand operand = call.valOperands().get(j);
             if (operand instanceof IrImm imm) {
@@ -90,16 +87,21 @@ public final class CallerMarshallingRule implements IEmissionRule {
             } else if (operand instanceof IrLabelRef) {
                 // Labels as VAL parameters should be pushed as vectors (addresses)
                 out.add(new IrInstruction("PUSV", List.of(operand), call.source()));
+            } else if (operand instanceof IrTypedImm typedImm) {
+                out.add(new IrInstruction("PUSI", List.of(new IrImm(typedImm.value())), call.source()));
             } else {
                 out.add(new IrInstruction("PUSH", List.of(operand), call.source()));
             }
+        }
+        for (int j = call.refOperands().size() - 1; j >= 0; j--) {
+            out.add(new IrInstruction("PUSH", List.of(call.refOperands().get(j)), call.source()));
         }
 
         // The CALL itself.
         out.add(call);
 
-        // Post-call: Clean up stack (pop REF args in reverse order).
-        for (int j = call.refOperands().size() - 1; j >= 0; j--) {
+        // Post-call: Clean up stack (pop REF args in correct order to match callee's PUSH).
+        for (int j = 0; j < call.refOperands().size(); j++) {
             out.add(new IrInstruction("POP", List.of(call.refOperands().get(j)), call.source()));
         }
     }

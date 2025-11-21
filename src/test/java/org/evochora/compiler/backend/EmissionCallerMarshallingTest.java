@@ -65,10 +65,10 @@ public class EmissionCallerMarshallingTest {
 
             List<IrItem> out = runEmission(List.of(call));
 
-            // Expect: PUSH %rB, PUSI 123, CALL myProc, POP %rB
+            // Expect: PUSI 123, PUSH %rB, CALL myProc, POP %rB
             assertThat(out).hasSize(4);
-            assertThat(out.get(0)).isEqualTo(new IrInstruction("PUSH", List.of(rB), call.source()));
-            assertThat(out.get(1)).isEqualTo(new IrInstruction("PUSI", List.of(imm123), call.source()));
+            assertThat(out.get(0)).isEqualTo(new IrInstruction("PUSI", List.of(imm123), call.source()));
+            assertThat(out.get(1)).isEqualTo(new IrInstruction("PUSH", List.of(rB), call.source()));
             assertThat(out.get(2)).isEqualTo(call);
             assertThat(out.get(3)).isEqualTo(new IrInstruction("POP", List.of(rB), call.source()));
         }
@@ -85,13 +85,13 @@ public class EmissionCallerMarshallingTest {
 
             List<IrItem> out = runEmission(List.of(call));
 
-            // Expect: PUSH %rY, PUSH %rX, CALL p, POP %rY, POP %rX (reverse order)
+            // Expect: PUSH %rY, PUSH %rX, CALL p, POP %rX, POP %rY (correct post-call cleanup order)
             assertThat(out).hasSize(5);
             assertThat(out.get(0)).isEqualTo(new IrInstruction("PUSH", List.of(rY), call.source()));
             assertThat(out.get(1)).isEqualTo(new IrInstruction("PUSH", List.of(rX), call.source()));
             assertThat(out.get(2)).isEqualTo(call);
-            assertThat(out.get(3)).isEqualTo(new IrInstruction("POP", List.of(rY), call.source()));
-            assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rX), call.source()));
+            assertThat(out.get(3)).isEqualTo(new IrInstruction("POP", List.of(rX), call.source()));
+            assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rY), call.source()));
         }
 
         @Test
@@ -136,11 +136,11 @@ public class EmissionCallerMarshallingTest {
 
             List<IrItem> out = runEmission(List.of(call));
 
-            // Expect: PUSH %rA, PUSV myLabel, PUSI 123, CALL myProc, POP %rA
+            // Expect: PUSV myLabel, PUSI 123, PUSH %rA, CALL myProc, POP %rA
             assertThat(out).hasSize(5);
-            assertThat(out.get(0)).isEqualTo(new IrInstruction("PUSH", List.of(rA), call.source()));
-            assertThat(out.get(1)).isEqualTo(new IrInstruction("PUSV", List.of(labelParam), call.source()));
-            assertThat(out.get(2)).isEqualTo(new IrInstruction("PUSI", List.of(imm123), call.source()));
+            assertThat(out.get(0)).isEqualTo(new IrInstruction("PUSV", List.of(labelParam), call.source()));
+            assertThat(out.get(1)).isEqualTo(new IrInstruction("PUSI", List.of(imm123), call.source()));
+            assertThat(out.get(2)).isEqualTo(new IrInstruction("PUSH", List.of(rA), call.source()));
             assertThat(out.get(3)).isEqualTo(call);
             assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rA), call.source()));
         }
