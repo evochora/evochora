@@ -294,6 +294,123 @@ class AnnotationUtils {
     }
 
     /**
+     * Resolves the binding chain through the call stack and returns the complete path.
+     * Similar to resolveBindingChain, but returns an array of register IDs representing
+     * the complete chain from the parameter's FPR to the final DR/PR register.
+     * <p>
+     * For example, if parameter 0 is bound to FPR0, which is bound to FPR1 in the first frame,
+     * which is bound to DR0 in the second frame, this returns [2000, 2001, 0] (FPR0 -> FPR1 -> DR0).
+     *
+     * @param {number} paramIndex - The parameter index (0-based) in the procedure's parameter list.
+     * @param {Array} callStack - The call stack frames (array of ProcFrame objects).
+     * @param {object} artifact - The ProgramArtifact containing callSiteBindings.
+     * @param {object} organismState - The organism state containing initialPosition.
+     * @returns {Array<number>} An array of register IDs representing the binding chain path.
+     * @throws {Error} If paramIndex, callStack, artifact, or organismState is invalid, or if callStack is empty.
+     */
+    static resolveBindingChainWithPath(paramIndex, callStack, artifact, organismState) {
+        if (paramIndex === null || paramIndex === undefined || typeof paramIndex !== 'number' || isNaN(paramIndex)) {
+            throw new Error(`resolveBindingChainWithPath: paramIndex must be a valid number, got: ${paramIndex}`);
+        }
+        if (paramIndex < 0) {
+            throw new Error(`resolveBindingChainWithPath: paramIndex must be non-negative, got: ${paramIndex}`);
+        }
+        if (!callStack || !Array.isArray(callStack)) {
+            throw new Error(`resolveBindingChainWithPath: callStack must be an array, got: ${callStack}`);
+        }
+        if (callStack.length === 0) {
+            throw new Error(`resolveBindingChainWithPath: callStack is empty (cannot resolve binding chain without call stack frames)`);
+        }
+        if (!artifact || typeof artifact !== 'object') {
+            throw new Error(`resolveBindingChainWithPath: artifact must be an object, got: ${artifact}`);
+        }
+        if (!organismState || typeof organismState !== 'object') {
+            throw new Error(`resolveBindingChainWithPath: organismState must be an object, got: ${organismState}`);
+        }
+
+        // Start with FPR index (parameter maps to FPR at FPR_BASE + paramIndex)
+        let currentRegId = INSTRUCTION_CONSTANTS.FPR_BASE + paramIndex;
+        const path = [currentRegId]; // Start with the parameter's FPR
+
+        // Get initialPosition for coordinate conversion
+        let initialPosition = null;
+        if (organismState.initialPosition && organismState.initialPosition.components && Array.isArray(organismState.initialPosition.components)) {
+            initialPosition = organismState.initialPosition.components;
+        }
+
+        // Iterate through call stack frames to resolve the binding chain
+        for (const frame of callStack) {
+            if (!frame) {
+                continue;
+            }
+
+            // Get bindings from artifact for this frame's CALL instruction
+            let frameBindings = null;
+            if (frame.absoluteCallIp && Array.isArray(frame.absoluteCallIp) && initialPosition && artifact.relativeCoordToLinearAddress && artifact.callSiteBindings) {
+                // Calculate relative coordinates from absolute coordinates
+                const relativeCoord = [];
+                for (let i = 0; i < frame.absoluteCallIp.length && i < initialPosition.length; i++) {
+                    relativeCoord.push(frame.absoluteCallIp[i] - initialPosition[i]);
+                }
+
+                // Convert relative coord to string key (e.g., "10|20")
+                const coordKey = relativeCoord.join('|');
+
+                // Look up linear address for this coordinate
+                const linearAddress = artifact.relativeCoordToLinearAddress[coordKey];
+                if (linearAddress !== null && linearAddress !== undefined) {
+                    // Look up bindings from callSiteBindings
+                    if (Array.isArray(artifact.callSiteBindings)) {
+                        const binding = artifact.callSiteBindings.find(csb => csb.linearAddress === linearAddress);
+                        if (binding && binding.registerIds && Array.isArray(binding.registerIds)) {
+                            // Build fprBindings map: FPR index -> register ID
+                            frameBindings = {};
+                            for (let i = 0; i < binding.registerIds.length; i++) {
+                                const registerId = binding.registerIds[i];
+                                const fprId = INSTRUCTION_CONSTANTS.FPR_BASE + i;
+                                frameBindings[fprId] = registerId;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If no bindings from artifact, check runtime fprBindings (fallback, usually empty)
+            if (!frameBindings && frame.fprBindings && typeof frame.fprBindings === 'object') {
+                frameBindings = frame.fprBindings;
+            }
+
+            // Check if current FPR is bound to another register in this frame
+            if (frameBindings) {
+                const mappedId = frameBindings[currentRegId];
+                if (mappedId !== null && mappedId !== undefined) {
+                    const parsedId = typeof mappedId === 'number' ? mappedId : parseInt(mappedId);
+                    if (isNaN(parsedId)) {
+                        throw new Error(`resolveBindingChainWithPath: invalid mapped register ID in bindings: ${mappedId}`);
+                    }
+                    currentRegId = parsedId;
+                    path.push(currentRegId); // Add to path
+                    
+                    // If we've reached a DR or PR register (below FPR_BASE), we're done
+                    if (currentRegId < INSTRUCTION_CONSTANTS.FPR_BASE) {
+                        return path;
+                    }
+                    // Otherwise, continue with the new FPR ID
+                } else {
+                    // End of chain - no more bindings for this register
+                    break;
+                }
+            } else {
+                // No bindings available for this frame - cannot continue resolving
+                break;
+            }
+        }
+
+        // Return the path (could end with an FPR if chain didn't resolve completely)
+        return path;
+    }
+
+    /**
      * Gets the register value by numeric register ID (instead of canonical name).
      * This is useful when working with register IDs directly from binding chains.
      *

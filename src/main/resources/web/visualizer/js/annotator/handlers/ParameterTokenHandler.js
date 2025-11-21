@@ -80,20 +80,32 @@ class ParameterTokenHandler {
         }
 
         // Resolve the binding chain through the call stack using artifact bindings
-        // resolveBindingChain now throws Error directly if invalid input or empty call stack
-        const finalRegId = AnnotationUtils.resolveBindingChain(paramIndex, organismState.callStack, artifact, organismState);
+        // resolveBindingChainWithPath returns the complete path of register IDs
+        const bindingPath = AnnotationUtils.resolveBindingChainWithPath(paramIndex, organismState.callStack, artifact, organismState);
+
+        if (bindingPath.length === 0) {
+            throw new Error(`Cannot annotate parameter "${tokenText}": binding path is empty.`);
+        }
+
+        // Get the final register ID (last in path)
+        const finalRegId = bindingPath[bindingPath.length - 1];
 
         // Get the register value
         // getRegisterValueById now throws Error directly if register not found or invalid input
         const value = AnnotationUtils.getRegisterValueById(finalRegId, organismState);
 
-        // Format register name and value
-        // formatRegisterName now throws Error directly if registerId is null/undefined/invalid
-        const canonicalRegName = AnnotationUtils.formatRegisterName(finalRegId);
+        // Format the binding path: %FPR0→%FPR1→%DR0
+        const pathNames = bindingPath.map(regId => AnnotationUtils.formatRegisterName(regId));
+        const pathDisplay = pathNames.join('→');
+
+        // Format the final value
         const formattedValue = ValueFormatter.format(value);
 
+        // If path has more than one element, show the complete chain, otherwise just the final register
+        const registerDisplay = pathNames.length > 1 ? pathDisplay : pathNames[0];
+
         return {
-            annotationText: `[${canonicalRegName}=${formattedValue}]`,
+            annotationText: `[${registerDisplay}=${formattedValue}]`,
             kind: 'param'
         };
     }
