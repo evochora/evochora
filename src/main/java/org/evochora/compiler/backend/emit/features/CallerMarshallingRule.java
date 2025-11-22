@@ -102,7 +102,8 @@ public final class CallerMarshallingRule implements IEmissionRule {
         out.add(call);
 
         // Post-call: Clean up stack (pop REF args in correct order to match callee's PUSH).
-        for (int j = 0; j < call.refOperands().size(); j++) {
+        // FIX: Reverse order loop because Stack is LIFO. Last pushed (by callee) must be popped first.
+        for (int j = call.refOperands().size() - 1; j >= 0; j--) {
             out.add(new IrInstruction("POP", List.of(call.refOperands().get(j)), call.source()));
         }
     }
