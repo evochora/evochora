@@ -89,12 +89,21 @@ public class ProcedureCallHandler {
         Organism.ProcFrame frame = new Organism.ProcFrame(procName, returnIp, ipBeforeFetch, prsSnapshot, fprsSnapshot, fprBindings);
         organism.getCallStack().push(frame);
 
+        // Note: Parameter passing is handled by compiler-generated PUSH/POP sequences.
+        // The compiler generates:
+        //   - PUSH instructions before CALL to push arguments onto the stack
+        //   - POP instructions in the procedure prologue to load parameters into FPRs
+        //   - PUSH instructions before RET to push REF parameters back onto the stack
+        //   - POP instructions after CALL to copy REF parameters back to original registers
+        // No manual copy-in from registers to FPRs is needed here.
+        /*
         if (bindings != null) {
             for (int i = 0; i < bindings.length; i++) {
                 Object value = organism.readOperand(bindings[i]);
                 organism.setFpr(i, value);
             }
         }
+        */
 
         organism.setIp(targetIp);
         organism.setSkipIpAdvance(true);
