@@ -5,6 +5,7 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.CallBindingRegistry;
+import org.evochora.runtime.testing.ExecutionTracker;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -99,13 +100,15 @@ public class RuntimeIntegrationTest {
     @Tag("integration")
     void procedureCopyOut_worksWithoutProgramArtifact() throws Exception {
         String source = String.join("\n",
+                "SETI %DR0 DATA:41",
+                "CALL INCREMENT REF %DR0",
+                "NOP",
+                ".ORG 0|1",
                 ".PROC INCREMENT EXPORT REF VALUE",
                 "  ADDI VALUE DATA:1",
                 "  RET",
-                ".ENDP",
-                "SETI %DR0 DATA:41",
-                "CALL INCREMENT REF %DR0",
-                "NOP"
+                ".ENDP"
+                
         );
 
         Compiler compiler = new Compiler();
@@ -125,13 +128,22 @@ public class RuntimeIntegrationTest {
         org.setProgramId(artifact.programId());
         sim.addOrganism(org);
 
+        // Track instructions and register states
+        ExecutionTracker tracker = new ExecutionTracker(sim, org);
+        
         for (int i = 0; i < 15; i++) {
+            tracker.beforeTick();
             sim.tick();
+            tracker.afterTick();
         }
+
+        // Print execution trace
+        String trace = tracker.getTraceAsString();
+        System.out.println(trace);
 
         Molecule result = Molecule.fromInt((Integer) org.getDr(0));
         assertThat(result.toScalarValue())
-                .as("Der Wert sollte nach dem Prozeduraufruf auf 42 inkrementiert sein, auch ohne Artefakt.")
+                .as("Der Wert sollte nach dem Prozeduraufruf auf 42 inkrementiert sein, auch ohne Artefakt.\n" + trace)
                 .isEqualTo(42);
         assertThat(org.isInstructionFailed()).isFalse();
     }
@@ -140,13 +152,15 @@ public class RuntimeIntegrationTest {
     @Tag("integration")
     void procedureCall_worksCorrectlyWithCorruptedProgramArtifact() throws Exception {
         String sourceCode = String.join("\n",
+                "SETI %DR0 DATA:29",
+                "CALL INC REF %DR0",
+                "NOP",
+                ".ORG 0|1",
                 ".PROC INC EXPORT REF A",
                 "  ADDI A DATA:1",
                 "  RET",
-                ".ENDP",
-                "SETI %DR0 DATA:29",
-                "CALL INC REF %DR0",
-                "NOP"
+                ".ENDP"
+                
         );
 
         Compiler compiler = new Compiler();
@@ -197,13 +211,22 @@ public class RuntimeIntegrationTest {
             }
         }
 
+        // Track instructions and register states
+        ExecutionTracker tracker = new ExecutionTracker(sim, org);
+        
         for (int i = 0; i < 20; i++) {
+            tracker.beforeTick();
             sim.tick();
+            tracker.afterTick();
         }
+
+        // Print execution trace
+        String trace = tracker.getTraceAsString();
+        System.out.println(trace);
 
         Molecule result = Molecule.fromInt((Integer) org.getDr(0));
         assertThat(result.toScalarValue())
-                .as("Das Ergebnis der Addition muss 30 sein, basierend auf dem Maschinencode, nicht dem falschen Artefakt.")
+                .as("Das Ergebnis der Addition muss 30 sein, basierend auf dem Maschinencode, nicht dem falschen Artefakt.\n" + trace)
                 .isEqualTo(30);
         assertThat(org.isInstructionFailed()).isFalse();
     }
