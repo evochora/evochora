@@ -3,7 +3,7 @@
 .INCLUDE "lib/state.s"
 
 .REG %CONTCORD %LR0 # Koordinate um die Reproduktion fortzusetzen
-.REG %FORKCORD %LR1 # Koorinate in der rechten oberen Ecke, von der aus der FORK Prozess gestartet werden kann
+#.REG %FORKCORD %LR1 # Koorinate in der rechten oberen Ecke, von der aus der FORK Prozess gestartet werden kann
 
 # ----------------------------
 # Constants
@@ -113,7 +113,7 @@
   CONTINUE_CORNERFINISH:
     RTRI %DIRVEC DATA:1 DATA:0     # Nach rechts drehen
     DPLR %CONTCORD                 # Continue-Position erreicht -> speichern
-    DPLR %FORKCORD                 # FORK-Position merken
+    #DPLR %FORKCORD                 # FORK-Position merken
     JMPI CONTINUE_LOOP
 
   .ORG 0|8
@@ -275,20 +275,54 @@
 
   .ORG 0|16
   CONTINUE_FORK:
-    SKLR %FORKCORD                 # Schreib DP an die obere rechte Ecke holen
-    SEEK %DIRVEC                   # 2x vorwärts neben die linke obere Ecke des Kindes
-    SEEK %DIRVEC
+    
+    RTRI %DIRVEC DATA:0 DATA:1     # Richtung nach innen drehen zum schreiben
+    RTRI %DIRVEC DATA:0 DATA:1
+    SEEK %DIRVEC                   # Einen schritt vorwärt um innerhalb der Hülle zu sein
 
-    PUSH %DIRVEC                   # Die obere linke Ecke des Kindes liegt in Reproduktionsrichtung
+  # So lange nach Norden laufen, bis ich an der Hülle bin
+  CONTINUE_FORK_NORTH:
+    SCNI %TMP 0|-1                 # Was liegt nördlich?
+    IFR %TMP %SHELL                # Ist das die Hülle?
+      JMPI CONTINUE_FORK_WEST      # ... Dann nach Westen laufen
+    SEKI 0|-1                      # Sonst einen Schritt nach Norden
+    JMPI CONTINUE_FORK_NORTH       # Weiter nach Norden
+
+  # So lange nach Westen laufen, bis ich an der Hülle bin 
+  CONTINUE_FORK_WEST:
+    SCNI %TMP -1|0                 # Was liegt westlich?
+    IFR %TMP %SHELL                # Ist das die Hülle?
+      JMPI CONTINUE_FORK_FINISH    # ... Dann FORKen
+    SEKI -1|0                      # Sonst einen Schritt nach Westen
+    JMPI CONTINUE_FORK_WEST       # Weiter nach Westen
+    
+  # FORK ausführen
+  .ORG 0|17  
+  CONTINUE_FORK_FINISH:
+    SEKI -1|0                      # Einen Schritt nach Westen
+    PUSV 1|0                       # Die obere linke Ecke des Kindes liegt im Osten
     PUSI REPRODUCTION_CHILD_INITAL_ENERGY   # Energie für das Kind auf den DS legen
     GDVS                           # Kind bekommt selbe DV Richtung wie Elternorganismus
     FRKS                           # FORKen, Alle 3 Werte werden vom Stack entfernt
 
+    #SKLR %FORKCORD                 # Schreib DP an die obere rechte Ecke holen
+    #SEEK %DIRVEC                   # 2x vorwärts neben die linke obere Ecke des Kindes
+    #SEEK %DIRVEC
+
+    #PUSH %DIRVEC                   # Die obere linke Ecke des Kindes liegt in Reproduktionsrichtung
+    #PUSI REPRODUCTION_CHILD_INITAL_ENERGY   # Energie für das Kind auf den DS legen
+    #GDVS                           # Kind bekommt selbe DV Richtung wie Elternorganismus
+    #FRKS                           # FORKen, Alle 3 Werte werden vom Stack entfernt
+
     # Aufräumen und fertig
-    SETV %SIDEVEC 0|-1             # %SIDEVEC auf links für neue Reproduktion
+    #SETV %SIDEVEC 0|-1             # %SIDEVEC auf links für neue Reproduktion
+    RTRI %DIRVEC DATA:0 DATA:1     # %DIRVEC wieder nach außen drehen
+    RTRI %DIRVEC DATA:0 DATA:1
+    RTRI %SIDEVEC DATA:0 DATA:1    # %SIDEVEC auf links für neue Reproduktion
+    RTRI %SIDEVEC DATA:0 DATA:1
     SETI %DIRMASK DATA:0           # Beim nächsten Mal wird eine Richtung neu zufällig gewählt
     CRLR %CONTCORD                 # Beim nächsten Mal brauchen wir eine leere Zeilen Koordinate, damit von vorne begonnen wird
-    CRLR %FORKCORD                 # Auch die Koordinate für das FORK muss neu berechnet werden
+    #CRLR %FORKCORD                 # Auch die Koordinate für das FORK muss neu berechnet werden
 
     # DP0 und DP1 wiederherstellen
     ADPI DATA:1
@@ -298,7 +332,7 @@
 
     JMPI CONTINUE_SAVE_AND_RET
 
-  .ORG 0|17
+  .ORG 0|18
   CONTINUE_SAVE_AND_RET:
     SKLS                                          # alten DP wiederherstellen
 

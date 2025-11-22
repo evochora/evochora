@@ -201,6 +201,12 @@ message ProgramArtifact {
   // Nested structure for fast lookup: filename → line → column → tokens
   // Used by web client for hover information
   repeated FileTokenLookup token_lookup = 13;
+
+  // Machine instructions per source line for visualization
+  // Source: ProgramArtifact.sourceLineToInstructions()
+  // Key: "fileName:lineNumber" (e.g., "main.s:4"), Value: list of machine instructions
+  // Used by frontend to display compiler-generated instructions (e.g., PUSH/POP for CALL)
+  map<string, MachineInstructionInfoList> source_line_to_instructions = 14;
 }
 
 // Container for source code lines of a file.
@@ -248,6 +254,27 @@ message SourceMapEntry {
 
   // Corresponding source code location
   SourceInfo source_info = 2;
+}
+
+// Container for a list of machine instructions that belong to the same source line.
+// Used to display all machine instructions generated from a single source line.
+message MachineInstructionInfoList {
+  // List of machine instructions, sorted by linear address (execution order)
+  repeated MachineInstructionInfo instructions = 1;
+}
+
+// Information about a single machine instruction generated from source code.
+// Maps to org.evochora.compiler.api.MachineInstructionInfo record.
+message MachineInstructionInfo {
+  // Linear address of the instruction's opcode in the machine code layout
+  int32 linear_address = 1;
+
+  // Opcode name (e.g., "PUSH", "CALL", "POP")
+  string opcode = 2;
+
+  // Formatted string representation of the operands (e.g., "%DR0", "DATA:3", "10|20")
+  // Space-separated if multiple operands
+  string operands_as_string = 3;
 }
 
 // Identifies a location in source code.

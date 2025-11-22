@@ -570,6 +570,19 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
                                         .build()
                         ).toList())));
 
+        artifact.sourceLineToInstructions().forEach((sourceLineKey, instructions) -> {
+            org.evochora.datapipeline.api.contracts.MachineInstructionInfoList.Builder listBuilder =
+                    org.evochora.datapipeline.api.contracts.MachineInstructionInfoList.newBuilder();
+            for (org.evochora.compiler.api.MachineInstructionInfo info : instructions) {
+                listBuilder.addInstructions(org.evochora.datapipeline.api.contracts.MachineInstructionInfo.newBuilder()
+                        .setLinearAddress(info.linearAddress())
+                        .setOpcode(info.opcode())
+                        .setOperandsAsString(info.operandsAsString() != null ? info.operandsAsString() : "")
+                        .build());
+            }
+            builder.putSourceLineToInstructions(sourceLineKey, listBuilder.build());
+        });
+
         return builder.build();
     }
 

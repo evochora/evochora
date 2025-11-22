@@ -88,7 +88,8 @@ public final class CallerMarshallingRule implements IEmissionRule {
                 // Labels as VAL parameters should be pushed as vectors (addresses)
                 out.add(new IrInstruction("PUSV", List.of(operand), call.source()));
             } else if (operand instanceof IrTypedImm typedImm) {
-                out.add(new IrInstruction("PUSI", List.of(new IrImm(typedImm.value())), call.source()));
+                // Keep IrTypedImm to preserve type information for display
+                out.add(new IrInstruction("PUSI", List.of(typedImm), call.source()));
             } else {
                 out.add(new IrInstruction("PUSH", List.of(operand), call.source()));
             }

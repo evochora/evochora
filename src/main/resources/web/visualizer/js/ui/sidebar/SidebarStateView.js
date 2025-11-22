@@ -252,8 +252,8 @@ class SidebarStateView {
                                 }
                             }
                             result += valStrings.join(' ');
-                        }
-                        
+                    }
+
                         // Format WITH parameters (legacy syntax - same as REF, from current FPRs)
                         // WITH parameters are call-by-reference (legacy), but we show the FPR register and its current value
                         // Note: Values are only available after PUSI/POP instructions have been executed

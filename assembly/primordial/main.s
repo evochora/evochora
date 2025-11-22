@@ -16,12 +16,12 @@
 .DEFINE REPRODUCTION_CONTINUE_THRESHOLD DATA:10000
 
 # ----------------------------
-# STRUCTURE Shell (50x30)
+# STRUCTURE Shell (50x31)
 # ----------------------------
 .PLACE STRUCTURE:1 -1..49|-1
-.PLACE STRUCTURE:1 -1..49|28
-.PLACE STRUCTURE:1 -1|0..27
-.PLACE STRUCTURE:1 49|0..27
+.PLACE STRUCTURE:1 -1..49|29
+.PLACE STRUCTURE:1 -1|0..28
+.PLACE STRUCTURE:1 49|0..28
 
 # ----------------------------
 # Init

@@ -88,7 +88,16 @@ class SidebarSourceView {
         const activeLineNumber = activeLocation ? activeLocation.lineNumber : null;
         this.updateHighlighting(activeLineNumber);
 
-        // 4. Apply annotations to the active line
+        // 4. Update Machine Instruction Highlighting and Collapse State
+        if (activeLocation && activeLocation.linearAddress !== undefined) {
+            this.updateMachineInstructionHighlighting(activeLocation.linearAddress, activeLocation.lineNumber);
+            this.updateMachineInstructionCollapseState(activeLocation.lineNumber);
+        } else {
+            this.updateMachineInstructionHighlighting(null, null);
+            this.updateMachineInstructionCollapseState(null);
+        }
+
+        // 5. Apply annotations to the active line
         if (activeLineNumber && activeLocation.fileName === this.selectedFile) {
             this.applyAnnotations(activeLocation.fileName, activeLineNumber, staticInfo, organismState);
         }
@@ -140,10 +149,45 @@ class SidebarSourceView {
         const codeHtml = codeLines.map((line, index) => {
             const lineNumber = index + 1;
             // Note: We do NOT set 'active' class here initially. It's handled by updateExecutionState.
-            return `<div class="source-line" data-line="${lineNumber}">
+            
+            // Check if this line has multiple machine instructions (collapsible)
+            let hasMultipleInstructions = false;
+            if (this.artifact && this.artifact.sourceLineToInstructions) {
+                const sourceLineKey = `${this.selectedFile}:${lineNumber}`;
+                const machineInstructions = this.artifact.sourceLineToInstructions[sourceLineKey];
+                hasMultipleInstructions = machineInstructions && machineInstructions.instructions && machineInstructions.instructions.length > 1;
+            }
+            
+            const collapsibleClass = hasMultipleInstructions ? 'collapsible-source-line' : '';
+            // Always include collapse indicator column - either with symbol or empty placeholder
+            const collapseIndicator = hasMultipleInstructions 
+                ? `<span class="collapse-indicator" data-source-line="${lineNumber}">▶</span>`
+                : '<span class="collapse-indicator-placeholder"></span>';
+            
+            let html = `<div class="source-line ${collapsibleClass}" data-line="${lineNumber}">
                         <span class="line-number">${String(lineNumber).padStart(3, ' ')}</span>
+                        ${collapseIndicator}
                         <pre class="assembly-line">${line.replace(/</g, '&lt;')}</pre>
                     </div>`;
+            
+            // Add machine instructions if available for this source line (only if more than one instruction)
+            if (this.artifact && this.artifact.sourceLineToInstructions) {
+                const sourceLineKey = `${this.selectedFile}:${lineNumber}`;
+                const machineInstructions = this.artifact.sourceLineToInstructions[sourceLineKey];
+                if (machineInstructions && machineInstructions.instructions && machineInstructions.instructions.length > 1) {
+                    const machineInstructionsHtml = machineInstructions.instructions.map((inst, instIndex) => {
+                        const operandsDisplay = inst.operandsAsString ? ` ${inst.operandsAsString}` : '';
+                        return `<div class="machine-instruction" data-linear-address="${inst.linearAddress}" data-instruction-index="${instIndex}">
+                                    <span class="machine-instruction-indicator"> </span>
+                                    <span class="machine-instruction-opcode">${this.escapeHtml(inst.opcode)}</span>
+                                    <span class="machine-instruction-operands">${this.escapeHtml(operandsDisplay)}</span>
+                                </div>`;
+                    }).join('');
+                    html += `<div class="machine-instructions-container collapsed" data-source-line="${lineNumber}" data-indicator-line="${lineNumber}">${machineInstructionsHtml}</div>`;
+                }
+            }
+            
+            return html;
         }).join('');
 
         // 3. Assemble DOM
@@ -168,6 +212,82 @@ class SidebarSourceView {
         // Update cached references
         this.dom.codeContainer = el.querySelector('.assembly-code-view');
         this.dom.status = el.querySelector('#source-status-bar');
+        
+        // Bind click handlers for collapsible source lines
+        this.bindCollapseHandlers();
+    }
+
+    /**
+     * Binds click handlers to collapsible source lines to toggle machine instructions visibility.
+     * @private
+     */
+    bindCollapseHandlers() {
+        if (!this.dom.codeContainer) return;
+        
+        const collapsibleLines = this.dom.codeContainer.querySelectorAll('.collapsible-source-line');
+        collapsibleLines.forEach(line => {
+            // Remove any existing listeners by cloning the element
+            const newLine = line.cloneNode(true);
+            line.parentNode.replaceChild(newLine, line);
+            
+            // Add click handler to toggle collapse
+            newLine.addEventListener('click', (e) => {
+                // Don't toggle if clicking on annotations
+                if (e.target.closest('.register-annotation')) return;
+                
+                const lineNumber = parseInt(newLine.getAttribute('data-line'), 10);
+                const container = this.dom.codeContainer.querySelector(
+                    `.machine-instructions-container[data-source-line="${lineNumber}"]`
+                );
+                const indicator = this.dom.codeContainer.querySelector(
+                    `.collapse-indicator[data-source-line="${lineNumber}"]`
+                );
+                if (container && indicator) {
+                    container.classList.toggle('collapsed');
+                    indicator.textContent = container.classList.contains('collapsed') ? '▶' : '▼';
+                }
+            });
+        });
+    }
+
+    /**
+     * Updates the collapse state of machine instructions. At each tick, all are collapsed
+     * except the active one.
+     * 
+     * @param {number|null} activeLineNumber - The line number of the active source line, or null.
+     * @private
+     */
+    updateMachineInstructionCollapseState(activeLineNumber) {
+        if (!this.dom.codeContainer) return;
+        
+        // Collapse all machine instruction containers
+        const allContainers = this.dom.codeContainer.querySelectorAll('.machine-instructions-container');
+        allContainers.forEach(container => {
+            container.classList.add('collapsed');
+            const lineNumber = parseInt(container.getAttribute('data-source-line'), 10);
+            const indicator = this.dom.codeContainer.querySelector(
+                `.collapse-indicator[data-source-line="${lineNumber}"]`
+            );
+            if (indicator) {
+                indicator.textContent = '▶';
+            }
+        });
+        
+        // Expand the active line's machine instructions
+        if (activeLineNumber !== null && activeLineNumber !== undefined) {
+            const activeContainer = this.dom.codeContainer.querySelector(
+                `.machine-instructions-container[data-source-line="${activeLineNumber}"]`
+            );
+            const indicator = this.dom.codeContainer.querySelector(
+                `.collapse-indicator[data-source-line="${activeLineNumber}"]`
+            );
+            if (activeContainer) {
+                activeContainer.classList.remove('collapsed');
+                if (indicator) {
+                    indicator.textContent = '▼';
+                }
+            }
+        }
     }
 
     /**
@@ -299,6 +419,46 @@ class SidebarSourceView {
     }
 
     /**
+     * Updates the highlighting for machine instructions based on the active linear address.
+     * 
+     * @param {number|null} activeLinearAddress - The linear address of the active instruction, or null to clear highlighting.
+     * @param {number|null} activeLineNumber - The line number of the active source line, or null.
+     * @private
+     */
+    updateMachineInstructionHighlighting(activeLinearAddress, activeLineNumber) {
+        if (!this.dom.codeContainer) return;
+        
+        // Remove active class from all machine instructions
+        const allMachineInstructions = this.dom.codeContainer.querySelectorAll('.machine-instruction');
+        allMachineInstructions.forEach(el => {
+            el.classList.remove('active-machine-instruction');
+            const indicator = el.querySelector('.machine-instruction-indicator');
+            if (indicator) {
+                indicator.textContent = ' ';
+            }
+        });
+        
+        // Mark the active machine instruction if we have an active linear address
+        if (activeLinearAddress !== null && activeLinearAddress !== undefined && activeLineNumber !== null) {
+            const machineInstructionsContainer = this.dom.codeContainer.querySelector(
+                `.machine-instructions-container[data-source-line="${activeLineNumber}"]`
+            );
+            if (machineInstructionsContainer) {
+                const activeMachineInstruction = machineInstructionsContainer.querySelector(
+                    `.machine-instruction[data-linear-address="${activeLinearAddress}"]`
+                );
+                if (activeMachineInstruction) {
+                    activeMachineInstruction.classList.add('active-machine-instruction');
+                    const indicator = activeMachineInstruction.querySelector('.machine-instruction-indicator');
+                    if (indicator) {
+                        indicator.textContent = '→';
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Updates the status bar at the top of the source view, typically to display errors.
      * @param {object|null} activeLocation - The location object which may contain an `error` property.
      * @private
@@ -325,7 +485,7 @@ class SidebarSourceView {
      *
      * @param {object} organismState - The organism's dynamic state, containing the `ip`.
      * @param {object} staticInfo - The organism's static info, containing the `initialPosition`.
-     * @returns {{fileName: string, lineNumber: number}|{error: string}|null} The location object, an error object, or null.
+     * @returns {{fileName: string, lineNumber: number, linearAddress?: number}|{error: string}|null} The location object, an error object, or null.
      * @private
      */
     calculateActiveLocation(organismState, staticInfo) {
@@ -359,7 +519,8 @@ class SidebarSourceView {
                  }
                  return {
                      fileName: sourceInfo.fileName,
-                     lineNumber: sourceInfo.lineNumber
+                     lineNumber: sourceInfo.lineNumber,
+                     linearAddress: linearAddress
                  };
             }
             return { error: "Invalid IP or Start Position data" };
@@ -400,7 +561,8 @@ class SidebarSourceView {
         
         return {
             fileName: sourceInfo.fileName,
-            lineNumber: sourceInfo.lineNumber
+            lineNumber: sourceInfo.lineNumber,
+            linearAddress: linearAddress
         };
     }
     

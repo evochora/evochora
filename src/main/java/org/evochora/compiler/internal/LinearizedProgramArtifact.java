@@ -54,6 +54,7 @@ import java.util.Map;
  *   <li><strong>procNameToParamNames</strong>: Map<String, List<ParamInfo>> (unchanged)</li>
  *   <li><strong>tokenMap</strong>: Map<SerializableSourceInfo, TokenInfo> (unchanged)</li>
  *   <li><strong>tokenLookup</strong>: Map<String, Map<Integer, Map<Integer, List<TokenInfo>>> (unchanged)</li>
+ *   <li><strong>sourceLineToInstructions</strong>: Map<String, List<MachineInstructionInfo>> (unchanged)</li>
  * </ul>
  * 
  * <h3>Performance</h3>
@@ -82,6 +83,7 @@ public record LinearizedProgramArtifact(
         Map<String, List<org.evochora.compiler.api.ParamInfo>> procNameToParamNames,
         Map<SerializableSourceInfo, TokenInfo> tokenMap,
         Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup,
+        Map<String, List<org.evochora.compiler.api.MachineInstructionInfo>> sourceLineToInstructions,
         EnvironmentProperties envProps
 ) {
     
@@ -98,6 +100,7 @@ public record LinearizedProgramArtifact(
         procNameToParamNames = procNameToParamNames != null ? Collections.unmodifiableMap(procNameToParamNames) : Collections.emptyMap();
         tokenMap = tokenMap != null ? Collections.unmodifiableMap(tokenMap) : Collections.emptyMap();
         tokenLookup = tokenLookup != null ? Collections.unmodifiableMap(tokenLookup) : Collections.emptyMap();
+        sourceLineToInstructions = sourceLineToInstructions != null ? Collections.unmodifiableMap(sourceLineToInstructions) : Collections.emptyMap();
         envProps = envProps != null ? envProps : new EnvironmentProperties(new int[0], false);
     }
     
@@ -124,6 +127,7 @@ public record LinearizedProgramArtifact(
                 artifact.procNameToParamNames(),
                 convertTokenMap(artifact.tokenMap()),
                 artifact.tokenLookup(),
+                artifact.sourceLineToInstructions(),
                 envProps
         );
     }
@@ -148,7 +152,8 @@ public record LinearizedProgramArtifact(
                 registerAliasMap(),
                 procNameToParamNames,
                 convertTokenMapBack(tokenMap),
-                tokenLookup
+                tokenLookup,
+                sourceLineToInstructions
         );
     }
     

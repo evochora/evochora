@@ -19,6 +19,8 @@ header {
     align-items: center;
     flex-shrink: 0;
     border-bottom: 1px solid #333;
+    position: relative; /* Allow loading indicator to overflow below */
+    overflow: visible; /* Allow loading indicator to be visible below header */
 }
 
 /* Logo Container - zwischen links und rechts zentriert */
@@ -28,6 +30,14 @@ header {
     align-items: center;
     justify-content: center;
     pointer-events: none;
+}
+
+/* Logo Wrapper - contains logo text and loading indicator */
+.logo-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
 }
 
 /* Logo Text - Doto Black 900, nutzt Header-Höhe aus */
@@ -40,6 +50,41 @@ header {
     line-height: 1;
     opacity: 0.9;
     white-space: nowrap;
+}
+
+/* Loading Indicator - animated line under the logo */
+.loading-indicator {
+    position: absolute;
+    top: 100%; /* Position directly below the logo text */
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 2px;
+    background-color: #4a9eff;
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+    margin-top: 2px;
+    /* Ensure it doesn't affect header height by being absolutely positioned */
+    pointer-events: none;
+}
+
+/* When active, animate width to match logo text width */
+.loading-indicator.active {
+    opacity: 1;
+    animation: loading-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes loading-pulse {
+    0% {
+        width: 0;
+    }
+    50% {
+        /* Width matches the logo text width - calculated dynamically via JavaScript */
+        width: var(--logo-text-width, 280px);
+    }
+    100% {
+        width: 0;
+    }
 }
 
 /* Instruction View Styles - styled like State View */
@@ -546,11 +591,41 @@ main.container.sidebar-visible .world-container {
     line-height: 1.5;
 }
 
+.source-line.collapsible-source-line {
+    cursor: pointer;
+}
+
+.source-line.collapsible-source-line:hover {
+    background-color: rgba(60, 80, 120, 0.3); /* Slight highlight on hover */
+}
+
 .active-source-line {
     background-color: #3c5078; /* Same blue as sidebar-toggle-btn */
     color: #ffffff;
     font-weight: bold;
     width: 100%; /* Ensure background covers full width */
+}
+
+/* Collapse indicator placeholder - always takes space to keep columns aligned */
+.collapse-indicator-placeholder {
+    flex-shrink: 0;
+    width: 16px;
+    margin-right: 2px;
+}
+
+.collapse-indicator {
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+    color: #888;
+    font-size: 0.8em;
+    user-select: none;
+    cursor: pointer;
+    margin-right: 2px;
+}
+
+.collapse-indicator:hover {
+    color: #aaa;
 }
 
 #source-status-bar {
@@ -560,11 +635,85 @@ main.container.sidebar-visible .world-container {
 
 .line-number {
     flex-shrink: 0;
-    width: 40px;
+    width: 36px;
     color: #888;
     text-align: right;
-    padding-right: 10px;
+    padding-right: 6px;
     user-select: none;
+}
+
+/* Machine instructions container - visually groups instructions belonging to a source line */
+.machine-instructions-container {
+    margin-left: 49px; /* Align border-left with collapse-indicator position: line-number (36px + 6px padding) = 42px */
+    margin-top: 2px;
+    margin-bottom: 4px;
+    padding: 4px 8px 0px 0; /* No left padding, so border-left aligns with collapse-indicator */
+    border-left: 1px solid #444; /* Thin vertical line to show grouping, positioned directly under collapse-indicator */
+    background-color: rgba(255, 255, 255, 0.02); /* Slight highlighting */
+    overflow: hidden;
+    transition: max-height 0.2s ease-out, opacity 0.2s ease-out;
+    max-height: 500px; /* Sufficiently large for expanded state */
+    opacity: 1;
+}
+
+.machine-instructions-container.collapsed {
+    max-height: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
+}
+
+/* Individual machine instruction line */
+.machine-instruction {
+    display: flex;
+    align-items: center;
+    font-family: 'Monospaced', 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+    color: #aaa;
+    margin-left: 10px;
+    padding: 2px 0;
+    line-height: 1.4;
+}
+
+/* Active machine instruction - highlighted */
+.machine-instruction.active-machine-instruction {
+    color: #fff;
+    background-color: rgba(74, 158, 255, 0.15); /* Slight blue tint */
+}
+
+/* Machine instruction indicator (arrow for active instruction) */
+.machine-instruction-indicator {
+    width: 20px;
+    padding-right: 4px;
+    text-align: center;
+    color: #888;
+    font-weight: bold;
+}
+
+.machine-instruction.active-machine-instruction .machine-instruction-indicator {
+    color: #4a9eff;
+}
+
+/* Machine instruction opcode */
+.machine-instruction-opcode {
+    color: #bbb;
+    font-weight: 500;
+    margin-right: 4px;
+}
+
+.machine-instruction.active-machine-instruction .machine-instruction-opcode {
+    color: #fff;
+}
+
+/* Machine instruction operands */
+.machine-instruction-operands {
+    color: #999;
+}
+
+.machine-instruction.active-machine-instruction .machine-instruction-operands {
+    color: #ccc;
 }
 
 .assembly-line {

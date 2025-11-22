@@ -25,6 +25,8 @@ import java.util.Map;
  * @param procNameToParamNames A map from procedure names to a list of their parameter information (name and type).
  * @param tokenMap A map from SourceInfo to TokenInfo for deterministic token classification.
  * @param tokenLookup A map from fileName to lineNumber to columnNumber to List<TokenInfo> for efficient file-line-column-based lookup.
+ * @param sourceLineToInstructions A map from source line identifier (fileName:lineNumber) to a list of machine instructions
+ *                                 that were generated from that source line, sorted by linear address.
  */
 public record ProgramArtifact(
         String programId,
@@ -39,7 +41,8 @@ public record ProgramArtifact(
         Map<String, Integer> registerAliasMap,
         Map<String, List<ParamInfo>> procNameToParamNames,
         Map<SourceInfo, TokenInfo> tokenMap,
-        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup
+        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup,
+        Map<String, List<MachineInstructionInfo>> sourceLineToInstructions
 ) {
     public ProgramArtifact {
         sources = sources != null ? Collections.unmodifiableMap(sources) : Collections.emptyMap();
@@ -56,6 +59,9 @@ public record ProgramArtifact(
                 : Collections.emptyMap();
         tokenMap = tokenMap != null ? Collections.unmodifiableMap(tokenMap) : Collections.emptyMap();
         tokenLookup = tokenLookup != null ? Collections.unmodifiableMap(tokenLookup) : Collections.emptyMap();
+        sourceLineToInstructions = sourceLineToInstructions != null 
+                ? Collections.unmodifiableMap(sourceLineToInstructions) 
+                : Collections.emptyMap();
     }
     
     /**

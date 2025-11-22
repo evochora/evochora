@@ -172,7 +172,8 @@ public class RuntimeIntegrationTest {
                 correctArtifact.registerAliasMap(),
                 correctArtifact.procNameToParamNames(),
                 correctArtifact.tokenMap(),
-                correctArtifact.tokenLookup()
+                correctArtifact.tokenLookup(),
+                correctArtifact.sourceLineToInstructions()
         );
 
         Environment env = new Environment(envProps);

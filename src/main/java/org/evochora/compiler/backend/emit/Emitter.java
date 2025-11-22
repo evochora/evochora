@@ -2,6 +2,7 @@ package org.evochora.compiler.backend.emit;
 
 import org.evochora.runtime.Config;
 import org.evochora.compiler.api.CompilationException;
+import org.evochora.compiler.api.MachineInstructionInfo;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
@@ -19,6 +20,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * The Emitter is the final stage of the compiler backend. It takes the linked
@@ -57,15 +59,39 @@ public class Emitter {
         Map<Integer, SourceInfo> sourceMap = layout.sourceMap();
         Map<int[], PlacedMolecule> initialObjects = layout.initialWorldObjects();
 
+        // Map to collect machine instructions per source line for frontend visualization
+        // Key: "fileName:lineNumber", Value: List of machine instructions (sorted by linear address)
+        Map<String, List<MachineInstructionInfo>> sourceLineToInstructions = new HashMap<>();
+        Map<Integer, String> labelAddressToNameForDisplay = new HashMap<>();
+        layout.labelToAddress().forEach((name, addr) -> labelAddressToNameForDisplay.put(addr, name));
+
         int address = 0;
         for (IrItem item : program.items()) {
             if (item instanceof IrInstruction ins) {
+                // Track the opcode address (where this instruction's opcode is located)
+                int opcodeAddress = address;
+                
                 int opcode = isa.getInstructionIdByName(ins.opcode()).orElseThrow(() ->
                         new RuntimeException(formatSource(ins.source(), "Unknown opcode: " + ins.opcode())));
                 int[] opcodeCoord = linearToCoord.get(address);
                 if (opcodeCoord == null) throw new CompilationException(formatSource(ins.source(), "Missing coord for address " + address));
                 machineCodeLayout.put(opcodeCoord, opcode);
                 address++;
+                
+                // Format operands as string for display
+                String operandsAsString = formatOperandsAsString(ins, layout, opcodeCoord, isa, ins.source());
+                
+                // Create MachineInstructionInfo and add to sourceLineToInstructions map
+                SourceInfo src = ins.source();
+                if (src != null) {
+                    String sourceLineKey = createSourceLineKey(src);
+                    MachineInstructionInfo machineInfo = new MachineInstructionInfo(
+                            opcodeAddress,
+                            ins.opcode(),
+                            operandsAsString
+                    );
+                    sourceLineToInstructions.computeIfAbsent(sourceLineKey, k -> new ArrayList<>()).add(machineInfo);
+                }
 
                 List<IrOperand> ops = ins.operands();
                 if (ops != null) {
@@ -114,6 +140,15 @@ public class Emitter {
         Map<Integer, String> labelAddressToName = new HashMap<>();
         layout.labelToAddress().forEach((name, addr) -> labelAddressToName.put(addr, name));
 
+        // Sort machine instructions within each source line by linear address
+        Map<String, List<MachineInstructionInfo>> sortedSourceLineToInstructions = new LinkedHashMap<>();
+        for (Map.Entry<String, List<MachineInstructionInfo>> entry : sourceLineToInstructions.entrySet()) {
+            List<MachineInstructionInfo> sorted = entry.getValue().stream()
+                    .sorted((a, b) -> Integer.compare(a.linearAddress(), b.linearAddress()))
+                    .collect(Collectors.toList());
+            sortedSourceLineToInstructions.put(entry.getKey(), sorted);
+        }
+
         // Sort both machineCodeLayout and initialObjects by coordinate to ensure deterministic iteration.
         // HashMap<int[], V> has non-deterministic iteration order because int[] uses identity-based hashCode.
         // Sorting here at compile time ensures any consumer gets consistent, deterministic iteration order.
@@ -135,8 +170,106 @@ public class Emitter {
                 registerAliasMap,
                 procNameToParamNames,
                 tokenMap,
-                tokenLookup
+                tokenLookup,
+                sortedSourceLineToInstructions
         );
+    }
+
+    /**
+     * Formats operands of an instruction as a string for display in the frontend.
+     * 
+     * Note: For CALL instructions, refOperands and valOperands are emitted as separate PUSH/POP instructions,
+     * so we only format the main operands() here (which contains the procedure address/label).
+     * 
+     * @param ins The IR instruction.
+     * @param layout The layout result for resolving label addresses.
+     * @param opcodeCoord The coordinates of the opcode.
+     * @param isa The instruction set for resolving register names.
+     * @param ctx The source information for error reporting.
+     * @return A formatted string representation of the operands (space-separated).
+     */
+    private String formatOperandsAsString(IrInstruction ins, LayoutResult layout, int[] opcodeCoord, IInstructionSet isa, SourceInfo ctx) {
+        List<String> operandStrings = new ArrayList<>();
+        
+        // Format main operands (e.g., procedure address for CALL, register for PUSH/POP)
+        List<IrOperand> mainOperands = ins.operands();
+        if (mainOperands != null) {
+            for (IrOperand op : mainOperands) {
+                operandStrings.add(formatOperandAsString(op, layout, opcodeCoord, isa, ctx));
+            }
+        }
+        
+        return String.join(" ", operandStrings);
+    }
+
+    /**
+     * Formats a single operand as a string for display.
+     * 
+     * @param op The IR operand to format.
+     * @param layout The layout result for resolving label addresses.
+     * @param opcodeCoord The coordinates of the opcode (for calculating label deltas).
+     * @param isa The instruction set for resolving register names.
+     * @param ctx The source information for error reporting.
+     * @return A formatted string representation of the operand.
+     */
+    private String formatOperandAsString(IrOperand op, LayoutResult layout, int[] opcodeCoord, IInstructionSet isa, SourceInfo ctx) {
+        if (op instanceof IrReg r) {
+            // Return the register name as-is (e.g., "%DR0")
+            return r.name();
+        }
+        if (op instanceof IrImm imm) {
+            // Return the numeric value as string
+            return String.valueOf(imm.value());
+        }
+        if (op instanceof IrTypedImm ti) {
+            // Format as "TYPE:VALUE" (e.g., "DATA:3")
+            return ti.typeName() + ":" + ti.value();
+        }
+        if (op instanceof IrVec vec) {
+            // Format vector components joined with "|" (e.g., "10|20")
+            return Arrays.stream(vec.components())
+                    .mapToObj(String::valueOf)
+                    .collect(Collectors.joining("|"));
+        }
+        if (op instanceof IrLabelRef ref) {
+            // Try to resolve label to address and format as delta from opcode
+            Integer targetAddr = layout.labelToAddress().get(ref.labelName());
+            if (targetAddr != null) {
+                int[] targetCoord = layout.linearAddressToCoord().get(targetAddr);
+                if (targetCoord != null && opcodeCoord != null) {
+                    int dims = Math.max(opcodeCoord.length, targetCoord.length);
+                    int[] delta = new int[dims];
+                    for (int d = 0; d < dims; d++) {
+                        int s = d < opcodeCoord.length ? opcodeCoord[d] : 0;
+                        int t = d < targetCoord.length ? targetCoord[d] : 0;
+                        delta[d] = t - s;
+                    }
+                    // Format delta as "x|y|..." for display
+                    return Arrays.stream(delta)
+                            .mapToObj(String::valueOf)
+                            .collect(Collectors.joining("|"));
+                }
+            }
+            // Fallback: return label name if resolution fails
+            return ref.labelName();
+        }
+        return "?";
+    }
+
+    /**
+     * Creates a string key from SourceInfo for efficient lookup in the frontend.
+     * Format: "fileName:lineNumber"
+     * 
+     * @param src The source information.
+     * @return A string key for the source line.
+     */
+    private String createSourceLineKey(SourceInfo src) {
+        if (src == null) {
+            return "<unknown>:-1";
+        }
+        String fileName = src.fileName() != null ? src.fileName() : "<unknown>";
+        int lineNumber = src.lineNumber();
+        return fileName + ":" + lineNumber;
     }
 
     /**
