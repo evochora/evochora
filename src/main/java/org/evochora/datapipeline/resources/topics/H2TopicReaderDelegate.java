@@ -319,11 +319,8 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
                     
                     // Log reassignment if applicable
                     if (isReassignment) {
-                        log.warn("Reassigned stuck message from topic '{}': messageId={}, serviceName={}, claimVersion={}, timeout={}s", 
+                        log.debug("Reassigned stuck message from topic '{}': messageId={}, serviceName={}, claimVersion={}, timeout={}s", 
                             parent.getResourceName(), messageId, serviceName, newClaimVersion, claimTimeout);
-                        recordError("STUCK_MESSAGE_REASSIGNED", "Message claim timeout expired", 
-                            "Topic: " + parent.getResourceName() + ", MessageId: " + messageId + 
-                            ", ClaimVersion: " + newClaimVersion + ", Timeout: " + claimTimeout + "s");
                         parent.recordStuckMessageReassignment();
                     } else {
                         log.debug("Claimed message from topic '{}': messageId={}, serviceName={}, claimVersion={}", 

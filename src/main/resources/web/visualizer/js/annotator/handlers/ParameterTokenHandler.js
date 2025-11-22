@@ -1,8 +1,11 @@
 /**
  * Handles the annotation of tokens that are procedure parameter names.
- * Shows the bound register and its value: [%DRx=Value] or [%PRx=Value].
+ * Shows the complete binding chain from source register to current FPR and its value.
+ * Format: [%DR0→%FPR1→%FPR0=Value] where the chain shows data flow from source (DR/PR)
+ * to intermediate bindings to the current parameter register (FPR), and Value is always
+ * read from the current FPR (which may differ from the source if modified in the procedure).
  * Works anywhere in procedure bodies, not just on .PROC directive lines.
- * Resolves parameter bindings by walking the call stack to find actual DR/PR registers.
+ * Resolves parameter bindings by walking the call stack to find the complete chain.
  */
 class ParameterTokenHandler {
     /**
@@ -25,14 +28,15 @@ class ParameterTokenHandler {
     }
 
     /**
-     * Analyzes the parameter token to create an annotation with its bound register and value.
-     * It resolves the binding chain through the call stack to find the actual register,
-     * then fetches the value from the organism state.
+     * Analyzes the parameter token to create an annotation with its binding chain and current value.
+     * Resolves the complete binding chain through the call stack (from source DR/PR to current FPR),
+     * then reads the value from the current FPR (not from the source, as FPR values may be modified).
+     * The binding chain is displayed reversed: from source to target (e.g., %DR0→%FPR1→%FPR0).
      *
      * @param {string} tokenText The text of the token (the parameter name).
      * @param {object} tokenInfo Metadata about the token.
      * @param {object} organismState The current state of the organism, containing the call stack.
-     * @param {object} artifact The program artifact containing `procNameToParamNames`.
+     * @param {object} artifact The program artifact containing `procNameToParamNames` and `callSiteBindings`.
      * @returns {object} An annotation object `{ annotationText, kind }`.
      * @throws {Error} If required data (procedure name, parameter list, call stack, binding chain) is missing or invalid.
      */
@@ -80,32 +84,35 @@ class ParameterTokenHandler {
         }
 
         // Resolve the binding chain through the call stack using artifact bindings
-        // resolveBindingChainWithPath returns the complete path of register IDs
+        // resolveBindingChainWithPath returns the complete path of register IDs in display order
+        // Path format: [DR0, FPR1, FPR0] - from source DR to parameter FPR
         const bindingPath = AnnotationUtils.resolveBindingChainWithPath(paramIndex, organismState.callStack, artifact, organismState);
 
         if (bindingPath.length === 0) {
             throw new Error(`Cannot annotate parameter "${tokenText}": binding path is empty.`);
         }
 
-        // Get the final register ID (last in path)
-        const finalRegId = bindingPath[bindingPath.length - 1];
+        // Get the value from the LAST register in the chain (the currently valid FPR)
+        // bindingPath ends with the parameter's FPR (e.g., [DR0, FPR1, FPR0])
+        // This FPR holds the current value, which may differ from the source DR/PR if modified
+        const currentRegId = bindingPath[bindingPath.length - 1];
 
-        // Get the register value
+        // Get the register value from the current FPR
         // getRegisterValueById now throws Error directly if register not found or invalid input
-        const value = AnnotationUtils.getRegisterValueById(finalRegId, organismState);
+        const value = AnnotationUtils.getRegisterValueById(currentRegId, organismState);
 
-        // Format the binding path: %FPR0→%FPR1→%DR0
+        // Format the binding path: %DR0→%FPR1→%FPR0
+        // The path is already in display order (source to target)
         const pathNames = bindingPath.map(regId => AnnotationUtils.formatRegisterName(regId));
         const pathDisplay = pathNames.join('→');
 
-        // Format the final value
+        // Format the value
         const formattedValue = ValueFormatter.format(value);
 
-        // If path has more than one element, show the complete chain, otherwise just the final register
-        const registerDisplay = pathNames.length > 1 ? pathDisplay : pathNames[0];
-
+        // Always show the complete chain (even if it has only one element)
+        // Format: [%DR0→%FPR1→%FPR0=Value] where Value is from FPR0 (current, last element)
         return {
-            annotationText: `[${registerDisplay}=${formattedValue}]`,
+            annotationText: `[${pathDisplay}=${formattedValue}]`,
             kind: 'param'
         };
     }

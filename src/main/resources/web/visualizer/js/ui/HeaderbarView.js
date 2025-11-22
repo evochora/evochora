@@ -37,7 +37,22 @@ class HeaderbarView {
                     // Select all text after navigation so user can immediately type new number
                     setTimeout(() => input.select(), 0);
                 }
+            } else if (e.key === ' ') {
+                // Space: Navigate to next tick even when input is focused
+                e.preventDefault();
+                this.handleKeyPress('forward');
+                // Select all text after navigation so user can immediately type new number
+                // Ensure input stays focused and text is selected even if it wasn't selected before
+                setTimeout(() => {
+                    input.focus();
+                    input.select();
+                }, 0);
+            } else if (e.key === 'Escape') {
+                // Escape: Blur the input field to exit focus
+                e.preventDefault();
+                input.blur();
             }
+            // Backspace is NOT handled here - let it work normally (delete text)
         });
         
         input.addEventListener('change', () => {
@@ -54,12 +69,26 @@ class HeaderbarView {
         
         // Keyboard shortcuts with proper debouncing
         document.addEventListener('keydown', (e) => {
-            // Only handle shortcuts when not typing in input field
-            if (document.activeElement === input) return;
+            // Don't handle backspace when input field is focused (let it delete text)
+            if (document.activeElement === input && e.key === 'Backspace') {
+                return; // Let backspace work normally in input field
+            }
             
+            // Don't handle space when input field is focused (space is handled in input's keydown)
+            // The input handler will prevent default and handle navigation
+            if (document.activeElement === input) {
+                return; // Let input handler deal with it (especially space)
+            }
+            
+            // Only handle shortcuts when input field is not focused
             if (e.key === ' ') {
                 e.preventDefault(); // Prevent page scroll
                 this.handleKeyPress('forward');
+                // Focus and select input field after navigation so user can immediately type new tick number
+                setTimeout(() => {
+                    input.focus();
+                    input.select();
+                }, 0);
             } else if (e.key === 'Backspace') {
                 e.preventDefault(); // Prevent browser back
                 this.handleKeyPress('backward');

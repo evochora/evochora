@@ -18,7 +18,7 @@ public final class Config {
     /**
      * The energy cost deducted from an organism when an error occurs during execution.
      */
-    public static final int ERROR_PENALTY_COST = 5;
+    public static final int ERROR_PENALTY_COST = 500;
 
     /**
      * The maximum energy an organism can accumulate.
@@ -48,12 +48,12 @@ public final class Config {
     /**
      * The maximum depth of the data stack.
      */
-    public static final int DS_MAX_DEPTH = 1024;
+    public static final int DS_MAX_DEPTH = 128;
 
     /**
      * The maximum depth of the call stack, preventing infinite recursion.
      */
-    public static final int CALL_STACK_MAX_DEPTH = 1024;
+    public static final int CALL_STACK_MAX_DEPTH = 128;
 
     /**
      * The maximum depth of the stack, aliased to DS_MAX_DEPTH.
@@ -79,7 +79,7 @@ public final class Config {
     /**
      * The directory where simulation runs and their outputs are stored.
      */
-    public static final String RUNS_DIRECTORY = "runs";
+    //public static final String RUNS_DIRECTORY = "runs";
 
     /**
      * The number of bits used to represent the value part of a cell.

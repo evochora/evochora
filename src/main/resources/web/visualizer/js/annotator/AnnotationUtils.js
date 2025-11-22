@@ -296,16 +296,18 @@ class AnnotationUtils {
     /**
      * Resolves the binding chain through the call stack and returns the complete path.
      * Similar to resolveBindingChain, but returns an array of register IDs representing
-     * the complete chain from the parameter's FPR to the final DR/PR register.
+     * the complete chain from the source DR/PR register to the parameter's FPR.
      * <p>
+     * The path is returned in display order: from source to target.
      * For example, if parameter 0 is bound to FPR0, which is bound to FPR1 in the first frame,
-     * which is bound to DR0 in the second frame, this returns [2000, 2001, 0] (FPR0 -> FPR1 -> DR0).
+     * which is bound to DR0 in the second frame, this returns [0, 2001, 2000] (DR0 -> FPR1 -> FPR0).
+     * The last element is the current FPR that holds the parameter value.
      *
      * @param {number} paramIndex - The parameter index (0-based) in the procedure's parameter list.
      * @param {Array} callStack - The call stack frames (array of ProcFrame objects).
      * @param {object} artifact - The ProgramArtifact containing callSiteBindings.
      * @param {object} organismState - The organism state containing initialPosition.
-     * @returns {Array<number>} An array of register IDs representing the binding chain path.
+     * @returns {Array<number>} An array of register IDs representing the binding chain path in display order (source to target).
      * @throws {Error} If paramIndex, callStack, artifact, or organismState is invalid, or if callStack is empty.
      */
     static resolveBindingChainWithPath(paramIndex, callStack, artifact, organismState) {
@@ -393,7 +395,8 @@ class AnnotationUtils {
                     
                     // If we've reached a DR or PR register (below FPR_BASE), we're done
                     if (currentRegId < INSTRUCTION_CONSTANTS.FPR_BASE) {
-                        return path;
+                        // Reverse the path for display: show from source (DR/PR) to current (FPR)
+                        return path.reverse();
                     }
                     // Otherwise, continue with the new FPR ID
                 } else {
@@ -406,8 +409,10 @@ class AnnotationUtils {
             }
         }
 
-        // Return the path (could end with an FPR if chain didn't resolve completely)
-        return path;
+        // Reverse the path for display: show from source (DR/PR) to current (FPR)
+        // The path was built as [FPR0, FPR1, DR0] (parameter to source)
+        // Return it as [DR0, FPR1, FPR0] (source to parameter) for display
+        return path.reverse();
     }
 
     /**

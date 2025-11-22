@@ -29,6 +29,22 @@ public class H2DatabaseReader implements IDatabaseReader {
     
     private static final Logger log = LoggerFactory.getLogger(H2DatabaseReader.class);
     
+    /**
+     * Guard to ensure that the instruction set is initialized exactly once per JVM.
+     * <p>
+     * <strong>Rationale:</strong> When the simulation engine is not running, the
+     * Instruction registry may never be initialized. In that case, calls to
+     * {@link Instruction#getInstructionNameById(int)} would always return
+     * {@code "UNKNOWN"}. This affects the environment visualizer when it reads
+     * historical environment data via database readers without having
+     * started the simulation engine in the same process.
+     * <p>
+     * By lazily initializing the instruction set here, we ensure that opcode
+     * names are available regardless of whether the simulation engine has been
+     * constructed in the current JVM.
+     */
+    private static final java.util.concurrent.atomic.AtomicBoolean INSTRUCTION_INITIALIZED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
     
     private final Connection connection;
     private final H2Database database;
@@ -42,6 +58,17 @@ public class H2DatabaseReader implements IDatabaseReader {
         this.database = database;
         this.envStrategy = envStrategy;
         this.runId = runId;
+    }
+    
+    /**
+     * Ensures that the instruction set is initialized.
+     * <p>
+     * This method is idempotent and thread-safe.
+     */
+    private static void ensureInstructionSetInitialized() {
+        if (INSTRUCTION_INITIALIZED.compareAndSet(false, true)) {
+            Instruction.init();
+        }
     }
     
     @Override
@@ -61,6 +88,9 @@ public class H2DatabaseReader implements IDatabaseReader {
         // Read cells via strategy
         List<org.evochora.datapipeline.api.contracts.CellState> cells = 
             envStrategy.readTick(connection, tickNumber, region, envProps);
+        
+        // Ensure instruction set is initialized before resolving opcode names
+        ensureInstructionSetInitialized();
         
         // Convert flatIndex to coordinates and molecule type int to string
         return cells.stream()

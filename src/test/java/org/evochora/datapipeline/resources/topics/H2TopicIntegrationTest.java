@@ -256,7 +256,6 @@ class H2TopicIntegrationTest {
     
     @Test
     @DisplayName("Should reassign stuck messages after claim timeout")
-    @ExpectLog(level = LogLevel.WARN, messagePattern = "Reassigned stuck message.*")
     void shouldReassignStuckMessages() throws Exception {
         // Given - Setup topic with SHORT claim timeout (1 second)
         Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:mem:h2-stuck\"\nclaimTimeout = 1");
@@ -309,7 +308,6 @@ class H2TopicIntegrationTest {
     
     @Test
     @DisplayName("Should reject stale ACK after message reassignment")
-    @ExpectLog(level = LogLevel.WARN, messagePattern = "Reassigned stuck message.*")
     @ExpectLog(level = LogLevel.WARN, messagePattern = "Stale ACK rejected.*")
     void shouldRejectStaleAckAfterReassignment() throws Exception {
         // Given - Setup topic with SHORT claim timeout

@@ -346,11 +346,34 @@ public final class OrganismStateConverter {
         java.util.Optional<org.evochora.runtime.isa.InstructionSignature> signatureOpt =
                 Instruction.getSignatureById(opcodeId);
         
+        // Handle unknown opcodes (e.g., from self-modifying code where a non-instruction molecule was executed)
+        // This matches the runtime's behavior: VirtualMachine.plan() creates a NopInstruction with name "UNKNOWN"
+        // when an unknown opcode is encountered, and marks instructionFailed=true.
         if (signatureOpt.isEmpty()) {
-            throw new IllegalStateException(
-                String.format("Instruction %d (%s) has no signature registered. " +
-                    "This indicates either corrupted data or an ISA version mismatch. " +
-                    "All executed instructions must be registered.", opcodeId, opcodeName));
+            // Return a fallback InstructionView for unknown opcodes
+            // No arguments can be resolved without a signature, but we still preserve the execution metadata
+            // The runtime always marks instructionFailed=true for unknown opcodes, so we ensure failed=true here too
+            
+            // Extract molecule type and value to show what was actually executed
+            Molecule molecule = Molecule.fromInt(opcodeId);
+            String moleculeTypeName = MoleculeTypeRegistry.typeToName(molecule.type());
+            int moleculeValue = molecule.toScalarValue();
+            String formattedOpcodeName = String.format("UNKNOWN [%s:%d]", moleculeTypeName, moleculeValue);
+            
+            String unknownReason = failureReason != null && !failureReason.isEmpty() 
+                    ? failureReason 
+                    : "Unknown opcode: " + opcodeId + " (" + moleculeTypeName + ":" + moleculeValue + ")";
+            return new InstructionView(
+                    opcodeId,
+                    formattedOpcodeName, // e.g., "UNKNOWN [DATA:42]" or "UNKNOWN [STRUCTURE:10]"
+                    java.util.Collections.emptyList(), // No arguments for unknown instructions
+                    java.util.Collections.emptyList(), // No argument types without signature
+                    energyCost,
+                    ipBeforeFetch != null ? ipBeforeFetch : new int[0],
+                    dvBeforeFetch != null ? dvBeforeFetch : new int[0],
+                    true, // Always true for unknown opcodes (runtime sets instructionFailed=true)
+                    unknownReason
+            );
         }
         
         org.evochora.runtime.isa.InstructionSignature signature = signatureOpt.get();
