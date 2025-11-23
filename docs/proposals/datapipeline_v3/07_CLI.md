@@ -288,7 +288,7 @@ evochora> exit
 
 
 # Compile assembly (outputs complete ProgramArtifact as JSON)
-./evochora compile -f assembly/test.s -e 1000x1000:toroidal
+./evochora compile -f assembly/test.evo -e 1000x1000:toroidal
 
 # With custom configuration file
 ./evochora start --config /path/to/custom.conf

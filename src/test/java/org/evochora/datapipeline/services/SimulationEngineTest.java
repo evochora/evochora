@@ -62,8 +62,8 @@ class SimulationEngineTest {
         resources.put("tickData", Collections.singletonList(mockTickDataOutput));
         resources.put("metadataOutput", Collections.singletonList(mockMetadataOutput));
 
-        Path sourceProgram = Path.of("src/test/resources/org/evochora/datapipeline/services/simple.s");
-        programFile = tempDir.resolve("simple.s");
+        Path sourceProgram = Path.of("src/test/resources/org/evochora/datapipeline/services/simple.evo");
+        programFile = tempDir.resolve("simple.evo");
         Files.copy(sourceProgram, programFile, StandardCopyOption.REPLACE_EXISTING);
     }
 
@@ -104,7 +104,7 @@ class SimulationEngineTest {
     void constructor_shouldThrowException_whenProgramFileIsMissing() {
         Config config = createValidConfig().withValue(
                 "organisms.0.program",
-                ConfigValueFactory.fromAnyRef("nonexistent/path/to/program.s")
+                ConfigValueFactory.fromAnyRef("nonexistent/path/to/program.evo")
         );
         assertThrows(
                 IllegalArgumentException.class,
@@ -115,7 +115,7 @@ class SimulationEngineTest {
     @Test
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*", messagePattern = "(?s)Failed to compile program file.*")
     void constructor_shouldThrowException_whenProgramIsInvalid() throws IOException {
-        Path invalidProgram = tempDir.resolve("invalid.s");
+        Path invalidProgram = tempDir.resolve("invalid.evo");
         Files.writeString(invalidProgram, "INVALID SYNTAX HERE");
         
         Config config = createValidConfig().withValue(
@@ -225,8 +225,8 @@ class SimulationEngineTest {
 
     @Test
     void constructor_shouldAccept1DWorld() throws IOException {
-        Path program1D = tempDir.resolve("simple_1d.s");
-        Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_1d.s"), program1D, StandardCopyOption.REPLACE_EXISTING);
+        Path program1D = tempDir.resolve("simple_1d.evo");
+        Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_1d.evo"), program1D, StandardCopyOption.REPLACE_EXISTING);
         
         Config config = createValidConfig()
                 .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(20)))
@@ -240,8 +240,8 @@ class SimulationEngineTest {
 
     @Test
     void constructor_shouldAccept3DWorld() throws IOException {
-        Path program3D = tempDir.resolve("simple_3d.s");
-        Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_3d.s"), program3D, StandardCopyOption.REPLACE_EXISTING);
+        Path program3D = tempDir.resolve("simple_3d.evo");
+        Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_3d.evo"), program3D, StandardCopyOption.REPLACE_EXISTING);
         
         Config config = createValidConfig()
                 .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(10, 10, 10)))

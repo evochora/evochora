@@ -8,12 +8,12 @@ Dieses Dokument beschreibt eine neue, überarbeitete Syntax und Semantik für da
 
 ### **1. Modul-Deklaration: Eine Datei = Ein Modul**
 
-Jede Assembly-Datei (`.s`) ist implizit ein eigenständiges Modul. Ein Modul dient als Namespace für alle in ihm definierten Symbole (Prozeduren, Labels, Konstanten etc.).
+Jede Assembly-Datei (`.evo`) ist implizit ein eigenständiges Modul. Ein Modul dient als Namespace für alle in ihm definierten Symbole (Prozeduren, Labels, Konstanten etc.).
 
 * **Kanonischer Name:** Ein Modul erhält seinen kanonischen (eindeutigen) Namen durch eine **`.MODULE`-Direktive**, die in der Regel am Anfang der Datei steht.
 
     ```assembly
-    ; Datei: std/math.s
+    ; Datei: std/math.evo
     .MODULE std.math  ; Definiert den kanonischen Namen des Moduls
 
     ; ... Definitionen ...
@@ -32,7 +32,7 @@ Standardmässig sind alle in einem Modul definierten Symbole **privat**, d.h. si
 * **Syntax:** Die `.EXPORT`-Direktive macht ein oder mehrere Symbole öffentlich.
 
     ```assembly
-    ; Datei: std/math.s
+    ; Datei: std/math.evo
     .MODULE std.math
 
     ; Öffentliche Prozedur, da sie exportiert wird
@@ -65,7 +65,7 @@ Um auf die **exportierten** Symbole eines anderen Moduls zugreifen zu können, m
 * **Beispiel:**
 
     ```assembly
-    ; Datei: main.s
+    ; Datei: main.evo
     .MODULE main
 
     ; Importiert das Modul "std.math" und gibt ihm den lokalen Alias "Math"

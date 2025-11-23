@@ -71,15 +71,15 @@ class SimulationEngineIntegrationTest {
         resources.put("tickData", Collections.singletonList(tickDataQueue));
         resources.put("metadataOutput", Collections.singletonList(metadataQueue));
 
-        Path sourceProgram = Path.of("src/test/resources/org/evochora/datapipeline/services/simple.s");
-        programFile = tempDir.resolve("simple.s");
+        Path sourceProgram = Path.of("src/test/resources/org/evochora/datapipeline/services/simple.evo");
+        programFile = tempDir.resolve("simple.evo");
         Files.copy(sourceProgram, programFile, StandardCopyOption.REPLACE_EXISTING);
         
-        programFile1D = tempDir.resolve("simple_1d.s");
-        Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_1d.s"), programFile1D, StandardCopyOption.REPLACE_EXISTING);
+        programFile1D = tempDir.resolve("simple_1d.evo");
+        Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_1d.evo"), programFile1D, StandardCopyOption.REPLACE_EXISTING);
         
-        programFile3D = tempDir.resolve("simple_3d.s");
-        Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_3d.s"), programFile3D, StandardCopyOption.REPLACE_EXISTING);
+        programFile3D = tempDir.resolve("simple_3d.evo");
+        Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_3d.evo"), programFile3D, StandardCopyOption.REPLACE_EXISTING);
 
         baseConfig = ConfigFactory.parseMap(Map.of(
                 "samplingInterval", 1,

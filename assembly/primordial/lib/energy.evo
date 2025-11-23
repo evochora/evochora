@@ -1,7 +1,8 @@
-# lib/energy.s
+# lib/energy.evo
 # Exportierte Energiesuche: ballistisch + periodischer Turn mit Primperioden.
 
-.INCLUDE "lib/state.s"
+.INCLUDE "lib/state.evo"
+.REQUIRE "lib/state.evo" AS STATE
 
 .PROC HARVEST EXPORT
 

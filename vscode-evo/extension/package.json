@@ -1,0 +1,35 @@
+{
+  "name": "evochora-syntax",
+  "displayName": "Evochora Assembly Syntax",
+  "description": "Syntax highlighting for the .evo assembly language.",
+  "version": "0.2.2",
+  "publisher": "evochora",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "evochora-asm",
+        "aliases": [
+          "Evochora Assembly",
+          "evo"
+        ],
+        "extensions": [
+          ".evo"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "evochora-asm",
+        "scopeName": "source.evo",
+        "path": "./syntaxes/evochora.tmLanguage.json"
+      }
+    ]
+  }
+}

@@ -43,7 +43,7 @@ class SidebarSourceView {
             if (this.allSources[src.fileName]) {
                 this.selectedFileName = src.fileName;
             } else {
-                // Try to find a file with similar name (e.g., if we have "main.s" but source shows "org/evochora/main.s")
+                // Try to find a file with similar name (e.g., if we have "main.evo" but source shows "org/evochora/main.evo")
                 const availableFiles = Object.keys(this.allSources);
                 for (const fileName of availableFiles) {
                     if (fileName.endsWith(src.fileName) || fileName.includes(src.fileName.split('/').pop())) {
@@ -65,13 +65,13 @@ class SidebarSourceView {
             
             // Debug logging
         } else if (!this.selectedFileName && this.allSources && Object.keys(this.allSources).length > 0) {
-            // Fallback: Wähle main.s als Standard, falls verfügbar, sonst die erste Datei
+            // Fallback: Wähle main.evo als Standard, falls verfügbar, sonst die erste Datei
             const availableFiles = Object.keys(this.allSources);
             let defaultFile = availableFiles[0];
             
-            // Suche nach main.s oder einer Datei mit "main" im Namen
+            // Suche nach main.evo oder einer Datei mit "main" im Namen
             for (const fileName of availableFiles) {
-                if (fileName.includes('main.s') || fileName.includes('main')) {
+                if (fileName.includes('main.evo') || fileName.includes('main')) {
                     defaultFile = fileName;
                     break;
                 }

@@ -39,7 +39,7 @@
       /***** Primordial *****/
       {
         // [MANDATORY] Path to the assembly program file for this organism
-        "program": "assembly/primordial/main.s",
+        "program": "assembly/primordial/main.evo",
         // [MANDATORY] Initial energy level when organism is created
         "initialEnergy": 30000,
         // [MANDATORY] Placement strategy for organisms

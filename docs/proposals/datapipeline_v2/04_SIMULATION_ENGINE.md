@@ -30,7 +30,7 @@ options {
   }
   organisms = [
     {
-      program = "assembly/primordial/main.s"
+      program = "assembly/primordial/main.evo"
       initialEnergy = 30000
       placement {
         # For this initial implementation, only the "fixed" strategy is required.

@@ -441,7 +441,7 @@ Directives are special commands that instruct the compiler on how to assemble th
 
 ### Modules and Procedures
 
-A **module** is a source file (e.g., `lib.s`) containing one or more `.PROC` definitions that can be reused. To create and use modules effectively, you combine `.PROC`, `.REQUIRE`, and `.INCLUDE`.
+A **module** is a source file (e.g., `lib.evo`) containing one or more `.PROC` definitions that can be reused. To create and use modules effectively, you combine `.PROC`, `.REQUIRE`, and `.INCLUDE`.
 
 * `.PROC <Name> [EXPORT] [REF <param1> ...] [VAL <param2> ...] / .ENDP`: Defines a procedure.
     - `EXPORT`: Makes the procedure visible to other modules.
@@ -461,7 +461,7 @@ A **module** is a source file (e.g., `lib.s`) containing one or more `.PROC` def
 
 #### Example of a Modular Program:
 
-**File 1: `lib/math.s`**
+**File 1: `lib/math.evo`**
 ```
 # This module provides a simple math function.
 .PROC MATH.ADD EXPORT VAL A B  # Make this procedure public
@@ -470,10 +470,10 @@ A **module** is a source file (e.g., `lib.s`) containing one or more `.PROC` def
 .ENDP
 ```
 
-**File 2: `lib/utils.s`**
+**File 2: `lib/utils.evo`**
 ```
 # This module depends on the math library.
-.REQUIRE "lib/math.s" AS MATH
+.REQUIRE "lib/math.evo" AS MATH
 
 .PROC UTILS.INCREMENT_BOTH EXPORT REF REG1 REG2
   # Use the procedure from the math library
@@ -491,18 +491,18 @@ A **module** is a source file (e.g., `lib.s`) containing one or more `.PROC` def
 .ENDP
 ```
 
-**File 3: `main.s` (The main program)**
+**File 3: `main.evo` (The main program)**
 ```
 # 1. Include the source code for all required modules.
 #    This places their machine code into the environment.
 .ORG 50|0
-.INCLUDE "lib/math.s"
+.INCLUDE "lib/math.evo"
 
 .ORG 100|0
-.INCLUDE "lib/utils.s"
+.INCLUDE "lib/utils.evo"
 
 # 2. Declare the dependency for the main program's code.
-.REQUIRE "lib/utils.s" AS UTILS
+.REQUIRE "lib/utils.evo" AS UTILS
 
 # 3. Main program logic starts here.
 .ORG 0|0

@@ -6,7 +6,7 @@ This document outlines the necessary architectural changes to refactor the compi
 This is a breaking change that will replace the old syntax (.SCOPE, .REQUIRE, .INCLUDE) with a new, more powerful set of directives.
 
 ### **Key Architectural Concepts**
-1. **Module as the Core Unit:** Each assembly file (.s) is a self-contained **module**. A module acts as a namespace for all symbols defined within it.
+1. **Module as the Core Unit:** Each assembly file (.evo) is a self-contained **module**. A module acts as a namespace for all symbols defined within it.
 2. **Canonical Naming:** Every module is identified by a unique, canonical name (e.g., std.math), which is decoupled from its file path.
 3. **Explicit Visibility:** Symbols within a module are **private by default**. They must be explicitly marked for export to be visible to other modules.
 4. **Symbol Identity vs. Name:** The core of the new system is the separation of a symbol's name from its identity. Every symbol (procedure, label, etc.) will be assigned a **globally unique, immutable ID**. All later compiler phases and the debugger will refer to symbols by this ID, not by their potentially ambiguous names or aliases.

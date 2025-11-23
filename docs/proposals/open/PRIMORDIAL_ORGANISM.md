@@ -4,13 +4,13 @@ This document outlines the hierarchical programming architecture for our primord
 
 ---
 
-### Level 1: Main Program (`organism.s`)
+### Level 1: Main Program (`organism.evo`)
 
 * **Purpose:** The State Machine 🤖. A minimal code block whose sole responsibility is to check the global state (e.g., current energy level) and then jump to one of the subordinate behavior blocks. It acts as the **conductor** of the organism.
 
 ---
 
-### Level 2: Behaviors (`behaviors.s`)
+### Level 2: Behaviors (`behaviors.evo`)
 
 * **Purpose:** Large, self-contained blocks of behavior. A behavior is activated by the main program and runs in a short loop before returning control.
 
@@ -20,7 +20,7 @@ This document outlines the hierarchical programming architecture for our primord
 
 ---
 
-### Level 3: Strategies (`strategies.s`)
+### Level 3: Strategies (`strategies.evo`)
 
 * **Purpose:** The concrete, long-term algorithms used by a behavior. They define **how** a task is accomplished.
 
@@ -30,7 +30,7 @@ This document outlines the hierarchical programming architecture for our primord
 
 ---
 
-### Level 4: Tactics (`tactics.s`)
+### Level 4: Tactics (`tactics.evo`)
 
 * **Purpose:** Short, goal-oriented actions used by strategies like tools 🛠️. They combine several `stdlib` functions into a single, meaningful action.
 
@@ -40,7 +40,7 @@ This document outlines the hierarchical programming architecture for our primord
 
 ---
 
-### Level 5: Stdlib (`stdlib.s`)
+### Level 5: Stdlib (`stdlib.evo`)
 
 * **Purpose:** The Foundation 🏗️. This level contains atomic, highly reusable procedures that perform a single, basic task. They are the fundamental building blocks for all more complex actions.
 

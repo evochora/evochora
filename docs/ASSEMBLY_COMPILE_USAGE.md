@@ -10,21 +10,21 @@ The compiler can be invoked in three equivalent ways:
 ### Option 1: Gradle Task (convenient for quick compilation)
 ```bash
 # Basic compilation (uses default 100x100:toroidal)
-./gradlew compile -Pfile="path/to/assembly.s"
+./gradlew compile -Pfile="path/to/assembly.evo"
 
 # With custom environment
-./gradlew compile -Pfile="path/to/assembly.s" -Penv="2000x2000:flat"
-./gradlew compile -Pfile="path/to/assembly.s" -Penv="1000x1000x100:toroidal"
+./gradlew compile -Pfile="path/to/assembly.evo" -Penv="2000x2000:flat"
+./gradlew compile -Pfile="path/to/assembly.evo" -Penv="1000x1000x100:toroidal"
 ```
 
 ### Option 2: Gradle run with args (flexible)
 ```bash
 # Basic compilation
-./gradlew run --args="compile --file=path/to/assembly.s"
+./gradlew run --args="compile --file=path/to/assembly.evo"
 
 # With custom environment
-./gradlew run --args="compile --file=path/to/assembly.s --env=2000x2000:flat"
-./gradlew run --args="compile --file=path/to/assembly.s --env=1000x1000x100:toroidal"
+./gradlew run --args="compile --file=path/to/assembly.evo" --env="2000x2000:flat"
+./gradlew run --args="compile --file=path/to/assembly.evo" --env="1000x1000x100:toroidal"
 ```
 
 ### Option 3: JAR (standalone, no Gradle required)
@@ -33,8 +33,8 @@ The compiler can be invoked in three equivalent ways:
 ./gradlew jar
 
 # Then use it
-java -jar build/libs/evochora.jar compile --file=path/to/assembly.s
-java -jar build/libs/evochora.jar compile --file=path/to/assembly.s --env=2000x2000:flat
+java -jar build/libs/evochora.jar compile --file=path/to/assembly.evo
+java -jar build/libs/evochora.jar compile --file=path/to/assembly.evo" --env=2000x2000:flat
 ```
 
 ## Environment Parameters
@@ -79,8 +79,8 @@ This system allows AI assistants to:
 
 ## Example Assembly Files
 
-- **`assembly/examples/simple.s`**  - Simple example demonstrating basic assembly syntax (recommended for testing)
-- **`assembly/examples/complex.s`** - Comprehensive example showing advanced features like procedures, loops, and world interaction
+- **`assembly/examples/simple.evo`**  - Simple example demonstrating basic assembly syntax (recommended for testing)
+- **`assembly/examples/complex.evo`** - Comprehensive example showing advanced features like procedures, loops, and world interaction
 
 ## Notes
 

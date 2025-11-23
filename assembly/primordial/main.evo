@@ -1,3 +1,14 @@
+# main.evo
+.VERSION 1.0
+
+# Library dependencies
+.INCLUDE "lib/energy.evo"
+.REQUIRE "lib/energy.evo" AS ENERGY
+.INCLUDE "lib/reproduce.evo"
+.REQUIRE "lib/reproduce.evo" AS REPRODUCE
+.INCLUDE "lib/state.evo"
+.REQUIRE "lib/state.evo" AS STATE
+
 # main.s
 # New Primordial Organism
 # Main loop with reproduction and energy search (both mocks)

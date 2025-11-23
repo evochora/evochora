@@ -82,7 +82,7 @@ pipeline {
     simulation {
       className = "org.evochora.datapipeline.services.DummyService"
       outputs = ["raw-tick-stream"]
-      options { organismSources = ["assembly/primordial/main.s"] }
+      options { organismSources = ["assembly/primordial/main.evo"] }
     }
   }
 }

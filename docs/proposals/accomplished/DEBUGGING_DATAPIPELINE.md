@@ -65,7 +65,7 @@ Each process can run on its own instance (e.g., AWS) and communicates via a cent
 ### 3.2. Phase 1: Compilation
 
 * **Component:** `Compiler.java`
-* **Role:** Translates `.s` source files into `ProgramArtifacts`. It is invoked as the first step by the `run` or `sim` command of the CLI.
+* **Role:** Translates `.evo` source files into `ProgramArtifacts`. It is invoked as the first step by the `run` or `sim` command of the CLI.
 * **Input:** Paths to the source files from the `config.json`.
 * **Output:** `ProgramArtifact` objects in memory.
 

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Evochora Assembly",
+  "scopeName": "source.evo",
+  "patterns": [
+    {
+      "include": "#main"
+    }
+  ],
+  "repository": {
+    "main": {
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#directives" },
+        { "include": "#labels" },
+        { "include": "#opcodes" },
+        { "include": "#registers" },
+        { "include": "#literals" },
+        { "include": "#strings" },
+        { "include": "#identifiers" }
+      ]
+    },
+    "comments": {
+      "name": "comment.line.number-sign.assembly",
+      "match": "#.*$"
+    },
+    "directives": {
+      "name": "keyword.control.directive.assembly",
+      "match": "(?i)\\.(DEFINE|REG|ORG|DIR|PLACE|MACRO|ENDM|PROC|ENDP|REQUIRE|INCLUDE|PREG|SCOPE|ENDS|VERSION)\\b"
+    },
+    "labels": {
+      "name": "entity.name.function.label.assembly",
+      "match": "^\\s*([a-zA-Z_][a-zA-Z0-9_]*):"
+    },
+    "opcodes": {
+      "name": "keyword.control.instruction.assembly",
+      "match": "(?i)\\b(SETI|SETR|SETV|PUSH|POP|PUSI|PUSV|DUP|SWAP|DROP|ROT|ADDR|ADDI|ADDS|SUBR|SUBI|SUBS|MULR|MULI|MULS|DIVR|DIVI|DIVS|MODR|MODI|MODS|DOTR|DOTS|CRSR|CRSS|ANDR|ANDI|ANDS|ORR|ORI|ORS|XORR|XORI|XORS|NADR|NADI|NADS|NOT|NOTS|SHLR|SHLI|SHLS|SHRR|SHRI|SHRS|ROTR|ROTI|ROTS|PCNR|PCNS|BSNR|BSNI|BSNS|RBIR|RBII|RBIS|SPNR|SPNS|SNTR|SNTI|SNTS|JMPI|JMPR|JMPS|CALL|RET|IFR|IFI|IFS|LTR|LTI|LTS|GTR|GTI|GTS|IFTR|IFTI|IFTS|IFMR|IFMI|IFMS|IFPR|IFPI|IFPS|INR|INI|INS|GETR|GETI|GETS|LETR|LETI|LETS|INTR|INTI|INTS|INMR|INMI|INMS|INPR|INPI|INPS|PEEK|PEKI|PEKS|SCAN|SCNI|SCNS|POKE|POKI|POKS|PPKR|PPKI|PPKS|SEEK|SEKI|SEKS|NOP|SYNC|TURN|TRNI|TRNS|POS|POSS|DIFF|DIFS|NRG|NRGS|RAND|RNDS|GDVR|GDVS|FORK|FRKI|FRKS|ADPR|ADPI|ADPS|DUPL|SWPL|DRPL|ROTL|DPLS|SKLS|LSDS|DPLR|SKLR|PUSL|POPL|LRDR|LRDS|LSDR|LRLR|CRLR|VGTR|VGTI|VGTS|VSTR|VSTI|VSTS|VBLD|VBLS|B2VR|B2VI|B2VS|V2BR|V2BI|V2BS|RTRR|RTRI|RTRS)\\b"
+    },
+    "registers": {
+      "name": "variable.language.register.assembly",
+      "match": "(?i)%((DR|PR|FPR|LR)\\d+|[A-Z_]+)"
+    },
+    "literals": {
+      "patterns": [
+        {
+          "name": "constant.other.molecule.assembly",
+          "match": "(?i)\\b(DATA|ENERGY|STRUCTURE|CODE):(0x[0-9a-fA-F]+|0b[01]+|0o[0-7]+|-?\\d+)\\b"
+        },
+        {
+          "name": "storage.type.assembly",
+          "match": "(?i)\\b(DATA|ENERGY|STRUCTURE|CODE)(:)"
+        },
+        {
+          "name": "constant.numeric.assembly",
+          "match": "\\b(0x[0-9a-fA-F]+|0b[01]+|0o[0-7]+|-?\\d+)\\b"
+        },
+        {
+          "name": "constant.other.vector.assembly",
+          "match": "\\b-?\\d+(\\|-?\\d+)+\\b"
+        }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.assembly",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.assembly",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "identifiers": {
+      "name": "entity.name.function.assembly",
+      "match": "\\b([a-zA-Z_][a-zA-Z0-9_\\.]*)\\b"
+    }
+  }
+}

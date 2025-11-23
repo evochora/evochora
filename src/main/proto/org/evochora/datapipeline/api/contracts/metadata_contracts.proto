@@ -204,7 +204,7 @@ message ProgramArtifact {
 
   // Machine instructions per source line for visualization
   // Source: ProgramArtifact.sourceLineToInstructions()
-  // Key: "fileName:lineNumber" (e.g., "main.s:4"), Value: list of machine instructions
+  // Key: "fileName:lineNumber" (e.g., "main.evo:4"), Value: list of machine instructions
   // Used by frontend to display compiler-generated instructions (e.g., PUSH/POP for CALL)
   map<string, MachineInstructionInfoList> source_line_to_instructions = 14;
 }

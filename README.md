@@ -44,13 +44,13 @@ The platform is architected for scalability: simulations can run on a single mac
 
 ```bash
 # Option 1: Gradle task
-./gradlew compile -Pfile="assembly/examples/simple.s"
+./gradlew compile -Pfile="assembly/examples/simple.evo"
 
 # Option 2: Gradle run with args
-./gradlew run --args="compile --file=assembly/examples/simple.s"
+./gradlew run --args="compile --file=assembly/examples/simple.evo"
 
 # Option 3: Standalone JAR
-java -jar build/libs/evochora.jar compile --file=assembly/examples/simple.s
+java -jar build/libs/evochora.jar compile --file=assembly/examples/simple.evo
 ```
 
 ### Render Simulation Videos

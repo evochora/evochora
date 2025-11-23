@@ -2,7 +2,7 @@
 
 **Objective:** Prepare the entire codebase for the final removal of the old `WITH` syntax. This is the first of a two-part finalization process. In this step, all assembly files and the majority of tests will be migrated to the new `REF`/`VAL` syntax. The compiler's ability to parse the old syntax will be temporarily retained to ensure stability. Tests or part of tests that specifically validate the old syntax will be marked for later removal.**Prerequisites - Assumed Code State:** It is assumed that at the start of this task, the compiler fully supports both the old `WITH` syntax and the new `REF`/`VAL` syntax. All tests for both systems are passing.**Constraint Checklist:*** The compiler's Java code for parsing and analyzing the `WITH` syntax must NOT be removed in this step.
 
-* All assembly files (`.s`) in the project must be migrated.
+* All assembly files (`.evo`) in the project must be migrated.
 
 * The majority of tests must be migrated.
 
@@ -12,9 +12,9 @@
 
 ### 1. Migrate Assembly Source Files
 
-**Action:** Update all assembly (`.s`) files within the project to exclusively use the new `REF`/`VAL` syntax.* **Path to check:** `src/main/resources/org/evochora/organism/prototypes/`
+**Action:** Update all assembly (`.evo`) files within the project to exclusively use the new `REF`/`VAL` syntax.* **Path to check:** `src/main/resources/org/evochora/organism/prototypes/`
 
-* Search all `.s` files in this directory and its subdirectories.
+* Search all `.evo` files in this directory and its subdirectories.
 
 * Convert every instance of `.PROC ... WITH ...` and `CALL ... WITH ...` to the new syntax.
 

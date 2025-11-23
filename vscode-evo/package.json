@@ -1,0 +1,12 @@
+{
+  "name": "vscode-evo-dev",
+  "version": "1.0.0",
+  "description": "Development dependencies for Evochora VS Code extension",
+  "private": true,
+  "devDependencies": {
+    "@vscode/vsce": "^2.15.0"
+  },
+  "scripts": {
+    "build": "vsce package -C extension --out evochora-syntax.vsix"
+  }
+}

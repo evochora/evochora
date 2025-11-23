@@ -229,7 +229,7 @@ simulation-engine {
 
     # Organism configuration
     organisms = [{
-      program = "assembly/primordial/main.s"  # Path to assembly source
+      program = "assembly/primordial/main.evo"  # Path to assembly source
       initialEnergy = 30000
       placement {
         positions = [5, 5]  # Initial position in environment

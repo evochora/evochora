@@ -65,8 +65,8 @@ class PersistenceServiceBatchNotificationIntegrationTest {
         tempStorageDir = tempDir.resolve("storage");
         Files.createDirectories(tempStorageDir);
         
-        Path sourceProgram = Path.of("src/test/resources/org/evochora/datapipeline/services/simple.s");
-        programFile = tempDir.resolve("simple.s");
+        Path sourceProgram = Path.of("src/test/resources/org/evochora/datapipeline/services/simple.evo");
+        programFile = tempDir.resolve("simple.evo");
         Files.copy(sourceProgram, programFile, StandardCopyOption.REPLACE_EXISTING);
     }
     

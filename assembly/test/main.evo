@@ -1,4 +1,4 @@
-.REQUIRE "lib1.s" AS LIB
+.REQUIRE "lib/lib1.evo" AS LIB
 
 .REG %TEST1 %DR0
 .REG %TEST2 %DR1
@@ -21,6 +21,6 @@ CALL LIB.PROC1 REF %TEST1 %TEST2 VAL DATA:3 DATA:4
 POKI %TEST1 0|1
 
 .ORG 0|3
-.INCLUDE "lib1.s"
+.INCLUDE "lib1.evo"
 .ORG 0|5
-.INCLUDE "lib2.s"
+.INCLUDE "lib2.evo"

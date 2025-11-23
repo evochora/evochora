@@ -395,7 +395,7 @@ Declares the unique, canonical name for the current module. This directive shoul
 
 * **Example:**
     ```assembly
-    # In file: /libs/math/arithmetic.s
+    # In file: /libs/math/arithmetic.evo
     .MODULE STD.MATH
     ```
 
@@ -454,7 +454,7 @@ Imports another module and makes its exported symbols available under a local al
 
 ### Example of a Modern Modular Program
 
-**File 1: `libs/math.s`**
+**File 1: `libs/math.evo`**
 ```assembly
 # Define a module with a canonical name.
 .MODULE STD.MATH
@@ -469,7 +469,7 @@ Imports another module and makes its exported symbols available under a local al
 .ENDP
 ```
 
-**File 2: `main.s`**
+**File 2: `main.evo`**
 ```assembly
 # Define the main module.
 .MODULE MAIN

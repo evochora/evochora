@@ -66,8 +66,8 @@ class SimulationToPersistenceIntegrationTest {
         Files.createDirectories(tempStorageDir);
 
         // Copy an existing valid assembly program for testing
-        Path sourceProgram = Path.of("src/test/resources/org/evochora/datapipeline/services/simple.s");
-        programFile = tempDir.resolve("simple.s");
+        Path sourceProgram = Path.of("src/test/resources/org/evochora/datapipeline/services/simple.evo");
+        programFile = tempDir.resolve("simple.evo");
         Files.copy(sourceProgram, programFile, StandardCopyOption.REPLACE_EXISTING);
     }
 

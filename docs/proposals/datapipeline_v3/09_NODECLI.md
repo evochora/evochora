@@ -248,7 +248,7 @@ All standards regarding JavaDoc, immutability, code style, and logging from prev
 ./evochora node stop
 
 # Compile assembly code
-./evochora compile -f assembly/test.s -e 1000x1000:toroidal
+./evochora compile -f assembly/test.evo -e 1000x1000:toroidal
 ```
 
 ### 8.2. Configuration Override

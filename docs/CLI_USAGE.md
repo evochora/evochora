@@ -38,10 +38,10 @@ The node will:
 ### Compile Assembly Files
 ```bash
 # Basic compilation
-./gradlew run --args="compile --file=assembly/examples/simple.s"
+./gradlew run --args="compile --file=assembly/examples/simple.evo"
 
 # With custom environment
-./gradlew run --args="compile --file=assembly/examples/simple.s --env=200x200:flat"
+./gradlew run --args="compile --file=assembly/examples/simple.evo --env=200x200:flat"
 ```
 
 See `ASSEMBLY_COMPILE_USAGE.md` for detailed compilation documentation.
@@ -228,7 +228,7 @@ java -jar build/libs/evochora.jar node run
 java -jar build/libs/evochora.jar --config my-config.conf node run
 
 # Compile assembly
-java -jar build/libs/evochora.jar compile --file=assembly/examples/simple.s
+java -jar build/libs/evochora.jar compile --file=assembly/examples/simple.evo
 
 # Inspect storage data
 java -jar build/libs/evochora.jar inspect storage --tick=1000 --run=my-simulation-run

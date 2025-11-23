@@ -1,6 +1,7 @@
-# lib/reproduce.s
+# lib/reproduce.evo
 # Exportierte Reproduktion des Organimus
-.INCLUDE "lib/state.s"
+.INCLUDE "lib/state.evo"
+.REQUIRE "lib/state.evo" AS STATE
 
 .REG %CONTCORD %LR0 # Koordinate um die Reproduktion fortzusetzen
 #.REG %FORKCORD %LR1 # Koorinate in der rechten oberen Ecke, von der aus der FORK Prozess gestartet werden kann
