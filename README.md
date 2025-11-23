@@ -53,6 +53,16 @@ The platform is architected for scalability: simulations can run on a single mac
 java -jar build/libs/evochora.jar compile --file=assembly/examples/simple.s
 ```
 
+### Render Simulation Videos
+
+```bash
+# Render video from simulation run
+./gradlew run --args="video --run-id <run-id> --out simulation.mp4"
+
+# See all video rendering options
+./gradlew run --args="help video"
+```
+
 ### HTTP API
 
 When the node is running, it exposes a REST API at `http://localhost:8080`:

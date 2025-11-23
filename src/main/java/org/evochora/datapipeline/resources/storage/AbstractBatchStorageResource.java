@@ -498,6 +498,27 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         return new BatchFileListResult(resultFiles, nextToken, truncated);
     }
 
+    @Override
+    public java.util.Optional<StoragePath> findMetadataPath(String runId) throws IOException {
+        if (runId == null) {
+            throw new IllegalArgumentException("runId cannot be null");
+        }
+
+        // Search for metadata file using listRaw with prefix pattern
+        // This finds both uncompressed (metadata.pb) and compressed variants (metadata.pb.zst, etc.)
+        // The prefix "runId/metadata.pb" will match files starting with this pattern
+        String metadataPrefix = runId + "/metadata.pb";
+        List<String> files = listRaw(metadataPrefix, false, null, 1, null, null);
+
+        // Return first matching file, if any
+        if (files.isEmpty()) {
+            return java.util.Optional.empty();
+        }
+
+        // listRaw returns physical paths with compression extensions
+        return java.util.Optional.of(StoragePath.of(files.get(0)));
+    }
+
     // ===== IResource implementation =====
 
     /**

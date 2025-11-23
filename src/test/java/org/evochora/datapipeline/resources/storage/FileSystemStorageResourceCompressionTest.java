@@ -4,6 +4,7 @@ import com.google.protobuf.Int32Value;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
@@ -206,6 +207,38 @@ class FileSystemStorageResourceCompressionTest {
             assertThat(readMessage.getValue()).isEqualTo(42);
             assertThat(finalReads).isEqualTo(initialReads + 1);
             assertThat(finalBytes).isGreaterThan(initialBytes);
+        }
+
+        @Test
+        @DisplayName("findMetadataPath finds compressed metadata files")
+        void findMetadataPathFindsCompressedMetadata() throws IOException {
+            // Arrange
+            String runId = "test-sim-123";
+            SimulationMetadata metadata = SimulationMetadata.newBuilder()
+                    .setSimulationRunId(runId)
+                    .setStartTimeMs(System.currentTimeMillis())
+                    .setInitialSeed(42)
+                    .build();
+            
+            // Act: Write metadata (will be compressed)
+            String key = runId + "/metadata.pb";
+            StoragePath writtenPath = storage.writeMessage(key, metadata);
+            
+            // Assert: File exists with compression extension
+            Path compressedFile = tempDir.resolve(writtenPath.asString());
+            assertThat(compressedFile).exists();
+            assertThat(compressedFile.toString()).contains(compressionExtension);
+            
+            // Act: Find metadata path (should find compressed file)
+            java.util.Optional<StoragePath> foundPath = storage.findMetadataPath(runId);
+            
+            // Assert: Metadata path should be found and match written path
+            assertThat(foundPath).isPresent();
+            assertThat(foundPath.get().asString()).isEqualTo(writtenPath.asString());
+            
+            // Assert: Can read metadata back from found path
+            SimulationMetadata readMetadata = storage.readMessage(foundPath.get(), SimulationMetadata.parser());
+            assertThat(readMetadata.getSimulationRunId()).isEqualTo(runId);
         }
     }
 

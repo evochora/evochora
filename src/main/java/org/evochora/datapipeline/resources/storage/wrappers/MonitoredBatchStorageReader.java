@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -131,6 +132,12 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
     public List<String> listRunIds(Instant afterTimestamp) throws IOException {
         // Simple delegation, like listBatchFiles.
         return delegate.listRunIds(afterTimestamp);
+    }
+
+    @Override
+    public Optional<StoragePath> findMetadataPath(String runId) throws IOException {
+        // Simple delegation - no metrics for now (can be added later if needed)
+        return delegate.findMetadataPath(runId);
     }
 
     @Override

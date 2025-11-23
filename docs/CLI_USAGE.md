@@ -13,6 +13,7 @@ The Evochora CLI provides the main entry point for running the simulation node a
 # Show help for specific command
 ./gradlew run --args="help node"
 ./gradlew run --args="help compile"
+./gradlew run --args="help video"
 ./gradlew run --args="help inspect"
 
 # Show help for inspect storage subcommand
@@ -95,6 +96,70 @@ Strategy States: 5
   ...
 ```
 
+### Render Simulation Videos
+
+```bash
+# Basic video rendering from a simulation run
+./gradlew run --args="video --run-id <run-id> --out simulation.mp4"
+
+# Render with custom frame rate and sampling
+./gradlew run --args="video --run-id <run-id> --out simulation.mp4 --fps 30 --sampling-interval 100"
+
+# Render specific tick range
+./gradlew run --args="video --run-id <run-id> --out simulation.mp4 --start-tick 1000 --end-tick 5000"
+
+# Render with overlay (tick number, timestamp, run ID)
+./gradlew run --args="video --run-id <run-id> --out simulation.mp4 --overlay-tick --overlay-time --overlay-run-id"
+
+# Render with custom quality and format
+./gradlew run --args="video --run-id <run-id> --out simulation.webm --format webm --preset fast"
+
+# Use parallel rendering for better performance
+./gradlew run --args="video --run-id <run-id> --out simulation.mp4 --threads 4"
+
+# See all available options
+./gradlew run --args="help video"
+```
+
+The `video` command renders simulation data into video files using ffmpeg. It supports various output formats (MP4, AVI, MOV, WebM), quality presets, frame rate control, and optional text overlays.
+
+**Key Features:**
+- **Performance optimized**: Uses efficient rendering with parallel frame processing support
+- **Flexible sampling**: Render every Nth tick to reduce video size
+- **Tick range filtering**: Render only specific tick ranges
+- **Text overlays**: Add tick number, timestamp, or run ID to video
+- **Multiple formats**: Support for MP4, AVI, MOV, WebM
+- **Quality presets**: Control encoding speed/quality tradeoff
+- **Progress tracking**: Real-time progress bar with ETA, throughput, and remaining time
+
+**Basic Parameters:**
+- `--run-id, -r`: Simulation run ID (required, or auto-discover latest run)
+- `--out, -o`: Output filename (required, default: simulation.mp4)
+- `--fps`: Frames per second for output video (default: 60)
+- `--sampling-interval`: Render every Nth tick (default: 1)
+- `--cell-size`: Size of each cell in pixels (default: 4)
+- `--storage`: Storage resource name (default: tick-storage)
+
+**Advanced Options:**
+- `--start-tick`: Start rendering from this tick (inclusive)
+- `--end-tick`: Stop rendering at this tick (inclusive)
+- `--preset`: ffmpeg encoding preset: ultrafast/fast/medium/slow (default: fast)
+- `--format`: Output video format: mp4/avi/mov/webm (default: mp4)
+- `--threads`: Number of threads for parallel rendering (default: 1)
+
+**Overlay Options:**
+- `--overlay-tick`: Show tick number overlay
+- `--overlay-time`: Show timestamp overlay
+- `--overlay-run-id`: Show run ID overlay
+- `--overlay-position`: Overlay position: top-left/top-right/bottom-left/bottom-right (default: top-left)
+- `--overlay-font-size`: Overlay font size in pixels (default: 24)
+- `--overlay-color`: Overlay text color (e.g., white, yellow, #FF0000) (default: white)
+
+**Other Options:**
+- `--verbose`: Show detailed debug output from ffmpeg
+
+**Note**: The `video` command requires ffmpeg to be installed and available in your PATH. For a complete list of all options and their descriptions, run `./gradlew run --args="help video"`.
+
 ## Configuration
 
 ### Custom Configuration File
@@ -167,6 +232,9 @@ java -jar build/libs/evochora.jar compile --file=assembly/examples/simple.s
 
 # Inspect storage data
 java -jar build/libs/evochora.jar inspect storage --tick=1000 --run=my-simulation-run
+
+# Render video
+java -jar build/libs/evochora.jar video --run-id my-simulation-run --out simulation.mp4
 ```
 
 ## Exit Codes

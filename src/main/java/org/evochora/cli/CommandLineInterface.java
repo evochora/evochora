@@ -4,6 +4,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.cli.commands.CompileCommand;
 import org.evochora.cli.commands.InspectCommand;
+import org.evochora.cli.commands.RenderVideoCommand;
 import org.evochora.cli.commands.node.NodeCommand;
 import org.evochora.cli.config.LoggingConfigurator;
 import org.slf4j.Logger;
@@ -24,6 +25,7 @@ import java.util.concurrent.Callable;
         NodeCommand.class,
         CompileCommand.class,
         InspectCommand.class,
+        RenderVideoCommand.class,
         CommandLine.HelpCommand.class
     }
 )
@@ -85,7 +87,7 @@ public class CommandLineInterface implements Callable<Integer> {
 
         final Logger logger = LoggerFactory.getLogger(CommandLineInterface.class);
 
-        // Welcome message and config logging
+        // Welcome message and config logging - only for node commands
         if (config.hasPath("node.show-welcome-message") && config.getBoolean("node.show-welcome-message")) {
             showWelcomeMessage();
         }

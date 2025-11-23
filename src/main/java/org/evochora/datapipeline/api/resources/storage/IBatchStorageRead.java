@@ -5,14 +5,10 @@ import com.google.protobuf.Parser;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 
-import com.google.protobuf.MessageLite;
-import com.google.protobuf.Parser;
-import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.resources.IResource;
-
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Read-only interface for storage resources that support batch read operations.
@@ -110,6 +106,43 @@ public interface IBatchStorageRead extends IResource {
      * @throws IllegalArgumentException If path or parser is null
      */
     <T extends MessageLite> T readMessage(StoragePath path, Parser<T> parser) throws IOException;
+
+    /**
+     * Finds the metadata file path for a given simulation run ID.
+     * <p>
+     * This method searches for metadata files matching the pattern {@code {runId}/metadata.pb}
+     * and returns the physical storage path, including compression extensions if present.
+     * The method is compression-transparent and will find both uncompressed ({@code metadata.pb})
+     * and compressed variants ({@code metadata.pb.zst}, etc.).
+     * <p>
+     * This method is designed for cold-path scenarios where metadata needs to be read
+     * after the simulation and persistence services have finished running, without requiring
+     * the metadata topic.
+     * <p>
+     * <strong>Example usage (Cold Path - CLI/Rendering):</strong>
+     * <pre>
+     * Optional&lt;StoragePath&gt; metadataPath = storage.findMetadataPath(runId);
+     * if (metadataPath.isPresent()) {
+     *     SimulationMetadata metadata = storage.readMessage(metadataPath.get(), SimulationMetadata.parser());
+     *     // Process metadata...
+     * } else {
+     *     // Metadata not found for this run
+     * }
+     * </pre>
+     * <p>
+     * <strong>Storage Backend Compatibility:</strong>
+     * <ul>
+     *   <li>Filesystem: Uses directory traversal to find metadata files</li>
+     *   <li>S3/Azure: Uses object listing with prefix matching</li>
+     *   <li>All backends: Compression-transparent (finds .pb and .pb.zst variants)</li>
+     * </ul>
+     *
+     * @param runId The simulation run ID (must not be null)
+     * @return Optional containing the physical storage path if found, empty otherwise
+     * @throws IOException If storage access fails
+     * @throws IllegalArgumentException If runId is null
+     */
+    Optional<StoragePath> findMetadataPath(String runId) throws IOException;
 
     /**
      * Lists batch files with pagination support (S3-compatible).

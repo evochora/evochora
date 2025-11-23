@@ -5,6 +5,8 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -276,5 +278,47 @@ class FileSystemStorageResourceTest {
 
         FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
         assertNotNull(storage);
+    }
+
+    @Test
+    void testFindMetadataPath_Success() throws IOException {
+        String runId = "test-sim-123";
+        
+        // Write metadata file
+        SimulationMetadata metadata = SimulationMetadata.newBuilder()
+                .setSimulationRunId(runId)
+                .setStartTimeMs(System.currentTimeMillis())
+                .setInitialSeed(42)
+                .build();
+        
+        String key = runId + "/metadata.pb";
+        StoragePath writtenPath = storage.writeMessage(key, metadata);
+        
+        // Find metadata path
+        java.util.Optional<StoragePath> foundPath = storage.findMetadataPath(runId);
+        
+        assertTrue(foundPath.isPresent(), "Metadata path should be found");
+        assertEquals(writtenPath.asString(), foundPath.get().asString(), 
+                "Found path should match written path");
+        
+        // Verify we can read the metadata back
+        SimulationMetadata readMetadata = storage.readMessage(foundPath.get(), SimulationMetadata.parser());
+        assertEquals(runId, readMetadata.getSimulationRunId());
+    }
+
+    @Test
+    void testFindMetadataPath_NotFound() throws IOException {
+        String runId = "non-existent-sim";
+        
+        // Try to find metadata for non-existent run
+        java.util.Optional<StoragePath> foundPath = storage.findMetadataPath(runId);
+        
+        assertFalse(foundPath.isPresent(), "Metadata path should not be found for non-existent run");
+    }
+
+    @Test
+    void testFindMetadataPath_NullRunId() {
+        assertThrows(IllegalArgumentException.class, () -> storage.findMetadataPath(null),
+                "findMetadataPath should throw IllegalArgumentException for null runId");
     }
 }
