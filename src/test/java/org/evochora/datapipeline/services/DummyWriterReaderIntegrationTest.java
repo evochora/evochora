@@ -44,6 +44,8 @@ class DummyWriterReaderIntegrationTest {
         final int maxWrites = 10;
         final long totalMessages = (long) messagesPerWrite * maxWrites;
 
+        String rootDirectory = tempDir.toAbsolutePath().toString().replace("\\", "\\\\");
+
         String configString = String.format("""
             pipeline {
               autoStart = false
@@ -82,7 +84,7 @@ class DummyWriterReaderIntegrationTest {
               }
               startupSequence = ["dummy-writer", "dummy-reader"]
             }
-            """, tempDir.toAbsolutePath().toString().replace("\\", "\\\\"), messagesPerWrite, maxWrites);
+            """, rootDirectory, messagesPerWrite, maxWrites);
 
         Config config = ConfigFactory.parseString(configString);
         serviceManager = new ServiceManager(config);
