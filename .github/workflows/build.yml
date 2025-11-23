@@ -27,7 +27,7 @@ jobs:
     - name: Build with Gradle
       run: ./gradlew build
     - name: Publish Test Results
-      uses: actions/publish-unit-test-results@v2
+      uses: EnricoMi/publish-unit-test-results-action@v2
       if: always()
       with:
         files: '**/build/test-results/**/*.xml'
