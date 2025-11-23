@@ -17,6 +17,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
@@ -75,10 +76,10 @@ public class AbstractServiceTest {
         assertEquals(IService.State.STOPPED, service.getCurrentState());
 
         service.start();
-        // Give the thread time to start
-        Thread.sleep(100);
-        assertEquals(IService.State.RUNNING, service.getCurrentState());
-        assertTrue(service.isRunning);
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+            assertEquals(IService.State.RUNNING, service.getCurrentState());
+            assertTrue(service.isRunning);
+        });
 
         service.stop();
         service.awaitTermination();
@@ -91,16 +92,16 @@ public class AbstractServiceTest {
     void servicePausesAndResumesCorrectly() throws InterruptedException {
         TestService service = new TestService("test-service", config, resources);
         service.start();
-        Thread.sleep(100); // Wait for start
-        assertEquals(IService.State.RUNNING, service.getCurrentState());
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> 
+            assertEquals(IService.State.RUNNING, service.getCurrentState()));
 
         service.pause();
-        Thread.sleep(100); // Wait for pause
-        assertEquals(IService.State.PAUSED, service.getCurrentState());
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> 
+            assertEquals(IService.State.PAUSED, service.getCurrentState()));
 
         service.resume();
-        Thread.sleep(100); // Wait for resume
-        assertEquals(IService.State.RUNNING, service.getCurrentState());
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> 
+            assertEquals(IService.State.RUNNING, service.getCurrentState()));
 
         service.stop();
         service.awaitTermination();
@@ -110,13 +111,14 @@ public class AbstractServiceTest {
     void restartMethodWorksCorrectly() throws InterruptedException {
         TestService service = new TestService("test-service", config, resources);
         service.start();
-        Thread.sleep(100);
-        assertEquals(IService.State.RUNNING, service.getCurrentState());
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> 
+            assertEquals(IService.State.RUNNING, service.getCurrentState()));
 
         service.restart();
-        Thread.sleep(100);
-        assertEquals(IService.State.RUNNING, service.getCurrentState());
-        assertTrue(service.isRunning);
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+            assertEquals(IService.State.RUNNING, service.getCurrentState());
+            assertTrue(service.isRunning);
+        });
 
         service.stop();
         service.awaitTermination();

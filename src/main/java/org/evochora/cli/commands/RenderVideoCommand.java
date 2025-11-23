@@ -4,6 +4,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.cli.CliResourceFactory;
 import org.evochora.cli.rendering.SimulationRenderer;
+import org.evochora.cli.rendering.StatisticsBarRenderer;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
@@ -92,6 +93,47 @@ public class RenderVideoCommand implements Callable<Integer> {
 
     @Option(names = "--threads", description = "Number of threads for parallel frame rendering. Default: 1 (no parallelism)", defaultValue = "1")
     private int threadCount;
+
+    @Option(names = "--overlay-stats", description = "Show organism statistics bar on the right side of the video.")
+    private boolean overlayStats;
+
+    /**
+     * Combines a simulation frame with a statistics bar on the right side.
+     *
+     * @param simulationFrame The simulation frame as BGRA bytes (baseWidth × height).
+     * @param statsBar The statistics bar as RGB int array (statsBarWidth × height).
+     * @param baseWidth Width of the simulation frame.
+     * @param height Height of both frames.
+     * @param statsBarWidth Width of the statistics bar.
+     * @return Combined frame as BGRA bytes (baseWidth + statsBarWidth) × height.
+     */
+    private byte[] combineFrameWithStatsBar(byte[] simulationFrame, int[] statsBar, 
+                                             int baseWidth, int height, int statsBarWidth) {
+        int combinedWidth = baseWidth + statsBarWidth;
+        byte[] combinedFrame = new byte[combinedWidth * height * 4]; // BGRA = 4 bytes per pixel
+        
+        // Copy simulation frame (left side)
+        for (int y = 0; y < height; y++) {
+            int srcOffset = y * baseWidth * 4;
+            int dstOffset = y * combinedWidth * 4;
+            System.arraycopy(simulationFrame, srcOffset, combinedFrame, dstOffset, baseWidth * 4);
+        }
+        
+        // Copy statistics bar (right side) - convert RGB to BGRA
+        for (int y = 0; y < height; y++) {
+            int barIndex = y * statsBarWidth;
+            int dstOffset = y * combinedWidth * 4 + baseWidth * 4;
+            for (int x = 0; x < statsBarWidth; x++) {
+                int rgb = statsBar[barIndex + x];
+                combinedFrame[dstOffset++] = (byte) (rgb & 0xFF);         // B
+                combinedFrame[dstOffset++] = (byte) ((rgb >> 8) & 0xFF);  // G
+                combinedFrame[dstOffset++] = (byte) ((rgb >> 16) & 0xFF); // R
+                combinedFrame[dstOffset++] = (byte) 255;                  // A
+            }
+        }
+        
+        return combinedFrame;
+    }
 
     /**
      * Formats milliseconds into a human-readable time string (HH:MM:SS or MM:SS).
@@ -200,8 +242,12 @@ public class RenderVideoCommand implements Callable<Integer> {
             metadata.getEnvironment().getToroidalList().stream().allMatch(b -> b)
         );
 
-        int width = envProps.getWorldShape()[0] * cellSize;
+        int baseWidth = envProps.getWorldShape()[0] * cellSize;
         int height = envProps.getWorldShape()[1] * cellSize;
+        
+        // Add statistics bar width if enabled
+        int statsBarWidth = overlayStats ? 60 : 0;
+        int width = baseWidth + statsBarWidth;
 
         // Apply tick range filtering if specified (needed for overlay calculations)
         long effectiveStartTick = startTick != null ? startTick : 0;
@@ -330,25 +376,39 @@ public class RenderVideoCommand implements Callable<Integer> {
             return 1;
         }
 
-        // Start background thread to read ffmpeg output/errors in real-time (only if verbose)
+        // Start background thread to read ffmpeg output/errors in real-time
+        // Collect last lines for error reporting even in non-verbose mode
         final Process finalFfmpeg = ffmpeg;
         final boolean showDebugOutput = verbose;
         java.util.concurrent.atomic.AtomicBoolean ffmpegDied = new java.util.concurrent.atomic.AtomicBoolean(false);
+        java.util.concurrent.atomic.AtomicReference<String> lastFfmpegOutput = new java.util.concurrent.atomic.AtomicReference<>("");
         Thread outputReader = new Thread(() -> {
             try (java.io.InputStream stream = finalFfmpeg.getInputStream()) {
                 byte[] buffer = new byte[1024];
                 int bytesRead;
+                StringBuilder outputBuffer = new StringBuilder();
                 while ((bytesRead = stream.read(buffer)) != -1) {
+                    String output = new String(buffer, 0, bytesRead);
                     if (showDebugOutput) {
-                        String output = new String(buffer, 0, bytesRead);
                         System.err.print("[ffmpeg] " + output);
                     }
+                    // Always collect last output for error reporting
+                    outputBuffer.append(output);
+                    // Keep only last 2000 characters to avoid memory issues
+                    if (outputBuffer.length() > 2000) {
+                        outputBuffer.delete(0, outputBuffer.length() - 2000);
+                    }
+                    lastFfmpegOutput.set(outputBuffer.toString());
                 }
             } catch (Exception e) {
                 if (!finalFfmpeg.isAlive()) {
                     ffmpegDied.set(true);
-                    if (showDebugOutput) {
-                        System.err.println("[ffmpeg] Process ended unexpectedly, output stream closed");
+                    // Always show error if process died, even in non-verbose mode
+                    System.err.println("\n[ffmpeg] Process ended unexpectedly");
+                    String lastOutput = lastFfmpegOutput.get();
+                    if (!lastOutput.isEmpty()) {
+                        System.err.println("Last ffmpeg output:");
+                        System.err.println(lastOutput);
                     }
                 } else if (showDebugOutput) {
                     System.err.println("[ffmpeg] Error reading output: " + e.getMessage());
@@ -359,8 +419,8 @@ public class RenderVideoCommand implements Callable<Integer> {
         outputReader.start();
 
         // Calculate expected frame size
-        int expectedFrameSizeBytes = width * height * 4; // BGRA = 4 bytes per pixel
-        int expectedPixelCount = width * height;
+        int expectedFrameSizeBytes = width * height * 4; // BGRA = 4 bytes per pixel (includes stats bar if enabled)
+        int expectedPixelCount = baseWidth * height; // Simulation frame only (without stats bar)
         
         if (startTick != null || endTick != null) {
             System.out.println(String.format("Tick range filter: %d-%d (inclusive)", 
@@ -447,9 +507,72 @@ public class RenderVideoCommand implements Callable<Integer> {
         // Example: 800×600 environment with cellSize=4 → 3200×2400 video
         System.out.println(String.format("Video resolution: %dx%d (environment: %dx%d, cell size: %dpx)", 
             width, height, envProps.getWorldShape()[0], envProps.getWorldShape()[1], cellSize));
+        long frameSizeMB = (long)width * height * 4 / (1024 * 1024);
+        if (frameSizeMB > 100) {
+            System.out.println(String.format("WARNING: Large frame size (%d MB/frame). This may cause ffmpeg to run out of memory.", frameSizeMB));
+            System.out.println("Consider using a smaller --cell-size or --preset=ultrafast for better stability.");
+        }
         if (totalFrames > 0) {
             System.out.println(String.format("Total frames to render: %d (tick range: %d-%d, sampling: every %d)", 
                 totalFrames, minTick >= 0 ? minTick : 0, maxTick, samplingInterval));
+        }
+        
+        // Find max organism_id in last tick for statistics bar scaling
+        int maxOrganismId = 0;
+        if (overlayStats && maxTick >= 0) {
+            System.out.print("Finding max organism ID in last tick... ");
+            try {
+                long lastTickToCheck = Math.min(maxTick, effectiveEndTick);
+                // Find the batch containing the last tick
+                String continuationTokenForMax = null;
+                StoragePath lastBatchPath = null;
+                do {
+                    BatchFileListResult maxResult = storage.listBatchFiles(targetRunId + "/", continuationTokenForMax, 1000);
+                    for (StoragePath path : maxResult.getFilenames()) {
+                        String filename = path.asString();
+                        int batchIdx = filename.lastIndexOf("/batch_");
+                        if (batchIdx >= 0) {
+                            String batchName = filename.substring(batchIdx + 7);
+                            int firstUnderscore = batchName.indexOf('_');
+                            int dotPbIdx = batchName.indexOf(".pb");
+                            if (firstUnderscore > 0 && dotPbIdx > firstUnderscore) {
+                                try {
+                                    long batchEndTick = Long.parseLong(batchName.substring(firstUnderscore + 1, dotPbIdx));
+                                    if (batchEndTick >= lastTickToCheck) {
+                                        lastBatchPath = path;
+                                    }
+                                } catch (NumberFormatException e) {
+                                    // Skip invalid filenames
+                                }
+                            }
+                        }
+                    }
+                    continuationTokenForMax = maxResult.getNextContinuationToken();
+                } while (continuationTokenForMax != null);
+                
+                if (lastBatchPath != null) {
+                    List<TickData> lastBatch = storage.readBatch(lastBatchPath);
+                    // Find the last tick in the batch that matches our criteria
+                    for (int i = lastBatch.size() - 1; i >= 0; i--) {
+                        TickData tick = lastBatch.get(i);
+                        if (tick.getTickNumber() <= lastTickToCheck && 
+                            tick.getTickNumber() % samplingInterval == 0) {
+                            // Find max organism_id in this tick
+                            for (var org : tick.getOrganismsList()) {
+                                if (org.getOrganismId() > maxOrganismId) {
+                                    maxOrganismId = org.getOrganismId();
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+                System.out.println(String.format("max organism ID: %d", maxOrganismId));
+            } catch (Exception e) {
+                System.err.println("Warning: Failed to find max organism ID: " + e.getMessage());
+                System.err.println("Statistics bar will use dynamic scaling.");
+                maxOrganismId = 0; // Will use dynamic scaling
+            }
         }
         
         if (verbose) {
@@ -480,11 +603,16 @@ public class RenderVideoCommand implements Callable<Integer> {
                 }
             }
             
+            // Create statistics bar renderer if enabled
+            StatisticsBarRenderer statsBarRenderer = overlayStats ? new StatisticsBarRenderer(statsBarWidth, height) : null;
+            int currentMaxAlive = 0; // Track max alive for dynamic scaling if maxOrganismId not found
+            
             String continuationToken = null;
             long processedFrames = 0;
             
             // Reuse ByteBuffer for RGB→BGRA conversion to avoid allocation overhead
             // For parallel rendering, each thread needs its own buffer
+            // Note: expectedFrameSizeBytes already includes stats bar width if overlayStats is enabled
             ByteBuffer byteBuffer = ByteBuffer.allocate(expectedFrameSizeBytes);
             byteBuffer.order(ByteOrder.LITTLE_ENDIAN); // BGRA format requires little-endian
             byte[] bufferArray = byteBuffer.array();
@@ -492,11 +620,18 @@ public class RenderVideoCommand implements Callable<Integer> {
             // For parallel rendering: queue to maintain frame order
             BlockingQueue<byte[]> frameQueue = threadCount > 1 ? new LinkedBlockingQueue<>() : null;
             BlockingQueue<Long> tickNumberQueue = threadCount > 1 ? new LinkedBlockingQueue<>() : null;
+            BlockingQueue<Integer> aliveCountQueue = threadCount > 1 && overlayStats ? new LinkedBlockingQueue<>() : null;
+            BlockingQueue<Integer> deadCountQueue = threadCount > 1 && overlayStats ? new LinkedBlockingQueue<>() : null;
             java.util.concurrent.atomic.AtomicLong framesWritten = threadCount > 1 ? new java.util.concurrent.atomic.AtomicLong(0) : null;
             
             // Writer thread for parallel rendering (maintains order)
             Thread writerThread = null;
             if (threadCount > 1) {
+                final StatisticsBarRenderer finalStatsBarRenderer = statsBarRenderer;
+                final int finalBaseWidth = baseWidth;
+                final int finalStatsBarWidth = statsBarWidth;
+                final int finalMaxOrganismId = maxOrganismId;
+                final java.util.concurrent.atomic.AtomicInteger finalCurrentMaxAlive = new java.util.concurrent.atomic.AtomicInteger(currentMaxAlive);
                 writerThread = new Thread(() -> {
                     try {
                         while (true) {
@@ -504,8 +639,22 @@ public class RenderVideoCommand implements Callable<Integer> {
                             if (frameData == null) break; // Poison pill
                             Long tickNum = tickNumberQueue.take();
                             
+                            // Add statistics bar if enabled
+                            byte[] finalFrameData = frameData;
+                            if (overlayStats && finalStatsBarRenderer != null && aliveCountQueue != null && deadCountQueue != null) {
+                                int alive = aliveCountQueue.take();
+                                int dead = deadCountQueue.take();
+                                int effectiveMax = finalMaxOrganismId > 0 ? finalMaxOrganismId : 
+                                    Math.max(finalCurrentMaxAlive.get(), alive + dead);
+                                if (alive > finalCurrentMaxAlive.get()) {
+                                    finalCurrentMaxAlive.set(alive);
+                                }
+                                int[] statsBar = finalStatsBarRenderer.render(alive, dead, effectiveMax);
+                                finalFrameData = combineFrameWithStatsBar(frameData, statsBar, finalBaseWidth, height, finalStatsBarWidth);
+                            }
+                            
                             // Write frame in order
-                            ByteBuffer writeBuffer = ByteBuffer.wrap(frameData);
+                            ByteBuffer writeBuffer = ByteBuffer.wrap(finalFrameData);
                             writeBuffer.order(ByteOrder.LITTLE_ENDIAN);
                             channel.write(writeBuffer);
                             
@@ -616,6 +765,27 @@ public class RenderVideoCommand implements Callable<Integer> {
                             return 1;
                         }
                         
+                        // Collect statistics for statistics bar
+                        int aliveCount = 0;
+                        int deadCount = 0;
+                        int currentMaxOrganismId = 0;
+                        if (overlayStats && statsBarRenderer != null) {
+                            for (var org : tick.getOrganismsList()) {
+                                if (org.getIsDead()) {
+                                    deadCount++;
+                                } else {
+                                    aliveCount++;
+                                }
+                                if (org.getOrganismId() > currentMaxOrganismId) {
+                                    currentMaxOrganismId = org.getOrganismId();
+                                }
+                            }
+                            // Update dynamic max if needed
+                            if (maxOrganismId == 0 && aliveCount > currentMaxAlive) {
+                                currentMaxAlive = aliveCount;
+                            }
+                        }
+                        
                         // Render frame (parallel if threadCount > 1, sequential otherwise)
                         if (threadCount > 1 && executorService != null) {
                             // Parallel rendering: render in background, write via queue
@@ -624,12 +794,14 @@ public class RenderVideoCommand implements Callable<Integer> {
                             final int rendererIndex = (int) (processedFrames % threadCount);
                             final SimulationRenderer rendererToUse = renderers.get(rendererIndex);
                             
+                            final int finalAliveCount = aliveCount;
+                            final int finalDeadCount = deadCount;
                             CompletableFuture.supplyAsync(() -> {
                                 // Render frame in parallel
                                 int[] pixelData = rendererToUse.render(tickFinal);
                                 
-                                // Convert RGB→BGRA
-                                byte[] frameBytes = new byte[expectedFrameSizeBytes];
+                                // Convert RGB→BGRA (simulation frame only, stats bar added in writer thread)
+                                byte[] frameBytes = new byte[baseWidth * height * 4];
                                 int bufferIndex = 0;
                                 for (int i = 0; i < pixelData.length; i++) {
                                     int rgb = pixelData[i];
@@ -643,6 +815,10 @@ public class RenderVideoCommand implements Callable<Integer> {
                                 try {
                                     frameQueue.put(frameBytes);
                                     tickNumberQueue.put(tickNumberFinal);
+                                    if (overlayStats && aliveCountQueue != null && deadCountQueue != null) {
+                                        aliveCountQueue.put(finalAliveCount);
+                                        deadCountQueue.put(finalDeadCount);
+                                    }
                                 } catch (InterruptedException e) {
                                     Thread.currentThread().interrupt();
                                 }
@@ -665,18 +841,30 @@ public class RenderVideoCommand implements Callable<Integer> {
                                 
                             // Convert RGB ints to BGRA bytes - optimized with direct array access
                             // Reuse byteBuffer (allocated once above) for better performance
+                            byte[] simulationFrameBytes = new byte[baseWidth * height * 4];
                             int bufferIndex = 0;
                             for (int i = 0; i < pixelData.length; i++) {
                                 int rgb = pixelData[i];
                                 // Extract RGB components (BufferedImage.TYPE_INT_RGB: 0x00RRGGBB)
                                 // Write as BGRA (little-endian: B, G, R, A) using direct array access
-                                bufferArray[bufferIndex++] = (byte) (rgb & 0xFF);         // B
-                                bufferArray[bufferIndex++] = (byte) ((rgb >> 8) & 0xFF);  // G
-                                bufferArray[bufferIndex++] = (byte) ((rgb >> 16) & 0xFF); // R
-                                bufferArray[bufferIndex++] = (byte) 255;                  // A (fully opaque)
+                                simulationFrameBytes[bufferIndex++] = (byte) (rgb & 0xFF);         // B
+                                simulationFrameBytes[bufferIndex++] = (byte) ((rgb >> 8) & 0xFF);  // G
+                                simulationFrameBytes[bufferIndex++] = (byte) ((rgb >> 16) & 0xFF); // R
+                                simulationFrameBytes[bufferIndex++] = (byte) 255;                  // A (fully opaque)
                             }
-                            byteBuffer.position(0); // Reset position for writing
-                            byteBuffer.limit(bufferIndex); // Set limit to bytes written
+                            
+                            // Add statistics bar if enabled
+                            byte[] finalFrameBytes = simulationFrameBytes;
+                            if (overlayStats && statsBarRenderer != null) {
+                                int effectiveMax = maxOrganismId > 0 ? maxOrganismId : Math.max(currentMaxAlive, currentMaxOrganismId);
+                                int[] statsBar = statsBarRenderer.render(aliveCount, deadCount, effectiveMax);
+                                finalFrameBytes = combineFrameWithStatsBar(simulationFrameBytes, statsBar, baseWidth, height, statsBarWidth);
+                            }
+                            
+                            byteBuffer = ByteBuffer.wrap(finalFrameBytes);
+                            byteBuffer.order(ByteOrder.LITTLE_ENDIAN);
+                            byteBuffer.position(0);
+                            byteBuffer.limit(finalFrameBytes.length);
                                 
                             // Validate buffer state (only in verbose mode)
                             if (verbose && bufferIndex != expectedFrameSizeBytes) {
@@ -695,12 +883,49 @@ public class RenderVideoCommand implements Callable<Integer> {
                             }
                                 
                             // Write frame and validate bytes written (only in verbose mode)
-                            int bytesWritten = channel.write(byteBuffer);
-                            if (verbose && bytesWritten != expectedFrameSizeBytes) {
-                                System.err.println(String.format(
-                                    "\nERROR: Partial write! Expected %d bytes, wrote %d (tick: %d)", 
-                                    expectedFrameSizeBytes, bytesWritten, tickNumber));
+                            try {
+                                int bytesWritten = channel.write(byteBuffer);
+                                if (verbose && bytesWritten != expectedFrameSizeBytes) {
+                                    System.err.println(String.format(
+                                        "\nERROR: Partial write! Expected %d bytes, wrote %d (tick: %d)", 
+                                        expectedFrameSizeBytes, bytesWritten, tickNumber));
+                                    if (executorService != null) executorService.shutdown();
+                                    return 1;
+                                }
+                            } catch (java.io.IOException e) {
+                                // Check if ffmpeg died during write
+                                if (!ffmpeg.isAlive() || ffmpegDied.get()) {
+                                    int exitCode = ffmpeg.isAlive() ? 0 : ffmpeg.exitValue();
+                                    System.err.println(String.format(
+                                        "\nERROR: ffmpeg process died during write (exit code: %d, tick: %d). Error: %s", 
+                                        exitCode, tickNumber, e.getMessage()));
+                                    // Try to read ffmpeg error output
+                                    String lastOutput = lastFfmpegOutput.get();
+                                    if (!lastOutput.isEmpty()) {
+                                        System.err.println("Last ffmpeg output:");
+                                        System.err.println(lastOutput);
+                                    } else {
+                                        // Fallback: try to read from stream
+                                        try (java.io.InputStream errorStream = ffmpeg.getInputStream()) {
+                                            byte[] errorBytes = errorStream.readAllBytes();
+                                            if (errorBytes.length > 0) {
+                                                System.err.println("ffmpeg output/errors:");
+                                                System.err.println(new String(errorBytes));
+                                            }
+                                        } catch (Exception readEx) {
+                                            // Ignore - process may be dead
+                                        }
+                                    }
+                                } else {
+                                    System.err.println(String.format(
+                                        "\nERROR: Failed to write frame (tick: %d). Error: %s", 
+                                        tickNumber, e.getMessage()));
+                                }
                                 if (executorService != null) executorService.shutdown();
+                                if (writerThread != null) {
+                                    frameQueue.offer(null); // Poison pill
+                                    try { writerThread.join(5000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                                }
                                 return 1;
                             }
                             
