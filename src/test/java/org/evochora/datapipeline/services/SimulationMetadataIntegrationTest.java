@@ -30,6 +30,8 @@ import java.util.stream.Stream;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Integration tests for end-to-end metadata persistence flow with real resources.
@@ -39,6 +41,8 @@ import static org.junit.jupiter.api.Assertions.*;
 @ExtendWith(LogWatchExtension.class)
 @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
 class SimulationMetadataIntegrationTest {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(SimulationMetadataIntegrationTest.class);
 
     @TempDir
     Path tempDir;
@@ -391,20 +395,36 @@ class SimulationMetadataIntegrationTest {
         return storage.readMessage(StoragePath.of(physicalPath), SimulationMetadata.parser());
     }
 
-    private int countBatchFiles(Path storageRoot) throws IOException {
+    private int countBatchFiles(Path storageRoot) {
         if (!Files.exists(storageRoot)) {
             return 0;
         }
 
         try (Stream<Path> paths = Files.walk(storageRoot)) {
             return (int) paths
-                .filter(p -> p.getFileName().toString().startsWith("batch_"))
-                .filter(p -> p.getFileName().toString().endsWith(".pb"))
-                .filter(Files::exists)
-                .count();
+                    .filter(p -> {
+                        String fileName = p.getFileName().toString();
+                        // Filter out .tmp files BEFORE other operations to avoid race conditions
+                        return fileName.startsWith("batch_") && fileName.endsWith(".pb") && !fileName.contains(".tmp");
+                    })
+                    .filter(Files::isRegularFile)
+                    .count();
+        } catch (java.io.UncheckedIOException e) {
+            if (e.getCause() instanceof java.nio.file.NoSuchFileException) {
+                // This can happen in a race condition on fast filesystems (like in CI).
+                // Logging at DEBUG level to avoid polluting test logs, but providing info for debugging.
+                // Returning 0 is safe because await() will retry.
+                LOGGER.debug("Caught a recoverable race condition while counting files: {}", e.getCause().getMessage());
+                return 0;
+            }
+            throw e;
         } catch (IOException e) {
-            // Handle race conditions where files are being written/renamed during walk
-            return 0;
+             // It's good practice to also handle the checked IOException variant
+             if (e.getCause() instanceof java.nio.file.NoSuchFileException) {
+                LOGGER.debug("Caught a recoverable race condition while counting files: {}", e.getCause().getMessage());
+                return 0;
+            }
+            throw new RuntimeException("Failed to count batch files", e);
         }
     }
 }
