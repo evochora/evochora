@@ -28,11 +28,13 @@ RUN ./gradlew clean build distZip -x test --no-daemon --stacktrace
 # ====================================================================================
 # STAGE 2: Create the final, lean runtime image
 # ====================================================================================
-# Use a minimal Java runtime image (JRE - Java Runtime Environment) for ARM64
 FROM eclipse-temurin:21-jre-jammy
 
-# Set the working directory
-WORKDIR /app
+# Create a non-root user and its home directory for security
+RUN useradd --create-home --shell /bin/bash appuser
+
+# Set the main working directory in the new user's home
+WORKDIR /home/appuser/app
 
 # Install 'unzip', extract the distribution, and clean up to keep the image small
 COPY --from=builder /app/build/distributions/*.zip .
@@ -43,20 +45,17 @@ RUN apt-get update && \
     apt-get purge -y --auto-remove unzip && \
     rm -rf /var/lib/apt/lists/*
 
-# The distribution has a nested folder, e.g., evochora-1.0-SNAPSHOT.
-# We need to find its name and move its contents to the current directory.
+# The distribution has a nested folder, e.g., evochora-1.0-SNAPSHOT. Move contents up.
 RUN mv $(ls | grep -v 'lost+found')/* .
 
-# The application runs as a non-root user for better security
-RUN useradd --create-home --shell /bin/bash appuser
-USER appuser
-WORKDIR /home/appuser/app
-
-# Move the application files to the new user's home directory
-RUN mv /app/* .
-
-# Create directories for data and configuration that will be mounted as volumes
+# Create directories for data volumes that will be mounted
 RUN mkdir -p data/storage data/database config
+
+# Change ownership of all application files to the non-root user
+RUN chown -R appuser:appuser /home/appuser/app
+
+# Switch to the non-root user
+USER appuser
 
 # Expose the application's ports for external access
 # 8081: Javalin Web UI & API
