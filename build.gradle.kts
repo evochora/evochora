@@ -128,32 +128,14 @@ tasks.named<Jar>("jar") {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
-// Compile Task - Compiles assembly files to ProgramArtifact JSON
-tasks.register<JavaExec>("compile") {
-    group = "application"
-    description = "Compile assembly file to ProgramArtifact JSON"
-    mainClass.set("org.evochora.cli.CommandLineInterface")
-    classpath = sourceSets.main.get().runtimeClasspath
-    
-    doFirst {
-        val file = project.findProperty("file")?.toString()
-        if (file != null) {
-            val compileArgs = mutableListOf("compile", "--file=$file")
-            
-            // Add environment properties if specified
-            val env = project.findProperty("env")?.toString()
-            if (env != null) {
-                compileArgs.add("--env=$env")
-            }
-            
-            args(compileArgs)
-        } else {
-            throw GradleException("File parameter required. Use: ./gradlew compile -Pfile=<path> [-Penv=<dimensions>[:<toroidal>]]")
-        }
-    }
+tasks.withType<Tar> {
+    archiveBaseName.set("evochora")
+    archiveVersion.set("")
+    compression = Compression.GZIP
+    archiveExtension.set("tar.gz")
 }
 
-tasks.withType<Copy> {
+tasks.withType<Zip> {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
