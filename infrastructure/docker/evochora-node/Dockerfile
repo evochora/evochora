@@ -34,10 +34,14 @@ FROM eclipse-temurin:21-jre-jammy
 # Set the working directory
 WORKDIR /app
 
-# Unpack the distribution created in the 'builder' stage
-# The 'distZip' task creates a zip file in build/distributions/.
+# Install 'unzip', extract the distribution, and clean up to keep the image small
 COPY --from=builder /app/build/distributions/*.zip .
-RUN unzip *.zip && rm *.zip
+RUN apt-get update && \
+    apt-get install -y unzip && \
+    unzip *.zip && \
+    rm *.zip && \
+    apt-get purge -y --auto-remove unzip && \
+    rm -rf /var/lib/apt/lists/*
 
 # The distribution has a nested folder, e.g., evochora-1.0-SNAPSHOT.
 # We need to find its name and move its contents to the current directory.
