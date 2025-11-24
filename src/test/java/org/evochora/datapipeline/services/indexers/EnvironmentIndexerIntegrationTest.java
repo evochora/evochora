@@ -346,7 +346,7 @@ class EnvironmentIndexerIntegrationTest {
             indexer1.start();
             indexer2.start();
             
-            // Then: Wait for ALL 5 batches to be processed (distributed between indexers)
+            // Then: Wait for ALL 50 batches to be processed (distributed between indexers)
             await().atMost(15, TimeUnit.SECONDS)
                 .until(() -> {
                     long total1 = indexer1.getMetrics().get("batches_processed").longValue();
