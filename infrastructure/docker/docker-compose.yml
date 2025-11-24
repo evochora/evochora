@@ -1,0 +1,31 @@
+version: '3.8'
+services:
+  evochora:
+    build:
+      context: ../../..  # Gehe drei Ebenen hoch zum Projekt-Root
+      dockerfile: infrastructure/docker/evochora-node/Dockerfile # Pfad zum Dockerfile
+    image: ghcr.io/rainco77/evochora:${IMAGE_TAG:-latest}
+    ports:
+      # Map host ports to container ports
+      - "80:8081"      # Javalin Web UI (Extern: 80 -> Intern: 8081)
+      - "8082:8082"    # H2 Web Console (Extern: 8082 -> Intern: 8082)
+      - "9092:9092"    # H2 TCP Server (Extern: 9092 -> Intern: 9092)
+    volumes:
+      # Mount host directories into the container for persistent data
+      - ./evochora-data/storage:/home/appuser/app/data/storage
+      - ./evochora-data/database:/home/appuser/app/data/database
+    environment:
+      # === Override evochora.conf for Docker ===
+      - PIPELINE_AUTOSTART=false
+
+      # 1. Network bindings
+      - NODE_HTTP_NETWORK_HOST=0.0.0.0
+      - NODE_H2-CONSOLE_OPTIONS_NETWORK_HOST=0.0.0.0
+      - NODE_H2-TCP-SERVER_OPTIONS_TCPALLOWOTHERS=true # Allow connections within Docker network
+
+      # 2. Data paths inside the container
+      - PIPELINE_DATABASE_JDBCURL=jdbc:h2:/home/appuser/app/data/database/indexdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144
+      - PIPELINE_RESOURCES_TICK-STORAGE_OPTIONS_ROOTDIRECTORY=/home/appuser/app/data/storage
+      - PIPELINE_RESOURCES_BATCH-TOPIC_OPTIONS_JDBCURL=jdbc:h2:/home/appuser/app/data/database/topicdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144
+
+    restart: unless-stopped

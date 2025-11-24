@@ -31,4 +31,19 @@ apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin do
 usermod -aG docker ubuntu
 
 echo "--- Docker and Docker Compose installed successfully ---"
+
+# --- NEW: Prepare directories for the application ---
+echo "--- Preparing application directories ---"
+
+# Create the main application directory in the ubuntu user's home
+mkdir -p /home/ubuntu/app
+
+# Create subdirectories for persistent data
+mkdir -p /home/ubuntu/app/evochora-data/storage
+mkdir -p /home/ubuntu/app/evochora-data/database
+
+# Set correct ownership for the created directories
+chown -R ubuntu:ubuntu /home/ubuntu/app
+
+echo "--- Application directories created ---"
 echo "--- Initialization Script Finished ---"

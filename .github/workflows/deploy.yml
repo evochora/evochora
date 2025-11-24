@@ -1,0 +1,55 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The image tag to deploy (e.g., "latest" or "v1.0.1")'
+        required: true
+        type: string
+        default: 'latest'
+
+jobs:
+  deploy:
+    name: Deploy to Oracle VM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: 'just-a-placeholder-so-we-dont-get-errors'
+
+      - name: Add host to known_hosts
+        run: ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Prepare configuration
+        run: |
+          # The image tag in docker-compose.yml is now handled by an environment variable on the server.
+          # We just need to copy the files as-is.
+          echo "Configuration files will be copied to server."
+
+      - name: Copy configuration to server
+        run: |
+          scp -o StrictHostKeyChecking=no infrastructure/docker/docker-compose.yml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/docker-compose.yml
+          scp -o StrictHostKeyChecking=no evochora.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/evochora.conf
+
+      - name: Deploy using Docker Compose
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+            # Navigate to the app directory where docker-compose.yml is located
+            cd ~/app
+            
+            # Export the image tag so docker-compose can use it
+            export IMAGE_TAG=${{ github.event.inputs.tag }}
+            
+            # Pull the new version from the registry
+            docker compose pull
+            
+            # Stop and restart the service with the new image and configuration
+            docker compose up -d
+          EOF
