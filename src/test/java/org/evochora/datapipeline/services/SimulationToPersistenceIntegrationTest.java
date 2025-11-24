@@ -89,12 +89,9 @@ class SimulationToPersistenceIntegrationTest {
         
         serviceManager.startAll();
 
-        // Wait for batches to be written, using the reliable service metric
+        // Wait until ticks can actually be read, proving the write is complete and stable.
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> {
-                var status = serviceManager.getServiceStatus("persistence-1");
-                return status != null && status.metrics().get("batches_written").longValue() > 0;
-            });
+            .until(() -> !readAllTicksFromBatches(tempStorageDir).isEmpty());
 
         verifyAllTicksPersisted();
     }
@@ -108,15 +105,9 @@ class SimulationToPersistenceIntegrationTest {
 
         serviceManager.startAll();
 
-        // Wait for batches to be written by any of the competing consumers
+        // Wait until ticks can be read, proving at least one competing consumer has finished a write.
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> {
-                var status1 = serviceManager.getServiceStatus("persistence-1");
-                var status2 = serviceManager.getServiceStatus("persistence-2");
-                long batches1 = (status1 != null) ? status1.metrics().get("batches_written").longValue() : 0;
-                long batches2 = (status2 != null) ? status2.metrics().get("batches_written").longValue() : 0;
-                return (batches1 + batches2) > 0;
-            });
+            .until(() -> !readAllTicksFromBatches(tempStorageDir).isEmpty());
 
         List<TickData> allTicks = readAllTicksFromBatches(tempStorageDir);
         assertTrue(allTicks.size() > 0, "No ticks found in persisted batch files");
@@ -158,14 +149,13 @@ class SimulationToPersistenceIntegrationTest {
         
         serviceManager.startAll();
         
-        // Wait for some data to be processed
+        // Wait until data has been verifiably persisted.
         await().atMost(10, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> {
-                var status = serviceManager.getServiceStatus("persistence-1");
-                return status != null && status.metrics().get("batches_written").longValue() > 0;
-            });
+            .until(() -> !readAllTicksFromBatches(tempStorageDir).isEmpty());
         
-        // Stop persistence service while simulation is still running
+        long initialTickCount = readAllTicksFromBatches(tempStorageDir).size();
+        assertTrue(initialTickCount > 0);
+
         serviceManager.stopService("persistence-1");
 
         // Wait for persistence service to actually stop
@@ -175,13 +165,9 @@ class SimulationToPersistenceIntegrationTest {
         // Restart persistence service
         serviceManager.startService("persistence-1");
         
-        // Wait for more data to be processed after restart
+        // Wait for MORE data to be processed after restart.
         await().atMost(10, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> {
-                var status = serviceManager.getServiceStatus("persistence-1");
-                // Check that MORE batches have been written since the start
-                return status != null && status.metrics().get("batches_written").longValue() > 1;
-            });
+            .until(() -> readAllTicksFromBatches(tempStorageDir).size() > initialTickCount);
         
         verifyAllTicksPersisted();
     }

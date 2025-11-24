@@ -91,28 +91,16 @@ class DummyWriterReaderIntegrationTest {
 
         serviceManager.startAll();
 
-        // Wait for services to start successfully (not in ERROR state)
-        // Note: Fast services like dummy-writer may complete and reach STOPPED before this check
-        await().atMost(5, TimeUnit.SECONDS).pollDelay(50, TimeUnit.MILLISECONDS).untilAsserted(() -> {
-            IService.State writerState = serviceManager.getServiceStatus("dummy-writer").state();
-            IService.State readerState = serviceManager.getServiceStatus("dummy-reader").state();
-
-            if (writerState == IService.State.ERROR) {
-                fail("Writer service failed with ERROR state");
-            }
-            if (readerState == IService.State.ERROR) {
-                fail("Reader service failed with ERROR state");
-            }
-        });
-
-        // Wait for writer to finish
-        await().atMost(10, TimeUnit.SECONDS).untilAsserted(() ->
+        // Wait for the writer to COMPLETELY finish its work. This guarantees that all files
+        // are written and stable on the filesystem before we check the reader's progress.
+        await().atMost(20, TimeUnit.SECONDS).untilAsserted(() ->
             assertEquals(IService.State.STOPPED, serviceManager.getServiceStatus("dummy-writer").state())
         );
 
-        // Wait for reader to process all messages
+        // NOW, wait for the reader to catch up and process all the stable files.
         await().pollInterval(250, TimeUnit.MILLISECONDS).atMost(30, TimeUnit.SECONDS).until(() -> {
             if (serviceManager.getServiceStatus("dummy-reader").state() == IService.State.ERROR) {
+                // Fail fast if the reader enters an error state.
                 fail("Reader service is in ERROR state");
             }
             Number messagesRead = serviceManager.getServiceStatus("dummy-reader").metrics().get("messages_read");
