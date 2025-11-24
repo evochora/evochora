@@ -1,8 +1,11 @@
 package org.evochora.test.utils;
 
+import org.evochora.datapipeline.api.contracts.TickData;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -55,5 +58,51 @@ public final class FileUtils {
      */
     public static int countBatchFiles(Path storageDir) {
         return findBatchFiles(storageDir).size();
+    }
+
+    /**
+     * Safely reads all TickData messages from all batch files in a directory.
+     * This method is resilient to race conditions by retrying the read operation
+     * if files disappear during processing.
+     *
+     * @param storageDir The directory to search for batch files.
+     * @return A list of all TickData messages found.
+     */
+    public static List<TickData> readAllTicksFromBatches(Path storageDir) {
+        int maxRetries = 5;
+        long delay = 100; // ms
+
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                List<TickData> allTicks = new ArrayList<>();
+                List<Path> batchFiles = findBatchFiles(storageDir);
+
+                for (Path batchFile : batchFiles) {
+                    try (java.io.InputStream is = new java.io.BufferedInputStream(Files.newInputStream(batchFile))) {
+                        while (is.available() > 0) {
+                            TickData tick = TickData.parseDelimitedFrom(is);
+                            if (tick == null) break;
+                            allTicks.add(tick);
+                        }
+                    }
+                }
+                return allTicks;
+
+            } catch (java.nio.file.NoSuchFileException e) {
+                if (attempt < maxRetries - 1) {
+                    try {
+                        Thread.sleep(delay * (attempt + 1));
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("Interrupted while retrying file read", ie);
+                    }
+                } else {
+                    throw new RuntimeException("Failed to read persisted ticks consistently after " + maxRetries + " attempts", e);
+                }
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to read persisted ticks", e);
+            }
+        }
+        return Collections.emptyList(); // Should be unreachable
     }
 }

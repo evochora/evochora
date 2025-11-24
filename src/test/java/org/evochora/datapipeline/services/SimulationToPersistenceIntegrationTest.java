@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.evochora.test.utils.FileUtils.countBatchFiles;
-import static org.evochora.test.utils.FileUtils.findBatchFiles;
+import static org.evochora.test.utils.FileUtils.readAllTicksFromBatches;
 
 /**
  * Integration tests for end-to-end persistence flow with real resources.
@@ -118,7 +118,7 @@ class SimulationToPersistenceIntegrationTest {
             .until(() -> countBatchFiles(tempStorageDir) > 0);
 
         // Verify no duplicate ticks were written (idempotency working)
-        List<TickData> allTicks = readAllPersistedTicks();
+        List<TickData> allTicks = readAllTicksFromBatches(tempStorageDir);
         assertTrue(allTicks.size() > 0, "No ticks found in persisted batch files");
 
         // Verify each tick appears exactly once
@@ -341,8 +341,8 @@ class SimulationToPersistenceIntegrationTest {
     }
 
     private void verifyAllTicksPersisted() {
-        // Read all batch files from storage and deserialize TickData messages
-        List<TickData> allTicks = readAllPersistedTicks();
+        // Read all batch files from storage using the robust central utility
+        List<TickData> allTicks = readAllTicksFromBatches(tempStorageDir);
 
         assertTrue(allTicks.size() > 0, "No ticks found in persisted batch files");
 
@@ -373,39 +373,5 @@ class SimulationToPersistenceIntegrationTest {
 
         assertEquals(expectedCount, sortedTicks.size(),
             String.format("Expected %d ticks from %d to %d with interval 10", expectedCount, minTick, maxTick));
-    }
-
-    private List<TickData> readAllPersistedTicks() {
-        List<TickData> allTicks = new ArrayList<>();
-
-        // Use the robust, central findBatchFiles method to avoid race conditions
-        List<Path> batchFiles = findBatchFiles(tempStorageDir);
-
-        // Read and deserialize each batch file
-        for (Path batchFile : batchFiles) {
-            try {
-                // Double-check file still exists before opening
-                if (!Files.exists(batchFile)) {
-                    continue; // File was deleted/renamed after collection
-                }
-
-                try (java.io.InputStream is = new java.io.BufferedInputStream(Files.newInputStream(batchFile))) {
-                    // Read all delimited TickData messages from the file
-                    while (is.available() > 0) {
-                        TickData tick = TickData.parseDelimitedFrom(is);
-                        if (tick == null) {
-                            break; // End of file
-                        }
-                        allTicks.add(tick);
-                    }
-                }
-            } catch (java.nio.file.NoSuchFileException e) {
-                // This is an expected race condition if the file is moved/deleted
-                // between finding it and trying to read it. We can safely skip it.
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to read batch file: " + batchFile, e);
-            }
-        }
-        return allTicks;
     }
 }
