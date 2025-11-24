@@ -5,6 +5,7 @@ services:
       context: ../../..  # Gehe drei Ebenen hoch zum Projekt-Root
       dockerfile: infrastructure/docker/evochora-node/Dockerfile # Pfad zum Dockerfile
     image: ghcr.io/rainco77/evochora:${IMAGE_TAG:-latest}
+    user: "${UID:-1000}:${GID:-1000}"
     ports:
       # Map host ports to container ports
       - "80:8081"      # Javalin Web UI (Extern: 80 -> Intern: 8081)
@@ -17,21 +18,24 @@ services:
       # Mount the configuration file into the container's config directory (read-only)
       - ./evochora.conf:/home/appuser/app/config/evochora.conf:ro
     environment:
-      # === Override evochora.conf for Docker ===
+      # === Steuerung des Anwendungs-Verhaltens ===
       - PIPELINE_AUTOSTART=false
 
-      # === JVM Options ===
-      - JAVA_TOOL_OPTIONS=-Xmx16g -Dslf4j.replay.warn=false
-
-      # === Network Bindings (using correct environment variable format) ===
-      - LOGGING_FORMAT=JSON
-      - NODE_PROCESSES_HTTP_OPTIONS_NETWORK_HOST=0.0.0.0
-      - NODE_PROCESSES_H2__CONSOLE_OPTIONS_NETWORK_HOST=0.0.0.0 # Double underscore for hyphen
-      - NODE_PROCESSES_H2__TCP__SERVER_OPTIONS_TCPALLOWOTHERS=true # Double underscore for hyphens
-
-      # === Data Paths (using correct environment variable format) ===
-      - PIPELINE_DATABASE_JDBCURL=jdbc:h2:/home/appuser/app/data/database/indexdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144
-      - PIPELINE_RESOURCES_TICK__STORAGE_OPTIONS_ROOTDIRECTORY=/home/appuser/app/data/storage # Double underscore for hyphen
-      - PIPELINE_RESOURCES_BATCH__TOPIC_OPTIONS_JDBCURL=jdbc:h2:/home/appuser/app/data/database/topicdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144 # Double underscore for hyphen
+      # === JVM Options & Konfigurations-Overrides via System Properties (-D) ===
+      # Dies ist die zuverlässigste Methode, da System Properties die höchste Priorität
+      # in der Konfigurations-Lade-Kette der Anwendung haben.
+      - >
+        JAVA_OPTS=
+        -Xmx16g
+        -Dslf4j.replay.warn=false
+        -Dlogging.format=JSON
+        -Dnode.processes.http.options.network.host=0.0.0.0
+        -Dnode.processes.h2-console.options.network.host=0.0.0.0
+        -Dnode.processes.h2-tcp-server.options.tcpAllowOthers=true
+        -Dpipeline.database.jdbcUrl="jdbc:h2:/home/appuser/app/data/database/indexdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144;LOCK_TIMEOUT=10000"
+        -Dpipeline.resources.tick-storage.options.rootDirectory="/home/appuser/app/data/storage"
+        -Dpipeline.resources.batch-topic.options.jdbcUrl="jdbc:h2:/home/appuser/app/data/database/topicdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144;LOCK_TIMEOUT=10000"
+        -Dnode.processes.h2-console.options.database.jdbcUrl="jdbc:h2:/home/appuser/app/data/database/indexdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144"
+        -Dnode.processes.h2-tcp-server.options.database.jdbcUrl="jdbc:h2:/home/appuser/app/data/database/indexdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144"
 
     restart: unless-stopped
