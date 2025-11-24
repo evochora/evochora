@@ -81,6 +81,12 @@ application {
     applicationName = "evochora"
 }
 
+// Set a global duplicate handling strategy for all copy-related tasks
+// This prevents build failures from dependencies containing the same files (e.g., proto definitions)
+tasks.withType<Copy> {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 // Configure the main distribution to include necessary files for all use cases
 distributions {
     main {
@@ -125,7 +131,7 @@ tasks.named<Jar>("jar") {
     from(configurations.runtimeClasspath.map { config -> 
         config.map { if (it.isDirectory) it else zipTree(it) }
     })
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    // The duplicatesStrategy is now handled globally by tasks.withType<Copy>
 }
 
 tasks.withType<Tar> {
