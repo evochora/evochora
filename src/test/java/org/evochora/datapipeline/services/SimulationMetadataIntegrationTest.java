@@ -32,6 +32,7 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import static org.evochora.test.utils.FileUtils.readAllTicksFromBatches;
 
 /**
  * Integration tests for end-to-end metadata persistence flow with real resources.
@@ -115,12 +116,14 @@ class SimulationMetadataIntegrationTest {
 
         serviceManager.startAll();
 
-        // Wait for both metadata file AND for the persistence service to have written at least one batch
+        // Wait for the metadata file to exist AND for all expected ticks to be readable.
+        // This ensures the entire persistence pipeline has completed.
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> {
-                var status = serviceManager.getServiceStatus("persistence-service");
-                boolean batchesWritten = status != null && status.metrics().get("batches_written").longValue() > 0;
-                return findMetadataFile(tempStorageDir) != null && batchesWritten;
+                boolean metadataExists = findMetadataFile(tempStorageDir) != null;
+                // In this config, 100 ticks are produced with sampling 10 = 10 ticks total.
+                boolean ticksAreReadable = readAllTicksFromBatches(tempStorageDir).size() >= 10;
+                return metadataExists && ticksAreReadable;
             });
 
         Path metadataFile = findMetadataFile(tempStorageDir);
@@ -131,9 +134,9 @@ class SimulationMetadataIntegrationTest {
         Path simulationDir = metadataFile.getParent();
         assertTrue(simulationDir.getFileName().toString().equals(simulationRunId));
 
-        // Verify batch files exist in simulation directory using our robust helper method
-        // which handles the race condition.
-        assertTrue(countBatchFiles(simulationDir) > 0, "Batch files should exist under simulation directory");
+        // The await condition already robustly verified that batch files exist and are readable.
+        // A simple check is sufficient here.
+        assertTrue(readAllTicksFromBatches(simulationDir).size() >= 10, "Batch files should exist under simulation directory");
     }
 
     @Test

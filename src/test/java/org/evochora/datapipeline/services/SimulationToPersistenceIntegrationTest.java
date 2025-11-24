@@ -84,11 +84,10 @@ class SimulationToPersistenceIntegrationTest {
     void testEndToEndPersistence() {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
-        
         serviceManager.startAll();
 
-        // Wait until all 10 expected ticks have been written and are readable.
-        // This is the only robust end-to-end condition.
+        // Wait until all 10 expected ticks (100 maxTicks / 10 samplingInterval) are fully written and readable.
+        // This is the only truly robust end-to-end condition.
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> readAllTicksFromBatches(tempStorageDir).size() >= 10);
 
@@ -99,10 +98,9 @@ class SimulationToPersistenceIntegrationTest {
     void testMultiplePersistenceInstances() {
         Config config = createMultiInstanceConfig();
         serviceManager = new ServiceManager(config);
-
         serviceManager.startAll();
 
-        // Wait until all 10 expected ticks have been written and are readable by the competing consumers.
+        // Wait until all 10 expected ticks are readable, regardless of which consumer wrote them.
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> readAllTicksFromBatches(tempStorageDir).size() >= 10);
 
@@ -141,14 +139,14 @@ class SimulationToPersistenceIntegrationTest {
     void testGracefulShutdown() {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
-        
         serviceManager.startAll();
         
         // Wait for at least ONE tick to be verifiably persisted before stopping the service.
         await().atMost(20, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> !readAllTicksFromBatches(tempStorageDir).isEmpty());
         
-        // Stop, wait, and restart the service
+        long initialTickCount = readAllTicksFromBatches(tempStorageDir).size();
+        
         serviceManager.stopService("persistence-1");
         await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> serviceManager.getServiceStatus("persistence-1").state() == State.STOPPED);
