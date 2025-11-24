@@ -1,4 +1,5 @@
 import com.google.protobuf.gradle.*
+import java.util.Properties
 
 // Show deprecation details for test sources to fix root causes
 tasks.withType<JavaCompile>().configureEach {
@@ -17,7 +18,12 @@ plugins {
 }
 
 group = "org.evochora"
-version = "1.0-SNAPSHOT"
+version = System.getenv("RELEASE_TAG") ?: "latest"
+
+// Remove -SNAPSHOT suffix if it exists for local builds
+if (version.toString().endsWith("-SNAPSHOT")) {
+    version = version.toString().removeSuffix("-SNAPSHOT")
+}
 
 repositories {
     mavenCentral()
@@ -71,6 +77,7 @@ dependencies {
 // Definiert die Hauptklasse für den 'run'-Task
 application {
     mainClass.set("org.evochora.cli.CommandLineInterface")
+    applicationName = "evochora"
 }
 
 // Application Plugin erstellt bereits Fat JARs mit allen Dependencies

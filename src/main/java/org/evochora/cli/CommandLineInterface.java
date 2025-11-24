@@ -61,20 +61,32 @@ public class CommandLineInterface implements Callable<Integer> {
             return;
         }
 
-        // Configuration loading
-        final File confFile = (this.configFile != null) ? this.configFile : new File(CONFIG_FILE_NAME);
+        // Initialize logger early for config loading feedback
+        final Logger logger = LoggerFactory.getLogger(CommandLineInterface.class);
+
         try {
-            if (confFile.exists()) {
-                this.config = ConfigFactory.parseFile(confFile).withFallback(ConfigFactory.load()).resolve();
+            if (this.configFile != null) {
+                // Case 1: User explicitly provided a config file path
+                if (!this.configFile.exists()) {
+                    logger.error("Configuration file specified via --config was not found: {}", this.configFile.getAbsolutePath());
+                    System.exit(1);
+                }
+                logger.info("Using specified configuration file: {}", this.configFile.getAbsolutePath());
+                this.config = ConfigFactory.parseFile(this.configFile).withFallback(ConfigFactory.load()).resolve();
             } else {
-                this.config = ConfigFactory.load().resolve();
+                // Case 2: No config file path provided, try the default name
+                final File defaultConfFile = new File(CONFIG_FILE_NAME);
+                if (defaultConfFile.exists()) {
+                    logger.info("Using configuration file found in current directory: {}", defaultConfFile.getAbsolutePath());
+                    this.config = ConfigFactory.parseFile(defaultConfFile).withFallback(ConfigFactory.load()).resolve();
+                } else {
+                    logger.warn("No '{}' found in current directory. Using default configuration from classpath.", CONFIG_FILE_NAME);
+                    this.config = ConfigFactory.load().resolve();
+                }
             }
         } catch (com.typesafe.config.ConfigException e) {
-            // Log config error and exit gracefully
-            final Logger errorLogger = LoggerFactory.getLogger(CommandLineInterface.class);
-            errorLogger.error("Failed to load configuration from {}: {}", confFile.getAbsolutePath(), e.getMessage());
+            logger.error("Failed to load or parse configuration: {}", e.getMessage());
             System.exit(1);
-            return; // Unreachable, but satisfies compiler
         }
 
         // Logging setup
@@ -85,16 +97,9 @@ public class CommandLineInterface implements Callable<Integer> {
         }
         LoggingConfigurator.configure(config);
 
-        final Logger logger = LoggerFactory.getLogger(CommandLineInterface.class);
-
-        // Welcome message and config logging - only for node commands
+        // Welcome message - only for node commands
         if (config.hasPath("node.show-welcome-message") && config.getBoolean("node.show-welcome-message")) {
             showWelcomeMessage();
-        }
-        if (confFile.exists()) {
-            logger.info("Using configuration file: {}", confFile.getAbsolutePath());
-        } else {
-            logger.info("Using default configuration from classpath (file not found: {})", confFile.getAbsolutePath());
         }
 
         initialized = true;

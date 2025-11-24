@@ -4,6 +4,9 @@
 # Use an official Gradle image with a matching JDK version (21)
 FROM gradle:8.8.0-jdk21-jammy AS builder
 
+# Accept RELEASE_TAG build argument
+ARG RELEASE_TAG
+
 # Set the working directory inside the container
 WORKDIR /app
 
@@ -22,8 +25,8 @@ RUN ./gradlew build --no-daemon --stacktrace || return 0
 # Copy the entire source code
 COPY . .
 
-# Build the application and create the distribution archive, skipping tests
-RUN ./gradlew clean build distZip -x test --no-daemon --stacktrace
+# Build the application's distribution archive, skipping tests and other archives
+RUN ./gradlew distZip -x test --no-daemon --stacktrace
 
 # ====================================================================================
 # STAGE 2: Create the final, lean runtime image
@@ -64,5 +67,5 @@ USER appuser
 EXPOSE 8081 8082 9092
 
 # The command to run the application using the start script from distZip,
-# pointing to the mounted configuration file.
-CMD ["bin/evochora", "node", "run", "--config", "config/evochora.conf"]
+# with the global --config option placed correctly before subcommands.
+CMD ["bin/evochora", "--config", "config/evochora.conf", "node", "run"]
