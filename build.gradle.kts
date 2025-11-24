@@ -77,34 +77,7 @@ dependencies {
 // Definiert die Hauptklasse für den 'run'-Task
 application {
     mainClass.set("org.evochora.cli.CommandLineInterface")
-    // Sets the base name for archives and the start scripts
-    applicationName = "evochora"
 }
-
-// Set a global duplicate handling strategy for all copy-related tasks
-// This prevents build failures from dependencies containing the same files (e.g., proto definitions)
-tasks.withType<Copy> {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-
-// Configure the main distribution to include necessary files for all use cases
-distributions {
-    main {
-        distributionBaseName.set("evochora")
-        contents {
-            from("assembly") {
-                into("assembly")
-            }
-            from("evochora.conf") {
-                into("config")
-            }
-            from("README.md")
-        }
-    }
-}
-
-// Application Plugin erstellt bereits Fat JARs mit allen Dependencies
-// Das distZip/distTar Task erstellt ein Verzeichnis mit JAR + libs
 
 // Konfiguriere den run-Task für interaktive Eingabe
 tasks.named<JavaExec>("run") {
@@ -115,6 +88,7 @@ tasks.named<JavaExec>("run") {
 }
 
 tasks.named<Jar>("jar") {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     archiveVersion.set("")
     manifest {
         attributes["Main-Class"] = "org.evochora.cli.CommandLineInterface"
@@ -131,19 +105,32 @@ tasks.named<Jar>("jar") {
     from(configurations.runtimeClasspath.map { config -> 
         config.map { if (it.isDirectory) it else zipTree(it) }
     })
-    // The duplicatesStrategy is now handled globally by tasks.withType<Copy>
 }
 
-tasks.withType<Tar> {
-    archiveBaseName.set("evochora")
-    archiveVersion.set("")
-    compression = Compression.GZIP
-    archiveExtension.set("tar.gz")
-}
-
-tasks.withType<Zip> {
+tasks.withType<Copy> {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
+
+// Configure the distribution archives (distZip, distTar)
+tasks.withType<AbstractArchiveTask> {
+    // Use the project version for archives, which is dynamically set from RELEASE_TAG
+    archiveVersion.set(project.version.toString())
+}
+
+distributions {
+    main {
+        contents {
+            from("assembly") {
+                into("assembly")
+            }
+            from("evochora.conf") {
+                into("config")
+            }
+            from("README.md")
+        }
+    }
+}
+
 
 tasks.test {
     useJUnitPlatform {

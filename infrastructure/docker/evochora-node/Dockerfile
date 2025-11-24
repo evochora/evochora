@@ -38,9 +38,9 @@ RUN useradd --create-home --shell /bin/bash appuser
 # Set the main working directory in the new user's home
 WORKDIR /home/appuser/app
 
-# The build stage created a clean distribution in build/install/evochora
-# Copy the pre-built application directly, avoiding unzip in the final image
-COPY --from=builder /app/build/install/evochora/ .
+# The build stage created a clean distribution in a versioned folder.
+# Copy the contents of that folder directly.
+COPY --from=builder /app/build/install/evochora-*/* .
 
 # Create directories for data volumes that will be mounted
 RUN mkdir -p data/storage data/database config
