@@ -21,17 +21,17 @@ services:
       - PIPELINE_AUTOSTART=false
 
       # === JVM Options ===
-      # Set heap size, SLF4J warning suppression, and force JSON logging via system property
-      - JAVA_TOOL_OPTIONS=-Xmx16g -Dslf4j.replay.warn=false -Dlogging.format=JSON
+      - JAVA_TOOL_OPTIONS=-Xmx16g -Dslf4j.replay.warn=false
 
-      # 1. Network bindings (using full HOCON path for environment variables)
+      # === Network Bindings (using correct environment variable format) ===
+      - LOGGING_FORMAT=JSON
       - NODE_PROCESSES_HTTP_OPTIONS_NETWORK_HOST=0.0.0.0
-      - NODE_PROCESSES_H2-CONSOLE_OPTIONS_NETWORK_HOST=0.0.0.0
-      - NODE_PROCESSES_H2-TCP-SERVER_OPTIONS_TCPALLOWOTHERS=true # Allow connections within Docker network
+      - NODE_PROCESSES_H2__CONSOLE_OPTIONS_NETWORK_HOST=0.0.0.0 # Double underscore for hyphen
+      - NODE_PROCESSES_H2__TCP__SERVER_OPTIONS_TCPALLOWOTHERS=true # Double underscore for hyphens
 
-      # 2. Data paths inside the container
+      # === Data Paths (using correct environment variable format) ===
       - PIPELINE_DATABASE_JDBCURL=jdbc:h2:/home/appuser/app/data/database/indexdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144
-      - PIPELINE_RESOURCES_TICK-STORAGE_OPTIONS_ROOTDIRECTORY=/home/appuser/app/data/storage
-      - PIPELINE_RESOURCES_BATCH-TOPIC_OPTIONS_JDBCURL=jdbc:h2:/home/appuser/app/data/database/topicdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144
+      - PIPELINE_RESOURCES_TICK__STORAGE_OPTIONS_ROOTDIRECTORY=/home/appuser/app/data/storage # Double underscore for hyphen
+      - PIPELINE_RESOURCES_BATCH__TOPIC_OPTIONS_JDBCURL=jdbc:h2:/home/appuser/app/data/database/topicdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144 # Double underscore for hyphen
 
     restart: unless-stopped
