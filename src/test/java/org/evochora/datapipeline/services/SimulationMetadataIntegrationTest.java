@@ -402,7 +402,7 @@ class SimulationMetadataIntegrationTest {
                         return fileName.startsWith("batch_") && fileName.endsWith(".pb") && !fileName.contains(".tmp");
                     })
                     .filter(Files::isRegularFile)
-                    .count();
+                .count();
         } catch (java.io.UncheckedIOException e) {
             if (e.getCause() instanceof java.nio.file.NoSuchFileException) {
                 // This can happen in a race condition on fast filesystems (like in CI).
@@ -416,7 +416,7 @@ class SimulationMetadataIntegrationTest {
              // It's good practice to also handle the checked IOException variant
              if (e.getCause() instanceof java.nio.file.NoSuchFileException) {
                 LOGGER.debug("Caught a recoverable race condition while counting files: {}", e.getCause().getMessage());
-                return 0;
+            return 0;
             }
             throw new RuntimeException("Failed to count batch files", e);
         }

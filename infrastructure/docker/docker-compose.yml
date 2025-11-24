@@ -19,10 +19,10 @@ services:
     environment:
       # === Override evochora.conf for Docker ===
       - PIPELINE_AUTOSTART=false
-      - LOGGING_FORMAT=JSON
 
       # === JVM Options ===
-      - JAVA_TOOL_OPTIONS=-Xmx16g -Dslf4j.replay.warn=false
+      # Set heap size, SLF4J warning suppression, and force JSON logging via system property
+      - JAVA_TOOL_OPTIONS=-Xmx16g -Dslf4j.replay.warn=false -Dlogging.format=JSON
 
       # 1. Network bindings
       - NODE_HTTP_NETWORK_HOST=0.0.0.0

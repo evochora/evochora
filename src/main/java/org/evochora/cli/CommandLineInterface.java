@@ -72,16 +72,27 @@ public class CommandLineInterface implements Callable<Integer> {
                     System.exit(1);
                 }
                 logger.info("Using specified configuration file: {}", this.configFile.getAbsolutePath());
-                this.config = ConfigFactory.parseFile(this.configFile).withFallback(ConfigFactory.load()).resolve();
+                // Config load order: System properties > File > Classpath defaults
+                this.config = ConfigFactory.systemProperties()
+                    .withFallback(ConfigFactory.parseFile(this.configFile))
+                    .withFallback(ConfigFactory.load())
+                    .resolve();
             } else {
                 // Case 2: No config file path provided, try the default name
                 final File defaultConfFile = new File(CONFIG_FILE_NAME);
                 if (defaultConfFile.exists()) {
                     logger.info("Using configuration file found in current directory: {}", defaultConfFile.getAbsolutePath());
-                    this.config = ConfigFactory.parseFile(defaultConfFile).withFallback(ConfigFactory.load()).resolve();
+                    // Config load order: System properties > File > Classpath defaults
+                    this.config = ConfigFactory.systemProperties()
+                        .withFallback(ConfigFactory.parseFile(defaultConfFile))
+                        .withFallback(ConfigFactory.load())
+                        .resolve();
                 } else {
                     logger.warn("No '{}' found in current directory. Using default configuration from classpath.", CONFIG_FILE_NAME);
-                    this.config = ConfigFactory.load().resolve();
+                    // Config load order: System properties > Classpath defaults
+                    this.config = ConfigFactory.systemProperties()
+                        .withFallback(ConfigFactory.load())
+                        .resolve();
                 }
             }
         } catch (com.typesafe.config.ConfigException e) {

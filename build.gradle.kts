@@ -18,7 +18,7 @@ plugins {
 }
 
 group = "org.evochora"
-version = System.getenv("RELEASE_TAG") ?: "latest"
+version = project.findProperty("RELEASE_TAG")?.toString() ?: "latest"
 
 // Remove -SNAPSHOT suffix if it exists for local builds
 if (version.toString().endsWith("-SNAPSHOT")) {
@@ -77,7 +77,24 @@ dependencies {
 // Definiert die Hauptklasse für den 'run'-Task
 application {
     mainClass.set("org.evochora.cli.CommandLineInterface")
+    // Sets the base name for archives and the start scripts
     applicationName = "evochora"
+}
+
+// Configure the main distribution to include necessary files for all use cases
+distributions {
+    main {
+        distributionBaseName.set("evochora")
+        contents {
+            from("assembly") {
+                into("assembly")
+            }
+            from("evochora.conf") {
+                into("config")
+            }
+            from("README.md")
+        }
+    }
 }
 
 // Application Plugin erstellt bereits Fat JARs mit allen Dependencies

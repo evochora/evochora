@@ -1,10 +1,9 @@
 # ====================================================================================
-# STAGE 1: Build the application using Gradle
+# STAGE 1: Build the application using Gradle with persistent caching
 # ====================================================================================
 FROM gradle:8.8.0-jdk21-jammy AS builder
 
 ARG RELEASE_TAG
-
 WORKDIR /app
 
 # 1. Copy only the necessary build files
@@ -12,9 +11,11 @@ COPY build.gradle.kts settings.gradle.kts ./
 COPY gradlew .
 COPY gradle ./gradle
 
-# 2. Download dependencies. This layer is cached and only re-run
-#    if the build files change. The build will fail but download dependencies.
-RUN ./gradlew build --no-daemon || return 0
+# 2. Download dependencies into a persistent cache. This layer is cached by Docker
+#    and the Gradle cache itself is persisted across runs via --mount.
+RUN --mount=type=cache,target=/root/.gradle/caches \
+    --mount=type=cache,target=/root/.gradle/wrapper \
+    ./gradlew dependencies --no-daemon
 
 # 3. Copy the rest of the source code
 COPY src ./src
@@ -22,8 +23,9 @@ COPY assembly ./assembly
 
 # 4. Build the actual distribution archive. Dependencies are already cached.
 #    This command is now much faster.
-RUN ./gradlew distZip -x test --no-daemon --stacktrace
-
+RUN --mount=type=cache,target=/root/.gradle/caches \
+    --mount=type=cache,target=/root/.gradle/wrapper \
+    ./gradlew distZip -x test --no-daemon --stacktrace
 
 # ====================================================================================
 # STAGE 2: Create the final, lean runtime image
@@ -36,17 +38,9 @@ RUN useradd --create-home --shell /bin/bash appuser
 # Set the main working directory in the new user's home
 WORKDIR /home/appuser/app
 
-# Install 'unzip', extract the distribution, and clean up to keep the image small
-COPY --from=builder /app/build/distributions/*.zip .
-RUN apt-get update && \
-    apt-get install -y unzip && \
-    unzip *.zip && \
-    rm *.zip && \
-    apt-get purge -y --auto-remove unzip && \
-    rm -rf /var/lib/apt/lists/*
-
-# The distribution has a nested folder, e.g., evochora-1.0-SNAPSHOT. Move contents up.
-RUN mv $(ls | grep -v 'lost+found')/* .
+# The build stage created a clean distribution in build/install/evochora
+# Copy the pre-built application directly, avoiding unzip in the final image
+COPY --from=builder /app/build/install/evochora/ .
 
 # Create directories for data volumes that will be mounted
 RUN mkdir -p data/storage data/database config
