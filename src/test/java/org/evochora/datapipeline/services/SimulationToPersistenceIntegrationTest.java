@@ -86,12 +86,13 @@ class SimulationToPersistenceIntegrationTest {
         serviceManager = new ServiceManager(config);
         serviceManager.startAll();
 
-        // Wait until all 10 expected ticks (100 maxTicks / 10 samplingInterval) are fully written and readable.
-        // This is the only truly robust end-to-end condition.
+        // Use untilAsserted to create a robust, end-to-end wait condition.
+        // This repeatedly attempts the final verification until it succeeds.
+        // This is necessary to handle potential filesystem inconsistencies on CI runners,
+        // where a successful file count check can be immediately followed by a failed read.
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> readAllTicksFromBatches(tempStorageDir).size() >= 10);
-
-        verifyAllTicksPersisted();
+            .pollInterval(200, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .untilAsserted(this::verifyAllTicksPersisted);
     }
 
     @Test
@@ -100,19 +101,22 @@ class SimulationToPersistenceIntegrationTest {
         serviceManager = new ServiceManager(config);
         serviceManager.startAll();
 
-        // Wait until all 10 expected ticks are readable, regardless of which consumer wrote them.
+        // Use untilAsserted to wait for the final state to be consistent.
+        // This is more robust than separate wait/assert steps, especially on CI runners
+        // with potential filesystem inconsistencies.
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> readAllTicksFromBatches(tempStorageDir).size() >= 10);
+            .pollInterval(200, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .untilAsserted(() -> {
+                List<TickData> allTicks = readAllTicksFromBatches(tempStorageDir);
+                assertTrue(allTicks.size() >= 10, "Fewer than 10 ticks found in persisted batch files");
 
-        List<TickData> allTicks = readAllTicksFromBatches(tempStorageDir);
-        assertTrue(allTicks.size() >= 10, "Fewer than 10 ticks found in persisted batch files");
-
-        // Verify each tick appears exactly once
-        Set<Long> tickNumbers = new HashSet<>();
-        for (TickData tick : allTicks) {
-            boolean isNew = tickNumbers.add(tick.getTickNumber());
-            assertTrue(isNew, "Duplicate tick number found with competing consumers: " + tick.getTickNumber());
-        }
+                // Verify each tick appears exactly once
+                Set<Long> tickNumbers = new HashSet<>();
+                for (TickData tick : allTicks) {
+                    boolean isNew = tickNumbers.add(tick.getTickNumber());
+                    assertTrue(isNew, "Duplicate tick number found with competing consumers: " + tick.getTickNumber());
+                }
+            });
     }
 
     @Test
@@ -141,22 +145,21 @@ class SimulationToPersistenceIntegrationTest {
         serviceManager = new ServiceManager(config);
         serviceManager.startAll();
         
-        // Wait for at least ONE tick to be verifiably persisted before stopping the service.
+        // Wait until we can verifiably read at least one tick before proceeding.
         await().atMost(20, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> !readAllTicksFromBatches(tempStorageDir).isEmpty());
         
-        long initialTickCount = readAllTicksFromBatches(tempStorageDir).size();
-        
+        // Stop, wait, and restart the service
         serviceManager.stopService("persistence-1");
         await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> serviceManager.getServiceStatus("persistence-1").state() == State.STOPPED);
         serviceManager.startService("persistence-1");
         
-        // After restart, wait for ALL 10 ticks to be present.
+        // After restart, wait for the final verification to succeed to handle
+        // potential filesystem inconsistencies on CI runners.
         await().atMost(20, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> readAllTicksFromBatches(tempStorageDir).size() >= 10);
-        
-        verifyAllTicksPersisted();
+            .pollInterval(200, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .untilAsserted(this::verifyAllTicksPersisted);
     }
 
     private Config createIntegrationConfig() {
