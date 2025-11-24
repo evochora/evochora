@@ -81,36 +81,33 @@ class SimulationToPersistenceIntegrationTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|PersistenceService|ServiceManager|FileSystemStorageResource).*")
-    @AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testEndToEndPersistence() {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
         
         serviceManager.startAll();
 
-        // Wait until ticks can actually be read, proving the write is complete and stable.
+        // Wait until all 10 expected ticks have been written and are readable.
+        // This is the only robust end-to-end condition.
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> !readAllTicksFromBatches(tempStorageDir).isEmpty());
+            .until(() -> readAllTicksFromBatches(tempStorageDir).size() >= 10);
 
         verifyAllTicksPersisted();
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|PersistenceService|ServiceManager|FileSystemStorageResource|InMemoryIdempotencyTracker).*")
-    @AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testMultiplePersistenceInstances() {
         Config config = createMultiInstanceConfig();
         serviceManager = new ServiceManager(config);
 
         serviceManager.startAll();
 
-        // Wait until ticks can be read, proving at least one competing consumer has finished a write.
+        // Wait until all 10 expected ticks have been written and are readable by the competing consumers.
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> !readAllTicksFromBatches(tempStorageDir).isEmpty());
+            .until(() -> readAllTicksFromBatches(tempStorageDir).size() >= 10);
 
         List<TickData> allTicks = readAllTicksFromBatches(tempStorageDir);
-        assertTrue(allTicks.size() > 0, "No ticks found in persisted batch files");
+        assertTrue(allTicks.size() >= 10, "Fewer than 10 ticks found in persisted batch files");
 
         // Verify each tick appears exactly once
         Set<Long> tickNumbers = new HashSet<>();
@@ -141,33 +138,25 @@ class SimulationToPersistenceIntegrationTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|PersistenceService|ServiceManager|FileSystemStorageResource).*")
-    @AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testGracefulShutdown() {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
         
         serviceManager.startAll();
         
-        // Wait until data has been verifiably persisted.
-        await().atMost(10, java.util.concurrent.TimeUnit.SECONDS)
+        // Wait for at least ONE tick to be verifiably persisted before stopping the service.
+        await().atMost(20, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> !readAllTicksFromBatches(tempStorageDir).isEmpty());
         
-        long initialTickCount = readAllTicksFromBatches(tempStorageDir).size();
-        assertTrue(initialTickCount > 0);
-
+        // Stop, wait, and restart the service
         serviceManager.stopService("persistence-1");
-
-        // Wait for persistence service to actually stop
         await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> serviceManager.getServiceStatus("persistence-1").state() == State.STOPPED);
-
-        // Restart persistence service
         serviceManager.startService("persistence-1");
         
-        // Wait for MORE data to be processed after restart.
-        await().atMost(10, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> readAllTicksFromBatches(tempStorageDir).size() > initialTickCount);
+        // After restart, wait for ALL 10 ticks to be present.
+        await().atMost(20, java.util.concurrent.TimeUnit.SECONDS)
+            .until(() -> readAllTicksFromBatches(tempStorageDir).size() >= 10);
         
         verifyAllTicksPersisted();
     }

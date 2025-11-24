@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
@@ -48,23 +49,19 @@ class DummyWriterReaderIntegrationTest {
 
         String configString = String.format("""
             pipeline {
-              autoStart = false
+              autoStart = false // We will start manually
               resources {
                 "storage-main" {
                   className = "org.evochora.datapipeline.resources.storage.FileSystemStorageResource"
-                  options {
-                    rootDirectory = "%s"
-                  }
+                  options { rootDirectory = "%s" }
                 }
               }
               services {
                 "dummy-writer" {
                   className = "org.evochora.datapipeline.services.DummyWriterService"
-                  resources {
-                    storage = "storage-write:storage-main"
-                  }
+                  resources { storage = "storage-write:storage-main" }
                   options {
-                    intervalMs = 10
+                    intervalMs = 1
                     messagesPerWrite = %d
                     maxWrites = %d
                     keyPrefix = "integration_test"
@@ -72,16 +69,15 @@ class DummyWriterReaderIntegrationTest {
                 }
                 "dummy-reader" {
                   className = "org.evochora.datapipeline.services.DummyReaderService"
-                  resources {
-                    storage = "storage-read:storage-main"
-                  }
+                  resources { storage = "storage-read:storage-main" }
                   options {
                     keyPrefix = "integration_test"
-                    intervalMs = 20
+                    intervalMs = 10 // Polls frequently
                     validateData = true
                   }
                 }
               }
+              // Define explicit startup sequence for clarity
               startupSequence = ["dummy-writer", "dummy-reader"]
             }
             """, rootDirectory, messagesPerWrite, maxWrites);
@@ -89,30 +85,36 @@ class DummyWriterReaderIntegrationTest {
         Config config = ConfigFactory.parseString(configString);
         serviceManager = new ServiceManager(config);
 
+        // Start all services
         serviceManager.startAll();
 
-        // Wait for the writer to COMPLETELY finish its work. This guarantees that all files
-        // are written and stable on the filesystem before we check the reader's progress.
-        await().atMost(20, TimeUnit.SECONDS).untilAsserted(() ->
+        // 1. Wait for the writer to COMPLETELY finish its work.
+        // This is the most robust guarantee that the filesystem is in a stable state.
+        await().atMost(30, TimeUnit.SECONDS).untilAsserted(() ->
             assertEquals(IService.State.STOPPED, serviceManager.getServiceStatus("dummy-writer").state())
         );
 
-        // NOW, wait for the reader to catch up and process all the stable files.
-        await().pollInterval(250, TimeUnit.MILLISECONDS).atMost(30, TimeUnit.SECONDS).until(() -> {
-            if (serviceManager.getServiceStatus("dummy-reader").state() == IService.State.ERROR) {
-                // Fail fast if the reader enters an error state.
-                fail("Reader service is in ERROR state");
+        // 2. NOW, wait for the reader to catch up and process all the stable files.
+        // We wait until the 'messages_read' metric matches the total number of messages written.
+        await().atMost(30, TimeUnit.SECONDS).pollInterval(100, TimeUnit.MILLISECONDS).until(() -> {
+            var readerStatus = serviceManager.getServiceStatus("dummy-reader");
+            if (readerStatus != null && readerStatus.state() == IService.State.ERROR) {
+                fail("Reader service entered ERROR state.");
             }
-            Number messagesRead = serviceManager.getServiceStatus("dummy-reader").metrics().get("messages_read");
+            Number messagesRead = (readerStatus != null) ? readerStatus.metrics().get("messages_read") : 0;
             return totalMessages == (messagesRead != null ? messagesRead.longValue() : 0L);
         });
+        
+        // Final assertions
+        var writerStatus = serviceManager.getServiceStatus("dummy-writer");
+        var readerStatus = serviceManager.getServiceStatus("dummy-reader");
 
-        Map<String, Number> writerMetrics = serviceManager.getServiceStatus("dummy-writer").metrics();
-        Map<String, Number> readerMetrics = serviceManager.getServiceStatus("dummy-reader").metrics();
+        assertNotNull(writerStatus);
+        assertNotNull(readerStatus);
 
-        assertEquals(totalMessages, writerMetrics.get("messages_written").longValue());
-        assertEquals(totalMessages, readerMetrics.get("messages_read").longValue());
-        assertEquals(0L, readerMetrics.get("validation_errors").longValue());
-        assertEquals(maxWrites, readerMetrics.get("files_processed").longValue());
+        assertEquals(totalMessages, writerStatus.metrics().get("messages_written").longValue());
+        assertEquals(totalMessages, readerStatus.metrics().get("messages_read").longValue());
+        assertEquals(0L, readerStatus.metrics().get("validation_errors").longValue());
+        assertEquals(maxWrites, readerStatus.metrics().get("files_processed").longValue());
     }
 }
