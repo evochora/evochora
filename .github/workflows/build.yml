@@ -19,6 +19,11 @@ jobs:
       checks: write
 
     steps:
+      - name: Fix Git Path on Windows
+        if: runner.os == 'Windows'
+        run: echo "C:\Program Files\Git\usr\bin" >> $env:GITHUB_PATH
+        shell: pwsh
+
       - name: Checkout code
         uses: actions/checkout@v4
 

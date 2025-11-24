@@ -2,7 +2,7 @@
 # STAGE 1: Build the application using Gradle
 # ====================================================================================
 # Use an official Gradle image with a matching JDK version (21)
-FROM gradle:8.8.0-jdk21-jammy as builder
+FROM gradle:8.8.0-jdk21-jammy AS builder
 
 # Set the working directory inside the container
 WORKDIR /app
@@ -22,8 +22,8 @@ RUN ./gradlew build --no-daemon --stacktrace || return 0
 # Copy the entire source code
 COPY . .
 
-# Build the application and create the distribution archive
-RUN ./gradlew clean build distZip --no-daemon --stacktrace
+# Build the application and create the distribution archive, skipping tests
+RUN ./gradlew clean build distZip -x test --no-daemon --stacktrace
 
 # ====================================================================================
 # STAGE 2: Create the final, lean runtime image
@@ -54,10 +54,11 @@ RUN mv /app/* .
 # Create directories for data and configuration that will be mounted as volumes
 RUN mkdir -p data/storage data/database config
 
-# Expose the default port for the application's HTTP API and other services
-EXPOSE 8081  # Javalin Web UI
-EXPOSE 8082  # H2 Web Console
-EXPOSE 9092  # H2 TCP Server
+# Expose the application's ports for external access
+# 8081: Javalin Web UI & API
+# 8082: H2 Web Console
+# 9092: H2 TCP Server
+EXPOSE 8081 8082 9092
 
 # The command to run the application using the start script from distZip
 CMD ["bin/evochora", "node", "run"]
