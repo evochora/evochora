@@ -21,11 +21,11 @@ RUN --mount=type=cache,target=/root/.gradle/caches \
 COPY src ./src
 COPY assembly ./assembly
 
-# 4. Build the actual distribution archive. Dependencies are already cached.
-#    This command is now much faster.
+# 4. Build the installable distribution (unpacked) instead of a zip archive.
+#    This is cleaner for the COPY step in the next stage.
 RUN --mount=type=cache,target=/root/.gradle/caches \
     --mount=type=cache,target=/root/.gradle/wrapper \
-    ./gradlew distZip -x test --no-daemon --stacktrace
+    ./gradlew installDist -x test --no-daemon --stacktrace
 
 # ====================================================================================
 # STAGE 2: Create the final, lean runtime image
