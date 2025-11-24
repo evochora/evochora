@@ -105,3 +105,16 @@ jobs:
             RELEASE_TAG=${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # This pulls the git tag and uses it as the release name
+          tag_name: ${{ steps.meta.outputs.version }}
+          # If the tag is 'latest', mark it as a pre-release to distinguish from versioned tags
+          prerelease: ${{ steps.meta.outputs.version == 'latest' }}
+          # Overwrite any existing assets for the 'latest' tag
+          # For versioned tags, this will fail if the release already exists, which is safe.
+          files: |
+            build/distributions/*.zip
+            build/distributions/*.tar.gz

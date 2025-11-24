@@ -115,10 +115,13 @@ class SimulationMetadataIntegrationTest {
 
         serviceManager.startAll();
 
-        // Wait for both metadata and tick data files
+        // Wait for both metadata file AND for the persistence service to have written at least one batch
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> findMetadataFile(tempStorageDir) != null &&
-                         countBatchFiles(tempStorageDir) > 0);
+            .until(() -> {
+                var status = serviceManager.getServiceStatus("persistence-service");
+                boolean batchesWritten = status != null && status.metrics().get("batches_written").longValue() > 0;
+                return findMetadataFile(tempStorageDir) != null && batchesWritten;
+            });
 
         Path metadataFile = findMetadataFile(tempStorageDir);
         SimulationMetadata metadata = readMetadataFile(metadataFile);

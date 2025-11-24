@@ -87,20 +87,16 @@ class SimulationToPersistenceIntegrationTest {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
         
-        // Start all services
         serviceManager.startAll();
 
-        // Wait for batches to be written
+        // Wait for batches to be written, using the reliable service metric
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> countBatchFiles(tempStorageDir) > 0);
+            .until(() -> {
+                var status = serviceManager.getServiceStatus("persistence-1");
+                return status != null && status.metrics().get("batches_written").longValue() > 0;
+            });
 
-        // Verify data integrity (this implicitly verifies that batch files exist)
         verifyAllTicksPersisted();
-
-        // Note: No need to re-check countBatchFiles() here - the await() already guaranteed files exist,
-        // and verifyAllTicksPersisted() reads those files successfully. Re-checking introduces a race condition:
-        // countBatchFiles() can transiently return 0 if Files.walk() encounters concurrent file operations
-        // (e.g., temp files being renamed), even though files actually exist.
     }
 
     @Test
@@ -110,14 +106,18 @@ class SimulationToPersistenceIntegrationTest {
         Config config = createMultiInstanceConfig();
         serviceManager = new ServiceManager(config);
 
-        // Start all services (includes 2 persistence instances with shared idempotency tracker)
         serviceManager.startAll();
 
-        // Wait for batches to be written
+        // Wait for batches to be written by any of the competing consumers
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> countBatchFiles(tempStorageDir) > 0);
+            .until(() -> {
+                var status1 = serviceManager.getServiceStatus("persistence-1");
+                var status2 = serviceManager.getServiceStatus("persistence-2");
+                long batches1 = (status1 != null) ? status1.metrics().get("batches_written").longValue() : 0;
+                long batches2 = (status2 != null) ? status2.metrics().get("batches_written").longValue() : 0;
+                return (batches1 + batches2) > 0;
+            });
 
-        // Verify no duplicate ticks were written (idempotency working)
         List<TickData> allTicks = readAllTicksFromBatches(tempStorageDir);
         assertTrue(allTicks.size() > 0, "No ticks found in persisted batch files");
 
@@ -156,12 +156,14 @@ class SimulationToPersistenceIntegrationTest {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
         
-        // Start all services
         serviceManager.startAll();
         
         // Wait for some data to be processed
         await().atMost(10, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> countBatchFiles(tempStorageDir) > 0);
+            .until(() -> {
+                var status = serviceManager.getServiceStatus("persistence-1");
+                return status != null && status.metrics().get("batches_written").longValue() > 0;
+            });
         
         // Stop persistence service while simulation is still running
         serviceManager.stopService("persistence-1");
@@ -173,11 +175,14 @@ class SimulationToPersistenceIntegrationTest {
         // Restart persistence service
         serviceManager.startService("persistence-1");
         
-        // Wait for more data to be processed
+        // Wait for more data to be processed after restart
         await().atMost(10, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> countBatchFiles(tempStorageDir) > 2);
+            .until(() -> {
+                var status = serviceManager.getServiceStatus("persistence-1");
+                // Check that MORE batches have been written since the start
+                return status != null && status.metrics().get("batches_written").longValue() > 1;
+            });
         
-        // Verify no data loss occurred
         verifyAllTicksPersisted();
     }
 
