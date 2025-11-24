@@ -1,17 +1,6 @@
 # main.evo
-.VERSION 1.0
-
-# Library dependencies
-.INCLUDE "lib/energy.evo"
-.REQUIRE "lib/energy.evo" AS ENERGY
-.INCLUDE "lib/reproduce.evo"
-.REQUIRE "lib/reproduce.evo" AS REPRODUCE
-.INCLUDE "lib/state.evo"
-.REQUIRE "lib/state.evo" AS STATE
-
-# main.s
-# New Primordial Organism
-# Main loop with reproduction and energy search (both mocks)
+# Primordial Organism
+# Main loop with reproduction and energy search
 # STRUCTURE shell around organism
 
 
@@ -77,16 +66,16 @@ MAIN_LOOP:
 # Energy search
 # ----------------------------
 .ORG 0|2
-.INCLUDE "lib/energy.s"
-.REQUIRE "lib/energy.s" AS ENERGY
+.INCLUDE "lib/energy.evo"
+.REQUIRE "lib/energy.evo" AS ENERGY
   
 
 # ----------------------------
 # Reproduction (mock)
 # ----------------------------
 .ORG 0|10
-.INCLUDE "lib/reproduce.s"
-.REQUIRE "lib/reproduce.s" AS REPRODUCE
+.INCLUDE "lib/reproduce.evo"
+.REQUIRE "lib/reproduce.evo" AS REPRODUCE
 
 # ----------------------------
 # Safty jump back

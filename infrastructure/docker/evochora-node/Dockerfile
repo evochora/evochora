@@ -1,32 +1,29 @@
 # ====================================================================================
 # STAGE 1: Build the application using Gradle
 # ====================================================================================
-# Use an official Gradle image with a matching JDK version (21)
 FROM gradle:8.8.0-jdk21-jammy AS builder
 
-# Accept RELEASE_TAG build argument
 ARG RELEASE_TAG
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# Copy the Gradle wrapper files
+# 1. Copy only the necessary build files
+COPY build.gradle.kts settings.gradle.kts ./
 COPY gradlew .
 COPY gradle ./gradle
 
-# Copy the build configuration file
-COPY build.gradle.kts .
-COPY settings.gradle.kts .
+# 2. Download dependencies. This layer is cached and only re-run
+#    if the build files change. The build will fail but download dependencies.
+RUN ./gradlew build --no-daemon || return 0
 
-# Download dependencies first to leverage Docker's layer caching.
-# This step is only re-run if build.gradle.kts changes.
-RUN ./gradlew build --no-daemon --stacktrace || return 0
+# 3. Copy the rest of the source code
+COPY src ./src
+COPY assembly ./assembly
 
-# Copy the entire source code
-COPY . .
-
-# Build the application's distribution archive, skipping tests and other archives
+# 4. Build the actual distribution archive. Dependencies are already cached.
+#    This command is now much faster.
 RUN ./gradlew distZip -x test --no-daemon --stacktrace
+
 
 # ====================================================================================
 # STAGE 2: Create the final, lean runtime image
