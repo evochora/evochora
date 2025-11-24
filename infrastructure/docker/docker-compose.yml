@@ -24,10 +24,10 @@ services:
       # Set heap size, SLF4J warning suppression, and force JSON logging via system property
       - JAVA_TOOL_OPTIONS=-Xmx16g -Dslf4j.replay.warn=false -Dlogging.format=JSON
 
-      # 1. Network bindings
-      - NODE_HTTP_NETWORK_HOST=0.0.0.0
-      - NODE_H2-CONSOLE_OPTIONS_NETWORK_HOST=0.0.0.0
-      - NODE_H2-TCP-SERVER_OPTIONS_TCPALLOWOTHERS=true # Allow connections within Docker network
+      # 1. Network bindings (using full HOCON path for environment variables)
+      - NODE_PROCESSES_HTTP_OPTIONS_NETWORK_HOST=0.0.0.0
+      - NODE_PROCESSES_H2-CONSOLE_OPTIONS_NETWORK_HOST=0.0.0.0
+      - NODE_PROCESSES_H2-TCP-SERVER_OPTIONS_TCPALLOWOTHERS=true # Allow connections within Docker network
 
       # 2. Data paths inside the container
       - PIPELINE_DATABASE_JDBCURL=jdbc:h2:/home/appuser/app/data/database/indexdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144

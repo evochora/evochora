@@ -108,9 +108,12 @@ public class CommandLineInterface implements Callable<Integer> {
         }
         LoggingConfigurator.configure(config);
 
-        // Welcome message - only for node commands
+        // Welcome message - only show for plain text logging
         if (config.hasPath("node.show-welcome-message") && config.getBoolean("node.show-welcome-message")) {
-            showWelcomeMessage();
+            String logFormat = config.hasPath("logging.format") ? config.getString("logging.format") : "PLAIN";
+            if ("PLAIN".equalsIgnoreCase(logFormat)) {
+                showWelcomeMessage();
+            }
         }
 
         initialized = true;
