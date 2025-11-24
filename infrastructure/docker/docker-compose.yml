@@ -14,6 +14,8 @@ services:
       # Mount host directories into the container for persistent data
       - ./evochora-data/storage:/home/appuser/app/data/storage
       - ./evochora-data/database:/home/appuser/app/data/database
+      # Mount the configuration file into the container's config directory (read-only)
+      - ./evochora.conf:/home/appuser/app/config/evochora.conf:ro
     environment:
       # === Override evochora.conf for Docker ===
       - PIPELINE_AUTOSTART=false

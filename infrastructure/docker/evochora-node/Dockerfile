@@ -63,5 +63,6 @@ USER appuser
 # 9092: H2 TCP Server
 EXPOSE 8081 8082 9092
 
-# The command to run the application using the start script from distZip
-CMD ["bin/evochora", "node", "run"]
+# The command to run the application using the start script from distZip,
+# pointing to the mounted configuration file.
+CMD ["bin/evochora", "node", "run", "--config", "config/evochora.conf"]
