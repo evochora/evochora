@@ -2,7 +2,7 @@
 
 **A collaborative platform for research into the foundational physics of digital evolution.**
 
-Evochora is an open-source artificial life simulation designed to investigate the fundamental prerequisites for open-ended evolution. Unlike traditional systems with fixed, hard-coded "physics," Evochora provides a rich, n-dimensional environment where the rules governing evolution are themselves objects of scientific inquiry. Organisms are embodied agents that must navigate their world, actively forage for energy, and solve the mechanical, metabolic, and ecological challenges of self-replication—all using a low-level assembly language, making their behaviors fully evolvable.
+Evochora is an advanced open-source scientific reasearch platform to simulate artificial life and investigate the fundamental prerequisites for open-ended evolution. Unlike traditional systems with fixed, hard-coded "physics," Evochora provides a rich, n-dimensional environment where the rules governing evolution are themselves objects of scientific inquiry. Organisms are embodied agents that must navigate their world, actively forage for energy, and solve the mechanical, metabolic, and ecological challenges of self-replication—all using a low-level assembly language, making their behaviors fully evolvable.
 
 The platform is architected for scalability: simulations can run on a single machine for initial experiments or be deployed in a distributed cloud environment for massive-scale, long-duration evolutionary studies. By making the "laws" of the digital universe modular and extensible, Evochora invites the scientific community to collaboratively explore what properties an environment must possess for complex innovation to emerge.
 
@@ -65,17 +65,9 @@ java -jar build/libs/evochora.jar compile --file=assembly/examples/simple.evo
 
 ### HTTP API
 
-When the node is running, it exposes a REST API at `http://localhost:8080`:
+When the node is running, it exposes a REST API (default: `http://localhost:8081`) for controlling the simulation pipeline.
 
-**Pipeline Control:**
-- `GET /api/pipeline/status` - Overall pipeline status
-- `POST /api/pipeline/start|stop|pause|resume` - Control all services
-
-**Service Control:**
-- `GET /api/pipeline/service/{name}/status` - Service-specific status
-- `POST /api/pipeline/service/{name}/start|stop|pause|resume` - Control individual service
-
-See [docs/CLI_USAGE.md](docs/CLI_USAGE.md) for complete API documentation.
+*(TODO: Link to auto-generated API documentation, e.g., OpenAPI/Swagger, once available.)*
 
 ## Documentation
 
