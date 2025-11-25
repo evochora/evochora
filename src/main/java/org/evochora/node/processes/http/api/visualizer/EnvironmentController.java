@@ -4,17 +4,22 @@ import com.typesafe.config.Config;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
+import io.javalin.openapi.HttpMethod;
+import io.javalin.openapi.OpenApi;
+import io.javalin.openapi.OpenApiContent;
+import io.javalin.openapi.OpenApiParam;
+import io.javalin.openapi.OpenApiResponse;
 import org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
+import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
+import org.evochora.node.processes.http.api.visualizer.dto.EnvironmentResponseDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * HTTP controller for environment data visualization.
@@ -87,6 +92,28 @@ public class EnvironmentController extends VisualizerBaseController {
      * @throws SQLException if database operation fails
      * @throws TickNotFoundException if the tick does not exist
      */
+    @OpenApi(
+        path = "{tick}",
+        methods = {HttpMethod.GET},
+        summary = "Get environment data at a specific tick",
+        description = "Returns environment cell data for a specific tick with optional spatial region filtering",
+        tags = {"visualizer / environment"},
+        pathParams = {
+            @OpenApiParam(name = "tick", description = "The tick number", required = true, type = Long.class)
+        },
+        queryParams = {
+            @OpenApiParam(name = "region", description = "Optional spatial region as comma-separated bounds (e.g., \"0,100,0,100\")", required = false),
+            @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false)
+        },
+        responses = {
+            @OpenApiResponse(status = "200", description = "OK", content = @OpenApiContent(from = EnvironmentResponseDto.class)),
+            @OpenApiResponse(status = "304", description = "Not Modified (cached response, ETag matches)"),
+            @OpenApiResponse(status = "400", description = "Bad request (invalid tick or region format)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "404", description = "Not found (tick or run ID not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "429", description = "Too many requests (connection pool exhausted)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "500", description = "Internal server error (database error)", content = @OpenApiContent(from = ErrorResponseDto.class))
+        }
+    )
     void getEnvironment(final Context ctx) throws SQLException, TickNotFoundException {
         // Parse and validate tick parameter
         final long tickNumber = parseTickNumber(ctx.pathParam("tick"));
@@ -116,14 +143,8 @@ public class EnvironmentController extends VisualizerBaseController {
         try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
             final List<CellWithCoordinates> cells = reader.readEnvironmentRegion(tickNumber, region);
             
-            // Build response
-            final Map<String, Object> response = new HashMap<>();
-            response.put("tick", tickNumber);
-            response.put("runId", runId);
-            response.put("region", region);
-            response.put("cells", cells);
-            
-            ctx.status(HttpStatus.OK).json(response);
+            // Return DTO directly (client only uses cells array)
+            ctx.status(HttpStatus.OK).json(new EnvironmentResponseDto(cells));
         } catch (RuntimeException e) {
             // Check if the error is due to non-existent schema (run ID not found)
             if (e.getCause() instanceof SQLException) {

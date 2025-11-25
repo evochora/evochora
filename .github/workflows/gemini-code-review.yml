@@ -1,0 +1,42 @@
+name: Gemini Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        id: pr_diff
+        run: |
+          diff=$(git diff origin/${{ github.base_ref }}...HEAD)
+          echo "diff<<EOF" >> $GITHUB_OUTPUT
+          echo "$diff" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Run Gemini Code Review
+        uses: reviewdog/action-gemini@v1
+        with:
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          level: info
+          reviewdog_flags: -reporter=github-pr-review
+          prompt: |
+            You are an expert Java developer. Please review the following code changes for potential bugs, style violations, and improvements.
+            Focus on correctness, clarity, and adherence to best practices.
+            Provide constructive feedback.
+
+            The user has made the following changes:
+            ```diff
+            ${{ steps.pr_diff.outputs.diff }}
+            ```

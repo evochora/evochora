@@ -1026,12 +1026,14 @@ public class RenderVideoCommand implements Callable<Integer> {
                 // Wait for all rendering tasks to complete
                 executorService.shutdown();
                 try {
-                    executorService.awaitTermination(Long.MAX_VALUE, java.util.concurrent.TimeUnit.NANOSECONDS);
+                    if (!executorService.awaitTermination(Long.MAX_VALUE, java.util.concurrent.TimeUnit.NANOSECONDS)) {
+                         System.err.println("Warning: Parallel rendering tasks did not finish.");
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
                 
-                // Signal writer thread to stop
+                // Signal writer thread to stop by sending the poison pill, only if it exists
                 if (writerThread != null && frameQueue != null) {
                     try {
                         frameQueue.put(null); // Poison pill

@@ -57,6 +57,9 @@ dependencies {
     implementation("info.picocli:picocli:4.7.6")
     annotationProcessor("info.picocli:picocli-codegen:4.7.6")
     implementation("io.javalin:javalin:6.1.3")
+    // Javalin OpenAPI Plugin for API documentation
+    implementation("io.javalin.community.openapi:javalin-openapi-plugin:6.7.0-1")
+    annotationProcessor("io.javalin.community.openapi:openapi-annotation-processor:6.7.0-1")
     implementation("com.typesafe:config:1.4.3")
     implementation("net.logstash.logback:logstash-logback-encoder:8.1")
     implementation("org.jline:jline:3.30.3")
@@ -85,6 +88,37 @@ tasks.named<JavaExec>("run") {
     group = "application"
     description = "Run the Evochora server CLI with interactive input"
     standardInput = System.`in`
+}
+
+// Fix empty info section in generated OpenAPI files
+tasks.named("compileJava") {
+    doLast {
+        val openApiDir = file("build/classes/java/main/openapi-plugin")
+        val openApiFile = file("${openApiDir}/openapi-default.json")
+        if (openApiFile.exists()) {
+            val content = openApiFile.readText()
+            val apiVersion = project.version.toString()
+            val fixedContent = content
+                .replace("\"title\": \"\"", "\"title\": \"Evochora API\"")
+                .replace("\"version\": \"\"", "\"version\": \"$apiVersion\"")
+            openApiFile.writeText(fixedContent)
+        }
+    }
+}
+
+// Copy generated OpenAPI files to resources directory
+tasks.named("processResources") {
+    doLast {
+        val openApiSource = file("build/classes/java/main/openapi-plugin")
+        val openApiTarget = file("src/main/resources/openapi-plugin")
+        if (openApiSource.exists()) {
+            openApiTarget.mkdirs()
+            copy {
+                from(openApiSource)
+                into(openApiTarget)
+            }
+        }
+    }
 }
 
 tasks.named<Jar>("jar") {

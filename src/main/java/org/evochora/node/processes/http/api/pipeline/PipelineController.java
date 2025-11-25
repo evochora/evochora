@@ -4,9 +4,16 @@ import com.typesafe.config.Config;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
+import io.javalin.openapi.HttpMethod;
+import io.javalin.openapi.OpenApi;
+import io.javalin.openapi.OpenApiContent;
+import io.javalin.openapi.OpenApiParam;
+import io.javalin.openapi.OpenApiResponse;
 import org.evochora.datapipeline.ServiceManager;
 import org.evochora.datapipeline.api.services.ServiceStatus;
 import org.evochora.node.processes.http.AbstractController;
+import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
+import org.evochora.node.processes.http.api.pipeline.dto.MessageResponseDto;
 import org.evochora.node.processes.http.api.pipeline.dto.PipelineStatusDto;
 import org.evochora.node.processes.http.api.pipeline.dto.ResourceStatusDto;
 import org.evochora.node.processes.http.api.pipeline.dto.ServiceStatusDto;
@@ -16,9 +23,7 @@ import org.slf4j.LoggerFactory;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -49,37 +54,59 @@ public class PipelineController extends AbstractController {
 
         // Global control
         app.get(fullPath + "status", this::getPipelineStatus);
-        app.post(fullPath + "start", ctx -> handleLifecycleCommand(ctx, serviceManager::startAll));
-        app.post(fullPath + "stop", ctx -> handleLifecycleCommand(ctx, serviceManager::stopAll));
-        app.post(fullPath + "restart", ctx -> handleLifecycleCommand(ctx, serviceManager::restartAll));
-        app.post(fullPath + "pause", ctx -> handleLifecycleCommand(ctx, serviceManager::pauseAll));
-        app.post(fullPath + "resume", ctx -> handleLifecycleCommand(ctx, serviceManager::resumeAll));
+        app.post(fullPath + "start", this::handleStart);
+        app.post(fullPath + "stop", this::handleStop);
+        app.post(fullPath + "restart", this::handleRestart);
+        app.post(fullPath + "pause", this::handlePause);
+        app.post(fullPath + "resume", this::handleResume);
 
         // Individual service control
         final String servicePath = fullPath + "service/{serviceName}";
         app.get(servicePath + "/status", this::getServiceStatus);
-        app.post(servicePath + "/start", ctx -> handleServiceLifecycleCommand(ctx, serviceManager::startService));
-        app.post(servicePath + "/stop", ctx -> handleServiceLifecycleCommand(ctx, serviceManager::stopService));
-        app.post(servicePath + "/restart", ctx -> handleServiceLifecycleCommand(ctx, serviceManager::restartService));
-        app.post(servicePath + "/pause", ctx -> handleServiceLifecycleCommand(ctx, serviceManager::pauseService));
-        app.post(servicePath + "/resume", ctx -> handleServiceLifecycleCommand(ctx, serviceManager::resumeService));
+        app.post(servicePath + "/start", this::handleServiceStart);
+        app.post(servicePath + "/stop", this::handleServiceStop);
+        app.post(servicePath + "/restart", this::handleServiceRestart);
+        app.post(servicePath + "/pause", this::handleServicePause);
+        app.post(servicePath + "/resume", this::handleServiceResume);
 
         // Exception handling
         app.exception(IllegalArgumentException.class, (e, ctx) -> {
             // This is typically thrown by ServiceManager when a service is not found.
             LOGGER.warn("Not found handler triggered for request {}: {}", ctx.path(), e.getMessage());
-            ctx.status(HttpStatus.NOT_FOUND).json(createErrorBody(HttpStatus.NOT_FOUND, e.getMessage()));
+            ctx.status(HttpStatus.NOT_FOUND).json(ErrorResponseDto.of(
+                HttpStatus.NOT_FOUND.getCode(),
+                HttpStatus.NOT_FOUND.getMessage(),
+                e.getMessage()
+            ));
         });
         app.exception(IllegalStateException.class, (e, ctx) -> {
             LOGGER.warn("Invalid state transition for request {}: {}", ctx.path(), e.getMessage());
-            ctx.status(HttpStatus.CONFLICT).json(createErrorBody(HttpStatus.CONFLICT, e.getMessage()));
+            ctx.status(HttpStatus.CONFLICT).json(ErrorResponseDto.of(
+                HttpStatus.CONFLICT.getCode(),
+                HttpStatus.CONFLICT.getMessage(),
+                e.getMessage()
+            ));
         });
         app.exception(Exception.class, (e, ctx) -> {
             LOGGER.error("Unhandled exception for request {}", ctx.path(), e);
-            ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(createErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, "An internal server error occurred."));
+            ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(ErrorResponseDto.of(
+                HttpStatus.INTERNAL_SERVER_ERROR.getCode(),
+                HttpStatus.INTERNAL_SERVER_ERROR.getMessage(),
+                "An internal server error occurred."
+            ));
         });
     }
 
+    @OpenApi(
+        path = "status",
+        methods = {HttpMethod.GET},
+        summary = "Get pipeline status",
+        description = "Returns the overall status of the data pipeline including all services and resources",
+        tags = {"pipeline /"},
+        responses = {
+            @OpenApiResponse(status = "200", content = @OpenApiContent(from = PipelineStatusDto.class))
+        }
+    )
     void getPipelineStatus(final Context ctx) {
         final List<ServiceStatusDto> serviceStatuses = serviceManager.getAllServiceStatus().entrySet().stream()
             .map(entry -> ServiceStatusDto.from(entry.getKey(), entry.getValue()))
@@ -93,6 +120,29 @@ public class PipelineController extends AbstractController {
         ctx.status(HttpStatus.OK).json(new PipelineStatusDto(nodeId, overallStatus, serviceStatuses, resourceStatuses));
     }
 
+    @OpenApi(
+        path = "service/{serviceName}/status",
+        methods = {HttpMethod.GET},
+        summary = "Get service status",
+        description = "Returns the status of a specific service",
+        tags = {"pipeline / services"},
+        pathParams = {
+            @OpenApiParam(name = "serviceName", description = "Name of the service", required = true)
+        },
+        responses = {
+            @OpenApiResponse(status = "200", content = @OpenApiContent(from = ServiceStatusDto.class)),
+            @OpenApiResponse(
+                status = "404",
+                description = "Service not found",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "500",
+                description = "Internal server error",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            )
+        }
+    )
     void getServiceStatus(final Context ctx) {
         final String serviceName = ctx.pathParam("serviceName");
         final ServiceStatus status = serviceManager.getServiceStatus(serviceName); // Throws NoSuchElementException if not found
@@ -101,13 +151,360 @@ public class PipelineController extends AbstractController {
 
     void handleLifecycleCommand(final Context ctx, final Runnable command) {
         command.run();
-        ctx.status(HttpStatus.ACCEPTED).json(Map.of("message", "Request accepted."));
+        ctx.status(HttpStatus.ACCEPTED).json(new MessageResponseDto("Request accepted."));
     }
 
     void handleServiceLifecycleCommand(final Context ctx, final ServiceCommand command) {
         final String serviceName = ctx.pathParam("serviceName");
         command.execute(serviceName);
-        ctx.status(HttpStatus.ACCEPTED).json(Map.of("message", "Request for service '" + serviceName + "' accepted."));
+        ctx.status(HttpStatus.ACCEPTED).json(new MessageResponseDto("Request for service '" + serviceName + "' accepted."));
+    }
+
+    // Wrapper methods for OpenAPI annotations (replacing lambdas)
+
+    @OpenApi(
+        path = "start",
+        methods = {HttpMethod.POST},
+        summary = "Start all services",
+        description = "Starts all services in the pipeline",
+        tags = {"pipeline /"},
+        responses = {
+            @OpenApiResponse(
+                status = "202",
+                description = "Request accepted (best-effort: individual service failures are logged but do not fail the request)",
+                content = @OpenApiContent(from = MessageResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "404",
+                description = "Service not found",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "409",
+                description = "Invalid state transition (e.g., service already running or paused)",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "500",
+                description = "Internal server error",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            )
+        }
+    )
+    void handleStart(final Context ctx) {
+        handleLifecycleCommand(ctx, serviceManager::startAll);
+    }
+
+    @OpenApi(
+        path = "stop",
+        methods = {HttpMethod.POST},
+        summary = "Stop all services",
+        description = "Stops all services in the pipeline",
+        tags = {"pipeline /"},
+        responses = {
+            @OpenApiResponse(
+                status = "202",
+                description = "Request accepted (best-effort: individual service failures are logged but do not fail the request)",
+                content = @OpenApiContent(from = MessageResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "404",
+                description = "Service not found",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "409",
+                description = "Invalid state transition (e.g., service already running or paused)",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "500",
+                description = "Internal server error",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            )
+        }
+    )
+    void handleStop(final Context ctx) {
+        handleLifecycleCommand(ctx, serviceManager::stopAll);
+    }
+
+    @OpenApi(
+        path = "restart",
+        methods = {HttpMethod.POST},
+        summary = "Restart all services",
+        description = "Restarts all services in the pipeline",
+        tags = {"pipeline /"},
+        responses = {
+            @OpenApiResponse(
+                status = "202",
+                description = "Request accepted (best-effort: individual service failures are logged but do not fail the request)",
+                content = @OpenApiContent(from = MessageResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "404",
+                description = "Service not found",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "409",
+                description = "Invalid state transition (e.g., service already running or paused)",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "500",
+                description = "Internal server error",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            )
+        }
+    )
+    void handleRestart(final Context ctx) {
+        handleLifecycleCommand(ctx, serviceManager::restartAll);
+    }
+
+    @OpenApi(
+        path = "pause",
+        methods = {HttpMethod.POST},
+        summary = "Pause all services",
+        description = "Pauses all services in the pipeline",
+        tags = {"pipeline /"},
+        responses = {
+            @OpenApiResponse(
+                status = "202",
+                description = "Request accepted (best-effort: individual service failures are logged but do not fail the request)",
+                content = @OpenApiContent(from = MessageResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "404",
+                description = "Service not found",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "409",
+                description = "Invalid state transition (e.g., service already running or paused)",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "500",
+                description = "Internal server error",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            )
+        }
+    )
+    void handlePause(final Context ctx) {
+        handleLifecycleCommand(ctx, serviceManager::pauseAll);
+    }
+
+    @OpenApi(
+        path = "resume",
+        methods = {HttpMethod.POST},
+        summary = "Resume all services",
+        description = "Resumes all services in the pipeline",
+        tags = {"pipeline /"},
+        responses = {
+            @OpenApiResponse(
+                status = "202",
+                description = "Request accepted (best-effort: individual service failures are logged but do not fail the request)",
+                content = @OpenApiContent(from = MessageResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "404",
+                description = "Service not found",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "409",
+                description = "Invalid state transition (e.g., service already running or paused)",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "500",
+                description = "Internal server error",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            )
+        }
+    )
+    void handleResume(final Context ctx) {
+        handleLifecycleCommand(ctx, serviceManager::resumeAll);
+    }
+
+    @OpenApi(
+        path = "service/{serviceName}/start",
+        methods = {HttpMethod.POST},
+        summary = "Start a specific service",
+        description = "Starts a specific service by name",
+        tags = {"pipeline / services"},
+        pathParams = {
+            @OpenApiParam(name = "serviceName", description = "Name of the service", required = true)
+        },
+        responses = {
+            @OpenApiResponse(
+                status = "202",
+                description = "Request accepted",
+                content = @OpenApiContent(from = MessageResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "404",
+                description = "Service not found",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "409",
+                description = "Invalid state transition (e.g., service already running or paused)",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "500",
+                description = "Internal server error",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            )
+        }
+    )
+    void handleServiceStart(final Context ctx) {
+        handleServiceLifecycleCommand(ctx, serviceManager::startService);
+    }
+
+    @OpenApi(
+        path = "service/{serviceName}/stop",
+        methods = {HttpMethod.POST},
+        summary = "Stop a specific service",
+        description = "Stops a specific service by name",
+        tags = {"pipeline / services"},
+        pathParams = {
+            @OpenApiParam(name = "serviceName", description = "Name of the service", required = true)
+        },
+        responses = {
+            @OpenApiResponse(
+                status = "202",
+                description = "Request accepted",
+                content = @OpenApiContent(from = MessageResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "404",
+                description = "Service not found",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "409",
+                description = "Invalid state transition (e.g., service already running or paused)",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "500",
+                description = "Internal server error",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            )
+        }
+    )
+    void handleServiceStop(final Context ctx) {
+        handleServiceLifecycleCommand(ctx, serviceManager::stopService);
+    }
+
+    @OpenApi(
+        path = "service/{serviceName}/restart",
+        methods = {HttpMethod.POST},
+        summary = "Restart a specific service",
+        description = "Restarts a specific service by name",
+        tags = {"pipeline / services"},
+        pathParams = {
+            @OpenApiParam(name = "serviceName", description = "Name of the service", required = true)
+        },
+        responses = {
+            @OpenApiResponse(
+                status = "202",
+                description = "Request accepted",
+                content = @OpenApiContent(from = MessageResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "404",
+                description = "Service not found",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "409",
+                description = "Invalid state transition (e.g., service already running or paused)",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "500",
+                description = "Internal server error",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            )
+        }
+    )
+    void handleServiceRestart(final Context ctx) {
+        handleServiceLifecycleCommand(ctx, serviceManager::restartService);
+    }
+
+    @OpenApi(
+        path = "service/{serviceName}/pause",
+        methods = {HttpMethod.POST},
+        summary = "Pause a specific service",
+        description = "Pauses a specific service by name",
+        tags = {"pipeline / services"},
+        pathParams = {
+            @OpenApiParam(name = "serviceName", description = "Name of the service", required = true)
+        },
+        responses = {
+            @OpenApiResponse(
+                status = "202",
+                description = "Request accepted",
+                content = @OpenApiContent(from = MessageResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "404",
+                description = "Service not found",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "409",
+                description = "Invalid state transition (e.g., service already running or paused)",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "500",
+                description = "Internal server error",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            )
+        }
+    )
+    void handleServicePause(final Context ctx) {
+        handleServiceLifecycleCommand(ctx, serviceManager::pauseService);
+    }
+
+    @OpenApi(
+        path = "service/{serviceName}/resume",
+        methods = {HttpMethod.POST},
+        summary = "Resume a specific service",
+        description = "Resumes a specific service by name",
+        tags = {"pipeline / services"},
+        pathParams = {
+            @OpenApiParam(name = "serviceName", description = "Name of the service", required = true)
+        },
+        responses = {
+            @OpenApiResponse(
+                status = "202",
+                description = "Request accepted",
+                content = @OpenApiContent(from = MessageResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "404",
+                description = "Service not found",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "409",
+                description = "Invalid state transition (e.g., service already running or paused)",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "500",
+                description = "Internal server error",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            )
+        }
+    )
+    void handleServiceResume(final Context ctx) {
+        handleServiceLifecycleCommand(ctx, serviceManager::resumeService);
     }
 
     /**
@@ -170,14 +567,6 @@ public class PipelineController extends AbstractController {
         }
     }
 
-    private Map<String, Object> createErrorBody(final HttpStatus status, final String message) {
-        return Map.of(
-            "timestamp", Instant.now().toString(),
-            "status", status.getCode(),
-            "error", status.getMessage(),
-            "message", message
-        );
-    }
 
     @FunctionalInterface
     interface ServiceCommand {

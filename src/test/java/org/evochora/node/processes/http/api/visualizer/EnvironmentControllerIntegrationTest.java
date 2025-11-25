@@ -206,8 +206,6 @@ class EnvironmentControllerIntegrationTest {
         // Verify HTTP response structure and headers
         resp.then()
             .statusCode(200)
-            .body("tick", equalTo(1))
-            .body("runId", equalTo(runId))
             .body("cells", hasSize(3))  // Should have 3 cells
             .header("Cache-Control", containsString("must-revalidate"));  // HTTP cache header check
         
@@ -393,8 +391,6 @@ class EnvironmentControllerIntegrationTest {
         // Then: Should return data from the NEWER run (latest)
         resp.then()
             .statusCode(200)
-            .body("tick", equalTo(1))
-            .body("runId", equalTo(newRunId))  // Should use the newer run
             .body("cells", hasSize(1))
             .body("cells[0].ownerId", equalTo(200)); // Newer run has ownerId=200
     }

@@ -4,18 +4,22 @@ import com.typesafe.config.Config;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
+import io.javalin.openapi.HttpMethod;
+import io.javalin.openapi.OpenApi;
+import io.javalin.openapi.OpenApiContent;
+import io.javalin.openapi.OpenApiParam;
+import io.javalin.openapi.OpenApiResponse;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
-import org.evochora.datapipeline.api.resources.database.dto.TickRange;
+import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
+import org.evochora.node.processes.http.api.visualizer.dto.OrganismsResponseDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * HTTP controller for organism data visualization.
@@ -82,6 +86,27 @@ public class OrganismController extends VisualizerBaseController {
      * @throws NoRunIdException if no run ID is available
      * @throws SQLException if database operations fail
      */
+    @OpenApi(
+        path = "{tick}",
+        methods = {HttpMethod.GET},
+        summary = "Get all organisms at a specific tick",
+        description = "Returns a list of all organisms that are alive at the specified tick",
+        tags = {"visualizer / organism"},
+        pathParams = {
+            @OpenApiParam(name = "tick", description = "The tick number", required = true, type = Long.class)
+        },
+        queryParams = {
+            @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false)
+        },
+        responses = {
+            @OpenApiResponse(status = "200", description = "OK", content = @OpenApiContent(from = OrganismsResponseDto.class)),
+            @OpenApiResponse(status = "304", description = "Not Modified (cached response, ETag matches)"),
+            @OpenApiResponse(status = "400", description = "Bad request (invalid tick)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "404", description = "Not found (run ID not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "429", description = "Too many requests (connection pool exhausted)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "500", description = "Internal server error (database error)", content = @OpenApiContent(from = ErrorResponseDto.class))
+        }
+    )
     void getOrganismsAtTick(final Context ctx) throws SQLException {
         final long tickNumber = parseTickNumber(ctx.pathParam("tick"));
         final String runId = resolveRunId(ctx);
@@ -102,12 +127,8 @@ public class OrganismController extends VisualizerBaseController {
 
             final List<OrganismTickSummary> organisms = reader.readOrganismsAtTick(tickNumber);
 
-            final Map<String, Object> response = new HashMap<>();
-            response.put("runId", runId);
-            response.put("tick", tickNumber);
-            response.put("organisms", organisms);
-
-            ctx.status(HttpStatus.OK).json(response);
+            // Return DTO directly (client only uses organisms array)
+            ctx.status(HttpStatus.OK).json(new OrganismsResponseDto(organisms));
         } catch (RuntimeException e) {
             // Check for schema / connection issues analogous to Environment/SimulationController
             if (e.getCause() instanceof SQLException) {
@@ -159,6 +180,28 @@ public class OrganismController extends VisualizerBaseController {
      * @throws NoRunIdException if no run ID is available
      * @throws SQLException if database operations fail
      */
+    @OpenApi(
+        path = "{tick}/{organismId}",
+        methods = {HttpMethod.GET},
+        summary = "Get organism details at a specific tick",
+        description = "Returns detailed state information for a specific organism at a specific tick",
+        tags = {"visualizer / organism"},
+        pathParams = {
+            @OpenApiParam(name = "tick", description = "The tick number", required = true, type = Long.class),
+            @OpenApiParam(name = "organismId", description = "The organism ID", required = true, type = Integer.class)
+        },
+        queryParams = {
+            @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false)
+        },
+        responses = {
+            @OpenApiResponse(status = "200", description = "OK", content = @OpenApiContent(from = OrganismTickDetails.class)),
+            @OpenApiResponse(status = "304", description = "Not Modified (cached response, ETag matches)"),
+            @OpenApiResponse(status = "400", description = "Bad request (invalid tick or organismId)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "404", description = "Not found (organism, tick, or run ID not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "429", description = "Too many requests (connection pool exhausted)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "500", description = "Internal server error (database error)", content = @OpenApiContent(from = ErrorResponseDto.class))
+        }
+    )
     void getOrganismDetails(final Context ctx) throws SQLException, OrganismNotFoundException {
         final long tickNumber = parseTickNumber(ctx.pathParam("tick"));
         final int organismId = parseOrganismId(ctx.pathParam("organismId"));
@@ -179,15 +222,8 @@ public class OrganismController extends VisualizerBaseController {
 
             final OrganismTickDetails details = reader.readOrganismDetails(tickNumber, organismId);
 
-            final Map<String, Object> response = new HashMap<>();
-            response.put("runId", runId);
-            response.put("tick", details.tick);
-            response.put("organismId", details.organismId);
-            response.put("static", details.staticInfo);
-            response.put("state", details.state);
-            response.put("instructions", details.state.instructions);
-
-            ctx.status(HttpStatus.OK).json(response);
+            // Return DTO directly (contains all fields including state.instructions)
+            ctx.status(HttpStatus.OK).json(details);
         } catch (OrganismNotFoundException e) {
             // Specific 404 for missing organism or tick row, re-throw for central handler
             throw e;

@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Constructor;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -39,6 +40,8 @@ public class HttpServerProcess extends AbstractProcess {
 
     private final List<RouteDefinition> routeDefinitions = new ArrayList<>();
     private final ServiceRegistry controllerRegistry;
+    // OpenAPI-specific: Map of controller class names to their base paths (for documentation only)
+    private final Map<String, String> controllerBasePaths = new HashMap<>();
     private Javalin app;
 
     /**
@@ -188,6 +191,11 @@ public class HttpServerProcess extends AbstractProcess {
     }
 
     private void registerControllers(final Javalin app) {
+        // OpenAPI-specific: Collect controller basePaths for OpenAPI documentation (non-operational)
+        // This is an exception to the plugin pattern, required for OpenAPI documentation generation.
+        collectControllerBasePathsForOpenApi();
+        
+        // Register all controllers
         for (final RouteDefinition def : routeDefinitions) {
             if (def.type == RouteType.CONTROLLER) {
                 try {
@@ -202,9 +210,15 @@ public class HttpServerProcess extends AbstractProcess {
     private void registerController(final RouteDefinition def, final Javalin app) throws Exception {
         final Config controllerConfig = ((ConfigObject) def.configValue).toConfig();
         final String className = controllerConfig.getString("className");
-        final Config controllerOptions = controllerConfig.hasPath("options")
+        Config controllerOptions = controllerConfig.hasPath("options")
             ? controllerConfig.getConfig("options")
             : ConfigFactory.empty();
+
+        // OpenAPI-specific: Inject basePaths into OpenApiController options (non-operational)
+        // This is an exception to the plugin pattern, required for OpenAPI documentation generation.
+        if (className.equals("org.evochora.node.processes.http.api.OpenApiController")) {
+            controllerOptions = injectBasePathsIntoOpenApiControllerOptions(controllerOptions);
+        }
 
         LOGGER.debug("Registering controller '{}' at base path '{}'", className, def.basePath);
 
@@ -217,6 +231,68 @@ public class HttpServerProcess extends AbstractProcess {
         final IController controller = (IController) constructor.newInstance(controllerRegistry, controllerOptions);
 
         controller.registerRoutes(app, def.basePath);
+    }
+
+    /**
+     * Collects controller base paths for OpenAPI documentation generation.
+     * <p>
+     * This is a non-operational method used only for OpenAPI documentation.
+     * It scans all controller route definitions and extracts their base paths
+     * to be injected into the OpenApiController later.
+     * <p>
+     * <strong>Note:</strong> This is an exception to the plugin pattern, where controllers
+     * are normally agnostic of each other. This exception is acceptable because OpenAPI
+     * documentation is a cross-cutting concern that needs knowledge of all routes.
+     */
+    private void collectControllerBasePathsForOpenApi() {
+        for (final RouteDefinition def : routeDefinitions) {
+            if (def.type == RouteType.CONTROLLER) {
+                try {
+                    final Config controllerConfig = ((ConfigObject) def.configValue).toConfig();
+                    final String className = controllerConfig.getString("className");
+                    controllerBasePaths.put(className, def.basePath);
+                } catch (final Exception e) {
+                    LOGGER.warn("Failed to extract controller class name from route definition at path '{}'", def.basePath);
+                }
+            }
+        }
+    }
+
+    /**
+     * Injects controller base paths into OpenApiController options.
+     * <p>
+     * This is a non-operational method used only for OpenAPI documentation.
+     * It creates a Config object containing all collected base paths and merges
+     * it with the existing controller options. The base paths are stored under
+     * a "basePaths" key to avoid issues with dots in class names.
+     * <p>
+     * <strong>Note:</strong> This is an exception to the plugin pattern, where controllers
+     * are normally agnostic of each other. This exception is acceptable because OpenAPI
+     * documentation is a cross-cutting concern that needs knowledge of all routes.
+     *
+     * @param controllerOptions The existing controller options (may be empty)
+     * @return A new Config object with basePaths injected, merged with existing options
+     */
+    private Config injectBasePathsIntoOpenApiControllerOptions(final Config controllerOptions) {
+        // Create a new config with basePaths added under a "basePaths" key
+        // We use a nested structure to avoid issues with dots in class names
+        final Map<String, Object> basePathsMap = new HashMap<>();
+        for (final Map.Entry<String, String> entry : controllerBasePaths.entrySet()) {
+            // Store class names with dots as-is - ConfigFactory.parseMap handles them correctly
+            basePathsMap.put(entry.getKey(), entry.getValue());
+        }
+        final Map<String, Object> wrapperMap = new HashMap<>();
+        wrapperMap.put("basePaths", basePathsMap);
+        final Config basePathsConfig = ConfigFactory.parseMap(wrapperMap);
+        
+        LOGGER.debug("Injected {} basePaths into OpenApiController options", controllerBasePaths.size());
+        if (LOGGER.isDebugEnabled()) {
+            for (final Map.Entry<String, String> entry : controllerBasePaths.entrySet()) {
+                LOGGER.debug("  {} -> {}", entry.getKey(), entry.getValue());
+            }
+        }
+        
+        return basePathsConfig.withFallback(controllerOptions);
     }
 
     private enum RouteType {

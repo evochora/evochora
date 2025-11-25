@@ -4,15 +4,20 @@ import com.typesafe.config.Config;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
+import io.javalin.openapi.HttpMethod;
+import io.javalin.openapi.OpenApi;
+import io.javalin.openapi.OpenApiContent;
+import io.javalin.openapi.OpenApiParam;
+import io.javalin.openapi.OpenApiResponse;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
+import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
-import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -78,6 +83,63 @@ public class SimulationController extends VisualizerBaseController {
      * @throws VisualizerBaseController.NoRunIdException if no run ID is available
      * @throws SQLException if database operation fails
      */
+    @OpenApi(
+        path = "metadata",
+        methods = {HttpMethod.GET},
+        summary = "Get simulation metadata",
+        description = "Returns simulation metadata including world shape, energy strategies, and initial organism setup",
+        tags = {"visualizer / simulation"},
+        queryParams = {
+            @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false)
+        },
+        responses = {
+            @OpenApiResponse(
+                status = "200", 
+                description = "Ok (Returns JSON representation of SimulationMetadata protobuf, including environment properties, and program artifacts)",
+                content = @OpenApiContent(
+                    from = Map.class,
+                    example = """
+                        JSON:
+                        {
+                          "simulationRunId": "2025100614302512-550e8400-e29b-41d4-a716-446655440000",
+                          
+                          "environment": {
+                            "dimensions": 2,
+                            "shape": [800, 600],
+                            "toroidal": [true, true]
+                          },
+                          "energyStrategies": [
+                            {
+                              "strategyType": "org.evochora.runtime.worldgen.GeyserCreator",
+                              "configJson": "{\\"geyserCount\\": 5, \\"energyPerTick\\": 10}"
+                            }
+                          ],
+                          "programs": [],
+                          "initialOrganisms": [
+                            {
+                              "organismId": 1,
+                              "programId": "main",
+                              "position": [375, 285],
+                              "initialEnergy": 10000
+                            }
+                          ],
+                          "userMetadata": {
+                            "experiment": "test-run",
+                            "version": "1.0"
+                          },
+                          "resolvedConfigJson": "{}",
+                          "samplingInterval": 1
+                        }
+                        """
+                )
+            ),
+            @OpenApiResponse(status = "304", description = "Not Modified (cached response, ETag matches)"),
+            @OpenApiResponse(status = "400", description = "Bad request (invalid parameters)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "404", description = "Not found (run ID or metadata not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "429", description = "Too many requests (connection pool exhausted)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "500", description = "Internal server error (database error)", content = @OpenApiContent(from = ErrorResponseDto.class))
+        }
+    )
     void getMetadata(final Context ctx) throws SQLException {
         // Resolve run ID (query parameter → latest)
         final String runId = resolveRunId(ctx);
@@ -172,6 +234,24 @@ public class SimulationController extends VisualizerBaseController {
      * @throws VisualizerBaseController.NoRunIdException if no run ID is available
      * @throws SQLException if database operation fails
      */
+    @OpenApi(
+        path = "ticks",
+        methods = {HttpMethod.GET},
+        summary = "Get tick range",
+        description = "Returns the minimum and maximum tick numbers available for the simulation",
+        tags = {"visualizer / simulation"},
+        queryParams = {
+            @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false)
+        },
+        responses = {
+            @OpenApiResponse(status = "200", description = "OK", content = @OpenApiContent(from = org.evochora.datapipeline.api.resources.database.dto.TickRange.class)),
+            @OpenApiResponse(status = "304", description = "Not Modified (cached response, ETag matches)"),
+            @OpenApiResponse(status = "400", description = "Bad request (invalid parameters)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "404", description = "Not found (run ID not found or no ticks available)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "429", description = "Too many requests (connection pool exhausted)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "500", description = "Internal server error (database error)", content = @OpenApiContent(from = ErrorResponseDto.class))
+        }
+    )
     void getTicks(final Context ctx) throws SQLException {
         // Resolve run ID (query parameter → latest)
         final String runId = resolveRunId(ctx);
@@ -199,12 +279,8 @@ public class SimulationController extends VisualizerBaseController {
                 return;
             }
             
-            // Build response
-            final Map<String, Object> response = new HashMap<>();
-            response.put("minTick", tickRange.minTick());
-            response.put("maxTick", tickRange.maxTick());
-            
-            ctx.status(HttpStatus.OK).json(response);
+            // Return TickRange directly (DTO)
+            ctx.status(HttpStatus.OK).json(tickRange);
         } catch (VisualizerBaseController.NoRunIdException e) {
             // Re-throw NoRunIdException directly (will be handled by exception handler)
             throw e;
