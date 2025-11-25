@@ -17,6 +17,8 @@ The platform is architected for scalability: simulations can run on a single mac
 - **Scalable Architecture**: In-memory execution → persistent storage → indexing → web-based debugging
 - **Cloud-Ready**: Designed to scale from single-machine prototyping to distributed cloud deployments
 
+https://github.com/user-attachments/assets/2dd2163a-6abe-4121-936d-eb46cc314859
+
 ## Quick Start
 
 ### Prerequisites
@@ -164,7 +166,6 @@ This project is open-source and available under one of the following licenses (t
 **TODO**: Final license selection pending discussion.
 
 ## Citation
-
 If you use Evochora in your research, please cite:
 
 ```bibtex
