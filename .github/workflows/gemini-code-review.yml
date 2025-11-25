@@ -34,7 +34,11 @@ jobs:
         run: |
           # Safely construct the prompt in a temporary file
           cat << 'EOT' > prompt.txt
-          You are an expert Java developer. Please act as a code reviewer. Review the following code changes for potential bugs, style violations, and improvements. Focus on correctness, clarity, and adherence to best practices. Provide constructive feedback. The code diff is:
+          You are an expert Java enterprise architect. Please act as a code reviewer.
+          Ensure the following code changes are compliant with the with best practises and follows general architectural principles.
+          Review the following changes for potential bugs, style violations, and improvements.
+          Focus on correctness, clarity, and adherence to best practices.
+          Provide constructive feedback. The code diff is:
 
           ```diff
           EOT
