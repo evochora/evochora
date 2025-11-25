@@ -42,8 +42,8 @@ jobs:
           
           echo '```' >> prompt.txt
 
-          # Generate the review from the file and capture the output
-          REVIEW_COMMENT=$(gemini chat --file prompt.txt)
+          # Generate the review by piping the prompt file into the gemini command
+          REVIEW_COMMENT=$(cat prompt.txt | gemini)
           
           # Make the comment available to the next step
           echo "comment<<EOF" >> $GITHUB_OUTPUT
