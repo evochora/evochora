@@ -1,4 +1,4 @@
-name: Gemini Code Review
+name: Gemini Code Review (Official Google Action)
 
 on:
   pull_request:
@@ -9,16 +9,50 @@ permissions:
   pull-requests: write
 
 jobs:
-  review:
+  code-review:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetches all history for git diff
 
-      - name: Run Gemini Code Review
-        uses: strawgate/gemini-for-github@v0.2
+      - name: Get PR diff
+        id: pr_diff
+        run: |
+          diff=$(git diff origin/${{ github.base_ref }}...HEAD)
+          echo "diff<<EOF" >> $GITHUB_OUTPUT
+          echo "$diff" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Setup Gemini CLI
+        uses: google/gemini-cli@main
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          github_pr_number: ${{ github.event.pull_request.number }}
-          user_question: "You are an expert Java developer. Please review this pull request for potential bugs, style violations, and improvements. Focus on correctness, clarity, and adherence to best practices. Provide constructive feedback."
+
+      - name: Generate Review Comment
+        id: review
+        run: |
+          PROMPT="You are an expert Java developer. Please act as a code reviewer. Review the following code changes for potential bugs, style violations, and improvements. Focus on correctness, clarity, and adherence to best practices. Provide constructive feedback. The code diff is:\n\n\`\`\`diff\n${{ steps.pr_diff.outputs.diff }}\n\`\`\`"
+          
+          # Store the multiline prompt in a temporary file for the CLI
+          echo "$PROMPT" > prompt.txt
+          
+          # Generate the review and capture the output
+          REVIEW_COMMENT=$(gemini chat --file prompt.txt)
+          
+          # Make the comment available to the next step
+          echo "comment<<EOF" >> $GITHUB_OUTPUT
+          echo "$REVIEW_COMMENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post Review Comment
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `${{ steps.review.outputs.comment }}`
+            })
