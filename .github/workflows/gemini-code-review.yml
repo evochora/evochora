@@ -1,4 +1,4 @@
-name: Gemini Code Review (Official Google Action)
+name: Gemini Code Review
 
 on:
   pull_request:
@@ -32,13 +32,21 @@ jobs:
 
       - name: Generate Review Comment
         id: review
+        env:
+          # Pass the diff as an environment variable to prevent syntax errors
+          PR_DIFF: ${{ steps.pr_diff.outputs.diff }}
         run: |
-          PROMPT="You are an expert Java developer. Please act as a code reviewer. Review the following code changes for potential bugs, style violations, and improvements. Focus on correctness, clarity, and adherence to best practices. Provide constructive feedback. The code diff is:\n\n\`\`\`diff\n${{ steps.pr_diff.outputs.diff }}\n\`\`\`"
+          # Safely construct the prompt in a temporary file
+          cat << 'EOT' > prompt.txt
+          You are an expert Java developer. Please act as a code reviewer. Review the following code changes for potential bugs, style violations, and improvements. Focus on correctness, clarity, and adherence to best practices. Provide constructive feedback. The code diff is:
+
+          ```diff
+          EOT
           
-          # Store the multiline prompt in a temporary file for the CLI
-          echo "$PROMPT" > prompt.txt
-          
-          # Generate the review and capture the output
+          echo "$PR_DIFF" >> prompt.txt
+          echo '```' >> prompt.txt
+
+          # Generate the review from the file and capture the output
           REVIEW_COMMENT=$(gemini chat --file prompt.txt)
           
           # Make the comment available to the next step
