@@ -50,3 +50,4 @@ bin/
 /runs/
 /savedSimulations/
 /evochora_data/
+vscode-evo/node_modules/*
