@@ -18,9 +18,6 @@ services:
       # Mount the configuration file into the container's config directory (read-only)
       - ./evochora.conf:/home/appuser/app/config/evochora.conf:ro
     environment:
-      # === Steuerung des Anwendungs-Verhaltens ===
-      - PIPELINE_AUTOSTART=false
-
       # === JVM Options & Konfigurations-Overrides via System Properties (-D) ===
       # Dies ist die zuverlässigste Methode, da System Properties die höchste Priorität
       # in der Konfigurations-Lade-Kette der Anwendung haben.
@@ -32,6 +29,7 @@ services:
         -Dnode.processes.http.options.network.host=0.0.0.0
         -Dnode.processes.h2-console.options.network.host=0.0.0.0
         -Dnode.processes.h2-tcp-server.options.tcpAllowOthers=true
+        -Dpipeline.autoStart=false
         -Dpipeline.database.jdbcUrl="jdbc:h2:/home/appuser/app/data/database/indexdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144;LOCK_TIMEOUT=10000"
         -Dpipeline.resources.tick-storage.options.rootDirectory="/home/appuser/app/data/storage"
         -Dpipeline.resources.batch-topic.options.jdbcUrl="jdbc:h2:/home/appuser/app/data/database/topicdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144;LOCK_TIMEOUT=10000"

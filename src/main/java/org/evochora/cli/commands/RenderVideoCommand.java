@@ -40,6 +40,9 @@ public class RenderVideoCommand implements Callable<Integer> {
     private static final Logger log = LoggerFactory.getLogger(RenderVideoCommand.class);
     private static final String CONFIG_FILE_NAME = "evochora.conf";
 
+    @Option(names = {"-c", "--config"}, description = "Path to custom configuration file.")
+    private File configFile;
+
     @Option(names = "--run-id", description = "Simulation run ID to render. Defaults to the latest run.")
     private String runId;
 
@@ -165,17 +168,39 @@ public class RenderVideoCommand implements Callable<Integer> {
         }
         // Absolute paths are used as-is
         
-        // Load config directly (without triggering CommandLineInterface.initialize() which shows logs)
-        final File confFile = new File(CONFIG_FILE_NAME);
+        // Load config using a robust, prioritized mechanism
         Config config;
         try {
-            if (confFile.exists()) {
-                config = ConfigFactory.parseFile(confFile).withFallback(ConfigFactory.load()).resolve();
+            if (this.configFile != null) {
+                if (!this.configFile.exists()) {
+                    System.err.println("Configuration file specified via --config was not found: " + this.configFile.getAbsolutePath());
+                    return 1;
+                }
+                System.out.println("Using specified configuration file: " + this.configFile.getAbsolutePath());
+                config = ConfigFactory.systemProperties()
+                    .withFallback(ConfigFactory.systemEnvironment())
+                    .withFallback(ConfigFactory.parseFile(this.configFile))
+                    .withFallback(ConfigFactory.load())
+                    .resolve();
             } else {
-                config = ConfigFactory.load().resolve();
+                final File defaultConfFile = new File(CONFIG_FILE_NAME);
+                if (defaultConfFile.exists()) {
+                    System.out.println("Using configuration file found in current directory: " + defaultConfFile.getAbsolutePath());
+                    config = ConfigFactory.systemProperties()
+                        .withFallback(ConfigFactory.systemEnvironment())
+                        .withFallback(ConfigFactory.parseFile(defaultConfFile))
+                        .withFallback(ConfigFactory.load())
+                        .resolve();
+                } else {
+                    System.out.println("Warning: No 'evochora.conf' found in current directory. Using default configuration from classpath.");
+                    config = ConfigFactory.systemProperties()
+                        .withFallback(ConfigFactory.systemEnvironment())
+                        .withFallback(ConfigFactory.load())
+                        .resolve();
+                }
             }
         } catch (com.typesafe.config.ConfigException e) {
-            System.err.println("Failed to load configuration from " + confFile.getAbsolutePath() + ": " + e.getMessage());
+            System.err.println("Failed to load or parse configuration: " + e.getMessage());
             return 1;
         }
 

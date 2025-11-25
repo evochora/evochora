@@ -32,7 +32,11 @@ RUN --mount=type=cache,target=/root/.gradle/caches \
 # ====================================================================================
 FROM eclipse-temurin:21-jre-jammy
 
-# Create a non-root user and its home directory for security
+# Install runtime dependencies required by the application, like ffmpeg for video rendering.
+# Clean up apt cache to keep the image small.
+RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user and group with explicit IDs to match host volume permissions.
 RUN useradd --create-home --shell /bin/bash appuser
 
 # Set the main working directory in the new user's home
