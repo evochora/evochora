@@ -64,6 +64,23 @@ class OrganismApi {
             }
         });
     }
+
+    /**
+     * Fetches the available tick range (minTick, maxTick) for organism data.
+     * Returns the ticks that have been indexed by the OrganismIndexer.
+     * If no run ID is provided, the server will default to the latest available run.
+     * 
+     * @param {string|null} [runId=null] - The specific run ID to fetch the tick range for.
+     * @returns {Promise<{minTick: number, maxTick: number}>} A promise that resolves to an object containing the min and max tick.
+     * @throws {Error} If the network request fails or the server returns an error.
+     */
+    async fetchTickRange(runId = null) {
+        const url = runId
+            ? `/visualizer/api/organisms/ticks?runId=${encodeURIComponent(runId)}`
+            : `/visualizer/api/organisms/ticks`;
+        
+        return apiClient.fetch(url);
+    }
 }
 
 // Export for global availability

@@ -13,6 +13,7 @@ import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
+import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
 import org.evochora.node.processes.http.api.visualizer.dto.OrganismsResponseDto;
 import org.slf4j.Logger;
@@ -57,9 +58,13 @@ public class OrganismController extends VisualizerBaseController {
     public void registerRoutes(final Javalin app, final String basePath) {
         final String listPath = (basePath + "/{tick}").replaceAll("//", "/");
         final String detailPath = (basePath + "/{tick}/{organismId}").replaceAll("//", "/");
+        final String ticksPath = (basePath + "/ticks").replaceAll("//", "/");
 
-        LOGGER.debug("Registering organism endpoints: list={}, detail={}", listPath, detailPath);
+        LOGGER.debug("Registering organism endpoints: list={}, detail={}, ticks={}", listPath, detailPath, ticksPath);
 
+        // IMPORTANT: Register /ticks BEFORE /{tick} to avoid path parameter conflict
+        // Javalin matches routes in registration order, so /ticks must come first
+        app.get(ticksPath, this::getTicks);
         app.get(listPath, this::getOrganismsAtTick);
         app.get(detailPath, this::getOrganismDetails);
 
@@ -283,6 +288,116 @@ public class OrganismController extends VisualizerBaseController {
             return id;
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid organismId: " + organismParam, e);
+        }
+    }
+
+    /**
+     * Handles GET requests for the tick range of indexed organism data.
+     * <p>
+     * Route: GET /visualizer/api/organisms/ticks?runId=...
+     * <p>
+     * Returns the minimum and maximum tick numbers that have been indexed by the OrganismIndexer.
+     * This is NOT the actual simulation tick range, but only the ticks that are available in the database.
+     * <p>
+     * Response format:
+     * <pre>
+     * {
+     *   "minTick": 0,
+     *   "maxTick": 1000
+     * }
+     * </pre>
+     * <p>
+     * Returns 404 if no ticks are available.
+     *
+     * @param ctx The Javalin context containing request and response data.
+     * @throws VisualizerBaseController.NoRunIdException if no run ID is available
+     * @throws SQLException if database operation fails
+     */
+    @OpenApi(
+        path = "ticks",
+        methods = {HttpMethod.GET},
+        summary = "Get organism tick range",
+        description = "Returns the minimum and maximum tick numbers that have been indexed by the OrganismIndexer. This represents the ticks available in the database, not the actual simulation tick range.",
+        tags = {"visualizer / organism"},
+        queryParams = {
+            @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false)
+        },
+        responses = {
+            @OpenApiResponse(status = "200", description = "OK", content = @OpenApiContent(from = TickRange.class)),
+            @OpenApiResponse(status = "304", description = "Not Modified (cached response, ETag matches)"),
+            @OpenApiResponse(status = "400", description = "Bad request (invalid parameters)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "404", description = "Not found (run ID not found or no ticks available)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "429", description = "Too many requests (connection pool exhausted)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "500", description = "Internal server error (database error)", content = @OpenApiContent(from = ErrorResponseDto.class))
+        }
+    )
+    void getTicks(final Context ctx) throws SQLException {
+        // Resolve run ID (query parameter → latest)
+        final String runId = resolveRunId(ctx);
+        
+        LOGGER.debug("Retrieving organism tick range: runId={}", runId);
+        
+        // Parse cache configuration
+        final CacheConfig cacheConfig = CacheConfig.fromConfig(options, "ticks");
+        
+        // Query database for tick range (needed for ETag generation if useETag=true)
+        try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
+            final TickRange tickRange = reader.getOrganismTickRange();
+            
+            if (tickRange == null) {
+                // No ticks available - return 404
+                throw new VisualizerBaseController.NoRunIdException("No organism ticks available for run: " + runId);
+            }
+            
+            // Generate ETag: runId_maxTick (maxTick can change during simulation)
+            final String etag = "\"" + runId + "_" + tickRange.maxTick() + "\"";
+            
+            // Apply cache headers (may return 304 Not Modified if ETag matches)
+            if (applyCacheHeaders(ctx, cacheConfig, etag)) {
+                // 304 Not Modified was sent - return early
+                return;
+            }
+            
+            // Return TickRange directly (DTO)
+            ctx.status(HttpStatus.OK).json(tickRange);
+        } catch (VisualizerBaseController.NoRunIdException e) {
+            // Re-throw NoRunIdException directly (will be handled by exception handler)
+            throw e;
+        } catch (RuntimeException e) {
+            // Check if the error is due to non-existent schema (run ID not found)
+            if (e.getCause() instanceof SQLException) {
+                SQLException sqlEx = (SQLException) e.getCause();
+                String msg = sqlEx.getMessage();
+                
+                if (msg != null) {
+                    String lowerMsg = msg.toLowerCase();
+                    
+                    // Check for schema errors FIRST (before pool exhaustion)
+                    if (msg.contains("schema") || msg.contains("Schema")) {
+                        // Schema doesn't exist - run ID not found
+                        throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
+                    }
+                    
+                    // Check for connection pool timeout/exhaustion (specific patterns only)
+                    if (lowerMsg.contains("timeout") || 
+                        lowerMsg.contains("connection is not available") ||
+                        lowerMsg.contains("connection pool")) {
+                        // Connection pool exhausted or timeout
+                        throw new VisualizerBaseController.PoolExhaustionException("Connection pool exhausted or timeout", sqlEx);
+                    }
+                }
+            }
+            // Other runtime errors - wrap to provide better context
+            throw new RuntimeException("Error retrieving organism tick range for runId: " + runId, e);
+        } catch (SQLException e) {
+            // Check if the error is due to non-existent schema (run ID not found)
+            if (e.getMessage() != null && 
+                (e.getMessage().contains("schema") || e.getMessage().contains("Schema"))) {
+                // Schema doesn't exist - run ID not found
+                throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
+            }
+            // Other database errors
+            throw e;
         }
     }
 }

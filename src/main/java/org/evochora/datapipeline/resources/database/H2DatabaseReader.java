@@ -147,6 +147,12 @@ public class H2DatabaseReader implements IDatabaseReader {
         ensureNotClosed();
         return database.getTickRangeInternal(connection, runId);
     }
+    
+    @Override
+    public org.evochora.datapipeline.api.resources.database.dto.TickRange getOrganismTickRange() throws SQLException {
+        ensureNotClosed();
+        return database.getOrganismTickRangeInternal(connection, runId);
+    }
 
     @Override
     public List<OrganismTickSummary> readOrganismsAtTick(long tickNumber) throws SQLException {

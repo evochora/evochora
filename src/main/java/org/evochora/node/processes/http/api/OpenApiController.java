@@ -103,8 +103,9 @@ public class OpenApiController extends AbstractController {
                 return;
             }
 
-            // Build map of relative paths to their full paths (handles duplicate relative paths)
-            final Map<String, List<Map.Entry<String, String>>> relativePathToFullPaths = buildPathToBasePathMap();
+            // Build path metadata (relative→full mappings + annotation metadata)
+            final PathMetadata pathMetadata = buildPathMetadata();
+            final Map<String, List<Map.Entry<String, String>>> relativePathToFullPaths = pathMetadata.relativePathToFullPaths();
             
             LOGGER.debug("OpenAPI: Found {} relative paths with mappings", relativePathToFullPaths.size());
             if (relativePathToFullPaths.isEmpty()) {
@@ -138,9 +139,15 @@ public class OpenApiController extends AbstractController {
                         final String fullPath = mapping.getKey();
                         
                         if (!fullPath.equals(relativePath)) {
-                            // Path needs to be updated/duplicated
+                            // Path needs to be updated/duplicated.
+                            // IMPORTANT: We must deep-copy the path node here; otherwise the
+                            // same ObjectNode instance would be referenced by multiple full
+                            // paths, and any later modifications (e.g., applying annotation
+                            // metadata) would affect all of them identically.
                             LOGGER.debug("OpenAPI: Adding path: {} -> {}", relativePath, fullPath);
-                            pathsToAdd.put(fullPath, entry.getValue());
+                            final JsonNode originalPathNode = entry.getValue();
+                            final JsonNode clonedPathNode = originalPathNode.deepCopy();
+                            pathsToAdd.put(fullPath, clonedPathNode);
                         }
                     }
                     
@@ -179,6 +186,11 @@ public class OpenApiController extends AbstractController {
                 LOGGER.warn("OpenAPI: No paths were updated! This means no basePaths were matched.");
             }
 
+            // Post-process operations using annotation metadata so that each
+            // full path (including duplicated relative paths like "/ticks")
+            // uses the summary/description/tags from its own @OpenApi annotation.
+            applyAnnotationMetadata(openApiJson, pathMetadata.fullPathToAnnotation());
+
             // Convert string examples to JSON objects for proper ReDoc formatting
             convertStringExamplesToJsonObjects(openApiJson);
 
@@ -192,18 +204,34 @@ public class OpenApiController extends AbstractController {
     }
 
     /**
-     * Builds a map from relative annotation paths to their full paths (basePath + annotationPath).
-     * This handles cases where multiple controllers have the same relative path by storing
-     * all possible combinations.
-     *
-     * @return Map from relative path to list of (fullPath, basePath) pairs
+     * Holds metadata derived from controller annotations:
+     * <ul>
+     *   <li>relativePathToFullPaths: normalized relative path → (fullPath, basePath) pairs</li>
+     *   <li>fullPathToAnnotation: fullPath → @OpenApi annotation of the handling method</li>
+     * </ul>
      */
-    private Map<String, List<Map.Entry<String, String>>> buildPathToBasePathMap() {
+    private record PathMetadata(
+        Map<String, List<Map.Entry<String, String>>> relativePathToFullPaths,
+        Map<String, OpenApi> fullPathToAnnotation
+    ) {
+    }
+
+    /**
+     * Builds path metadata from controller annotations.
+     * <p>
+     * This is the single source of truth for how relative annotation paths map
+     * to full paths and which @OpenApi metadata belongs to each full path.
+     *
+     * @return PathMetadata with relative and full-path mappings.
+     */
+    private PathMetadata buildPathMetadata() {
         // Map: relativePath -> List of (fullPath, basePath) pairs
         final Map<String, List<Map.Entry<String, String>>> relativePathToFullPaths = new HashMap<>();
-        
+        // Map: fullPath -> @OpenApi annotation
+        final Map<String, OpenApi> fullPathToAnnotation = new HashMap<>();
+
         final Map<String, String> controllerBasePaths = extractControllerBasePaths();
-        
+
         LOGGER.debug("OpenAPI: Extracted {} controller basePaths", controllerBasePaths.size());
         if (controllerBasePaths.isEmpty()) {
             LOGGER.warn("OpenAPI: No controller basePaths extracted! Check routes config path.");
@@ -221,8 +249,8 @@ public class OpenApiController extends AbstractController {
             try {
                 final Class<?> controllerClass = Class.forName(className);
                 final Method[] methods = controllerClass.getDeclaredMethods();
-                
-                LOGGER.debug("OpenAPI: Scanning controller {} for @OpenApi annotations (found {} methods)", 
+
+                LOGGER.debug("OpenAPI: Scanning controller {} for @OpenApi annotations (found {} methods)",
                     className, methods.length);
 
                 for (final Method method : methods) {
@@ -230,18 +258,22 @@ public class OpenApiController extends AbstractController {
                     if (annotation != null) {
                         final String annotationPath = annotation.path();
                         // Normalize annotation path (add leading slash if missing)
-                        final String normalizedAnnotationPath = annotationPath.startsWith("/") 
-                            ? annotationPath 
+                        final String normalizedAnnotationPath = annotationPath.startsWith("/")
+                            ? annotationPath
                             : "/" + annotationPath;
-                        
+
                         // Build full path
                         final String fullPath = (basePath + normalizedAnnotationPath).replaceAll("//+", "/");
-                        
+
                         // Store in map: relativePath -> (fullPath, basePath)
-                        relativePathToFullPaths.computeIfAbsent(normalizedAnnotationPath, k -> new ArrayList<>())
+                        relativePathToFullPaths
+                            .computeIfAbsent(normalizedAnnotationPath, k -> new ArrayList<>())
                             .add(new java.util.AbstractMap.SimpleEntry<>(fullPath, basePath));
-                        
-                        LOGGER.debug("OpenAPI: Found annotation path: {} -> fullPath: {} (basePath: {})", 
+
+                        // Store annotation for this full path
+                        fullPathToAnnotation.put(fullPath, annotation);
+
+                        LOGGER.debug("OpenAPI: Found annotation path: {} -> fullPath: {} (basePath: {})",
                             annotationPath, fullPath, basePath);
                     }
                 }
@@ -249,10 +281,71 @@ public class OpenApiController extends AbstractController {
                 LOGGER.warn("Controller class not found: {}", className);
             }
         }
-        
-        LOGGER.debug("OpenAPI: Built relativePath-to-fullPaths map with {} entries", relativePathToFullPaths.size());
 
-        return relativePathToFullPaths;
+        LOGGER.debug("OpenAPI: Built relativePath-to-fullPaths map with {} entries", relativePathToFullPaths.size());
+        LOGGER.debug("OpenAPI: Built fullPath-to-annotation map with {} entries", fullPathToAnnotation.size());
+
+        return new PathMetadata(relativePathToFullPaths, fullPathToAnnotation);
+    }
+
+    /**
+     * Applies metadata from @OpenApi annotations back onto the JSON tree so that
+     * each full path uses its own summary/description/tags, even when multiple
+     * controllers share the same relative path (e.g. "/ticks").
+     *
+     * @param openApiJson         The OpenAPI JSON root node.
+     * @param fullPathToAnnotation Map of full paths to their @OpenApi annotations.
+     */
+    private void applyAnnotationMetadata(final ObjectNode openApiJson,
+                                         final Map<String, OpenApi> fullPathToAnnotation) {
+        final JsonNode pathsNode = openApiJson.get("paths");
+        if (!(pathsNode instanceof ObjectNode)) {
+            return;
+        }
+
+        final ObjectNode pathsObject = (ObjectNode) pathsNode;
+
+        for (final Map.Entry<String, OpenApi> entry : fullPathToAnnotation.entrySet()) {
+            final String fullPath = entry.getKey();
+            final OpenApi annotation = entry.getValue();
+
+            final JsonNode pathNode = pathsObject.get(fullPath);
+            if (!(pathNode instanceof ObjectNode)) {
+                continue;
+            }
+
+            final ObjectNode pathObject = (ObjectNode) pathNode;
+
+            for (final HttpMethod methodEnum : annotation.methods()) {
+                final String methodName = methodEnum.name().toLowerCase();
+                final JsonNode methodNode = pathObject.get(methodName);
+                if (!(methodNode instanceof ObjectNode)) {
+                    continue;
+                }
+
+                final ObjectNode methodObject = (ObjectNode) methodNode;
+
+                // Override summary if present on annotation
+                if (annotation.summary() != null && !annotation.summary().isEmpty()) {
+                    methodObject.put("summary", annotation.summary());
+                }
+
+                // Override description if present on annotation
+                if (annotation.description() != null && !annotation.description().isEmpty()) {
+                    methodObject.put("description", annotation.description());
+                }
+
+                // Override tags if present on annotation
+                final String[] tags = annotation.tags();
+                if (tags != null && tags.length > 0) {
+                    methodObject.remove("tags");
+                    final com.fasterxml.jackson.databind.node.ArrayNode tagsArray = methodObject.putArray("tags");
+                    for (final String tag : tags) {
+                        tagsArray.add(tag);
+                    }
+                }
+            }
+        }
     }
 
     /**
