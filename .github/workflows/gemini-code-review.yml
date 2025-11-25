@@ -29,6 +29,8 @@ jobs:
 
       - name: Generate Review Comment
         id: review
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           # Safely construct the prompt in a temporary file
           cat << 'EOT' > prompt.txt
