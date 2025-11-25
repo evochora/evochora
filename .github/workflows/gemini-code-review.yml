@@ -17,13 +17,10 @@ jobs:
         with:
           fetch-depth: 0 # Fetches all history for git diff
 
-      - name: Get PR diff
+      - name: Get PR diff and write to file
         id: pr_diff
         run: |
-          diff=$(git diff origin/${{ github.base_ref }}...HEAD)
-          echo "diff<<EOF" >> $GITHUB_OUTPUT
-          echo "$diff" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          git diff origin/${{ github.base_ref }}...HEAD > pr_diff.txt
 
       - name: Setup Gemini CLI
         uses: google-github-actions/run-gemini-cli@v0.1.15
@@ -32,9 +29,6 @@ jobs:
 
       - name: Generate Review Comment
         id: review
-        env:
-          # Pass the diff as an environment variable to prevent syntax errors
-          PR_DIFF: ${{ steps.pr_diff.outputs.diff }}
         run: |
           # Safely construct the prompt in a temporary file
           cat << 'EOT' > prompt.txt
@@ -43,7 +37,9 @@ jobs:
           ```diff
           EOT
           
-          echo "$PR_DIFF" >> prompt.txt
+          # Append the diff from the file
+          cat pr_diff.txt >> prompt.txt
+          
           echo '```' >> prompt.txt
 
           # Generate the review from the file and capture the output
