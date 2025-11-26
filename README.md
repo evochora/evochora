@@ -2,8 +2,12 @@
 
 **A collaborative platform for research into the foundational physics of digital evolution.**
 
-Evochora is an open-source research platform for simulating artificial life in rich, n-dimensional worlds. Organisms are embodied agents running on a low-level Evochora Assembly (EvoASM) virtual machine and must actively forage for energy, manage metabolism, and solve the mechanical and ecological challenges of self-replication.
+Evochora is an open-source research platform for simulating artificial life in rich, n-dimensional worlds.
+
+Organisms are embodied agents running on a low-level Evochora Assembly (EvoASM) virtual machine and must actively forage for energy, manage metabolism, and solve the mechanical and ecological challenges of self-replication.
+
 By making the "laws" of the digital universe modular and extensible, Evochora invites the scientific community to collaboratively explore what properties an environment must possess for complex innovation to emerge.
+
 The platform is architected for scalability: simulations can run on a single machine for initial experiments or be deployed in a distributed cloud environment for massive-scale, long-duration evolutionary studies.
 
 ---
@@ -22,7 +26,8 @@ The platform is architected for scalability: simulations can run on a single mac
 
 ### Start the Simulation Node (In-Process Mode)
 
-Download and unpack the latest distribution from the GitHub Releases page: https://github.com/rainco77/evochora/releases
+Download and unpack the latest distribution from the GitHub Releases page:
+https://github.com/rainco77/evochora/releases
 
 ```bash
 cd evochora-<version>
@@ -38,14 +43,15 @@ This will:
 ### 3. Open the Web UI
 
 Once the node is running, it will by default execute the primordial organism defined in [`assembly/primordial/main.evo`](./assembly/primordial/main.evo) as configured in [`config/evochora.conf`](./evochora.conf).  
-Open the visualizer in your browser to see it:
 
-- Visualizer UI: `http://localhost:8081/visualizer/`
+Open the visualizer in your browser to see it:
+`http://localhost:8081/visualizer/`
 
 ## Preview
 
 Short demo of Evochora’s web-based visualizer:
-https://github.com/user-attachments/assets/2dd2163a-6abe-4121-936d-eb46cc314859
+
+<video src="https://github.com/user-attachments/assets/2dd2163a-6abe-4121-936d-eb46cc314859" controls></video>
 
 - Visualizer: 2D view into the simulated world (cells, organisms, energy).
 - Goal: Quickly see what kinds of dynamics Evochora can produce.
