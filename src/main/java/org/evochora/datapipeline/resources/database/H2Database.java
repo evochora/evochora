@@ -937,4 +937,52 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
             throw e; // Other SQL errors
         }
     }
+    
+    /**
+     * Queries the organism_states table to find the minimum and maximum tick numbers.
+     * Returns null if no ticks exist.
+     *
+     * @param conn The database connection (schema already set)
+     * @param runId The simulation run ID (for logging/debugging, schema already contains this run)
+     * @return TickRange with minTick and maxTick, or null if no ticks exist
+     * @throws SQLException if database query fails
+     */
+    org.evochora.datapipeline.api.resources.database.dto.TickRange getOrganismTickRangeInternal(
+            Connection conn, String runId) throws SQLException {
+        try {
+            // Query min and max tick numbers from organism_states table
+            // Schema is already set by the connection (via H2DatabaseReader)
+            PreparedStatement stmt = conn.prepareStatement(
+                "SELECT MIN(tick_number) as min_tick, MAX(tick_number) as max_tick " +
+                "FROM organism_states"
+            );
+            ResultSet rs = stmt.executeQuery();
+            
+            queriesExecuted.incrementAndGet();
+            
+            if (!rs.next()) {
+                // No rows in table
+                return null;
+            }
+            
+            // Check if result is null (table exists but empty, or all ticks deleted)
+            long minTick = rs.getLong("min_tick");
+            long maxTick = rs.getLong("max_tick");
+            
+            if (rs.wasNull()) {
+                // Table exists but is empty
+                return null;
+            }
+            
+            return new org.evochora.datapipeline.api.resources.database.dto.TickRange(minTick, maxTick);
+            
+        } catch (SQLException e) {
+            // Table doesn't exist yet (no ticks written)
+            if (e.getErrorCode() == 42104 || e.getErrorCode() == 42102 || 
+                (e.getMessage().contains("Table") && e.getMessage().contains("not found"))) {
+                return null; // No ticks available
+            }
+            throw e; // Other SQL errors
+        }
+    }
 }

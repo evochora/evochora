@@ -1026,12 +1026,15 @@ public class RenderVideoCommand implements Callable<Integer> {
                 // Wait for all rendering tasks to complete
                 executorService.shutdown();
                 try {
+                    // Wait indefinitely for all tasks to finish after shutdown has been called.
+                    // This will only be interrupted by an InterruptedException.
                     executorService.awaitTermination(Long.MAX_VALUE, java.util.concurrent.TimeUnit.NANOSECONDS);
                 } catch (InterruptedException e) {
+                    System.err.println("Rendering was interrupted. Forcing shutdown of rendering tasks...");
                     Thread.currentThread().interrupt();
                 }
                 
-                // Signal writer thread to stop
+                // Signal writer thread to stop by sending the poison pill
                 if (writerThread != null && frameQueue != null) {
                     try {
                         frameQueue.put(null); // Poison pill

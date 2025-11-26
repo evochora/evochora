@@ -36,13 +36,24 @@ public interface IDatabaseReader extends IEnvironmentDataReader,
     /**
      * Gets the range of available ticks for the run this reader was created for.
      * <p>
-     * Returns the minimum and maximum tick numbers that exist in the database.
+     * Returns the minimum and maximum tick numbers that exist in the environment_ticks table.
      * If no ticks are available, returns null.
      *
      * @return TickRange containing minTick and maxTick, or null if no ticks exist
      * @throws SQLException if database query fails
      */
     TickRange getTickRange() throws SQLException;
+    
+    /**
+     * Gets the range of available organism ticks for the run this reader was created for.
+     * <p>
+     * Returns the minimum and maximum tick numbers that exist in the organism_states table.
+     * If no ticks are available, returns null.
+     *
+     * @return TickRange containing minTick and maxTick, or null if no ticks exist
+     * @throws SQLException if database query fails
+     */
+    TickRange getOrganismTickRange() throws SQLException;
     
     /**
      * Closes this reader and returns the connection to the pool.

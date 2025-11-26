@@ -1,0 +1,64 @@
+name: Gemini Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  code-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetches all history for git diff
+
+      - name: Get PR diff and write to file
+        id: pr_diff
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > pr_diff.txt
+
+      - name: Setup Gemini CLI
+        uses: google-github-actions/run-gemini-cli@v0.1.15
+        with:
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: Generate Review Comment
+        id: review
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          # Safely construct the prompt in a temporary file
+          cat << 'EOT' > prompt.txt
+          You are an expert Java enterprise architect. Please act as a code reviewer.
+          Ensure the following code changes are compliant with the with best practises and follows general architectural principles.
+          Review the following changes for potential bugs, style violations, and improvements.
+          Focus on correctness, clarity, and adherence to best practices.
+          Provide constructive feedback. The code diff is:
+
+          ```diff
+          EOT
+          
+          # Append the diff from the file
+          cat pr_diff.txt >> prompt.txt
+          
+          echo '```' >> prompt.txt
+
+          # Generate the review by piping the prompt file into the gemini command
+          REVIEW_COMMENT=$(cat prompt.txt | gemini)
+          
+          # Make the comment available to the next step
+          echo "comment<<EOF" >> $GITHUB_OUTPUT
+          echo "$REVIEW_COMMENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post Review Comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVIEW_COMMENT: ${{ steps.review.outputs.comment }}
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} --body "$REVIEW_COMMENT"

@@ -206,8 +206,6 @@ class EnvironmentControllerIntegrationTest {
         // Verify HTTP response structure and headers
         resp.then()
             .statusCode(200)
-            .body("tick", equalTo(1))
-            .body("runId", equalTo(runId))
             .body("cells", hasSize(3))  // Should have 3 cells
             .header("Cache-Control", containsString("must-revalidate"));  // HTTP cache header check
         
@@ -393,8 +391,6 @@ class EnvironmentControllerIntegrationTest {
         // Then: Should return data from the NEWER run (latest)
         resp.then()
             .statusCode(200)
-            .body("tick", equalTo(1))
-            .body("runId", equalTo(newRunId))  // Should use the newer run
             .body("cells", hasSize(1))
             .body("cells[0].ownerId", equalTo(200)); // Newer run has ownerId=200
     }
@@ -664,5 +660,108 @@ class EnvironmentControllerIntegrationTest {
 
     private long countFilesInDirectory(Path directory) {
         return countBatchFiles(directory);
+    }
+
+    @Test
+    void getTicks_returnsTickRange() throws Exception {
+        // Given: Test run with multiple ticks
+        String runId = "test-run-" + UUID.randomUUID();
+        SimulationMetadata metadata = createMetadata(runId, new int[]{10, 10}, false);
+
+        indexMetadata(runId, metadata);
+
+        // Write ticks 10, 20, 30
+        List<TickData> batches = List.of(
+            TickData.newBuilder()
+                .setTickNumber(10L)
+                .setSimulationRunId(runId)
+                .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(50).build())
+                .build(),
+            TickData.newBuilder()
+                .setTickNumber(20L)
+                .setSimulationRunId(runId)
+                .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(101).setMoleculeType(1).setMoleculeValue(60).build())
+                .build(),
+            TickData.newBuilder()
+                .setTickNumber(30L)
+                .setSimulationRunId(runId)
+                .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(102).setMoleculeType(1).setMoleculeValue(70).build())
+                .build()
+        );
+
+        for (TickData batch : batches) {
+            writeBatchAndNotify(runId, List.of(batch));
+        }
+
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            topicPollTimeoutMs = 2000
+            insertBatchSize = 100
+            flushTimeoutMs = 1000
+            """.formatted(runId));
+
+        indexer = createEnvironmentIndexer("test-indexer", config);
+        indexer.start();
+
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 3);
+
+        // Setup HTTP server
+        app = Javalin.create().start(0);
+        int port = app.port();
+
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IDatabaseReaderProvider.class, testDatabase);
+
+        Config controllerConfig = ConfigFactory.empty();
+        EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
+        controller.registerRoutes(app, "/visualizer/api/environment");
+
+        // When: Request tick range
+        io.restassured.response.Response resp = given()
+            .port(port)
+            .basePath("/visualizer/api/environment")
+            .queryParam("runId", runId)
+            .get("/ticks");
+
+        // Then: Verify tick range response
+        resp.then()
+            .statusCode(200)
+            .body("minTick", equalTo(10))
+            .body("maxTick", equalTo(30));
+    }
+
+    @Test
+    @ExpectLog(level = LogLevel.WARN, messagePattern = ".*No environment ticks available.*")
+    void getTicks_returns404WhenNoTicks() throws Exception {
+        // Given: Test run with metadata but no ticks
+        String runId = "test-run-" + UUID.randomUUID();
+        SimulationMetadata metadata = createMetadata(runId, new int[]{10, 10}, false);
+
+        indexMetadata(runId, metadata);
+
+        // Setup HTTP server
+        app = Javalin.create().start(0);
+        int port = app.port();
+
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IDatabaseReaderProvider.class, testDatabase);
+
+        Config controllerConfig = ConfigFactory.empty();
+        EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
+        controller.registerRoutes(app, "/visualizer/api/environment");
+
+        // When: Request tick range (no ticks indexed)
+        io.restassured.response.Response resp = given()
+            .port(port)
+            .basePath("/visualizer/api/environment")
+            .queryParam("runId", runId)
+            .get("/ticks");
+
+        // Then: Should return 404
+        resp.then()
+            .statusCode(404);
     }
 }

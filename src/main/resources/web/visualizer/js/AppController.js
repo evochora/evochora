@@ -247,7 +247,7 @@ class AppController {
             }
             
             // Load tick range for maxTick
-            const tickRange = await this.simulationApi.fetchTickRange(this.state.runId);
+            const tickRange = await this.environmentApi.fetchTickRange(this.state.runId);
             if (tickRange) {
                 this.state.maxTick = tickRange.maxTick;
                 this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
@@ -292,7 +292,7 @@ class AppController {
      */
     async updateMaxTick() {
         try {
-            const tickRange = await this.simulationApi.fetchTickRange(this.state.runId);
+            const tickRange = await this.environmentApi.fetchTickRange(this.state.runId);
             if (tickRange && tickRange.maxTick !== undefined) {
                 const oldMaxTick = this.state.maxTick;
                 const newMaxTick = tickRange.maxTick;

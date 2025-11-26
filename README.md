@@ -2,14 +2,14 @@
 
 **A collaborative platform for research into the foundational physics of digital evolution.**
 
-Evochora is an advanced open-source scientific reasearch platform to simulate artificial life and investigate the fundamental prerequisites for open-ended evolution. Unlike traditional systems with fixed, hard-coded "physics," Evochora provides a rich, n-dimensional environment where the rules governing evolution are themselves objects of scientific inquiry. Organisms are embodied agents that must navigate their world, actively forage for energy, and solve the mechanical, metabolic, and ecological challenges of self-replication—all using a low-level assembly language, making their behaviors fully evolvable.
+Evochora is an advanced open-source scientific reasearch platform to simulate artificial life and investigate the fundamental prerequisites for open-ended evolution. Unlike traditional systems with fixed, hard-coded "physics," Evochora provides a rich, n-dimensional environment where the rules governing evolution are themselves objects of scientific inquiry. Organisms are embodied agents that must navigate their world, actively forage for energy, and solve the mechanical, metabolic, and ecological challenges of self-replication — all using a low-level assembly language, making their behaviors fully evolvable.
 
 The platform is architected for scalability: simulations can run on a single machine for initial experiments or be deployed in a distributed cloud environment for massive-scale, long-duration evolutionary studies. By making the "laws" of the digital universe modular and extensible, Evochora invites the scientific community to collaboratively explore what properties an environment must possess for complex innovation to emerge.
 
 ## Key Features
 
 - **N-Dimensional Spatial Worlds**: Configurable grid size and dimensionality (2D to n-D), bounded or toroidal topology
-- **Embodied Agency**: Organisms navigate via instruction pointers (IP) and data pointers (DPs), enforcing locality and immobility
+- **Embodied Agency**: Organisms navigate via instruction pointers (IP) and data pointers (DPs) with enforced locality
 - **Rich Virtual Machine**: Versatile registers, three distinct stacks (data, call, location), and a complete assembly language
 - **Intrinsic Selection Pressure**: Survival requires active energy foraging; every instruction costs energy
 - **Extensible Physics**: Pluggable systems for energy distribution, mutation models, and more
@@ -187,3 +187,9 @@ This project builds on decades of artificial life research, including seminal wo
 ---
 
 **Note**: Evochora is in active development. Some features described in documentation may be planned but not yet implemented. See our [roadmap](#project-status--roadmap) for current status.
+
+
+Discord: [![Discord](https://img.shields.io/discord/1442908877648822466?label=Join%20Community&logo=discord&style=flat-square)](DEIN_EINLADUNGS_LINK)
+
+Simulation Demo: http://evochora.org/visualizer/
+API Doc: http://evochora.org/api-docs/
