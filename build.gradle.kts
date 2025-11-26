@@ -77,7 +77,6 @@ dependencies {
 
 }
 
-// Definiert die Hauptklasse für den 'run'-Task
 application {
     mainClass.set("org.evochora.cli.CommandLineInterface")
 }

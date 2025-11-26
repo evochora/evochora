@@ -2,170 +2,218 @@
 
 **A collaborative platform for research into the foundational physics of digital evolution.**
 
-Evochora is an advanced open-source scientific reasearch platform to simulate artificial life and investigate the fundamental prerequisites for open-ended evolution. Unlike traditional systems with fixed, hard-coded "physics," Evochora provides a rich, n-dimensional environment where the rules governing evolution are themselves objects of scientific inquiry. Organisms are embodied agents that must navigate their world, actively forage for energy, and solve the mechanical, metabolic, and ecological challenges of self-replication — all using a low-level assembly language, making their behaviors fully evolvable.
+Evochora is an open-source research platform for simulating artificial life in rich, n-dimensional worlds. Organisms are embodied agents running on a low-level Evochora Assembly (EvoASM) virtual machine and must actively forage for energy, manage metabolism, and solve the mechanical and ecological challenges of self-replication.
+By making the "laws" of the digital universe modular and extensible, Evochora invites the scientific community to collaboratively explore what properties an environment must possess for complex innovation to emerge.
+The platform is architected for scalability: simulations can run on a single machine for initial experiments or be deployed in a distributed cloud environment for massive-scale, long-duration evolutionary studies.
 
-The platform is architected for scalability: simulations can run on a single machine for initial experiments or be deployed in a distributed cloud environment for massive-scale, long-duration evolutionary studies. By making the "laws" of the digital universe modular and extensible, Evochora invites the scientific community to collaboratively explore what properties an environment must possess for complex innovation to emerge.
+---
+
+- **Want to start a simulation right away?** See [Quick Start](#quick-start-using-a-downloaded-ziptar-distribution).
+- **Want to understand the science behind Evochora?** See [Scientific Background](#scientific-background).
+
+---
+
+## Quick Start (Using a Downloaded ZIP/TAR Distribution)
+
+### Requirements
+
+- Java 21 (JRE or JDK)
+- A terminal shell (Linux, macOS, WSL on Windows)
+
+### Start the Simulation Node (In-Process Mode)
+
+Download and unpack the latest distribution from the GitHub Releases page: https://github.com/rainco77/evochora/releases
+
+```bash
+cd evochora-<version>
+bin/evochora node run
+```
+
+This will:
+
+- Load configuration from [`config/evochora.conf`](./evochora.conf).
+- Start the in-process simulation node (simulation engine, persistence, indexer, HTTP server)
+- Run until you terminate it (Ctrl + C)
+
+### 3. Open the Web UI
+
+Once the node is running, it will by default execute the primordial organism defined in [`assembly/primordial/main.evo`](./assembly/primordial/main.evo) as configured in [`config/evochora.conf`](./evochora.conf).  
+Open the visualizer in your browser to see it:
+
+- Visualizer UI: `http://localhost:8081/visualizer/`
+
+## Preview
+
+Short demo of Evochora’s web-based visualizer:
+https://github.com/user-attachments/assets/2dd2163a-6abe-4121-936d-eb46cc314859
+
+- Visualizer: 2D view into the simulated world (cells, organisms, energy).
+- Goal: Quickly see what kinds of dynamics Evochora can produce.
+- Live visualizer demo (hosted): http://evochora.org/visualizer/
+
+---
 
 ## Key Features
 
 - **N-Dimensional Spatial Worlds**: Configurable grid size and dimensionality (2D to n-D), bounded or toroidal topology
 - **Embodied Agency**: Organisms navigate via instruction pointers (IP) and data pointers (DPs) with enforced locality
-- **Rich Virtual Machine**: Versatile registers, three distinct stacks (data, call, location), and a complete assembly language
+- **Rich Virtual Machine**: Versatile registers, three distinct stacks (data, call, location), and a complete Evochora Assembly (EvoASM) language
 - **Intrinsic Selection Pressure**: Survival requires active energy foraging; every instruction costs energy
 - **Extensible Physics**: Pluggable systems for energy distribution, mutation models, and more
 - **Full Determinism**: Reproducible experiments via fixed random seeds and deterministic conflict resolution
 - **Scalable Architecture**: In-memory execution → persistent storage → indexing → web-based debugging
 - **Cloud-Ready**: Designed to scale from single-machine prototyping to distributed cloud deployments
 
-https://github.com/user-attachments/assets/2dd2163a-6abe-4121-936d-eb46cc314859
 
-## Quick Start
+## Scientific Background
 
-### Prerequisites
+If you are primarily interested in the scientific motivation and research questions (open-ended evolution, embodied agency, digital chemistry, distributed architectures), start here:
 
-- Java 21
-- Gradle (wrapper included)
+- **[Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md)** – Detailed research agenda, architecture, and long-term vision.
 
-### Build & Run
+---
+
+## Usage Modes
+
+Evochora supports multiple usage and deployment modes:
+
+- **In-Process Mode (current default)**  
+  All core components (Simulation Engine, Persistence Service, Indexer, HTTP server) run in a single process or container.  
+  Best for local experiments, quick iteration, and single-machine runs.
+
+- **Planned Distributed Cloud Mode**  
+  Each service (Simulation Engine, Persistence, Indexer, HTTP server, etc.) runs in its own container or process and can be scaled horizontally. Intended for large-scale, long-duration experiments and cloud deployments.
+
+The current releases focus on the in-process mode; the distributed mode is part of the roadmap.
+
+---
+
+## Configuration Overview
+
+Evochora is configured via a HOCON configuration file, typically named [`config/evochora.conf`](./evochora.conf).
+
+A complete example configuration is provided as [`config/evochora.conf`](./evochora.conf) in the repository and included in the distribution.
+
+---
+
+## Command Line Interface (CLI)
+
+The Evochora CLI is the main entry point for running simulations and tools.
+
+**Main commands:**
+
+- `node` – Run and control the simulation node (pipeline, services, HTTP API)
+- `compile` – Compile EvoASM (Evochora Assembly) programs for the Evochora VM
+- `inspect` – Inspect stored simulation data (ticks, runs, resources)
+- `video` – Render simulation runs into videos (requires `ffmpeg`)
+
+Further CLI documentation and fully worked examples:
+
+- **[CLI Usage Guide](docs/CLI_USAGE.md)** – All commands, parameters, and usage examples (including `node`, `compile`, `inspect`, and `video`).
+
+---
+
+## Architecture at a Glance
+
+Evochora is built as a modular stack:
+
+- **Compiler**  
+  Translates EvoASM into VM instructions and layouts via an immutable phase pipeline (preprocessor, parser, semantic analyzer, IR generator, layout engine, emitter).
+
+- **Runtime / Virtual Machine**  
+  Each organism is an independent VM with its own registers, stacks, and pointers in an n-dimensional world of typed Molecules (CODE, DATA, ENERGY, STRUCTURE).  
+  Strong locality and an energy-first design create intrinsic selection pressure.
+
+- **Data Pipeline**  
+  Simulation Engine → queue → Persistence Service → storage → Indexer → queryable indexes for debugging and analysis.
+
+- **Node & HTTP API**  
+  Orchestrates services and resources, exposes REST endpoints (e.g. `/api/pipeline/...`) and powers the web-based visualizer.
+
+For deeper detail and scientific background, see:
+
+- [Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md)
+- [Assembly Language Specification](docs/ASSEMBLY_SPEC.md) (EvoASM – Evochora Assembly)
+- [Compiler IR Specification](docs/COMPILER_IR_SPEC.md)
+
+---
+
+## Roadmap – Planned Platform Features
+
+Some key directions for the technical evolution of Evochora:
+
+- **Distributed Cloud Mode** – Run Simulation Engine, Persistence Service, Indexer, HTTP server, etc. as separate processes/containers with horizontal scaling for large experiments.
+- **Multithreaded Simulation Engine** – Parallelize the plan/resolve/execute phases across CPU cores to support larger worlds and more organisms on a single machine.
+- **Pluggable Mutation System** – Make mutation models first-class plugins (e.g., replication errors, background radiation, genomic rearrangements) to study their impact on open-ended evolution.
+- **Extended Data Pipeline & Resume Support** – More scalable, cloud-native persistence and indexing with the ability to resume simulations from stored states.
+
+---
+
+## Development & Local Build
+
+If you want to develop Evochora itself:
 
 ```bash
-# Build the project
+# Clone the repository
+git clone https://github.com/yourusername/evochora.git
+cd evochora
+
+# Build & test
 ./gradlew build
 
-# Create executable JAR
-./gradlew jar
-
-# Start the simulation node
+# Run the node in dev mode (uses ./evochora.conf by default)
 ./gradlew run --args="node run"
-
-# Or use custom configuration
-./gradlew run --args="--config evochora.conf node run"
 ```
 
-### Compile Assembly Code
+See also:
 
-```bash
-# Option 1: Gradle task
-./gradlew compile -Pfile="assembly/examples/simple.evo"
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) – Contribution workflow and expectations.
+- [`AGENTS.md`](./AGENTS.md) – Coding conventions, architecture and compiler/runtime design principles, testing rules.
 
-# Option 2: Gradle run with args
-./gradlew run --args="compile --file=assembly/examples/simple.evo"
-
-# Option 3: Standalone JAR
-java -jar build/libs/evochora.jar compile --file=assembly/examples/simple.evo
-```
-
-### Render Simulation Videos
-
-```bash
-# Render video from simulation run
-./gradlew run --args="video --run-id <run-id> --out simulation.mp4"
-
-# See all video rendering options
-./gradlew run --args="help video"
-```
-
-### HTTP API
-
-When the node is running, it exposes a REST API (default: `http://localhost:8081`) for controlling the simulation pipeline.
-
-*(TODO: Link to auto-generated API documentation, e.g., OpenAPI/Swagger, once available.)*
-
-## Documentation
-
-- **[Assembly Language Specification](docs/ASSEMBLY_SPEC.md)** - Complete instruction set, syntax, and directives
-- **[CLI Usage Guide](docs/CLI_USAGE.md)** - Command-line interface and HTTP API reference
-- **[Assembly Compile Usage](docs/ASSEMBLY_COMPILE_USAGE.md)** - Compiler usage and integration with AI tools
-
-## Architecture Overview
-
-Evochora is built on three core principles:
-
-**1. Embodied Agency**  
-Organisms are not abstract computational entities but embodied agents with:
-- An **Instruction Pointer (IP)** that executes CODE molecules
-- **Data Pointers (DPs)** that serve as "limbs" for world interaction
-- A rich internal state (registers, stacks) providing a low-level toolkit for evolution
-
-**2. Metabolic Economy**  
-Survival requires active resource management:
-- Every instruction costs energy (deducted from internal Energy Register)
-- ENERGY molecules must be foraged using DPs
-- STRUCTURE molecules act as obstacles, costing additional energy
-- Death occurs when energy reaches zero
-
-**3. Extensible Physics**  
-Core systems are modular and pluggable:
-- Energy distribution models (random, geyser-based, custom)
-- Mutation models (background radiation, replication errors, genomic rearrangements)
-- Future: Digital chemistry, inter-organism communication, and more
-
-## Research Avenues
-
-Evochora is designed to address fundamental questions in artificial life:
-
-- **Primordial Organisms**: Designing viable ancestors that solve the replication/energy/space trilemma
-- **Mutation Models**: Exploring how different mutation regimes influence evolutionary trajectories
-- **Emergence of Sociality**: Investigating cooperation, communication, and the evolution of multicellularity
-- **Digital Chemistry**: Moving beyond single-resource worlds to complex metabolic networks
-- **Open-Ended Evolution**: Identifying the fundamental prerequisites for sustained innovation
-
-See our [scientific paper](docs/SCIENTIFIC_OVERVIEW.md) for a detailed research agenda.
-
-## Project Status & Roadmap
-
-**Current Status**: Functional platform with stable VM, compiler, data pipeline, and a working primordial organism capable of sustainable replication.
-
-**Immediate Roadmap**:
-1. ✅ Core VM and assembly language implementation
-2. ✅ Data pipeline with persistence and indexing
-3. ✅ **Viable primordial organism** (functional and replicating!)
-4. 🔄 **Conduct "Experiment Null"** (first long-duration simulation - in progress)
-5. 📋 Implement pluggable mutation system
-6. 📋 Multi-threaded simulation engine
-7. 📋 Cloud-native deployment architecture
-
-**Long-Term Vision**:
-- Inter-organism communication primitives
-- Digital chemistry with configurable reaction tables
-- Higher-dimensional visualization tools
-- Statistical analysis services for population dynamics
+---
 
 ## Contributing
 
 We welcome contributions of all kinds:
 
-- **Scientific Discussion**: Share ideas about the "laws" of our digital universe
-- **Code Contributions**: Help build the platform (VM, compiler, data pipeline, analysis tools)
-- **Primordial Design**: Design and test ancestral organisms
-- **Documentation**: Improve docs, write tutorials, create examples
-- **Testing**: Report bugs, write tests, improve reproducibility
+- Scientific discussion about the "laws" of the digital universe
+- Code contributions (VM, compiler, data pipeline, analysis tools, web visualizer)
+- Experiment design and benchmark scenarios
+- Documentation, tutorials, and examples
+- Testing
 
-**TODO**: Detailed contributing guidelines coming soon. For now:
+Basic contribution workflow:
+
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Follow code style in [AGENTS.md](AGENTS.md)
-4. Write tests (see Testing Guidelines in AGENTS.md)
-5. Submit a pull request
+2. Create a feature branch (e.g. `git checkout -b feature/amazing-feature`)
+3. Follow the style and guidelines in `AGENTS.md`
+4. Add tests where appropriate
+5. Open a Pull Request with a clear description and rationale
 
-## Community
+---
 
-- **Source Code**: [GitHub Repository](https://github.com/yourusername/evochora) *(TODO: Add actual link)*
-- **Issue Tracker**: [GitHub Issues](https://github.com/yourusername/evochora/issues) *(TODO: Add actual link)*
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/evochora/discussions) *(TODO: Add actual link)*
-- **Chat**: [Discord Server](https://discord.gg/yourinvite) *(TODO: Add actual link)*
-- **Live Demo**: [Web Debugger](https://demo.evochora.org) *(TODO: Add actual link)*
+## Community & Links
 
-## License
+- Discord (Community Chat):  
+  [![Discord](https://img.shields.io/discord/1442908877648822466?label=Join%20Community&logo=discord&style=flat-square)](https://discord.gg/1442908877648822466)
 
-This project is open-source and available under one of the following licenses (to be decided):
-- [MIT License](https://opensource.org/licenses/MIT)
-- [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)
-- [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.en.html)
+- Live Visualizer Demo:  
+  http://evochora.org/visualizer/
 
-**TODO**: Final license selection pending discussion.
+- API Documentation (developer-focused):  
+  http://evochora.org/api-docs/
 
-## Citation
+- Key documentation in this repository:
+    - [Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md)
+    - [CLI Usage Guide](docs/CLI_USAGE.md)
+    - [Assembly Specification](docs/ASSEMBLY_SPEC.md) (EvoASM – Evochora Assembly)
+
+---
+
+## License & Citation
+
+Evochora is open-source and available under the **MIT License** (see [`LICENSE`](./LICENSE)).
+
 If you use Evochora in your research, please cite:
 
 ```bibtex
@@ -178,18 +226,6 @@ If you use Evochora in your research, please cite:
 }
 ```
 
-**TODO**: Update citation once published.
-
-## Acknowledgments
-
-This project builds on decades of artificial life research, including seminal work on Tierra (Ray, 1991), Avida (Ofria & Wilke, 2004), and the broader A-Life community's investigations into open-ended evolution.
-
 ---
 
-**Note**: Evochora is in active development. Some features described in documentation may be planned but not yet implemented. See our [roadmap](#project-status--roadmap) for current status.
-
-
-Discord: [![Discord](https://img.shields.io/discord/1442908877648822466?label=Join%20Community&logo=discord&style=flat-square)](DEIN_EINLADUNGS_LINK)
-
-Simulation Demo: http://evochora.org/visualizer/
-API Doc: http://evochora.org/api-docs/
+**Note**: Evochora is in active development. Some features described in documentation may be planned but not yet implemented. See the project documentation and roadmap for the current status.
