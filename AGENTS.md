@@ -10,7 +10,7 @@ Simulate evolution of organisms in n-D worlds, written in Assembly.
 - `src/test/java/` – Unit and integration tests
 - `src/test/resources/` – Test resources and configurations
 - `src/testFixtures/` – JUnit extensions and test utilities
-- `docs/` – Documentation (ASSEMBLY_SPEC.md, CLI_USAGE.md, ASSEMBLY_COMPILE_USAGE.md, proposals)
+- `docs/` – Documentation (ASSEMBLY_SPEC.md, CLI_USAGE.md, proposals)
 - `assembly/` – Assembly code examples and test files
 - `build.gradle.kts` – Gradle build configuration
 - `gradlew`, `gradlew.bat`, `gradle/wrapper/` – Gradle wrapper
@@ -66,28 +66,13 @@ When the node is running, it exposes a REST API for controlling and monitoring t
 - `POST /api/pipeline/service/{serviceName}/resume` - Resume specific service
 
 ## Assembly Compile System
-The compiler can be invoked in three equivalent ways:
+The compiler can be invoked in multiple equivalent ways. For details and examples, see the **Compile** section in `docs/CLI_USAGE.md`.
 
-**Option 1: Gradle Task (convenient for quick compilation)**
-```bash
-./gradlew compile -Pfile="<path>" [-Penv="<dimensions>[:<toroidal>]"]
-```
+- Primary user-facing entry point: `bin/evochora compile --file=<path> [--env=<dimensions>[:<toroidal>]]`
+- Developer entry point via JAR (after `./gradlew jar`):  
+  `java -jar build/libs/evochora.jar compile --file=<path> [--env=<dimensions>[:<toroidal>]]`
 
-**Option 2: Gradle run with args (flexible)**
-```bash
-./gradlew run --args="compile --file=<path> [--env=<dimensions>[:<toroidal>]]"
-```
-
-**Option 3: JAR (standalone, no Gradle required)**
-```bash
-# Build JAR first: ./gradlew jar
-java -jar build/libs/evochora.jar compile --file=<path> [--env=<dimensions>[:<toroidal>]]
-```
-
-- Default environment: 100x100:toroidal
-- Outputs JSON ProgramArtifact with machineCodeLayout, labels, registers, procedures, etc.
-- Allows AI assistants to analyze assembly code and help with programming
-- See `docs/ASSEMBLY_COMPILE_USAGE.md` for detailed usage
+The compiler produces a JSON `ProgramArtifact` with machine code layout, labels, registers, procedures, environment properties, and source/ token maps that can be used for debugging and analysis.
 
 ## Agent Guidelines
 - **Allowed changes**: Refactors, bug fixes, unit tests, documentation improvements, safe dependency updates (patch/minor versions)

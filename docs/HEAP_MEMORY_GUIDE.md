@@ -6,12 +6,13 @@ This guide helps you calculate the required heap memory for each Evochora servic
 
 Evochora's memory usage is primarily driven by several factors:
 
-1. **Organism count**: How many organisms are alive in your simulation
-2. **Resource types**: Whether resources are in-process (memory-based) or external (cloud-based)
-3. **Queue capacity**: How many ticks are buffered in memory (for in-process queues)
-4. **Batch size**: How many ticks are batched together before writing to storage
+1. **Environment size**: Size and density of the envrionment
+2. **Organism count**: How many organisms are alive in your simulation
+3. **Resource types**: Whether resources are in-process (memory-based) or external (cloud-based)
+4. **Queue capacity**: How many ticks are buffered in memory (for in-process queues)
+5. **Batch size**: How many ticks are batched together before writing to storage
 
-The key insight: **Each tick contains the complete state of all organisms in the simulation**, so more organisms = larger tick data = more memory needed.
+The key insight: **Each tick contains the complete state of alle non empty cells and all organisms in the simulation**, so the larger and denser the environments and the more organisms = larger tick data = more memory needed.
 
 ### Resource Types Impact
 

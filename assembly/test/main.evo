@@ -21,6 +21,6 @@ CALL LIB.PROC1 REF %TEST1 %TEST2 VAL DATA:3 DATA:4
 POKI %TEST1 0|1
 
 .ORG 0|3
-.INCLUDE "lib1.evo"
+.INCLUDE "lib/lib1.evo"
 .ORG 0|5
-.INCLUDE "lib2.evo"
+.INCLUDE "lib/lib2.evo"

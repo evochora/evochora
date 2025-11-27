@@ -1,64 +1,119 @@
 # Evochora CLI Usage Guide
 
 ## Overview
-The Evochora CLI provides the main entry point for running the simulation node and compiling assembly files.
 
-## Available Commands
+The Evochora CLI (`bin/evochora`) is the main entry point for running the simulation node and tools:
 
-### Show Help
+- **Node**: start and control the simulation pipeline.
+- **Compile**: compile EvoASM (Evochora Assembly) programs.
+- **Inspect**: inspect stored simulation data.
+- **Video**: render simulation runs into videos.
+
+For day-to-day usage (including production deployments and release archives), the **start script** is the primary entry point:
+
+- On Linux/macOS: `bin/evochora`
+- On Windows: `bin\evochora.bat`
+
+Gradle (`./gradlew run --args="..."`) and the standalone JAR (`java -jar ...`) are mainly intended for **developers working in the source repository** (see sections further below).
+
+---
+
+## Getting Help
+
 ```bash
 # Show all available commands
-./gradlew run --args="--help"
+bin/evochora --help
 
-# Show help for specific command
-./gradlew run --args="help node"
-./gradlew run --args="help compile"
-./gradlew run --args="help video"
-./gradlew run --args="help inspect"
+# Show help for a specific command
+bin/evochora help node
+bin/evochora help compile
+bin/evochora help video
+bin/evochora help inspect
 
 # Show help for inspect storage subcommand
-./gradlew run --args="inspect storage --help"
+bin/evochora inspect storage --help
 ```
 
-### Start Simulation Node
+The built-in help is the authoritative source for all options and flags. This document focuses on the most common workflows and parameters.
+
+---
+
+## Start Simulation Node
+
 ```bash
 # Start the node with default configuration
-./gradlew run --args="node run"
+bin/evochora node run
 
-# Start with custom configuration file
-./gradlew run --args="--config my-config.conf node run"
+# Start with a custom configuration file
+bin/evochora --config config/my-config.conf node run
 ```
 
 The node will:
-- Load the configuration from the specified file (or `evochora.conf` by default)
-- Start all configured services (simulation engine, persistence, indexers, etc.)
+
+- Load the configuration from the specified file  
+  - With `--config`: the file you pass (e.g. `config/my-config.conf`)  
+  - Without `--config`: `config/evochora.conf` in a distribution, or `./evochora.conf` in a dev checkout
+- Start all configured services (simulation engine, persistence, indexers, HTTP server, etc.)
 - Expose the HTTP API for monitoring and control
 - Run until interrupted (Ctrl+C)
 
-### Compile Assembly Files
+---
+
+## Compile EvoASM (Evochora Assembly) Programs
+
+The `compile` command translates EvoASM source files into a JSON `ProgramArtifact` that contains machine code layout, labels, procedures, source mapping and more.
+
 ```bash
-# Basic compilation
-./gradlew run --args="compile --file=assembly/examples/simple.evo"
+# Basic compilation (uses default environment from config)
+bin/evochora compile --file=assembly/examples/simple.evo
 
 # With custom environment
-./gradlew run --args="compile --file=assembly/examples/simple.evo --env=200x200:flat"
+bin/evochora compile --file=assembly/examples/simple.evo --env=200x200:flat
+bin/evochora compile --file=assembly/examples/simple.evo --env=1000x1000x100:toroidal
 ```
 
-See `ASSEMBLY_COMPILE_USAGE.md` for detailed compilation documentation.
+### Environment Parameters (`--env`)
+
+Syntax:
+
+- `--env=<dimensions>[:<toroidal>]`
+- `dimensions`: world dimensions, e.g. `100x100`, `2000x2000`, `1000x1000x100`
+- `toroidal` (optional): `toroidal` (default) or `flat`
+
+Examples:
+
+- `100x100` → 100x100 world, toroidal (default)
+- `2000x2000:flat` → 2000x2000 world, flat
+- `1000x1000x100:toroidal` → 3D world, toroidal
+
+### JSON Output (ProgramArtifact)
+
+Compilation produces a JSON object with (among others):
+
+- `programId`: unique identifier
+- `sources`: source file contents
+- `machineCodeLayout`: generated machine code (linear address → instruction)
+- `labelAddressToName`: label addresses and names
+- `registerAliasMap`: register aliases used by the compiler
+- `procNameToParamNames`: procedures and their parameters
+- `sourceMap`: source mapping for debugging
+- `tokenMap`: token information for syntax highlighting
+- `envProps`: environment properties (worldShape, isToroidal)
 
 ### Inspect Storage Data
+
 ```bash
 # Inspect tick data from storage (summary format)
-./gradlew run --args="inspect storage --tick=1000 --run=my-simulation-run"
+bin/evochora inspect storage --tick=1000 --run=my-simulation-run
 
 # Inspect with JSON output format
-./gradlew run --args="inspect storage --tick=1000 --run=my-simulation-run --format=json"
+bin/evochora inspect storage --tick=1000 --run=my-simulation-run --format=json
 
 # Inspect with raw protobuf output
-./gradlew run --args="inspect storage --tick=1000 --run=my-simulation-run --format=raw"
+bin/evochora inspect storage --tick=1000 --run=my-simulation-run --format=raw
 
 # Use custom storage resource
-./gradlew run --args="inspect storage --tick=1000 --run=my-simulation-run --storage=custom-storage"
+bin/evochora inspect storage --tick=1000 --run=my-simulation-run --storage=custom-storage
 ```
 
 The `inspect storage` command allows you to examine tick data that has been persisted to storage for debugging purposes. It supports three output formats:
@@ -100,25 +155,25 @@ Strategy States: 5
 
 ```bash
 # Basic video rendering from a simulation run
-./gradlew run --args="video --run-id <run-id> --out simulation.mp4"
+bin/evochora video --run-id <run-id> --out simulation.mp4
 
 # Render with custom frame rate and sampling
-./gradlew run --args="video --run-id <run-id> --out simulation.mp4 --fps 30 --sampling-interval 100"
+bin/evochora video --run-id <run-id> --out simulation.mp4 --fps 30 --sampling-interval 100
 
 # Render specific tick range
-./gradlew run --args="video --run-id <run-id> --out simulation.mp4 --start-tick 1000 --end-tick 5000"
+bin/evochora video --run-id <run-id> --out simulation.mp4 --start-tick 1000 --end-tick 5000
 
 # Render with overlay (tick number, timestamp, run ID)
-./gradlew run --args="video --run-id <run-id> --out simulation.mp4 --overlay-tick --overlay-time --overlay-run-id"
+bin/evochora video --run-id <run-id> --out simulation.mp4 --overlay-tick --overlay-time --overlay-run-id
 
 # Render with custom quality and format
-./gradlew run --args="video --run-id <run-id> --out simulation.webm --format webm --preset fast"
+bin/evochora video --run-id <run-id> --out simulation.webm --format webm --preset fast
 
 # Use parallel rendering for better performance
-./gradlew run --args="video --run-id <run-id> --out simulation.mp4 --threads 4"
+bin/evochora video --run-id <run-id> --out simulation.mp4 --threads 4
 
 # See all available options
-./gradlew run --args="help video"
+bin/evochora help video
 ```
 
 The `video` command renders simulation data into video files using ffmpeg. It supports various output formats (MP4, AVI, MOV, WebM), quality presets, frame rate control, and optional text overlays.
@@ -158,64 +213,34 @@ The `video` command renders simulation data into video files using ffmpeg. It su
 **Other Options:**
 - `--verbose`: Show detailed debug output from ffmpeg
 
-**Note**: The `video` command requires ffmpeg to be installed and available in your PATH. For a complete list of all options and their descriptions, run `./gradlew run --args="help video"`.
+**Note**: The `video` command requires ffmpeg to be installed and available in your PATH. For a complete list of all options and their descriptions, run `bin/evochora help video`.
 
 ## Configuration
 
 ### Custom Configuration File
+
 You can specify a custom configuration file using the `--config` parameter:
 
 ```bash
-./gradlew run --args="--config my-config.conf node run"
+bin/evochora --config my-config.conf node run
 ```
 
 **Important notes:**
-- The `--config` parameter must come **before** the command (e.g., before `node run`)
-- If the file is not found, the CLI will log an ERROR and use fallback configuration
-- If the file has invalid syntax, the CLI will log an ERROR with details and use fallback configuration
-- Default configuration file: `evochora.conf` in the project root
+
+- The `--config` parameter must come **before** the command (e.g., before `node run`).
+- If the file is not found, the CLI will log an ERROR and exit.
+- If the file has invalid syntax, the CLI will log an ERROR with details and exit.
+- Default configuration files:
+  - In a distribution: `config/evochora.conf`
+  - In a development checkout: `./evochora.conf`
 
 ### Configuration File Format
-The configuration file uses HOCON format (`.conf` extension). See `evochora.conf` for a complete example.
 
-## HTTP API for Pipeline Control
+The configuration file uses HOCON format (`.conf` extension). See `evochora.conf` in the repository root for a complete example.
 
-When the node is running, it exposes a REST API for controlling and monitoring the data pipeline.
+## Running with JAR (Developers)
 
-### Pipeline-wide Control
-- `GET /api/pipeline/status` - Get overall pipeline status
-- `POST /api/pipeline/start` - Start all services
-- `POST /api/pipeline/stop` - Stop all services
-- `POST /api/pipeline/restart` - Restart all services
-- `POST /api/pipeline/pause` - Pause all services
-- `POST /api/pipeline/resume` - Resume all services
-
-### Individual Service Control
-- `GET /api/pipeline/service/{serviceName}/status` - Get service status
-- `POST /api/pipeline/service/{serviceName}/start` - Start specific service
-- `POST /api/pipeline/service/{serviceName}/stop` - Stop specific service
-- `POST /api/pipeline/service/{serviceName}/restart` - Restart specific service
-- `POST /api/pipeline/service/{serviceName}/pause` - Pause specific service
-- `POST /api/pipeline/service/{serviceName}/resume` - Resume specific service
-
-### Example API Usage
-```bash
-# Get pipeline status
-curl http://localhost:8080/api/pipeline/status
-
-# Start all services
-curl -X POST http://localhost:8080/api/pipeline/start
-
-# Pause specific service
-curl -X POST http://localhost:8080/api/pipeline/service/simulation/pause
-
-# Get specific service status
-curl http://localhost:8080/api/pipeline/service/simulation/status
-```
-
-## Running with JAR
-
-You can also build a standalone JAR and run it without Gradle:
+You can also build a standalone JAR and run it without the start script or Gradle. This is mainly useful for development and integration scenarios:
 
 ```bash
 # Build the JAR
@@ -227,7 +252,7 @@ java -jar build/libs/evochora.jar node run
 # Run with custom config
 java -jar build/libs/evochora.jar --config my-config.conf node run
 
-# Compile assembly
+# Compile EvoASM
 java -jar build/libs/evochora.jar compile --file=assembly/examples/simple.evo
 
 # Inspect storage data
@@ -246,12 +271,12 @@ java -jar build/libs/evochora.jar video --run-id my-simulation-run --out simulat
 ## Troubleshooting
 
 ### Node doesn't start
-- Check that the configuration file exists and is valid
-- Check that required ports (e.g., 8080 for HTTP API) are not already in use
-- Check the logs for error messages
+- Check that the configuration file exists and is valid.
+- Check that required ports (e.g., 8081 for HTTP API) are not already in use.
+- Check the logs for error messages.
 
 ### Compilation fails
-- Verify the assembly file exists
+- Verify the EvoASM source file exists.
 - Check for syntax errors in the assembly code
 - See `ASSEMBLY_SPEC.md` for assembly language documentation
 

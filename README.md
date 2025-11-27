@@ -51,7 +51,7 @@ Open the visualizer in your browser to see it:
 
 Short demo of Evochora’s web-based visualizer:
 
-<video src="https://github.com/user-attachments/assets/2dd2163a-6abe-4121-936d-eb46cc314859" controls></video>
+<video src="https://github.com/user-attachments/assets/2dd2163a-6abe-4121-936d-eb46cc314859" loop></video>
 
 - Visualizer: 2D view into the simulated world (cells, organisms, energy).
 - Goal: Quickly see what kinds of dynamics Evochora can produce.
@@ -214,6 +214,19 @@ Basic contribution workflow:
     - [CLI Usage Guide](docs/CLI_USAGE.md)
     - [Assembly Specification](docs/ASSEMBLY_SPEC.md) (EvoASM – Evochora Assembly)
 
+---
+
+## Logo
+
+```text
+  ■■■■■  ■   ■   ■■■    ■■■   ■   ■   ■■■   ■■■■     ■  
+  ■      ■   ■  ■   ■  ■   ■  ■   ■  ■   ■  ■   ■   ■ ■ 
+  ■      ■   ■  ■   ■  ■      ■   ■  ■   ■  ■   ■  ■   ■
+  ■■■■    ■ ■   ■   ■  ■      ■■■■■  ■   ■  ■■■■   ■   ■
+  ■       ■ ■   ■   ■  ■      ■   ■  ■   ■  ■ ■    ■■■■■
+  ■       ■ ■   ■   ■  ■   ■  ■   ■  ■   ■  ■  ■   ■   ■
+  ■■■■■    ■     ■■■    ■■■   ■   ■   ■■■   ■   ■  ■   ■
+```
 ---
 
 ## License & Citation
