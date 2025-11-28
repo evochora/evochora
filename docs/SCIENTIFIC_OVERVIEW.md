@@ -2,25 +2,93 @@
 
 ## Abstract
 
-Research in Artificial Life has long sought to understand the principles governing the emergence of complexity, yet it remains an open question which evolutionary outcomes are universal and which are contingent upon Earth's history. Landmark systems have explored this by demonstrating the emergence of simple ecologies (Tierra) or the evolution of complex, pre-defined functions (Avida). However, the field has been fundamentally challenged by the difficulty of achieving sustained, open-ended evolution. Most approaches are constrained by their fixed, hard-coded "physics," causing digital worlds to either stagnate, converge on narrow optima, or follow artificially directed paths which is breeding not evolution and prevents the exploration of a deeper question: what properties must an environment possess for complex innovation to arise in the first place?
-
-We introduce Evochora, an open-source platform designed to investigate this question. Evochora provides a rich, n-dimensional environment where the rules of physics and evolution are not pre-supposed but are themselves objects of research. We depart from traditional models by introducing embodied agency, where organisms must navigate their world through distinct instruction-executing and data-manipulating pointers (IP/DPs). This agency is supported by a modular virtual machine offering a rich set of low-level capabilities—including a versatile array of registers and stacks—providing evolution with a powerful toolkit from which to construct higher-order behaviors without them being explicitly predefined. Survival depends on actively foraging for ENERGY while overcoming STRUCTURE obstacles, creating a more grounded form of selection pressure.
-
-The platform's core architecture invites the scientific community to collaboratively design and test the foundational laws of a digital universe. Evochora thus serves not as a single simulation, but as a collective instrument for large-scale, reproducible experiments, with the ultimate goal of demonstrating that higher-order complexity can arise emergently, and to identify the fundamental prerequisites that make it possible.
+Research in Artificial Life has long sought to understand the universal principles governing the emergence of complexity, yet existing platforms are often constrained through fixed or task-specific physics, leading to evolutionary stagnation. We introduce **Evochora**, an open-source platform designed to overcome these limitations by providing a rich, n-dimensional environment where the rules of physics and evolution are not pre-supposed but are themselves objects of research. Unlike traditional systems that simulate disembodied logic or high-level behaviors, Evochora agents must actively navigate space and harvest energy using a specialized virtual machine that offers only low-level capabilities. By forcing organisms to construct higher-order behaviors from fundamental building blocks, the system is designed to facilitate the emergent growth of complexity. The architecture is built on a scalable, deterministic foundation supporting massive-scale experiments. We demonstrate the validity of the underlying model through a viable self-replicating ancestor capable of sustainable reproduction. Beyond this initial validation, Evochora is released not as a final product, but as a collaborative instrument, inviting the scientific community to extend the foundational laws of a digital universe and experimentally investigate the prerequisites for open-ended evolution.
 
 **Live visualization:** [http://evochora.org/](http://evochora.org/)
 
+## Table of Contents
+
+1. [Introduction](#1-introduction)
+2. [The Digital Physics of Evochora](#2-the-digital-physics-of-evochora)
+    - [2.1 The N-Dimensional World and Typed Molecules](#21-the-n-dimensional-world-and-typed-molecules)
+    - [2.2 Embodied Agency and the Virtual Machine](#22-embodied-agency-and-the-virtual-machine)
+    - [2.3 Metabolism, Survival, and Ownership](#23-metabolism-survival-and-ownership)
+    - [2.4 Extensible by Design: The Plugin Architecture](#24-extensible-by-design-the-plugin-architecture)
+    - [2.5 The Primordial Organism: A Case Study in Viability](#25-the-primordial-organism-a-case-study-in-viability)
+3. [Scientific Avenues: From Theory to Experiment](#3-scientific-avenues-from-theory-to-experiment)
+    - [3.1 The Physics of Stability: Mitigating Error Catastrophe and Unconstrained Replication](#31-the-physics-of-stability-mitigating-error-catastrophe-and-unconstrained-replication)
+    - [3.2 The Evolution of Evolvability: A Pluggable Mutation Model](#32-the-evolution-of-evolvability-a-pluggable-mutation-model)
+    - [3.3 The Bioenergetics of Complexity: A Digital Eukaryogenesis](#33-the-bioenergetics-of-complexity-a-digital-eukaryogenesis)
+    - [3.4 From Endosymbiosis to Multicellularity: The Signaling Exaptation](#34-from-endosymbiosis-to-multicellularity-the-signaling-exaptation)
+    - [3.5 Beyond Fixed Resources: Digital Chemistry and Thermodynamics](#35-beyond-fixed-resources-digital-chemistry-and-thermodynamics)
+4. [Scalability and Reproducibility](#4-scalability-and-reproducibility)
+    - [4.1 Performance and Scalability Architecture](#41-performance-and-scalability-architecture)
+    - [4.2 Data Pipeline and Reproducibility](#42-data-pipeline-and-reproducibility)
+    - [4.3 Analysis and Visualization](#43-analysis-and-visualization)
+5. [Conclusion](#5-conclusion)
+6. [A Call for Collaboration: Concrete Research Avenues](#6-a-call-for-collaboration-concrete-research-avenues)
+7. [Project Status, Roadmap, and Community](#7-project-status-roadmap-and-community)
+8. [References](#8-references)
+
 ## 1. Introduction
 
-One of the most profound goals in science is to understand whether the evolutionary path taken on Earth—from self-replication to multicellularity and cognition is a unique accident or the result of a universal principle [(Maynard Smith & Szathmáry, 1995)](#ref-maynard-smith-1995). As our only empirical example, life on Earth offers a single data point, making it impossible to distinguish universal laws from historical contingencies. The field of Artificial Life (A-Life) addresses this by creating "digital universes" where evolution can be re-run, enabling us to explore what fundamental properties of a world are necessary to ignite the sustained emergence of complexity.
+One of the most profound goals in science is to understand whether the evolutionary path taken on Earth — from self-replication to multicellularity and cognition — is a unique accident or the result of a universal principle [(Maynard Smith & Szathmáry, 1995)](#ref-maynard-smith-1995). As our only empirical example, life on Earth offers a single data point, making it impossible to distinguish universal laws from historical contingencies. The field of Artificial Life (A-Life) addresses this by creating "digital universes" where evolution can be re-run, enabling us to explore what fundamental properties of a world are necessary to ignite the sustained emergence of complexity.
 
 Despite seminal progress, achieving this goal has proven elusive. The history of the field can be seen as a series of strategic attempts to overcome the persistent challenge of evolutionary stagnation and achieve true open-ended evolution (OEE), loosely defined as the continual production of novel organisms and behaviors [(Bedau et al., 2000)](#ref-bedau-2000). Seminal systems like Tierra demonstrated that simple ecological dynamics could emerge spontaneously [(Ray, 1991)](#ref-ray-1991), but their evolution rarely surpassed this initial level of complexity. In response, platforms like Avida introduced extrinsic rewards for pre-defined computational tasks [(Ofria & Wilke, 2004)](#ref-ofria-2004), successfully driving the evolution of complex functions but sacrificing the open-endedness that is the hallmark of natural evolution. Subsequent research has explored other avenues: some have focused on complex, dynamic environments to force continuous adaptation; others on sophisticated genotype-phenotype mappings, such as evolving virtual creatures [(Sims, 1994)](#ref-sims-1994), or continuous cellular automata like **Lenia** [(Chan, 2019)](#ref-chan-2019), which produce striking morphological complexity but often lack the semantic richness required for higher-order cognitive or functional evolution. A common thread, however, unites these diverse approaches: the fundamental rules of the world—the 'physics', the available organismal building blocks, the nature of interaction—are ultimately static and imposed by the designer.
 
-This paper introduces Evochora, an open-source research platform architected to address this core limitation directly. We propose a shift in approach: instead of designing a world with another fixed physics, we provide a rich, spatial environment with a versatile set of low-level capabilities, and make the rules of this world themselves an object of scientific inquiry. The platform is designed to facilitate large-scale, long-duration simulations, recognizing that the emergence of complexity requires vast computational exploration. This paper will detail the core architecture of Evochora, including its unique model of embodied agency and its extensible physics, and outline the research avenues it opens for a collaborative investigation into the prerequisites for open-ended evolution.
+This paper introduces Evochora, an open-source community initiative architected to address this core limitation directly. We propose a shift in approach: instead of designing a world with another fixed physics, we provide a rich, spatial environment with a versatile set of low-level capabilities, and make the rules of this world themselves an object of scientific inquiry. The platform is designed to facilitate large-scale, long-duration simulations, recognizing that the emergence of complexity requires vast computational exploration. This paper will detail the core architecture of Evochora, including its unique model of embodied agency and its extensible physics, and outline the research avenues it opens for a collaborative investigation into the prerequisites for open-ended evolution.
 
-## 2. The Evochora Architecture
+### Comparison of Landmark Digital Evolution Platforms
+
+The following table contextualizes Evochora within the history of major A-Life systems, highlighting the shift from simulating genetic logic to simulating embodied agency and physical constraints.
+
+| Feature / Aspect | Tierra (Ray, 1991) | Avida (Ofria et al., 2004) | Lenia (Chan, 2019) | **Evochora (Current)** |
+| :--- | :--- | :--- | :--- | :--- |
+| **Core Concept** | Self-replicating code in linear RAM ("Soup") | Agents solving logic tasks in 2D grid | Continuous cellular automata (Math-Biology) | **Embodied agents** in n-Dimensional space |
+| **Physics / Environment** | CPU cycles & memory access (Fixed) | Rewards for logical tasks (NOT, AND) (Fixed) | Differential equations (flow, kernel) (Fixed) | **Extensible** via Plugins (e.g., Energy, Mutation*) |
+| **Organism Body** | **Disembodied** (Code string only) | **Disembodied** (CPU + Memory buffer) | Morphological patterns (solitons) | **Embodied** (IP + DPs navigating spatial grid) |
+| **Interaction Model** | Parasitism (reading neighbor's RAM) | Limited (mostly competition for space) | Collision, fusion & repulsion of patterns | **Direct & Spatial** (via DPs) & **Signaling*** |
+| **Evolutionary Driver** | Implicit competition for memory/CPU | **Directed** (user-defined rewards) | Spontaneous pattern formation | **Open-ended** (via metabolic & spatial constraints) |
+| **Execution Model** | Sequential (Single IP) | Sequential (Single IP) | Parallel (Continuous dynamics) | **Parallel & Multi-threaded** (via FORK)* |
+| **Primary Research Focus** | Ecology of code & parasites | Evolution of complex logic functions | Self-organizing morphology | **Bioenergetics & Major Transitions** |
+
+*\* Features supported by the core architecture and identified as primary research avenues.*
+
+## 2. The Digital Physics of Evochora
 
 The Evochora platform is architected from the ground up to serve as a flexible and high-performance testbed for exploring the prerequisites of open-ended evolution. Its design is guided by the principles of modularity, spatial embodiment, and extensible physics. This section details the core, currently implemented components of the system.
+
+### Fig. 1: Conceptual Architecture of an Evochora Organism
+         +---------------------------------------------------------------+
+         |                 Evochora "World" (n-D Grid)                   |
+         |                                                               |
+         |   [ ENERGY ]      [ STRUCTURE ]      [ CODE ]      [ DATA ]   |
+         +-------^-----------------^----------------^-------------^------+
+                 |                 |                |             |
+    Interaction: |                 |                |             |
+             (HARVEST)          (BLOCK)         (EXECUTE)      (READ)
+                 |                 |                |             |
+                 |                 |                |             |
+         +-------|-----------------|----------------|-------------|------+
+         |       |    ORGANISM     |                |             |      |
+         |       |                 |                |             |      |
+         |   +---v-----------------v----+      +----v-------------v----+ |
+         |   |    Data Pointers (DPs)   |      |   Inst. Pointer (IP)  | |
+         |   | [DP 0] [DP 1] ... [DP n] |<-----|                       | |
+         |   +--------------------------+      +-----------------------+ |
+         |                 ^                                  ^          |
+         |         (Move/Read/Write)                      (Control)      |
+         |                 |                                  |          |
+         |   +-------------v----------------------------------v------+   |
+         |   |                  Virtual Machine                      |   |
+         |   |                                                       |   |
+         |   |  Registers: [DRs] [PRs] [FPRs] [LRs] (Locations)      |   |
+         |   |                                                       |   |
+         |   |  Stacks:    [Data Stack] [Call Stack] [Loc. Stack]    |   |
+         |   |                                                       |   |
+         |   |  Metabolism: [Energy Register (ER)] --(Cost)--> 0     |   |
+         |   +-------------------------------------------------------+   |
+         +---------------------------------------------------------------+
 
 ### 2.1 The N-Dimensional World and Typed Molecules
 
@@ -35,7 +103,7 @@ This core system is designed for expansion. The ability to introduce new Molecul
 
 ### 2.2 Embodied Agency and the Virtual Machine
 
-Organisms in Evochora are not abstract computational entities but embodied agents. This principle is realized through a sophisticated Virtual Machine (VM) that endows each organism with a rich internal state and a unique model for interacting with the world. A complete specification of the virtual machine, its instruction set, and the assembly language is provided in Appendix A.
+Organisms in Evochora are not abstract computational entities but embodied agents. This principle is realized through an embodied Virtual Machine (VM) architected for spatial agency that endows each organism with a rich internal state and a unique model for interacting with the world. A complete specification of the virtual machine, its instruction set, and the assembly language is provided in the [Assembly Specification](https://github.com/rainco77/evochora/blob/main/docs/ASSEMBLY_SPEC.md).
 
 The VM separates an organism's "processor" from its "actuators":
 
@@ -73,17 +141,23 @@ A core design philosophy of Evochora is that the fundamental rules of the world 
 
 The successful implementation of a viable, self-replicating primordial organism serves as a practical demonstration of the architecture's capabilities. This ancestor holistically solves the intertwined challenges of mechanics, metabolism, and ecology.
 
-Mechanically, it uses a `STRUCTURE` shell as a physical boundary, which acts as a robust termination signal for its low-level copying algorithm and protects itself against hostile behavior of other organisms, reminiscent of the "Lipid World" hypothesis for prebiotic containment [(Segré et al., 2001)](#ref-segre-2001). Metabolically, it follows a strict energy-positive feedback loop, employing an efficient exploration strategy to gather a significant energy surplus before investing in the costly process of replication. Ecologically, it secures space for its offspring by actively clearing a contiguous area, demonstrating how simple instructions can be combined to produce complex, environment-altering behavior. This functional ancestor provides a stable foundation from which evolutionary dynamics can emerge.
+Mechanically, it uses a `STRUCTURE` shell as a physical boundary, which acts as a robust termination signal for its low-level copying algorithm and protects itself against hostile behavior of other organisms, reminiscent of the "Lipid World" hypothesis for prebiotic containment [(Segré et al., 2001)](#ref-segre-2001). Metabolically, it follows a strict energy-positive feedback loop, employing an efficient exploration strategy to gather a significant energy surplus before investing in the costly process of replication. Ecologically, it secures space for its offspring by actively clearing a contiguous area, demonstrating how simple instructions can be combined to produce complex, environment-altering behavior.
 
-## 3. Open Challenges and Avenues for Contribution
+In preliminary stability tests running for 500,000 ticks, this organism demonstrated sustainable replication, generating over 120 offspring lineages while maintaining a stable population size through resource competition. This confirms that the metabolic loop (Energy Gathering -> Replication) is net-positive within the simulation's physical constraints. This functional ancestor provides a stable foundation from which evolutionary dynamics can emerge.
 
-With a stable platform and a viable primordial organism, the focus of the project now shifts from foundational engineering to exploring the emergent evolutionary dynamics that this system makes possible.
+## 3. Scientific Avenues: From Theory to Experiment
 
-This section outlines the next frontier of open challenges and promising research avenues. Each represents a key area where the platform's unique architecture provides a powerful testbed for investigation. We present these not as a fixed roadmap, but as an open invitation to the scientific community to collaborate, experiment, and help shape the future of this digital universe.
+With a functional architectural baseline and a self-replicating ancestor prototype, the project's focus shifts from foundational engineering to exploring the evolutionary dynamics enabled by this system. While the core architecture is in place, realizing the full scientific potential requires collaborative development of specific experimental setups. The platform is designed to facilitate future research into:
 
-### 3.1 The Physics of Stability: Mitigating Error Catastrophe and "Grey Goo"
+*   **Major Evolutionary Transitions** (e.g., transitions to multicellularity via spatial kinship)
+*   **Physics of Evolvability** (e.g., investigating mutation landscapes and robustness)
+*   **Thermodynamics of Life** (e.g., simulating entropy flux and niche construction)
 
-One of the most immediate challenges observed in early Evochora experiments is the phenomenon of destructive interference, colloquially known as "Grey Goo." In a crowded spatial environment, primordial organisms that blindly clear paths for their offspring often inadvertently delete or corrupt the genomes of their neighbors. Because the neighbors share a similar genetic lineage, they often possess the same blind replication strategies. Once corrupted by mutation or damage, these organisms can devolve into highly efficient "deleters," stripping the world of complex structure in a runaway chain reaction. This mirrors the theoretical "Error Catastrophe" [(Eigen, 1971)](#ref-eigen-1971), where the accumulation of errors outpaces the selection for functional information.
+This section outlines the next frontier of open challenges and promising research avenues. Each represents a key area where the platform's unique architecture is designed to serve as an experimental testbed for investigation. We present these not as a fixed roadmap, but as an open invitation to the scientific community to collaborate, experiment, and help shape the future of this digital universe.
+
+### 3.1 The Physics of Stability: Mitigating Error Catastrophe and Unconstrained Replication
+
+One of the most immediate challenges observed in early Evochora experiments is the phenomenon of destructive interference, leading to an ecological collapse driven by hyper-replicators—a scenario colloquially referred to as "Grey Goo." In a crowded spatial environment, primordial organisms that blindly clear paths for their offspring often inadvertently delete or corrupt the genomes of their neighbors. Because the neighbors share a similar genetic lineage, they often possess the same blind replication strategies. Once corrupted by mutation or damage, these organisms can devolve into highly efficient "deleters," stripping the world of complex structure in a runaway chain reaction. This mirrors the theoretical "Error Catastrophe" [(Eigen, 1971)](#ref-eigen-1971), where the accumulation of errors outpaces the selection for functional information.
 
 Evochora provides the ideal testbed to investigate solutions to this stability problem, weighing immediate stability against long-term evolutionary potential.
 
@@ -109,7 +183,7 @@ Theoretical biology suggests that evolvability is not a constant, but a property
 
 Evochora addresses this by treating the rules of variation as a first-class experimental variable through a pluggable mutation system. This allows researchers to experimentally deconstruct the components of evolvability by comparing distinct mutation regimes:
 
-- **Background "Cosmic" Radiation**: A global, environment-driven mutation model that decouples variation from replication, testing hypotheses about stability in high-radiation environments.
+- **Stochastic Background Mutation ("Cosmic Radiation")**: A global, environment-driven mutation model that decouples variation from replication, testing hypotheses about stability in high-radiation environments.
 
 - **Replication Fidelity (Copy Error)**: Linking mutation strictly to the POKE instruction. This allows for the evolution of "mutator" strains or highly conserved lineages, putting the control of mutation rate partially under the organism's control.
 
@@ -137,13 +211,13 @@ Specifically, we predict a natural evolutionary trajectory consisting of three d
 2.  **Stage II (Eukaryotic):** Evolution of internal parallelism (endosymbiosis) via `FORK` to break energy constraints, requiring the evolution of an internal signaling protocol.
 3.  **Stage III (Multicellular):** The "externalization" of this signaling protocol to facilitate a **Fraternal Transition** [(Moreno & Ofria, 2022)](#ref-moreno-2022), allowing genetically identical organisms to coordinate instantly and form higher-level individuality.
 
-In Evochora, the instructions used to send a signal to an internal thread are structurally identical to those used to signal a neighbor. This unified architecture supports two critical modalities required for complex tissue formation without needing rigid, hard-coded protocols:
+In Evochora, the instructions used to send a signal to an internal thread are structurally identical to those used to signal to a neighbor. This unified architecture supports two critical modalities required for complex tissue formation without needing rigid, hard-coded protocols:
 
 * **Broadcast Signaling:** Equivalent to biological *quorum sensing* [(Bonabeau et al., 1999)](#ref-bonabeau-1999), allowing organisms to react to local gradients or group density (e.g., "Food source found").
 * **Targeted References:** By establishing "fuzzy locks" with specific neighbors (e.g., via kinship upon replication [(Hamilton, 1964)](#ref-hamilton-1964) or direct contact), organisms can form persistent structural bonds or channels for direct resource transfer, mimicking the tight coupling of *multicellular tissues*.
 
-**Experimental Strategy: Skipping the "Boring Billion"**
-Acknowledging that the random evolution of such a complex "eukaryotic" architecture could take prohibitively long (mirroring the "Boring Billion" years on Earth), Evochora allows researchers to bypass this bottleneck. We propose an experimental setup seeded with a **multi-threaded primordial organism**. This ancestor is explicitly programmed to execute a `FORK` instruction immediately upon initialization, establishing a dual-context architecture where a secondary instance is dedicated to energy acquisition while the primary instance manages replication. This interventionist strategy allows us to skip **Stage I** and start directly at **Stage II**, testing the hypothesis that organisms with pre-existing internal coordination channels are primed for the rapid emergence of multicellularity (Stage III).
+**Experimental Strategy: Accelerating Evolutionary Transitions**
+Acknowledging that the random evolution of such a complex "eukaryotic" architecture could take prohibitively long (mirroring the extended stasis period often termed the "Boring Billion" in Earth's history), Evochora allows researchers to bypass this bottleneck. We propose an experimental setup seeded with a **multi-threaded primordial organism**. This ancestor is explicitly programmed to execute a `FORK` instruction immediately upon initialization, establishing a dual-context architecture where a secondary instance is dedicated to energy acquisition while the primary instance manages replication. This interventionist strategy allows us to skip **Stage I** and start directly at **Stage II**, testing the hypothesis that organisms with pre-existing internal coordination channels are primed for the rapid emergence of multicellularity (Stage III).
 
 ### 3.5 Beyond Fixed Resources: Digital Chemistry and Thermodynamics
 
@@ -157,9 +231,22 @@ Evochora aims to simulate these dynamics by expanding its physics into a fully-f
 
 By enforcing thermodynamic constraints—where every action generates waste heat or material byproducts—Evochora allows us to investigate how the necessity of entropy reduction drives the evolution of efficient, circular ecosystems and complex food webs.
 
-## 4. Computational Framework and Experimental Feasibility
+## 4. Scalability and Reproducibility
 
-The grand scientific ambitions of Evochora are predicated on the ability to run large-scale, long-duration simulations that are both computationally feasible and scientifically rigorous. This section outlines the computational framework designed to meet these challenges, addressing its performance architecture, data handling capabilities, and the provisions for reproducible analysis.
+The grand scientific ambitions of Evochora are predicated on the ability to run large-scale experiments that are both computationally feasible and scientifically rigorous. Unlike many prototype simulations, Evochora is built on a mature software engineering foundation designed for long-term stability and distributed execution.
+
+### Engineering Maturity Status
+
+| Component | Status | Feature Highlights |
+| :--- | :--- | :--- |
+| **Virtual Machine** | ✔ Functional | Full register set, 3 stacks, dual-pointer architecture, procedural calls. |
+| **Determinism** | ✔ Verified | 100% reproducible runs via fixed seeds and strict conflict resolution. |
+| **Compiler** | ✔ Functional | Multi-phase immutable pipeline with high-level assembly, procedures, macros and source-map generation. |
+| **Data Pipeline** | ✔ Architected | Decoupled architecture designed for scalability (Queue -> Persistence -> Indexer -> DB). |
+| **Visualizer** | ✔ Live | Web-based, tick-by-tick inspection, memory layout visualization and assembly debugger. |
+| **Primordial Organism** | ✔ Viable | Self-replicating ancestor with metabolic loop and spatial replication logic. |
+
+This section outlines the computational framework designed to meet these challenges, addressing its performance architecture, data handling capabilities, and the provisions for reproducible analysis.
 
 The following diagram illustrates the high-level data flow architecture:
 ```
@@ -204,7 +291,9 @@ The following diagram illustrates the high-level data flow architecture:
 
 ### 4.1 Performance and Scalability Architecture
 
-The core simulation is designed for high performance. The raw, in-memory simulation engine can achieve over 300,000 instructions per second on standard consumer hardware. However, for a full experiment with the entire data pipeline active (including persistence and indexing), the sustainable throughput is closer to 10,000 instructions per second, as the system becomes I/O-bound. The primary computational load scales linearly with the number of active organisms (O(N)), as each organism executes one instruction per simulation tick.
+The core simulation is designed for high performance. The raw, in-memory simulation engine can achieve over 300,000 instructions per second on standard consumer hardware (e.g., quad-core laptop). However, in a typical local setup where the entire data pipeline (persistence, indexing) shares the same machine resources, the sustainable throughput is constrained by I/O to approximately 1,000–10,000 instructions per second. This bottleneck is an artifact of the single-node configuration; the decoupled architecture is designed to overcome this by distributing services across a cloud cluster, allowing the engine to run at full speed.
+
+The primary computational load (CPU) scales linearly with the number of active organisms (O(N)). However, the data pipeline load (I/O) scales with the size of the environment and the update frequency. For example, a densely populated 1000x1000 grid generates significant data volume per tick, making decoupled, asynchronous persistence essential to avoid stalling the simulation loop.
 
 To move beyond the limitations of single-core execution, the simulation tick is architected in three distinct phases:
 
@@ -220,7 +309,7 @@ Large-scale simulations can generate significant data volumes, up to 25 GB per h
 
 Scientific rigor is ensured through **full determinism**. All sources of randomness use a fixed seed, and the conflict resolution mechanism is deterministic (currently favoring the organism with the lower ID), guaranteeing that an experiment is perfectly reproducible.
 
-The roadmap for enhancing the data pipeline focuses on cloud-native scalability. This includes replacing the in-memory queue with a message bus (e.g., AWS SNS), enabling the Persistence Service to be scaled out across multiple machines writing to shared storage (e.g., AWS S3). A key planned feature is the ability to resume a simulation from a stored state at tick n. This is a relatively simple addition that will enable the use of cost-effective spot instances for very long-running experiments and introduces a research trade-off between storing full snapshots for random access versus storing deltas to reduce data size.
+The roadmap for enhancing the data pipeline focuses on cloud-native scalability. Since all services are built against abstract interfaces, replacing the current in-memory resources with distributed counterparts (e.g., AWS SNS, S3) is a straightforward architectural extension. A key planned feature is the ability to resume a simulation from any stored state. This capability will enable the use of cost-effective spot instances for very long-running experiments. Additionally, we plan to optimize the engine's output by implementing delta-compression strategies to further reduce data volume without sacrificing replayability.
 
 ### 4.3 Analysis and Visualization
 
@@ -230,14 +319,56 @@ The primary analysis tool is a sophisticated, web-based visualizer, a live demo 
 
 ## 5. Conclusion
 
-We have introduced Evochora, a new open-source platform designed to address a fundamental challenge in Artificial Life: the exploration of the prerequisites for open-ended evolution. We have argued that the fixed, hard-coded "physics" of previous systems has limited the potential for digital evolution to achieve the kind of sustained, innovative complexity seen in nature. Evochora's core architecture, founded on the principles of embodied agency in an n-dimensional world and a modular, extensible physics, provides a new framework for investigating these foundational questions. The platform is not presented as a final answer, but as a robust and scalable instrument for a new kind of collaborative research.
+We have introduced Evochora, a new open-source platform designed to address a fundamental challenge in Artificial Life: The exploration of the prerequisites for open-ended evolution. We have argued that the fixed, hard-coded "physics" of previous systems has limited the potential for digital evolution to achieve the kind of sustained, innovative complexity seen in nature. Evochora's core architecture, founded on the principles of embodied agency in an n-dimensional world and a modular, extensible physics, provides a new framework for investigating these foundational questions. Evochora does not claim to solve the mystery of Open-Ended Evolution itself, but aims to provide the experimental friction and physical constraints necessary for the community to investigate it. The platform is not presented as a final answer, but as a robust and scalable instrument for a new kind of collaborative research.
 
 The design choices, particularly the inherent physical immobility of organisms, are not limitations but deliberate experimental setups. By focusing the evolutionary pressure on local interactions between sessile agents, Evochora creates a powerful testbed for investigating some of the most profound questions in evolutionary biology, such as the emergence of cooperation, specialization, and potentially, major evolutionary transitions like multicellularity. The avenues for future research—from evolving a digital chemistry to implementing diverse mutation models—highlight the platform's long-term vision.
 
 Evochora is therefore more than a simulation tool; it is an open invitation to the scientific community. The project is in an early stage, and many of the most exciting challenges—both scientific and computational—lie ahead. We welcome and encourage contributions of all kinds, from participating in scientific discussions about the "laws" of our digital universe to contributing to the open-source development of the platform itself. We believe that the search for the principles of life, digital or otherwise, is a collaborative endeavor, and we offer Evochora as a shared instrument for that quest.
 
-## 6. Project Status, Roadmap, and Community
-**Current Status**: Evochora is a fully operational, feature-rich platform with a stable VM, compiler, and data pipeline. A viable primordial organism capable of sustainable replication has been successfully developed.
+## 6. A Call for Collaboration: Concrete Research Avenues
+
+Evochora is designed not just as a simulation, but as a collaborative scientific instrument. We actively invite researchers, students, and software engineers to use this platform to generate publishable results. Below is a list of concrete, high-impact research avenues that are currently open and directly supported by the architecture.
+
+### Open Research Questions (Proposed Implementation & Experiments)
+
+**1. Formalizing the Ownership Model**
+*   **Hypothesis:** Strict enforcement of "property rights" (via energy penalties for theft) is a necessary condition for the emergence of stable multicellularity in spatial systems.
+*   **Task:** Design and implement the `GIFT` instruction protocol and run stability experiments comparing "theft-permitted" vs. "theft-penalized" physics.
+
+**2. Designing a Minimal Digital Chemistry**
+*   **Hypothesis:** A reaction system with conservation of mass and energy but emitting entropy (thermodynamics) will spontaneously evolve circular metabolic pathways (waste recycling).
+*   **Task:** Extend Evochora to define a minimal set of `REACTION` rules (e.g., A + B -> C + Energy) and measure the emergence of trophic levels and ecological recycling loops [(reminiscent of Chromaria)](#ref-soros-2014).
+
+**3. Investigating Stability under Fuzzy Addressing**
+*   **Hypothesis:** Fuzzy addressing (SignalGP style) increases the "neutral network" of the fitness landscape, allowing populations to cross fitness valleys that trap rigid-addressing organisms.
+*   **Task:** Implement a fuzzy jump mechanism and measure the "Time to Error Catastrophe" under high mutation rates compared to standard absolute addressing.
+
+**4. Measuring Emergent Complexity**
+*   **Goal:** Move beyond visual inspection to rigorous, mathematical quantification of evolution.
+*   **Task:** Implement a pipeline to calculate **Assembly Theory** indices [(Sharma et al., 2023)](#ref-sharma-2023) or LZ-Complexity on the persisted genomes of a long-running simulation to mathematically prove the increase of non-trivial information.
+
+### Target Venues for Publication
+
+Results generated with Evochora align well with the research scope of the following communities and conferences:
+*   **ALife** (Conference on Artificial Life)
+*   **ECAL** (European Conference on Artificial Life)
+*   **GECCO** (Genetic and Evolutionary Computation Conference)
+*   **Artificial Intelligence Journal**
+*   **Entropy** (Journal)
+
+**Join the Lab:** We treat this repository as a distributed research lab. If you are interested in tackling one of these questions, please open a thread in our [GitHub Discussions](https://github.com/rainco77/evochora/discussions) tagged `[Research Proposal]` so we can support your experimental setup.
+
+## 7. Project Status, Roadmap, and Community
+
+**Current Status: From Proof-of-Concept to Community Instrument**
+Evochora has evolved rapidly from an experimental prototype to a fully operational platform with a stable VM, compiler, and data pipeline. A viable primordial organism capable of sustainable replication has been successfully developed, demonstrating the validity of the core physics.
+
+However, the project is currently at a critical inflection point. Originally incubated as an independent research initiative, the project is now transitioning to a community-driven model to evolve into a robust, globally scalable scientific instrument. We are actively soliciting collaboration and looking for:
+*   **Scientists** to design rigorous experiments and challenge the theoretical assumptions.
+*   **Engineers** to harden the distributed pipeline for massive-scale runs.
+*   **Contributors** to expand the ecosystem of plugins and analysis tools.
+
+This is not a closed product; it is an open invitation to build the next generation of Artificial Life research together.
 
 **Roadmap**: The project is guided by the long-term vision of creating a digital universe where complex, open-ended evolution can emerge. Our roadmap is a dynamic process focused on incrementally enhancing the platform's capabilities in three key areas:
 
@@ -249,18 +380,18 @@ A live, detailed version of our roadmap, outlining specific tasks and current pr
 
 **Get Involved**: We encourage all forms of participation.
 
-- **Live Demo**: A live instance of the visualizer is available at [http://evochora.org/visualizer/](http://evochora.org/visualizer/)
+- **Live Demo**: A live instance of the visualizer is available at [http://evochora.org/](http://evochora.org/)
 - **Demo Simulation Video**: A video of a primordial organism simulation can be viewed here: [Direct Video Link](https://github-production-user-asset-6210df.s3.amazonaws.com/13830117/518864494-2dd2163a-6abe-4121-936d-eb46cc314859.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20251126%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251126T213314Z&X-Amz-Expires=300&X-Amz-Signature=77a7583f022cdd71315f73f0b4433168fef24a91cc1bc9df6f9f79bb0cd8a45e&X-Amz-SignedHeaders=host)
 - **Scientific Discussion**: [GitHub Discussions](https://github.com/rainco77/evochora/discussions)
 - **Community Chat**: [Discord Server](https://discord.gg/1442908877648822466)
 - **Roadmap**: [GitHub Project board](https://github.com/users/rainco77/projects/1)
 - **Source Code**: [GitHub Repository](https://github.com/users/rainco77/evochora)
-- **Technical Specifications**: The [Virtual Machine and Assembly Language Specification](ASSEMBLY_SPEC.md) provides a complete technical reference.
+- **Technical Specifications**: The [Virtual Machine and Assembly Language Specification](https://github.com/rainco77/evochora/blob/main/docs/ASSEMBLY_SPEC.md) provides a complete technical reference.
 
 
 The software is open-source and released under the MIT License.
 
-## 7. References
+## 8. References
 
 - <a id="ref-ackley-2013"></a>Ackley, D. H. (2013). Indefinite scalability for living computation. In *Artificial Life 13* (pp. 603-610). MIT Press.
 - <a id="ref-bedau-2000"></a>Bedau, M. A., Snyder, E., & Packard, N. H. (2000). A classification of long-term evolutionary dynamics. In *Artificial Life VII* (pp. 228-237). MIT Press.
