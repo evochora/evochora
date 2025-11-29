@@ -1,5 +1,8 @@
 package org.evochora.datapipeline.api.resources.storage;
 
+import org.evochora.datapipeline.api.resources.IMonitorable;
+import org.evochora.datapipeline.api.resources.IResource;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
@@ -13,7 +16,7 @@ import java.util.List;
  * <p>
  * <strong>Thread Safety:</strong> Implementations MUST be thread-safe.
  */
-public interface IAnalyticsStorageRead {
+public interface IAnalyticsStorageRead extends IResource, IMonitorable {
     /**
      * Opens an input stream to read an analysis artifact.
      *

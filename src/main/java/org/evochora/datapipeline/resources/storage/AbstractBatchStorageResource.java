@@ -14,6 +14,7 @@ import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageReader;
 import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageWriter;
+import org.evochora.datapipeline.resources.storage.wrappers.MonitoredAnalyticsStorageWriter;
 import org.evochora.datapipeline.utils.compression.ICompressionCodec;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
@@ -641,9 +642,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         return switch (context.usageType()) {
             case "storage-write" -> new MonitoredBatchStorageWriter(this, context);
             case "storage-read" -> new MonitoredBatchStorageReader(this, context);
+            case "analytics-write" -> new MonitoredAnalyticsStorageWriter(this, context);
             default -> throw new IllegalArgumentException(String.format(
                 "Unsupported usage type '%s' for storage resource '%s'. " +
-                "Supported types: storage-write, storage-read",
+                "Supported types: storage-write, storage-read, analytics-write",
                 context.usageType(), getResourceName()
             ));
         };

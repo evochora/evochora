@@ -42,4 +42,14 @@ public final class ServiceRegistry {
         }
         return (T) instance;
     }
+
+    /**
+     * Checks if a service of the given type is already registered.
+     *
+     * @param type The class type to check.
+     * @return true if a service is registered, false otherwise.
+     */
+    public boolean hasService(final Class<?> type) {
+        return services.containsKey(type);
+    }
 }

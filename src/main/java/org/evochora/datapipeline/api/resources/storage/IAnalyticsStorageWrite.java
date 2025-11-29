@@ -1,5 +1,8 @@
 package org.evochora.datapipeline.api.resources.storage;
 
+import org.evochora.datapipeline.api.resources.IMonitorable;
+import org.evochora.datapipeline.api.resources.IResource;
+
 import java.io.IOException;
 import java.io.OutputStream;
 
@@ -11,7 +14,7 @@ import java.io.OutputStream;
  * <p>
  * <strong>Thread Safety:</strong> Implementations MUST be thread-safe.
  */
-public interface IAnalyticsStorageWrite {
+public interface IAnalyticsStorageWrite extends IResource, IMonitorable {
     /**
      * Opens an output stream to write an analysis artifact.
      * The implementation handles path resolution relative to its analytics root.

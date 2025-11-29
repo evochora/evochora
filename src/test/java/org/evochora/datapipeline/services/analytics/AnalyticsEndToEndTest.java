@@ -8,6 +8,7 @@ import org.evochora.datapipeline.services.PersistenceService;
 import org.evochora.datapipeline.services.indexers.AnalyticsIndexer;
 import org.evochora.node.Node;
 import org.evochora.node.processes.http.HttpServerProcess;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -39,68 +40,88 @@ class AnalyticsEndToEndTest {
     void testEndToEndPipeline() throws Exception {
         // 1. Setup Config
         File storageDir = tempDir.resolve("storage").toFile();
-        File dbFile = tempDir.resolve("index").toFile();
         
         Config config = ConfigFactory.parseString("""
-            pipeline {
-                autoStart = true
-                startupSequence = ["analytics-indexer", "http"]
-                
-                database {
-                    jdbcUrl = "jdbc:h2:%s;MODE=PostgreSQL;AUTO_SERVER=TRUE"
-                }
-                
-                resources {
-                    tick-storage {
-                        className = "org.evochora.datapipeline.resources.storage.FileSystemStorageResource"
-                        options {
-                            rootDirectory = "%s"
-                        }
-                    }
-                    batch-topic {
-                        className = "org.evochora.datapipeline.resources.topics.H2TopicResource"
-                    }
-                    index-database {
-                        className = "org.evochora.datapipeline.resources.database.H2Database"
-                    }
-                }
-                
-                services {
-                    analytics-indexer {
-                        className = "org.evochora.datapipeline.services.indexers.AnalyticsIndexer"
-                        resources {
-                            storage = "storage-read:tick-storage"
-                            topic = "topic-read:batch-topic?consumerGroup=test"
-                            metadata = "db-meta-read:index-database"
-                            analyticsOutput = "analytics-write:tick-storage"
-                        }
-                        options {
-                            runId = "test-run-1"
-                            metadataPollIntervalMs = 100
-                            insertBatchSize = 10
-                            flushTimeoutMs = 1000
-                            tempDirectory = "%s/temp"
-                            plugins = [
-                                {
-                                    className = "org.evochora.datapipeline.services.analytics.plugins.PopulationMetricsPlugin"
-                                    options {
-                                        metricId = "population"
-                                        samplingInterval = 1
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            }
-            
             node {
                 processes {
                     pipeline {
                          className = "org.evochora.datapipeline.ServiceManagerProcess"
+                         options {
+                            autoStart = true
+                            startupSequence = ["analytics-indexer"]
+                            
+                            database {
+                                jdbcUrl = "jdbc:h2:mem:indexdb;MODE=PostgreSQL"
+                                username = "sa"
+                                password = ""
+                                maxPoolSize = 10
+                                minIdle = 2
+                            }
+                            
+                            resources {
+                                tick-storage {
+                                    className = "org.evochora.datapipeline.resources.storage.FileSystemStorageResource"
+                                    options {
+                                        rootDirectory = "%s"
+                                    }
+                                }
+                                batch-topic {
+                                    className = "org.evochora.datapipeline.resources.topics.H2TopicResource"
+                                    options {
+                                        jdbcUrl = "jdbc:h2:mem:topicdb;MODE=PostgreSQL"
+                                        username = "sa"
+                                        password = ""
+                                        maxPoolSize = 10
+                                        minIdle = 2
+                                    }
+                                }
+                                index-database {
+                                    className = "org.evochora.datapipeline.resources.database.H2Database"
+                                    options {
+                                        jdbcUrl = "jdbc:h2:mem:indexdb;MODE=PostgreSQL"
+                                        username = "sa"
+                                        password = ""
+                                        maxPoolSize = 10
+                                        minIdle = 2
+                                    }
+                                }
+                            }
+                            
+                            services {
+                                analytics-indexer {
+                                    className = "org.evochora.datapipeline.services.indexers.AnalyticsIndexer"
+                                    resources {
+                                        storage = "storage-read:tick-storage"
+                                        topic = "topic-read:batch-topic?consumerGroup=test"
+                                        metadata = "db-meta-read:index-database"
+                                        analyticsOutput = "storage-write:tick-storage"
+                                    }
+                                    options {
+                                        runId = "test-run-1"
+                                        metadataPollIntervalMs = 100
+                                        metadataMaxPollDurationMs = 5000
+                                        insertBatchSize = 10
+                                        flushTimeoutMs = 1000
+                                        tempDirectory = "%s/temp"
+                                        plugins = [
+                                            {
+                                                className = "org.evochora.datapipeline.services.analytics.plugins.PopulationMetricsPlugin"
+                                                options {
+                                                    metricId = "population"
+                                                    samplingInterval = 1
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
+                         }
                     }
                     http {
                         className = "org.evochora.node.processes.http.HttpServerProcess"
+                        require {
+                            serviceManager = "pipeline"
+                        }
                         options {
                             network { host = "localhost", port = 0 } # Random port
                             resourceBindings {
@@ -120,7 +141,7 @@ class AnalyticsEndToEndTest {
                     }
                 }
             }
-            """.formatted(dbFile.getAbsolutePath(), storageDir.getAbsolutePath(), tempDir.toAbsolutePath()));
+            """.formatted(storageDir.getAbsolutePath(), tempDir.toAbsolutePath()));
 
         // 2. Start Node
         Node node = new Node(config);

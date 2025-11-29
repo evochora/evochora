@@ -65,7 +65,10 @@ public class HttpServerProcess extends AbstractProcess {
         if (options.hasPath("resourceBindings")) {
             Config bindings = options.getConfig("resourceBindings");
             for (String interfaceName : bindings.root().keySet()) {
-                String resourceName = bindings.getString(interfaceName);
+                // Access ConfigValue directly to avoid dot-notation path interpretation
+                // Keys with dots (like "org.evochora...") are quoted in HOCON but need
+                // to be accessed via root().get() instead of getString() to preserve the key
+                String resourceName = bindings.root().get(interfaceName).unwrapped().toString();
                 try {
                     Class<?> interfaceClass = Class.forName(interfaceName);
                     // Get resource and cast to interface
