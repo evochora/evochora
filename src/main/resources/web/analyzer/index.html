@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evochora Analytics</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        body { font-family: sans-serif; margin: 20px; background: #f0f2f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { margin-bottom: 30px; }
+        .metric-card { 
+            background: white; 
+            padding: 20px; 
+            margin-bottom: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+        }
+        .chart-container { position: relative; height: 400px; width: 100%; }
+        h1 { color: #1a1a1a; }
+        h2 { color: #333; margin-top: 0; }
+        p { color: #666; }
+        .controls { margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Evochora Analytics Dashboard</h1>
+            <div class="controls">
+                <label for="runIdInput">Run ID:</label>
+                <input type="text" id="runIdInput" placeholder="Enter Run ID (e.g. 2025...)" style="width: 300px; padding: 5px;">
+                <button onclick="loadDashboard()">Load Metrics</button>
+            </div>
+        </div>
+        
+        <div id="dashboard">
+            <p id="status">Ready to load.</p>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.28.0/+esm";
+
+        let db = null;
+        let conn = null;
+
+        async function initDuckDB() {
+            const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
+            const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
+            const worker = new Worker(bundle.mainWorker);
+            const logger = new duckdb.ConsoleLogger();
+            db = new duckdb.AsyncDuckDB(logger, worker);
+            await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+            conn = await db.connect();
+            console.log("DuckDB initialized");
+        }
+
+        window.loadDashboard = async function() {
+            const runId = document.getElementById('runIdInput').value;
+            if (!runId) return alert("Please enter a Run ID");
+
+            const status = document.getElementById('status');
+            status.innerText = "Loading manifest...";
+            
+            try {
+                if (!db) await initDuckDB();
+
+                // 1. Manifest
+                const response = await fetch(`/analyzer/api/manifest?runId=${runId}`);
+                if (!response.ok) throw new Error("Failed to load manifest");
+                const manifest = await response.json();
+                
+                const dashboard = document.getElementById('dashboard');
+                dashboard.innerHTML = "";
+
+                if (!manifest.metrics?.length) {
+                    dashboard.innerHTML = "<p>No metrics found.</p>";
+                    return;
+                }
+
+                // 2. Render Metrics
+                for (const metric of manifest.metrics) {
+                    await renderMetric(runId, metric);
+                }
+                status.innerText = "Loaded.";
+
+            } catch (e) {
+                console.error(e);
+                status.innerText = "Error: " + e.message;
+            }
+        }
+
+        async function renderMetric(runId, metric) {
+            const dashboard = document.getElementById('dashboard');
+            
+            // UI Shell
+            const card = document.createElement('div');
+            card.className = 'metric-card';
+            const canvasId = `chart-${metric.id}`;
+            card.innerHTML = `
+                <h2>${metric.name}</h2>
+                <p>${metric.description}</p>
+                <div class="chart-container"><canvas id="${canvasId}"></canvas></div>
+            `;
+            dashboard.appendChild(card);
+
+            // 3. Resolve Files
+            // Use "raw" datasource by default
+            const sourcePattern = metric.dataSources['raw'] || Object.values(metric.dataSources)[0];
+            const prefix = sourcePattern.substring(0, sourcePattern.indexOf('*')); // e.g. "population/raw/"
+            
+            const listResp = await fetch(`/analyzer/api/list?runId=${runId}&prefix=${encodeURIComponent(prefix)}`);
+            const files = await listResp.json();
+            
+            if (files.length === 0) {
+                console.warn("No files found for metric", metric.id);
+                return;
+            }
+
+            // 4. Register Files in DuckDB
+            // DuckDB HTTPFS needs full URLs
+            const urls = [];
+            for (const file of files) {
+                if (!file.endsWith(".parquet")) continue;
+                
+                // Register file mapping: local path -> remote URL
+                // We use a virtual path in DuckDB to keep queries simple
+                const virtualPath = file; 
+                const remoteUrl = `${window.location.origin}/analyzer/api/files/${file}?runId=${runId}`;
+                
+                await db.registerFileURL(virtualPath, remoteUrl, 4 /* DuckDB.DuckDBDataProtocol.HTTP */, false);
+                urls.push(`'${virtualPath}'`);
+            }
+
+            if (urls.length === 0) return;
+
+            // 5. Query Data
+            // DuckDB can read list of files: read_parquet(['a.parquet', 'b.parquet'])
+            const sql = `SELECT * FROM read_parquet([${urls.join(',')}]) ORDER BY tick`;
+            console.log("Executing SQL:", sql);
+            
+            const result = await conn.query(sql);
+            const data = result.toArray().map(row => row.toJSON());
+
+            // 6. Render Chart
+            const viz = metric.visualization;
+            if (viz.type === 'line-chart') {
+                const xKey = viz.config.x;
+                const yKeys = viz.config.y || [];
+                const y2Keys = viz.config.y2 || [];
+
+                const datasets = [];
+                
+                yKeys.forEach((key, idx) => {
+                    datasets.push({
+                        label: key,
+                        data: data.map(row => row[key]),
+                        borderColor: `hsl(${idx * 137.5}, 70%, 50%)`,
+                        yAxisID: 'y'
+                    });
+                });
+
+                y2Keys.forEach((key, idx) => {
+                    datasets.push({
+                        label: key,
+                        data: data.map(row => row[key]),
+                        borderColor: `hsl(${(idx + yKeys.length) * 137.5}, 70%, 50%)`,
+                        borderDash: [5, 5],
+                        yAxisID: 'y2'
+                    });
+                });
+
+                new Chart(document.getElementById(canvasId), {
+                    type: 'line',
+                    data: {
+                        labels: data.map(row => row[xKey]),
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        scales: {
+                            y: { type: 'linear', display: true, position: 'left' },
+                            y2: { type: 'linear', display: y2Keys.length > 0, position: 'right', grid: { drawOnChartArea: false } }
+                        }
+                    }
+                });
+            }
+        }
+    </script>
+</body>
+</html>

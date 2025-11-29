@@ -327,6 +327,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         builder.setSimulationRunId(runId);
         builder.setTickNumber(tick);
         builder.setCaptureTimeMs(System.currentTimeMillis());
+        builder.setTotalOrganismsCreated(simulation.getTotalOrganismsCreatedCount());
         simulation.getOrganisms().stream().filter(o -> !o.isDead()).forEach(o -> builder.addOrganisms(extractOrganismState(o)));
         extractCellStates(simulation.getEnvironment(), builder);
         builder.setRngState(ByteString.copyFrom(randomProvider.saveState()));

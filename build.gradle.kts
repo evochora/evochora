@@ -43,6 +43,7 @@ dependencies {
     testImplementation("org.assertj:assertj-core:3.26.3")
     testImplementation("org.awaitility:awaitility:4.2.1")
     testImplementation("io.rest-assured:rest-assured:5.4.0") // For API integration testing
+    testImplementation("io.javalin:javalin-testtools:6.1.3")
     
     
     // Explicitly declare test framework implementation dependencies for Gradle 9 compatibility
@@ -70,6 +71,9 @@ dependencies {
 
     // Zstd compression library with bundled native binaries for cross-platform support
     implementation("com.github.luben:zstd-jni:1.5.5-11")
+
+    // DuckDB JDBC driver for analytics
+    implementation("org.duckdb:duckdb_jdbc:1.1.3")
 
     // Test fixtures: dependencies needed to compile the JUnit extension
     testFixturesImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")

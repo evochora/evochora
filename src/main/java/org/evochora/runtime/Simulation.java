@@ -92,6 +92,15 @@ public class Simulation {
     }
 
     /**
+     * Returns the total number of organisms created so far.
+     * This corresponds to the highest ID assigned.
+     * @return Total organisms created.
+     */
+    public int getTotalOrganismsCreatedCount() {
+        return nextOrganismId - 1;
+    }
+
+    /**
      * Returns the logger for this class.
      * @return The SLF4J logger.
      */

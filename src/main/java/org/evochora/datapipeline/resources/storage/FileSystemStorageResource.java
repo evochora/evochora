@@ -1,15 +1,20 @@
 package org.evochora.datapipeline.resources.storage;
 
 import com.typesafe.config.Config;
+import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageRead;
+import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
 import org.evochora.datapipeline.utils.PathExpansion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -21,7 +26,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class FileSystemStorageResource extends AbstractBatchStorageResource {
+public class FileSystemStorageResource extends AbstractBatchStorageResource
+        implements IAnalyticsStorageWrite, IAnalyticsStorageRead {
 
     private static final Logger log = LoggerFactory.getLogger(FileSystemStorageResource.class);
     private final File rootDirectory;
@@ -226,6 +232,97 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
             metrics.put("disk_used_percent", usedPercent);
         } else {
             metrics.put("disk_used_percent", 0.0);
+        }
+    }
+
+    // ========================================================================
+    // IAnalyticsStorageWrite Implementation
+    // ========================================================================
+
+    @Override
+    public OutputStream openAnalyticsOutputStream(String runId, String metricId, String lodLevel, String filename) throws IOException {
+        File file = getAnalyticsFile(runId, metricId, lodLevel, filename);
+        
+        // Ensure parent directories exist
+        File parentDir = file.getParentFile();
+        if (parentDir != null && !parentDir.exists()) {
+            if (!parentDir.mkdirs() && !parentDir.isDirectory()) {
+                throw new IOException("Failed to create directories for: " + file.getAbsolutePath());
+            }
+        }
+        
+        return Files.newOutputStream(file.toPath());
+    }
+
+    // ========================================================================
+    // IAnalyticsStorageRead Implementation
+    // ========================================================================
+
+    @Override
+    public InputStream openAnalyticsInputStream(String runId, String path) throws IOException {
+        // Path is relative to analytics root (e.g. "population/raw/batch_001.parquet")
+        File file = new File(getAnalyticsRoot(runId), path);
+        validatePath(file, runId); // Security check
+        
+        if (!file.exists()) {
+            throw new IOException("Analytics file not found: " + file.getAbsolutePath());
+        }
+        return Files.newInputStream(file.toPath());
+    }
+
+    @Override
+    public List<String> listAnalyticsFiles(String runId, String prefix) throws IOException {
+        // Analytics root for this run
+        File analyticsRoot = getAnalyticsRoot(runId);
+        if (!analyticsRoot.exists() || !analyticsRoot.isDirectory()) {
+            return Collections.emptyList();
+        }
+
+        // Prefix is relative to analytics/{runId}/
+        String searchPrefix = (prefix == null) ? "" : prefix;
+        
+        // Simple recursive walk, filtering by prefix
+        Path rootPath = analyticsRoot.toPath();
+        try (Stream<Path> stream = Files.walk(rootPath)) {
+            return stream
+                .filter(Files::isRegularFile)
+                .map(p -> rootPath.relativize(p))
+                .map(Path::toString)
+                .map(s -> s.replace(File.separatorChar, '/'))
+                .filter(path -> path.startsWith(searchPrefix))
+                .filter(path -> !path.endsWith(".tmp")) // Exclude temp files
+                .sorted()
+                .collect(Collectors.toList());
+        }
+    }
+
+    // ========================================================================
+    // Internal Helpers
+    // ========================================================================
+
+    private File getAnalyticsRoot(String runId) {
+        validateKey(runId); // Ensure runId is safe (no ..)
+        return new File(new File(rootDirectory, runId), "analytics");
+    }
+
+    private File getAnalyticsFile(String runId, String metricId, String lodLevel, String filename) {
+        validateKey(runId);
+        validateKey(metricId);
+        if (lodLevel != null) validateKey(lodLevel);
+        validateKey(filename);
+        
+        File root = getAnalyticsRoot(runId);
+        File metricDir = new File(root, metricId);
+        File targetDir = (lodLevel != null) ? new File(metricDir, lodLevel) : metricDir;
+        
+        return new File(targetDir, filename);
+    }
+    
+    private void validatePath(File file, String runId) throws IOException {
+        File root = getAnalyticsRoot(runId).getCanonicalFile();
+        File target = file.getCanonicalFile();
+        if (!target.toPath().startsWith(root.toPath())) {
+            throw new IOException("Path traversal attempt: " + file.getPath());
         }
     }
 

@@ -61,7 +61,32 @@ public class HttpServerProcess extends AbstractProcess {
         this.controllerRegistry = new ServiceRegistry();
         this.controllerRegistry.register(ServiceManager.class, serviceManager);
         
-        // Register IDatabaseReaderProvider if configured
+        // Generic Resource Injection
+        if (options.hasPath("resourceBindings")) {
+            Config bindings = options.getConfig("resourceBindings");
+            for (String interfaceName : bindings.root().keySet()) {
+                String resourceName = bindings.getString(interfaceName);
+                try {
+                    Class<?> interfaceClass = Class.forName(interfaceName);
+                    // Get resource and cast to interface
+                    // Note: This retrieves the RAW resource instance (singleton).
+                    // If contextual wrappers are needed, this logic would need to parse usage types.
+                    // For Analytics (IAnalyticsStorageRead), we agreed to use the raw resource (no wrapper).
+                    Object resource = serviceManager.getResource(resourceName, interfaceClass);
+                    
+                    // Register for Controllers
+                    this.controllerRegistry.register(interfaceClass, resource);
+                    LOGGER.debug("Registered resource binding: {} -> {}", interfaceName, resourceName);
+                    
+                } catch (ClassNotFoundException e) {
+                    LOGGER.warn("Failed to bind resource: Interface class not found: {}", interfaceName);
+                } catch (Exception e) {
+                    LOGGER.warn("Failed to bind resource '{}' to interface '{}': {}", resourceName, interfaceName, e.getMessage());
+                }
+            }
+        }
+        
+        // Legacy: Register IDatabaseReaderProvider if configured (keep for backward compatibility)
         if (options.hasPath("databaseProviderResourceName")) {
             final String dbProviderName = options.getString("databaseProviderResourceName");
             try {
