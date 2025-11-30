@@ -32,8 +32,8 @@
             <input type="number" id="tick-input" min="0" value="0" aria-label="Tick">
             <span class="tick-total-suffix" id="tick-total-suffix">/N/A</span>
         </div>
-        <button id="btn-prev">&lt;</button>
-        <button id="btn-next">&gt;</button>
+        <button id="btn-prev" data-tooltip="Tick -1 (←) / -1000 (↓)">&lt;</button>
+        <button id="btn-next" data-tooltip="Tick +1 (→) / +1000 (↑)">&gt;</button>
     </div>
     <div class="logo-container">
         <div class="logo-wrapper">
@@ -53,6 +53,13 @@
 <main class="container">
     <div class="world-container">
         <canvas id="worldCanvas"></canvas>
+    </div>
+    <!-- Virtual Scrollbars moved here, outside of world-container -->
+    <div id="scrollbar-track-v" class="scrollbar-track-v">
+        <div id="scrollbar-thumb-v" class="scrollbar-thumb-v"></div>
+    </div>
+    <div id="scrollbar-track-h" class="scrollbar-track-h">
+        <div id="scrollbar-thumb-h" class="scrollbar-thumb-h"></div>
     </div>
     <div id="sidebar" class="sidebar">
         <button id="sidebar-toggle" class="sidebar-toggle-btn" style="display: none;">X</button>

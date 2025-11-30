@@ -95,6 +95,12 @@ class EnvironmentGrid {
         // dpGraphics: "x,y" -> { graphics: PIXI.Graphics, text: PIXI.Text | null }
         this.ipGraphics = new Map();
         this.dpGraphics = new Map();
+
+        // Virtual Scrollbar Elements
+        this.vScrollTrack = document.getElementById('scrollbar-track-v');
+        this.vScrollThumb = document.getElementById('scrollbar-thumb-v');
+        this.hScrollTrack = document.getElementById('scrollbar-track-h');
+        this.hScrollThumb = document.getElementById('scrollbar-thumb-h');
     }
 
     /**
@@ -147,6 +153,8 @@ class EnvironmentGrid {
 
         this.clampCameraToWorld();
         this.updateStagePosition();
+        this.updateScrollbars();
+        this.setupScrollbarInteraction(); // Add this call here
     }
 
     /**
@@ -163,6 +171,7 @@ class EnvironmentGrid {
             this.clampCameraToWorld();
             this.updateStagePosition();
             this.requestViewportLoad();
+            this.updateScrollbars(); // Add this call
         }
     }
 
@@ -193,6 +202,7 @@ class EnvironmentGrid {
         if (!this.app || !this.app.stage) return;
         this.app.stage.x = -this.cameraX;
         this.app.stage.y = -this.cameraY;
+        this.updateScrollbars(); // Add this call
     }
 
     /**
@@ -506,47 +516,136 @@ class EnvironmentGrid {
     }
 
     /**
-     * Sets up event listeners for camera panning (right-mouse drag).
+     * Sets up event listeners for camera panning (left-mouse drag) and future clicks.
      * @private
      */
     setupInteractionEvents() {
         const canvas = this.app.view;
+        const DRAG_THRESHOLD = 5; // Pixels the mouse must move to initiate a drag
 
-        // Prevent context menu on right click
+        let isPotentialDrag = false;
+
+        // Prevent context menu on right click (we keep this for usability)
         canvas.addEventListener('contextmenu', (event) => {
             event.preventDefault();
         });
 
         canvas.addEventListener('mousedown', (event) => {
-            if (event.button !== 2) return; // only right mouse button
+            if (event.button !== 0) return; // Only handle left mouse button
             event.preventDefault();
 
-            this.isPanning = true;
+            isPotentialDrag = true;
+            this.isPanning = false; // Reset panning state
             this.panStartX = event.clientX;
             this.panStartY = event.clientY;
             this.cameraStartX = this.cameraX;
             this.cameraStartY = this.cameraY;
 
             const onMouseMove = (moveEvent) => {
-                if (!this.isPanning) return;
+                if (!isPotentialDrag) return;
+
                 const dx = moveEvent.clientX - this.panStartX;
                 const dy = moveEvent.clientY - this.panStartY;
 
-                // Drag right -> show more world on the right (camera moves left)
-                this.cameraX = this.cameraStartX - dx;
-                this.cameraY = this.cameraStartY - dy;
+                // Check if we've moved past the threshold
+                if (!this.isPanning && Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+                    this.isPanning = true; // Start panning
+                }
 
-                this.clampCameraToWorld();
-                this.updateStagePosition();
-                this.requestViewportLoad();
+                if (this.isPanning) {
+                    this.cameraX = this.cameraStartX - dx;
+                    this.cameraY = this.cameraStartY - dy;
+
+                    this.clampCameraToWorld();
+                    this.updateStagePosition();
+                    this.requestViewportLoad();
+                }
             };
 
             const onMouseUp = (upEvent) => {
-                if (upEvent.button === 2) {
-                    this.isPanning = false;
-                    window.removeEventListener('mousemove', onMouseMove);
-                    window.removeEventListener('mouseup', onMouseUp);
+                if (upEvent.button !== 0) return; // Only react to left mouse up
+
+                if (!this.isPanning && isPotentialDrag) {
+                    // --- FUTURE CLICK LOGIC GOES HERE ---
+                    const rect = canvas.getBoundingClientRect();
+                    const worldX = (upEvent.clientX - rect.left) + this.cameraX;
+                    const worldY = (upEvent.clientY - rect.top) + this.cameraY;
+                    const cellX = Math.floor(worldX / this.config.cellSize);
+                    const cellY = Math.floor(worldY / this.config.cellSize);
+                    console.log(`[DEBUG] Click detected on cell: ${cellX}, ${cellY}`);
+                    // For example: this.onCellClick(cellX, cellY);
                 }
+                
+                // Cleanup
+                isPotentialDrag = false;
+                this.isPanning = false;
+                window.removeEventListener('mousemove', onMouseMove);
+                window.removeEventListener('mouseup', onMouseUp);
+            };
+
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+        });
+    }
+
+    /**
+     * Sets up event listeners to make the virtual scrollbars interactive.
+     * Allows users to drag the scrollbar thumbs to pan the camera.
+     * @private
+     */
+    setupScrollbarInteraction() {
+        if (!this.hScrollThumb || !this.vScrollThumb) return;
+
+        // --- Horizontal Scrollbar Interaction ---
+        this.hScrollThumb.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            const startX = e.clientX;
+            const startCameraX = this.cameraX;
+            const trackWidth = this.hScrollTrack.clientWidth;
+            const worldWidthPx = this.worldWidthCells * this.config.cellSize;
+
+            const onMouseMove = (moveEvent) => {
+                const dx = moveEvent.clientX - startX;
+                // Convert pixel delta on scrollbar to pixel delta in world
+                const cameraDeltaX = (dx / trackWidth) * worldWidthPx;
+                this.cameraX = startCameraX + cameraDeltaX;
+
+                this.clampCameraToWorld();
+                this.updateStagePosition();
+                this.requestViewportLoad(); // Debounced load
+            };
+
+            const onMouseUp = () => {
+                window.removeEventListener('mousemove', onMouseMove);
+                window.removeEventListener('mouseup', onMouseUp);
+            };
+
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+        });
+
+        // --- Vertical Scrollbar Interaction ---
+        this.vScrollThumb.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            const startY = e.clientY;
+            const startCameraY = this.cameraY;
+            const trackHeight = this.vScrollTrack.clientHeight;
+            const worldHeightPx = this.worldHeightCells * this.config.cellSize;
+
+            const onMouseMove = (moveEvent) => {
+                const dy = moveEvent.clientY - startY;
+                // Convert pixel delta on scrollbar to pixel delta in world
+                const cameraDeltaY = (dy / trackHeight) * worldHeightPx;
+                this.cameraY = startCameraY + cameraDeltaY;
+
+                this.clampCameraToWorld();
+                this.updateStagePosition();
+                this.requestViewportLoad(); // Debounced load
+            };
+
+            const onMouseUp = () => {
+                window.removeEventListener('mousemove', onMouseMove);
+                window.removeEventListener('mouseup', onMouseUp);
             };
 
             window.addEventListener('mousemove', onMouseMove);
@@ -598,6 +697,46 @@ class EnvironmentGrid {
                 }
                 resizeTimeout = setTimeout(handleResize, 150);
             });
+        }
+    }
+
+    /**
+     * Updates the position and size of the virtual scrollbars.
+     * This should be called whenever the camera, world size, or viewport size changes.
+     * @private
+     */
+    updateScrollbars() {
+        if (!this.hScrollTrack || !this.vScrollTrack) return;
+
+        const worldWidthPx = this.worldWidthCells * this.config.cellSize;
+        const worldHeightPx = this.worldHeightCells * this.config.cellSize;
+
+        // --- Horizontal Scrollbar ---
+        if (worldWidthPx > this.viewportWidth) {
+            this.hScrollTrack.style.display = 'block';
+            const trackWidth = this.hScrollTrack.clientWidth;
+
+            const thumbWidth = (this.viewportWidth / worldWidthPx) * trackWidth;
+            const thumbX = (this.cameraX / worldWidthPx) * trackWidth;
+
+            this.hScrollThumb.style.width = `${Math.max(thumbWidth, 10)}px`; // min width 10px
+            this.hScrollThumb.style.left = `${thumbX}px`;
+        } else {
+            this.hScrollTrack.style.display = 'none';
+        }
+
+        // --- Vertical Scrollbar ---
+        if (worldHeightPx > this.viewportHeight) {
+            this.vScrollTrack.style.display = 'block';
+            const trackHeight = this.vScrollTrack.clientHeight;
+
+            const thumbHeight = (this.viewportHeight / worldHeightPx) * trackHeight;
+            const thumbY = (this.cameraY / worldHeightPx) * trackHeight;
+
+            this.vScrollThumb.style.height = `${Math.max(thumbHeight, 10)}px`; // min height 10px
+            this.vScrollThumb.style.top = `${thumbY}px`;
+        } else {
+            this.vScrollTrack.style.display = 'none';
         }
     }
 
