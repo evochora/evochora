@@ -32,6 +32,7 @@ class AppController {
             previousTick: null, // For change detection
             previousOrganisms: null, // For change detection in dropdown
             previousOrganismDetails: null, // For change detection in sidebar
+            isZoomedOut: false, // NEW: Zoom state
         };
         this.programArtifactCache = new Map(); // Cache for program artifacts
         
@@ -58,7 +59,7 @@ class AppController {
         
         // Components
         this.worldContainer = document.querySelector('.world-container');
-        this.renderer = new EnvironmentGrid(this.worldContainer, defaultConfig, this.environmentApi);
+        this.renderer = new EnvironmentGrid(this, this.worldContainer, defaultConfig, this.environmentApi);
         this.headerbar = new HeaderbarView(this);
         
         // Sidebar components (initialize after DOM is ready)
@@ -85,6 +86,72 @@ class AppController {
     }
     
     /**
+     * Handles the selection of an organism, either from the UI or programmatically.
+     * This method updates the application state, refreshes UI elements, and loads
+     * the detailed data for the selected organism.
+     *
+     * @param {string|number|null} organismId - The ID of the organism to select, or null to deselect.
+     */
+    async selectOrganism(organismId) {
+        const selector = document.getElementById('organism-selector');
+        const numericId = organismId ? parseInt(organismId, 10) : null;
+
+        if (organismId && isNaN(numericId)) {
+            console.error(`Invalid organismId provided to selectOrganism: ${organismId}`);
+            return;
+        }
+
+        // Update state
+        this.state.selectedOrganismId = numericId ? String(numericId) : null;
+
+        if (selector) {
+            selector.value = this.state.selectedOrganismId || '';
+        }
+
+        if (this.state.selectedOrganismId) {
+            // An organism is selected
+            if (selector) {
+                // Update select element color to match selected organism
+                const selectedOption = selector.options[selector.selectedIndex];
+                if (selectedOption) {
+                    const styleAttr = selectedOption.getAttribute('style');
+                    if (styleAttr) {
+                        const colorMatch = styleAttr.match(/color:\\s*([^;!]+)/);
+                        if (colorMatch) {
+                            selector.style.color = colorMatch[1].trim();
+                        }
+                    }
+                }
+            }
+            // Load organism details and show sidebar
+            await this.loadOrganismDetails(numericId);
+        } else {
+            // No organism is selected (deselection)
+            if (selector) {
+                selector.style.color = '#e0e0e0';
+            }
+            this.sidebarManager.hideSidebar(true);
+        }
+    }
+    
+    /**
+     * Toggles the zoom state of the environment grid and forces a full refresh.
+     */
+    async toggleZoom() {
+        this.state.isZoomedOut = !this.state.isZoomedOut;
+        
+        // Update button text via headerbar view
+        this.headerbar.updateZoomButton(this.state.isZoomedOut);
+
+        // Tell the renderer to update its internal state
+        this.renderer.setZoom(this.state.isZoomedOut);
+        
+        // Force a full re-render of the current tick. This will recalculate the
+        // viewport based on the new cell size and redraw everything.
+        await this.navigateToTick(this.state.currentTick, true); // Force full reload
+    }
+    
+    /**
      * Sets up the event listener for the organism selector dropdown.
      * Handles loading organism details and showing/hiding the sidebar when the selection changes.
      * @private
@@ -93,40 +160,8 @@ class AppController {
         const selector = document.getElementById('organism-selector');
         if (!selector) return;
         
-        selector.addEventListener('change', async (event) => {
-            const selectedValue = event.target.value;
-            // Update state to track selected organism
-            this.state.selectedOrganismId = selectedValue || null;
-            
-            if (selectedValue) {
-                // Update select element color to match selected organism
-                const selectedOption = event.target.options[event.target.selectedIndex];
-                if (selectedOption) {
-                    // Try to get color from inline style attribute
-                    const styleAttr = selectedOption.getAttribute('style');
-                    if (styleAttr) {
-                        const colorMatch = styleAttr.match(/color:\s*([^;!]+)/);
-                        if (colorMatch) {
-                            event.target.style.color = colorMatch[1].trim();
-                        }
-                    } else {
-                        // Fallback: calculate color from organism ID
-                        const organismId = parseInt(selectedValue, 10);
-                        if (!isNaN(organismId)) {
-                            const color = this.getOrganismColor(organismId, 1); // Assume alive
-                            event.target.style.color = color;
-                        }
-                    }
-                }
-                
-                // Load organism details and show sidebar
-                await this.loadOrganismDetails(parseInt(selectedValue, 10));
-            } else {
-                // Reset to default color when "---" is selected
-                event.target.style.color = '#e0e0e0';
-                // Hide sidebar
-                this.sidebarManager.hideSidebar(true);
-            }
+        selector.addEventListener('change', (event) => {
+            this.selectOrganism(event.target.value);
         });
     }
     
@@ -289,8 +324,8 @@ class AppController {
             // This helps with monitor-specific timing issues
             await new Promise(resolve => setTimeout(resolve, 50));
             
-            // Load initial tick
-            await this.navigateToTick(this.state.currentTick);
+            // Load initial tick, force reload to bypass optimization on first load
+            await this.navigateToTick(this.state.currentTick, true);
             
         } catch (error) {
             // Ignore AbortError, as it's an expected cancellation
@@ -334,9 +369,27 @@ class AppController {
      * It updates the state, refreshes the UI, and triggers the loading of all data for the new tick.
      * 
      * @param {number} tick - The target tick number to navigate to.
+     * @param {boolean} [forceReload=false] - If true, reloads data even if the tick is the same.
      */
-    async navigateToTick(tick) {
-        const target = Math.max(0, tick);
+    async navigateToTick(tick, forceReload = false) {
+        // First, always update maxTick from the server to get the latest value.
+        await this.updateMaxTick();
+
+        let target = Math.max(0, tick); // Ensure we don't go below zero
+
+        // If maxTick is known, clamp the target to the new maximum.
+        if (this.state.maxTick !== null) {
+            target = Math.min(target, this.state.maxTick);
+        }
+
+        // If we're already on the target tick and not forcing a reload, do nothing.
+        if (this.state.currentTick === target && !forceReload) {
+            // Even if we bail, ensure the header bar reflects the clamped value,
+            // giving feedback to the user if their input was out of bounds.
+            this.headerbar.updateTickDisplay(target, this.state.maxTick);
+            return;
+        }
+
         const previousTick = this.state.currentTick;
         
         // Check if this is a forward step (x -> x+1)
@@ -344,19 +397,9 @@ class AppController {
         
         // Update state
         this.state.currentTick = target;
-
-        // Organismen-Overlays werden nicht hart gelöscht; renderOrganisms()
-        // entfernt bzw. aktualisiert Marker organismusweise basierend auf
-        // den Daten des neuen Ticks, um Flicker zu minimieren.
         
         // Update headerbar with current values
         this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
-        
-        // Update maxTick from server (non-blocking)
-        // Use .catch() to handle errors without blocking navigation
-        this.updateMaxTick().catch(error => {
-            console.error('updateMaxTick failed:', error);
-        });
 
         // Load environment and organisms for new tick
         await this.loadViewport(isForwardStep, previousTick);

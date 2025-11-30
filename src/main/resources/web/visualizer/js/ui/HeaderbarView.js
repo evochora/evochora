@@ -26,6 +26,10 @@ class HeaderbarView {
             this.controller.navigateToTick(this.controller.state.currentTick + 1);
         });
         
+        document.getElementById('btn-zoom-toggle').addEventListener('click', () => {
+            this.controller.toggleZoom();
+        });
+        
         const input = document.getElementById('tick-input');
         
         // Input field event listeners
@@ -80,6 +84,17 @@ class HeaderbarView {
         });
     }
     
+    /**
+     * Updates the text of the zoom button based on the current zoom state.
+     * @param {boolean} isZoomedOut - True if the view is zoomed out.
+     */
+    updateZoomButton(isZoomedOut) {
+        const button = document.getElementById('btn-zoom-toggle');
+        if (button) {
+            button.textContent = isZoomedOut ? 'Zoom In' : 'Zoom Out';
+        }
+    }
+
     /**
      * Central handler for global keydown events, routing to the correct action.
      * @param {KeyboardEvent} e The keyboard event.

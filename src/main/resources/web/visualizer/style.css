@@ -25,11 +25,11 @@ header {
 
 /* Logo Container - zwischen links und rechts zentriert */
 .logo-container {
-    flex: 1;
+    flex-grow: 1;
     display: flex;
-    align-items: center;
     justify-content: center;
-    pointer-events: none;
+    align-items: center;
+    min-width: 250px; /* Prevent shrinking too much */
 }
 
 /* Logo Wrapper - contains logo text and loading indicator */
@@ -197,6 +197,10 @@ button {
     border-radius: 4px;
 }
 button:hover { background-color: #4a4a6a; }
+
+#btn-zoom-toggle {
+    white-space: nowrap;
+}
 
 .tick-input-wrapper {
     position: relative;
