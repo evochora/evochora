@@ -1,10 +1,10 @@
 package org.evochora.datapipeline.api.resources.database;
 
-import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.runtime.model.EnvironmentProperties;
-
 import java.sql.SQLException;
 import java.util.List;
+
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.runtime.model.EnvironmentProperties;
 
 /**
  * Database capability for writing environment cell data.
@@ -77,5 +77,4 @@ public interface IEnvironmentDataWriter extends AutoCloseable {
     @Override
     void close();
 }
-
 

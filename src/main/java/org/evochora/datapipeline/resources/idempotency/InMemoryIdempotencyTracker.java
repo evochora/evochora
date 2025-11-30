@@ -2,6 +2,9 @@ package org.evochora.datapipeline.resources.idempotency;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.OperationalError;
@@ -61,7 +64,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * @param <K> The type of the idempotency key.
  */
-public class InMemoryIdempotencyTracker<K> extends AbstractResource implements IIdempotencyTracker<K> {
+public class InMemoryIdempotencyTracker<K> extends AbstractResource implements IIdempotencyTracker<K>, IMemoryEstimatable {
 
     // Ring buffer for FIFO eviction (explicit circular array)
     private final Object[] ringBuffer;
@@ -244,5 +247,39 @@ public class InMemoryIdempotencyTracker<K> extends AbstractResource implements I
     public UsageState getUsageState(String usageType) {
         // Always active (no state transitions)
         return UsageState.ACTIVE;
+    }
+    
+    // ==================== IMemoryEstimatable ====================
+    
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Estimates memory for the idempotency tracker at full capacity.
+     * <p>
+     * <strong>Memory structure:</strong>
+     * <ul>
+     *   <li>Ring buffer: Object[] with maxKeys entries (8 bytes per reference)</li>
+     *   <li>HashSet: Keys + linked entries (~24 bytes per entry)</li>
+     *   <li>Total: ~32 bytes per key</li>
+     * </ul>
+     * <p>
+     * This estimate is independent of simulation parameters since the tracker
+     * has a fixed maximum size regardless of environment size.
+     */
+    @Override
+    public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
+        // ~32 bytes per key: 8B ring buffer reference + 24B HashSet entry
+        long bytesPerKey = 32;
+        long totalBytes = (long) maxKeys * bytesPerKey;
+        
+        String explanation = String.format("%d maxKeys × ~32 bytes/key (ring buffer + HashSet)",
+            maxKeys);
+        
+        return List.of(new MemoryEstimate(
+            getResourceName(),
+            totalBytes,
+            explanation,
+            MemoryEstimate.Category.TRACKER
+        ));
     }
 }

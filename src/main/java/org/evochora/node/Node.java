@@ -2,8 +2,12 @@ package org.evochora.node;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigObject;
+
+import ch.qos.logback.classic.LoggerContext;
+
 import org.evochora.node.spi.IProcess;
 import org.evochora.node.spi.IServiceProvider;
+import org.slf4j.ILoggerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -94,6 +98,36 @@ public final class Node {
             }
         }
         LOGGER.info("All processes stopped. Goodbye.");
+        
+        // Ensure all logs are flushed before JVM exits
+        flushAndStopLogger();
+    }
+    
+    /**
+     * Flushes all pending log messages and stops the logging framework.
+     * <p>
+     * This must be called at the very end of the shutdown sequence to ensure
+     * all log messages are written before the JVM exits. Without this, logs
+     * written during shutdown may be lost.
+     * <p>
+     * Uses Logback's {@link LoggerContext#stop()} which:
+     * <ul>
+     *   <li>Flushes all appenders</li>
+     *   <li>Waits for async appenders to complete</li>
+     *   <li>Closes all resources</li>
+     * </ul>
+     */
+    private void flushAndStopLogger() {
+        try {
+            ILoggerFactory loggerFactory = LoggerFactory.getILoggerFactory();
+            if (loggerFactory instanceof LoggerContext) {
+                LoggerContext context = (LoggerContext) loggerFactory;
+                context.stop();
+            }
+        } catch (Exception e) {
+            // Fallback to stderr if logging framework is already closed
+            System.err.println("[shutdown] Failed to flush logger: " + e.getMessage());
+        }
     }
 
     private void initializeProcesses(final Config config) {

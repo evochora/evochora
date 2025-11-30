@@ -1,17 +1,17 @@
 package org.evochora.datapipeline.resources.database;
 
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.resources.*;
+import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareEnvironmentDataWriter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Database-agnostic wrapper for environment data writing operations.
@@ -172,4 +172,3 @@ public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implem
         metrics.put("write_latency_avg_ms", writeLatency.getAverage() / 1_000_000.0);
     }
 }
-

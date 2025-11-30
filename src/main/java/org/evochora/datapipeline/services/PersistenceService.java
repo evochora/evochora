@@ -1,18 +1,5 @@
 package org.evochora.datapipeline.services;
 
-import com.google.protobuf.ByteString;
-import com.typesafe.config.Config;
-import org.evochora.datapipeline.api.contracts.BatchInfo;
-import org.evochora.datapipeline.api.contracts.SystemContracts;
-import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
-import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
-import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
-import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
-import org.evochora.datapipeline.api.resources.storage.StoragePath;
-import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -21,6 +8,23 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+
+import org.evochora.datapipeline.api.contracts.BatchInfo;
+import org.evochora.datapipeline.api.contracts.SystemContracts;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
+import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
+import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
+import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
+import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
+
+import com.google.protobuf.ByteString;
+import com.typesafe.config.Config;
 
 /**
  * Service that drains TickData batches from queues and persists them to storage.
@@ -40,7 +44,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * <strong>Thread Safety:</strong> Each instance runs in its own thread. No synchronization
  * needed between instances - queue handles distribution, idempotency tracker is thread-safe.
  */
-public class PersistenceService extends AbstractService {
+public class PersistenceService extends AbstractService implements IMemoryEstimatable {
 
     // Required resources
     private final IInputQueueResource<TickData> inputQueue;
@@ -91,7 +95,7 @@ public class PersistenceService extends AbstractService {
         }
 
         // Configuration with defaults
-        this.maxBatchSize = options.hasPath("maxBatchSize") ? options.getInt("maxBatchSize") : 1000;
+        this.maxBatchSize = options.hasPath("maxBatchSize") ? options.getInt("maxBatchSize") : 25;
         this.batchTimeoutSeconds = options.hasPath("batchTimeoutSeconds") ? options.getInt("batchTimeoutSeconds") : 5;
         this.maxRetries = options.hasPath("maxRetries") ? options.getInt("maxRetries") : 3;
         this.retryBackoffMs = options.hasPath("retryBackoffMs") ? options.getInt("retryBackoffMs") : 1000;
@@ -454,5 +458,41 @@ public class PersistenceService extends AbstractService {
         metrics.put("current_batch_size", currentBatchSize.get());
         metrics.put("notifications_sent", notificationsSent.get());
         metrics.put("notifications_failed", notificationsFailed.get());
+    }
+    
+    // ==================== IMemoryEstimatable ====================
+    
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Estimates memory for the PersistenceService batch buffer at worst-case.
+     * <p>
+     * <strong>Calculation:</strong> maxBatchSize × bytesPerTick (100% occupancy)
+     * <p>
+     * The batch is held in memory during draining from queue until written to storage.
+     * With streaming serialization, only the List<TickData> is held - no additional
+     * byte array copies are created during write.
+     */
+    @Override
+    public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
+        // Each tick in the batch contains full environment + all organisms
+        long bytesPerTick = params.estimateBytesPerTick();
+        long totalBytes = (long) maxBatchSize * bytesPerTick;
+        
+        // Add ArrayList overhead (~24 bytes per reference + array backing)
+        long arrayListOverhead = (long) maxBatchSize * 8 + 64;
+        totalBytes += arrayListOverhead;
+        
+        String explanation = String.format("%d maxBatchSize × %s/tick (100%% environment + %d organisms)",
+            maxBatchSize,
+            SimulationParameters.formatBytes(bytesPerTick),
+            params.maxOrganisms());
+        
+        return List.of(new MemoryEstimate(
+            serviceName,
+            totalBytes,
+            explanation,
+            MemoryEstimate.Category.SERVICE_BATCH
+        ));
     }
 }

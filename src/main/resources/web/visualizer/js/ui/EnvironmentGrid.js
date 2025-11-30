@@ -334,61 +334,66 @@ class EnvironmentGrid {
      * @private
      */
     renderCellsWithCleanup(cells, region) {
-        const updatedKeys = new Set();
+        if (window.loadingManager) loadingManager.incrementTasks();
+        try {
+            const updatedKeys = new Set();
 
-        // First pass: update or create all cells from response
-        for (const cell of cells) {
-            const coords = cell.coordinates;
-            if (!Array.isArray(coords) || coords.length < 2) continue;
+            // First pass: update or create all cells from response
+            for (const cell of cells) {
+                const coords = cell.coordinates;
+                if (!Array.isArray(coords) || coords.length < 2) continue;
 
-            const key = `${coords[0]},${coords[1]}`;
-            updatedKeys.add(key);
+                const key = `${coords[0]},${coords[1]}`;
+                updatedKeys.add(key);
 
-            // Convert moleculeType string to int
-            const typeId = this.typeMapping[cell.moleculeType] ?? 0;
+                // Convert moleculeType string to int
+                const typeId = this.typeMapping[cell.moleculeType] ?? 0;
 
-            // Store cell data
-            const cellData = {
-                type: typeId,
-                value: cell.moleculeValue,
-                ownerId: cell.ownerId,
-                opcodeName: cell.opcodeName || null
-            };
-            this.cellData.set(key, cellData);
+                // Store cell data
+                const cellData = {
+                    type: typeId,
+                    value: cell.moleculeValue,
+                    ownerId: cell.ownerId,
+                    opcodeName: cell.opcodeName || null
+                };
+                this.cellData.set(key, cellData);
 
-            // Draw / update cell
-            this.drawCell(cellData, coords);
-        }
-
-        // Second pass: remove cells in this region that weren't updated
-        const { x1, x2, y1, y2 } = region;
-
-        for (const [key, entry] of this.cellObjects.entries()) {
-            if (updatedKeys.has(key)) {
-                continue; // touched in this tick for this region
+                // Draw / update cell
+                this.drawCell(cellData, coords);
             }
 
-            const parts = key.split(",");
-            if (parts.length !== 2) {
-                continue;
-            }
-            const cx = Number.parseInt(parts[0], 10);
-            const cy = Number.parseInt(parts[1], 10);
-            if (Number.isNaN(cx) || Number.isNaN(cy)) {
-                continue;
-            }
+            // Second pass: remove cells in this region that weren't updated
+            const { x1, x2, y1, y2 } = region;
 
-            if (cx >= x1 && cx < x2 && cy >= y1 && cy < y2) {
-                const { background, text } = entry;
-                if (background) {
-                    this.cellContainer.removeChild(background);
+            for (const [key, entry] of this.cellObjects.entries()) {
+                if (updatedKeys.has(key)) {
+                    continue; // touched in this tick for this region
                 }
-                if (text) {
-                    this.textContainer.removeChild(text);
+
+                const parts = key.split(",");
+                if (parts.length !== 2) {
+                    continue;
                 }
-                this.cellObjects.delete(key);
-                this.cellData.delete(key);
+                const cx = Number.parseInt(parts[0], 10);
+                const cy = Number.parseInt(parts[1], 10);
+                if (Number.isNaN(cx) || Number.isNaN(cy)) {
+                    continue;
+                }
+
+                if (cx >= x1 && cx < x2 && cy >= y1 && cy < y2) {
+                    const { background, text } = entry;
+                    if (background) {
+                        this.cellContainer.removeChild(background);
+                    }
+                    if (text) {
+                        this.textContainer.removeChild(text);
+                    }
+                    this.cellObjects.delete(key);
+                    this.cellData.delete(key);
+                }
             }
+        } finally {
+            if (window.loadingManager) loadingManager.decrementTasks();
         }
     }
 
@@ -730,224 +735,229 @@ class EnvironmentGrid {
      * @param {Array<object>} organismsForTick - An array of organism summary objects for the current tick.
      */
     renderOrganisms(organismsForTick) {
-        if (!Array.isArray(organismsForTick)) {
-            this.currentOrganisms = [];
-            return;
-        }
-        this.currentOrganisms = organismsForTick;
-
-        if (!this.organismContainer) {
-            return;
-        }
-
-        const cellSize = this.config.cellSize;
-
-        // Track which organisms and DP keys exist in this tick
-        const newOrganismIds = new Set();
-        for (const organism of organismsForTick) {
-            if (organism && typeof organism.organismId === 'number') {
-                newOrganismIds.add(organism.organismId);
+        if (window.loadingManager) loadingManager.incrementTasks();
+        try {
+            if (!Array.isArray(organismsForTick)) {
+                this.currentOrganisms = [];
+                return;
             }
-        }
+            this.currentOrganisms = organismsForTick;
 
-        // Remove IP graphics for organisms that no longer exist in this tick
-        for (const [orgId, g] of this.ipGraphics.entries()) {
-            if (!newOrganismIds.has(orgId)) {
-                g.clear();
-                this.organismContainer.removeChild(g);
-                this.ipGraphics.delete(orgId);
-            }
-        }
-
-        const ensureIpGraphics = (organismId) => {
-            let graphics = this.ipGraphics.get(organismId);
-            if (!graphics) {
-                graphics = new PIXI.Graphics();
-                this.ipGraphics.set(organismId, graphics);
-                this.organismContainer.addChild(graphics);
-            }
-            return graphics;
-        };
-
-        // First pass: draw IPs for all organisms
-        for (const organism of organismsForTick) {
-            if (!organism || !Array.isArray(organism.ip) || !Array.isArray(organism.dv)) {
-                continue;
+            if (!this.organismContainer) {
+                return;
             }
 
-            const organismId = organism.organismId;
-            const ipX = organism.ip[0];
-            const ipY = organism.ip[1];
+            const cellSize = this.config.cellSize;
 
-            // --- IP: one marker per organism ---
-            const ipGraphics = ensureIpGraphics(organismId);
-            ipGraphics.clear();
+            // Track which organisms and DP keys exist in this tick
+            const newOrganismIds = new Set();
+            for (const organism of organismsForTick) {
+                if (organism && typeof organism.organismId === 'number') {
+                    newOrganismIds.add(organism.organismId);
+                }
+            }
 
-            const ipColor = this._getOrganismColor(organismId, organism.energy);
+            // Remove IP graphics for organisms that no longer exist in this tick
+            for (const [orgId, g] of this.ipGraphics.entries()) {
+                if (!newOrganismIds.has(orgId)) {
+                    g.clear();
+                    this.organismContainer.removeChild(g);
+                    this.ipGraphics.delete(orgId);
+                }
+            }
 
-            const ipCellX = ipX * cellSize;
-            const ipCellY = ipY * cellSize;
+            const ensureIpGraphics = (organismId) => {
+                let graphics = this.ipGraphics.get(organismId);
+                if (!graphics) {
+                    graphics = new PIXI.Graphics();
+                    this.ipGraphics.set(organismId, graphics);
+                    this.organismContainer.addChild(graphics);
+                }
+                return graphics;
+            };
 
-            // Semi-transparent background fill
-            ipGraphics.beginFill(ipColor, 0.2);
-            ipGraphics.drawRect(ipCellX, ipCellY, cellSize, cellSize);
-            ipGraphics.endFill();
+            // First pass: draw IPs for all organisms
+            for (const organism of organismsForTick) {
+                if (!organism || !Array.isArray(organism.ip) || !Array.isArray(organism.dv)) {
+                    continue;
+                }
 
-            const dvx = organism.dv[0];
-            const dvy = organism.dv[1];
+                const organismId = organism.organismId;
+                const ipX = organism.ip[0];
+                const ipY = organism.ip[1];
 
-            if (dvx !== 0 || dvy !== 0) {
-                const length = Math.sqrt(dvx * dvx + dvy * dvy) || 1;
-                const dirX = dvx / length;
-                const dirY = dvy / length;
+                // --- IP: one marker per organism ---
+                const ipGraphics = ensureIpGraphics(organismId);
+                ipGraphics.clear();
 
-                const cx = ipCellX + cellSize / 2;
-                const cy = ipCellY + cellSize / 2;
-                const half = cellSize / 2;
+                const ipColor = this._getOrganismColor(organismId, organism.energy);
 
-                const tipX = cx + dirX * half;
-                const tipY = cy + dirY * half;
+                const ipCellX = ipX * cellSize;
+                const ipCellY = ipY * cellSize;
 
-                const base1X = cx - dirX * half + (-dirY) * half;
-                const base1Y = cy - dirY * half + dirX * half;
-                const base2X = cx - dirX * half - (-dirY) * half;
-                const base2Y = cy - dirY * half - dirX * half;
-
-                ipGraphics.beginFill(ipColor, 0.8);
-                ipGraphics.moveTo(tipX, tipY);
-                ipGraphics.lineTo(base1X, base1Y);
-                ipGraphics.lineTo(base2X, base2Y);
-                ipGraphics.lineTo(tipX, tipY);
+                // Semi-transparent background fill
+                ipGraphics.beginFill(ipColor, 0.2);
+                ipGraphics.drawRect(ipCellX, ipCellY, cellSize, cellSize);
                 ipGraphics.endFill();
-            } else {
-                // No DV: draw a filled circle in the cell center
-                const cx = ipCellX + cellSize / 2;
-                const cy = ipCellY + cellSize / 2;
-                const radius = cellSize * 0.4;
 
-                ipGraphics.beginFill(ipColor, 0.8);
-                ipGraphics.circle(cx, cy, radius);
-                ipGraphics.endFill();
+                const dvx = organism.dv[0];
+                const dvy = organism.dv[1];
+
+                if (dvx !== 0 || dvy !== 0) {
+                    const length = Math.sqrt(dvx * dvx + dvy * dvy) || 1;
+                    const dirX = dvx / length;
+                    const dirY = dvy / length;
+
+                    const cx = ipCellX + cellSize / 2;
+                    const cy = ipCellY + cellSize / 2;
+                    const half = cellSize / 2;
+
+                    const tipX = cx + dirX * half;
+                    const tipY = cy + dirY * half;
+
+                    const base1X = cx - dirX * half + (-dirY) * half;
+                    const base1Y = cy - dirY * half + dirX * half;
+                    const base2X = cx - dirX * half - (-dirY) * half;
+                    const base2Y = cy - dirY * half - dirX * half;
+
+                    ipGraphics.beginFill(ipColor, 0.8);
+                    ipGraphics.moveTo(tipX, tipY);
+                    ipGraphics.lineTo(base1X, base1Y);
+                    ipGraphics.lineTo(base2X, base2Y);
+                    ipGraphics.lineTo(tipX, tipY);
+                    ipGraphics.endFill();
+                } else {
+                    // No DV: draw a filled circle in the cell center
+                    const cx = ipCellX + cellSize / 2;
+                    const cy = ipCellY + cellSize / 2;
+                    const radius = cellSize * 0.4;
+
+                    ipGraphics.beginFill(ipColor, 0.8);
+                    ipGraphics.circle(cx, cy, radius);
+                    ipGraphics.endFill();
+                }
             }
-        }
 
-        // Second pass: aggregate all DPs across all organisms
-        const aggregatedDps = new Map(); // key "x,y" -> { indices:[], isActive:boolean, color:number }
+            // Second pass: aggregate all DPs across all organisms
+            const aggregatedDps = new Map(); // key "x,y" -> { indices:[], isActive:boolean, color:number }
 
-        for (const org of organismsForTick) {
-            if (!org || !Array.isArray(org.dataPointers)) {
-                continue;
-            }
-            const orgId = org.organismId;
-            const orgColor = this._getOrganismColor(orgId, org.energy);
-            const orgActiveIndex = typeof org.activeDpIndex === "number" ? org.activeDpIndex : 0;
-
-            org.dataPointers.forEach((dp, idx) => {
-                if (!Array.isArray(dp) || dp.length < 2) {
-                    return;
+            for (const org of organismsForTick) {
+                if (!org || !Array.isArray(org.dataPointers)) {
+                    continue;
                 }
-                const dpX = dp[0];
-                const dpY = dp[1];
-                const cellKey = `${dpX},${dpY}`;
+                const orgId = org.organismId;
+                const orgColor = this._getOrganismColor(orgId, org.energy);
+                const orgActiveIndex = typeof org.activeDpIndex === "number" ? org.activeDpIndex : 0;
 
-                let entry = aggregatedDps.get(cellKey);
-                if (!entry) {
-                    entry = {
-                        indices: [],
-                        isActive: false,
-                        color: orgColor,
-                        x: dpX,
-                        y: dpY
-                    };
-                    aggregatedDps.set(cellKey, entry);
-                }
-                entry.indices.push(idx);
-                if (idx === orgActiveIndex) {
-                    entry.isActive = true;
-                    // Prefer color of organism with active DP
-                    entry.color = orgColor;
-                }
-            });
-        }
+                org.dataPointers.forEach((dp, idx) => {
+                    if (!Array.isArray(dp) || dp.length < 2) {
+                        return;
+                    }
+                    const dpX = dp[0];
+                    const dpY = dp[1];
+                    const cellKey = `${dpX},${dpY}`;
 
-        // Third pass: render all aggregated DPs
-        const seenDpKeys = new Set();
-
-        for (const [cellKey, entry] of aggregatedDps.entries()) {
-            const dpX = entry.x;
-            const dpY = entry.y;
-            const color = entry.color;
-            const isActive = entry.isActive;
-            const indices = entry.indices;
-
-            let dpEntry = this.dpGraphics.get(cellKey);
-            if (!dpEntry) {
-                const graphics = new PIXI.Graphics();
-                const text = new PIXI.Text({
-                    text: "",
-                    style: {
-                        ...this.cellFont,
-                        fontSize: this.config.cellSize * 0.45,
-                        fontWeight: "900",
-                        fill: color,
-                        dropShadow: true,
-                        dropShadowColor: "rgba(0,0,0,0.8)",
-                        dropShadowBlur: 1,
-                        dropShadowAngle: Math.PI / 4,
-                        dropShadowDistance: 1
+                    let entry = aggregatedDps.get(cellKey);
+                    if (!entry) {
+                        entry = {
+                            indices: [],
+                            isActive: false,
+                            color: orgColor,
+                            x: dpX,
+                            y: dpY
+                        };
+                        aggregatedDps.set(cellKey, entry);
+                    }
+                    entry.indices.push(idx);
+                    if (idx === orgActiveIndex) {
+                        entry.isActive = true;
+                        // Prefer color of organism with active DP
+                        entry.color = orgColor;
                     }
                 });
-                text.anchor.set(0.5);
-
-                dpEntry = { graphics, text };
-                this.dpGraphics.set(cellKey, dpEntry);
-                this.organismContainer.addChild(graphics);
-                this.organismContainer.addChild(text);
             }
 
-            const g = dpEntry.graphics;
-            const label = dpEntry.text;
+            // Third pass: render all aggregated DPs
+            const seenDpKeys = new Set();
 
-            g.clear();
+            for (const [cellKey, entry] of aggregatedDps.entries()) {
+                const dpX = entry.x;
+                const dpY = entry.y;
+                const color = entry.color;
+                const isActive = entry.isActive;
+                const indices = entry.indices;
 
-            const x = dpX * cellSize;
-            const y = dpY * cellSize;
+                let dpEntry = this.dpGraphics.get(cellKey);
+                if (!dpEntry) {
+                    const graphics = new PIXI.Graphics();
+                    const text = new PIXI.Text({
+                        text: "",
+                        style: {
+                            ...this.cellFont,
+                            fontSize: this.config.cellSize * 0.45,
+                            fontWeight: "900",
+                            fill: color,
+                            dropShadow: true,
+                            dropShadowColor: "rgba(0,0,0,0.8)",
+                            dropShadowBlur: 1,
+                            dropShadowAngle: Math.PI / 4,
+                            dropShadowDistance: 1
+                        }
+                    });
+                    text.anchor.set(0.5);
 
-            // Draw border and fill, making active DP more prominent
-            const borderAlpha = isActive ? 1.0 : 0.8;
-            const borderWidth = isActive ? 2.0 : 1.0;
-            const fillAlpha = isActive ? 0.45 : 0.15;
-
-            g.lineStyle(borderWidth, color, borderAlpha);
-            g.drawRect(x, y, cellSize, cellSize);
-
-            g.beginFill(color, fillAlpha);
-            g.drawRect(x, y, cellSize, cellSize);
-            g.endFill();
-
-            // Update label with indices (comma-separated)
-            if (label) {
-                label.text = indices.join(",");
-                label.style.fill = color;
-                label.position.set(x + cellSize / 2, y + cellSize / 2);
-            }
-
-            seenDpKeys.add(cellKey);
-        }
-
-        // Remove DP graphics that are no longer used in this tick
-        for (const [cellKey, dpEntry] of this.dpGraphics.entries()) {
-            if (!seenDpKeys.has(cellKey)) {
-                const { graphics, text } = dpEntry;
-                if (graphics) {
-                    graphics.clear();
-                    this.organismContainer.removeChild(graphics);
+                    dpEntry = { graphics, text };
+                    this.dpGraphics.set(cellKey, dpEntry);
+                    this.organismContainer.addChild(graphics);
+                    this.organismContainer.addChild(text);
                 }
-                if (text) {
-                    this.organismContainer.removeChild(text);
+
+                const g = dpEntry.graphics;
+                const label = dpEntry.text;
+
+                g.clear();
+
+                const x = dpX * cellSize;
+                const y = dpY * cellSize;
+
+                // Draw border and fill, making active DP more prominent
+                const borderAlpha = isActive ? 1.0 : 0.8;
+                const borderWidth = isActive ? 2.0 : 1.0;
+                const fillAlpha = isActive ? 0.45 : 0.15;
+
+                g.lineStyle(borderWidth, color, borderAlpha);
+                g.drawRect(x, y, cellSize, cellSize);
+
+                g.beginFill(color, fillAlpha);
+                g.drawRect(x, y, cellSize, cellSize);
+                g.endFill();
+
+                // Update label with indices (comma-separated)
+                if (label) {
+                    label.text = indices.join(",");
+                    label.style.fill = color;
+                    label.position.set(x + cellSize / 2, y + cellSize / 2);
                 }
-                this.dpGraphics.delete(cellKey);
+
+                seenDpKeys.add(cellKey);
             }
+
+            // Remove DP graphics that are no longer used in this tick
+            for (const [cellKey, dpEntry] of this.dpGraphics.entries()) {
+                if (!seenDpKeys.has(cellKey)) {
+                    const { graphics, text } = dpEntry;
+                    if (graphics) {
+                        graphics.clear();
+                        this.organismContainer.removeChild(graphics);
+                    }
+                    if (text) {
+                        this.organismContainer.removeChild(text);
+                    }
+                    this.dpGraphics.delete(cellKey);
+                }
+            }
+        } finally {
+            if (window.loadingManager) loadingManager.decrementTasks();
         }
     }
 

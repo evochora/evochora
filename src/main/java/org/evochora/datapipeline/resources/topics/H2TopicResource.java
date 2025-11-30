@@ -1,24 +1,27 @@
 package org.evochora.datapipeline.resources.topics;
 
-import com.google.protobuf.Message;
-import com.typesafe.config.Config;
-import com.zaxxer.hikari.HikariConfig;
-import com.zaxxer.hikari.HikariDataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.ResourceContext;
-import org.evochora.datapipeline.api.resources.topics.ISimulationRunAwareTopic;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
-import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.PathExpansion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
+import com.google.protobuf.Message;
+import com.typesafe.config.Config;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 
 /**
  * Acknowledgment token for H2-based topics.
@@ -55,7 +58,8 @@ record AckToken(long rowId, int claimVersion) {}
  *
  * @param <T> The message type (must be a Protobuf {@link Message}).
  */
-public class H2TopicResource<T extends Message> extends AbstractTopicResource<T, AckToken> implements AutoCloseable {
+public class H2TopicResource<T extends Message> extends AbstractTopicResource<T, AckToken> 
+        implements AutoCloseable, IMemoryEstimatable {
     
     private static final Logger log = LoggerFactory.getLogger(H2TopicResource.class);
     
@@ -372,6 +376,51 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
                 throw new RuntimeException("Failed to setup schema for run: " + simulationRunId, e);
             }
         }
+    }
+    
+    // ========================================================================
+    // IMemoryEstimatable Implementation
+    // ========================================================================
+
+    /**
+     * Estimates worst-case heap memory usage for this H2 topic resource.
+     * <p>
+     * H2TopicResource uses a separate HikariCP connection pool. The memory footprint
+     * is primarily from connection overhead. Note that if this topic shares the same
+     * H2 database file as H2Database, the MVStore overhead is NOT counted here
+     * (it's counted in H2Database).
+     * <p>
+     * Components:
+     * <ul>
+     *   <li><b>Connection overhead</b>: ~5 MB per connection (topic queries are lighter than DB)</li>
+     *   <li><b>Message buffer</b>: ~10 MB for pending messages</li>
+     * </ul>
+     *
+     * @param params Simulation parameters (not used for topic estimation)
+     * @return List containing a single memory estimate for this topic
+     */
+    @Override
+    public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
+        int poolSize = options.hasPath("maxPoolSize") ? options.getInt("maxPoolSize") : 10;
+        
+        // Topic connections are lighter (no BLOB reads), ~5 MB per connection
+        long connectionOverhead = (long) poolSize * 5 * 1024 * 1024;
+        
+        // Message buffer for pending messages
+        long messageBuffer = 10L * 1024 * 1024;
+        
+        long totalEstimate = connectionOverhead + messageBuffer;
+        
+        String description = String.format(
+            "%d conn × 5MB + 10MB buffer",
+            poolSize);
+        
+        return List.of(new MemoryEstimate(
+            getResourceName(),
+            totalEstimate,
+            description,
+            MemoryEstimate.Category.TOPIC
+        ));
     }
     
     @Override

@@ -3,6 +3,9 @@ package org.evochora.datapipeline.services.indexers;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareEnvironmentDataWriter;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -43,11 +46,12 @@ import java.util.Map;
  *
  * @param <ACK> The acknowledgment token type (implementation-specific)
  */
-public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> {
+public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implements IMemoryEstimatable {
     
     private static final Logger log = LoggerFactory.getLogger(EnvironmentIndexer.class);
     
     private final IResourceSchemaAwareEnvironmentDataWriter database;
+    private final int insertBatchSize;
     private EnvironmentProperties envProps;
     
     /**
@@ -62,6 +66,7 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     public EnvironmentIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.database = getRequiredResource("database", IResourceSchemaAwareEnvironmentDataWriter.class);
+        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 25;
     }
     
     // Use default components: METADATA + BUFFERING
@@ -138,5 +143,40 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> {
         
         return new EnvironmentProperties(worldShape, isToroidal);
     }
+    
+    // ==================== IMemoryEstimatable ====================
+    
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Estimates memory for the EnvironmentIndexer tick buffer at worst-case.
+     * <p>
+     * <strong>Calculation:</strong> insertBatchSize × bytesPerEnvironmentTick (100% occupancy)
+     * <p>
+     * The buffer holds List<TickData> where each tick contains CellState for all cells.
+     * At 100% occupancy, every cell in the environment is filled with organisms or energy.
+     */
+    @Override
+    public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
+        // Each tick contains environment cells at 100% occupancy
+        // ~100 bytes per cell for full cell state (position, energy, content type, flags)
+        long bytesPerTick = params.estimateEnvironmentBytesPerTick();
+        long totalBytes = (long) insertBatchSize * bytesPerTick;
+        
+        // Add TickData wrapper overhead (~200 bytes per tick for protobuf metadata)
+        long wrapperOverhead = (long) insertBatchSize * 200;
+        totalBytes += wrapperOverhead;
+        
+        String explanation = String.format("%d insertBatchSize × %s/tick (100%% cells = %d × ~100B)",
+            insertBatchSize,
+            SimulationParameters.formatBytes(bytesPerTick),
+            params.totalCells());
+        
+        return List.of(new MemoryEstimate(
+            serviceName,
+            totalBytes,
+            explanation,
+            MemoryEstimate.Category.SERVICE_BATCH
+        ));
+    }
 }
-

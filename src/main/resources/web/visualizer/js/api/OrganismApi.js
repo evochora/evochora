@@ -14,10 +14,13 @@ class OrganismApi {
      *
      * @param {number} tick - The tick number to fetch organism data for.
      * @param {string|null} [runId=null] - The specific run ID to query. Defaults to the latest run if null.
+     * @param {object} [options={}] - Optional parameters for the request.
+     * @param {AbortSignal|null} [options.signal=null] - An AbortSignal to allow for request cancellation.
      * @returns {Promise<Array<object>>} A promise that resolves to an array of organism summary objects.
      * @throws {Error} If the network request fails or the server returns an error.
      */
-    async fetchOrganismsAtTick(tick, runId = null) {
+    async fetchOrganismsAtTick(tick, runId = null, options = {}) {
+        const { signal = null } = options;
         const params = new URLSearchParams();
         if (runId) {
             params.set('runId', runId);
@@ -26,12 +29,17 @@ class OrganismApi {
         const query = params.toString();
         const url = `/visualizer/api/organisms/${tick}${query ? `?${query}` : ''}`;
 
-        const data = await apiClient.fetch(url, {
+        const fetchOptions = {
             method: 'GET',
             headers: {
                 'Accept': 'application/json'
             }
-        });
+        };
+        if (signal) {
+            fetchOptions.signal = signal;
+        }
+
+        const data = await apiClient.fetch(url, fetchOptions);
 
         // API response shape: { runId, tick, organisms: [...] }
         return Array.isArray(data.organisms) ? data.organisms : [];
@@ -45,10 +53,13 @@ class OrganismApi {
      * @param {number} tick - The tick number.
      * @param {number} organismId - The ID of the organism to fetch.
      * @param {string|null} [runId=null] - The specific run ID to query. Defaults to the latest run if null.
+     * @param {object} [options={}] - Optional parameters for the request.
+     * @param {AbortSignal|null} [options.signal=null] - An AbortSignal to allow for request cancellation.
      * @returns {Promise<object>} A promise that resolves to the detailed organism state object.
      * @throws {Error} If the network request fails or the server returns an error.
      */
-    async fetchOrganismDetails(tick, organismId, runId = null) {
+    async fetchOrganismDetails(tick, organismId, runId = null, options = {}) {
+        const { signal = null } = options;
         const params = new URLSearchParams();
         if (runId) {
             params.set('runId', runId);
@@ -57,12 +68,17 @@ class OrganismApi {
         const query = params.toString();
         const url = `/visualizer/api/organisms/${tick}/${organismId}${query ? `?${query}` : ''}`;
 
-        return apiClient.fetch(url, {
+        const fetchOptions = {
             method: 'GET',
             headers: {
                 'Accept': 'application/json'
             }
-        });
+        };
+        if (signal) {
+            fetchOptions.signal = signal;
+        }
+
+        return apiClient.fetch(url, fetchOptions);
     }
 
     /**

@@ -1,20 +1,5 @@
 package org.evochora.datapipeline.services.indexers;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigObject;
-import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
-import org.evochora.datapipeline.api.analytics.IAnalyticsContext;
-import org.evochora.datapipeline.api.analytics.IAnalyticsPlugin;
-import org.evochora.datapipeline.api.analytics.ManifestEntry;
-import org.evochora.datapipeline.utils.PathExpansion;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -22,8 +7,32 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+
+import org.evochora.datapipeline.api.analytics.IAnalyticsContext;
+import org.evochora.datapipeline.api.analytics.IAnalyticsPlugin;
+import org.evochora.datapipeline.api.analytics.ManifestEntry;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
+import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
+import org.evochora.datapipeline.utils.PathExpansion;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigObject;
 
 /**
  * Indexer service for generating analytics artifacts.
@@ -31,7 +40,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Loads configured plugins and delegates batch processing to them.
  * Handles lifecycle, metadata aggregation, and error resilience (Bulkhead Pattern).
  */
-public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> {
+public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements IMemoryEstimatable {
 
     private static final Logger log = LoggerFactory.getLogger(AnalyticsIndexer.class);
 
@@ -39,6 +48,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     private final List<IAnalyticsPlugin> plugins = new ArrayList<>();
     private final Path tempDirectory;
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
+    private final int insertBatchSize;
     
     // Metrics
     private final AtomicLong ticksProcessed = new AtomicLong(0);
@@ -46,6 +56,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     public AnalyticsIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.analyticsOutput = getRequiredResource("analyticsOutput", IAnalyticsStorageWrite.class);
+        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 25;
         
         // Configure temp directory
         String tempPathStr = options.hasPath("tempDirectory") 
@@ -122,7 +133,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> {
             }
         }
         
-        log.info("AnalyticsIndexer prepared for run: {}", runId);
+        log.debug("AnalyticsIndexer prepared for run: {}", runId);
     }
 
     @Override
@@ -161,7 +172,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> {
                         .map(Path::toFile)
                         .forEach(File::delete);
                 }
-                log.info("Cleaned up temp directory: {}", tempDirectory);
+                log.debug("Cleaned up temp directory: {}", tempDirectory);
             }
         } catch (IOException e) {
             log.warn("Failed to clean temp directory on startup: {}", e.getMessage());
@@ -219,5 +230,42 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> {
         public Path getTempDirectory() {
             return AnalyticsIndexer.this.tempDirectory;
         }
+    }
+    
+    // ==================== IMemoryEstimatable ====================
+    
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Estimates memory for the AnalyticsIndexer tick buffer at worst-case.
+     * <p>
+     * AnalyticsIndexer buffers ticks for plugin processing. The memory usage
+     * depends on insertBatchSize and the size of each tick (environment + organisms).
+     */
+    @Override
+    public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
+        // Each tick contains full environment + organisms data
+        long bytesPerTick = params.estimateBytesPerTick();
+        long totalBytes = (long) insertBatchSize * bytesPerTick;
+        
+        // Add TickData wrapper overhead (~200 bytes per tick)
+        long wrapperOverhead = (long) insertBatchSize * 200;
+        totalBytes += wrapperOverhead;
+        
+        // Add plugin internal state (~1MB per plugin as conservative estimate)
+        long pluginOverhead = (long) plugins.size() * 1024 * 1024;
+        totalBytes += pluginOverhead;
+        
+        String explanation = String.format("%d insertBatchSize × %s/tick + %d plugins overhead",
+            insertBatchSize,
+            SimulationParameters.formatBytes(bytesPerTick),
+            plugins.size());
+        
+        return List.of(new MemoryEstimate(
+            serviceName,
+            totalBytes,
+            explanation,
+            MemoryEstimate.Category.SERVICE_BATCH
+        ));
     }
 }

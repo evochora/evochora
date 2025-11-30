@@ -234,7 +234,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         if (required.contains(ComponentType.BUFFERING)) {
             int insertBatchSize = indexerOptions.hasPath("insertBatchSize")
                 ? indexerOptions.getInt("insertBatchSize")
-                : 1000; // Default: 1000 ticks per buffer (balanced throughput/latency)
+                : 25; // Default: 25 ticks per buffer (memory-optimized)
             long flushTimeoutMs = indexerOptions.hasPath("flushTimeoutMs")
                 ? indexerOptions.getLong("flushTimeoutMs")
                 : 5000L; // Default: 5000ms flush timeout (aligned with docs)

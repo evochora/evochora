@@ -13,7 +13,6 @@ import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
@@ -21,7 +20,6 @@ import java.io.File;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.IntBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.WritableByteChannel;
 import java.util.List;
@@ -640,8 +638,6 @@ public class RenderVideoCommand implements Callable<Integer> {
             // Note: expectedFrameSizeBytes already includes stats bar width if overlayStats is enabled
             ByteBuffer byteBuffer = ByteBuffer.allocate(expectedFrameSizeBytes);
             byteBuffer.order(ByteOrder.LITTLE_ENDIAN); // BGRA format requires little-endian
-            byte[] bufferArray = byteBuffer.array();
-            
             // For parallel rendering: queue to maintain frame order
             BlockingQueue<byte[]> frameQueue = threadCount > 1 ? new LinkedBlockingQueue<>() : null;
             BlockingQueue<Long> tickNumberQueue = threadCount > 1 ? new LinkedBlockingQueue<>() : null;
@@ -662,8 +658,6 @@ public class RenderVideoCommand implements Callable<Integer> {
                         while (true) {
                             byte[] frameData = frameQueue.take(); // Blocks until frame available
                             if (frameData == null) break; // Poison pill
-                            Long tickNum = tickNumberQueue.take();
-                            
                             // Add statistics bar if enabled
                             byte[] finalFrameData = frameData;
                             if (overlayStats && finalStatsBarRenderer != null && aliveCountQueue != null && deadCountQueue != null) {

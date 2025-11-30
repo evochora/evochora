@@ -17,6 +17,11 @@ class AppController {
         this.environmentApi = new EnvironmentApi();
         this.organismApi = new OrganismApi();
         
+        // Request controllers for cancellation
+        this.simulationRequestController = null;
+        this.organismSummaryRequestController = null;
+        this.organismDetailsRequestController = null;
+        
         // State
         this.state = {
             currentTick: 0,
@@ -134,12 +139,20 @@ class AppController {
      * @returns {Promise<void>} A promise that resolves when the details are loaded and displayed.
      */
     async loadOrganismDetails(organismId, isForwardStep = false) {
+        // Abort previous request if it's still running
+        if (this.organismDetailsRequestController) {
+            this.organismDetailsRequestController.abort();
+        }
+        this.organismDetailsRequestController = new AbortController();
+        const signal = this.organismDetailsRequestController.signal;
+
         try {
             hideError();
             const details = await this.organismApi.fetchOrganismDetails(
                 this.state.currentTick,
                 organismId,
-                this.state.runId
+                this.state.runId,
+                { signal }
             );
             
             // API returns "static" not "staticInfo"
@@ -224,8 +237,15 @@ class AppController {
             // Initialize renderer
             await this.renderer.init();
             
+            // Abort previous request if it's still running
+            if (this.simulationRequestController) {
+                this.simulationRequestController.abort();
+            }
+            this.simulationRequestController = new AbortController();
+            const signal = this.simulationRequestController.signal;
+
             // Load metadata for world shape
-            const metadata = await this.simulationApi.fetchMetadata(this.state.runId);
+            const metadata = await this.simulationApi.fetchMetadata(this.state.runId, { signal });
             if (metadata) {
                 if (metadata.environment && metadata.environment.shape) {
                     this.state.worldShape = Array.from(metadata.environment.shape);
@@ -353,6 +373,13 @@ class AppController {
      * @private
      */
     async loadViewport(isForwardStep = false, previousTick = null) {
+        // Abort previous organism summary request
+        if (this.organismSummaryRequestController) {
+            this.organismSummaryRequestController.abort();
+        }
+        this.organismSummaryRequestController = new AbortController();
+        const organismSignal = this.organismSummaryRequestController.signal;
+
         try {
             hideError();
             // Load environment cells first (viewport-based)
@@ -361,7 +388,8 @@ class AppController {
             // Then load organisms for this tick (no region; filtering happens client-side)
             const organisms = await this.organismApi.fetchOrganismsAtTick(
                 this.state.currentTick,
-                this.state.runId
+                this.state.runId,
+                { signal: organismSignal }
             );
             this.renderer.renderOrganisms(organisms);
             this.updateOrganismSelector(organisms, isForwardStep);

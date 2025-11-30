@@ -2,12 +2,16 @@ package org.evochora.datapipeline.resources.retry;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IRetryTracker;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -41,7 +45,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * <strong>Limitation:</strong> Retry counts are lost on restart.
  * For production with persistence requirements, use H2RetryTracker.
  */
-public class InMemoryRetryTracker extends AbstractResource implements IRetryTracker {
+public class InMemoryRetryTracker extends AbstractResource implements IRetryTracker, IMemoryEstimatable {
     
     private static final Logger log = LoggerFactory.getLogger(InMemoryRetryTracker.class);
     
@@ -198,5 +202,40 @@ public class InMemoryRetryTracker extends AbstractResource implements IRetryTrac
         // Always active (no state transitions)
         return UsageState.ACTIVE;
     }
+    
+    // ==================== IMemoryEstimatable ====================
+    
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Estimates memory for the retry tracker at full capacity.
+     * <p>
+     * <strong>Memory structure:</strong>
+     * <ul>
+     *   <li>Ring buffer: Object[] with maxKeys entries (8 bytes per reference)</li>
+     *   <li>retryCounts: ConcurrentHashMap with AtomicInteger values (~100 bytes per entry)</li>
+     *   <li>lastRetryAt: ConcurrentHashMap with Long values (~80 bytes per entry)</li>
+     *   <li>movedToDlq: ConcurrentHashMap with Boolean values (~80 bytes per entry)</li>
+     *   <li>Total: ~232 bytes per key (worst-case when all maps have same keys)</li>
+     * </ul>
+     * <p>
+     * This estimate is independent of simulation parameters since the tracker
+     * has a fixed maximum size regardless of environment size.
+     */
+    @Override
+    public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
+        // ~232 bytes per key: ring buffer + 3x ConcurrentHashMap entries
+        long bytesPerKey = 232;
+        long totalBytes = (long) maxKeys * bytesPerKey;
+        
+        String explanation = String.format("%d maxKeys × ~232 bytes/key (ring buffer + 3 ConcurrentHashMaps)",
+            maxKeys);
+        
+        return List.of(new MemoryEstimate(
+            getResourceName(),
+            totalBytes,
+            explanation,
+            MemoryEstimate.Category.TRACKER
+        ));
+    }
 }
-
