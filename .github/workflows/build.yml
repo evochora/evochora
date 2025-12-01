@@ -106,6 +106,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Update or Create latest tag
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag -f latest
+          git push -f origin latest
+
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
