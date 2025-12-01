@@ -27,7 +27,7 @@ jobs:
       - name: Copy configuration to server
         run: |
           # First, ensure the target directory structure exists on the server.
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'mkdir -p ~/app/evochora-node'
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'mkdir -p ~/app/evochora-node'
           
           # Now, copy all necessary configuration and compose files.
           scp -o StrictHostKeyChecking=no infrastructure/docker/docker-compose.yml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/docker-compose.yml
