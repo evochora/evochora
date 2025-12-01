@@ -42,6 +42,9 @@ jobs:
             cd ~/app
             
             export IMAGE_TAG=${{ github.event.inputs.tag }}
+
+            echo "UID=$(id -u)" > .env
+            echo "GID=$(id -g)" >> .env
             
             docker compose pull
             
