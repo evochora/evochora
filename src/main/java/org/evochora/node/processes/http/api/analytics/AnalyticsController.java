@@ -402,7 +402,14 @@ public class AnalyticsController implements IController {
                     Path tempFile = tempDir.resolve(file.replace("/", "_"));
                     try (InputStream in = storage.openAnalyticsInputStream(runId, file);
                          OutputStream out = Files.newOutputStream(tempFile)) {
-                        in.transferTo(out);
+                        long bytesWritten = in.transferTo(out);
+                        
+                        // Skip empty files (incomplete from previous shutdown)
+                        if (bytesWritten == 0) {
+                            log.debug("Skipping empty Parquet file: {}", file);
+                            Files.deleteIfExists(tempFile);
+                            continue;
+                        }
                     }
                     tempFiles.add(tempFile);
                 }
@@ -463,10 +470,11 @@ public class AnalyticsController implements IController {
                 return null;
             }
 
-            // Select LOD with <= 100 files, or highest LOD if all have more
+            // Select LOD with <= 50 files, or highest LOD if all have more
+            // Lower threshold = faster loading (fewer files to query)
             return lodCounts.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey()) // lod0, lod1, lod2...
-                .filter(e -> e.getValue() <= 100)
+                .filter(e -> e.getValue() <= 50)
                 .map(Map.Entry::getKey)
                 .findFirst()
                 .orElse(lodCounts.keySet().stream().max(String::compareTo).orElse("lod0"));
@@ -810,6 +818,13 @@ public class AnalyticsController implements IController {
             byte[] fileContent;
             try (InputStream in = storage.openAnalyticsInputStream(runId, path)) {
                 fileContent = in.readAllBytes();
+            }
+            
+            // Reject empty files (incomplete from previous shutdown)
+            if (fileContent.length == 0) {
+                log.debug("Rejecting empty file request: {}/{}", runId, path);
+                ctx.status(404).result("File is empty or incomplete");
+                return;
             }
             
             long totalLength = fileContent.length;

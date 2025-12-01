@@ -20,16 +20,22 @@ header {
     flex-shrink: 0;
     border-bottom: 1px solid #333;
     position: relative; /* Allow loading indicator to overflow below */
-    overflow: visible; /* Allow loading indicator to be visible below header */
+    /* Mindestbreite = controls + logo + 2x20px Abstand */
+    min-width: calc(var(--controls-left-width, 280px) + var(--logo-width, 280px) + var(--controls-right-width, 150px) + 40px);
 }
 
-/* Logo Container - zwischen links und rechts zentriert */
+/* Logo Container - absolut mittig im Browser, begrenzt durch Controls */
 .logo-container {
-    flex-grow: 1;
+    position: absolute;
+    /* Position wird durch CSS-Variablen gesteuert (gesetzt via JavaScript) */
+    left: clamp(
+        calc(var(--controls-left-width, 280px) + 20px),
+        calc(50% - var(--logo-width, 140px) / 2),
+        calc(100% - var(--controls-right-width, 150px) - var(--logo-width, 140px) - 20px)
+    );
     display: flex;
     justify-content: center;
     align-items: center;
-    min-width: 250px; /* Prevent shrinking too much */
 }
 
 /* Logo Wrapper - contains logo text and loading indicator */
@@ -186,6 +192,11 @@ header {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-shrink: 0; /* Don't shrink controls */
+}
+
+.header-spacer {
+    display: none; /* Nicht mehr benötigt */
 }
 
 button {

@@ -52,21 +52,32 @@ header {
     flex-shrink: 0;
     border-bottom: 1px solid var(--border-color);
     position: relative;
-    overflow: visible;
+    /* Mindestbreite = controls + logo + 2x20px Abstand */
+    min-width: calc(var(--controls-left-width, 200px) + var(--logo-width, 280px) + var(--controls-right-width, 100px) + 40px);
 }
 
 .controls-left, .controls-right {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-shrink: 0; /* Don't shrink controls */
+}
+
+.header-spacer {
+    display: none; /* Nicht mehr benötigt */
 }
 
 .logo-container {
-    flex-grow: 1;
+    position: absolute;
+    /* Position wird durch CSS-Variablen gesteuert (gesetzt via JavaScript) */
+    left: clamp(
+        calc(var(--controls-left-width, 200px) + 20px),
+        calc(50% - var(--logo-width, 140px) / 2),
+        calc(100% - var(--controls-right-width, 100px) - var(--logo-width, 140px) - 20px)
+    );
     display: flex;
     justify-content: center;
     align-items: center;
-    min-width: 250px;
 }
 
 .logo-wrapper {
@@ -204,6 +215,7 @@ main.container {
         grid-template-columns: 1fr;
     }
 }
+
 
 /* --- Metric Card --- */
 .metric-card {

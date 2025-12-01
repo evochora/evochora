@@ -106,6 +106,29 @@
     
 <!-- Main entry point - MUST BE LAST -->
 <script src="js/main.js"></script>
+
+<!-- Header Logo Positioning -->
+<script>
+(function() {
+    function updateLogoPosition() {
+        const header = document.querySelector('header');
+        const controlsLeft = document.querySelector('.controls-left');
+        const controlsRight = document.querySelector('.controls-right');
+        const logo = document.querySelector('.logo-container');
+        
+        if (header && controlsLeft && controlsRight && logo) {
+            header.style.setProperty('--controls-left-width', controlsLeft.offsetWidth + 'px');
+            header.style.setProperty('--controls-right-width', controlsRight.offsetWidth + 'px');
+            header.style.setProperty('--logo-width', logo.offsetWidth + 'px');
+        }
+    }
+    
+    window.addEventListener('load', updateLogoPosition);
+    window.addEventListener('resize', updateLogoPosition);
+    // Also update when fonts are loaded
+    document.fonts?.ready?.then(updateLogoPosition);
+})();
+</script>
 </body>
 </html>
 
