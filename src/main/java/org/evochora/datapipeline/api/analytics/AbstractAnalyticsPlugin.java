@@ -57,6 +57,12 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
     /** Sampling interval: process every Nth tick. Default is 1 (every tick). */
     protected int samplingInterval = 1;
     
+    /** LOD factor: each higher level samples lodFactor^level times. Default is 10. */
+    protected int lodFactor = 10;
+    
+    /** Number of LOD levels to generate. Default is 1 (only lod0). */
+    protected int lodLevels = 1;
+    
     /**
      * {@inheritDoc}
      * <p>
@@ -64,6 +70,8 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
      * <ul>
      *   <li>{@code metricId} - Required unique identifier</li>
      *   <li>{@code samplingInterval} - Optional, default 1</li>
+     *   <li>{@code lodFactor} - Optional, default 10</li>
+     *   <li>{@code lodLevels} - Optional, default 1</li>
      * </ul>
      * Subclasses can override to read additional config, but must call {@code super.configure(config)}.
      */
@@ -73,6 +81,12 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
         this.metricId = config.getString("metricId");
         if (config.hasPath("samplingInterval")) {
             this.samplingInterval = config.getInt("samplingInterval");
+        }
+        if (config.hasPath("lodFactor")) {
+            this.lodFactor = config.getInt("lodFactor");
+        }
+        if (config.hasPath("lodLevels")) {
+            this.lodLevels = config.getInt("lodLevels");
         }
     }
 
@@ -111,6 +125,51 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
     @Override
     public int getSamplingInterval() {
         return samplingInterval;
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getLodFactor() {
+        return lodFactor;
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getLodLevels() {
+        return lodLevels;
+    }
+    
+    /**
+     * Calculates the effective sampling interval for a specific LOD level.
+     * <p>
+     * Formula: {@code baseSamplingInterval * lodFactor^level}
+     * <p>
+     * Example with samplingInterval=1, lodFactor=10:
+     * <ul>
+     *   <li>lod0: 1 * 10^0 = 1</li>
+     *   <li>lod1: 1 * 10^1 = 10</li>
+     *   <li>lod2: 1 * 10^2 = 100</li>
+     * </ul>
+     *
+     * @param level LOD level (0, 1, 2, ...)
+     * @return Effective sampling interval for this level
+     */
+    public int getEffectiveSamplingInterval(int level) {
+        return samplingInterval * (int) Math.pow(lodFactor, level);
+    }
+    
+    /**
+     * Helper method to generate LOD level name.
+     *
+     * @param level LOD level number (0, 1, 2, ...)
+     * @return LOD level name (e.g., "lod0", "lod1", "lod2")
+     */
+    public static String lodLevelName(int level) {
+        return "lod" + level;
     }
     
     // Abstract methods that subclasses MUST implement:

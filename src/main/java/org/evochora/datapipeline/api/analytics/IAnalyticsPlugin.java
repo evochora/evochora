@@ -1,9 +1,10 @@
 package org.evochora.datapipeline.api.analytics;
 
-import com.typesafe.config.Config;
+import java.util.List;
+
 import org.evochora.datapipeline.api.contracts.TickData;
 
-import java.util.List;
+import com.typesafe.config.Config;
 
 /**
  * Interface for Analytics Plugins.
@@ -142,4 +143,33 @@ public interface IAnalyticsPlugin {
      * @return Sampling interval (1 = every tick, 10 = every 10th tick)
      */
     int getSamplingInterval();
+    
+    /**
+     * Returns the LOD (Level of Detail) factor.
+     * <p>
+     * Each higher LOD level samples at {@code lodFactor^level} times the base interval.
+     * Example with lodFactor=10 and samplingInterval=1:
+     * <ul>
+     *   <li>lod0: every tick (interval=1)</li>
+     *   <li>lod1: every 10th tick (interval=10)</li>
+     *   <li>lod2: every 100th tick (interval=100)</li>
+     * </ul>
+     *
+     * @return LOD factor (default: 10)
+     */
+    int getLodFactor();
+    
+    /**
+     * Returns the number of LOD levels to generate.
+     * <p>
+     * The indexer generates separate Parquet files for each LOD level:
+     * <ul>
+     *   <li>lodLevels=1: only lod0 (full resolution)</li>
+     *   <li>lodLevels=2: lod0 + lod1 (10x downsampled)</li>
+     *   <li>lodLevels=3: lod0 + lod1 + lod2 (100x downsampled)</li>
+     * </ul>
+     *
+     * @return Number of LOD levels (default: 1)
+     */
+    int getLodLevels();
 }

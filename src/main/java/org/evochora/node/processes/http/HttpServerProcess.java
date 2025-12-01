@@ -1,26 +1,29 @@
 package org.evochora.node.processes.http;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import com.typesafe.config.ConfigObject;
-import com.typesafe.config.ConfigValue;
-import com.typesafe.config.ConfigValueType;
-import io.javalin.Javalin;
-import org.eclipse.jetty.util.thread.QueuedThreadPool;
-import org.evochora.datapipeline.ServiceManager;
-import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
-import org.evochora.node.spi.IController;
-import org.evochora.node.processes.AbstractProcess;
-import org.evochora.node.spi.ServiceRegistry;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+
+import org.eclipse.jetty.server.handler.gzip.GzipHandler;
+import org.eclipse.jetty.util.thread.QueuedThreadPool;
+import org.evochora.datapipeline.ServiceManager;
+import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
+import org.evochora.node.processes.AbstractProcess;
+import org.evochora.node.spi.IController;
+import org.evochora.node.spi.ServiceRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigObject;
+import com.typesafe.config.ConfigValue;
+import com.typesafe.config.ConfigValueType;
+
+import io.javalin.Javalin;
 
 /**
  * A manageable process that runs a Javalin HTTP server. It dynamically configures its routes
@@ -117,6 +120,22 @@ public class HttpServerProcess extends AbstractProcess {
 
         app = Javalin.create(config -> {
             config.showJavalinBanner = false;
+            
+            // Enable gzip compression for all responses (especially JSON)
+            // Reduces response size by ~90% for JSON data
+            config.jetty.modifyServletContextHandler(handler -> {
+                GzipHandler gzipHandler = new GzipHandler();
+                gzipHandler.setMinGzipSize(1024); // Compress responses > 1KB
+                gzipHandler.addIncludedMimeTypes(
+                    "application/json",
+                    "text/html", 
+                    "text/plain",
+                    "text/css",
+                    "application/javascript"
+                );
+                handler.insertHandler(gzipHandler);
+            });
+            
             config.requestLogger.http((ctx, ms) -> {
                 if (LOGGER.isDebugEnabled()) {
                     LOGGER.debug("Request: {} {} (completed in {} ms)", ctx.method(), ctx.path(), ms);

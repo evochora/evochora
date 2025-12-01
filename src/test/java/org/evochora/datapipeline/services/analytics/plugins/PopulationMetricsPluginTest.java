@@ -87,7 +87,7 @@ class PopulationMetricsPluginTest {
         assertThat(row[2]).isEqualTo(5L);   // total_dead (all dead)
         assertThat(row[3]).isEqualTo(0.0);  // avg_energy (no organisms)
     }
-
+    
     @Test
     void testExtractRows_CalculatesAverageEnergy() {
         // Setup: 3 organisms with energies 100, 200, 300 -> avg = 200
@@ -141,8 +141,8 @@ class PopulationMetricsPluginTest {
 
     private TickData createTick(long tickNum, long totalCreated, int aliveCount, int energyPerOrganism) {
         TickData.Builder builder = TickData.newBuilder()
-            .setTickNumber(tickNum)
-            .setTotalOrganismsCreated(totalCreated);
+                .setTickNumber(tickNum)
+                .setTotalOrganismsCreated(totalCreated);
         
         for (int i = 0; i < aliveCount; i++) {
             builder.addOrganisms(OrganismState.newBuilder()

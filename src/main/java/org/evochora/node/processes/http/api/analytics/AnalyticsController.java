@@ -1,8 +1,18 @@
 package org.evochora.node.processes.http.api.analytics;
 
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -52,6 +62,9 @@ public class AnalyticsController implements IController {
     // Caching for Manifest
     private final long cacheTtlMs;
     private final ConcurrentHashMap<String, CacheEntry> manifestCache = new ConcurrentHashMap<>();
+    
+    // DuckDB driver loaded flag (for server-side queries)
+    private static volatile boolean duckDbDriverLoaded = false;
 
     private record CacheEntry(long timestamp, String json) {}
 
@@ -66,13 +79,453 @@ public class AnalyticsController implements IController {
         this.cacheTtlMs = options.hasPath("analyticsManifestCacheTtlSeconds") 
             ? options.getInt("analyticsManifestCacheTtlSeconds") * 1000L 
             : 30000L; // Default 30s
+        
+        // Load DuckDB driver for server-side queries
+        loadDuckDbDriver();
+    }
+    
+    /**
+     * Loads the DuckDB JDBC driver (thread-safe, idempotent).
+     */
+    private static synchronized void loadDuckDbDriver() {
+        if (!duckDbDriverLoaded) {
+            try {
+                Class.forName("org.duckdb.DuckDBDriver");
+                duckDbDriverLoaded = true;
+                log.debug("DuckDB driver loaded for server-side analytics queries");
+            } catch (ClassNotFoundException e) {
+                log.warn("DuckDB driver not found - /data endpoint will not work");
+            }
+        }
     }
 
     @Override
     public void registerRoutes(Javalin app, String basePath) {
+        app.get(basePath + "/runs", this::listRuns);
         app.get(basePath + "/manifest", this::getManifest);
         app.get(basePath + "/list", this::listFiles);
-        app.get(basePath + "/files/<path>", this::getFile);
+        app.get(basePath + "/lod-info", this::getLodInfo);
+        app.get(basePath + "/data", this::queryData);
+        // Use wildcard path for nested file paths like population/lod0/000/000/batch.parquet
+        app.get(basePath + "/files/*", this::getFile);
+    }
+
+    /**
+     * Lists all simulation runs that have analytics data.
+     * <p>
+     * Route: GET /runs
+     *
+     * @param ctx Javalin request context
+     */
+    @OpenApi(
+        path = "runs",
+        methods = {HttpMethod.GET},
+        summary = "List simulation runs with analytics",
+        description = "Returns a list of all simulation run IDs that have analytics data available. "
+            + "Results are sorted by timestamp (newest first).",
+        tags = {"analyzer / analytics"},
+        responses = {
+            @OpenApiResponse(
+                status = "200", 
+                description = "List of run IDs with analytics data",
+                content = @OpenApiContent(
+                    from = RunInfo[].class,
+                    example = """
+                        [
+                          {"runId": "20251201-143025-550e8400-e29b-41d4-a716-446655440000", "startTime": 1701437425000},
+                          {"runId": "20251130-120000-abc12345-def6-7890-abcd-ef1234567890", "startTime": 1701345600000}
+                        ]
+                        """
+                )
+            ),
+            @OpenApiResponse(
+                status = "500", 
+                description = "Internal server error", 
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            )
+        }
+    )
+    private void listRuns(Context ctx) {
+        try {
+            List<String> runIds = storage.listAnalyticsRunIds();
+            
+            // Convert to RunInfo objects with parsed timestamp
+            List<RunInfo> runs = runIds.stream()
+                .map(runId -> {
+                    Long startTime = parseRunIdTimestamp(runId);
+                    return new RunInfo(runId, startTime);
+                })
+                .toList();
+            
+            ctx.json(runs);
+        } catch (Exception e) {
+            log.error("Failed to list analytics runs", e);
+            ctx.status(500).result("Failed to list runs");
+        }
+    }
+
+    /**
+     * Parses timestamp from runId format: YYYYMMdd-HHmmssSS-UUID
+     */
+    private Long parseRunIdTimestamp(String runId) {
+        if (runId == null || runId.length() < 17) {
+            return null;
+        }
+        try {
+            String timestampStr = runId.substring(0, 17); // YYYYMMdd-HHmmssSS
+            java.time.format.DateTimeFormatter formatter = 
+                java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSS");
+            java.time.LocalDateTime ldt = java.time.LocalDateTime.parse(timestampStr, formatter);
+            return ldt.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * DTO for run information.
+     */
+    public record RunInfo(String runId, Long startTime) {}
+
+    /**
+     * Returns file count information for each LOD level of a metric.
+     * <p>
+     * Route: GET /lod-info?runId=...&amp;metricId=...
+     * <p>
+     * Used by the frontend for Auto-LOD selection: chooses the LOD level
+     * with an acceptable number of files to minimize loading time.
+     *
+     * @param ctx Javalin request context
+     */
+    @OpenApi(
+        path = "lod-info",
+        methods = {HttpMethod.GET},
+        summary = "Get LOD file counts",
+        description = "Returns the number of Parquet files per LOD level for a metric. "
+            + "Used by the frontend for intelligent Auto-LOD selection.",
+        tags = {"analyzer / analytics"},
+        queryParams = {
+            @OpenApiParam(
+                name = "runId",
+                description = "Simulation run ID",
+                required = true,
+                example = "20251201-143025-550e8400-e29b-41d4-a716-446655440000"
+            ),
+            @OpenApiParam(
+                name = "metricId",
+                description = "Metric identifier (e.g., 'population')",
+                required = true,
+                example = "population"
+            )
+        },
+        responses = {
+            @OpenApiResponse(
+                status = "200",
+                description = "LOD level file counts",
+                content = @OpenApiContent(
+                    from = LodInfo[].class,
+                    example = """
+                        [
+                          {"lod": "lod0", "fileCount": 274},
+                          {"lod": "lod1", "fileCount": 28}
+                        ]
+                        """
+                )
+            ),
+            @OpenApiResponse(
+                status = "400",
+                description = "Bad request (missing parameters)",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            )
+        }
+    )
+    private void getLodInfo(Context ctx) {
+        String runId = ctx.queryParam("runId");
+        String metricId = ctx.queryParam("metricId");
+
+        if (runId == null || runId.isBlank()) {
+            ctx.status(400).result("Missing runId parameter");
+            return;
+        }
+        if (metricId == null || metricId.isBlank()) {
+            ctx.status(400).result("Missing metricId parameter");
+            return;
+        }
+
+        try {
+            // List all files under the metric directory
+            List<String> allFiles = storage.listAnalyticsFiles(runId, metricId + "/");
+            
+            // Group by LOD level and count Parquet files
+            java.util.Map<String, Long> lodCounts = allFiles.stream()
+                .filter(f -> f.endsWith(".parquet"))
+                .map(f -> {
+                    // Extract LOD level from path: population/lod0/000/000/batch.parquet → lod0
+                    String[] parts = f.split("/");
+                    if (parts.length >= 2) {
+                        return parts[1]; // lod0, lod1, etc.
+                    }
+                    return "unknown";
+                })
+                .collect(java.util.stream.Collectors.groupingBy(
+                    lod -> lod,
+                    java.util.stream.Collectors.counting()
+                ));
+
+            // Convert to response format, sorted by LOD level
+            List<LodInfo> result = lodCounts.entrySet().stream()
+                .sorted(java.util.Map.Entry.comparingByKey())
+                .map(e -> new LodInfo(e.getKey(), e.getValue().intValue()))
+                .toList();
+
+            ctx.json(result);
+
+        } catch (Exception e) {
+            log.warn("Failed to get LOD info for {}/{}", runId, metricId, e);
+            ctx.status(500).result("Failed to get LOD info");
+        }
+    }
+
+    /**
+     * DTO for LOD file count information.
+     */
+    public record LodInfo(String lod, int fileCount) {}
+
+    /**
+     * Queries analytics data and returns aggregated JSON.
+     * <p>
+     * Route: GET /data?runId=...&amp;metric=...&amp;lod=...
+     * <p>
+     * This endpoint aggregates all Parquet files for a metric/LOD into a single JSON response.
+     * Uses server-side DuckDB for fast queries. Storage-backend agnostic (works with S3).
+     *
+     * @param ctx Javalin request context
+     */
+    @OpenApi(
+        path = "data",
+        methods = {HttpMethod.GET},
+        summary = "Query analytics data",
+        description = "Returns aggregated analytics data as JSON. Server-side DuckDB reads all Parquet files "
+            + "and returns a single JSON array. Much faster than client-side loading of many files.",
+        tags = {"analyzer / analytics"},
+        queryParams = {
+            @OpenApiParam(
+                name = "runId",
+                description = "Simulation run ID",
+                required = true,
+                example = "20251201-143025-550e8400-e29b-41d4-a716-446655440000"
+            ),
+            @OpenApiParam(
+                name = "metric",
+                description = "Metric identifier (e.g., 'population')",
+                required = true,
+                example = "population"
+            ),
+            @OpenApiParam(
+                name = "lod",
+                description = "LOD level (e.g., 'lod0', 'lod1'). Default: auto-select based on file count.",
+                required = false,
+                example = "lod0"
+            )
+        },
+        responses = {
+            @OpenApiResponse(
+                status = "200",
+                description = "Array of data rows from all Parquet files",
+                content = @OpenApiContent(
+                    mimeType = "application/json",
+                    example = """
+                        [
+                          {"tick": 0, "alive_count": 1, "total_dead": 0, "avg_energy": 10000.0},
+                          {"tick": 1, "alive_count": 1, "total_dead": 0, "avg_energy": 9950.5},
+                          {"tick": 2, "alive_count": 2, "total_dead": 0, "avg_energy": 9900.0}
+                        ]
+                        """
+                )
+            ),
+            @OpenApiResponse(
+                status = "400",
+                description = "Bad request (missing parameters)",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "500",
+                description = "Query execution failed",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            )
+        }
+    )
+    private void queryData(Context ctx) {
+        String runId = ctx.queryParam("runId");
+        String metric = ctx.queryParam("metric");
+        String lod = ctx.queryParam("lod");
+
+        if (runId == null || runId.isBlank()) {
+            ctx.status(400).result("Missing runId parameter");
+            return;
+        }
+        if (metric == null || metric.isBlank()) {
+            ctx.status(400).result("Missing metric parameter");
+            return;
+        }
+
+        // Auto-select LOD if not specified (prefer higher LOD with fewer files)
+        if (lod == null || lod.isBlank()) {
+            lod = autoSelectLod(runId, metric);
+            if (lod == null) {
+                ctx.status(404).result("No data found for metric: " + metric);
+                return;
+            }
+        }
+
+        try {
+            long startTime = System.currentTimeMillis();
+            
+            // 1. List all Parquet files for this metric/LOD
+            String prefix = metric + "/" + lod + "/";
+            List<String> files = storage.listAnalyticsFiles(runId, prefix);
+            List<String> parquetFiles = files.stream()
+                .filter(f -> f.endsWith(".parquet"))
+                .toList();
+
+            if (parquetFiles.isEmpty()) {
+                ctx.json(List.of()); // Empty array
+                return;
+            }
+
+            // 2. Copy files from storage to temp directory (storage-agnostic)
+            Path tempDir = Files.createTempDirectory("analytics-query-");
+            List<Path> tempFiles = new ArrayList<>();
+            
+            try {
+                for (String file : parquetFiles) {
+                    Path tempFile = tempDir.resolve(file.replace("/", "_"));
+                    try (InputStream in = storage.openAnalyticsInputStream(runId, file);
+                         OutputStream out = Files.newOutputStream(tempFile)) {
+                        in.transferTo(out);
+                    }
+                    tempFiles.add(tempFile);
+                }
+
+                // 3. Query with DuckDB
+                List<Map<String, Object>> result = queryParquetFiles(tempFiles);
+
+                long duration = System.currentTimeMillis() - startTime;
+                log.debug("Query {}/{}/{}: {} files, {} rows in {}ms", 
+                    runId, metric, lod, parquetFiles.size(), result.size(), duration);
+
+                // 4. Return JSON
+                ctx.json(result);
+
+            } finally {
+                // 5. Cleanup temp files
+                for (Path tempFile : tempFiles) {
+                    try {
+                        Files.deleteIfExists(tempFile);
+                    } catch (IOException e) {
+                        log.debug("Failed to delete temp file: {}", tempFile);
+                    }
+                }
+                try {
+                    Files.deleteIfExists(tempDir);
+                } catch (IOException e) {
+                    log.debug("Failed to delete temp directory: {}", tempDir);
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("Query failed for {}/{}/{}", runId, metric, lod, e);
+            ctx.status(500).result("Query failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Auto-selects the optimal LOD level based on file count.
+     * Prefers higher LOD (fewer files) if available.
+     */
+    private String autoSelectLod(String runId, String metricId) {
+        try {
+            List<String> allFiles = storage.listAnalyticsFiles(runId, metricId + "/");
+            
+            // Count files per LOD
+            Map<String, Long> lodCounts = allFiles.stream()
+                .filter(f -> f.endsWith(".parquet"))
+                .map(f -> {
+                    String[] parts = f.split("/");
+                    return parts.length >= 2 ? parts[1] : "unknown";
+                })
+                .collect(java.util.stream.Collectors.groupingBy(
+                    lod -> lod,
+                    java.util.stream.Collectors.counting()
+                ));
+
+            if (lodCounts.isEmpty()) {
+                return null;
+            }
+
+            // Select LOD with <= 100 files, or highest LOD if all have more
+            return lodCounts.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey()) // lod0, lod1, lod2...
+                .filter(e -> e.getValue() <= 100)
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElse(lodCounts.keySet().stream().max(String::compareTo).orElse("lod0"));
+
+        } catch (Exception e) {
+            log.warn("Failed to auto-select LOD for {}/{}", runId, metricId);
+            return "lod0"; // Fallback
+        }
+    }
+
+    /**
+     * Executes a DuckDB query on multiple Parquet files.
+     */
+    private List<Map<String, Object>> queryParquetFiles(List<Path> files) throws Exception {
+        if (!duckDbDriverLoaded) {
+            throw new IllegalStateException("DuckDB driver not available");
+        }
+
+        // Build file list for read_parquet
+        StringBuilder fileList = new StringBuilder();
+        for (int i = 0; i < files.size(); i++) {
+            if (i > 0) fileList.append(", ");
+            String path = files.get(i).toAbsolutePath().toString().replace("\\", "/");
+            fileList.append("'").append(path).append("'");
+        }
+
+        String sql = String.format(
+            "SELECT * FROM read_parquet([%s]) ORDER BY tick",
+            fileList
+        );
+
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        try (Connection conn = DriverManager.getConnection("jdbc:duckdb:");
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+
+            ResultSetMetaData meta = rs.getMetaData();
+            int columnCount = meta.getColumnCount();
+            String[] columnNames = new String[columnCount];
+            for (int i = 0; i < columnCount; i++) {
+                columnNames[i] = meta.getColumnName(i + 1);
+            }
+
+            while (rs.next()) {
+                Map<String, Object> row = new LinkedHashMap<>(); // Preserve column order
+                for (int i = 0; i < columnCount; i++) {
+                    Object value = rs.getObject(i + 1);
+                    // Handle BigInteger/Long for JSON compatibility
+                    if (value instanceof java.math.BigInteger) {
+                        value = ((java.math.BigInteger) value).longValue();
+                    }
+                    row.put(columnNames[i], value);
+                }
+                result.add(row);
+            }
+        }
+
+        return result;
     }
 
     /**
@@ -262,25 +715,31 @@ public class AnalyticsController implements IController {
     }
 
     /**
-     * Streams an analytics file to the client.
+     * Streams an analytics file to the client with HTTP Range Request support.
      * <p>
-     * Route: GET /files/{path}?runId=...
+     * Route: GET /files/*?runId=...
+     * <p>
+     * Uses wildcard matching to support nested paths like: population/lod0/000/000/batch.parquet
+     * <p>
+     * Supports HTTP Range Requests (RFC 7233) for efficient partial downloads.
+     * DuckDB WASM uses Range Requests to read only the Parquet footer and necessary row groups.
      * <p>
      * Content-Type is set based on file extension (.parquet, .json, .csv).
      *
      * @param ctx Javalin request context
      */
     @OpenApi(
-        path = "files/{path}",
+        path = "files/*",
         methods = {HttpMethod.GET},
         summary = "Download analytics file",
         description = "Streams an analytics artifact file (Parquet, JSON, or CSV) directly to the client. "
-            + "The path parameter should be the relative path as returned by the /list endpoint.",
+            + "Supports HTTP Range Requests for efficient partial downloads. "
+            + "The path should be the relative path as returned by the /list endpoint (e.g., population/lod0/000/000/batch.parquet).",
         tags = {"analyzer / analytics"},
         pathParams = {
             @OpenApiParam(
-                name = "path", 
-                description = "File path relative to analytics root (URL-encoded)", 
+                name = "*", 
+                description = "File path relative to analytics root", 
                 required = true,
                 example = "population/lod0/000/000/batch_00000000000000000000_00000000000000000999.parquet"
             )
@@ -296,12 +755,17 @@ public class AnalyticsController implements IController {
         responses = {
             @OpenApiResponse(
                 status = "200", 
-                description = "File content (binary for Parquet, text for JSON/CSV)",
+                description = "Full file content",
                 content = {
                     @OpenApiContent(mimeType = "application/octet-stream"),
                     @OpenApiContent(mimeType = "application/json"),
                     @OpenApiContent(mimeType = "text/csv")
                 }
+            ),
+            @OpenApiResponse(
+                status = "206",
+                description = "Partial content (Range Request fulfilled)",
+                content = @OpenApiContent(mimeType = "application/octet-stream")
             ),
             @OpenApiResponse(
                 status = "400", 
@@ -312,30 +776,88 @@ public class AnalyticsController implements IController {
                 status = "404", 
                 description = "File not found", 
                 content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "416",
+                description = "Range Not Satisfiable",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
             )
         }
     )
     private void getFile(Context ctx) {
         String runId = ctx.queryParam("runId");
-        String path = ctx.pathParam("path");
+        
+        // Extract wildcard path from URL: .../files/population/lod0/... → population/lod0/...
+        // ctx.path() returns full path, we find "/files/" and take everything after it
+        String fullPath = ctx.path();
+        int filesIdx = fullPath.indexOf("/files/");
+        String path = (filesIdx >= 0) 
+            ? fullPath.substring(filesIdx + "/files/".length())
+            : "";
 
         if (runId == null || runId.isBlank()) {
             ctx.status(400).result("Missing runId parameter");
             return;
         }
+        
+        if (path == null || path.isBlank()) {
+            ctx.status(400).result("Missing file path");
+            return;
+        }
 
         try {
-            // Simple streaming
-            InputStream in = storage.openAnalyticsInputStream(runId, path);
-            ctx.result(in);
+            // Read full file content (Parquet files are typically <1MB)
+            byte[] fileContent;
+            try (InputStream in = storage.openAnalyticsInputStream(runId, path)) {
+                fileContent = in.readAllBytes();
+            }
+            
+            long totalLength = fileContent.length;
             
             // Set content type based on extension
+            String contentType = "application/octet-stream";
             if (path.endsWith(".parquet")) {
-                ctx.contentType("application/octet-stream");
+                contentType = "application/octet-stream";
             } else if (path.endsWith(".json")) {
-                ctx.contentType("application/json");
+                contentType = "application/json";
             } else if (path.endsWith(".csv")) {
-                ctx.contentType("text/csv");
+                contentType = "text/csv";
+            }
+            ctx.contentType(contentType);
+            
+            // Check for Range header
+            String rangeHeader = ctx.header("Range");
+            if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
+                // Parse Range header: "bytes=start-end" or "bytes=start-" or "bytes=-suffix"
+                RangeResult range = parseRangeHeader(rangeHeader, totalLength);
+                
+                if (range == null) {
+                    // Invalid range
+                    ctx.status(416).header("Content-Range", "bytes */" + totalLength);
+                    ctx.result("Range Not Satisfiable");
+                    return;
+                }
+                
+                // Serve partial content
+                long start = range.start;
+                long end = range.end;
+                int length = (int) (end - start + 1);
+                
+                ctx.status(206); // Partial Content
+                ctx.header("Content-Range", "bytes " + start + "-" + end + "/" + totalLength);
+                ctx.header("Content-Length", String.valueOf(length));
+                ctx.header("Accept-Ranges", "bytes");
+                
+                // Return slice of content
+                byte[] slice = new byte[length];
+                System.arraycopy(fileContent, (int) start, slice, 0, length);
+                ctx.result(slice);
+                
+            } else {
+                // No Range header - serve full file
+                ctx.header("Accept-Ranges", "bytes");
+                ctx.header("Content-Length", String.valueOf(totalLength));
+                ctx.result(fileContent);
             }
             
         } catch (Exception e) {
@@ -343,4 +865,66 @@ public class AnalyticsController implements IController {
             ctx.status(404).result("File not found");
         }
     }
+    
+    /**
+     * Parses the HTTP Range header and returns start/end positions.
+     * <p>
+     * Supported formats:
+     * <ul>
+     *   <li>bytes=0-499: First 500 bytes</li>
+     *   <li>bytes=500-999: Second 500 bytes</li>
+     *   <li>bytes=500-: From byte 500 to end</li>
+     *   <li>bytes=-500: Last 500 bytes</li>
+     * </ul>
+     *
+     * @param rangeHeader The Range header value (e.g., "bytes=0-499")
+     * @param totalLength Total file length
+     * @return RangeResult with start/end positions, or null if invalid
+     */
+    private RangeResult parseRangeHeader(String rangeHeader, long totalLength) {
+        try {
+            String rangeSpec = rangeHeader.substring(6); // Remove "bytes="
+            
+            // Handle multiple ranges (not supported - just take first)
+            if (rangeSpec.contains(",")) {
+                rangeSpec = rangeSpec.split(",")[0].trim();
+            }
+            
+            long start, end;
+            
+            if (rangeSpec.startsWith("-")) {
+                // Suffix range: -500 = last 500 bytes
+                long suffix = Long.parseLong(rangeSpec.substring(1));
+                start = Math.max(0, totalLength - suffix);
+                end = totalLength - 1;
+            } else if (rangeSpec.endsWith("-")) {
+                // Open-ended: 500- = from 500 to end
+                start = Long.parseLong(rangeSpec.substring(0, rangeSpec.length() - 1));
+                end = totalLength - 1;
+            } else {
+                // Explicit range: 0-499
+                String[] parts = rangeSpec.split("-");
+                start = Long.parseLong(parts[0]);
+                end = Long.parseLong(parts[1]);
+            }
+            
+            // Validate range
+            if (start < 0 || start >= totalLength || end < start) {
+                return null;
+            }
+            
+            // Clamp end to file length
+            end = Math.min(end, totalLength - 1);
+            
+            return new RangeResult(start, end);
+            
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+    
+    /**
+     * Result of parsing a Range header.
+     */
+    private record RangeResult(long start, long end) {}
 }

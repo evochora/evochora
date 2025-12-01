@@ -299,6 +299,52 @@ class AnalyticsIndexerEndToEndTest {
     }
 
     @Test
+    void testMultipleLodLevels() throws Exception {
+        // Given: Create test run with metadata
+        String runId = "20251201-155000-" + UUID.randomUUID();
+        SimulationMetadata metadata = createTestMetadata(runId, 10);
+        indexMetadata(runId, metadata);
+
+        // Write one batch with 100 ticks (to have data in lod1 which samples every 10th tick)
+        List<TickData> batch = createTestTicksWithOrganisms(runId, 0, 100);
+        StoragePath key = testStorage.writeBatch(batch, 0, 99);
+
+        // Create AnalyticsIndexer with 2 LOD levels
+        indexer = createAnalyticsIndexerWithLodLevels("test-indexer", runId, 2);
+        indexer.start();
+
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+
+        // Send batch notification
+        sendBatchInfoToTopic(runId, key.asString(), 0, 99);
+
+        // Wait for Parquet files - should have 2 (one per LOD level)
+        await().atMost(15, TimeUnit.SECONDS)
+            .until(() -> findParquetFiles(runId, "population").size() >= 2);
+
+        // Then: Verify both LOD levels exist
+        List<Path> parquetFiles = findParquetFiles(runId, "population");
+        assertEquals(2, parquetFiles.size(), "Should have 2 Parquet files (lod0 + lod1)");
+
+        // Verify lod0 and lod1 folders exist
+        Path analyticsDir = tempStorageDir.resolve(runId).resolve("analytics").resolve("population");
+        assertTrue(Files.exists(analyticsDir.resolve("lod0")), "lod0 folder should exist");
+        assertTrue(Files.exists(analyticsDir.resolve("lod1")), "lod1 folder should exist");
+
+        // Verify each LOD level has one file
+        long lod0Files = parquetFiles.stream()
+            .filter(p -> p.toString().contains("lod0"))
+            .count();
+        long lod1Files = parquetFiles.stream()
+            .filter(p -> p.toString().contains("lod1"))
+            .count();
+
+        assertEquals(1, lod0Files, "Should have 1 file in lod0");
+        assertEquals(1, lod1Files, "Should have 1 file in lod1");
+    }
+
+    @Test
     void testMetricsTracking() throws Exception {
         // Given: Create test run
         String runId = "20251201-160000-" + UUID.randomUUID();
@@ -356,7 +402,7 @@ class AnalyticsIndexerEndToEndTest {
                         metricId = "population"
                         samplingInterval = 1
                         lodFactor = 10
-                        lodLevels = 2
+                        lodLevels = 1
                     }
                 }
             ]
@@ -383,6 +429,66 @@ class AnalyticsIndexerEndToEndTest {
         IResource wrappedTopic = testBatchTopic.getWrappedResource(topicContext);
 
         // Wrap storage for analytics output
+        ResourceContext analyticsContext = new ResourceContext(
+            name,
+            "analyticsOutput",
+            "analytics-write",
+            "test-storage",
+            Collections.emptyMap()
+        );
+        IResource wrappedAnalyticsStorage = testStorage.getWrappedResource(analyticsContext);
+
+        Map<String, List<IResource>> resources = Map.of(
+            "storage", List.of(testStorage),
+            "metadata", List.of(wrappedDatabase),
+            "topic", List.of(wrappedTopic),
+            "analyticsOutput", List.of(wrappedAnalyticsStorage)
+        );
+
+        return new AnalyticsIndexer<>(name, config, resources);
+    }
+
+    private AnalyticsIndexer<?> createAnalyticsIndexerWithLodLevels(String name, String runId, int lodLevels) {
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 10000
+            tempDirectory = "%s"
+            folderStructure {
+                levels = [100000000, 100000]
+            }
+            plugins = [
+                {
+                    className = "org.evochora.datapipeline.services.analytics.plugins.PopulationMetricsPlugin"
+                    options {
+                        metricId = "population"
+                        samplingInterval = 1
+                        lodFactor = 10
+                        lodLevels = %d
+                    }
+                }
+            ]
+            """.formatted(runId, tempAnalyticsDir.toAbsolutePath().toString().replace("\\", "/"), lodLevels));
+
+        // Same resource wiring as createAnalyticsIndexer
+        ResourceContext dbContext = new ResourceContext(
+            name,
+            "metadata",
+            "db-meta-read",
+            "test-db",
+            Collections.emptyMap()
+        );
+        IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
+
+        ResourceContext topicContext = new ResourceContext(
+            name,
+            "topic",
+            "topic-read",
+            "batch-topic",
+            Map.of("consumerGroup", "test-analytics-" + UUID.randomUUID())
+        );
+        IResource wrappedTopic = testBatchTopic.getWrappedResource(topicContext);
+
         ResourceContext analyticsContext = new ResourceContext(
             name,
             "analyticsOutput",

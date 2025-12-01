@@ -10,7 +10,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -350,6 +352,34 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
                 .sorted()
                 .collect(Collectors.toList());
         }
+    }
+
+    @Override
+    public List<String> listAnalyticsRunIds() throws IOException {
+        if (!rootDirectory.exists() || !rootDirectory.isDirectory()) {
+            return Collections.emptyList();
+        }
+        
+        File[] runDirs = rootDirectory.listFiles(File::isDirectory);
+        if (runDirs == null) {
+            return Collections.emptyList();
+        }
+        
+        // Filter to runs that have an analytics subdirectory with content
+        // Sort by name (which includes timestamp) in reverse order (newest first)
+        return Arrays.stream(runDirs)
+            .filter(dir -> {
+                File analyticsDir = new File(dir, "analytics");
+                if (!analyticsDir.exists() || !analyticsDir.isDirectory()) {
+                    return false;
+                }
+                // Check if analytics dir has any content
+                String[] contents = analyticsDir.list();
+                return contents != null && contents.length > 0;
+            })
+            .map(File::getName)
+            .sorted(Comparator.reverseOrder()) // Newest first
+            .collect(Collectors.toList());
     }
 
     // ========================================================================

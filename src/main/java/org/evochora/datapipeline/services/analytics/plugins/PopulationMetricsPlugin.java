@@ -78,8 +78,12 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
         entry.name = "Population Overview";
         entry.description = "Overview of alive organisms, total deaths, and average energy over time.";
         
+        // Generate dataSources for all configured LOD levels
         entry.dataSources = new HashMap<>();
-        entry.dataSources.put("lod0", metricId + "/lod0/**/*.parquet");
+        for (int level = 0; level < lodLevels; level++) {
+            String lodName = lodLevelName(level);
+            entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
+        }
         
         entry.visualization = new VisualizationHint();
         entry.visualization.type = "line-chart";
