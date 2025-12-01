@@ -1,14 +1,27 @@
 package org.evochora.node;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigObject;
+import java.lang.reflect.Constructor;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
+
 import org.evochora.node.spi.IProcess;
 import org.evochora.node.spi.IServiceProvider;
+import org.slf4j.ILoggerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.lang.reflect.Constructor;
-import java.util.*;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigObject;
+
+import ch.qos.logback.classic.LoggerContext;
 
 /**
  * The main entry point for the Evochora application node. This class initializes the system,
@@ -69,8 +82,11 @@ public final class Node {
     public void stop() {
         LOGGER.info("Shutdown sequence initiated...");
 
+        // Check if we're in actual JVM shutdown (called from shutdown hook thread)
+        final boolean isJvmShutdown = shutdownHook != null && Thread.currentThread() == shutdownHook;
+
         // Remove shutdown hook to prevent double execution
-        if (shutdownHook != null) {
+        if (shutdownHook != null && !isJvmShutdown) {
             try {
                 Runtime.getRuntime().removeShutdownHook(shutdownHook);
             } catch (final IllegalStateException e) {
@@ -94,6 +110,42 @@ public final class Node {
             }
         }
         LOGGER.info("All processes stopped. Goodbye.");
+        
+        // Ensure all logs are flushed before JVM exits (only during actual JVM shutdown)
+        if (isJvmShutdown) {
+            flushAndStopLogger();
+        }
+    }
+    
+    /**
+     * Flushes all pending log messages and stops the logging framework.
+     * <p>
+     * <strong>Important:</strong> This method stops the global LoggerContext, which affects
+     * all loggers in the JVM. It is only called during actual JVM shutdown (from the shutdown
+     * hook thread), never during normal {@link #stop()} calls in tests or programmatic shutdown.
+     * <p>
+     * This must be called at the very end of the shutdown sequence to ensure
+     * all log messages are written before the JVM exits. Without this, logs
+     * written during shutdown may be lost.
+     * <p>
+     * Uses Logback's {@link LoggerContext#stop()} which:
+     * <ul>
+     *   <li>Flushes all appenders</li>
+     *   <li>Waits for async appenders to complete</li>
+     *   <li>Closes all resources</li>
+     * </ul>
+     */
+    private void flushAndStopLogger() {
+        try {
+            ILoggerFactory loggerFactory = LoggerFactory.getILoggerFactory();
+            if (loggerFactory instanceof LoggerContext) {
+                LoggerContext context = (LoggerContext) loggerFactory;
+                context.stop();
+            }
+        } catch (Exception e) {
+            // Fallback to stderr if logging framework is already closed
+            System.err.println("[shutdown] Failed to flush logger: " + e.getMessage());
+        }
     }
 
     private void initializeProcesses(final Config config) {

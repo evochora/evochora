@@ -1,4 +1,7 @@
 <configuration>
+    <!-- Note: Logback shutdown is handled explicitly by Node.flushAndStopLogger() -->
+    <!-- This ensures all shutdown logs are flushed before JVM exits -->
+
     <!-- Suppress SLF4J replay warnings at JVM level -->
     <contextListener class="ch.qos.logback.classic.jul.LevelChangePropagator">
         <resetJUL>true</resetJUL>

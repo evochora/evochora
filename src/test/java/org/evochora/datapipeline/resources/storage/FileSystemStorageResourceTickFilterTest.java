@@ -159,7 +159,7 @@ class FileSystemStorageResourceTickFilterTest {
         long tick = storage.parseBatchStartTick("batch_0000000000000001234_0000000000000005678.pb.zst");
         assertEquals(1234, tick, "Should parse start tick correctly");
 
-        tick = storage.parseBatchStartTick("sim123/000/001/batch_0000000000000000000_0000000000000000999.pb");
+        tick = storage.parseBatchStartTick("sim123/raw/000/001/batch_0000000000000000000_0000000000000000999.pb");
         assertEquals(0, tick, "Should parse start tick from path");
 
         tick = storage.parseBatchStartTick("not_a_batch_file.pb");
@@ -172,7 +172,7 @@ class FileSystemStorageResourceTickFilterTest {
         long tick = storage.parseBatchEndTick("batch_0000000000000001234_0000000000000005678.pb.zst");
         assertEquals(5678, tick, "Should parse end tick correctly");
 
-        tick = storage.parseBatchEndTick("sim123/000/001/batch_0000000000000000000_0000000000000000999.pb");
+        tick = storage.parseBatchEndTick("sim123/raw/000/001/batch_0000000000000000000_0000000000000000999.pb");
         assertEquals(999, tick, "Should parse end tick from path");
 
         tick = storage.parseBatchEndTick("not_a_batch_file.pb");

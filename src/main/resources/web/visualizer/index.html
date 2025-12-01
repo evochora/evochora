@@ -32,8 +32,9 @@
             <input type="number" id="tick-input" min="0" value="0" aria-label="Tick">
             <span class="tick-total-suffix" id="tick-total-suffix">/N/A</span>
         </div>
-        <button id="btn-prev">&lt;</button>
-        <button id="btn-next">&gt;</button>
+        <button id="btn-prev" data-tooltip="Tick -1 (←) / -1000 (↓)">&lt;</button>
+        <button id="btn-next" data-tooltip="Tick +1 (→) / +1000 (↑)">&gt;</button>
+        <button id="btn-zoom-toggle" title="Toggle Zoom Level">Zoom Out</button>
     </div>
     <div class="logo-container">
         <div class="logo-wrapper">
@@ -54,6 +55,13 @@
     <div class="world-container">
         <canvas id="worldCanvas"></canvas>
     </div>
+    <!-- Virtual Scrollbars moved here, outside of world-container -->
+    <div id="scrollbar-track-v" class="scrollbar-track-v">
+        <div id="scrollbar-thumb-v" class="scrollbar-thumb-v"></div>
+    </div>
+    <div id="scrollbar-track-h" class="scrollbar-track-h">
+        <div id="scrollbar-thumb-h" class="scrollbar-thumb-h"></div>
+    </div>
     <div id="sidebar" class="sidebar">
         <button id="sidebar-toggle" class="sidebar-toggle-btn" style="display: none;">X</button>
         <div id="organism-details" class="details">
@@ -65,13 +73,16 @@
     </div>
 </main>
 
+<!-- UI Components - Loading Manager must be first -->
+<script src="js/ui/LoadingManager.js"></script>
+
 <!-- API Clients -->
 <script src="js/api/ApiClient.js"></script>
 <script src="js/api/SimulationApi.js"></script>
 <script src="js/api/EnvironmentApi.js"></script>
 <script src="js/api/OrganismApi.js"></script>
     
-<!-- UI Components -->
+<!-- Other UI Components -->
 <script src="js/ui/HeaderbarView.js"></script>
 <script src="js/ui/EnvironmentGrid.js"></script>
 <script src="js/ui/sidebar/SidebarBasicInfoView.js"></script>
@@ -95,6 +106,29 @@
     
 <!-- Main entry point - MUST BE LAST -->
 <script src="js/main.js"></script>
+
+<!-- Header Logo Positioning -->
+<script>
+(function() {
+    function updateLogoPosition() {
+        const header = document.querySelector('header');
+        const controlsLeft = document.querySelector('.controls-left');
+        const controlsRight = document.querySelector('.controls-right');
+        const logo = document.querySelector('.logo-container');
+        
+        if (header && controlsLeft && controlsRight && logo) {
+            header.style.setProperty('--controls-left-width', controlsLeft.offsetWidth + 'px');
+            header.style.setProperty('--controls-right-width', controlsRight.offsetWidth + 'px');
+            header.style.setProperty('--logo-width', logo.offsetWidth + 'px');
+        }
+    }
+    
+    window.addEventListener('load', updateLogoPosition);
+    window.addEventListener('resize', updateLogoPosition);
+    // Also update when fonts are loaded
+    document.fonts?.ready?.then(updateLogoPosition);
+})();
+</script>
 </body>
 </html>
 

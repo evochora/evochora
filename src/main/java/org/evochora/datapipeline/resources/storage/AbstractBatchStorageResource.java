@@ -1,25 +1,5 @@
 package org.evochora.datapipeline.resources.storage;
 
-import com.google.protobuf.MessageLite;
-import com.google.protobuf.Parser;
-import com.typesafe.config.Config;
-import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.resources.IContextualResource;
-import org.evochora.datapipeline.api.resources.IWrappedResource;
-import org.evochora.datapipeline.api.resources.ResourceContext;
-import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
-import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
-import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
-import org.evochora.datapipeline.api.resources.storage.StoragePath;
-import org.evochora.datapipeline.resources.AbstractResource;
-import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageReader;
-import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageWriter;
-import org.evochora.datapipeline.utils.compression.ICompressionCodec;
-import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
-import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -29,9 +9,34 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
+
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.IContextualResource;
+import org.evochora.datapipeline.api.resources.IWrappedResource;
+import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
+import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
+import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.datapipeline.resources.AbstractResource;
+import org.evochora.datapipeline.resources.storage.wrappers.MonitoredAnalyticsStorageWriter;
+import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageReader;
+import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageWriter;
+import org.evochora.datapipeline.utils.compression.ICompressionCodec;
+import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
+import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.protobuf.MessageLite;
+import com.google.protobuf.Parser;
+import com.typesafe.config.Config;
 
 /**
  * Abstract base class for batch storage resources with hierarchical folder organization.
@@ -141,8 +146,9 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         }
 
         // Calculate folder path from firstTick
+        // Structure: {runId}/raw/{folderLevels}/batch_xxx.pb
         String simulationId = batch.get(0).getSimulationRunId();
-        String folderPath = simulationId + "/" + calculateFolderPath(firstTick);
+        String folderPath = simulationId + "/raw/" + calculateFolderPath(firstTick);
 
         // Generate batch filename (logical key without compression)
         String logicalFilename = String.format("batch_%019d_%019d.pb", firstTick, lastTick);
@@ -151,19 +157,22 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         // Convert to physical path (adds compression extension)
         String physicalPath = toPhysicalPath(logicalPath);
 
-        // Serialize and compress batch
-        byte[] data = serializeBatch(batch);
-        byte[] compressed = compressBatch(data);
-
-        // Write directly to physical path (atomic write with temp file)
+        // STREAMING: Delegate to backend-specific atomic streaming implementation
+        // This eliminates ~2-3 GB of peak memory usage for large batches by avoiding:
+        // 1. ByteArrayOutputStream for serialization (~1 GB buffer + toByteArray() copy)
+        // 2. ByteArrayOutputStream for compression (~variable buffer + toByteArray() copy)
+        //
+        // Each backend implements atomicity differently:
+        // - FileSystem: temp file + atomic rename
+        // - S3: Multipart Upload with completeMultipartUpload
         long writeStart = System.nanoTime();
-        putRaw(physicalPath, compressed);
+        long bytesWritten = writeAtomicStreaming(physicalPath, batch, codec);
         long writeLatency = System.nanoTime() - writeStart;
 
         // Record metrics
-        recordWrite(compressed.length, writeLatency);
+        recordWrite(bytesWritten, writeLatency);
 
-        log.debug("Wrote batch {} with {} ticks", physicalPath, batch.size());
+        log.debug("Wrote batch {} with {} ticks (streaming)", physicalPath, batch.size());
 
         return StoragePath.of(physicalPath);
     }
@@ -506,8 +515,8 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
 
         // Search for metadata file using listRaw with prefix pattern
         // This finds both uncompressed (metadata.pb) and compressed variants (metadata.pb.zst, etc.)
-        // The prefix "runId/metadata.pb" will match files starting with this pattern
-        String metadataPrefix = runId + "/metadata.pb";
+        // The prefix "runId/raw/metadata.pb" will match files starting with this pattern
+        String metadataPrefix = runId + "/raw/metadata.pb";
         List<String> files = listRaw(metadataPrefix, false, null, 1, null, null);
 
         // Return first matching file, if any
@@ -641,9 +650,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         return switch (context.usageType()) {
             case "storage-write" -> new MonitoredBatchStorageWriter(this, context);
             case "storage-read" -> new MonitoredBatchStorageReader(this, context);
+            case "analytics-write" -> new MonitoredAnalyticsStorageWriter(this, context);
             default -> throw new IllegalArgumentException(String.format(
                 "Unsupported usage type '%s' for storage resource '%s'. " +
-                "Supported types: storage-write, storage-read",
+                "Supported types: storage-write, storage-read, analytics-write",
                 context.usageType(), getResourceName()
             ));
         };
@@ -684,6 +694,46 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * @throws IOException if write fails
      */
     protected abstract void putRaw(String physicalPath, byte[] data) throws IOException;
+
+    /**
+     * Writes a batch of ticks atomically with streaming support.
+     * <p>
+     * This high-level abstraction allows each storage backend to implement its own
+     * atomicity strategy while streaming data directly to storage without intermediate
+     * memory buffers. This eliminates ~2-3 GB of peak memory usage for large batches.
+     * <p>
+     * <strong>Atomicity Requirements:</strong>
+     * <ul>
+     *   <li>The batch must be fully written or not at all (no partial writes visible)</li>
+     *   <li>On failure, any partial data must be cleaned up</li>
+     *   <li>Concurrent reads must not see incomplete data</li>
+     * </ul>
+     * <p>
+     * <strong>Backend-Specific Implementations:</strong>
+     * <ul>
+     *   <li><strong>FileSystem:</strong> Write to temp file, then atomic rename via 
+     *       {@code Files.move(ATOMIC_MOVE)}</li>
+     *   <li><strong>S3:</strong> Use Multipart Upload with {@code completeMultipartUpload} 
+     *       for atomicity - object only becomes visible after completion</li>
+     *   <li><strong>GCS:</strong> Use resumable uploads with final commit</li>
+     * </ul>
+     * <p>
+     * <strong>Memory Efficiency:</strong>
+     * Implementations should stream data directly through compression to storage,
+     * avoiding in-memory buffering. Use {@link CountingOutputStream} to track bytes.
+     * <p>
+     * <strong>Compression:</strong>
+     * The provided codec must be used to compress the protobuf stream. Each tick
+     * should be written using {@code tick.writeDelimitedTo(compressedStream)}.
+     *
+     * @param physicalPath final destination path (including compression extension)
+     * @param batch the batch of ticks to write (non-empty)
+     * @param codec compression codec to wrap the output stream with
+     * @return number of bytes written (compressed size, for metrics)
+     * @throws IOException if the write fails (partial data must be cleaned up)
+     */
+    protected abstract long writeAtomicStreaming(String physicalPath, List<TickData> batch, 
+                                                  ICompressionCodec codec) throws IOException;
 
     /**
      * Reads raw bytes from physical path.
@@ -808,6 +858,78 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         readOpsCounter.recordCount();
         readBytesCounter.recordSum(bytes);
         readLatencyTracker.record(latencyNanos);
+    }
+
+    // ===== Helper classes =====
+
+    /**
+     * An output stream wrapper that counts bytes written.
+     * <p>
+     * Used for metrics tracking during streaming writes without requiring
+     * the compressed data to be buffered in memory. Subclasses should use
+     * this in their {@link #writeAtomicStreaming} implementations.
+     * <p>
+     * <strong>Usage Example:</strong>
+     * <pre>
+     * try (OutputStream fileOut = createFileStream(path);
+     *      CountingOutputStream counting = new CountingOutputStream(fileOut);
+     *      OutputStream compressed = codec.wrapOutputStream(counting)) {
+     *     for (TickData tick : batch) {
+     *         tick.writeDelimitedTo(compressed);
+     *     }
+     * }
+     * return counting.getBytesWritten();
+     * </pre>
+     */
+    protected static class CountingOutputStream extends OutputStream {
+        private final OutputStream delegate;
+        private long bytesWritten = 0;
+
+        /**
+         * Creates a counting wrapper around the given output stream.
+         *
+         * @param delegate the underlying output stream to write to
+         */
+        public CountingOutputStream(OutputStream delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            delegate.write(b);
+            bytesWritten++;
+        }
+
+        @Override
+        public void write(byte[] b) throws IOException {
+            delegate.write(b);
+            bytesWritten += b.length;
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            delegate.write(b, off, len);
+            bytesWritten += len;
+        }
+
+        @Override
+        public void flush() throws IOException {
+            delegate.flush();
+        }
+
+        @Override
+        public void close() throws IOException {
+            delegate.close();
+        }
+
+        /**
+         * Returns the total number of bytes written through this stream.
+         *
+         * @return bytes written count
+         */
+        public long getBytesWritten() {
+            return bytesWritten;
+        }
     }
 
 }

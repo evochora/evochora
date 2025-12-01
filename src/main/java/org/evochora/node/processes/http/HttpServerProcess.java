@@ -1,26 +1,29 @@
 package org.evochora.node.processes.http;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import com.typesafe.config.ConfigObject;
-import com.typesafe.config.ConfigValue;
-import com.typesafe.config.ConfigValueType;
-import io.javalin.Javalin;
-import org.eclipse.jetty.util.thread.QueuedThreadPool;
-import org.evochora.datapipeline.ServiceManager;
-import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
-import org.evochora.node.spi.IController;
-import org.evochora.node.processes.AbstractProcess;
-import org.evochora.node.spi.ServiceRegistry;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+
+import org.eclipse.jetty.server.handler.gzip.GzipHandler;
+import org.eclipse.jetty.util.thread.QueuedThreadPool;
+import org.evochora.datapipeline.ServiceManager;
+import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
+import org.evochora.node.processes.AbstractProcess;
+import org.evochora.node.spi.IController;
+import org.evochora.node.spi.ServiceRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigObject;
+import com.typesafe.config.ConfigValue;
+import com.typesafe.config.ConfigValueType;
+
+import io.javalin.Javalin;
 
 /**
  * A manageable process that runs a Javalin HTTP server. It dynamically configures its routes
@@ -61,7 +64,35 @@ public class HttpServerProcess extends AbstractProcess {
         this.controllerRegistry = new ServiceRegistry();
         this.controllerRegistry.register(ServiceManager.class, serviceManager);
         
-        // Register IDatabaseReaderProvider if configured
+        // Generic Resource Injection
+        if (options.hasPath("resourceBindings")) {
+            Config bindings = options.getConfig("resourceBindings");
+            for (String interfaceName : bindings.root().keySet()) {
+                // Access ConfigValue directly to avoid dot-notation path interpretation
+                // Keys with dots (like "org.evochora...") are quoted in HOCON but need
+                // to be accessed via root().get() instead of getString() to preserve the key
+                String resourceName = bindings.root().get(interfaceName).unwrapped().toString();
+                try {
+                    Class<?> interfaceClass = Class.forName(interfaceName);
+                    // Get resource and cast to interface
+                    // Note: This retrieves the RAW resource instance (singleton).
+                    // If contextual wrappers are needed, this logic would need to parse usage types.
+                    // For Analytics (IAnalyticsStorageRead), we agreed to use the raw resource (no wrapper).
+                    Object resource = serviceManager.getResource(resourceName, interfaceClass);
+                    
+                    // Register for Controllers
+                    this.controllerRegistry.register(interfaceClass, resource);
+                    LOGGER.debug("Registered resource binding: {} -> {}", interfaceName, resourceName);
+                    
+                } catch (ClassNotFoundException e) {
+                    LOGGER.warn("Failed to bind resource: Interface class not found: {}", interfaceName);
+                } catch (Exception e) {
+                    LOGGER.warn("Failed to bind resource '{}' to interface '{}': {}", resourceName, interfaceName, e.getMessage());
+                }
+            }
+        }
+        
+        // Legacy: Register IDatabaseReaderProvider if configured (keep for backward compatibility)
         if (options.hasPath("databaseProviderResourceName")) {
             final String dbProviderName = options.getString("databaseProviderResourceName");
             try {
@@ -89,6 +120,22 @@ public class HttpServerProcess extends AbstractProcess {
 
         app = Javalin.create(config -> {
             config.showJavalinBanner = false;
+            
+            // Enable gzip compression for all responses (especially JSON)
+            // Reduces response size by ~90% for JSON data
+            config.jetty.modifyServletContextHandler(handler -> {
+                GzipHandler gzipHandler = new GzipHandler();
+                gzipHandler.setMinGzipSize(1024); // Compress responses > 1KB
+                gzipHandler.addIncludedMimeTypes(
+                    "application/json",
+                    "text/html", 
+                    "text/plain",
+                    "text/css",
+                    "application/javascript"
+                );
+                handler.insertHandler(gzipHandler);
+            });
+            
             config.requestLogger.http((ctx, ms) -> {
                 if (LOGGER.isDebugEnabled()) {
                     LOGGER.debug("Request: {} {} (completed in {} ms)", ctx.method(), ctx.path(), ms);

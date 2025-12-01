@@ -3,6 +3,9 @@ package org.evochora.datapipeline.resources.queues;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
+import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
@@ -35,7 +38,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * @param <T> The type of the original message contained in the DeadLetterMessage.
  */
-public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDeadLetterQueueResource<T> {
+public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDeadLetterQueueResource<T>, IMemoryEstimatable {
 
     private static final Logger log = LoggerFactory.getLogger(InMemoryDeadLetterQueue.class);
     
@@ -213,5 +216,34 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
     @Override
     public UsageState getUsageState(String usageType) {
         return delegate.getUsageState(usageType);
+    }
+    
+    // ==================== IMemoryEstimatable ====================
+    
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Estimates memory for the DLQ at full capacity.
+     * <p>
+     * DLQ messages are DeadLetterMessage wrappers containing the original message
+     * plus metadata (error reason, timestamp, retry count). Each message is estimated
+     * at ~5 KB (original batch reference + metadata).
+     */
+    @Override
+    public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
+        // DeadLetterMessage contains: original batch reference (~2KB), error info (~1KB), timestamps (~100B)
+        // Conservative estimate: ~5 KB per dead letter message
+        long bytesPerMessage = 5 * 1024;
+        long totalBytes = capacityLimit * bytesPerMessage;
+        
+        String explanation = String.format("%d capacity × ~5 KB/message (DeadLetterMessage wrapper)",
+            capacityLimit);
+        
+        return List.of(new MemoryEstimate(
+            getResourceName(),
+            totalBytes,
+            explanation,
+            MemoryEstimate.Category.QUEUE
+        ));
     }
 }

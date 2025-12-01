@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evochora Analytics</title>
+    <link rel="icon" type="image/x-icon" href="/favicons/favicon.ico">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicons/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicons/favicon-32x32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/favicons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicons/android-chrome-192x192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/favicons/android-chrome-512x512.png">
+    <link rel="manifest" href="/favicons/site.webmanifest">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Doto:wght@900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<!-- Error Banner -->
+<div id="error-banner" class="error-bar">
+    <span id="error-message" class="error-bar-message"></span>
+    <button id="close-error-banner" class="error-bar-close">&times;</button>
+</div>
+
+<!-- Header -->
+<header>
+    <div class="controls-left">
+        <select id="run-select" aria-label="Select Simulation Run">
+            <option value="">Loading runs...</option>
+        </select>
+    </div>
+    <div class="logo-container">
+        <div class="logo-wrapper">
+            <span class="logo-text">EVOCHORA</span>
+            <span class="logo-subtitle">Analytics</span>
+            <div class="loading-indicator" id="loading-indicator"></div>
+        </div>
+    </div>
+    <div class="controls-right">
+        <button id="btn-refresh" class="primary" data-tooltip="Refresh data">⟳ Refresh</button>
+    </div>
+</header>
+
+<!-- Main Content -->
+<main class="container">
+    <div id="dashboard-container">
+        <div class="status-message">Select a simulation run to view analytics.</div>
+    </div>
+</main>
+
+<!-- Data Layer -->
+<script src="js/data/DuckDBClient.js"></script>
+
+<!-- API -->
+<script src="js/api/AnalyticsApi.js"></script>
+
+<!-- Charts (must load in order: Registry first, then types) -->
+<script src="js/charts/ChartRegistry.js"></script>
+<script src="js/charts/LineChart.js"></script>
+<script src="js/charts/BarChart.js"></script>
+<script src="js/charts/HeatmapChart.js"></script>
+
+<!-- UI Components -->
+<script src="js/ui/HeaderView.js"></script>
+<script src="js/ui/MetricCardView.js"></script>
+<script src="js/ui/DashboardView.js"></script>
+
+<!-- Application Logic -->
+<script src="js/AnalyzerController.js"></script>
+
+<!-- Main Entry Point (must be last) -->
+<script src="js/main.js"></script>
+
+<!-- Header Logo Positioning -->
+<script>
+(function() {
+    function updateLogoPosition() {
+        const header = document.querySelector('header');
+        const controlsLeft = document.querySelector('.controls-left');
+        const controlsRight = document.querySelector('.controls-right');
+        const logo = document.querySelector('.logo-container');
+        
+        if (header && controlsLeft && controlsRight && logo) {
+            header.style.setProperty('--controls-left-width', controlsLeft.offsetWidth + 'px');
+            header.style.setProperty('--controls-right-width', controlsRight.offsetWidth + 'px');
+            header.style.setProperty('--logo-width', logo.offsetWidth + 'px');
+        }
+    }
+    
+    window.addEventListener('load', updateLogoPosition);
+    window.addEventListener('resize', updateLogoPosition);
+    // Also update when fonts are loaded
+    document.fonts?.ready?.then(updateLogoPosition);
+})();
+</script>
+</body>
+</html>

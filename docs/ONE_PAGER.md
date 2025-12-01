@@ -26,5 +26,5 @@ Evochora is an open-source instrument for the scientific community. We are curre
 ---
 
 * Try the Live Visualizer: [http://evochora.org/](http://evochora.org/)
-* Read the Scientific Paper: [SCIENTIFIC_OVERVIEW.md](https://github.com/rainco77/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md)
-* View Source on GitHub: [GitHub](https://github.com/rainco77/evochora/)
+* Read the Scientific Paper: [SCIENTIFIC_OVERVIEW.md](https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md)
+* View Source on GitHub: [GitHub](https://github.com/evochora/evochora/)

@@ -823,7 +823,7 @@ class PersistenceServiceTest {
             .thenReturn(0); // Then return 0 to prevent infinite loop
             
         when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn(StoragePath.of("run-123/batch_0000000000000000000_0000000000000000099.pb"));
+            .thenReturn(StoragePath.of("run-123/raw/batch_0000000000000000000_0000000000000000099.pb"));
         
         // When
         service.start();
@@ -835,7 +835,7 @@ class PersistenceServiceTest {
         verify(mockStorage).writeBatch(anyList(), eq(0L), eq(99L));
         verify(mockBatchTopic).send(argThat(notification -> 
             notification.getSimulationRunId().equals("run-123") &&
-            notification.getStoragePath().startsWith("run-123/batch_0000000000000000000_0000000000000000099.pb") &&
+            notification.getStoragePath().startsWith("run-123/raw/batch_0000000000000000000_0000000000000000099.pb") &&
             notification.getTickStart() == 0 &&
             notification.getTickEnd() == 99 &&
             notification.getWrittenAtMs() > 0
@@ -862,7 +862,7 @@ class PersistenceServiceTest {
             .thenReturn(0);
             
         when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn(StoragePath.of("run-123/batch_0000000000000000000_0000000000000000099.pb"));
+            .thenReturn(StoragePath.of("run-123/raw/batch_0000000000000000000_0000000000000000099.pb"));
         
         // Topic always fails (InterruptedException)
         doThrow(new InterruptedException("Topic unavailable"))
@@ -942,7 +942,7 @@ class PersistenceServiceTest {
             .thenReturn(0);
             
         when(mockStorage.writeBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn(StoragePath.of("run-abc-def/batch_0000000000000001000_0000000000000001099.pb"));
+            .thenReturn(StoragePath.of("run-abc-def/raw/batch_0000000000000001000_0000000000000001099.pb"));
         
         // When
         service.start();
@@ -955,7 +955,7 @@ class PersistenceServiceTest {
         // Then
         verify(mockBatchTopic).send(argThat(notification -> {
             assertEquals("run-abc-def", notification.getSimulationRunId());
-            assertEquals("run-abc-def/batch_0000000000000001000_0000000000000001099.pb", notification.getStoragePath());
+            assertEquals("run-abc-def/raw/batch_0000000000000001000_0000000000000001099.pb", notification.getStoragePath());
             assertEquals(1000, notification.getTickStart());
             assertEquals(1099, notification.getTickEnd());
             assertTrue(notification.getWrittenAtMs() >= beforeWrite);

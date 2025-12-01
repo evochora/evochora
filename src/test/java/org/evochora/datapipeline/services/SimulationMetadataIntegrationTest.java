@@ -95,7 +95,7 @@ class SimulationMetadataIntegrationTest {
         Path metadataFile = findMetadataFile(tempStorageDir);
         assertNotNull(metadataFile, "Metadata file should exist");
 
-        // Verify file naming convention: {simulationRunId}/metadata.pb
+        // Verify file naming convention: {simulationRunId}/raw/metadata.pb
         assertTrue(metadataFile.getFileName().toString().equals("metadata.pb"));
 
         // Verify file is readable and contains valid SimulationMetadata
@@ -130,13 +130,15 @@ class SimulationMetadataIntegrationTest {
         SimulationMetadata metadata = readMetadataFile(metadataFile);
 
         // Verify metadata and tick data are in the same directory (same simulationRunId)
+        // New structure: {runId}/raw/metadata.pb, so parent.parent = {runId}
         String simulationRunId = metadata.getSimulationRunId();
-        Path simulationDir = metadataFile.getParent();
+        Path rawDir = metadataFile.getParent();  // {runId}/raw/
+        Path simulationDir = rawDir.getParent();  // {runId}/
         assertTrue(simulationDir.getFileName().toString().equals(simulationRunId));
 
         // The await condition already robustly verified that batch files exist and are readable.
-        // A simple check is sufficient here.
-        assertTrue(readAllTicksFromBatches(simulationDir).size() >= 10, "Batch files should exist under simulation directory");
+        // A simple check is sufficient here. Batches are now under raw/ subdirectory.
+        assertTrue(readAllTicksFromBatches(rawDir).size() >= 10, "Batch files should exist under raw directory");
     }
 
     @Test
@@ -359,17 +361,12 @@ class SimulationMetadataIntegrationTest {
             return null;
         }
 
+        // New structure: {runId}/raw/metadata.pb
         try (Stream<Path> simulationDirs = Files.list(storageRoot)) {
             return simulationDirs
                 .filter(Files::isDirectory)
-                .flatMap(dir -> {
-                    try {
-                        return Files.list(dir);
-                    } catch (IOException e) {
-                        return Stream.empty();
-                    }
-                })
-                .filter(p -> p.getFileName().toString().equals("metadata.pb"))
+                .map(dir -> dir.resolve("raw/metadata.pb"))
+                .filter(Files::exists)
                 .findFirst()
                 .orElse(null);
         }

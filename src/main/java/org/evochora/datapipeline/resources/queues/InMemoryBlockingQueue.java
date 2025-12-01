@@ -3,6 +3,9 @@ package org.evochora.datapipeline.resources.queues;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IContextualResource;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
@@ -39,7 +42,7 @@ import java.util.function.Predicate;
  *
  * @param <T> The type of elements held in this queue.
  */
-public class InMemoryBlockingQueue<T> extends AbstractResource implements IContextualResource, IInputQueueResource<T>, IOutputQueueResource<T> {
+public class InMemoryBlockingQueue<T> extends AbstractResource implements IContextualResource, IInputQueueResource<T>, IOutputQueueResource<T>, IMemoryEstimatable {
 
     private static final Logger log = LoggerFactory.getLogger(InMemoryBlockingQueue.class);
     private final ArrayBlockingQueue<TimestampedObject<T>> queue;
@@ -63,7 +66,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     public InMemoryBlockingQueue(String name, Config options) {
         super(name, options);
         Config defaults = ConfigFactory.parseMap(Map.of(
-                "capacity", 1000,
+                "capacity", 25,  // Default: 25 (memory-optimized)
                 "metricsWindowSeconds", 5,
                 "coalescingDelayMs", 0  // Default: no coalescing
         ));
@@ -397,5 +400,55 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
             this.object = object;
             this.timestamp = skipTimestamp ? null : Instant.now();
         }
+    }
+    
+    // ==================== IMemoryEstimatable ====================
+    
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Estimates memory for a queue at full capacity with worst-case tick sizes.
+     * <p>
+     * <strong>Calculation:</strong> capacity × bytesPerTick (100% occupancy)
+     * <p>
+     * This is a worst-case estimate assuming:
+     * <ul>
+     *   <li>Queue is completely full</li>
+     *   <li>Each item is a TickData with 100% environment occupancy</li>
+     *   <li>Maximum configured organisms per tick</li>
+     * </ul>
+     */
+    @Override
+    public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
+        // Each queue item is a TickData with full environment + organisms
+        long bytesPerTick = params.estimateBytesPerTick();
+        long totalBytes = (long) capacity * bytesPerTick;
+        
+        // Add overhead for TimestampedObject wrapper (~32 bytes per entry)
+        long wrapperOverhead = (long) capacity * 32;
+        totalBytes += wrapperOverhead;
+        
+        String explanation = String.format("%d capacity × %s/tick + %s wrapper overhead",
+            capacity,
+            SimulationParameters.formatBytes(bytesPerTick),
+            SimulationParameters.formatBytes(wrapperOverhead));
+        
+        return List.of(new MemoryEstimate(
+            getResourceName(),
+            totalBytes,
+            explanation,
+            MemoryEstimate.Category.QUEUE
+        ));
+    }
+    
+    /**
+     * Returns the configured capacity of this queue.
+     * <p>
+     * Exposed for memory estimation and monitoring purposes.
+     *
+     * @return The maximum number of elements this queue can hold.
+     */
+    public int getCapacity() {
+        return capacity;
     }
 }

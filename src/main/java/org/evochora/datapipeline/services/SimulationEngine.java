@@ -1,29 +1,8 @@
 package org.evochora.datapipeline.services;
 
-import com.google.protobuf.ByteString;
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigRenderOptions;
-import org.evochora.compiler.Compiler;
-import org.evochora.compiler.api.CompilationException;
-import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.datapipeline.api.contracts.*;
-import org.evochora.datapipeline.api.resources.IMonitorable;
-import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
-import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
-import org.evochora.runtime.Simulation;
-import org.evochora.runtime.internal.services.SeededRandomProvider;
-import org.evochora.runtime.isa.IEnergyDistributionCreator;
-import org.evochora.runtime.model.Environment;
-import org.evochora.runtime.model.EnvironmentProperties;
-import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Organism.ProcFrame;
-import org.evochora.runtime.spi.IRandomProvider;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -35,10 +14,53 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class SimulationEngine extends AbstractService implements IMonitorable {
+import org.evochora.compiler.Compiler;
+import org.evochora.compiler.api.CompilationException;
+import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.datapipeline.api.contracts.CallSiteBinding;
+import org.evochora.datapipeline.api.contracts.CellState;
+import org.evochora.datapipeline.api.contracts.ColumnTokenLookup;
+import org.evochora.datapipeline.api.contracts.EnergyStrategyConfig;
+import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
+import org.evochora.datapipeline.api.contracts.FileTokenLookup;
+import org.evochora.datapipeline.api.contracts.InitialOrganismSetup;
+import org.evochora.datapipeline.api.contracts.InstructionMapping;
+import org.evochora.datapipeline.api.contracts.LabelMapping;
+import org.evochora.datapipeline.api.contracts.LineTokenLookup;
+import org.evochora.datapipeline.api.contracts.LinearAddressToCoord;
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.PlacedMoleculeMapping;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.SourceInfo;
+import org.evochora.datapipeline.api.contracts.SourceLines;
+import org.evochora.datapipeline.api.contracts.SourceMapEntry;
+import org.evochora.datapipeline.api.contracts.StrategyState;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TokenInfo;
+import org.evochora.datapipeline.api.contracts.TokenMapEntry;
+import org.evochora.datapipeline.api.contracts.Vector;
+import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
+import org.evochora.datapipeline.api.resources.IMonitorable;
+import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
+import org.evochora.runtime.Simulation;
+import org.evochora.runtime.internal.services.SeededRandomProvider;
+import org.evochora.runtime.isa.IEnergyDistributionCreator;
+import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.Organism.ProcFrame;
+import org.evochora.runtime.spi.IRandomProvider;
+
+import com.google.protobuf.ByteString;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigRenderOptions;
+
+public class SimulationEngine extends AbstractService implements IMonitorable, IMemoryEstimatable {
     // Pre-built empty message to isolate queue overhead from builder overhead
     private static final TickData EMPTY_TICK_DATA = TickData.newBuilder().build();
 
@@ -327,6 +349,7 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
         builder.setSimulationRunId(runId);
         builder.setTickNumber(tick);
         builder.setCaptureTimeMs(System.currentTimeMillis());
+        builder.setTotalOrganismsCreated(simulation.getTotalOrganismsCreatedCount());
         simulation.getOrganisms().stream().filter(o -> !o.isDead()).forEach(o -> builder.addOrganisms(extractOrganismState(o)));
         extractCellStates(simulation.getEnvironment(), builder);
         builder.setRngState(ByteString.copyFrom(randomProvider.saveState()));
@@ -744,5 +767,60 @@ public class SimulationEngine extends AbstractService implements IMonitorable {
                 absolutePos
             );
         }
+    }
+    
+    // ==================== IMemoryEstimatable ====================
+    
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Estimates memory for the SimulationEngine which holds the entire
+     * environment and all organisms in RAM.
+     * <p>
+     * <strong>Major components:</strong>
+     * <ul>
+     *   <li>Environment cells array: totalCells × 8 bytes (int molecule + int ownerId)</li>
+     *   <li>Organisms: maxOrganisms × ~2KB (registers, stacks, code reference)</li>
+     *   <li>Compiled programs: cached ProgramArtifacts</li>
+     * </ul>
+     * <p>
+     * This is typically the largest memory consumer in the pipeline.
+     */
+    @Override
+    public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
+        List<MemoryEstimate> estimates = new ArrayList<>();
+        
+        // 1. Environment cells array - each cell is 2 ints (molecule + ownerId) = 8 bytes
+        long environmentBytes = (long) params.totalCells() * 8;
+        estimates.add(new MemoryEstimate(
+            serviceName + " (Environment)",
+            environmentBytes,
+            String.format("%d cells × 8 bytes (molecule + ownerId)", params.totalCells()),
+            MemoryEstimate.Category.SERVICE_BATCH
+        ));
+        
+        // 2. Organisms in memory - each organism has registers, stacks, code reference
+        // Estimate ~2KB per organism (conservative, includes call stack frames)
+        long bytesPerOrganism = 2 * 1024; // ~2KB per organism
+        long organismsBytes = (long) params.maxOrganisms() * bytesPerOrganism;
+        estimates.add(new MemoryEstimate(
+            serviceName + " (Organisms)",
+            organismsBytes,
+            String.format("%d max organisms × ~2 KB (registers, stacks, code ref)", params.maxOrganisms()),
+            MemoryEstimate.Category.SERVICE_BATCH
+        ));
+        
+        // 3. Compiled programs cache - estimate ~100KB per unique program
+        long compiledProgramsBytes = (long) programInfoByPath.size() * 100 * 1024;
+        if (compiledProgramsBytes > 0) {
+            estimates.add(new MemoryEstimate(
+                serviceName + " (Compiled Programs)",
+                compiledProgramsBytes,
+                String.format("%d programs × ~100 KB", programInfoByPath.size()),
+                MemoryEstimate.Category.SERVICE_BATCH
+            ));
+        }
+        
+        return estimates;
     }
 }

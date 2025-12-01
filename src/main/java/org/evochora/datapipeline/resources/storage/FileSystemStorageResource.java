@@ -1,27 +1,35 @@
 package org.evochora.datapipeline.resources.storage;
 
-import com.typesafe.config.Config;
-import org.evochora.datapipeline.utils.PathExpansion;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class FileSystemStorageResource extends AbstractBatchStorageResource {
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageRead;
+import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
+import org.evochora.datapipeline.utils.PathExpansion;
+import org.evochora.datapipeline.utils.compression.ICompressionCodec;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.typesafe.config.Config;
+
+public class FileSystemStorageResource extends AbstractBatchStorageResource
+        implements IAnalyticsStorageWrite, IAnalyticsStorageRead {
 
     private static final Logger log = LoggerFactory.getLogger(FileSystemStorageResource.class);
     private final File rootDirectory;
@@ -70,6 +78,62 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
                 }
             } catch (IOException cleanupEx) {
                 log.warn("Failed to clean up temp file after move failure: {}", tempFile, cleanupEx);
+            }
+            throw e;
+        }
+    }
+
+    @Override
+    protected long writeAtomicStreaming(String physicalPath, List<TickData> batch, 
+                                         ICompressionCodec codec) throws IOException {
+        validateKey(physicalPath);
+        File finalFile = new File(rootDirectory, physicalPath);
+        
+        // Create parent directories if needed
+        File parentDir = finalFile.getParentFile();
+        if (parentDir != null) {
+            parentDir.mkdirs();
+            if (!parentDir.isDirectory()) {
+                throw new IOException("Failed to create parent directories for: " + finalFile.getAbsolutePath());
+            }
+        }
+        
+        // Generate unique temp file path
+        File tempFile = new File(parentDir, finalFile.getName() + "." + UUID.randomUUID() + ".tmp");
+        
+        try {
+            // Stream directly: Protobuf → Compression → BufferedOutputStream → File
+            // No intermediate byte[] buffers - eliminates ~2-3 GB peak memory for large batches
+            long bytesWritten;
+            try (OutputStream fileOut = new BufferedOutputStream(
+                     Files.newOutputStream(tempFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE));
+                 CountingOutputStream countingOut = new CountingOutputStream(fileOut);
+                 OutputStream compressedOut = codec.wrapOutputStream(countingOut)) {
+                
+                // Stream each tick directly through compression to disk
+                for (TickData tick : batch) {
+                    tick.writeDelimitedTo(compressedOut);
+                }
+                
+                // Flush compression (required for ZSTD to finalize)
+                compressedOut.flush();
+                bytesWritten = countingOut.getBytesWritten();
+            }
+            
+            // Atomic rename: temp → final
+            Files.move(tempFile.toPath(), finalFile.toPath(), 
+                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            
+            return bytesWritten;
+            
+        } catch (IOException e) {
+            // Clean up temp file on failure
+            try {
+                if (tempFile.exists()) {
+                    Files.delete(tempFile.toPath());
+                }
+            } catch (IOException cleanupEx) {
+                log.warn("Failed to clean up temp file after write failure: {}", tempFile, cleanupEx);
             }
             throw e;
         }
@@ -226,6 +290,134 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource {
             metrics.put("disk_used_percent", usedPercent);
         } else {
             metrics.put("disk_used_percent", 0.0);
+        }
+    }
+
+    // ========================================================================
+    // IAnalyticsStorageWrite Implementation
+    // ========================================================================
+
+    @Override
+    public OutputStream openAnalyticsOutputStream(String runId, String metricId, String lodLevel, String subPath, String filename) throws IOException {
+        File file = getAnalyticsFile(runId, metricId, lodLevel, subPath, filename);
+        
+        // Ensure parent directories exist
+        File parentDir = file.getParentFile();
+        if (parentDir != null && !parentDir.exists()) {
+            if (!parentDir.mkdirs() && !parentDir.isDirectory()) {
+                throw new IOException("Failed to create directories for: " + file.getAbsolutePath());
+            }
+        }
+        
+        return Files.newOutputStream(file.toPath());
+    }
+
+    // ========================================================================
+    // IAnalyticsStorageRead Implementation
+    // ========================================================================
+
+    @Override
+    public InputStream openAnalyticsInputStream(String runId, String path) throws IOException {
+        // Path is relative to analytics root (e.g. "population/raw/batch_001.parquet")
+        File file = new File(getAnalyticsRoot(runId), path);
+        validatePath(file, runId); // Security check
+        
+        if (!file.exists()) {
+            throw new IOException("Analytics file not found: " + file.getAbsolutePath());
+        }
+        return Files.newInputStream(file.toPath());
+    }
+
+    @Override
+    public List<String> listAnalyticsFiles(String runId, String prefix) throws IOException {
+        // Analytics root for this run
+        File analyticsRoot = getAnalyticsRoot(runId);
+        if (!analyticsRoot.exists() || !analyticsRoot.isDirectory()) {
+            return Collections.emptyList();
+        }
+
+        // Prefix is relative to analytics/{runId}/
+        String searchPrefix = (prefix == null) ? "" : prefix;
+        
+        // Simple recursive walk, filtering by prefix
+        Path rootPath = analyticsRoot.toPath();
+        try (Stream<Path> stream = Files.walk(rootPath)) {
+            return stream
+                .filter(Files::isRegularFile)
+                .map(p -> rootPath.relativize(p))
+                .map(Path::toString)
+                .map(s -> s.replace(File.separatorChar, '/'))
+                .filter(path -> path.startsWith(searchPrefix))
+                .filter(path -> !path.endsWith(".tmp")) // Exclude temp files
+                .sorted()
+                .collect(Collectors.toList());
+        }
+    }
+
+    @Override
+    public List<String> listAnalyticsRunIds() throws IOException {
+        if (!rootDirectory.exists() || !rootDirectory.isDirectory()) {
+            return Collections.emptyList();
+        }
+        
+        File[] runDirs = rootDirectory.listFiles(File::isDirectory);
+        if (runDirs == null) {
+            return Collections.emptyList();
+        }
+        
+        // Filter to runs that have an analytics subdirectory with content
+        // Sort by name (which includes timestamp) in reverse order (newest first)
+        return Arrays.stream(runDirs)
+            .filter(dir -> {
+                File analyticsDir = new File(dir, "analytics");
+                if (!analyticsDir.exists() || !analyticsDir.isDirectory()) {
+                    return false;
+                }
+                // Check if analytics dir has any content
+                String[] contents = analyticsDir.list();
+                return contents != null && contents.length > 0;
+            })
+            .map(File::getName)
+            .sorted(Comparator.reverseOrder()) // Newest first
+            .collect(Collectors.toList());
+    }
+
+    // ========================================================================
+    // Internal Helpers
+    // ========================================================================
+
+    private File getAnalyticsRoot(String runId) {
+        validateKey(runId); // Ensure runId is safe (no ..)
+        return new File(new File(rootDirectory, runId), "analytics");
+    }
+
+    private File getAnalyticsFile(String runId, String metricId, String lodLevel, String subPath, String filename) {
+        validateKey(runId);
+        validateKey(metricId);
+        if (lodLevel != null) validateKey(lodLevel);
+        validateKey(filename);
+        
+        File root = getAnalyticsRoot(runId);
+        File metricDir = new File(root, metricId);
+        File targetDir = (lodLevel != null) ? new File(metricDir, lodLevel) : metricDir;
+        
+        // Add hierarchical subPath if provided (e.g., "000/001")
+        if (subPath != null && !subPath.isEmpty()) {
+            // Validate subPath segments (prevent path traversal)
+            for (String segment : subPath.split("/")) {
+                validateKey(segment);
+            }
+            targetDir = new File(targetDir, subPath);
+        }
+        
+        return new File(targetDir, filename);
+    }
+    
+    private void validatePath(File file, String runId) throws IOException {
+        File root = getAnalyticsRoot(runId).getCanonicalFile();
+        File target = file.getCanonicalFile();
+        if (!target.toPath().startsWith(root.toPath())) {
+            throw new IOException("Path traversal attempt: " + file.getPath());
         }
     }
 

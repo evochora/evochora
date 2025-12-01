@@ -1,29 +1,5 @@
 package org.evochora.datapipeline.resources.database;
 
-import com.google.gson.Gson;
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import com.zaxxer.hikari.HikariConfig;
-import com.zaxxer.hikari.HikariDataSource;
-import org.evochora.datapipeline.api.contracts.DataPointerList;
-import org.evochora.datapipeline.api.contracts.OrganismRuntimeState;
-import org.evochora.datapipeline.api.contracts.OrganismState;
-import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
-import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
-import org.evochora.datapipeline.resources.database.H2DatabaseReader;
-import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
-import org.evochora.datapipeline.utils.H2SchemaUtil;
-import org.evochora.datapipeline.utils.PathExpansion;
-import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
-import org.evochora.datapipeline.utils.compression.ICompressionCodec;
-import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
-import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
-import org.evochora.runtime.model.EnvironmentProperties;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.sql.Connection;
@@ -39,13 +15,41 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.evochora.datapipeline.api.contracts.DataPointerList;
+import org.evochora.datapipeline.api.contracts.OrganismRuntimeState;
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
+import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
+import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
+import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
+import org.evochora.datapipeline.utils.H2SchemaUtil;
+import org.evochora.datapipeline.utils.PathExpansion;
+import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
+import org.evochora.datapipeline.utils.compression.ICompressionCodec;
+import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
+import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
+import org.evochora.runtime.model.EnvironmentProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.gson.Gson;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+
 /**
  * H2 database implementation using HikariCP for connection pooling.
  * <p>
  * Implements {@link AutoCloseable} to ensure proper cleanup of database connections
  * and connection pool resources during shutdown.
  */
-public class H2Database extends AbstractDatabaseResource implements AutoCloseable, IDatabaseReaderProvider {
+public class H2Database extends AbstractDatabaseResource 
+        implements AutoCloseable, IDatabaseReaderProvider, IMemoryEstimatable {
 
     private static final Logger log = LoggerFactory.getLogger(H2Database.class);
     private final HikariDataSource dataSource;
@@ -72,7 +76,7 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
         HikariConfig hikariConfig = new HikariConfig();
         hikariConfig.setJdbcUrl(jdbcUrl);
         hikariConfig.setDriverClassName("org.h2.Driver"); // Explicitly set driver for Fat JAR compatibility
-        hikariConfig.setMaximumPoolSize(options.hasPath("maxPoolSize") ? options.getInt("maxPoolSize") : 10);
+        hikariConfig.setMaximumPoolSize(options.hasPath("maxPoolSize") ? options.getInt("maxPoolSize") : 25);
         hikariConfig.setMinimumIdle(options.hasPath("minIdle") ? options.getInt("minIdle") : 2);
         hikariConfig.setUsername(username);
         hikariConfig.setPassword(password);
@@ -984,5 +988,105 @@ public class H2Database extends AbstractDatabaseResource implements AutoCloseabl
             }
             throw e; // Other SQL errors
         }
+    }
+
+    // ========================================================================
+    // IMemoryEstimatable Implementation
+    // ========================================================================
+
+    /**
+     * Estimates worst-case heap memory usage for this H2 database resource.
+     * <p>
+     * H2 heap components (worst-case estimates):
+     * <ul>
+     *   <li><b>Connection overhead</b>: ~10 MB per connection (with active query + large ResultSet)</li>
+     *   <li><b>MVStore base</b>: ~150 MB (internal data structures, grows with DB size)</li>
+     *   <li><b>CACHE_SIZE on-heap</b>: ~30% of CACHE_SIZE (rest is off-heap DirectByteBuffer)</li>
+     *   <li><b>Query buffer</b>: ~100 MB (concurrent queries, temporary objects)</li>
+     *   <li><b>BLOB decompression</b>: ~50 MB per concurrent read (environment BLOBs)</li>
+     * </ul>
+     * <p>
+     * Note: CACHE_SIZE is primarily off-heap but has on-heap components for page metadata.
+     *
+     * @param params Simulation parameters (not used for H2 estimation, but required by interface)
+     * @return List containing a single memory estimate for this database
+     */
+    @Override
+    public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
+        // Read configuration values
+        int poolSize = options.hasPath("maxPoolSize") ? options.getInt("maxPoolSize") : 25;
+        
+        // Parse CACHE_SIZE from JDBC URL (in KB, default 16384 KB = 16 MB)
+        long cacheSizeKb = parseCacheSizeFromUrl(getJdbcUrl(options));
+        
+        // Worst-case heap estimation:
+        // 1. Connection overhead: ~10 MB per connection (active query with large ResultSet)
+        long connectionOverhead = (long) poolSize * 10 * 1024 * 1024;
+        
+        // 2. MVStore base overhead: ~150 MB (internal structures, maps, indexes)
+        long mvStoreBase = 150L * 1024 * 1024;
+        
+        // 3. CACHE_SIZE on-heap portion: ~30% of CACHE_SIZE
+        // H2 uses DirectByteBuffer for most cache, but metadata is on-heap
+        long cacheOnHeap = (cacheSizeKb * 1024 * 3) / 10;
+        
+        // 4. Query buffer: ~100 MB (concurrent queries, parsing, execution)
+        long queryBuffer = 100L * 1024 * 1024;
+        
+        // 5. BLOB decompression buffer: ~50 MB per concurrent read (assume 4 concurrent HTTP reads)
+        long blobBuffer = 4L * 50 * 1024 * 1024;
+        
+        long totalEstimate = connectionOverhead + mvStoreBase + cacheOnHeap + queryBuffer + blobBuffer;
+        
+        String description = String.format(
+            "%d conn × 10MB + 150MB MVStore + %.0fMB cache-heap (30%% of %dMB) + 100MB query + 200MB BLOB",
+            poolSize, 
+            (double) cacheOnHeap / (1024 * 1024),
+            cacheSizeKb / 1024);
+        
+        return List.of(new MemoryEstimate(
+            getResourceName(),
+            totalEstimate,
+            description,
+            MemoryEstimate.Category.DATABASE
+        ));
+    }
+    
+    /**
+     * Parses CACHE_SIZE parameter from JDBC URL.
+     * <p>
+     * CACHE_SIZE is specified in KB in the URL, e.g.:
+     * {@code jdbc:h2:...;CACHE_SIZE=262144} means 256 MB cache.
+     *
+     * @param jdbcUrl The JDBC URL to parse
+     * @return Cache size in KB, or 16384 (16 MB) if not found
+     */
+    private long parseCacheSizeFromUrl(String jdbcUrl) {
+        if (jdbcUrl == null) {
+            return 16384; // H2 default: 16 MB
+        }
+        
+        String upperUrl = jdbcUrl.toUpperCase();
+        int idx = upperUrl.indexOf("CACHE_SIZE=");
+        if (idx < 0) {
+            return 16384; // H2 default
+        }
+        
+        // Find the value after CACHE_SIZE=
+        int startIdx = idx + "CACHE_SIZE=".length();
+        int endIdx = startIdx;
+        while (endIdx < jdbcUrl.length() && Character.isDigit(jdbcUrl.charAt(endIdx))) {
+            endIdx++;
+        }
+        
+        if (endIdx > startIdx) {
+            try {
+                return Long.parseLong(jdbcUrl.substring(startIdx, endIdx));
+            } catch (NumberFormatException e) {
+                log.debug("Failed to parse CACHE_SIZE from URL: {}", jdbcUrl);
+            }
+        }
+        
+        return 16384; // H2 default
     }
 }

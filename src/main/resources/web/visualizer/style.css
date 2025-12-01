@@ -20,16 +20,22 @@ header {
     flex-shrink: 0;
     border-bottom: 1px solid #333;
     position: relative; /* Allow loading indicator to overflow below */
-    overflow: visible; /* Allow loading indicator to be visible below header */
+    /* Mindestbreite = controls + logo + 2x20px Abstand */
+    min-width: calc(var(--controls-left-width, 280px) + var(--logo-width, 280px) + var(--controls-right-width, 150px) + 40px);
 }
 
-/* Logo Container - zwischen links und rechts zentriert */
+/* Logo Container - absolut mittig im Browser, begrenzt durch Controls */
 .logo-container {
-    flex: 1;
+    position: absolute;
+    /* Position wird durch CSS-Variablen gesteuert (gesetzt via JavaScript) */
+    left: clamp(
+        calc(var(--controls-left-width, 280px) + 20px),
+        calc(50% - var(--logo-width, 140px) / 2),
+        calc(100% - var(--controls-right-width, 150px) - var(--logo-width, 140px) - 20px)
+    );
     display: flex;
-    align-items: center;
     justify-content: center;
-    pointer-events: none;
+    align-items: center;
 }
 
 /* Logo Wrapper - contains logo text and loading indicator */
@@ -186,6 +192,11 @@ header {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-shrink: 0; /* Don't shrink controls */
+}
+
+.header-spacer {
+    display: none; /* Nicht mehr benötigt */
 }
 
 button {
@@ -197,6 +208,10 @@ button {
     border-radius: 4px;
 }
 button:hover { background-color: #4a4a6a; }
+
+#btn-zoom-toggle {
+    white-space: nowrap;
+}
 
 .tick-input-wrapper {
     position: relative;
@@ -732,4 +747,80 @@ main.container.sidebar-visible .world-container {
     margin-bottom: 10px;
     font-family: 'Monospaced', 'Courier New', Courier, monospace;
     flex-shrink: 0; /* Prevent dropdown from shrinking */
+}
+
+/* Virtual Scrollbars */
+.scrollbar-track-v, .scrollbar-track-h {
+    position: absolute;
+    background-color: rgba(255, 255, 255, 0.1);
+    display: none; /* Initially hidden */
+    z-index: 10;
+    /* Adjustments for positioning within main.container */
+    box-sizing: border-box; 
+}
+.scrollbar-track-v {
+    left: 0;
+    top: 0;
+    width: 10px;
+    height: calc(100% - 10px); /* Avoid overlapping horizontal scrollbar */
+}
+.scrollbar-track-h {
+    bottom: 0;
+    left: 0;
+    height: 10px;
+    width: calc(100% - 10px); /* Avoid overlapping vertical scrollbar */
+}
+/* Adjust track width/height when sidebar is visible */
+main.container.sidebar-visible .scrollbar-track-h {
+    width: calc(100% - 620px - 10px); /* container width - sidebar width - v-scrollbar width */
+}
+main.container.sidebar-visible .scrollbar-track-v {
+    height: calc(100% - 10px);
+}
+
+.scrollbar-thumb-v, .scrollbar-thumb-h {
+    position: absolute;
+    background-color: rgba(255, 255, 255, 0.4);
+    border-radius: 5px;
+}
+.scrollbar-thumb-v {
+    width: 100%;
+}
+.scrollbar-thumb-h {
+    height: 100%;
+}
+
+/* --- Tooltips --- */
+[data-tooltip] {
+    position: relative;
+    cursor: pointer;
+}
+
+[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: 115%; /* Position below the button */
+    left: 50%;
+    transform: translateX(-50%);
+    
+    background-color: #2a2a3a;
+    color: #e0e0e0;
+    padding: 6px 10px;
+    border-radius: 4px;
+    border: 1px solid #4a4a6a;
+    font-size: 12px;
+    font-family: sans-serif;
+    white-space: nowrap;
+    
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s, visibility 0.2s;
+    transition-delay: 0.5s; /* Add a small delay before showing */
+    z-index: 1000;
+    pointer-events: none;
+}
+
+[data-tooltip]:hover::after {
+    opacity: 1;
+    visibility: visible;
 }

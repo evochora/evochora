@@ -102,6 +102,26 @@
             box-shadow: 0 14px 30px rgba(74, 158, 255, 0.45);
         }
 
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-top: 0.5rem;
+        }
+
+        .primary-button.secondary {
+            background: transparent;
+            color: #4a9eff;
+            border: 2px solid #4a9eff;
+            box-shadow: none;
+        }
+
+        .primary-button.secondary:hover {
+            background: rgba(74, 158, 255, 0.15);
+            transform: translateY(-1px);
+            box-shadow: 0 8px 20px rgba(74, 158, 255, 0.25);
+        }
+
         .github-link {
             display: inline-flex;
             align-items: center;
@@ -158,11 +178,23 @@
             text-decoration: underline;
         }
 
-        .actions-container {
+        .actions-container, .community-section {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            grid-template-columns: repeat(3, 1fr);
             gap: 1.5rem;
             width: 100%;
+        }
+
+        @media (max-width: 900px) {
+            .actions-container, .community-section {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 600px) {
+            .actions-container, .community-section {
+                grid-template-columns: 1fr;
+            }
         }
 
         .link-card {
@@ -190,33 +222,6 @@
         }
 
         .link-description {
-            font-size: 0.9rem;
-            opacity: 0.8;
-            line-height: 1.5;
-        }
-
-        .external-link {
-            display: inline-block;
-            margin-left: 0.5rem;
-            font-size: 0.8rem;
-            opacity: 0.6;
-        }
-
-        .community-section {
-            margin-top: 0.5rem;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: 1.5rem;
-        }
-
-        .community-card-title {
-            font-size: 1.05rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            color: #e0e0e0;
-        }
-
-        .community-card-text {
             font-size: 0.9rem;
             opacity: 0.8;
             line-height: 1.5;
@@ -259,7 +264,10 @@
                     For running your own long-term experiments or customized setups, you need to operate your <strong>own Evochora node</strong>.
                     The complete source code and setup instructions are available on GitHub.
                 </div>
-                <a href="/visualizer" class="primary-button">Open Visualizer</a>
+                <div class="button-group">
+                    <a href="/visualizer" class="primary-button">Open Visualizer</a>
+                    <a href="/analyzer" class="primary-button secondary">Open Analyzer</a>
+                </div>
             </div>
 
             <div class="hero-video">
@@ -282,39 +290,43 @@
                 <div class="link-description">Interactive web-based visualization of environments and organisms.</div>
             </a>
 
+            <a href="/analyzer" class="link-card">
+                <div class="link-title">Analyzer</div>
+                <div class="link-description">Analytics dashboard for simulation metrics, population trends, and performance data.</div>
+            </a>
+
             <a href="/api-docs" class="link-card">
                 <div class="link-title">API Documentation</div>
                 <div class="link-description">OpenAPI documentation for the Evochora REST API.</div>
             </a>
-
-            <a href="https://github.com/rainco77/evochora" class="link-card" target="_blank" rel="noopener noreferrer">
-                <div class="link-title">Run your own Evochora node</div>
-                <div class="link-description">
-                    This instance is suitable for exploration. For long-running scientific experiments
-                    and custom setups, we recommend operating your own Evochora node.
-                    The GitHub repository provides full source code and setup instructions.
-                </div>
-            </a>
         </section>
 
         <section class="community-section">
+            <a href="https://github.com/evochora/evochora" class="link-card" target="_blank" rel="noopener noreferrer">
+                <div class="link-title">Run your own Evochora node</div>
+                <div class="link-description">
+                    For long-running experiments and custom setups, operate your own node.
+                    Full source code and setup instructions on GitHub.
+                </div>
+            </a>
+
             <div class="link-card">
-                <div class="community-card-title">GitHub</div>
-                <div class="community-card-text">
+                <div class="link-title">GitHub</div>
+                <div class="link-description">
                     Browse the source code, open issues, and contribute to Evochora.
                     <br><br>
-                    <a href="https://github.com/rainco77/evochora" class="github-link" target="_blank" rel="noopener noreferrer">
+                    <a href="https://github.com/evochora/evochora" class="github-link" target="_blank" rel="noopener noreferrer">
                         <svg class="github-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                             <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
                         </svg>
-                        Get the code &amp; setup instructions on GitHub
+                        Get the code &amp; setup instructions
                     </a>
                 </div>
             </div>
 
             <div class="link-card">
-                <div class="community-card-title">Discord</div>
-                <div class="community-card-text">
+                <div class="link-title">Discord</div>
+                <div class="link-description">
                     Join the Evochora community on Discord to discuss experiments, ask questions,
                     and collaborate with other researchers.
                     <br><br>

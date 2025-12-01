@@ -1,8 +1,15 @@
 package org.evochora.datapipeline.resources.database;
 
-import com.typesafe.config.Config;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.resources.*;
+import org.evochora.datapipeline.api.resources.IContextualResource;
+import org.evochora.datapipeline.api.resources.IWrappedResource;
+import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
 import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
 import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
@@ -10,11 +17,7 @@ import org.evochora.datapipeline.resources.AbstractResource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
+import com.typesafe.config.Config;
 
 /**
  * Abstract base class for database resources.

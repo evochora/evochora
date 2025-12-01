@@ -280,8 +280,8 @@ class EnvironmentIndexerIntegrationTest {
         );
         
         // Write batches to storage and send notifications
-        writeBatchAndNotify(runId, batch1);  // Storage: batch_1_1.pb
-        writeBatchAndNotify(runId, batch2);  // Storage: batch_1_2.pb
+        writeBatchAndNotify(runId, batch1);  // Storage: raw/batch_1_1.pb
+        writeBatchAndNotify(runId, batch2);  // Storage: raw/batch_1_2.pb
         
         // When: Start indexer (real code path!)
         Config config = ConfigFactory.parseString("""

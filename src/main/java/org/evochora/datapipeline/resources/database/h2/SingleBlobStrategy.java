@@ -1,13 +1,5 @@
 package org.evochora.datapipeline.resources.database.h2;
 
-import com.typesafe.config.Config;
-import org.evochora.datapipeline.api.contracts.CellStateList;
-import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.utils.H2SchemaUtil;
-import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
-import org.evochora.datapipeline.utils.compression.ICompressionCodec;
-import org.evochora.runtime.model.EnvironmentProperties;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -19,8 +11,17 @@ import java.sql.Statement;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
-import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
+
+import org.evochora.datapipeline.api.contracts.CellStateList;
+import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
+import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
+import org.evochora.datapipeline.utils.H2SchemaUtil;
+import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
+import org.evochora.datapipeline.utils.compression.ICompressionCodec;
+import org.evochora.runtime.model.EnvironmentProperties;
+
+import com.typesafe.config.Config;
 
 /**
  * SingleBlobStrategy: Stores all cells of a tick in a single BLOB.

@@ -2,6 +2,9 @@ package org.evochora.datapipeline.services.indexers;
 
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareOrganismDataWriter;
 import org.slf4j.Logger;
@@ -25,11 +28,12 @@ import java.util.Map;
  *
  * @param <ACK> Topic acknowledgment token type
  */
-public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> {
+public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements IMemoryEstimatable {
 
     private static final Logger log = LoggerFactory.getLogger(OrganismIndexer.class);
 
     private final IResourceSchemaAwareOrganismDataWriter database;
+    private final int insertBatchSize;
 
     /**
      * Creates a new OrganismIndexer.
@@ -41,6 +45,7 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     public OrganismIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.database = getRequiredResource("database", IResourceSchemaAwareOrganismDataWriter.class);
+        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 25;
     }
 
     /**
@@ -87,6 +92,40 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> {
                 indexerOptions.hasPath("metadataMaxPollDurationMs") ? indexerOptions.getInt("metadataMaxPollDurationMs") : "default",
                 indexerOptions.hasPath("topicPollTimeoutMs") ? indexerOptions.getInt("topicPollTimeoutMs") : 5000);
     }
+    
+    // ==================== IMemoryEstimatable ====================
+    
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Estimates memory for the OrganismIndexer tick buffer at worst-case.
+     * <p>
+     * <strong>Calculation:</strong> insertBatchSize × bytesPerOrganismTick (100% organisms)
+     * <p>
+     * The buffer holds List<TickData> where each tick contains OrganismState for all organisms.
+     * At worst-case, maxOrganisms are alive simultaneously.
+     */
+    @Override
+    public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
+        // Each tick contains organism states at 100% capacity
+        // ~500 bytes per organism for full state (registers, stacks, code reference, position)
+        long bytesPerTick = params.estimateOrganismBytesPerTick();
+        long totalBytes = (long) insertBatchSize * bytesPerTick;
+        
+        // Add TickData wrapper overhead (~200 bytes per tick for protobuf metadata)
+        long wrapperOverhead = (long) insertBatchSize * 200;
+        totalBytes += wrapperOverhead;
+        
+        String explanation = String.format("%d insertBatchSize × %s/tick (100%% organisms = %d × ~500B)",
+            insertBatchSize,
+            SimulationParameters.formatBytes(bytesPerTick),
+            params.maxOrganisms());
+        
+        return List.of(new MemoryEstimate(
+            serviceName,
+            totalBytes,
+            explanation,
+            MemoryEstimate.Category.SERVICE_BATCH
+        ));
+    }
 }
-
-

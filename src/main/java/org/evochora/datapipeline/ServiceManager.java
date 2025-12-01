@@ -1,8 +1,29 @@
 package org.evochora.datapipeline;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.resources.*;
+import java.lang.reflect.Constructor;
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
+import org.evochora.datapipeline.api.resources.IContextualResource;
+import org.evochora.datapipeline.api.resources.IMonitorable;
+import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.api.services.IServiceFactory;
 import org.evochora.datapipeline.api.services.ResourceBinding;
@@ -10,12 +31,8 @@ import org.evochora.datapipeline.api.services.ServiceStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.lang.reflect.Constructor;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 public class ServiceManager implements IMonitorable {
 
@@ -57,6 +74,10 @@ public class ServiceManager implements IMonitorable {
         if (autoStart && !this.startupSequence.isEmpty()) {
             log.info("\u001B[34m========== Service Startup ==========\u001B[0m");
             startAllInternal();
+            
+            // Perform memory estimation AFTER services are instantiated
+            // This allows iterating over actual service instances
+            performMemoryEstimation(this.pipelineConfig);
         } else if (!autoStart) {
             log.info("Auto-start is disabled. Services must be started manually via API.");
         } else {
@@ -621,5 +642,221 @@ public class ServiceManager implements IMonitorable {
                 errors,
                 resourceBindings
         );
+    }
+    
+    // ==================== Memory Estimation ====================
+    
+    /**
+     * Performs worst-case memory estimation for all configured components.
+     * <p>
+     * Collects estimates from all resources AND services that implement
+     * {@link IMemoryEstimatable} and compares the total against available heap.
+     * <p>
+     * <strong>IMPORTANT:</strong> This method must be called AFTER services are
+     * instantiated (after startAllInternal) to access service instances.
+     * <p>
+     * <strong>Output:</strong>
+     * <ul>
+     *   <li>INFO log if estimated memory fits within -Xmx</li>
+     *   <li>WARN log if estimated memory exceeds -Xmx</li>
+     *   <li>DEBUG log with per-component breakdown</li>
+     * </ul>
+     * <p>
+     * <strong>Worst-Case Assumptions:</strong>
+     * <ul>
+     *   <li>100% environment occupancy (all cells filled)</li>
+     *   <li>Maximum configured organisms alive simultaneously</li>
+     *   <li>All queues and buffers at full capacity</li>
+     * </ul>
+     *
+     * @param config Pipeline configuration containing simulation parameters
+     */
+    private void performMemoryEstimation(Config config) {
+        // Extract simulation parameters from config
+        SimulationParameters params = extractSimulationParameters(config);
+        if (params == null) {
+            log.debug("Memory estimation skipped: simulation-engine not configured");
+            return;
+        }
+        
+        log.info("\u001B[34m========== Memory Estimation (WORST-CASE: 100%% occupancy) ==========\u001B[0m");
+        
+        // Collect estimates from all IMemoryEstimatable components
+        List<MemoryEstimate> allEstimates = new ArrayList<>();
+        Map<MemoryEstimate.Category, Long> categoryTotals = new EnumMap<>(MemoryEstimate.Category.class);
+        
+        // 1. Resources (queues, trackers, databases)
+        for (Map.Entry<String, IResource> entry : resources.entrySet()) {
+            if (entry.getValue() instanceof IMemoryEstimatable) {
+                List<MemoryEstimate> estimates = ((IMemoryEstimatable) entry.getValue()).estimateWorstCaseMemory(params);
+                allEstimates.addAll(estimates);
+                for (MemoryEstimate estimate : estimates) {
+                    categoryTotals.merge(estimate.category(), estimate.estimatedBytes(), Long::sum);
+                }
+            }
+        }
+        
+        // 2. Services (PersistenceService, Indexers, SimulationEngine, etc.)
+        for (Map.Entry<String, IService> entry : services.entrySet()) {
+            if (entry.getValue() instanceof IMemoryEstimatable) {
+                List<MemoryEstimate> estimates = ((IMemoryEstimatable) entry.getValue()).estimateWorstCaseMemory(params);
+                allEstimates.addAll(estimates);
+                for (MemoryEstimate estimate : estimates) {
+                    categoryTotals.merge(estimate.category(), estimate.estimatedBytes(), Long::sum);
+                }
+            }
+        }
+        
+        // 3. Add JVM baseline overhead (thread stacks, class metadata, GC overhead)
+        long jvmOverhead = 512 * 1024 * 1024; // ~512 MB baseline
+        allEstimates.add(new MemoryEstimate(
+            "JVM-overhead",
+            jvmOverhead,
+            "Thread stacks, class metadata, GC overhead, native memory",
+            MemoryEstimate.Category.JVM_OVERHEAD
+        ));
+        categoryTotals.merge(MemoryEstimate.Category.JVM_OVERHEAD, jvmOverhead, Long::sum);
+        
+        // Calculate total from services and resources
+        long serviceEstimatedBytes = allEstimates.stream().mapToLong(MemoryEstimate::estimatedBytes).sum();
+        
+        // Add fixed overhead for Node processes (HttpServerProcess, H2ConsoleProcess, H2TcpServerProcess)
+        // These are not part of ServiceManager but consume significant heap:
+        // - HttpServerProcess: Jetty thread pool (200 threads × ~1MB) + request buffers = ~250 MB
+        // - H2ConsoleProcess: Small embedded HTTP server = ~20 MB
+        // - H2TcpServerProcess: TCP server for DB connections = ~30 MB
+        long nodeProcessOverhead = 300L * 1024 * 1024; // 300 MB for Node processes
+        
+        long totalEstimatedBytes = serviceEstimatedBytes + nodeProcessOverhead;
+        long maxHeapBytes = Runtime.getRuntime().maxMemory();
+        
+        // Log detailed breakdown at DEBUG level
+        log.debug("Memory estimation breakdown (WORST-CASE: 100%% environment, {} max organisms):", params.maxOrganisms());
+        for (MemoryEstimate estimate : allEstimates) {
+            log.debug("  {} → {}: {}", estimate.componentName(), estimate.formattedBytes(), estimate.explanation());
+        }
+        log.debug("  Node processes (fixed overhead) → {}", SimulationParameters.formatBytes(nodeProcessOverhead));
+        
+        // Log category totals
+        log.debug("Category totals:");
+        for (Map.Entry<MemoryEstimate.Category, Long> entry : categoryTotals.entrySet()) {
+            log.debug("  {}: {}", entry.getKey().getDisplayName(), SimulationParameters.formatBytes(entry.getValue()));
+        }
+        log.debug("  Node processes: {}", SimulationParameters.formatBytes(nodeProcessOverhead));
+        
+        // Calculate recommended heap with 30% safety margin
+        long recommendedHeapBytes = (long) (totalEstimatedBytes * 1.3);
+        
+        // Log summary with INFO or WARN depending on heap availability
+        if (totalEstimatedBytes <= maxHeapBytes) {
+            log.info("Memory estimate: {} (peak: {} services + {} Node overhead), available heap: {} (-Xmx) ✓",
+                SimulationParameters.formatBytes(totalEstimatedBytes),
+                services.size(),
+                SimulationParameters.formatBytes(nodeProcessOverhead),
+                SimulationParameters.formatBytes(maxHeapBytes));
+            log.info("  Note: Services started later via API are NOT included in this estimate.");
+        } else {
+            log.warn("⚠️ MEMORY WARNING: Estimated peak {} exceeds available heap {}",
+                SimulationParameters.formatBytes(totalEstimatedBytes),
+                SimulationParameters.formatBytes(maxHeapBytes));
+            log.warn("  Based on {} services + {} Node overhead (services started via API NOT included)",
+                services.size(), SimulationParameters.formatBytes(nodeProcessOverhead));
+            
+            // Detailed breakdown at WARN level
+            log.warn("  Memory breakdown by component:");
+            for (MemoryEstimate estimate : allEstimates) {
+                log.warn("    {} → {}: {}", estimate.componentName(), estimate.formattedBytes(), estimate.explanation());
+            }
+            log.warn("    Node processes (fixed) → {}: HttpServer, H2Console, H2TcpServer",
+                SimulationParameters.formatBytes(nodeProcessOverhead));
+            
+            log.warn("  RECOMMENDATION: -Xmx{} (estimate + 30%% safety margin)",
+                formatHeapRecommendation(recommendedHeapBytes));
+            log.warn("  To reduce memory requirements:");
+            log.warn("    - Decrease tick-queue capacity (currently configured in resources)");
+            log.warn("    - Decrease persistence maxBatchSize (currently in services)");
+            log.warn("    - Decrease indexer insertBatchSize (currently in services)");
+        }
+    }
+    
+    /**
+     * Extracts simulation parameters from pipeline configuration.
+     * <p>
+     * Searches all configured services for a SimulationEngine class and extracts
+     * environment shape from its configuration. This approach works regardless of
+     * the service name used in the configuration.
+     * <p>
+     * Estimates maxOrganisms based on environment size (since there's no explicit config for it).
+     *
+     * @param config Pipeline configuration
+     * @return SimulationParameters or null if no SimulationEngine service is configured
+     */
+    private SimulationParameters extractSimulationParameters(Config config) {
+        if (!config.hasPath("services")) {
+            return null;
+        }
+        
+        try {
+            Config servicesConfig = config.getConfig("services");
+            
+            // Iterate over all configured services to find SimulationEngine
+            for (String serviceName : servicesConfig.root().keySet()) {
+                Config serviceConfig = servicesConfig.getConfig(serviceName);
+                
+                if (!serviceConfig.hasPath("className")) {
+                    continue;
+                }
+                
+                String className = serviceConfig.getString("className");
+                
+                // Check if this is a SimulationEngine (by class name suffix)
+                if (className.endsWith(".SimulationEngine") && 
+                    serviceConfig.hasPath("options.environment.shape")) {
+                    
+                    // Extract environment shape
+                    List<Integer> shapeList = serviceConfig.getIntList("options.environment.shape");
+                    int[] shape = shapeList.stream().mapToInt(Integer::intValue).toArray();
+                    
+                    // Calculate total cells
+                    int totalCells = 1;
+                    for (int dim : shape) {
+                        totalCells *= dim;
+                    }
+                    
+                    // Read maxOrganisms from config (default: 5000)
+                    int maxOrganisms = serviceConfig.hasPath("options.maxOrganisms")
+                        ? serviceConfig.getInt("options.maxOrganisms")
+                        : 5000; // Default: 5000 organisms (memory-optimized)
+                    
+                    log.debug("Found SimulationEngine '{}' with environment shape {}, maxOrganisms={}", 
+                        serviceName, Arrays.toString(shape), maxOrganisms);
+                    return new SimulationParameters(shape, totalCells, maxOrganisms);
+                }
+            }
+            
+            log.debug("No SimulationEngine service found in configuration");
+            return null;
+        } catch (Exception e) {
+            log.debug("Could not extract simulation parameters: {}", e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Formats a byte count as a human-readable heap recommendation (e.g., "8g" or "2048m").
+     *
+     * @param bytes The recommended heap size in bytes
+     * @return Formatted string suitable for -Xmx parameter
+     */
+    private String formatHeapRecommendation(long bytes) {
+        long gb = bytes / (1024 * 1024 * 1024);
+        if (gb >= 1) {
+            // Round up to next GB
+            return (gb + 1) + "g";
+        } else {
+            long mb = bytes / (1024 * 1024);
+            // Round up to next 256 MB
+            return ((mb / 256 + 1) * 256) + "m";
+        }
     }
 }

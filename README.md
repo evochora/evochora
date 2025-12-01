@@ -27,7 +27,7 @@ The platform is architected for scalability: simulations can run on a single mac
 ### Start the Simulation Node (In-Process Mode)
 
 Download and unpack the latest distribution from the GitHub Releases page:
-https://github.com/rainco77/evochora/releases
+https://github.com/evochora/evochora/releases
 
 ```bash
 cd evochora-<version>
@@ -161,7 +161,7 @@ If you want to develop Evochora itself:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/evochora.git
+git clone https://github.com/evochora/evochora.git
 cd evochora
 
 # Build & test
@@ -204,7 +204,7 @@ Basic contribution workflow:
   [![Discord](https://img.shields.io/discord/1442908877648822466?label=Join%20Community&logo=discord&style=flat-square)](https://discord.gg/1442908877648822466)
 
 - Live Visualizer Demo:  
-  http://evochora.org/visualizer/
+  http://evochora.org/
 
 - API Documentation (developer-focused):  
   http://evochora.org/api-docs/

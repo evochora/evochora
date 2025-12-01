@@ -73,7 +73,7 @@ class MetadataIndexerTest {
         // Mock topic message with MetadataInfo
         MetadataInfo info = MetadataInfo.newBuilder()
             .setSimulationRunId(testRunId)
-            .setStoragePath(testRunId + "/metadata.pb")
+            .setStoragePath(testRunId + "/raw/metadata.pb")
             .setWrittenAtMs(System.currentTimeMillis())
             .build();
         when(mockMessage.payload()).thenReturn(info);
@@ -114,7 +114,7 @@ class MetadataIndexerTest {
         // Mock topic message with MetadataInfo
         MetadataInfo info = MetadataInfo.newBuilder()
             .setSimulationRunId(testRunId)
-            .setStoragePath(testRunId + "/metadata.pb")
+            .setStoragePath(testRunId + "/raw/metadata.pb")
             .setWrittenAtMs(System.currentTimeMillis())
             .build();
         when(mockMessage.payload()).thenReturn(info);

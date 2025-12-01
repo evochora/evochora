@@ -1,27 +1,28 @@
 package org.evochora.datapipeline.services.indexers;
 
-import com.typesafe.config.Config;
-import org.evochora.datapipeline.api.contracts.BatchInfo;
-import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.storage.StoragePath;
-import org.evochora.datapipeline.api.resources.topics.TopicMessage;
-import org.evochora.datapipeline.services.indexers.components.DlqComponent;
-import org.evochora.datapipeline.services.indexers.components.IdempotencyComponent;
-import org.evochora.datapipeline.services.indexers.components.MetadataReadingComponent;
-import org.evochora.datapipeline.services.indexers.components.TickBufferingComponent;
-import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader;
-import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
-import org.evochora.datapipeline.api.resources.IRetryTracker;
-import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
-
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+
+import org.evochora.datapipeline.api.contracts.BatchInfo;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
+import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.IRetryTracker;
+import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader;
+import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.datapipeline.api.resources.topics.TopicMessage;
+import org.evochora.datapipeline.services.indexers.components.DlqComponent;
+import org.evochora.datapipeline.services.indexers.components.IdempotencyComponent;
+import org.evochora.datapipeline.services.indexers.components.MetadataReadingComponent;
+import org.evochora.datapipeline.services.indexers.components.TickBufferingComponent;
+
+import com.typesafe.config.Config;
 
 /**
  * Abstract base class for batch indexers that process TickData from batch notifications.
@@ -234,7 +235,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         if (required.contains(ComponentType.BUFFERING)) {
             int insertBatchSize = indexerOptions.hasPath("insertBatchSize")
                 ? indexerOptions.getInt("insertBatchSize")
-                : 1000; // Default: 1000 ticks per buffer (balanced throughput/latency)
+                : 25; // Default: 25 ticks per buffer (memory-optimized)
             long flushTimeoutMs = indexerOptions.hasPath("flushTimeoutMs")
                 ? indexerOptions.getLong("flushTimeoutMs")
                 : 5000L; // Default: 5000ms flush timeout (aligned with docs)
@@ -352,7 +353,30 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                     }
                 }
             }
+            
+            // Hook for subclass cleanup (called after final flush)
+            try {
+                onShutdown();
+            } catch (Exception e) {
+                log.warn("Error during indexer shutdown cleanup: {}", e.getMessage());
+                log.debug("Shutdown cleanup error details:", e);
+            }
         }
+    }
+    
+    /**
+     * Template method hook for cleanup operations when the indexer shuts down.
+     * <p>
+     * Called automatically in the finally block after final flush completes.
+     * Subclasses can override this to perform cleanup (e.g., closing files, flushing buffers).
+     * <p>
+     * <strong>Error Handling:</strong> Exceptions are caught and logged as warnings.
+     * They do not prevent shutdown from completing.
+     *
+     * @throws Exception if cleanup fails (will be caught and logged)
+     */
+    protected void onShutdown() throws Exception {
+        // Default: no-op (subclasses override)
     }
     
     /**
@@ -409,12 +433,12 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                     flushAndAcknowledge();
                 }
             } else {
-                // WITHOUT buffering: tick-by-tick processing
-                for (TickData tick : ticks) {
-                    flushTicks(List.of(tick));
-                }
+                // WITHOUT buffering: Batch-passthrough (one flush per topic message)
+                // Each topic message = one PersistenceService batch = one flush
+                // Guarantees consistent file boundaries for file-based indexers (e.g., Parquet)
+                flushTicks(ticks);
                 
-                // ACK after ALL ticks from batch are processed
+                // ACK after batch is processed
                 topic.ack(msg);
                 
                 // Safe to mark immediately after ACK (no buffering = no cross-batch risk)
@@ -426,7 +450,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 batchesProcessed.incrementAndGet();
                 ticksProcessed.addAndGet(ticks.size());
                 
-                log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
+                log.debug("Processed {} ticks from {} (batch-passthrough, no buffering)", 
                          ticks.size(), batch.getStoragePath());
             }
             

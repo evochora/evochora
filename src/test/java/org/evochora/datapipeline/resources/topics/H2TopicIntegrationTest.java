@@ -419,7 +419,7 @@ class H2TopicIntegrationTest {
         
         BatchInfo message = BatchInfo.newBuilder()
             .setSimulationRunId("test-run-789")
-            .setStoragePath("test-run-789/batch_0000000000_0000000100.pb")
+            .setStoragePath("test-run-789/raw/batch_0000000000_0000000100.pb")
             .setTickStart(0)
             .setTickEnd(100)
             .setWrittenAtMs(System.currentTimeMillis())
@@ -433,7 +433,7 @@ class H2TopicIntegrationTest {
         assertThat(received).isNotNull();
         assertThat(received.payload()).isInstanceOf(BatchInfo.class);
         assertThat(received.payload().getSimulationRunId()).isEqualTo("test-run-789");
-        assertThat(received.payload().getStoragePath()).isEqualTo("test-run-789/batch_0000000000_0000000100.pb");
+        assertThat(received.payload().getStoragePath()).isEqualTo("test-run-789/raw/batch_0000000000_0000000100.pb");
         assertThat(received.payload().getTickStart()).isEqualTo(0L);
         assertThat(received.payload().getTickEnd()).isEqualTo(100L);
         
@@ -456,7 +456,7 @@ class H2TopicIntegrationTest {
         for (int i = 1; i <= 3; i++) {
             writer.send(BatchInfo.newBuilder()
                 .setSimulationRunId("test-run-" + i)
-                .setStoragePath(String.format("test-run-%d/batch_0000000000_0000000100.pb", i))
+                .setStoragePath(String.format("test-run-%d/raw/batch_0000000000_0000000100.pb", i))
                 .setTickStart(i * 100L)
                 .setTickEnd((i + 1) * 100L)
                 .setWrittenAtMs(System.currentTimeMillis())

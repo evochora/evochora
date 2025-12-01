@@ -19,9 +19,9 @@ import java.util.Objects;
  * <p>
  * <strong>Example paths:</strong>
  * <ul>
- *   <li>{@code "sim123/000/000/batch_0000000000_0000000999.pb.zst"} (with compression)</li>
- *   <li>{@code "sim123/000/000/batch_0000000000_0000000999.pb"} (without compression)</li>
- *   <li>{@code "sim123/metadata.pb.zst"} (metadata with compression)</li>
+ *   <li>{@code "sim123/raw/000/000/batch_0000000000_0000000999.pb.zst"} (with compression)</li>
+ *   <li>{@code "sim123/raw/000/000/batch_0000000000_0000000999.pb"} (without compression)</li>
+ *   <li>{@code "sim123/raw/metadata.pb.zst"} (metadata with compression)</li>
  * </ul>
  * <p>
  * <strong>Thread Safety:</strong> This class is immutable and thread-safe.

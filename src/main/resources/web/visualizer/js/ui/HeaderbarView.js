@@ -26,6 +26,10 @@ class HeaderbarView {
             this.controller.navigateToTick(this.controller.state.currentTick + 1);
         });
         
+        document.getElementById('btn-zoom-toggle').addEventListener('click', () => {
+            this.controller.toggleZoom();
+        });
+        
         const input = document.getElementById('tick-input');
         
         // Input field event listeners
@@ -37,12 +41,11 @@ class HeaderbarView {
                     // Select all text after navigation so user can immediately type new number
                     setTimeout(() => input.select(), 0);
                 }
-            } else if (e.key === ' ') {
-                // Space: Navigate to next tick even when input is focused
+            } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                // Allow arrow keys to navigate even when input is focused
                 e.preventDefault();
-                this.handleKeyPress('forward');
-                // Select all text after navigation so user can immediately type new number
-                // Ensure input stays focused and text is selected even if it wasn't selected before
+                this.handleGlobalKeyDown(e);
+                // Ensure input stays focused and text is selected
                 setTimeout(() => {
                     input.focus();
                     input.select();
@@ -52,7 +55,6 @@ class HeaderbarView {
                 e.preventDefault();
                 input.blur();
             }
-            // Backspace is NOT handled here - let it work normally (delete text)
         });
         
         input.addEventListener('change', () => {
@@ -67,36 +69,11 @@ class HeaderbarView {
             input.select();
         });
         
-        // Keyboard shortcuts with proper debouncing
-        document.addEventListener('keydown', (e) => {
-            // Don't handle backspace when input field is focused (let it delete text)
-            if (document.activeElement === input && e.key === 'Backspace') {
-                return; // Let backspace work normally in input field
-            }
-            
-            // Don't handle space when input field is focused (space is handled in input's keydown)
-            // The input handler will prevent default and handle navigation
-            if (document.activeElement === input) {
-                return; // Let input handler deal with it (especially space)
-            }
-            
-            // Only handle shortcuts when input field is not focused
-            if (e.key === ' ') {
-                e.preventDefault(); // Prevent page scroll
-                this.handleKeyPress('forward');
-                // Focus and select input field after navigation so user can immediately type new tick number
-                setTimeout(() => {
-                    input.focus();
-                    input.select();
-                }, 0);
-            } else if (e.key === 'Backspace') {
-                e.preventDefault(); // Prevent browser back
-                this.handleKeyPress('backward');
-            }
-        });
+        // Global keyboard shortcuts
+        document.addEventListener('keydown', (e) => this.handleGlobalKeyDown(e));
         
         document.addEventListener('keyup', (e) => {
-            if (e.key === ' ' || e.key === 'Backspace') {
+            if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
                 this.handleKeyRelease();
             }
         });
@@ -107,6 +84,49 @@ class HeaderbarView {
         });
     }
     
+    /**
+     * Updates the text of the zoom button based on the current zoom state.
+     * @param {boolean} isZoomedOut - True if the view is zoomed out.
+     */
+    updateZoomButton(isZoomedOut) {
+        const button = document.getElementById('btn-zoom-toggle');
+        if (button) {
+            button.textContent = isZoomedOut ? 'Zoom In' : 'Zoom Out';
+        }
+    }
+
+    /**
+     * Central handler for global keydown events, routing to the correct action.
+     * @param {KeyboardEvent} e The keyboard event.
+     * @private
+     */
+    handleGlobalKeyDown(e) {
+        const input = document.getElementById('tick-input');
+        // Ignore most shortcuts if a text input is focused, except for our navigation keys
+        if (document.activeElement === input && !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) {
+            return;
+        }
+
+        switch (e.key) {
+            case 'ArrowRight':
+                e.preventDefault();
+                this.handleKeyPress('forward');
+                break;
+            case 'ArrowLeft':
+                e.preventDefault();
+                this.handleKeyPress('backward');
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                this.controller.navigateToTick(this.controller.state.currentTick + 1000);
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                this.controller.navigateToTick(this.controller.state.currentTick - 1000);
+                break;
+        }
+    }
+
     /**
      * Updates the displayed tick number in the input field and the total tick suffix.
      * 

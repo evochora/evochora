@@ -1,63 +1,11 @@
 /**
  * Centralized API client for handling network requests and standardizing error responses.
  * It wraps the native `fetch` API to provide consistent error handling for HTTP statuses
- * and network failures.
+ * and network failures. It notifies a global LoadingManager about its state.
  *
  * @class ApiClient
  */
 class ApiClient {
-    constructor() {
-        this.activeRequestCount = 0;
-        this.loadingIndicator = null;
-        this.logoText = null;
-        // Initialize logo width on DOM ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => this.initializeLogoWidth());
-        } else {
-            this.initializeLogoWidth();
-        }
-    }
-
-    /**
-     * Initializes the logo text width for the loading indicator animation.
-     * @private
-     */
-    initializeLogoWidth() {
-        this.logoText = document.querySelector('.logo-text');
-        if (this.logoText) {
-            // Calculate actual logo text width and set as CSS variable
-            const logoWidth = this.logoText.offsetWidth;
-            if (logoWidth > 0) {
-                document.documentElement.style.setProperty('--logo-text-width', `${logoWidth}px`);
-            }
-        }
-    }
-
-    /**
-     * Updates the loading indicator visibility based on the number of active requests.
-     * @private
-     */
-    updateLoadingIndicator() {
-        if (!this.loadingIndicator) {
-            this.loadingIndicator = document.getElementById('loading-indicator');
-            // Initialize logo width if not already done
-            if (this.loadingIndicator && !this.logoText) {
-                this.initializeLogoWidth();
-            }
-        }
-        if (this.loadingIndicator) {
-            // Ensure logo width is set before showing indicator
-            if (!document.documentElement.style.getPropertyValue('--logo-text-width')) {
-                this.initializeLogoWidth();
-            }
-            if (this.activeRequestCount > 0) {
-                this.loadingIndicator.classList.add('active');
-            } else {
-                this.loadingIndicator.classList.remove('active');
-            }
-        }
-    }
-
     /**
      * Performs a fetch request and handles standard success and error cases.
      * 
@@ -67,47 +15,37 @@ class ApiClient {
      * @throws {Error} If the request fails due to network issues, an HTTP error status, or if it's aborted.
      */
     async fetch(url, options = {}) {
-        // Increment request counter and show loading indicator
-        this.activeRequestCount++;
-        this.updateLoadingIndicator();
+        if (window.loadingManager) {
+            loadingManager.incrementRequests();
+        } else {
+            console.error('ApiClient: loadingManager not available!');
+        }
 
         try {
             const response = await fetch(url, options);
 
             if (!response.ok) {
-                // Try to parse error details from the response body
                 const errorData = await response.json().catch(() => ({}));
                 const errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
                 throw new Error(errorMessage);
             }
 
-            // Handle cases where the response is successful but has no content
             if (response.status === 204) {
                 return null;
             }
 
             return await response.json();
         } catch (error) {
-            // Re-throw specific errors to be handled by the caller
-            if (error.name === 'AbortError') {
-                this.activeRequestCount--;
-                this.updateLoadingIndicator();
-                throw error;
-            }
-
-            // Catch network errors (e.g., server not reachable)
+            // Errors are simply re-thrown. The 'finally' block handles all cleanup.
             if (error instanceof TypeError && error.message.includes('fetch')) {
-                this.activeRequestCount--;
-                this.updateLoadingIndicator();
                 throw new Error('Server not reachable. Is it running?');
             }
-
-            // Re-throw other errors (including the custom ones we created)
-            throw error;
+            throw error; // Re-throw AbortError and other server errors
         } finally {
-            // Always decrement request counter and update loading indicator
-            this.activeRequestCount--;
-            this.updateLoadingIndicator();
+            // This block ALWAYS runs, guaranteeing a single decrement per fetch call.
+            if (window.loadingManager) {
+                loadingManager.decrementRequests();
+            }
         }
     }
 }

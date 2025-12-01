@@ -45,6 +45,12 @@ message TickData {
   // Created by: calling ISerializable.saveState() on each active strategy
   // Example: GeyserCreator serializes geyser locations
   repeated StrategyState strategy_states = 7;
+
+  // Total number of organisms ever created in this simulation run.
+  // This is a monotonic counter that includes both initial and child organisms.
+  // Used by analytics to derive death counts (TotalBorn - Alive = TotalDead).
+  // Source: SimulationEngine.totalOrganismsCreated
+  int64 total_organisms_created = 8;
 }
 
 // Represents the serialized state of an energy distribution strategy

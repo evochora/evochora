@@ -107,7 +107,7 @@ Follows the global pipeline standard (`AGENTS.md`) with added Bulkhead Pattern f
     *   **Action:** Exception bubbles up -> **NO ACK** -> Redelivery. Plugins effectively retry on next delivery (idempotent overwrite).
 2.  **Plugin Logic Errors (Bugs):**
     *   If a plugin throws a `RuntimeException` (e.g. NPE, parsing error), it is **caught and logged**.
-    *   **Action:** `log.error("Plugin X failed for batch...", e)`.
+    *   **Action:** `log.error("Plugin X failed for batch...: {}", e.getMessage())`. (Stack trace at DEBUG level or via recordError context).
     *   **Result:** Other plugins continue. The batch is **ACKed** (if IO was fine).
     *   **Trade-off:** Data gap for that specific metric/batch, but pipeline keeps running. Prevents experimental plugins from blocking core metrics.
 3.  **Manifest Aggregation Errors:**
@@ -318,11 +318,10 @@ services {
       # Plugin Configuration
       plugins = [
         {
-          className = "org.evochora.analytics.plugins.PopulationMetricsPlugin"
+          className = "org.evochora.datapipeline.services.analytics.plugins.PopulationMetricsPlugin"
           options {
-            # Plugin-specific settings
-            outputFormat = "parquet"
-            outputPath = "population"
+            # Metric Identifier (determines folder name and manifest ID)
+            metricId = "population"
             
             # Sampling & LOD
             samplingInterval = 1    # Process every tick
@@ -382,8 +381,11 @@ This section lists all existing files that will be modified during implementatio
 *   `src/main/java/org/evochora/datapipeline/resources/storage/FileSystemStorageResource.java`: Implement new interfaces.
 *   `src/main/java/org/evochora/datapipeline/resources/storage/AbstractBatchStorageResource.java`: Add wrapper factory logic.
 
+### Phase 2: Core Analytics Service
+*   (New files only - no impact on existing files)
+
 ### Phase 3: Metrics
-*   `build.gradle.kts`: Add Parquet/Hadoop dependencies.
+*   `build.gradle.kts`: Add DuckDB JDBC dependency.
 
 ### Phase 4: Server Exposure
 *   `src/main/java/org/evochora/node/processes/http/HttpServerProcess.java`: Implement generic `resourceBindings`.
@@ -418,10 +420,10 @@ This section lists all existing files that will be modified during implementatio
 *Goal: Establish the plugin host and the API contract.*
 
 **Impacted Files:**
-*   `NEW`: `src/main/java/org/evochora/analytics/api/IAnalyticsPlugin.java`
-*   `NEW`: `src/main/java/org/evochora/analytics/api/AbstractAnalyticsPlugin.java`
-*   `NEW`: `src/main/java/org/evochora/analytics/api/IAnalyticsContext.java`
-*   `NEW`: `src/main/java/org/evochora/analytics/api/ManifestEntry.java`
+*   `NEW`: `src/main/java/org/evochora/datapipeline/api/analytics/IAnalyticsPlugin.java`
+*   `NEW`: `src/main/java/org/evochora/datapipeline/api/analytics/AbstractAnalyticsPlugin.java`
+*   `NEW`: `src/main/java/org/evochora/datapipeline/api/analytics/IAnalyticsContext.java`
+*   `NEW`: `src/main/java/org/evochora/datapipeline/api/analytics/ManifestEntry.java`
 *   `NEW`: `src/main/java/org/evochora/datapipeline/services/indexers/AnalyticsIndexer.java`
 
 4.  **Define Plugin API:** Create `IAnalyticsPlugin`, `AbstractAnalyticsPlugin` (Skeleton), and `ManifestEntry`.
@@ -449,7 +451,7 @@ This section lists all existing files that will be modified during implementatio
 
 **Impacted Files:**
 *   `MOD`: `build.gradle.kts` (Add DuckDB JDBC dependency)
-*   `NEW`: `src/main/java/org/evochora/analytics/plugins/PopulationMetricsPlugin.java`
+*   `NEW`: `src/main/java/org/evochora/datapipeline/services/analytics/plugins/PopulationMetricsPlugin.java`
 
 9.  **Add Dependencies:**
     *   Add `org.duckdb:duckdb_jdbc` to `build.gradle.kts`.
