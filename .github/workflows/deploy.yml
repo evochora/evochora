@@ -18,39 +18,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install SSH key and add known_hosts
+      - name: Install SSH key and Known Hosts
         uses: shimataro/ssh-key-action@v2
         with:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          known_hosts: ${{ secrets.SSH_HOST }}
+          # Use the verified host key from secrets for security.
+          known_hosts: ${{ secrets.KNOWN_HOSTS }}
 
       - name: Copy configuration to server
         run: |
-          # First, ensure the target directory structure exists on the server.
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'mkdir -p ~/app/evochora-node'
+          # The host is now verified via known_hosts, so no extra SSH options are needed.
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'mkdir -p ~/app/evochora-node'
           
-          # Now, copy all necessary configuration and compose files.
-          scp -o StrictHostKeyChecking=no infrastructure/docker/docker-compose.yml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/docker-compose.yml
-          scp -o StrictHostKeyChecking=no infrastructure/docker/docker-compose.node.yml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/docker-compose.node.yml
-          scp -o StrictHostKeyChecking=no infrastructure/docker/evochora-node/evochora.node.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/evochora-node/evochora.node.conf
-          scp -o StrictHostKeyChecking=no evochora.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/evochora.conf
+          scp infrastructure/docker/docker-compose.yml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/docker-compose.yml
+          scp infrastructure/docker/docker-compose.node.yml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/docker-compose.node.yml
+          scp infrastructure/docker/evochora-node/evochora.node.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/evochora-node/evochora.node.conf
+          scp evochora.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/evochora.conf
 
       - name: Deploy using Docker Compose
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+            set -e
             cd ~/app
             
-            # Export the image tag for docker-compose to use
             export IMAGE_TAG=${{ github.event.inputs.tag }}
             
-            # Pull the new version from the registry
-            # Note: docker compose pull does not use the override file, but that's okay.
-            # The image name is the same in both files.
             docker compose pull
             
-            # Start the application using BOTH compose files.
-            # Docker Compose will automatically find and merge 'docker-compose.yml' 
-            # and 'docker-compose.override.yml' if we named it that way.
-            # Since we use a custom name 'docker-compose.node.yml', we must specify both files explicitly.
             UID=$(id -u) GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.node.yml up -d
           EOF

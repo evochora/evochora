@@ -12,8 +12,9 @@ services:
       - "9092:9092"
     
     volumes:
-      # Mount the demo override config with its original name.
-      # Note: The base evochora.conf is already mounted by docker-compose.yml
+      # Mount the node override config. This is loaded via the 'command' override.
+      # It relies on the base 'docker-compose.yml' to mount the standard 'evochora.conf'
+      # which is then included by 'evochora.node.conf'.
       - ./evochora-node/evochora.node.conf:/home/appuser/app/config/evochora.node.conf:ro
     
     environment:

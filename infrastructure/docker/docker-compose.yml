@@ -48,9 +48,8 @@ services:
       - ./evochora-data/storage:/home/appuser/app/data/storage
       # Persists the H2 database files.
       - ./evochora-data/database:/home/appuser/app/data/database
-      # Mounts the main configuration file from the host into the container.
-      # This is the primary way for users to customize the simulation.
-      - ./evochora.conf:/home/appuser/app/config/evochora.conf:ro
+      # Mounts the main configuration file from the project root.
+      - ../../evochora.conf:/home/appuser/app/config/evochora.conf:ro
 
     # --- Environment Variables ---
     # Sets environment variables inside the container.
