@@ -1,0 +1,24 @@
+# ===============================================================
+# ==      Override Configuration for the DEMO Environment      ==
+# ===============================================================
+# This file overrides the base docker-compose.yml for the demo deployment.
+
+services:
+  evochora:
+    ports:
+      # Expose all ports to the host's network for the demo.
+      - "80:8081"
+      - "8082:8082"
+      - "9092:9092"
+    
+    volumes:
+      # Mount the demo override config with its original name.
+      # Note: The base evochora.conf is already mounted by docker-compose.yml
+      - ./evochora-node/evochora.node.conf:/home/appuser/app/config/evochora.node.conf:ro
+    
+    environment:
+      # Higher memory and PLAIN logging for the demo server.
+      JAVA_OPTS: "-Xmx16g -Dlogging.format=PLAIN"
+
+    # Override the default start command to use the demo configuration file.
+    command: ["bin/evochora", "--config", "config/evochora.node.conf", "node", "run"]

@@ -22,12 +22,17 @@ jobs:
         uses: shimataro/ssh-key-action@v2
         with:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # The action will automatically run ssh-keyscan for this host
           known_hosts: ${{ secrets.SSH_HOST }}
 
       - name: Copy configuration to server
         run: |
+          # First, ensure the target directory structure exists on the server.
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'mkdir -p ~/app/evochora-node'
+          
+          # Now, copy all necessary configuration and compose files.
           scp -o StrictHostKeyChecking=no infrastructure/docker/docker-compose.yml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/docker-compose.yml
+          scp -o StrictHostKeyChecking=no infrastructure/docker/docker-compose.node.yml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/docker-compose.node.yml
+          scp -o StrictHostKeyChecking=no infrastructure/docker/evochora-node/evochora.node.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/evochora-node/evochora.node.conf
           scp -o StrictHostKeyChecking=no evochora.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/evochora.conf
 
       - name: Deploy using Docker Compose
@@ -39,9 +44,13 @@ jobs:
             export IMAGE_TAG=${{ github.event.inputs.tag }}
             
             # Pull the new version from the registry
+            # Note: docker compose pull does not use the override file, but that's okay.
+            # The image name is the same in both files.
             docker compose pull
             
-            # Stop and restart the service, passing UID/GID directly to the command.
-            # This is the most robust way to ensure docker-compose sees the variables.
-            UID=$(id -u) GID=$(id -g) docker compose up -d
+            # Start the application using BOTH compose files.
+            # Docker Compose will automatically find and merge 'docker-compose.yml' 
+            # and 'docker-compose.override.yml' if we named it that way.
+            # Since we use a custom name 'docker-compose.node.yml', we must specify both files explicitly.
+            UID=$(id -u) GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.node.yml up -d
           EOF

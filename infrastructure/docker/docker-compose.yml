@@ -1,39 +1,65 @@
-version: '3.8'
+# ===============================================================
+# ==     Base Docker Compose Configuration for Evochora        ==
+# ===============================================================
+#
+# This file provides a default, secure configuration for running Evochora locally.
+# It is designed for new users to get started quickly and safely.
+#
+# How it works:
+# 1. 'docker compose up' will build the image if it doesn't exist.
+# 2. It mounts the 'evochora.conf' from this directory into the container.
+#    -> You can directly edit 'evochora.conf' to customize the simulation.
+# 3. It creates './evochora-data' for persistent storage and database files.
+
 services:
   evochora:
+    # --- Build Configuration ---
+    # Defines how to build the Docker image from the source code.
     build:
-      context: ../../..  # Gehe drei Ebenen hoch zum Projekt-Root
-      dockerfile: infrastructure/docker/evochora-node/Dockerfile # Pfad zum Dockerfile
+      context: ../../..  # The project root directory
+      dockerfile: infrastructure/docker/evochora-node/Dockerfile
+    
+    # --- Image ---
+    # Specifies the name of the Docker image to use or create.
     image: ghcr.io/evochora/evochora:${IMAGE_TAG:-latest}
-    user: "${UID:-1000}:${GID:-1000}"
-    ports:
-      # Map host ports to container ports
-      - "80:8081"      # Javalin Web UI (Extern: 80 -> Intern: 8081)
-      - "8082:8082"    # H2 Web Console (Extern: 8082 -> Intern: 8082)
-      - "9092:9092"    # H2 TCP Server (Extern: 9092 -> Intern: 9092)
-    volumes:
-      # Mount host directories into the container for persistent data
-      - ./evochora-data/storage:/home/appuser/app/data/storage
-      - ./evochora-data/database:/home/appuser/app/data/database
-      # Mount the configuration file into the container's config directory (read-only)
-      - ./evochora.conf:/home/appuser/app/config/evochora.conf:ro
-    environment:
-      # === JVM Options & Konfigurations-Overrides via System Properties (-D) ===
-      # Dies ist die zuverlässigste Methode, da System Properties die höchste Priorität
-      # in der Konfigurations-Lade-Kette der Anwendung haben.
-      - >
-        JAVA_OPTS=
-        -Xmx16g
-        -Dslf4j.replay.warn=false
-        -Dlogging.format=JSON
-        -Dnode.processes.http.options.network.host=0.0.0.0
-        -Dnode.processes.h2-console.options.network.host=0.0.0.0
-        -Dnode.processes.h2-tcp-server.options.tcpAllowOthers=true
-        -Dpipeline.autoStart=false
-        -Dpipeline.database.jdbcUrl="jdbc:h2:/home/appuser/app/data/database/indexdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144;LOCK_TIMEOUT=10000"
-        -Dpipeline.resources.tick-storage.options.rootDirectory="/home/appuser/app/data/storage"
-        -Dpipeline.resources.batch-topic.options.jdbcUrl="jdbc:h2:/home/appuser/app/data/database/topicdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144;LOCK_TIMEOUT=10000"
-        -Dnode.processes.h2-console.options.database.jdbcUrl="jdbc:h2:/home/appuser/app/data/database/indexdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144"
-        -Dnode.processes.h2-tcp-server.options.database.jdbcUrl="jdbc:h2:/home/appuser/app/data/database/indexdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144"
 
+    # --- User Permissions ---
+    # Runs the container process with the same User ID (UID) and Group ID (GID)
+    # as the user on the host machine. This is critical to avoid file permission
+    # errors when writing to the mounted 'evochora-data' volumes.
+    user: "${UID:-1000}:${GID:-1000}"
+
+    # --- Port Mappings (Host:Container) ---
+    # Exposes the application's internal ports to your local machine.
+    ports:
+      # Exposes the main Web UI on port 8081. Access via http://localhost:8081
+      - "8081:8081"
+      # Exposes the H2 Database Console on port 8082, but ONLY on localhost for security.
+      - "127.0.0.1:8082:8082"
+      # Exposes the H2 TCP Server on port 9092, but ONLY on localhost for security.
+      # Use this to connect with external database tools like DBeaver.
+      - "127.0.0.1:9092:9092"
+
+    # --- Volume Mappings (Host:Container) ---
+    # Mounts directories from your local machine into the container. This makes
+    # data persistent even if the container is deleted.
+    volumes:
+      # Persists the simulation's storage data.
+      - ./evochora-data/storage:/home/appuser/app/data/storage
+      # Persists the H2 database files.
+      - ./evochora-data/database:/home/appuser/app/data/database
+      # Mounts the main configuration file from the host into the container.
+      # This is the primary way for users to customize the simulation.
+      - ./evochora.conf:/home/appuser/app/config/evochora.conf:ro
+
+    # --- Environment Variables ---
+    # Sets environment variables inside the container.
+    environment:
+      # Provides a sensible default memory limit for the Java Virtual Machine.
+      # For production or larger simulations, this can be overridden.
+      JAVA_OPTS: "-Xmx8g"
+
+    # --- Restart Policy ---
+    # Ensures the container is automatically restarted (e.g., after a system reboot)
+    # unless it was explicitly stopped by the user.
     restart: unless-stopped
