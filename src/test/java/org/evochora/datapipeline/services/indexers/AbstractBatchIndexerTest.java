@@ -1,7 +1,27 @@
 package org.evochora.datapipeline.services.indexers;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -18,22 +38,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.awaitility.Awaitility.await;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Unit tests for AbstractBatchIndexer.
@@ -96,24 +103,22 @@ class AbstractBatchIndexerTest {
             .thenReturn(null);    // Subsequent calls: return null (keep running)
         when(mockStorage.readBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(ticks);
         
-        // Expect 5 flush calls (tick-by-tick processing)
-        flushLatch = new CountDownLatch(5);
+        // Expect 1 flush call (batch-passthrough: all ticks in one flush)
+        flushLatch = new CountDownLatch(1);
         
         // When: Start indexer
         indexer = createIndexer(runId, true);  // with metadata component
         indexer.start();
         
-        // Wait for all ticks to be flushed
-        assertTrue(flushLatch.await(5, TimeUnit.SECONDS), "All ticks should be flushed");
+        // Wait for batch to be flushed
+        assertTrue(flushLatch.await(5, TimeUnit.SECONDS), "Batch should be flushed");
         
-        // Then: Verify tick-by-tick processing
-        assertEquals(5, flushCount.get(), "Should have 5 flush calls (one per tick)");
-        assertEquals(5, flushedBatches.size(), "Should have 5 flushed batches");
-        for (List<TickData> batch : flushedBatches) {
-            assertEquals(1, batch.size(), "Each flush should contain exactly 1 tick");
-        }
+        // Then: Verify batch-passthrough processing (one flush with all ticks)
+        assertEquals(5, flushCount.get(), "Should have flushed 5 ticks total");
+        assertEquals(1, flushedBatches.size(), "Should have 1 flushed batch (batch-passthrough)");
+        assertEquals(5, flushedBatches.get(0).size(), "Batch should contain all 5 ticks");
         
-        // CRITICAL: Verify ACK was sent AFTER all ticks processed
+        // CRITICAL: Verify ACK was sent AFTER batch processed
         await().atMost(2, TimeUnit.SECONDS)
             .untilAsserted(() -> verify(mockTopic, times(1)).ack(message));
         
@@ -211,8 +216,8 @@ class AbstractBatchIndexerTest {
     }
     
     @Test
-    void testEachTickProcessedIndividually() throws Exception {
-        // Given: Multiple ticks in one batch
+    void testBatchPassthrough() throws Exception {
+        // Given: Multiple ticks in one batch (batch-passthrough: all ticks flushed together)
         String runId = "test-run-004";
         SimulationMetadata metadata = createTestMetadata(runId);
         List<TickData> ticks = createTestTicks(runId, 0, 10);  // 10 ticks
@@ -227,26 +232,26 @@ class AbstractBatchIndexerTest {
             .thenReturn(null);
         when(mockStorage.readBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(ticks);
         
-        flushLatch = new CountDownLatch(10);
+        // Batch-passthrough: 1 flush for entire batch
+        flushLatch = new CountDownLatch(1);
         
         // When: Process batch
         indexer = createIndexer(runId, true);
         indexer.start();
         
-        assertTrue(flushLatch.await(5, TimeUnit.SECONDS), "All ticks should be flushed");
+        assertTrue(flushLatch.await(5, TimeUnit.SECONDS), "Batch should be flushed");
         
-        // Then: Verify each tick was processed individually
-        assertEquals(10, flushCount.get(), "Should have 10 flush calls");
-        assertEquals(10, flushedBatches.size(), "Should have 10 individual flushes");
+        // Then: Verify batch-passthrough (all ticks in one flush)
+        assertEquals(10, flushCount.get(), "Should have flushed 10 ticks total");
+        assertEquals(1, flushedBatches.size(), "Should have 1 batch flush (batch-passthrough)");
+        assertEquals(10, flushedBatches.get(0).size(), "Batch should contain all 10 ticks");
         
-        // Verify each flush contained exactly 1 tick
-        for (int i = 0; i < flushedBatches.size(); i++) {
-            List<TickData> batch = flushedBatches.get(i);
-            assertEquals(1, batch.size(), "Flush " + i + " should contain exactly 1 tick");
-            assertEquals(i, batch.get(0).getTickNumber(), "Tick should be in order");
+        // Verify ticks are in order within the batch
+        for (int i = 0; i < flushedBatches.get(0).size(); i++) {
+            assertEquals(i, flushedBatches.get(0).get(i).getTickNumber(), "Tick should be in order");
         }
         
-        // Verify ACK sent after ALL ticks
+        // Verify ACK sent after batch flushed
         await().atMost(2, TimeUnit.SECONDS)
             .untilAsserted(() -> verify(mockTopic, times(1)).ack(message));
     }
@@ -268,14 +273,15 @@ class AbstractBatchIndexerTest {
             .thenReturn(null);
         when(mockStorage.readBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(ticks);
         
-        flushLatch = new CountDownLatch(2);
+        // Batch-passthrough: 1 flush for entire batch
+        flushLatch = new CountDownLatch(1);
         
         // When: Start indexer
         indexer = createIndexer(runId, true);
         indexer.start();
         
         // Wait for processing
-        assertTrue(flushLatch.await(5, TimeUnit.SECONDS), "Ticks should be flushed");
+        assertTrue(flushLatch.await(5, TimeUnit.SECONDS), "Batch should be flushed");
         
         // Then: Verify correct order: metadata operations → storage read → ack
         // (Component checks metadata internally before batch processing starts)
@@ -309,13 +315,14 @@ class AbstractBatchIndexerTest {
         when(mockStorage.readBatch(StoragePath.of(batch1.getStoragePath()))).thenReturn(ticks1);
         when(mockStorage.readBatch(StoragePath.of(batch2.getStoragePath()))).thenReturn(ticks2);
         
-        flushLatch = new CountDownLatch(8);  // 5 + 3 ticks
+        // Batch-passthrough: 2 flushes (one per batch)
+        flushLatch = new CountDownLatch(2);
         
         // When: Process batches
         indexer = createIndexer(runId, true);
         indexer.start();
         
-        assertTrue(flushLatch.await(5, TimeUnit.SECONDS), "All ticks should be flushed");
+        assertTrue(flushLatch.await(5, TimeUnit.SECONDS), "Both batches should be flushed");
         
         // Then: Verify metrics (use await to ensure all batches are counted)
         await().atMost(2, TimeUnit.SECONDS)
@@ -417,7 +424,7 @@ class AbstractBatchIndexerTest {
         
         @Override
         protected Set<ComponentType> getRequiredComponents() {
-            // Phase 14.2.5 tests: No buffering (tick-by-tick)
+            // No BUFFERING: Uses batch-passthrough (one flush per topic message)
             return withMetadata ? EnumSet.of(ComponentType.METADATA) : EnumSet.noneOf(ComponentType.class);
         }
         

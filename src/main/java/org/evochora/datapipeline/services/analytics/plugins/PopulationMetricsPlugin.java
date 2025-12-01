@@ -1,45 +1,85 @@
 package org.evochora.datapipeline.services.analytics.plugins;
 
-import org.evochora.datapipeline.api.analytics.AbstractAnalyticsPlugin;
-import org.evochora.datapipeline.api.analytics.ManifestEntry;
-import org.evochora.datapipeline.api.analytics.VisualizationHint;
-import org.evochora.datapipeline.api.contracts.OrganismState;
-import org.evochora.datapipeline.api.contracts.TickData;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.Statement;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 
+import org.evochora.datapipeline.api.analytics.AbstractAnalyticsPlugin;
+import org.evochora.datapipeline.api.analytics.ColumnType;
+import org.evochora.datapipeline.api.analytics.ManifestEntry;
+import org.evochora.datapipeline.api.analytics.ParquetSchema;
+import org.evochora.datapipeline.api.analytics.VisualizationHint;
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.TickData;
+
 /**
- * Generates population metrics (alive count, avg energy) in Parquet format using DuckDB.
+ * Generates population metrics (alive count, total deaths, avg energy) in Parquet format.
  * <p>
- * Note: 'Dead count' is not tracked because TickData only contains living organisms.
- * To track deaths, we would need stateful tracking across ticks/batches, which is complex
- * with sampling. Thus, we focus on the snapshot state (Alive & Energy).
+ * This plugin demonstrates the simplified plugin API: only define schema and row extraction,
+ * the indexer handles all I/O (DuckDB, Parquet, storage).
+ * <p>
+ * <strong>Metrics:</strong>
+ * <ul>
+ *   <li>{@code tick} - Simulation tick number</li>
+ *   <li>{@code alive_count} - Number of living organisms</li>
+ *   <li>{@code total_dead} - Cumulative death count (totalCreated - alive)</li>
+ *   <li>{@code avg_energy} - Average energy per organism</li>
+ * </ul>
+ * <p>
+ * <strong>Note:</strong> 'Dead count per tick' is not tracked because TickData only contains
+ * living organisms. To track deaths per tick, we would need stateful tracking across batches,
+ * which is complex with sampling. Thus, we use the cumulative total_dead metric.
  */
 public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
 
-    private static final Logger log = LoggerFactory.getLogger(PopulationMetricsPlugin.class);
+    private static final ParquetSchema SCHEMA = ParquetSchema.builder()
+        .column("tick", ColumnType.BIGINT)
+        .column("alive_count", ColumnType.INTEGER)
+        .column("total_dead", ColumnType.BIGINT)
+        .column("avg_energy", ColumnType.DOUBLE)
+        .build();
+
+    @Override
+    public ParquetSchema getSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public List<Object[]> extractRows(TickData tick) {
+        // Count alive organisms and sum energy
+        int alive = 0;
+        long totalEnergy = 0;
+        
+        for (OrganismState org : tick.getOrganismsList()) {
+            alive++;
+            totalEnergy += org.getEnergy();
+        }
+        
+        // Calculate total dead based on monotonic counter
+        long totalCreated = tick.getTotalOrganismsCreated();
+        long totalDead = totalCreated - alive;
+        
+        // Calculate average energy
+        double avgEnergy = alive > 0 ? (double) totalEnergy / alive : 0.0;
+        
+        // Return single row for this tick
+        return Collections.singletonList(new Object[] {
+            tick.getTickNumber(),   // tick (BIGINT)
+            alive,                   // alive_count (INTEGER)
+            totalDead,               // total_dead (BIGINT)
+            avgEnergy                // avg_energy (DOUBLE)
+        });
+    }
 
     @Override
     public ManifestEntry getManifestEntry() {
         ManifestEntry entry = new ManifestEntry();
-        entry.id = metricId; // e.g. "population"
+        entry.id = metricId;
         entry.name = "Population Overview";
         entry.description = "Overview of alive organisms, total deaths, and average energy over time.";
         
         entry.dataSources = new HashMap<>();
-        // Default: "raw" level pointing to all parquet files in raw folder
-        entry.dataSources.put("raw", metricId + "/raw/*.parquet");
+        entry.dataSources.put("lod0", metricId + "/lod0/**/*.parquet");
         
         entry.visualization = new VisualizationHint();
         entry.visualization.type = "line-chart";
@@ -49,98 +89,5 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
         entry.visualization.config.put("y2", List.of("avg_energy")); // Second axis
 
         return entry;
-    }
-
-    @Override
-    public void processBatch(List<TickData> batch) {
-        if (batch.isEmpty()) return;
-
-        // Determine batch range for filename
-        long startTick = batch.get(0).getTickNumber();
-        long endTick = batch.get(batch.size() - 1).getTickNumber();
-        String filename = String.format("batch_%020d_%020d.parquet", startTick, endTick);
-        
-        log.debug("Processing batch {}-{} for population metrics", startTick, endTick);
-
-        // Use DuckDB to aggregate and write Parquet
-        // We use an in-memory DB for processing, then export to a temp file
-        try {
-            // 1. Setup DuckDB
-            // Load driver explicitly to ensure it's registered
-            Class.forName("org.duckdb.DuckDBDriver");
-            
-            try (Connection conn = DriverManager.getConnection("jdbc:duckdb:")) {
-                try (Statement stmt = conn.createStatement()) {
-                    
-                    // 2. Create Schema
-                    stmt.execute("CREATE TABLE metrics (" +
-                        "tick BIGINT, " +
-                        "alive_count INTEGER, " +
-                        "total_dead BIGINT, " +
-                        "avg_energy DOUBLE" +
-                        ")");
-
-                    // 3. Insert Data
-                    try (PreparedStatement ps = conn.prepareStatement(
-                            "INSERT INTO metrics VALUES (?, ?, ?, ?)")) {
-                        
-                        for (TickData tick : batch) {
-                            // Check sampling
-                            if (tick.getTickNumber() % samplingInterval != 0) {
-                                continue;
-                            }
-                            
-                            long tickNum = tick.getTickNumber();
-                            int alive = 0;
-                            long totalEnergy = 0;
-                            
-                            for (OrganismState org : tick.getOrganismsList()) {
-                                // SimulationEngine only sends living organisms.
-                                alive++;
-                                totalEnergy += org.getEnergy();
-                            }
-                            
-                            // Calculate total dead based on monotonic counter
-                            long totalCreated = tick.getTotalOrganismsCreated();
-                            long totalDead = totalCreated - alive;
-                            
-                            double avgEnergy = alive > 0 ? (double) totalEnergy / alive : 0.0;
-                            
-                            ps.setLong(1, tickNum);
-                            ps.setInt(2, alive);
-                            ps.setLong(3, totalDead);
-                            ps.setDouble(4, avgEnergy);
-                            ps.addBatch();
-                        }
-                        ps.executeBatch();
-                    }
-
-                    // 4. Export to Parquet (Local Temp File)
-                    // We need a temp file path that DuckDB can write to
-                    Path tempFile = Files.createTempFile(context.getTempDirectory(), "pop_", ".parquet");
-                    try {
-                        // Escape path for SQL (Windows paths need escaping)
-                        String exportPath = tempFile.toAbsolutePath().toString().replace("\\", "/");
-                        String exportSql = String.format(
-                            "COPY metrics TO '%s' (FORMAT PARQUET, CODEC 'ZSTD')", 
-                            exportPath
-                        );
-                        stmt.execute(exportSql);
-                        
-                        // 5. Stream to Storage
-                        // Use "raw" LOD level for now (Phase 3)
-                        try (InputStream in = Files.newInputStream(tempFile);
-                             OutputStream out = context.openArtifactStream(metricId, "raw", filename)) {
-                            in.transferTo(out);
-                        }
-                        
-                    } finally {
-                        Files.deleteIfExists(tempFile);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to process population metrics batch", e);
-        }
     }
 }

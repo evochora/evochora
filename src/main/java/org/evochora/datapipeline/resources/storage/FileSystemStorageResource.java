@@ -296,8 +296,8 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
     // ========================================================================
 
     @Override
-    public OutputStream openAnalyticsOutputStream(String runId, String metricId, String lodLevel, String filename) throws IOException {
-        File file = getAnalyticsFile(runId, metricId, lodLevel, filename);
+    public OutputStream openAnalyticsOutputStream(String runId, String metricId, String lodLevel, String subPath, String filename) throws IOException {
+        File file = getAnalyticsFile(runId, metricId, lodLevel, subPath, filename);
         
         // Ensure parent directories exist
         File parentDir = file.getParentFile();
@@ -361,7 +361,7 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
         return new File(new File(rootDirectory, runId), "analytics");
     }
 
-    private File getAnalyticsFile(String runId, String metricId, String lodLevel, String filename) {
+    private File getAnalyticsFile(String runId, String metricId, String lodLevel, String subPath, String filename) {
         validateKey(runId);
         validateKey(metricId);
         if (lodLevel != null) validateKey(lodLevel);
@@ -370,6 +370,15 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
         File root = getAnalyticsRoot(runId);
         File metricDir = new File(root, metricId);
         File targetDir = (lodLevel != null) ? new File(metricDir, lodLevel) : metricDir;
+        
+        // Add hierarchical subPath if provided (e.g., "000/001")
+        if (subPath != null && !subPath.isEmpty()) {
+            // Validate subPath segments (prevent path traversal)
+            for (String segment : subPath.split("/")) {
+                validateKey(segment);
+            }
+            targetDir = new File(targetDir, subPath);
+        }
         
         return new File(targetDir, filename);
     }

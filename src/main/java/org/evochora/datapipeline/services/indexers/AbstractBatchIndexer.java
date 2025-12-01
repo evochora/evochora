@@ -433,12 +433,12 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                     flushAndAcknowledge();
                 }
             } else {
-                // WITHOUT buffering: tick-by-tick processing
-                for (TickData tick : ticks) {
-                    flushTicks(List.of(tick));
-                }
+                // WITHOUT buffering: Batch-passthrough (one flush per topic message)
+                // Each topic message = one PersistenceService batch = one flush
+                // Guarantees consistent file boundaries for file-based indexers (e.g., Parquet)
+                flushTicks(ticks);
                 
-                // ACK after ALL ticks from batch are processed
+                // ACK after batch is processed
                 topic.ack(msg);
                 
                 // Safe to mark immediately after ACK (no buffering = no cross-batch risk)
@@ -450,7 +450,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 batchesProcessed.incrementAndGet();
                 ticksProcessed.addAndGet(ticks.size());
                 
-                log.debug("Processed {} ticks from {} (tick-by-tick, no buffering)", 
+                log.debug("Processed {} ticks from {} (batch-passthrough, no buffering)", 
                          ticks.size(), batch.getStoragePath());
             }
             

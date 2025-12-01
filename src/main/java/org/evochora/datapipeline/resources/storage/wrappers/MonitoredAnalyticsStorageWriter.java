@@ -1,5 +1,10 @@
 package org.evochora.datapipeline.resources.storage.wrappers;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
@@ -9,11 +14,6 @@ import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.io.OutputStream;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Wrapper for IAnalyticsStorageWrite that adds monitoring (bytes written, latency).
@@ -48,10 +48,10 @@ public class MonitoredAnalyticsStorageWriter extends AbstractResource implements
     }
 
     @Override
-    public OutputStream openAnalyticsOutputStream(String runId, String metricId, String lodLevel, String filename) throws IOException {
+    public OutputStream openAnalyticsOutputStream(String runId, String metricId, String lodLevel, String subPath, String filename) throws IOException {
         long start = System.nanoTime();
         try {
-            OutputStream raw = delegate.openAnalyticsOutputStream(runId, metricId, lodLevel, filename);
+            OutputStream raw = delegate.openAnalyticsOutputStream(runId, metricId, lodLevel, subPath, filename);
             
             // Return a wrapper stream to count bytes on close
             return new OutputStream() {
