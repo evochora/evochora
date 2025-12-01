@@ -48,5 +48,9 @@ jobs:
             
             docker compose pull
             
+            # First, bring down the old containers to release the ports.
+            docker compose -f docker-compose.yml -f docker-compose.node.yml down
+            
+            # Now, start the new containers.
             docker compose -f docker-compose.yml -f docker-compose.node.yml up -d
           EOF
