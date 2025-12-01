@@ -11,23 +11,26 @@ on:
 
 jobs:
   deploy:
-    name: Deploy to Oracle VM
+    name: Deploy to demo node VM
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install SSH key and Known Hosts
+      - name: Install SSH key
         uses: shimataro/ssh-key-action@v2
         with:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # Use the verified host key from secrets for security.
-          known_hosts: ${{ secrets.KNOWN_HOSTS }}
+
+      - name: Add verified host key to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
 
       - name: Copy configuration to server
         run: |
-          # The host is now verified via known_hosts, so no extra SSH options are needed.
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'mkdir -p ~/app/evochora-node'
           
           scp infrastructure/docker/docker-compose.yml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/docker-compose.yml
