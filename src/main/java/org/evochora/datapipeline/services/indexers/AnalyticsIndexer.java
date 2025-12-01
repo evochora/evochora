@@ -137,6 +137,26 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     }
 
     @Override
+    protected void onShutdown() throws Exception {
+        // 1. Call onFinish() for all plugins
+        for (IAnalyticsPlugin plugin : plugins) {
+            try {
+                plugin.onFinish();
+            } catch (Exception e) {
+                log.warn("Plugin {} failed during onFinish(): {}", 
+                    plugin.getClass().getSimpleName(), e.getMessage());
+                log.debug("Plugin onFinish() error details:", e);
+                // Continue with other plugins (bulkhead pattern)
+            }
+        }
+        
+        // 2. Clean up temp directory
+        cleanupTempDirectory();
+        
+        log.debug("AnalyticsIndexer shutdown cleanup completed");
+    }
+
+    @Override
     protected void flushTicks(List<TickData> ticks) throws Exception {
         if (ticks.isEmpty()) return;
         

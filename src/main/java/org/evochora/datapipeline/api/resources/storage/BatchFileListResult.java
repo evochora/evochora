@@ -15,7 +15,7 @@ import java.util.Objects;
  * <pre>
  * String token = null;
  * do {
- *     BatchFileListResult result = storage.listBatchFiles("sim123/", token, 1000);
+ *     BatchFileListResult result = storage.listBatchFiles("sim123/raw/", token, 1000);
  *     for (StoragePath path : result.getFilenames()) {
  *         // Process file
  *     }
@@ -52,7 +52,7 @@ public class BatchFileListResult {
      * Paths include compression extensions and can be passed directly to
      * {@link IBatchStorageRead#readBatch(StoragePath)}.
      * <p>
-     * Example: "sim123/000/000/batch_0000000000_0000000999.pb.zst"
+     * Example: "sim123/raw/000/000/batch_0000000000_0000000999.pb.zst"
      *
      * @return Immutable list of storage paths (never null, may be empty)
      */

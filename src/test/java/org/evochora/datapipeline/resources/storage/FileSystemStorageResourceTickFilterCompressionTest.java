@@ -137,8 +137,8 @@ class FileSystemStorageResourceTickFilterCompressionTest {
         assertEquals(5678, storageCompressed.parseBatchEndTick("batch_0000000000000001234_0000000000000005678.pb"));
         
         // Test with path prefix
-        assertEquals(0, storageCompressed.parseBatchStartTick("test-sim/000/000/batch_0000000000000000000_0000000000000000999.pb.zst"));
-        assertEquals(999, storageCompressed.parseBatchEndTick("test-sim/000/000/batch_0000000000000000000_0000000000000000999.pb.zst"));
+        assertEquals(0, storageCompressed.parseBatchStartTick("test-sim/raw/000/000/batch_0000000000000000000_0000000000000000999.pb.zst"));
+        assertEquals(999, storageCompressed.parseBatchEndTick("test-sim/raw/000/000/batch_0000000000000000000_0000000000000000999.pb.zst"));
     }
 
     @Test

@@ -221,7 +221,7 @@ class FileSystemStorageResourceCompressionTest {
                     .build();
             
             // Act: Write metadata (will be compressed)
-            String key = runId + "/metadata.pb";
+            String key = runId + "/raw/metadata.pb";
             StoragePath writtenPath = storage.writeMessage(key, metadata);
             
             // Assert: File exists with compression extension

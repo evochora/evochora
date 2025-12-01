@@ -72,7 +72,7 @@ public interface IBatchStorageWrite extends IResource {
      * <ul>
      *   <li>Written as a length-delimited protobuf message</li>
      *   <li>Compressed according to storage configuration</li>
-     *   <li>Stored at the exact key path provided (e.g., "{simulationRunId}/metadata.pb")</li>
+     *   <li>Stored at the exact key path provided (e.g., "{simulationRunId}/raw/metadata.pb")</li>
      *   <li>Atomically committed (temp file → final file)</li>
      * </ul>
      * <p>
@@ -83,12 +83,12 @@ public interface IBatchStorageWrite extends IResource {
      * <strong>Example usage (MetadataPersistenceService):</strong>
      * <pre>
      * SimulationMetadata metadata = buildMetadata();
-     * String key = simulationRunId + "/metadata.pb";
+     * String key = simulationRunId + "/raw/metadata.pb";
      * StoragePath path = storage.writeMessage(key, metadata);
      * log.info("Wrote metadata to {}", path);
      * </pre>
      *
-     * @param key The storage key (relative path without compression extension, e.g., "sim-123/metadata.pb")
+     * @param key The storage key (relative path without compression extension, e.g., "sim-123/raw/metadata.pb")
      * @param message The protobuf message to write
      * @param <T> The protobuf message type
      * @return The physical storage path where message was written (includes compression extension)

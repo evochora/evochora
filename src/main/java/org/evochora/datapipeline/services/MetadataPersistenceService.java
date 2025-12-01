@@ -39,7 +39,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li>Graceful shutdown handling</li>
  * </ul>
  * <p>
- * <strong>Storage Pattern:</strong> Writes metadata to <code>{simulationRunId}/metadata.pb</code>
+ * <strong>Storage Pattern:</strong> Writes metadata to <code>{simulationRunId}/raw/metadata.pb</code>
  * in the same directory as tick data batches for easy correlation.
  * <p>
  * <strong>Thread Safety:</strong> Runs in its own thread. No synchronization needed.
@@ -161,9 +161,9 @@ public class MetadataPersistenceService extends AbstractService {
             return;
         }
 
-        // Generate storage key: {simulationRunId}/metadata.pb
+        // Generate storage key: {simulationRunId}/raw/metadata.pb
         String simulationRunId = metadata.getSimulationRunId();
-        String key = simulationRunId + "/metadata.pb";
+        String key = simulationRunId + "/raw/metadata.pb";
 
         // Write metadata with retry logic
         writeMetadataWithRetry(key, metadata);
@@ -305,7 +305,7 @@ public class MetadataPersistenceService extends AbstractService {
         try {
             String simulationRunId = metadata.getSimulationRunId() != null ?
                 metadata.getSimulationRunId() : "UNKNOWN";
-            String storageKey = simulationRunId + "/metadata.pb";
+            String storageKey = simulationRunId + "/raw/metadata.pb";
 
             // Build stack trace
             List<String> stackTraceLines = new ArrayList<>();

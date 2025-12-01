@@ -392,7 +392,7 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
             String simulationRunId = batch.get(0).getSimulationRunId();
             long startTick = batch.get(0).getTickNumber();
             long endTick = batch.get(batch.size() - 1).getTickNumber();
-            String storageKey = String.format("%s/batch_%019d_%019d.pb", simulationRunId, startTick, endTick);
+            String storageKey = String.format("%s/raw/batch_%019d_%019d.pb", simulationRunId, startTick, endTick);
 
             // Build stack trace
             List<String> stackTraceLines = new ArrayList<>();

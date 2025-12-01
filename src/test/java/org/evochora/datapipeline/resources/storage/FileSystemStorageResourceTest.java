@@ -291,7 +291,7 @@ class FileSystemStorageResourceTest {
                 .setInitialSeed(42)
                 .build();
         
-        String key = runId + "/metadata.pb";
+        String key = runId + "/raw/metadata.pb";
         StoragePath writtenPath = storage.writeMessage(key, metadata);
         
         // Find metadata path

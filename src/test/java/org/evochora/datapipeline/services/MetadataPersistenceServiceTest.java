@@ -178,7 +178,7 @@ class MetadataPersistenceServiceTest {
 
         // Mock queue to return metadata
         when(mockInputQueue.take()).thenReturn(metadata);
-        when(mockStorage.writeMessage(anyString(), any())).thenReturn(StoragePath.of("sim-123/metadata.pb"));
+        when(mockStorage.writeMessage(anyString(), any())).thenReturn(StoragePath.of("sim-123/raw/metadata.pb"));
 
         // Start service (will process message and stop)
         service.start();
@@ -192,13 +192,13 @@ class MetadataPersistenceServiceTest {
             .until(() -> service.getCurrentState() == State.STOPPED);
 
         // Verify storage was called with correct key and metadata
-        verify(mockStorage).writeMessage("sim-123/metadata.pb", metadata);
+        verify(mockStorage).writeMessage("sim-123/raw/metadata.pb", metadata);
 
         // Verify topic notification was sent
         verify(mockTopic).setSimulationRun(eq("sim-123"));
         verify(mockTopic).send(argThat(info -> 
             info.getSimulationRunId().equals("sim-123") &&
-            info.getStoragePath().startsWith("sim-123/metadata.pb") &&
+            info.getStoragePath().startsWith("sim-123/raw/metadata.pb") &&
             info.getWrittenAtMs() > 0
         ));
 
@@ -216,15 +216,15 @@ class MetadataPersistenceServiceTest {
         SimulationMetadata metadata = createTestMetadata("my-simulation-run-42");
 
         when(mockInputQueue.take()).thenReturn(metadata);
-        when(mockStorage.writeMessage(anyString(), any())).thenReturn(StoragePath.of("sim-123/metadata.pb"));
+        when(mockStorage.writeMessage(anyString(), any())).thenReturn(StoragePath.of("sim-123/raw/metadata.pb"));
 
         service.start();
 
         await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> service.getMetrics().get("metadata_written").longValue() > 0);
 
-        // Verify correct storage key format: {simulationRunId}/metadata.pb
-        verify(mockStorage).writeMessage("my-simulation-run-42/metadata.pb", metadata);
+        // Verify correct storage key format: {simulationRunId}/raw/metadata.pb
+        verify(mockStorage).writeMessage("my-simulation-run-42/raw/metadata.pb", metadata);
     }
 
     // ========== Validation Tests ==========
@@ -304,7 +304,7 @@ class MetadataPersistenceServiceTest {
         // First attempt fails, second succeeds
         when(mockStorage.writeMessage(anyString(), any()))
             .thenThrow(new IOException("Transient error"))
-            .thenReturn(StoragePath.of("sim-123/metadata.pb"));
+            .thenReturn(StoragePath.of("sim-123/raw/metadata.pb"));
 
         service.start();
 
@@ -312,7 +312,7 @@ class MetadataPersistenceServiceTest {
             .until(() -> service.getMetrics().get("metadata_written").longValue() > 0);
 
         // Verify retry occurred (2 writeMessage calls)
-        verify(mockStorage, times(2)).writeMessage("sim-123/metadata.pb", metadata);
+        verify(mockStorage, times(2)).writeMessage("sim-123/raw/metadata.pb", metadata);
 
         // Verify success
         assertEquals(1, service.getMetrics().get("metadata_written").longValue());
@@ -340,7 +340,7 @@ class MetadataPersistenceServiceTest {
             .until(() -> service.getMetrics().get("metadata_failed").longValue() > 0);
 
         // Verify all retry attempts made (maxRetries=2 means 3 total attempts)
-        verify(mockStorage, times(3)).writeMessage("sim-123/metadata.pb", metadata);
+        verify(mockStorage, times(3)).writeMessage("sim-123/raw/metadata.pb", metadata);
 
         // Verify failure recorded
         assertEquals(0, service.getMetrics().get("metadata_written").longValue());
@@ -376,7 +376,7 @@ class MetadataPersistenceServiceTest {
         verify(mockDLQ).offer(argThat(dlqMsg -> {
             assertEquals("SimulationMetadata", dlqMsg.getMessageType());
             assertEquals("sim-456", dlqMsg.getMetadataOrDefault("simulationRunId", ""));
-            assertEquals("sim-456/metadata.pb", dlqMsg.getMetadataOrDefault("storageKey", ""));
+            assertEquals("sim-456/raw/metadata.pb", dlqMsg.getMetadataOrDefault("storageKey", ""));
             assertTrue(dlqMsg.getFailureReason().contains("Storage failure"));
             return true;
         }));
@@ -468,7 +468,7 @@ class MetadataPersistenceServiceTest {
         SimulationMetadata metadata = createTestMetadata("sim-metrics");
 
         when(mockInputQueue.take()).thenReturn(metadata);
-        when(mockStorage.writeMessage(anyString(), any())).thenReturn(StoragePath.of("sim-123/metadata.pb"));
+        when(mockStorage.writeMessage(anyString(), any())).thenReturn(StoragePath.of("sim-123/raw/metadata.pb"));
 
         service.start();
 

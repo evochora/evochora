@@ -264,8 +264,8 @@ class DummyIndexerIntegrationTest {
         SimulationMetadata metadata = createTestMetadata(runId, 10);
         
         // Write metadata file to storage (simulates new run discovery)
-        Files.createDirectories(tempStorageDir.resolve(runId));
-        testStorage.writeMessage(runId + "/metadata.pb", metadata);
+        Files.createDirectories(tempStorageDir.resolve(runId + "/raw"));
+        testStorage.writeMessage(runId + "/raw/metadata.pb", metadata);
         
         // Index metadata
         indexMetadata(runId, metadata);
@@ -641,7 +641,7 @@ class DummyIndexerIntegrationTest {
     
     private void indexMetadata(String runId, SimulationMetadata metadata) throws Exception {
         // Write metadata file to storage
-        String storageKey = runId + "/metadata.pb";
+        String storageKey = runId + "/raw/metadata.pb";
         testStorage.writeMessage(storageKey, metadata);
         
         // Write metadata directly to database (bypassing MetadataIndexer/Topic for simplicity)

@@ -105,7 +105,7 @@ class MetadataIndexerIntegrationTest {
     void testMetadataIndexing_PostMortemMode() throws Exception {
         String runId = "20250101120000-" + UUID.randomUUID();
         SimulationMetadata metadata = createTestMetadata(runId);
-        String storageKey = runId + "/metadata.pb";
+        String storageKey = runId + "/raw/metadata.pb";
         
         // Write metadata to storage (simulates MetadataPersistenceService)
         testStorage.writeMessage(storageKey, metadata);
@@ -176,7 +176,7 @@ class MetadataIndexerIntegrationTest {
                 .format(runInstant);
         String runId = timestamp + "-" + UUID.randomUUID();
         SimulationMetadata metadata = createTestMetadata(runId);
-        String storageKey = runId + "/metadata.pb";
+        String storageKey = runId + "/raw/metadata.pb";
 
         // Write metadata to storage (simulates MetadataPersistenceService)
         Files.createDirectories(tempStorageDir.resolve(runId));

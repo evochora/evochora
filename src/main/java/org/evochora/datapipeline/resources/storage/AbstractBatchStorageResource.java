@@ -146,8 +146,9 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         }
 
         // Calculate folder path from firstTick
+        // Structure: {runId}/raw/{folderLevels}/batch_xxx.pb
         String simulationId = batch.get(0).getSimulationRunId();
-        String folderPath = simulationId + "/" + calculateFolderPath(firstTick);
+        String folderPath = simulationId + "/raw/" + calculateFolderPath(firstTick);
 
         // Generate batch filename (logical key without compression)
         String logicalFilename = String.format("batch_%019d_%019d.pb", firstTick, lastTick);
@@ -514,8 +515,8 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
 
         // Search for metadata file using listRaw with prefix pattern
         // This finds both uncompressed (metadata.pb) and compressed variants (metadata.pb.zst, etc.)
-        // The prefix "runId/metadata.pb" will match files starting with this pattern
-        String metadataPrefix = runId + "/metadata.pb";
+        // The prefix "runId/raw/metadata.pb" will match files starting with this pattern
+        String metadataPrefix = runId + "/raw/metadata.pb";
         List<String> files = listRaw(metadataPrefix, false, null, 1, null, null);
 
         // Return first matching file, if any
