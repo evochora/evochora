@@ -39,9 +39,15 @@ jobs:
             export IMAGE_TAG=${{ github.event.inputs.tag }}
             
             # Pull the new version from the registry
+            echo ">>> Pulling image ghcr.io/evochora/evochora:$IMAGE_TAG..."
             docker compose pull
             
-            # Stop and restart the service, passing UID/GID directly to the command.
-            # This is the most robust way to ensure docker-compose sees the variables.
+            # Explicitly stop and remove the old container to ensure a fresh start.
+            echo ">>> Stopping and removing old container..."
+            docker compose down
+            
+            # Start the new container with the newly pulled image.
+            # Passing UID/GID ensures correct file permissions for mounted volumes.
+            echo ">>> Starting new container..."
             UID=$(id -u) GID=$(id -g) docker compose up -d
           EOF
