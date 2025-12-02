@@ -24,8 +24,7 @@ services:
       - >
         JAVA_OPTS=
         -Xmx16g
-        -Dslf4j.replay.warn=false
-        -Dlogging.format=JSON
+        -Dlogging.format=PLAIN
         -Dnode.processes.http.options.network.host=0.0.0.0
         -Dnode.processes.h2-console.options.network.host=0.0.0.0
         -Dnode.processes.h2-tcp-server.options.tcpAllowOthers=true
