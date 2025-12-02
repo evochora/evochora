@@ -41,7 +41,7 @@ import java.util.concurrent.TimeUnit;
  * @param <T> The message type (must be a Protobuf {@link Message}).
  * @param <ACK> The acknowledgment token type (implementation-specific).
  */
-public interface ITopicReader<T extends Message, ACK> extends IResource, ISimulationRunAwareTopic, AutoCloseable {
+public interface ITopicReader<T extends Message, ACK> extends ISimulationRunAwareTopic, AutoCloseable {
     
     /**
      * Receives the next message from the topic (blocking).

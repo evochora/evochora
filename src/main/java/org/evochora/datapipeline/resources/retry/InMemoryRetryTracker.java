@@ -6,7 +6,6 @@ import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IRetryTracker;
-import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,8 +81,6 @@ public class InMemoryRetryTracker extends AbstractResource implements IRetryTrac
         
         // Parse configuration
         this.maxKeys = config.getInt("maxKeys");
-        int initialCapacity = config.getInt("initialCapacity");
-        
         // Create ring buffer for FIFO eviction (Safety Net)
         this.ringBuffer = new Object[maxKeys];
         

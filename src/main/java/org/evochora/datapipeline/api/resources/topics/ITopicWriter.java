@@ -32,7 +32,7 @@ import org.evochora.datapipeline.api.resources.IResource;
  *
  * @param <T> The message type (must be a Protobuf {@link Message}).
  */
-public interface ITopicWriter<T extends Message> extends IResource, ISimulationRunAwareTopic, AutoCloseable {
+public interface ITopicWriter<T extends Message> extends ISimulationRunAwareTopic, AutoCloseable {
     
     /**
      * Sends a message to the topic.

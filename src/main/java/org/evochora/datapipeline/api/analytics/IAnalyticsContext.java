@@ -1,8 +1,6 @@
 package org.evochora.datapipeline.api.analytics;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
-
 import java.io.IOException;
 import java.io.OutputStream;
 

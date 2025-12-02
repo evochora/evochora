@@ -2,9 +2,7 @@ package org.evochora.datapipeline.resources.queues;
 
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.resources.IContextualResource;
-import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
@@ -13,8 +11,6 @@ import org.evochora.datapipeline.resources.queues.wrappers.DirectOutputQueueWrap
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueConsumer;
 
 import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -28,7 +24,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * @param <T> The type of elements (ignored, never stored)
  */
-public class NullQueue<T> extends AbstractResource implements IContextualResource, IMonitorable, IInputQueueResource<T>, IOutputQueueResource<T> {
+public class NullQueue<T> extends AbstractResource implements IContextualResource, IInputQueueResource<T>, IOutputQueueResource<T> {
 
     private final AtomicLong messageCount = new AtomicLong(0);
 

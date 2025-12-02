@@ -14,7 +14,7 @@ import org.evochora.datapipeline.api.resources.IResource;
  *   <li>Direct database implementations use only {@link IOrganismDataWriter}.</li>
  * </ul>
  */
-public interface IResourceSchemaAwareOrganismDataWriter extends IOrganismDataWriter, IResource, ISchemaAwareDatabase {
+public interface IResourceSchemaAwareOrganismDataWriter extends IOrganismDataWriter, IResource {
     // Combination interface - inherits all methods from the three base interfaces
 }
 

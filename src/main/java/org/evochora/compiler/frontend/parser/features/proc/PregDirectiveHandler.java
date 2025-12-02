@@ -74,9 +74,6 @@ public class PregDirectiveHandler implements IDirectiveHandler {
             return null;
         }
         
-        // Extract the register index from the register token
-        int registerIndex = Integer.parseInt(registerText.substring(3));
-        
         // Add the alias to the parser's internal table for later extraction
         // This maintains compatibility with the existing alias resolution system
         ((org.evochora.compiler.frontend.parser.Parser) context).addRegisterAlias(alias.text(), targetRegister);

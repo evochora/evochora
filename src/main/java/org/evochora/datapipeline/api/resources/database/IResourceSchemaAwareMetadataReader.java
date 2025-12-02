@@ -1,7 +1,6 @@
 package org.evochora.datapipeline.api.resources.database;
 
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.database.IConnectionManageable;
 
 /**
  * Combination interface that provides both metadata reading capability and resource management.

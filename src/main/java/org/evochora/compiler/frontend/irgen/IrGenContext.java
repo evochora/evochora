@@ -73,33 +73,6 @@ public final class IrGenContext {
 
 	// --- START OF CORRECTION ---
 
-	/**
-	 * Reconstructs the text of a complete instruction line from the AST node.
-	 * @param node The AST node of the instruction.
-	 * @return A string representing the complete line.
-	 */
-	private String reconstructLineFromInstruction(InstructionNode node) {
-		StringBuilder sb = new StringBuilder();
-		sb.append(node.opcode().text());
-
-		for (AstNode arg : node.arguments()) {
-			sb.append(" ");
-			if (arg instanceof RegisterNode rn) {
-				sb.append(rn.registerToken().text());
-			} else if (arg instanceof NumberLiteralNode nn) {
-				sb.append(nn.numberToken().text());
-			} else if (arg instanceof TypedLiteralNode tn) {
-				sb.append(tn.type().text()).append(":").append(tn.value().text());
-			} else if (arg instanceof VectorLiteralNode vn) {
-				String vec = vn.components().stream().map(Token::text).collect(java.util.stream.Collectors.joining("|"));
-				sb.append(vec);
-			} else if (arg instanceof IdentifierNode in) {
-				sb.append(in.identifierToken().text());
-			}
-		}
-		return sb.toString();
-	}
-
 	public SourceInfo sourceOf(AstNode node) {
 		if (node instanceof InstructionNode n && n.opcode() != null) {
 			// For instructions, we reconstruct the line.

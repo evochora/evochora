@@ -49,7 +49,7 @@ import com.zaxxer.hikari.HikariDataSource;
  * and connection pool resources during shutdown.
  */
 public class H2Database extends AbstractDatabaseResource 
-        implements AutoCloseable, IDatabaseReaderProvider, IMemoryEstimatable {
+        implements IDatabaseReaderProvider, IMemoryEstimatable {
 
     private static final Logger log = LoggerFactory.getLogger(H2Database.class);
     private final HikariDataSource dataSource;
@@ -730,8 +730,11 @@ public class H2Database extends AbstractDatabaseResource
      */
     private static class SimulationInfo {
         String runId;
+        @SuppressWarnings("unused")
         long startTime;
+        @SuppressWarnings("unused")
         long seed;
+        @SuppressWarnings("unused")
         int samplingInterval;
     }
 

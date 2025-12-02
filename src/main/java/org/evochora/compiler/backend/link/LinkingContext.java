@@ -3,7 +3,6 @@ package org.evochora.compiler.backend.link;
 import org.evochora.compiler.ir.IrInstruction;
 import org.evochora.compiler.isa.IInstructionSet;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;

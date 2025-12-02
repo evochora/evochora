@@ -1,6 +1,5 @@
 package org.evochora.compiler;
 
-import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;

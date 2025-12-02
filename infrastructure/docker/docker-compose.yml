@@ -4,7 +4,7 @@ services:
     build:
       context: ../../..  # Gehe drei Ebenen hoch zum Projekt-Root
       dockerfile: infrastructure/docker/evochora-node/Dockerfile # Pfad zum Dockerfile
-    image: ghcr.io/rainco77/evochora:${IMAGE_TAG:-latest}
+    image: ghcr.io/evochora/evochora:${IMAGE_TAG:-latest}
     user: "${UID:-1000}:${GID:-1000}"
     ports:
       # Map host ports to container ports

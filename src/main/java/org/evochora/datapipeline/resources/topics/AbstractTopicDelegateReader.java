@@ -1,6 +1,5 @@
 package org.evochora.datapipeline.resources.topics;
 
-import com.google.protobuf.Any;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import org.evochora.datapipeline.api.contracts.TopicEnvelope;

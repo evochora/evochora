@@ -129,21 +129,21 @@ public class RuntimeIntegrationTest {
         sim.addOrganism(org);
 
         // Track instructions and register states
-        ExecutionTracker tracker = new ExecutionTracker(sim, org);
+        //ExecutionTracker tracker = new ExecutionTracker(sim, org);
         
         for (int i = 0; i < 15; i++) {
-            tracker.beforeTick();
+        //    tracker.beforeTick();
             sim.tick();
-            tracker.afterTick();
+        //    tracker.afterTick();
         }
 
         // Print execution trace
-        String trace = tracker.getTraceAsString();
-        System.out.println(trace);
+        //String trace = tracker.getTraceAsString();
+        //System.out.println(trace);
 
         Molecule result = Molecule.fromInt((Integer) org.getDr(0));
         assertThat(result.toScalarValue())
-                .as("Der Wert sollte nach dem Prozeduraufruf auf 42 inkrementiert sein, auch ohne Artefakt.\n" + trace)
+                .as("Der Wert sollte nach dem Prozeduraufruf auf 42 inkrementiert sein, auch ohne Artefakt.\n" /*+ trace*/)
                 .isEqualTo(42);
         assertThat(org.isInstructionFailed()).isFalse();
     }
@@ -212,21 +212,21 @@ public class RuntimeIntegrationTest {
         }
 
         // Track instructions and register states
-        ExecutionTracker tracker = new ExecutionTracker(sim, org);
+        //ExecutionTracker tracker = new ExecutionTracker(sim, org);
         
         for (int i = 0; i < 20; i++) {
-            tracker.beforeTick();
+        //    tracker.beforeTick();
             sim.tick();
-            tracker.afterTick();
+        //    tracker.afterTick();
         }
 
         // Print execution trace
-        String trace = tracker.getTraceAsString();
-        System.out.println(trace);
+        //String trace = tracker.getTraceAsString();
+        //System.out.println(trace);
 
         Molecule result = Molecule.fromInt((Integer) org.getDr(0));
         assertThat(result.toScalarValue())
-                .as("Das Ergebnis der Addition muss 30 sein, basierend auf dem Maschinencode, nicht dem falschen Artefakt.\n" + trace)
+                .as("Das Ergebnis der Addition muss 30 sein, basierend auf dem Maschinencode, nicht dem falschen Artefakt.\n" /*+ trace*/)
                 .isEqualTo(30);
         assertThat(org.isInstructionFailed()).isFalse();
     }

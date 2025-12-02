@@ -23,7 +23,7 @@ import org.evochora.datapipeline.api.resources.IResource;
  *   <li>Explicit contracts: Clear what capabilities are available</li>
  * </ul>
  */
-public interface IResourceTopicReader<T extends Message, K> extends ITopicReader<T, K>, IResource {
+public interface IResourceTopicReader<T extends Message, K> extends ITopicReader<T, K> {
     // Combination interface - inherits all methods from the two base interfaces
     // No additional methods needed
 }

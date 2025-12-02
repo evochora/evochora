@@ -7,7 +7,6 @@ import org.evochora.compiler.frontend.CompilerPhase;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
-import org.evochora.compiler.frontend.parser.features.reg.RegNode;
 
 /**
  * Handler for the .REG directive.

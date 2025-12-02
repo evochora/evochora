@@ -34,8 +34,6 @@ import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.*;
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.*;
-import static org.evochora.test.utils.FileUtils.findBatchFiles;
-import static org.evochora.test.utils.FileUtils.countBatchFiles;
 
 /**
  * Integration test for SimulationController.
@@ -366,10 +364,6 @@ class SimulationControllerIntegrationTest {
             .build();
         topicWriter.send(batchInfo);
         topicWriter.close();
-    }
-
-    private long countFilesInDirectory(Path directory) {
-        return countBatchFiles(directory);
     }
 }
 

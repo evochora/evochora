@@ -22,7 +22,7 @@ import org.evochora.datapipeline.api.resources.IResource;
  *   <li>Explicit contracts: Clear what capabilities are available</li>
  * </ul>
  */
-public interface IResourceBatchStorageRead extends IBatchStorageRead, IResource {
+public interface IResourceBatchStorageRead extends IBatchStorageRead {
     // Combination interface - inherits all methods from the two base interfaces
     // No additional methods needed
 }
