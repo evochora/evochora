@@ -5,12 +5,6 @@
 
 services:
   evochora:
-    ports:
-      # Expose all ports to the host's network for the demo.
-      - "80:8081"
-      - "8082:8082"
-      - "9092:9092"
-    
     volumes:
       # Mount the node override config. This is loaded via the 'command' override.
       # It relies on the base 'docker-compose.yml' to mount the standard 'evochora.conf'

@@ -33,12 +33,12 @@ services:
     # Exposes the application's internal ports to your local machine.
     ports:
       # Exposes the main Web UI on port 8081. Access via http://localhost:8081
-      - "8081:8081"
+      - "${DOCKER_WEB_UI_BIND_IP:-127.0.0.1}:${DOCKER_WEB_UI_PORT:-8081}:8081"
       # Exposes the H2 Database Console on port 8082, but ONLY on localhost for security.
-      - "127.0.0.1:8082:8082"
+      - "${DOCKER_H2_CONSOLE_BIND_IP:-127.0.0.1}:${DOCKER_H2_CONSOLE_PORT:-8082}:8082"
       # Exposes the H2 TCP Server on port 9092, but ONLY on localhost for security.
       # Use this to connect with external database tools like DBeaver.
-      - "127.0.0.1:9092:9092"
+      - "${DOCKER_H2_TCP_BIND_IP:-127.0.0.1}:${DOCKER_H2_TCP_PORT:-9092}:9092"
 
     # --- Volume Mappings (Host:Container) ---
     # Mounts directories from your local machine into the container. This makes
