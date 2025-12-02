@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'The image tag to deploy (e.g., "latest" or "v1.0.1")'
+        description: 'The image tag to deploy (e.g., "latest" or "v1.2.3")'
         required: true
         type: string
         default: 'latest'
@@ -54,10 +54,13 @@ jobs:
               "DOCKER_H2_TCP_BIND_IP=0.0.0.0" \
               "DOCKER_H2_TCP_PORT=9092" > .env
             
+            # Forcefully remove the local cached image to ensure a fresh pull.
+            # The '|| true' prevents the workflow from failing if the image doesn't exist locally.
+            docker rmi ghcr.io/evochora/evochora:${IMAGE_TAG} || true
+            
             docker compose pull
             
             # Use --remove-orphans to ensure any old, unused containers are cleaned up.
-            # The .env file is read automatically. We do not use 'down' to minimize downtime.
             docker compose -f docker-compose.yml -f docker-compose.node.yml up -d --remove-orphans
             
             # Clean up the temporary .env file.

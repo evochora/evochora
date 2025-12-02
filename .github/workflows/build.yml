@@ -20,7 +20,7 @@ jobs:
     steps:
       - name: Fix Git Path on Windows
         if: runner.os == 'Windows'
-        run: echo "C:\Program Files\Git\usr\bin" >> $env:GITHUB_PATH
+        run: echo "C:\\Program Files\\Git\\usr\\bin" >> $env:GITHUB_PATH
         shell: pwsh
       - name: Checkout code
         uses: actions/checkout@v4
@@ -67,16 +67,26 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
           cache: 'gradle'
-      - name: Extract metadata for tags
+      - name: Extract metadata for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
+            # Tag as 'latest' for pushes to the main branch
             type=raw,value=latest,enable={{is_default_branch}}
+            # Use the git tag as the image tag for versioned releases
             type=ref,event=tag
+      - name: Determine Release Tag
+        id: release_tag
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "RELEASE_TAG=latest" >> $GITHUB_ENV
+          else
+            echo "RELEASE_TAG=${{ steps.meta.outputs.version }}" >> $GITHUB_ENV
+          fi
       - name: Build Distribution Archives with Gradle
-        run: ./gradlew distZip distTar --no-daemon -PRELEASE_TAG=${{ steps.meta.outputs.version }}
+        run: ./gradlew distZip distTar --no-daemon -PRELEASE_TAG=${{ env.RELEASE_TAG }}
       - name: Upload Distribution Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -93,6 +103,7 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -102,27 +113,15 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            RELEASE_TAG=${{ steps.meta.outputs.version }}
+            RELEASE_TAG=${{ env.RELEASE_TAG }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Update or Create latest tag
-        if: github.ref == 'refs/heads/main'
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git tag -f latest
-          git push -f origin latest
 
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # This pulls the git tag and uses it as the release name
-          tag_name: ${{ steps.meta.outputs.version }}
-          # If the tag is 'latest', mark it as a pre-release to distinguish from versioned tags
-          prerelease: ${{ steps.meta.outputs.version == 'latest' }}
-          # Overwrite any existing assets for the 'latest' tag
-          # For versioned tags, this will fail if the release already exists, which is safe.
+          tag_name: ${{ env.RELEASE_TAG }}
+          prerelease: ${{ env.RELEASE_TAG == 'latest' }}
           files: |
             build/distributions/*.zip
             build/distributions/*.tar.gz
