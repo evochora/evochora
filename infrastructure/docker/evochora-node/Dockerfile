@@ -46,7 +46,7 @@ WORKDIR /home/appuser/app
 # Copy the pre-built application directly from the known path
 COPY --from=builder /app/build/install/evochora/ .
 
-# Explicitly make the start script executable. This is the fix.
+# Explicitly make the start script executable, as permissions are lost during COPY.
 RUN chmod +x bin/evochora
 
 # Create directories for data volumes that will be mounted
@@ -63,6 +63,9 @@ USER appuser
 # 8082: H2 Web Console
 # 9092: H2 TCP Server
 EXPOSE 8081 8082 9092
+
+# Disable the default cacerts entrypoint, as it is not needed and causes issues.
+ENTRYPOINT []
 
 # The command to run the application using the start script from distZip,
 # with the global --config option placed correctly before subcommands.
