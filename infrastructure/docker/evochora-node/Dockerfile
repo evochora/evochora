@@ -46,6 +46,9 @@ WORKDIR /home/appuser/app
 # Copy the pre-built application directly from the known path
 COPY --from=builder /app/build/install/evochora/ .
 
+# Explicitly make the start script executable. This is the fix.
+RUN chmod +x bin/evochora
+
 # Create directories for data volumes that will be mounted
 RUN mkdir -p data/storage data/database config
 
