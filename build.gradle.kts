@@ -168,6 +168,10 @@ distributions {
     }
 }
 
+tasks.withType<Tar> {
+    compression = Compression.GZIP
+    archiveExtension.set("tar.gz")
+}
 
 tasks.test {
     useJUnitPlatform {
