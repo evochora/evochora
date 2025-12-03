@@ -1,7 +1,6 @@
 package org.evochora.runtime.isa.instructions;
 
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.internal.services.ProcedureCallHandler;
 import org.evochora.runtime.isa.Instruction;

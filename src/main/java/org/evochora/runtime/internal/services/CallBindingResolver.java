@@ -1,12 +1,6 @@
 package org.evochora.runtime.internal.services;
 
-import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
 
 /**
  * Decouples the strategies for resolving parameter bindings for procedure calls.

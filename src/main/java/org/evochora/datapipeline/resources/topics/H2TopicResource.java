@@ -59,7 +59,7 @@ record AckToken(long rowId, int claimVersion) {}
  * @param <T> The message type (must be a Protobuf {@link Message}).
  */
 public class H2TopicResource<T extends Message> extends AbstractTopicResource<T, AckToken> 
-        implements AutoCloseable, IMemoryEstimatable {
+        implements IMemoryEstimatable {
     
     private static final Logger log = LoggerFactory.getLogger(H2TopicResource.class);
     

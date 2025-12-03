@@ -1,19 +1,20 @@
 package org.evochora.datapipeline.services.indexers;
 
-import com.google.protobuf.Message;
-import com.typesafe.config.Config;
-import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
-import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
-import org.evochora.datapipeline.api.resources.topics.ISimulationRunAwareTopic;
-import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
-import org.evochora.datapipeline.services.AbstractService;
-
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
+
+import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
+import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
+import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
+import org.evochora.datapipeline.api.resources.topics.ISimulationRunAwareTopic;
+import org.evochora.datapipeline.services.AbstractService;
+
+import com.google.protobuf.Message;
+import com.typesafe.config.Config;
 
 /**
  * An abstract base class for indexer services that process data from a simulation run.
@@ -48,7 +49,11 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
     protected AbstractIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.storage = getRequiredResource("storage", IResourceBatchStorageRead.class);
-        this.topic = getOptionalResource("topic", IResourceTopicReader.class).orElse(null);
+        
+        @SuppressWarnings("unchecked")
+        IResourceTopicReader<T, ACK> topicReader = (IResourceTopicReader<T, ACK>) getOptionalResource("topic", IResourceTopicReader.class).orElse(null);
+        this.topic = topicReader;
+        
         this.indexerOptions = options;
         this.configuredRunId = options.hasPath("runId") ? options.getString("runId") : null;
         this.pollIntervalMs = options.hasPath("pollIntervalMs") ? options.getInt("pollIntervalMs") : 1000;

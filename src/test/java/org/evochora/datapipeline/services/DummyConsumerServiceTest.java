@@ -1,7 +1,20 @@
 package org.evochora.datapipeline.services;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.evochora.datapipeline.api.contracts.SystemContracts.DummyMessage;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
 import org.evochora.datapipeline.api.resources.IResource;
@@ -12,14 +25,8 @@ import org.evochora.datapipeline.resources.idempotency.InMemoryIdempotencyTracke
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.time.Duration;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 public class DummyConsumerServiceTest {
 
@@ -48,14 +55,14 @@ public class DummyConsumerServiceTest {
     @Test
     void testConfiguration() {
         Config config = ConfigFactory.parseString("processingDelayMs=100, logReceivedMessages=true, maxMessages=50");
-        DummyConsumerService service = new DummyConsumerService("test-consumer", config, resources);
+        DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
         assertNotNull(service);
     }
 
     @Test
     void testMessageReceiving() throws InterruptedException {
         Config config = ConfigFactory.parseString("maxMessages=2");
-        DummyConsumerService service = new DummyConsumerService("test-consumer", config, resources);
+        DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
 
         // Use unique IDs for idempotency tracking
         when(mockInputQueue.take())
@@ -79,7 +86,7 @@ public class DummyConsumerServiceTest {
     @Test
     void testLifecycle() throws InterruptedException {
         Config config = ConfigFactory.parseString("maxMessages=-1");
-        DummyConsumerService service = new DummyConsumerService("test-consumer", config, resources);
+        DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
 
         // Make the mock block in a way that's interruptible
         doAnswer(invocation -> {
@@ -104,7 +111,7 @@ public class DummyConsumerServiceTest {
     @Test
     void testMetrics() throws InterruptedException {
         Config config = ConfigFactory.parseString("maxMessages=3");
-        DummyConsumerService service = new DummyConsumerService("test-consumer", config, resources);
+        DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
 
         // Use unique IDs to avoid idempotency filtering
         when(mockInputQueue.take())
@@ -131,7 +138,7 @@ public class DummyConsumerServiceTest {
     @Test
     void testMaxMessages() throws InterruptedException {
         Config config = ConfigFactory.parseString("maxMessages=2");
-        DummyConsumerService service = new DummyConsumerService("test-consumer", config, resources);
+        DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
         // Use unique IDs so messages aren't filtered as duplicates
         when(mockInputQueue.take())
                 .thenReturn(DummyMessage.newBuilder().setId(20).build())
@@ -145,7 +152,7 @@ public class DummyConsumerServiceTest {
     @Test
     void testIdempotency_duplicatesAreFiltered() throws InterruptedException {
         Config config = ConfigFactory.parseString("maxMessages=3");
-        DummyConsumerService service = new DummyConsumerService("test-consumer", config, resources);
+        DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
 
         // Send same ID twice - second one should be filtered
         when(mockInputQueue.take())

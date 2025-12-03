@@ -2,10 +2,8 @@ package org.evochora.compiler.e2e;
 
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.CallBindingRegistry;
-import org.evochora.runtime.testing.ExecutionTracker;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;

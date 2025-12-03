@@ -5,7 +5,6 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.CellState;
 import org.evochora.datapipeline.api.contracts.CellStateList;
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.utils.compression.ICompressionCodec;
 import org.evochora.datapipeline.utils.compression.NoneCodec;
 import org.evochora.datapipeline.utils.compression.ZstdCodec;
 import org.evochora.runtime.model.EnvironmentProperties;

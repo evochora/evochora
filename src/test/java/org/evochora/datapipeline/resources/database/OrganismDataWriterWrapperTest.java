@@ -1,8 +1,6 @@
 package org.evochora.datapipeline.resources.database;
 
 import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.contracts.OrganismState;
-import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
@@ -18,7 +16,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Unit tests for OrganismDataWriterWrapper.

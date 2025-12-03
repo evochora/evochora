@@ -15,7 +15,7 @@ public interface IEnvironmentReader {
      * @param coordinates The coordinates to read from
      * @return The molecule at the specified coordinates, or null if not found
      */
-    Molecule getMolecule(int[] coordinates);
+    Molecule getMolecule(int... coordinates);
     
     /**
      * Gets the shape/dimensions of the environment.

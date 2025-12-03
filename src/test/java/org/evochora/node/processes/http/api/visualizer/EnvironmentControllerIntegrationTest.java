@@ -39,8 +39,6 @@ import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.restassured.response.Response;
-import static org.evochora.test.utils.FileUtils.findBatchFiles;
-import static org.evochora.test.utils.FileUtils.countBatchFiles;
 
 /**
  * Integration test for EnvironmentIndexer and EnvironmentController.
@@ -656,10 +654,6 @@ class EnvironmentControllerIntegrationTest {
             .build();
         topicWriter.send(batchInfo);
         topicWriter.close();
-    }
-
-    private long countFilesInDirectory(Path directory) {
-        return countBatchFiles(directory);
     }
 
     @Test

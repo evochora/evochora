@@ -1,6 +1,5 @@
 package org.evochora.datapipeline.resources.retry;
 
-import org.evochora.junit.extensions.logging.ExpectLog;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;

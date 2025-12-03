@@ -1,8 +1,15 @@
 package org.evochora.datapipeline.resources.queues;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigException;
-import com.typesafe.config.ConfigFactory;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
+
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
@@ -19,18 +26,9 @@ import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueConsume
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueProducer;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.function.Predicate;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigException;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * A thread-safe, in-memory, bounded queue resource based on {@link ArrayBlockingQueue}.
@@ -42,7 +40,6 @@ import java.util.function.Predicate;
  */
 public class InMemoryBlockingQueue<T> extends AbstractResource implements IContextualResource, IInputQueueResource<T>, IOutputQueueResource<T>, IMemoryEstimatable {
 
-    private static final Logger log = LoggerFactory.getLogger(InMemoryBlockingQueue.class);
     private final ArrayBlockingQueue<TimestampedObject<T>> queue;
     private final int capacity;
     private final int metricsWindowSeconds;

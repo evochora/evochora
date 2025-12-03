@@ -1,6 +1,5 @@
 package org.evochora.node.spi;
 
-import com.typesafe.config.Config;
 import io.javalin.Javalin;
 
 /**

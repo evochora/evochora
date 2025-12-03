@@ -7,7 +7,6 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.parser.ast.InstructionNode;
-import org.evochora.compiler.frontend.parser.ast.NumberLiteralNode;
 import org.evochora.compiler.frontend.parser.features.def.DefineNode;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.SymbolTable;

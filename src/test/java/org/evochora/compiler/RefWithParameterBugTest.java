@@ -1,6 +1,5 @@
 package org.evochora.compiler;
 
-import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.isa.Instruction;

@@ -1,7 +1,13 @@
 package org.evochora.datapipeline.services;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.evochora.datapipeline.api.contracts.SystemContracts.DummyMessage;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
 import org.evochora.datapipeline.api.resources.IResource;
@@ -13,14 +19,8 @@ import org.evochora.datapipeline.resources.queues.InMemoryDeadLetterQueue;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.time.Duration;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 @Tag("integration")
 public class EndToEndServiceTest {

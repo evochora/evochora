@@ -81,13 +81,24 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
         super(name, options, resources);
 
         // Required resources
-        this.inputQueue = getRequiredResource("input", IInputQueueResource.class);
+        @SuppressWarnings("unchecked")
+        IInputQueueResource<TickData> queue = (IInputQueueResource<TickData>) getRequiredResource("input", IInputQueueResource.class);
+        this.inputQueue = queue;
+
         this.storage = getRequiredResource("storage", IBatchStorageWrite.class);
 
         // Optional resources
-        this.batchTopic = getOptionalResource("topic", ITopicWriter.class).orElse(null);
-        this.dlq = getOptionalResource("dlq", IOutputQueueResource.class).orElse(null);
-        this.idempotencyTracker = getOptionalResource("idempotencyTracker", IIdempotencyTracker.class).orElse(null);
+        @SuppressWarnings("unchecked")
+        ITopicWriter<BatchInfo> writer = (ITopicWriter<BatchInfo>) getOptionalResource("topic", ITopicWriter.class).orElse(null);
+        this.batchTopic = writer;
+
+        @SuppressWarnings("unchecked")
+        IOutputQueueResource<SystemContracts.DeadLetterMessage> dlqResource = (IOutputQueueResource<SystemContracts.DeadLetterMessage>) getOptionalResource("dlq", IOutputQueueResource.class).orElse(null);
+        this.dlq = dlqResource;
+
+        @SuppressWarnings("unchecked")
+        IIdempotencyTracker<Long> tracker = (IIdempotencyTracker<Long>) getOptionalResource("idempotencyTracker", IIdempotencyTracker.class).orElse(null);
+        this.idempotencyTracker = tracker;
         
         // Warn if batch topic is not configured (event-driven indexing disabled)
         if (batchTopic == null) {

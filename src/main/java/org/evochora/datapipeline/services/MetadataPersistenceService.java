@@ -1,7 +1,11 @@
 package org.evochora.datapipeline.services;
 
-import com.google.protobuf.ByteString;
-import com.typesafe.config.Config;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
@@ -12,11 +16,8 @@ import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
+import com.google.protobuf.ByteString;
+import com.typesafe.config.Config;
 
 /**
  * One-shot service that persists a single SimulationMetadata message to storage
@@ -94,12 +95,20 @@ public class MetadataPersistenceService extends AbstractService {
         super(name, options, resources);
 
         // Required resources
-        this.inputQueue = getRequiredResource("input", IInputQueueResource.class);
+        @SuppressWarnings("unchecked")
+        IInputQueueResource<SimulationMetadata> queue = (IInputQueueResource<SimulationMetadata>) getRequiredResource("input", IInputQueueResource.class);
+        this.inputQueue = queue;
+
         this.storage = getRequiredResource("storage", IBatchStorageWrite.class);
 
         // Optional resources
-        this.topic = getOptionalResource("topic", ITopicWriter.class).orElse(null);
-        this.dlq = getOptionalResource("dlq", IOutputQueueResource.class).orElse(null);
+        @SuppressWarnings("unchecked")
+        ITopicWriter<MetadataInfo> topicWriter = (ITopicWriter<MetadataInfo>) getOptionalResource("topic", ITopicWriter.class).orElse(null);
+        this.topic = topicWriter;
+
+        @SuppressWarnings("unchecked")
+        IOutputQueueResource<SystemContracts.DeadLetterMessage> dlqResource = (IOutputQueueResource<SystemContracts.DeadLetterMessage>) getOptionalResource("dlq", IOutputQueueResource.class).orElse(null);
+        this.dlq = dlqResource;
         
         // Warn if topic is not configured
         if (this.topic == null) {
