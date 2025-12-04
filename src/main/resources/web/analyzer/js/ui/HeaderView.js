@@ -37,7 +37,7 @@ const HeaderView = (function() {
         runSelect.addEventListener('change', handleRunChange);
         refreshBtn.addEventListener('click', handleRefresh);
         
-        console.log('[HeaderView] Initialized');
+        console.debug('[HeaderView] Initialized');
     }
     
     /**

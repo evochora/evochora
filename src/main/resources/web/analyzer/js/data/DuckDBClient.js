@@ -71,7 +71,7 @@ const DuckDBClient = (function() {
         initializing = true;
         
         try {
-            console.log('[DuckDB] Initializing from esm.sh CDN...');
+            console.debug('[DuckDB] Initializing from esm.sh CDN...');
             
             // Dynamic import from esm.sh (auto-resolves apache-arrow dependency)
             duckdbModule = await import(ESM_URL);
@@ -97,7 +97,7 @@ const DuckDBClient = (function() {
             conn = await db.connect();
             
             initialized = true;
-            console.log('[DuckDB] Initialized successfully');
+            console.debug('[DuckDB] Initialized successfully');
             
             return { db, conn };
             
@@ -120,40 +120,11 @@ const DuckDBClient = (function() {
             await init();
         }
         
-        console.log('[DuckDB] Query:', sql.substring(0, 200) + (sql.length > 200 ? '...' : ''));
+        console.debug('[DuckDB] Query:', sql.substring(0, 200) + (sql.length > 200 ? '...' : ''));
         const result = await conn.query(sql);
         const rows = result.toArray().map(row => convertBigInts(row.toJSON()));
-        console.log(`[DuckDB] Returned ${rows.length} rows`);
+        console.debug(`[DuckDB] Returned ${rows.length} rows`);
         return rows;
-    }
-    
-    /**
-     * Queries Parquet files directly via HTTP URLs.
-     * DuckDB WASM can read HTTP URLs directly in read_parquet().
-     * 
-     * @param {string[]} urls - Array of Parquet file URLs (full HTTP URLs)
-     * @param {string} selectClause - SQL SELECT/ORDER clause (optional)
-     * @returns {Promise<Array<Object>>} Query results
-     */
-    async function queryParquetFiles(urls, selectClause = null) {
-        if (!initialized) {
-            await init();
-        }
-        
-        if (urls.length === 0) {
-            return [];
-        }
-        
-        // DuckDB can read HTTP URLs directly - no registration needed!
-        // Just pass the URLs as strings in read_parquet()
-        const urlList = urls.map(u => `'${u}'`).join(',');
-        const filesArg = `[${urlList}]`;
-        
-        const sql = selectClause 
-            ? selectClause.replace('$FILES', filesArg)
-            : `SELECT * FROM read_parquet(${filesArg}) ORDER BY tick`;
-        
-        return await query(sql);
     }
     
     /**
@@ -177,10 +148,10 @@ const DuckDBClient = (function() {
         // Replace ALL {table} placeholders with the file reference
         const finalSql = sql.replaceAll('{table}', `'${fileName}'`);
         
-        console.log('[DuckDB] Query blob:', finalSql.substring(0, 200) + (finalSql.length > 200 ? '...' : ''));
+        console.debug('[DuckDB] Query blob:', finalSql.substring(0, 200) + (finalSql.length > 200 ? '...' : ''));
         const result = await conn.query(finalSql);
         const rows = result.toArray().map(row => convertBigInts(row.toJSON()));
-        console.log(`[DuckDB] Returned ${rows.length} rows`);
+        console.debug(`[DuckDB] Returned ${rows.length} rows`);
         
         return rows;
     }
@@ -198,7 +169,7 @@ const DuckDBClient = (function() {
             db = null;
         }
         initialized = false;
-        console.log('[DuckDB] Closed');
+        console.debug('[DuckDB] Closed');
     }
     
     /**
@@ -212,7 +183,6 @@ const DuckDBClient = (function() {
     return {
         init,
         query,
-        queryParquetFiles,
         queryParquetBlob,
         close,
         isInitialized

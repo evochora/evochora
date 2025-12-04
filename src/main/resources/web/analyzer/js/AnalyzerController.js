@@ -32,7 +32,7 @@ const AnalyzerController = (function() {
      * Initializes the controller and UI components.
      */
     async function init() {
-        console.log('[AnalyzerController] Initializing...');
+        console.debug('[AnalyzerController] Initializing...');
         
         // Initialize UI components
         HeaderView.init({
@@ -49,7 +49,7 @@ const AnalyzerController = (function() {
         // Load available runs
         await loadRuns();
         
-        console.log('[AnalyzerController] Initialized');
+        console.debug('[AnalyzerController] Initialized');
     }
     
     /**
@@ -157,8 +157,13 @@ const AnalyzerController = (function() {
         // Load all metrics in parallel
         const promises = Object.entries(cards).map(([metricId, card]) => {
             return loadMetricData(card).catch(error => {
+                // Extract user-friendly error message (hide technical details)
+                let message = error.message || 'Failed to load data';
+                if (message.includes('Binder Error') || message.includes('Parser Error')) {
+                    message = 'Query error - data may be incomplete';
+                }
                 console.error(`[AnalyzerController] Failed to load metric ${metricId}:`, error);
-                MetricCardView.showError(card, error.message);
+                MetricCardView.showError(card, message);
             });
         });
         
@@ -192,17 +197,17 @@ const AnalyzerController = (function() {
                 data = await DuckDBClient.queryParquetBlob(parquetBlob, metric.generatedQuery);
                 
                 const duration = Math.round(performance.now() - startTime);
-                console.log(`[AnalyzerController] ${metric.id}: ${data.length} rows loaded via DuckDB WASM in ${duration}ms`);
+                console.debug(`[AnalyzerController] ${metric.id}: ${data.length} rows loaded via DuckDB WASM in ${duration}ms`);
             } else {
                 // Legacy: Server-side query (for plugins without generatedQuery)
                 data = await AnalyticsApi.queryData(currentRunId, metric.id);
                 
                 const duration = Math.round(performance.now() - startTime);
-                console.log(`[AnalyzerController] ${metric.id}: ${data.length} rows loaded via server in ${duration}ms`);
+                console.debug(`[AnalyzerController] ${metric.id}: ${data.length} rows loaded via server in ${duration}ms`);
             }
             
             if (data.length === 0) {
-                MetricCardView.showError(card, 'No data available');
+                MetricCardView.showNoData(card);
                 return;
             }
             
@@ -210,6 +215,11 @@ const AnalyzerController = (function() {
             MetricCardView.renderChart(card, data);
             
         } catch (error) {
+            // Handle "no data yet" as a non-error state
+            if (error.code === 'NO_DATA') {
+                MetricCardView.showNoData(card);
+                return;
+            }
             console.error(`[AnalyzerController] Error loading metric ${metric.id}:`, error);
             throw error;
         }

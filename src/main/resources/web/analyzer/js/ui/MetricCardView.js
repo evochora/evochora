@@ -134,7 +134,20 @@ const MetricCardView = (function() {
     function showError(card, message) {
         card.loadingOverlay.style.display = 'none';
         card.errorOverlay.style.display = 'flex';
+        card.errorOverlay.classList.remove('no-data');
         card.errorOverlay.querySelector('.chart-error-text').textContent = message;
+    }
+    
+    /**
+     * Shows "no data yet" state (not an error, just waiting for data).
+     * 
+     * @param {Object} card - MetricCard instance
+     */
+    function showNoData(card) {
+        card.loadingOverlay.style.display = 'none';
+        card.errorOverlay.style.display = 'flex';
+        card.errorOverlay.classList.add('no-data');
+        card.errorOverlay.querySelector('.chart-error-text').textContent = 'No data yet';
     }
     
     /**
@@ -157,6 +170,7 @@ const MetricCardView = (function() {
         renderChart,
         showLoading,
         showError,
+        showNoData,
         destroy
     };
     
