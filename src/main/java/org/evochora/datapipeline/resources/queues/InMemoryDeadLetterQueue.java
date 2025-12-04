@@ -7,14 +7,12 @@ import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IMonitorable;
-import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;

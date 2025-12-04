@@ -402,17 +402,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     }
 
     /**
-     * Serializes a batch of TickData to bytes using length-delimited protobuf format.
-     */
-    private byte[] serializeBatch(List<TickData> batch) throws IOException {
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        for (TickData tick : batch) {
-            tick.writeDelimitedTo(bos);
-        }
-        return bos.toByteArray();
-    }
-
-    /**
      * Compresses data using the configured compression codec.
      * <p>
      * This method is implemented generically in the abstract class to avoid

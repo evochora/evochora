@@ -1,15 +1,32 @@
 package org.evochora.datapipeline.services.indexers;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import static org.awaitility.Awaitility.await;
+import static org.evochora.junit.extensions.logging.LogLevel.ERROR;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.lenient;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
-import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.resources.database.H2Database;
@@ -28,22 +45,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Instant;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-
-import static org.awaitility.Awaitility.await;
-import static org.evochora.junit.extensions.logging.LogLevel.ERROR;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Integration tests for DummyIndexer Phase 2.5.1 (Metadata Reading).
@@ -61,7 +64,7 @@ class DummyIndexerIntegrationTest {
     
     private H2Database testDatabase;
     private FileSystemStorageResource testStorage;
-    private H2TopicResource testBatchTopic;  // Real topic for batch processing tests
+    private H2TopicResource<BatchInfo> testBatchTopic;  // Real topic for batch processing tests
     private DummyIndexer<?> indexer;  // Track for cleanup
     private Path tempStorageDir;
     private String dbUrl;
@@ -96,7 +99,7 @@ class DummyIndexerIntegrationTest {
             "password = \"\"\n" +
             "claimTimeout = 300"
         );
-        testBatchTopic = new H2TopicResource("batch-topic", topicConfig);
+        testBatchTopic = new H2TopicResource<>("batch-topic", topicConfig);
         
         // Configure mock topic to return null (no batch messages) - keeps indexer running
         // Use lenient() because not all tests reach the topic polling stage
@@ -663,7 +666,7 @@ class DummyIndexerIntegrationTest {
         }
     }
     
-    private DummyIndexer createDummyIndexer(String name, Config config) {
+    private DummyIndexer<?> createDummyIndexer(String name, Config config) {
         // Wrap database resource with db-meta-read usage type
         ResourceContext dbContext = new ResourceContext(
             name,

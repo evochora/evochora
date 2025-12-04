@@ -6,8 +6,6 @@ import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
-import org.evochora.datapipeline.api.resources.IMonitorable;
-import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.resources.AbstractResource;
 
 import java.util.HashSet;

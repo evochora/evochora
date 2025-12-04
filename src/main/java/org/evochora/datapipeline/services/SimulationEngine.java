@@ -9,10 +9,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -44,7 +42,6 @@ import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
-import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.runtime.Simulation;
@@ -60,9 +57,7 @@ import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigRenderOptions;
 
-public class SimulationEngine extends AbstractService implements IMonitorable, IMemoryEstimatable {
-    // Pre-built empty message to isolate queue overhead from builder overhead
-    private static final TickData EMPTY_TICK_DATA = TickData.newBuilder().build();
+public class SimulationEngine extends AbstractService implements IMemoryEstimatable {
 
     private final IOutputQueueResource<TickData> tickDataOutput;
     private final IOutputQueueResource<SimulationMetadata> metadataOutput;
@@ -93,8 +88,13 @@ public class SimulationEngine extends AbstractService implements IMonitorable, I
         super(name, options, resources);
         this.startTimeMs = System.currentTimeMillis();
 
-        this.tickDataOutput = getRequiredResource("tickData", IOutputQueueResource.class);
-        this.metadataOutput = getRequiredResource("metadataOutput", IOutputQueueResource.class);
+        @SuppressWarnings("unchecked")
+        IOutputQueueResource<TickData> tickQueue = (IOutputQueueResource<TickData>) getRequiredResource("tickData", IOutputQueueResource.class);
+        this.tickDataOutput = tickQueue;
+
+        @SuppressWarnings("unchecked")
+        IOutputQueueResource<SimulationMetadata> metadataQueue = (IOutputQueueResource<SimulationMetadata>) getRequiredResource("metadataOutput", IOutputQueueResource.class);
+        this.metadataOutput = metadataQueue;
 
         this.samplingInterval = options.hasPath("samplingInterval") ? options.getInt("samplingInterval") : 1;
         if (this.samplingInterval < 1) throw new IllegalArgumentException("samplingInterval must be >= 1");
@@ -631,36 +631,6 @@ public class SimulationEngine extends AbstractService implements IMonitorable, I
         return builder.build();
     }
 
-    private static org.evochora.datapipeline.api.contracts.RegisterValue convertRegisterValue(Object rv) {
-        org.evochora.datapipeline.api.contracts.RegisterValue.Builder builder = org.evochora.datapipeline.api.contracts.RegisterValue.newBuilder();
-        if (rv instanceof Integer) builder.setScalar((Integer) rv);
-        else if (rv instanceof int[]) builder.setVector(convertVector((int[]) rv));
-        return builder.build();
-    }
-
-    private static org.evochora.datapipeline.api.contracts.ProcFrame convertProcFrame(ProcFrame frame) {
-        org.evochora.datapipeline.api.contracts.ProcFrame.Builder builder =
-                org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
-                        .setProcName(frame.procName)
-                        .setAbsoluteReturnIp(convertVector(frame.absoluteReturnIp))
-                        .setAbsoluteCallIp(convertVector(frame.absoluteCallIp))
-                        .putAllFprBindings(frame.fprBindings);
-
-        if (frame.savedPrs != null) {
-            for (Object rv : frame.savedPrs) {
-                builder.addSavedPrs(convertRegisterValue(rv));
-            }
-        }
-
-        if (frame.savedFprs != null) {
-            for (Object rv : frame.savedFprs) {
-                builder.addSavedFprs(convertRegisterValue(rv));
-            }
-        }
-
-        return builder.build();
-    }
-
     private static Vector convertVectorReuse(int[] components, Vector.Builder builder) {
         builder.clear();
         if (components != null) {
@@ -706,35 +676,6 @@ public class SimulationEngine extends AbstractService implements IMonitorable, I
         return builder.build();
     }
 
-    private static Iterable<int[]> iterateCoordinates(final int[] shape) {
-        return () -> new Iterator<>() {
-            private final int[] current = new int[shape.length];
-            private boolean first = true;
-            @Override
-            public boolean hasNext() {
-                if (first) return true;
-                for (int i = shape.length - 1; i >= 0; i--) if (current[i] < shape[i] - 1) return true;
-                return false;
-            }
-            @Override
-            public int[] next() {
-                if (first) {
-                    first = false;
-                    Arrays.fill(current, 0);
-                    return Arrays.copyOf(current, current.length);
-                }
-                for (int i = shape.length - 1; i >= 0; i--) {
-                    if (current[i] < shape[i] - 1) {
-                        current[i]++;
-                        return Arrays.copyOf(current, current.length);
-                    }
-                    current[i] = 0;
-                }
-                throw new NoSuchElementException();
-            }
-        };
-    }
-    
     private void placeOrganismCodeAndObjects(Organism organism, ProgramArtifact artifact, int[] startPosition) {
         // Place code in environment
         // ProgramArtifact guarantees deterministic iteration order (sorted by coordinate in Emitter)

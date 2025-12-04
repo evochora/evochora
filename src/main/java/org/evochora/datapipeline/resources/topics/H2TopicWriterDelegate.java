@@ -4,7 +4,6 @@ import com.google.protobuf.Message;
 import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
-import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

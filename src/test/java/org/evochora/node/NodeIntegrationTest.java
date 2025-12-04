@@ -1,21 +1,34 @@
 package org.evochora.node;
 
-import com.typesafe.config.Config;
-import io.restassured.RestAssured;
-import org.evochora.junit.extensions.logging.AllowLog;
-import org.evochora.junit.extensions.logging.LogLevel;
-import org.evochora.junit.extensions.logging.LogWatchExtension;
-import org.evochora.cli.config.ConfigLoader;
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.extension.ExtendWith;
+import static io.restassured.RestAssured.given;
+import static org.awaitility.Awaitility.await;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasSize;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import static io.restassured.RestAssured.given;
-import static org.awaitility.Awaitility.await;
-import static org.hamcrest.Matchers.*;
+import org.evochora.cli.config.ConfigLoader;
+import org.evochora.junit.extensions.logging.AllowLog;
+import org.evochora.junit.extensions.logging.LogLevel;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.TestMethodOrder;
+import org.junit.jupiter.api.extension.ExtendWith;
+
+import com.typesafe.config.Config;
+
+import io.restassured.RestAssured;
 
 @Tag("integration")
 @DisplayName("Node End-to-End API Integration Test")
@@ -26,7 +39,7 @@ import static org.hamcrest.Matchers.*;
 class NodeIntegrationTest {
 
     private static final String TEST_CONFIG_FILE = "org/evochora/node/evochora-test.conf";
-    private static final int TEST_PORT = 8081;
+    private static final int TEST_PORT = 58081;
     private static final String BASE_PATH = "/pipeline/api";
 
     private Node testNode;

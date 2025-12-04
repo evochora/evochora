@@ -1,13 +1,28 @@
 package org.evochora.datapipeline.resources.database;
 
-import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.contracts.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.List;
+
+import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.ProcFrame;
+import org.evochora.datapipeline.api.contracts.RegisterValue;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
-import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
-import org.evochora.datapipeline.api.resources.database.dto.*;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismRuntimeView;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
+import org.evochora.datapipeline.api.resources.database.dto.ProcFrameView;
+import org.evochora.datapipeline.api.resources.database.dto.RegisterValueView;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
-import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,13 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Integration tests for organism read API in H2DatabaseReader.
@@ -194,6 +203,7 @@ class H2DatabaseOrganismReaderTest {
         try {
             java.lang.reflect.Field dataSourceField = H2Database.class.getDeclaredField("dataSource");
             dataSourceField.setAccessible(true);
+            @SuppressWarnings("resource")
             com.zaxxer.hikari.HikariDataSource dataSource =
                     (com.zaxxer.hikari.HikariDataSource) dataSourceField.get(database);
 

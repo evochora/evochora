@@ -5,7 +5,6 @@ import com.typesafe.config.ConfigFactory;
 import io.javalin.Javalin;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.resources.database.H2Database;
-import org.evochora.datapipeline.services.indexers.EnvironmentIndexer;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -16,13 +15,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.stream.IntStream;
-
 import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.*;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Phase 3 error handling tests: HTTP error responses and edge cases.

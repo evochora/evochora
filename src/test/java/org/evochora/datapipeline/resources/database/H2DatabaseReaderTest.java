@@ -1,12 +1,22 @@
 package org.evochora.datapipeline.resources.database;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.contracts.*;
-import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
-import org.evochora.datapipeline.api.resources.database.dto.TickRange;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.sql.Connection;
+import java.util.List;
+import java.util.UUID;
+
+import org.evochora.datapipeline.api.contracts.CellState;
+import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.RegisterValue;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
+import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.isa.Instruction;
@@ -18,11 +28,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.sql.Connection;
-import java.util.List;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.*;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Unit tests for H2DatabaseReader.getTickRange() method.
@@ -227,7 +234,6 @@ class H2DatabaseReaderTest {
                     metadataJson.replace("'", "''") + "')");
 
             // Create organism tables
-            SingleBlobStrategy strategy = new SingleBlobStrategy(ConfigFactory.empty());
             database.doCreateOrganismTables(conn);
 
             // Write organism with instruction data

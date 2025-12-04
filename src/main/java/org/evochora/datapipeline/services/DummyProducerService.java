@@ -1,6 +1,9 @@
 package org.evochora.datapipeline.services;
 
-import com.typesafe.config.Config;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.evochora.datapipeline.api.contracts.SystemContracts.DummyMessage;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
@@ -8,9 +11,7 @@ import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
+import com.typesafe.config.Config;
 
 /**
  * A dummy producer service that sends Protobuf messages to an output queue.
@@ -28,7 +29,7 @@ public class DummyProducerService extends AbstractService {
 
     private static final Logger logger = LoggerFactory.getLogger(DummyProducerService.class);
 
-    private IOutputQueueResource<DummyMessage> outputQueue;
+    private final IOutputQueueResource<DummyMessage> outputQueue;
     private final long intervalMs;
     private final String messagePrefix;
     private final long maxMessages;
@@ -44,11 +45,14 @@ public class DummyProducerService extends AbstractService {
         this.maxMessages = options.hasPath("maxMessages") ? options.getLong("maxMessages") : -1L;
         this.metricsWindowSeconds = options.hasPath("metricsWindowSeconds") ? options.getInt("metricsWindowSeconds") : 5;
         this.throughputCounter = new SlidingWindowCounter(metricsWindowSeconds);
+
+        @SuppressWarnings("unchecked")
+        IOutputQueueResource<DummyMessage> queue = (IOutputQueueResource<DummyMessage>) getRequiredResource("output", IOutputQueueResource.class);
+        this.outputQueue = queue;
     }
 
     @Override
     protected void run() throws InterruptedException {
-        this.outputQueue = getRequiredResource("output", IOutputQueueResource.class);
         long messageCounter = 0;
         while (!Thread.currentThread().isInterrupted() && (maxMessages == -1 || messageCounter < maxMessages)) {
             checkPause();

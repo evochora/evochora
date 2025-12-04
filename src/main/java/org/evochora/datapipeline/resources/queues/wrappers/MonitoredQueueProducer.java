@@ -3,18 +3,13 @@ package org.evochora.datapipeline.resources.queues.wrappers;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 
-import java.time.Instant;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 

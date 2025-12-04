@@ -1,10 +1,24 @@
 package org.evochora.datapipeline.services.indexers;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.contracts.*;
-import org.evochora.datapipeline.api.resources.IResource;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
+import org.evochora.datapipeline.api.contracts.BatchInfo;
+import org.evochora.datapipeline.api.contracts.CellState;
+import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
@@ -24,17 +38,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.util.*;
-import java.util.concurrent.TimeUnit;
-
-import static org.assertj.core.api.Assertions.*;
-import static org.awaitility.Awaitility.await;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Integration tests for EnvironmentIndexer with real dependencies.
@@ -48,20 +53,10 @@ class EnvironmentIndexerIntegrationTest {
     
     private H2Database testDatabase;
     private FileSystemStorageResource testStorage;
-    private H2TopicResource testBatchTopic;
+    private H2TopicResource<BatchInfo> testBatchTopic;
     private EnvironmentIndexer<?> indexer;
     private Path tempStorageDir;
     private String dbUrl;
-    
-    private Config createConfig(String testName) {
-        return ConfigFactory.parseString("""
-            metadataPollIntervalMs = 100
-            metadataMaxPollDurationMs = 5000
-            topicPollTimeoutMs = 2000
-            insertBatchSize = 100
-            flushTimeoutMs = 1000
-            """);
-    }
     
     @BeforeEach
     void setUp() throws IOException {
@@ -89,7 +84,7 @@ class EnvironmentIndexerIntegrationTest {
             "password = \"\"\n" +
             "claimTimeout = 300"
         );
-        testBatchTopic = new H2TopicResource("batch-topic", topicConfig);
+        testBatchTopic = new H2TopicResource<>("batch-topic", topicConfig);
     }
     
     @AfterEach
@@ -458,6 +453,7 @@ class EnvironmentIndexerIntegrationTest {
         
         // Send batch notification to topic
         ResourceContext topicWriteContext = new ResourceContext("test", "topic-port", "topic-write", "batch-topic", Map.of());
+        @SuppressWarnings("unchecked")
         ITopicWriter<BatchInfo> topicWriter = (ITopicWriter<BatchInfo>) testBatchTopic.getWrappedResource(topicWriteContext);
         topicWriter.setSimulationRun(runId);
         
@@ -470,18 +466,6 @@ class EnvironmentIndexerIntegrationTest {
             .build();
         topicWriter.send(batchInfo);
         topicWriter.close();  // ITopicWriter implements AutoCloseable
-    }
-    
-    private void verifyDatabaseContainsTick(String runId, long tickNumber) throws Exception {
-        // For test verification, we can directly query the schema
-        // In production, this would be done via a query API (Phase 14.5)
-        
-        // Note: H2Database doesn't expose getDataSource() or acquireDedicatedConnection() publicly
-        // For now, we trust that if ticks_processed metric increased, the write succeeded
-        // Full verification would require exposing a test-only method or using a query wrapper
-        
-        // Simplified verification: Check metrics
-        assertThat(indexer.getMetrics().get("ticks_processed").longValue()).isGreaterThan(0);
     }
 }
 

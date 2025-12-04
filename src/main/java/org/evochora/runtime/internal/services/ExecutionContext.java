@@ -1,6 +1,5 @@
 package org.evochora.runtime.internal.services;
 
-import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 

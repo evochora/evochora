@@ -1,11 +1,19 @@
 package org.evochora.datapipeline.resources.database;
 
-import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.contracts.*;
-import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.sql.Connection;
+import java.util.UUID;
+
+import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.RegisterValue;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
-import org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
@@ -16,10 +24,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.sql.Connection;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Tests instruction resolution in H2DatabaseReader.
@@ -252,7 +257,6 @@ class H2DatabaseReaderInstructionResolutionTest {
                                                                   int[][] locationRegisters) throws Exception {
         Object connObj = database.acquireDedicatedConnection();
         try (Connection conn = (Connection) connObj) {
-            String schemaName = "SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_");
             org.evochora.datapipeline.utils.H2SchemaUtil.setSchema(conn, runId);
 
             Vector ipBeforeFetch = Vector.newBuilder().addComponents(1).addComponents(2).build();

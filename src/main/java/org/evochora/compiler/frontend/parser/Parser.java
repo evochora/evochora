@@ -75,17 +75,7 @@ public class Parser implements ParsingContext {
         registerAliasScopes.peek().put(name.toUpperCase(), registerToken);
     }
 
-    private Token resolveRegisterAlias(String name) {
-        for (Map<String, Token> scope : registerAliasScopes) {
-            Token token = scope.get(name.toUpperCase());
-            if (token != null) {
-                return token;
-            }
-        }
-        return null;
-    }
-
-    /**
+        /**
      * Gets the global register aliases.
      * @return A map of global register aliases.
      */

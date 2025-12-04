@@ -1,14 +1,25 @@
 package org.evochora.datapipeline.services;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import static org.awaitility.Awaitility.await;
+import static org.evochora.test.utils.FileUtils.readAllTicksFromBatches;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Stream;
+
 import org.evochora.datapipeline.ServiceManager;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
-import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.junit.extensions.logging.AllowLog;
-import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.isa.Instruction;
@@ -20,19 +31,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Stream;
-
-import static org.awaitility.Awaitility.await;
-import static org.junit.jupiter.api.Assertions.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import static org.evochora.test.utils.FileUtils.readAllTicksFromBatches;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Integration tests for end-to-end metadata persistence flow with real resources.
@@ -42,8 +42,6 @@ import static org.evochora.test.utils.FileUtils.readAllTicksFromBatches;
 @ExtendWith(LogWatchExtension.class)
 @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
 class SimulationMetadataIntegrationTest {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(SimulationMetadataIntegrationTest.class);
 
     @TempDir
     Path tempDir;
@@ -270,6 +268,13 @@ class SimulationMetadataIntegrationTest {
                   }
                 }
 
+                dlq-queue {
+                  className = "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue"
+                  options {
+                    capacity = 100
+                  }
+                }
+
                 metadata-topic {
                   className = "org.evochora.datapipeline.resources.topics.H2TopicResource"
                   options {
@@ -339,6 +344,7 @@ class SimulationMetadataIntegrationTest {
                   resources {
                     input = "queue-in:raw-tick-data"
                     storage = "storage-write:tick-storage"
+                    dlq = "queue-out:dlq-queue"
                   }
                   options {
                     maxBatchSize = 100
@@ -376,7 +382,6 @@ class SimulationMetadataIntegrationTest {
         // Read metadata using storage resource (same as production would)
         // readMessage() handles length-delimited protobuf format correctly
         Path storageRoot = metadataFile.getParent().getParent();
-        String simulationRunId = metadataFile.getParent().getFileName().toString();
 
         Config storageConfig = ConfigFactory.parseMap(
             Map.of("rootDirectory", storageRoot.toAbsolutePath().toString())
@@ -390,38 +395,5 @@ class SimulationMetadataIntegrationTest {
         
         // Use readMessage() - validates exactly one message in file
         return storage.readMessage(StoragePath.of(physicalPath), SimulationMetadata.parser());
-    }
-
-    private int countBatchFiles(Path storageRoot) {
-        if (!Files.exists(storageRoot)) {
-            return 0;
-        }
-
-        try (Stream<Path> paths = Files.walk(storageRoot)) {
-            return (int) paths
-                    .filter(p -> {
-                        String fileName = p.getFileName().toString();
-                        // Filter out .tmp files BEFORE other operations to avoid race conditions
-                        return fileName.startsWith("batch_") && fileName.endsWith(".pb") && !fileName.contains(".tmp");
-                    })
-                    .filter(Files::isRegularFile)
-                .count();
-        } catch (java.io.UncheckedIOException e) {
-            if (e.getCause() instanceof java.nio.file.NoSuchFileException) {
-                // This can happen in a race condition on fast filesystems (like in CI).
-                // Logging at DEBUG level to avoid polluting test logs, but providing info for debugging.
-                // Returning 0 is safe because await() will retry.
-                LOGGER.debug("Caught a recoverable race condition while counting files: {}", e.getCause().getMessage());
-                return 0;
-            }
-            throw e;
-        } catch (IOException e) {
-             // It's good practice to also handle the checked IOException variant
-             if (e.getCause() instanceof java.nio.file.NoSuchFileException) {
-                LOGGER.debug("Caught a recoverable race condition while counting files: {}", e.getCause().getMessage());
-            return 0;
-            }
-            throw new RuntimeException("Failed to count batch files", e);
-        }
     }
 }

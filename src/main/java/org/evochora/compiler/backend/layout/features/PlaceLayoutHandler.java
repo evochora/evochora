@@ -8,7 +8,6 @@ import org.evochora.compiler.backend.layout.Nd;
 import org.evochora.compiler.ir.IrDirective;
 import org.evochora.compiler.ir.IrValue;
 import org.evochora.compiler.ir.placement.*;
-import org.evochora.runtime.Config;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.MoleculeTypeRegistry;
 

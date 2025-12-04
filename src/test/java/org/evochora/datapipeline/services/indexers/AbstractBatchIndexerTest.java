@@ -65,7 +65,9 @@ class AbstractBatchIndexerTest {
     void setup() {
         // Create mocks that implement both capability interfaces AND IResource
         // This simulates production where wrappers implement IResource via AbstractResource
-        mockTopic = mock(IResourceTopicReader.class);
+        @SuppressWarnings("unchecked")
+        IResourceTopicReader<BatchInfo, String> topicMock = mock(IResourceTopicReader.class);
+        mockTopic = topicMock;
         mockStorage = mock(IResourceBatchStorageRead.class);
         mockMetadataReader = mock(IResourceSchemaAwareMetadataReader.class);
 

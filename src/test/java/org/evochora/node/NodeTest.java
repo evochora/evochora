@@ -1,7 +1,9 @@
 package org.evochora.node;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.Map;
+
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -13,10 +15,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Unit tests for Node to verify configuration parsing, dependency injection,
@@ -35,7 +35,7 @@ class NodeTest {
             node {
               processes {
                 test-process-1 {
-                  className = "org.evochora.node.NodeTest$TestProcess"
+                  className = "org.evochora.node.NodeTest$TestProcess1"
                 }
                 test-process-2 {
                   className = "org.evochora.node.NodeTest$TestProcess2"
@@ -243,7 +243,7 @@ class NodeTest {
             node {
               processes {
                 valid-process {
-                  className = "org.evochora.node.NodeTest$TestProcess"
+                  className = "org.evochora.node.NodeTest$TestProcess1"
                 }
                 invalid-process {
                   className = "org.nonexistent.InvalidProcess"
@@ -262,21 +262,39 @@ class NodeTest {
     // Fake IProcess implementations for testing
 
     /**
-     * A valid IProcess implementation for testing
+     * A valid {@link IProcess} implementation for testing basic lifecycle
+     * operations (start/stop).
      */
-    private static class TestProcess implements IProcess {
+    @SuppressWarnings("unused") // Used via reflection in tests
+    private static class TestProcess1 implements IProcess {
         private boolean started = false;
         private boolean stopped = false;
 
-        public TestProcess(String processName, Map<String, Object> dependencies, Config config) {
+        /**
+         * Constructs a new TestProcess. The parameters are required by the Node's
+         * reflection-based instantiation but are not used in this test implementation.
+         *
+         * @param processName  The name of the process instance.
+         * @param dependencies The map of resolved dependencies.
+         * @param config       The configuration for this process.
+         */
+        public TestProcess1(String processName, Map<String, Object> dependencies, Config config) {
             // Valid constructor
         }
 
+        /**
+         * {@inheritDoc}
+         * Marks this process as started.
+         */
         @Override
         public void start() {
             started = true;
         }
 
+        /**
+         * {@inheritDoc}
+         * Marks this process as stopped.
+         */
         @Override
         public void stop() {
             stopped = true;
@@ -284,21 +302,40 @@ class NodeTest {
     }
 
     /**
-     * Another valid IProcess implementation for testing multiple processes
+     * A second valid {@link IProcess} implementation for testing, identical to
+     * {@link TestProcess1}, to avoid class loading issues when two processes of
+     * the same type are configured.
      */
+    @SuppressWarnings("unused") // Used via reflection in tests
     private static class TestProcess2 implements IProcess {
         private boolean started = false;
         private boolean stopped = false;
 
+        /**
+         * Constructs a new TestProcess. The parameters are required by the Node's
+         * reflection-based instantiation but are not used in this test implementation.
+         *
+         * @param processName  The name of the process instance.
+         * @param dependencies The map of resolved dependencies.
+         * @param config       The configuration for this process.
+         */
         public TestProcess2(String processName, Map<String, Object> dependencies, Config config) {
             // Valid constructor
         }
 
+        /**
+         * {@inheritDoc}
+         * Marks this process as started.
+         */
         @Override
         public void start() {
             started = true;
         }
 
+        /**
+         * {@inheritDoc}
+         * Marks this process as stopped.
+         */
         @Override
         public void stop() {
             stopped = true;
@@ -306,27 +343,53 @@ class NodeTest {
     }
 
     /**
-     * A class that doesn't implement IProcess (for negative testing)
+     * A class that doesn't implement IProcess, used for negative testing of
+     * process loading.
      */
+    @SuppressWarnings("unused") // Used via reflection in tests
     private static class InvalidProcess {
+        /**
+         * Constructs a new InvalidProcess. The parameters are required by the Node's
+         * reflection-based instantiation but are not used in this test implementation.
+         *
+         * @param processName  The name of the process instance.
+         * @param dependencies The map of resolved dependencies.
+         * @param config       The configuration for this process.
+         */
         public InvalidProcess(String processName, Map<String, Object> dependencies, Config config) {
             // Valid constructor but doesn't implement IProcess
         }
     }
 
     /**
-     * A process that throws exception in constructor
+     * A process that throws an exception in its constructor to test the Node's
+     * error handling during initialization.
      */
+    @SuppressWarnings("unused") // Used via reflection in tests
     private static class FailingProcess implements IProcess {
+        /**
+         * Constructs a new FailingProcess, which always throws a RuntimeException.
+         *
+         * @param processName  The name of the process instance.
+         * @param dependencies The map of resolved dependencies.
+         * @param config       The configuration for this process.
+         * @throws RuntimeException always, to simulate a constructor failure.
+         */
         public FailingProcess(String processName, Map<String, Object> dependencies, Config config) {
             throw new RuntimeException("Constructor failed");
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void start() {
             // Never reached
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void stop() {
             // Never reached
@@ -334,18 +397,33 @@ class NodeTest {
     }
 
     /**
-     * A process that throws exception in start method
+     * A process that throws an exception in its {@link #start()} method to test
+     * the Node's error handling during startup.
      */
+    @SuppressWarnings("unused") // Used via reflection in tests
     private static class FailingStartProcess implements IProcess {
+        /**
+         * Constructs a new FailingStartProcess.
+         *
+         * @param processName  The name of the process instance.
+         * @param dependencies The map of resolved dependencies.
+         * @param config       The configuration for this process.
+         */
         public FailingStartProcess(String processName, Map<String, Object> dependencies, Config config) {
             // Valid constructor
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void start() {
             throw new RuntimeException("Start failed");
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void stop() {
             // Valid stop
@@ -353,20 +431,36 @@ class NodeTest {
     }
 
     /**
-     * A process that throws exception in stop method
+     * A process that throws an exception in its {@link #stop()} method to test
+     * the Node's error handling during shutdown.
      */
+    @SuppressWarnings("unused") // Used via reflection in tests
     private static class FailingStopProcess implements IProcess {
         private boolean started = false;
 
+        /**
+         * Constructs a new FailingStopProcess.
+         *
+         * @param processName  The name of the process instance.
+         * @param dependencies The map of resolved dependencies.
+         * @param config       The configuration for this process.
+         */
         public FailingStopProcess(String processName, Map<String, Object> dependencies, Config config) {
             // Valid constructor
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void start() {
             started = true;
         }
 
+        /**
+         * {@inheritDoc}
+         * Always throws a RuntimeException to simulate a stop failure.
+         */
         @Override
         public void stop() {
             throw new RuntimeException("Stop failed");

@@ -3,7 +3,6 @@ package org.evochora.compiler.instructions;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.CompilerTestBase;
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;

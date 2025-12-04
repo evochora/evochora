@@ -234,7 +234,7 @@ class DisassemblerTest {
         }
         
         @Override
-        public Molecule getMolecule(int[] coordinates) {
+        public Molecule getMolecule(int... coordinates) {
             return molecules.get(Arrays.toString(coordinates));
         }
         

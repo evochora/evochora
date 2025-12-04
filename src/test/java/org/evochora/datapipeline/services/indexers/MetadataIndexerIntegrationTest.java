@@ -4,16 +4,32 @@
 
 package org.evochora.datapipeline.services.indexers;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.time.Instant;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
 import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.ResourceContext;
-import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
-import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
@@ -25,23 +41,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.io.IOException;
-import java.time.Instant;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.Statement;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-
-import static org.awaitility.Awaitility.await;
-import static org.junit.jupiter.api.Assertions.*;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
@@ -49,7 +50,7 @@ class MetadataIndexerIntegrationTest {
 
     private H2Database testDatabase;
     private FileSystemStorageResource testStorage;
-    private H2TopicResource testTopic;
+    private H2TopicResource<MetadataInfo> testTopic;
     private Path tempStorageDir;
     private String dbUrl;
     private String dbUsername;
@@ -79,7 +80,7 @@ class MetadataIndexerIntegrationTest {
             "password = \"\"\n" +
             "claimTimeout = 300"
         );
-        testTopic = new H2TopicResource("metadata-topic", topicConfig);
+        testTopic = new H2TopicResource<>("metadata-topic", topicConfig);
     }
 
     @AfterEach
@@ -136,7 +137,7 @@ class MetadataIndexerIntegrationTest {
             "database", List.of(wrappedDatabase),
             "topic", List.of(wrappedTopic)
         );
-        MetadataIndexer indexer = new MetadataIndexer("test-indexer", indexerConfig, resources);
+        MetadataIndexer<?> indexer = new MetadataIndexer<>("test-indexer", indexerConfig, resources);
 
         indexer.start();
 
@@ -162,7 +163,7 @@ class MetadataIndexerIntegrationTest {
             "database", List.of(wrappedDatabase),
             "topic", List.of(wrappedTopic)
         );
-        MetadataIndexer indexer = new MetadataIndexer("test-indexer", indexerConfig, resources);
+        MetadataIndexer<?> indexer = new MetadataIndexer<>("test-indexer", indexerConfig, resources);
         indexer.start();
 
         // Wait for indexer to be running before creating the run

@@ -64,7 +64,7 @@ class AnalyticsIndexerEndToEndTest {
 
     private H2Database testDatabase;
     private FileSystemStorageResource testStorage;
-    private H2TopicResource testBatchTopic;
+    private H2TopicResource<BatchInfo> testBatchTopic;
     private AnalyticsIndexer<?> indexer;
     private Path tempStorageDir;
     private Path tempAnalyticsDir;
@@ -97,7 +97,7 @@ class AnalyticsIndexerEndToEndTest {
             "password = \"\"\n" +
             "claimTimeout = 300"
         );
-        testBatchTopic = new H2TopicResource("batch-topic", topicConfig);
+        testBatchTopic = new H2TopicResource<>("batch-topic", topicConfig);
     }
 
     @AfterEach

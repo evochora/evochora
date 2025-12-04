@@ -1,6 +1,12 @@
 package org.evochora.datapipeline.services;
 
-import com.typesafe.config.Config;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicReference;
+
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
@@ -8,12 +14,7 @@ import org.evochora.datapipeline.api.services.IService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.atomic.AtomicReference;
+import com.typesafe.config.Config;
 
 /**
  * An abstract base class for all services, providing common lifecycle management,

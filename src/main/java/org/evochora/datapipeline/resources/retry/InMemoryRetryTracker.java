@@ -1,21 +1,21 @@
 package org.evochora.datapipeline.resources.retry;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
-import org.evochora.datapipeline.api.memory.MemoryEstimate;
-import org.evochora.datapipeline.api.memory.SimulationParameters;
-import org.evochora.datapipeline.api.resources.IRetryTracker;
-import org.evochora.datapipeline.api.resources.IMonitorable;
-import org.evochora.datapipeline.resources.AbstractResource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+
+import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
+import org.evochora.datapipeline.api.resources.IRetryTracker;
+import org.evochora.datapipeline.resources.AbstractResource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * In-memory implementation of retry tracker with bounded memory guarantee.
@@ -55,9 +55,9 @@ public class InMemoryRetryTracker extends AbstractResource implements IRetryTrac
     private final int maxKeys;
     
     // Active tracking (Option A - with active cleanup)
-    private final ConcurrentHashMap<String, AtomicInteger> retryCounts = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Long> lastRetryAt = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Boolean> movedToDlq = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, AtomicInteger> retryCounts;
+    private final ConcurrentHashMap<String, Long> lastRetryAt;
+    private final ConcurrentHashMap<String, Boolean> movedToDlq;
     
     // Metrics - zero overhead counters for monitoring
     private final AtomicLong totalRetries = new AtomicLong(0);
@@ -89,6 +89,9 @@ public class InMemoryRetryTracker extends AbstractResource implements IRetryTrac
         
         // Create HashMaps with configured capacity
         // Note: ConcurrentHashMap capacity is approximate (load factor applies)
+        this.retryCounts = new ConcurrentHashMap<>(initialCapacity);
+        this.lastRetryAt = new ConcurrentHashMap<>(initialCapacity);
+        this.movedToDlq = new ConcurrentHashMap<>(initialCapacity);
     }
     
     /**
@@ -100,6 +103,9 @@ public class InMemoryRetryTracker extends AbstractResource implements IRetryTrac
         super("test-retry-tracker", ConfigFactory.empty());
         this.maxKeys = maxKeys;
         this.ringBuffer = new Object[maxKeys];
+        this.retryCounts = new ConcurrentHashMap<>(maxKeys);
+        this.lastRetryAt = new ConcurrentHashMap<>(maxKeys);
+        this.movedToDlq = new ConcurrentHashMap<>(maxKeys);
     }
     
     @Override
@@ -170,6 +176,7 @@ public class InMemoryRetryTracker extends AbstractResource implements IRetryTrac
         String oldKey = (String) ringBuffer[writeIndex];
         if (oldKey != null) {
             // Evict oldest entry from all maps
+            log.debug("Evicting oldest key '{}' to make space for new key '{}' (maxKeys={})", oldKey, messageId, maxKeys);
             retryCounts.remove(oldKey);
             lastRetryAt.remove(oldKey);
             movedToDlq.remove(oldKey);

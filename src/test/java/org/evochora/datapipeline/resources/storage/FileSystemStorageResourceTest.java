@@ -6,7 +6,6 @@ import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

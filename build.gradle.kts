@@ -95,12 +95,18 @@ tasks.named<JavaExec>("run") {
 
 // Fix empty info section in generated OpenAPI files
 tasks.named("compileJava") {
+    // ÄNDERUNG: Werte in der Konfigurationsphase erfassen
+    val apiVersion = project.version.toString()
+    val buildDir = layout.buildDirectory.get().asFile
+
     doLast {
-        val openApiDir = file("build/classes/java/main/openapi-plugin")
-        val openApiFile = file("${openApiDir}/openapi-default.json")
+        // ÄNDERUNG: Keine Verwendung von file() oder project.* hier drin
+        val openApiDir = buildDir.resolve("classes/java/main/openapi-plugin")
+        val openApiFile = openApiDir.resolve("openapi-default.json")
+        
         if (openApiFile.exists()) {
             val content = openApiFile.readText()
-            val apiVersion = project.version.toString()
+            // Verwendung der zuvor erfassten Variable
             val fixedContent = content
                 .replace("\"title\": \"\"", "\"title\": \"Evochora API\"")
                 .replace("\"version\": \"\"", "\"version\": \"$apiVersion\"")
@@ -131,12 +137,6 @@ tasks.named<Jar>("jar") {
         attributes["Main-Class"] = "org.evochora.cli.CommandLineInterface"
     }
     
-    // Add JVM arguments to suppress SLF4J warnings
-    doFirst {
-        // This will be used when running the jar
-        println("To run without SLF4J warnings, use:")
-        println("java -Dslf4j.replay.warn=false -jar build/libs/evochora.jar")
-    }
     
     from(sourceSets.main.get().output)
     from(configurations.runtimeClasspath.map { config -> 
@@ -177,6 +177,7 @@ tasks.test {
     useJUnitPlatform {
         excludeTags("benchmark") // Exclude benchmark tests from regular test runs
     }
+    maxHeapSize = "2g" // Increase heap size for tests
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-XX:+EnableDynamicAgentLoading")
     jvmArgs("-Xshare:off")
@@ -275,15 +276,5 @@ tasks.jacocoTestReport {
 protobuf {
     protoc {
         artifact = "com.google.protobuf:protoc:3.25.3"
-    }
-    sourceSets {
-        main {
-            proto {
-                srcDir("src/main/proto")
-            }
-            java {
-                srcDirs("build/generated/source/proto/main/java")
-            }
-        }
     }
 }

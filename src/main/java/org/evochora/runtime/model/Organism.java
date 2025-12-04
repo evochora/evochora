@@ -1,19 +1,18 @@
 package org.evochora.runtime.model;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Deque;
+import java.util.List;
+import java.util.Random;
+import java.util.stream.Collectors;
+
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.Random;
-import java.util.stream.Collectors;
 
 /**
  * Represents a single programmable agent within the simulation.
@@ -23,7 +22,6 @@ import java.util.stream.Collectors;
  * with the world, consume resources, and reproduce.
  */
 public class Organism {
-    private static final Logger LOG = LoggerFactory.getLogger(Organism.class);
     /**
      * A record to hold information about a fork request.
      * @param childIp The initial IP of the child.
@@ -681,10 +679,10 @@ public class Organism {
                 this.fprs.set(index, value);
                 return true;
             }
-            instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to FPR " + index);
+            this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to FPR " + index);
             return false;
         }
-        instructionFailed("FPR index out of bounds: " + index);
+        this.instructionFailed("FPR index out of bounds: " + index);
         return false;
     }
 
@@ -698,7 +696,7 @@ public class Organism {
         if (index >= 0 && index < this.fprs.size()) {
             return this.fprs.get(index);
         }
-        instructionFailed("FPR index out of bounds: " + index);
+        this.instructionFailed("FPR index out of bounds: " + index);
         return null;
     }
 
@@ -709,7 +707,7 @@ public class Organism {
      */
     public void restoreFprs(Object[] snapshot) {
         if (snapshot == null || snapshot.length > this.fprs.size()) {
-            instructionFailed("Invalid FPR snapshot for restore");
+            this.instructionFailed("Invalid FPR snapshot for restore");
             return;
         }
         for (int i = 0; i < snapshot.length; i++) {

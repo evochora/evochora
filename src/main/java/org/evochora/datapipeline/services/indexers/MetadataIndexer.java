@@ -6,10 +6,6 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
-import org.evochora.datapipeline.api.resources.topics.ITopicReader;
-import org.evochora.datapipeline.api.resources.topics.TopicMessage;
-
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;

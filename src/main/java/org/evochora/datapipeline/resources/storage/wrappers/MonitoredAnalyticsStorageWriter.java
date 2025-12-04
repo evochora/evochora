@@ -75,12 +75,16 @@ public class MonitoredAnalyticsStorageWriter extends AbstractResource implements
                         raw.close();
                         recordSuccess(bytes, System.nanoTime() - start);
                     } catch (IOException e) {
+                        log.warn("Failed to close analytics output stream for runId={}, metricId={}, file={}/{}/{}",
+                            runId, metricId, lodLevel, subPath, filename);
                         recordFailure();
                         throw e;
                     }
                 }
             };
         } catch (IOException e) {
+            log.warn("Failed to open analytics output stream for runId={}, metricId={}, file={}/{}/{}",
+                runId, metricId, lodLevel, subPath, filename);
             recordFailure();
             throw e;
         }

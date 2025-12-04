@@ -6,7 +6,6 @@ import io.javalin.http.Context;
 import org.evochora.datapipeline.ServiceManager;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.api.services.ServiceStatus;
-import org.evochora.node.processes.http.api.pipeline.PipelineController;
 import org.evochora.node.processes.http.api.pipeline.dto.PipelineStatusDto;
 import org.evochora.node.processes.http.api.pipeline.dto.ServiceStatusDto;
 import org.evochora.node.spi.ServiceRegistry;

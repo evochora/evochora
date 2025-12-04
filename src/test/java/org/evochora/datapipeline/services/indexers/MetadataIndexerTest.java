@@ -1,11 +1,24 @@
 package org.evochora.datapipeline.services.indexers;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
 import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
 import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
@@ -23,15 +36,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-
-import static org.awaitility.Awaitility.await;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 @Tag("unit")
 @ExtendWith(MockitoExtension.class)
@@ -54,7 +60,9 @@ class MetadataIndexerTest {
         // This simulates production where wrappers implement IResource via AbstractResource
         mockStorage = mock(IResourceBatchStorageRead.class);
         mockDatabase = mock(IResourceSchemaAwareMetadataWriter.class);
-        mockTopic = mock(IResourceTopicReader.class);
+        @SuppressWarnings("unchecked")
+        IResourceTopicReader<MetadataInfo, Object> topicMock = mock(IResourceTopicReader.class);
+        mockTopic = topicMock;
 
         resources = Map.of(
             "storage", List.of((IResource) mockStorage),
@@ -68,7 +76,7 @@ class MetadataIndexerTest {
     void successfulPath_processesMessageAndStops() throws Exception {
         // Arrange
         Config config = ConfigFactory.parseString("runId = \"" + testRunId + "\"");
-        MetadataIndexer indexer = new MetadataIndexer("test-indexer", config, resources);
+        MetadataIndexer<?> indexer = new MetadataIndexer<>("test-indexer", config, resources);
         
         // Mock topic message with MetadataInfo
         MetadataInfo info = MetadataInfo.newBuilder()
@@ -109,7 +117,7 @@ class MetadataIndexerTest {
     void databaseFailure_entersErrorState() throws Exception {
         // Arrange
         Config config = ConfigFactory.parseString("runId = \"" + testRunId + "\"");
-        MetadataIndexer indexer = new MetadataIndexer("test-indexer", config, resources);
+        MetadataIndexer<?> indexer = new MetadataIndexer<>("test-indexer", config, resources);
         
         // Mock topic message with MetadataInfo
         MetadataInfo info = MetadataInfo.newBuilder()
@@ -153,7 +161,7 @@ class MetadataIndexerTest {
     void topicPollTimeout_entersErrorState() throws Exception {
         // Arrange
         Config config = ConfigFactory.parseString("runId = \"" + testRunId + "\", topicPollTimeoutMs = 100");
-        MetadataIndexer indexer = new MetadataIndexer("test-indexer", config, resources);
+        MetadataIndexer<?> indexer = new MetadataIndexer<>("test-indexer", config, resources);
         
         // Mock topic.poll() to return null (timeout)
         when(mockTopic.poll(anyLong(), any(TimeUnit.class))).thenReturn(null);
@@ -188,7 +196,7 @@ class MetadataIndexerTest {
                 topicPollTimeoutMs = 50
                 """);
         
-        MetadataIndexer indexer = new MetadataIndexer("test-indexer", indexerConfig, resources);
+        MetadataIndexer<?> indexer = new MetadataIndexer<>("test-indexer", indexerConfig, resources);
         
         // Act: Start indexer - should timeout and enter ERROR state
         indexer.start();

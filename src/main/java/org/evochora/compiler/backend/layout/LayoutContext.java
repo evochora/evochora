@@ -22,7 +22,6 @@ public final class LayoutContext {
     private int[] anchorPos;
     private final Deque<int[]> basePosStack = new ArrayDeque<>();
     private final Deque<int[]> dvStack = new ArrayDeque<>();
-    private String lastFile = null;
 
     private final Map<Integer, int[]> linearToCoord = new HashMap<>();
     private final Map<String, Integer> coordToLinear = new HashMap<>();

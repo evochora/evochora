@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Test;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.junit.jupiter.api.Tag;
 
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;

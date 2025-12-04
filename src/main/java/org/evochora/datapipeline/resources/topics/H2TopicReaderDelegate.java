@@ -3,7 +3,6 @@ package org.evochora.datapipeline.resources.topics;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.utils.H2SchemaUtil;

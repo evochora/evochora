@@ -1,0 +1,25 @@
+name: Discord Discussion Notification
+
+on:
+  discussion:
+    types: [created, edited]
+
+jobs:
+  discord_notification:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Discord Notification
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          TITLE: ${{ github.event.discussion.title }}
+          URL: ${{ github.event.discussion.html_url }}
+          AUTHOR: ${{ github.event.discussion.user.login }}
+          CATEGORY: ${{ github.event.discussion.category.name }}
+        run: |
+          jq -n \
+            --arg category "$CATEGORY" \
+            --arg title "$TITLE" \
+            --arg author "$AUTHOR" \
+            --arg url "$URL" \
+            '{ "content": "📢 **New Discussion** in \($category)\n\n**\($title)**\nby \($author)\n\n\($url)" }' |
+          curl -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK"

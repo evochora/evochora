@@ -5,7 +5,6 @@ package org.evochora.compiler.isa;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.InstructionSignature;
 
-import java.util.List;
 import java.util.Optional;
 
 /**

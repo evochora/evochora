@@ -1,14 +1,13 @@
 package org.evochora.runtime.testing;
 
-import org.evochora.runtime.Simulation;
-import org.evochora.runtime.VirtualMachine;
-import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.model.Molecule;
-import org.evochora.runtime.model.Organism;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+
+import org.evochora.runtime.Simulation;
+import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.Organism;
 
 /**
  * Helper class to track instruction execution and register states during test execution.
@@ -34,7 +33,6 @@ import java.util.List;
 public class ExecutionTracker {
     private final Simulation sim;
     private final Organism org;
-    private final VirtualMachine vm;
     private final List<TickSnapshot> snapshots = new ArrayList<>();
 
     private static class TickSnapshot {
@@ -84,7 +82,6 @@ public class ExecutionTracker {
     public ExecutionTracker(Simulation sim, Organism org) {
         this.sim = sim;
         this.org = org;
-        this.vm = sim.getVirtualMachine();
     }
 
     /**

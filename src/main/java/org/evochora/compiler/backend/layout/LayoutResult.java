@@ -3,7 +3,6 @@ package org.evochora.compiler.backend.layout;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.SourceInfo;
 
-import java.util.List;
 import java.util.Map;
 
 /**

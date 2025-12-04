@@ -1,6 +1,5 @@
 package org.evochora.datapipeline.resources.topics;
 
-import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.topics.ISimulationRunAwareTopic;

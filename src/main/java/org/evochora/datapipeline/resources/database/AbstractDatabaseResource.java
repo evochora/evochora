@@ -33,7 +33,7 @@ import com.typesafe.config.Config;
  * then calls {@link #closeConnectionPool()} which subclasses must implement.
  */
 public abstract class AbstractDatabaseResource extends AbstractResource
-        implements IMetadataWriter, IContextualResource, AutoCloseable, ISchemaAwareDatabase {
+        implements IMetadataWriter, IContextualResource, ISchemaAwareDatabase {
 
     private static final Logger log = LoggerFactory.getLogger(AbstractDatabaseResource.class);
 

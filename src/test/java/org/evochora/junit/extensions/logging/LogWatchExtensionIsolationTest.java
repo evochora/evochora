@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory;
 
 import static org.evochora.junit.extensions.logging.LogLevel.ERROR;
 import static org.evochora.junit.extensions.logging.LogLevel.WARN;
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests the isolation between tests for LogWatchExtension.

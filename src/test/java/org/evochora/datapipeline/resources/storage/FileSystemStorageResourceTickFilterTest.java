@@ -4,7 +4,6 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
-import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;

@@ -181,7 +181,6 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
 
                 // Handle constant substitution
                 if (argumentNode instanceof IdentifierNode idNode) {
-                    String identifierText = idNode.identifierToken().text();
                     Optional<Symbol> symbolOpt = symbolTable.resolve(idNode.identifierToken());
                     
                     if (symbolOpt.isPresent()) {

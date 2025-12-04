@@ -1,30 +1,37 @@
 package org.evochora.datapipeline.services.indexers;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+
+import java.util.List;
+import java.util.Map;
+
+import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.CellState;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter;
-import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareEnvironmentDataWriter;
+import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader;
 import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.mockito.ArgumentCaptor;
 
-import java.util.List;
-import java.util.Map;
-
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Unit tests for EnvironmentIndexer using mocked dependencies.
@@ -37,7 +44,7 @@ class EnvironmentIndexerTest {
     
     private IResourceSchemaAwareEnvironmentDataWriter mockDatabase;
     private IResourceBatchStorageRead mockStorage;
-    private IResourceTopicReader mockTopic;
+    private IResourceTopicReader<BatchInfo, Object> mockTopic;
     private IResourceSchemaAwareMetadataReader mockMetadata;
     private Config config;
     private Map<String, List<IResource>> resources;
@@ -48,7 +55,9 @@ class EnvironmentIndexerTest {
         // This simulates production where wrappers implement IResource via AbstractResource
         mockDatabase = mock(IResourceSchemaAwareEnvironmentDataWriter.class);
         mockStorage = mock(IResourceBatchStorageRead.class);
-        mockTopic = mock(IResourceTopicReader.class);
+        @SuppressWarnings("unchecked")
+        IResourceTopicReader<BatchInfo, Object> topicMock = mock(IResourceTopicReader.class);
+        mockTopic = topicMock;
         mockMetadata = mock(IResourceSchemaAwareMetadataReader.class);
 
         config = ConfigFactory.parseString("""
@@ -70,7 +79,7 @@ class EnvironmentIndexerTest {
     @Test
     void testConstructor_GetsDatabaseResource() {
         // When: Create indexer
-        EnvironmentIndexer<Object> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
+        EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
         
         // Then: Should succeed (no exception)
         assertThat(indexer).isNotNull();
@@ -79,7 +88,7 @@ class EnvironmentIndexerTest {
     @Test
     void testGetMetadata_NotLoadedYet() {
         // Given: Indexer with metadata component but metadata not yet loaded
-        EnvironmentIndexer<Object> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
+        EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
         
         // When/Then: Calling getMetadata before loadMetadata should throw IllegalStateException
         assertThatThrownBy(() -> indexer.getMetadata())
@@ -90,7 +99,7 @@ class EnvironmentIndexerTest {
     @Test
     void testFlushTicks_EmptyList() throws Exception {
         // Given: Indexer with empty tick list
-        EnvironmentIndexer<Object> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
+        EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
         
         // When: Flush empty list
         indexer.flushTicks(List.of());
@@ -102,7 +111,7 @@ class EnvironmentIndexerTest {
     @Test
     void testFlushTicks_CallsDatabase() throws Exception {
         // Given: Indexer with ticks
-        EnvironmentIndexer<Object> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
+        EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
         
         // Set envProps manually (normally set by prepareTables)
         java.lang.reflect.Field envPropsField = EnvironmentIndexer.class.getDeclaredField("envProps");
@@ -123,7 +132,8 @@ class EnvironmentIndexerTest {
         indexer.flushTicks(List.of(tick));
         
         // Then: Should call database.writeEnvironmentCells
-        ArgumentCaptor<List<TickData>> ticksCaptor = ArgumentCaptor.forClass(List.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<TickData>> ticksCaptor = (ArgumentCaptor<List<TickData>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(List.class);
         ArgumentCaptor<EnvironmentProperties> envPropsCaptor = ArgumentCaptor.forClass(EnvironmentProperties.class);
         verify(mockDatabase).writeEnvironmentCells(ticksCaptor.capture(), envPropsCaptor.capture());
         
@@ -147,7 +157,7 @@ class EnvironmentIndexerTest {
             .build();
         
         // When: Extract environment properties (via reflection to test private method)
-        EnvironmentIndexer<Object> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
+        EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
         java.lang.reflect.Method extractMethod = EnvironmentIndexer.class.getDeclaredMethod(
             "extractEnvironmentProperties", SimulationMetadata.class);
         extractMethod.setAccessible(true);
@@ -213,7 +223,7 @@ class EnvironmentIndexerTest {
     @Test
     void testFlushTicks_MultipleTicks() throws Exception {
         // Given: Indexer with multiple ticks
-        EnvironmentIndexer<Object> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
+        EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
         
         // Set envProps manually (normally set by prepareSchema)
         java.lang.reflect.Field envPropsField = EnvironmentIndexer.class.getDeclaredField("envProps");
@@ -243,7 +253,8 @@ class EnvironmentIndexerTest {
         indexer.flushTicks(List.of(tick1, tick2, tick3));
         
         // Then: Should call database.writeEnvironmentCells ONCE with all 3 ticks
-        ArgumentCaptor<List<TickData>> ticksCaptor = ArgumentCaptor.forClass(List.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<TickData>> ticksCaptor = (ArgumentCaptor<List<TickData>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(List.class);
         verify(mockDatabase, times(1)).writeEnvironmentCells(ticksCaptor.capture(), any(EnvironmentProperties.class));
         
         // Verify all ticks passed in one call
@@ -256,7 +267,7 @@ class EnvironmentIndexerTest {
     @Test
     void testFlushTicks_EmptyTicks() throws Exception {
         // Given: Indexer with tick containing NO cells
-        EnvironmentIndexer<Object> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
+        EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
         
         // Set envProps manually
         java.lang.reflect.Field envPropsField = EnvironmentIndexer.class.getDeclaredField("envProps");
@@ -278,7 +289,7 @@ class EnvironmentIndexerTest {
     @Test
     void testFlushTicks_MixedEmptyAndNonEmpty() throws Exception {
         // Given: Indexer with mix of empty and non-empty ticks
-        EnvironmentIndexer<Object> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
+        EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
         
         // Set envProps manually
         java.lang.reflect.Field envPropsField = EnvironmentIndexer.class.getDeclaredField("envProps");
@@ -301,7 +312,8 @@ class EnvironmentIndexerTest {
         indexer.flushTicks(List.of(tick1, tick2, tick3, tick4));
         
         // Then: Should call database ONCE with all 4 ticks (including empty ones)
-        ArgumentCaptor<List<TickData>> ticksCaptor = ArgumentCaptor.forClass(List.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<TickData>> ticksCaptor = (ArgumentCaptor<List<TickData>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(List.class);
         verify(mockDatabase, times(1)).writeEnvironmentCells(ticksCaptor.capture(), any(EnvironmentProperties.class));
         
         // Verify all ticks passed (database layer will filter empty ones)

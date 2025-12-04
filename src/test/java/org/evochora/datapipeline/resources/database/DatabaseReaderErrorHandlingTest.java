@@ -5,7 +5,6 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
-import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.junit.jupiter.api.AfterEach;

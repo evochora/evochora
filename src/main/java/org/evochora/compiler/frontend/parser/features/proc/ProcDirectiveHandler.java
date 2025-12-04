@@ -37,8 +37,6 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
         List<Token> parameters = new ArrayList<>();
         List<Token> refParameters = new ArrayList<>();
         List<Token> valParameters = new ArrayList<>();
-        boolean withFound = false;
-
         // Flexible loop to parse optional keywords like EXPORT, WITH, REF, and VAL
         while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
             if (context.check(TokenType.IDENTIFIER)) {
@@ -48,7 +46,6 @@ public class ProcDirectiveHandler implements IDirectiveHandler {
                     exported = true;
                 } else if ("WITH".equalsIgnoreCase(keyword)) {
                     context.advance();
-                    withFound = true;
                     // After WITH, only parameters follow until newline
                     while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
                         parameters.add(context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after WITH."));

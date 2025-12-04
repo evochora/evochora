@@ -1,21 +1,22 @@
 package org.evochora.datapipeline.services;
 
-import com.typesafe.config.Config;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.contracts.SystemContracts.DummyMessage;
-import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
+import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Instant;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
+import com.typesafe.config.Config;
 
 /**
  * A generic dummy consumer service that receives messages from an input queue with
@@ -70,29 +71,35 @@ public class DummyConsumerService<T> extends AbstractService {
         this.throughputCounter = new SlidingWindowCounter(metricsWindowSeconds);
 
         // Get required resources
-        this.inputQueue = getRequiredResource("input", IInputQueueResource.class);
+        @SuppressWarnings("unchecked")
+        IInputQueueResource<T> queue = (IInputQueueResource<T>) getRequiredResource("input", IInputQueueResource.class);
+        this.inputQueue = queue;
 
         // Get optional resources
-        this.idempotencyTracker = getOptionalResource("idempotencyTracker", IIdempotencyTracker.class)
-                .map(tracker -> {
+        @SuppressWarnings("unchecked")
+        IIdempotencyTracker<Integer> tracker = (IIdempotencyTracker<Integer>) getOptionalResource("idempotencyTracker", IIdempotencyTracker.class)
+                .map(t -> {
                     logger.info("Idempotency tracker configured for service '{}'", name);
-                    return tracker;
+                    return t;
                 })
                 .orElseGet(() -> {
                     logger.info("No idempotency tracker configured for service '{}' - duplicate detection disabled", name);
                     return null;
                 });
+        this.idempotencyTracker = tracker;
 
-        this.deadLetterQueue = getOptionalResource("dlq", IDeadLetterQueueResource.class)
-                .map(dlq -> {
-                    String dlqName = dlq.getResourceName();
+        @SuppressWarnings("unchecked")
+        IDeadLetterQueueResource<T> dlq = (IDeadLetterQueueResource<T>) getOptionalResource("dlq", IDeadLetterQueueResource.class)
+                .map(d -> {
+                    String dlqName = d.getResourceName();
                     logger.info("Dead Letter Queue configured for service '{}': {}", name, dlqName);
-                    return dlq;
+                    return d;
                 })
                 .orElseGet(() -> {
                     logger.warn("No Dead Letter Queue configured for service '{}' - failed messages will be logged only", name);
                     return null;
                 });
+        this.deadLetterQueue = dlq;
     }
 
     /**
