@@ -22,20 +22,17 @@ import org.evochora.datapipeline.api.contracts.TickData;
  * <ul>
  *   <li>{@code tick} - Simulation tick number</li>
  *   <li>{@code alive_count} - Number of living organisms</li>
- *   <li>{@code total_dead} - Cumulative death count (totalCreated - alive)</li>
  *   <li>{@code avg_energy} - Average energy per organism</li>
  * </ul>
  * <p>
  * <strong>Note:</strong> 'Dead count per tick' is not tracked because TickData only contains
- * living organisms. To track deaths per tick, we would need stateful tracking across batches,
- * which is complex with sampling. Thus, we use the cumulative total_dead metric.
+ * living organisms. To track deaths per tick, we would need stateful tracking across batches.
  */
 public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
 
     private static final ParquetSchema SCHEMA = ParquetSchema.builder()
         .column("tick", ColumnType.BIGINT)
         .column("alive_count", ColumnType.INTEGER)
-        .column("total_dead", ColumnType.BIGINT)
         .column("avg_energy", ColumnType.DOUBLE)
         .build();
 
@@ -55,10 +52,6 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
             totalEnergy += org.getEnergy();
         }
         
-        // Calculate total dead based on monotonic counter
-        long totalCreated = tick.getTotalOrganismsCreated();
-        long totalDead = totalCreated - alive;
-        
         // Calculate average energy
         double avgEnergy = alive > 0 ? (double) totalEnergy / alive : 0.0;
         
@@ -66,7 +59,6 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
         return Collections.singletonList(new Object[] {
             tick.getTickNumber(),   // tick (BIGINT)
             alive,                   // alive_count (INTEGER)
-            totalDead,               // total_dead (BIGINT)
             avgEnergy                // avg_energy (DOUBLE)
         });
     }
@@ -89,7 +81,7 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
         entry.visualization.type = "line-chart";
         entry.visualization.config = new HashMap<>();
         entry.visualization.config.put("x", "tick");
-        entry.visualization.config.put("y", List.of("alive_count", "total_dead"));
+        entry.visualization.config.put("y", List.of("alive_count"));
         entry.visualization.config.put("y2", List.of("avg_energy")); // Second axis
 
         return entry;

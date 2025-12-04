@@ -1,8 +1,12 @@
 package org.evochora.datapipeline.api.analytics;
 
+import java.util.Collections;
 import java.util.List;
 
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
 
 import com.typesafe.config.Config;
 
@@ -36,7 +40,7 @@ import com.typesafe.config.Config;
  * <p>
  * Instances are created per-service, so they do NOT need to be thread-safe.
  */
-public interface IAnalyticsPlugin {
+public interface IAnalyticsPlugin extends IMemoryEstimatable {
     
     /**
      * Configure the plugin from HOCON.
@@ -172,4 +176,21 @@ public interface IAnalyticsPlugin {
      * @return Number of LOD levels (default: 1)
      */
     int getLodLevels();
+
+    /**
+     * Estimates the worst-case heap memory usage for this plugin's internal state.
+     * <p>
+     * The default implementation returns an empty list, assuming no significant
+     * internal state. Stateful plugins (e.g., those tracking lineage or history)
+     * MUST override this method to provide an accurate estimate based on the
+     * provided simulation parameters.
+     *
+     * @param params Parameters of the simulation (e.g., max organisms, world size).
+     * @return A list of memory estimates for different components of the plugin's state.
+     *         Returns an empty list by default if the plugin is stateless.
+     */
+    @Override
+    default List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
+        return Collections.emptyList();
+    }
 }

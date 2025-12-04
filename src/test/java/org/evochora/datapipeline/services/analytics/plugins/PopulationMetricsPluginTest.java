@@ -40,7 +40,7 @@ class PopulationMetricsPluginTest {
         ParquetSchema schema = plugin.getSchema();
         
         assertThat(schema).isNotNull();
-        assertThat(schema.getColumnCount()).isEqualTo(4);
+        assertThat(schema.getColumnCount()).isEqualTo(3);
         
         List<ParquetSchema.Column> columns = schema.getColumns();
         assertThat(columns.get(0).name()).isEqualTo("tick");
@@ -49,11 +49,8 @@ class PopulationMetricsPluginTest {
         assertThat(columns.get(1).name()).isEqualTo("alive_count");
         assertThat(columns.get(1).type()).isEqualTo(ColumnType.INTEGER);
         
-        assertThat(columns.get(2).name()).isEqualTo("total_dead");
-        assertThat(columns.get(2).type()).isEqualTo(ColumnType.BIGINT);
-        
-        assertThat(columns.get(3).name()).isEqualTo("avg_energy");
-        assertThat(columns.get(3).type()).isEqualTo(ColumnType.DOUBLE);
+        assertThat(columns.get(2).name()).isEqualTo("avg_energy");
+        assertThat(columns.get(2).type()).isEqualTo(ColumnType.DOUBLE);
     }
 
     @Test
@@ -68,8 +65,7 @@ class PopulationMetricsPluginTest {
         
         assertThat(row[0]).isEqualTo(100L);  // tick
         assertThat(row[1]).isEqualTo(2);     // alive_count
-        assertThat(row[2]).isEqualTo(8L);    // total_dead (10 - 2)
-        assertThat(row[3]).isEqualTo(500.0); // avg_energy
+        assertThat(row[2]).isEqualTo(500.0); // avg_energy
     }
 
     @Test
@@ -84,8 +80,7 @@ class PopulationMetricsPluginTest {
         
         assertThat(row[0]).isEqualTo(50L);  // tick
         assertThat(row[1]).isEqualTo(0);    // alive_count
-        assertThat(row[2]).isEqualTo(5L);   // total_dead (all dead)
-        assertThat(row[3]).isEqualTo(0.0);  // avg_energy (no organisms)
+        assertThat(row[2]).isEqualTo(0.0);  // avg_energy (no organisms)
     }
     
     @Test
@@ -102,7 +97,7 @@ class PopulationMetricsPluginTest {
         List<Object[]> rows = plugin.extractRows(builder.build());
         
         assertThat(rows).hasSize(1);
-        assertThat(rows.get(0)[3]).isEqualTo(200.0); // (100+200+300)/3
+        assertThat(rows.get(0)[2]).isEqualTo(200.0); // (100+200+300)/3
     }
     
     @Test
@@ -120,6 +115,11 @@ class PopulationMetricsPluginTest {
         // Visualization hints
         assertThat(entry.visualization.type).isEqualTo("line-chart");
         assertThat(entry.visualization.config.get("x")).isEqualTo("tick");
+        
+        // Suppress warning: a well-defined manifest will always have a List<String> here.
+        @SuppressWarnings("unchecked")
+        List<String> yAxis = (List<String>) entry.visualization.config.get("y");
+        assertThat(yAxis).containsExactly("alive_count");
     }
 
     @Test

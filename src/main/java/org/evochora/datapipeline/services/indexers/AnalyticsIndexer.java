@@ -536,30 +536,31 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
         long bytesPerTick = params.estimateBytesPerTick();
-        long totalBytes = (long) insertBatchSize * bytesPerTick;
         
-        // TickData wrapper overhead
-        long wrapperOverhead = (long) insertBatchSize * 200;
-        totalBytes += wrapperOverhead;
+        List<MemoryEstimate> estimates = new ArrayList<>();
         
-        // Plugin internal state (~1MB per plugin)
-        long pluginOverhead = (long) plugins.size() * 1024 * 1024;
-        totalBytes += pluginOverhead;
+        // Base estimate for DuckDB processing and TickData buffering
+        long baseBytes = (long) insertBatchSize * bytesPerTick;
+        long wrapperOverhead = (long) insertBatchSize * 200; // TickData wrapper overhead
+        long duckDbOverhead = 10 * 1024 * 1024; // DuckDB in-memory overhead
+        long totalBaseBytes = baseBytes + wrapperOverhead + duckDbOverhead;
         
-        // DuckDB in-memory overhead (~10MB per batch processing)
-        long duckDbOverhead = 10 * 1024 * 1024;
-        totalBytes += duckDbOverhead;
-        
-        String explanation = String.format("%d insertBatchSize × %s/tick + %d plugins + DuckDB overhead",
+        String baseExplanation = String.format("%d insertBatchSize × %s/tick + DuckDB overhead",
             insertBatchSize,
-            SimulationParameters.formatBytes(bytesPerTick),
-            plugins.size());
-        
-        return List.of(new MemoryEstimate(
+            SimulationParameters.formatBytes(bytesPerTick));
+            
+        estimates.add(new MemoryEstimate(
             serviceName,
-            totalBytes,
-            explanation,
+            totalBaseBytes,
+            baseExplanation,
             MemoryEstimate.Category.SERVICE_BATCH
         ));
+
+        // Add estimates from each plugin
+        for (IAnalyticsPlugin plugin : plugins) {
+            estimates.addAll(plugin.estimateWorstCaseMemory(params));
+        }
+        
+        return estimates;
     }
 }

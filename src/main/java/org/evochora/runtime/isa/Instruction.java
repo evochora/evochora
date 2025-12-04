@@ -2,17 +2,32 @@
 
 package org.evochora.runtime.isa;
 
+import java.lang.reflect.Constructor;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.BiFunction;
+
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
-import org.evochora.runtime.isa.instructions.*;
+import org.evochora.runtime.isa.instructions.ArithmeticInstruction;
+import org.evochora.runtime.isa.instructions.BitwiseInstruction;
+import org.evochora.runtime.isa.instructions.ConditionalInstruction;
+import org.evochora.runtime.isa.instructions.ControlFlowInstruction;
+import org.evochora.runtime.isa.instructions.DataInstruction;
+import org.evochora.runtime.isa.instructions.EnvironmentInteractionInstruction;
+import org.evochora.runtime.isa.instructions.LocationInstruction;
+import org.evochora.runtime.isa.instructions.NopInstruction;
+import org.evochora.runtime.isa.instructions.StackInstruction;
+import org.evochora.runtime.isa.instructions.StateInstruction;
+import org.evochora.runtime.isa.instructions.VectorInstruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-
-import java.lang.reflect.Constructor;
-import java.util.*;
-import java.util.function.BiFunction;
 
 /**
  * The abstract base class for all instructions in the Evochora VM.
@@ -20,6 +35,13 @@ import java.util.function.BiFunction;
  * exclusively on runtime logic.
  */
 public abstract class Instruction {
+
+    /**
+     * A public record describing the properties of a registered instruction.
+     */
+    public record InstructionInfo(int opcodeId, String name, Class<? extends Instruction> family) {}
+
+    private static List<InstructionInfo> INSTRUCTION_INFO_CACHE = null;
 
     protected final Organism organism;
     protected final int fullOpcodeId;
@@ -44,6 +66,44 @@ public abstract class Instruction {
     private static final Map<Integer, BiFunction<Organism, Environment, Instruction>> REGISTERED_PLANNERS_BY_ID = new HashMap<>();
     protected static final Map<Integer, List<OperandSource>> OPERAND_SOURCES = new HashMap<>();
     private static final Map<Integer, InstructionSignature> SIGNATURES_BY_ID = new HashMap<>();
+
+    /**
+     * Returns a list of public information records for all registered instructions.
+     * This provides a stable, abstract way for external tools to inspect the instruction set.
+     *
+     * @return An unmodifiable list of {@link InstructionInfo} records.
+     */
+    public static List<InstructionInfo> getInstructionSetInfo() {
+        if (INSTRUCTION_INFO_CACHE == null) { // Simple lazy initialization
+            init(); // Ensure instructions are registered
+            List<InstructionInfo> info = new ArrayList<>();
+            for (Integer opcodeId : REGISTERED_INSTRUCTIONS_BY_ID.keySet()) {
+                Class<? extends Instruction> implClass = REGISTERED_INSTRUCTIONS_BY_ID.get(opcodeId);
+                String name = ID_TO_NAME.get(opcodeId);
+                
+                // Find the base "family" class (e.g., ArithmeticInstruction) by traversing up the class hierarchy.
+                Class<? extends Instruction> family = implClass;
+                while (family.getSuperclass() != Instruction.class && family.getSuperclass() != null && Instruction.class.isAssignableFrom(family.getSuperclass())) {
+                    @SuppressWarnings("unchecked")
+                    Class<? extends Instruction> superClass = (Class<? extends Instruction>) family.getSuperclass();
+                    family = superClass;
+                }
+                info.add(new InstructionInfo(opcodeId, name, family));
+            }
+            INSTRUCTION_INFO_CACHE = Collections.unmodifiableList(info);
+        }
+        return INSTRUCTION_INFO_CACHE;
+    }
+
+    /**
+     * Retrieves the implementing class for a given full opcode ID.
+     *
+     * @param opcodeId The full opcode ID of the instruction.
+     * @return The {@code Class} object representing the instruction, or {@code null} if not found.
+     */
+    public static Class<? extends Instruction> getInstructionClassById(int opcodeId) {
+        return REGISTERED_INSTRUCTIONS_BY_ID.get(opcodeId);
+    }
 
     /**
      * Base address for procedure registers.
