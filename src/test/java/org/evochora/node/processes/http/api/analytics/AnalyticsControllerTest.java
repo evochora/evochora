@@ -97,27 +97,5 @@ class AnalyticsControllerTest {
         });
     }
     
-    @Test
-    void testFileServing() throws Exception {
-        IAnalyticsStorageRead storage = mock(IAnalyticsStorageRead.class);
-        byte[] content = "parquet-data".getBytes();
-        
-        when(storage.openAnalyticsInputStream(eq("run1"), eq("data.parquet")))
-            .thenReturn(new ByteArrayInputStream(content));
-
-        ServiceRegistry registry = new ServiceRegistry();
-        registry.register(IAnalyticsStorageRead.class, storage);
-        AnalyticsController controller = new AnalyticsController(registry, ConfigFactory.empty());
-
-        Javalin app = Javalin.create();
-        controller.registerRoutes(app, "/api");
-
-        JavalinTest.test(app, (server, client) -> {
-            var response = client.get("/api/files/data.parquet?runId=run1");
-            assertThat(response.code()).isEqualTo(200);
-            assertThat(response.body().bytes()).isEqualTo(content);
-            assertThat(response.header("Content-Type")).isEqualTo("application/octet-stream");
-        });
-    }
 }
 

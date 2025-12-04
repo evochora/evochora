@@ -32,8 +32,14 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
  * <p>
  * This provides a robust visualization of age structure that scales automatically
  * with the lifespan of organisms (whether 100 or 1,000,000 ticks).
+ * <p>
+ * <strong>Bucket Aggregation:</strong> Data is aggregated into ~100 buckets using AVG()
+ * for smooth visualization regardless of total tick count.
  */
 public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
+    
+    /** Target number of buckets for aggregation (~100 points in chart) */
+    private static final int TARGET_BUCKETS = 100;
 
     private static final ParquetSchema SCHEMA = ParquetSchema.builder()
         .column("tick", ColumnType.BIGINT)
@@ -105,12 +111,41 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
         return sortedValues.get(index);
     }
 
+    /**
+     * Generates the aggregated SQL query with dynamic bucket sizing.
+     * Uses AVG() for each percentile to smooth the data over buckets.
+     *
+     * @return SQL query string with {table} placeholder
+     */
+    private String generateAggregatedQuery() {
+        return """
+            WITH
+            params AS (
+                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / %d)::BIGINT AS bucket_size
+                FROM {table}
+            )
+            SELECT
+                (FLOOR(tick / (SELECT bucket_size FROM params)) * (SELECT bucket_size FROM params))::BIGINT AS tick,
+                AVG(p0)::INTEGER AS p0,
+                AVG(p10)::INTEGER AS p10,
+                AVG(p25)::INTEGER AS p25,
+                AVG(p50)::INTEGER AS p50,
+                AVG(p75)::INTEGER AS p75,
+                AVG(p90)::INTEGER AS p90,
+                AVG(p100)::INTEGER AS p100
+            FROM {table}
+            GROUP BY 1
+            ORDER BY tick
+            """.formatted(TARGET_BUCKETS);
+    }
+
     @Override
     public ManifestEntry getManifestEntry() {
         ManifestEntry entry = new ManifestEntry();
         entry.id = metricId;
         entry.name = "Age Distribution";
-        entry.description = "Percentiles of organism age distribution.";
+        entry.description = "Percentiles of organism age distribution. "
+            + "Data is aggregated into ~" + TARGET_BUCKETS + " time buckets for smooth visualization.";
         
         entry.dataSources = new HashMap<>();
         for (int level = 0; level < lodLevels; level++) {
@@ -118,14 +153,14 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
             entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
         }
         
+        // Use aggregated query with bucketing
+        entry.generatedQuery = generateAggregatedQuery();
+        entry.outputColumns = List.of("tick", "p0", "p10", "p25", "p50", "p75", "p90", "p100");
+        
         entry.visualization = new VisualizationHint();
-        entry.visualization.type = "band-chart"; // or line-chart
+        entry.visualization.type = "band-chart";
         entry.visualization.config = new HashMap<>();
         entry.visualization.config.put("x", "tick");
-        
-        // Define bands: [min, max], [p10, p90], [p25, p75], [median]
-        // Frontend convention for band charts often uses nested series or specific config keys.
-        // Here we just list them in order.
         entry.visualization.config.put("y", List.of("p0", "p10", "p25", "p50", "p75", "p90", "p100"));
 
         return entry;

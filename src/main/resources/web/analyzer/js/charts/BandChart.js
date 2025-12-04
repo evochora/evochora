@@ -45,16 +45,18 @@ const BandChart = (function() {
         const datasets = [];
         
         // --- Create datasets for bands ---
-        // Chart.js fills between one dataset and another. We define boundaries and fill between them.
+        // Each band needs TWO datasets: lower boundary + upper boundary with fill
         
-        // Outer band: p0 to p100
         if (yKeys.length >= 7) {
-            datasets.push(createBandDataset('Min/Max', PALETTE.outerBand, data, yKeys[0], yKeys[6]));
-            datasets.push(createBandDataset('p10-p90', PALETTE.middleBand, data, yKeys[1], yKeys[5]));
-            datasets.push(createBandDataset('IQR (p25-p75)', PALETTE.innerBand, data, yKeys[2], yKeys[4]));
+            // Outer band: p0 to p100 (min/max)
+            addBandDatasets(datasets, data, yKeys[0], yKeys[6], 'Min/Max', PALETTE.outerBand);
+            // Middle band: p10 to p90
+            addBandDatasets(datasets, data, yKeys[1], yKeys[5], 'p10-p90', PALETTE.middleBand);
+            // Inner band: p25 to p75 (IQR)
+            addBandDatasets(datasets, data, yKeys[2], yKeys[4], 'IQR (p25-p75)', PALETTE.innerBand);
         }
         
-        // Median line
+        // Median line (on top)
         if (yKeys.length >= 4) {
              datasets.push({
                 label: 'Median Age',
@@ -63,7 +65,7 @@ const BandChart = (function() {
                 borderWidth: 2,
                 pointRadius: 0,
                 fill: false,
-                tension: 0.2
+                tension: 0.4 // Smooth curves
             });
         }
        
@@ -84,6 +86,8 @@ const BandChart = (function() {
                             color: '#e0e0e0',
                             font: { family: "'Courier New', monospace", size: 11 },
                             usePointStyle: true,
+                            // Filter out boundary datasets from legend
+                            filter: item => !item.text.startsWith('_')
                         }
                     },
                     tooltip: {
@@ -96,7 +100,7 @@ const BandChart = (function() {
                         callbacks: {
                             title: items => `Tick ${items[0].label}`,
                             // Hide tooltips for boundary lines
-                            filter: item => item.dataset.label !== '_boundary'
+                            filter: item => !item.dataset.label.startsWith('_')
                         }
                     }
                 },
@@ -119,28 +123,31 @@ const BandChart = (function() {
     }
     
     /**
-     * Helper to create a pair of datasets for a filled band.
-     * We need two datasets: the lower bound and the upper bound.
-     * The upper bound is filled down to the lower bound.
+     * Adds two datasets for a filled band: lower boundary + upper boundary.
+     * The upper boundary fills down to the lower boundary.
      */
-    function createBandDataset(label, color, data, lowerKey, upperKey) {
-        const lowerData = data.map(row => toNumber(row[lowerKey]));
-        const upperData = data.map(row => toNumber(row[upperKey]));
-        
-        return {
-            label: label,
-            data: upperData,
-            backgroundColor: color,
+    function addBandDatasets(datasets, data, lowerKey, upperKey, label, color) {
+        // Lower boundary (invisible, just for fill target)
+        datasets.push({
+            label: '_' + label + '_lower',
+            data: data.map(row => toNumber(row[lowerKey])),
             borderColor: 'transparent',
+            backgroundColor: 'transparent',
             pointRadius: 0,
-            fill: {
-                target: {
-                    value: lowerData.map((_, i) => lowerData[i]) // fill down to the lower bound data
-                },
-                above: color,
-            },
-            tension: 0.2
-        };
+            fill: false,
+            tension: 0.4 // Smooth curves
+        });
+        
+        // Upper boundary (fills down to previous dataset = lower boundary)
+        datasets.push({
+            label: label,
+            data: data.map(row => toNumber(row[upperKey])),
+            borderColor: 'transparent',
+            backgroundColor: color,
+            pointRadius: 0,
+            fill: '-1', // Fill to the previous dataset (the lower boundary)
+            tension: 0.4 // Smooth curves
+        });
     }
     
     function formatLabel(key) {
@@ -148,8 +155,7 @@ const BandChart = (function() {
     }
     
     function update(chart, data, config) {
-        // More complex update logic would be needed for bands,
-        // for simplicity we'll just re-render.
+        // For bands, just re-render (simpler than updating all datasets)
         if (chart) chart.destroy();
         const canvas = chart.canvas;
         return render(canvas, data, config);

@@ -77,8 +77,33 @@ const BarChart = (function() {
                         grid: { color: '#333' }
                     },
                     y: {
-                        ticks: { color: '#888' },
-                        grid: { color: '#333' }
+                        ticks: { 
+                            color: '#888',
+                            // Only show integer ticks
+                            callback: function(value) {
+                                if (Number.isInteger(value)) {
+                                    return value;
+                                }
+                                return null;
+                            }
+                        },
+                        grid: { 
+                            // Highlight zero line in white, others in dark gray
+                            color: function(context) {
+                                if (context.tick.value === 0) {
+                                    return '#ffffff';
+                                }
+                                return '#333';
+                            },
+                            lineWidth: function(context) {
+                                if (context.tick.value === 0) {
+                                    return 2;
+                                }
+                                return 1;
+                            }
+                        },
+                        // Don't force start at zero - allow negative values for mirrored charts
+                        beginAtZero: false
                     }
                 }
             }

@@ -19,9 +19,23 @@ import org.evochora.runtime.isa.Instruction.InstructionInfo;
 
 /**
  * Tracks the usage of different instruction families over time.
- * This plugin dynamically discovers instruction families from the runtime.
+ * <p>
+ * This plugin dynamically discovers instruction families from the runtime and
+ * stores raw counts per tick. The query aggregates data into ~100 buckets for
+ * visualization as a stacked bar chart with percentage normalization.
+ * <p>
+ * <strong>Design:</strong>
+ * <ul>
+ *   <li>Stateless: only extracts current tick's instruction counts</li>
+ *   <li>Dynamic: instruction families discovered at startup</li>
+ *   <li>Bucket aggregation: ~100 time buckets for readable visualization</li>
+ *   <li>Percentage mode: each bar totals 100%</li>
+ * </ul>
  */
 public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
+    
+    /** Target number of buckets for aggregation (~100 bars in chart) */
+    private static final int TARGET_BUCKETS = 100;
 
     private static final Map<Integer, String> OPCODE_TO_FAMILY_NAME = new HashMap<>();
     private static final List<String> FAMILY_NAMES;
@@ -81,21 +95,62 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
         return Collections.singletonList(row);
     }
 
+    /**
+     * Generates the aggregated SQL query with dynamic bucket sizing.
+     * <p>
+     * The query aggregates instruction counts into ~100 buckets, summing
+     * all counts per family within each bucket. Percentage normalization
+     * is done client-side by the chart component.
+     *
+     * @return SQL query string with {table} placeholder
+     */
+    private String generateAggregatedQuery() {
+        // Build column list dynamically from discovered families
+        String sumColumns = FAMILY_NAMES.stream()
+            .map(name -> "SUM(" + name + ")::BIGINT AS " + name)
+            .collect(Collectors.joining(",\n                "));
+        
+        return """
+            WITH
+            params AS (
+                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / %d)::BIGINT AS bucket_size
+                FROM {table}
+            )
+            SELECT
+                (FLOOR(tick / (SELECT bucket_size FROM params)) * (SELECT bucket_size FROM params))::BIGINT AS tick,
+                %s
+            FROM {table}
+            GROUP BY 1
+            ORDER BY tick
+            """.formatted(TARGET_BUCKETS, sumColumns);
+    }
+
     @Override
     public ManifestEntry getManifestEntry() {
         ManifestEntry entry = new ManifestEntry();
         entry.id = metricId;
         entry.name = "Instruction Usage";
-        entry.description = "Distribution of executed instruction families per tick.";
+        entry.description = "Distribution of executed instruction families over time. "
+            + "Data is aggregated into ~" + TARGET_BUCKETS + " time buckets. "
+            + "Each bar shows the percentage breakdown of instruction types.";
 
         entry.dataSources = new HashMap<>();
         for (int level = 0; level < lodLevels; level++) {
             String lodName = lodLevelName(level);
             entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
         }
+        
+        // Use aggregated query with bucketing
+        entry.generatedQuery = generateAggregatedQuery();
+        
+        // Output columns: tick + all family names
+        List<String> outputCols = new java.util.ArrayList<>();
+        outputCols.add("tick");
+        outputCols.addAll(FAMILY_NAMES);
+        entry.outputColumns = outputCols;
 
         entry.visualization = new VisualizationHint();
-        entry.visualization.type = "stacked-area-chart";
+        entry.visualization.type = "stacked-bar-chart";
         entry.visualization.config = new HashMap<>();
         entry.visualization.config.put("x", "tick");
         entry.visualization.config.put("y", FAMILY_NAMES);

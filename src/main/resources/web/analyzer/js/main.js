@@ -15,7 +15,7 @@
     }
     
     function initApp() {
-        console.log('[Analytics] Starting Evochora Analytics Dashboard...');
+        console.debug('[Analytics] Starting Evochora Analytics Dashboard...');
         
         // Setup error bar close button
         const closeErrorBtn = document.getElementById('close-error-banner');

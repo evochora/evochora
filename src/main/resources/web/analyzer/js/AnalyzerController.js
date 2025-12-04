@@ -4,13 +4,24 @@
  * Main application controller. Coordinates between API and UI components.
  * Handles data loading and chart updates.
  * 
- * Uses server-side data aggregation with automatic LOD selection.
+ * Uses client-side DuckDB WASM for flexible local queries on merged Parquet files.
+ * The server only merges Parquet files; all SQL transformations happen in the browser.
  * 
  * @module AnalyzerController
  */
 
 const AnalyzerController = (function() {
     'use strict';
+    
+    // Preferred display order for metrics (metrics not in list appear at the end)
+    const METRIC_ORDER = [
+        'population',           // 1. Population Overview
+        'vital_stats',          // 2. Birth & Death Rates
+        'generation_depth',     // 3. Generation Depth
+        'age_distribution',     // 4. Age Distribution
+        'instruction_usage',    // 5. Instruction Usage
+        'environment_composition' // 6. Environment Composition
+    ];
     
     // State
     let currentRunId = null;
@@ -21,7 +32,7 @@ const AnalyzerController = (function() {
      * Initializes the controller and UI components.
      */
     async function init() {
-        console.log('[AnalyzerController] Initializing...');
+        console.debug('[AnalyzerController] Initializing...');
         
         // Initialize UI components
         HeaderView.init({
@@ -38,7 +49,7 @@ const AnalyzerController = (function() {
         // Load available runs
         await loadRuns();
         
-        console.log('[AnalyzerController] Initialized');
+        console.debug('[AnalyzerController] Initialized');
     }
     
     /**
@@ -55,7 +66,10 @@ const AnalyzerController = (function() {
             if (runs.length > 0 && !currentRunId) {
                 const firstRun = runs[0];
                 currentRunId = firstRun.runId;
+                HeaderView.setRuns(runs, currentRunId); // Ensure dropdown is updated
                 await loadDashboard(currentRunId);
+            } else if (runs.length > 0) {
+                HeaderView.setRuns(runs, currentRunId);
             }
             
         } catch (error) {
@@ -70,7 +84,7 @@ const AnalyzerController = (function() {
      * Handles run selection change.
      */
     async function handleRunChange(runId) {
-        if (runId === currentRunId) return;
+        if (!runId || runId === currentRunId) return;
         
         currentRunId = runId;
         await loadDashboard(runId);
@@ -108,6 +122,17 @@ const AnalyzerController = (function() {
                 return;
             }
             
+            // Sort metrics by preferred order
+            manifest.metrics.sort((a, b) => {
+                const orderA = METRIC_ORDER.indexOf(a.id);
+                const orderB = METRIC_ORDER.indexOf(b.id);
+                // Metrics not in METRIC_ORDER go to the end (alphabetically)
+                if (orderA === -1 && orderB === -1) return a.id.localeCompare(b.id);
+                if (orderA === -1) return 1;
+                if (orderB === -1) return -1;
+                return orderA - orderB;
+            });
+            
             // Create metric cards
             DashboardView.createCards(manifest.metrics);
             
@@ -132,8 +157,13 @@ const AnalyzerController = (function() {
         // Load all metrics in parallel
         const promises = Object.entries(cards).map(([metricId, card]) => {
             return loadMetricData(card).catch(error => {
+                // Extract user-friendly error message (hide technical details)
+                let message = error.message || 'Failed to load data';
+                if (message.includes('Binder Error') || message.includes('Parser Error')) {
+                    message = 'Query error - data may be incomplete';
+                }
                 console.error(`[AnalyzerController] Failed to load metric ${metricId}:`, error);
-                MetricCardView.showError(card, error.message);
+                MetricCardView.showError(card, message);
             });
         });
         
@@ -142,7 +172,7 @@ const AnalyzerController = (function() {
     
     /**
      * Loads data for a single metric card.
-     * Server handles LOD selection automatically.
+     * Uses client-side DuckDB WASM for queries on merged Parquet from server.
      * 
      * @param {Object} card - MetricCard instance
      */
@@ -154,14 +184,30 @@ const AnalyzerController = (function() {
         try {
             const startTime = performance.now();
             
-            // Query data from server (server handles Auto-LOD)
-            const data = await AnalyticsApi.queryData(currentRunId, metric.id);
+            // Check if metric has a generated query (new stateless plugins)
+            const hasGeneratedQuery = metric.generatedQuery && metric.generatedQuery.trim();
             
-            const duration = Math.round(performance.now() - startTime);
-            console.log(`[AnalyzerController] ${metric.id}: ${data.length} rows loaded in ${duration}ms`);
+            let data;
+            if (hasGeneratedQuery) {
+                // New architecture: Client-side DuckDB WASM
+                // 1. Fetch merged Parquet blob from server
+                const parquetBlob = await AnalyticsApi.fetchParquetBlob(metric.id, currentRunId);
+                
+                // 2. Query locally with DuckDB WASM using the generated SQL
+                data = await DuckDBClient.queryParquetBlob(parquetBlob, metric.generatedQuery);
+                
+                const duration = Math.round(performance.now() - startTime);
+                console.debug(`[AnalyzerController] ${metric.id}: ${data.length} rows loaded via DuckDB WASM in ${duration}ms`);
+            } else {
+                // Legacy: Server-side query (for plugins without generatedQuery)
+                data = await AnalyticsApi.queryData(currentRunId, metric.id);
+                
+                const duration = Math.round(performance.now() - startTime);
+                console.debug(`[AnalyzerController] ${metric.id}: ${data.length} rows loaded via server in ${duration}ms`);
+            }
             
             if (data.length === 0) {
-                MetricCardView.showError(card, 'No data available');
+                MetricCardView.showNoData(card);
                 return;
             }
             
@@ -169,6 +215,11 @@ const AnalyzerController = (function() {
             MetricCardView.renderChart(card, data);
             
         } catch (error) {
+            // Handle "no data yet" as a non-error state
+            if (error.code === 'NO_DATA') {
+                MetricCardView.showNoData(card);
+                return;
+            }
             console.error(`[AnalyzerController] Error loading metric ${metric.id}:`, error);
             throw error;
         }

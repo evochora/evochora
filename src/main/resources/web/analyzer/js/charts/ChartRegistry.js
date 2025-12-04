@@ -24,7 +24,7 @@ const ChartRegistry = (function() {
             console.warn(`[ChartRegistry] Overwriting existing chart type: ${typeName}`);
         }
         types[typeName] = chartModule;
-        console.log(`[ChartRegistry] Registered chart type: ${typeName}`);
+        console.debug(`[ChartRegistry] Registered chart type: ${typeName}`);
     }
     
     /**

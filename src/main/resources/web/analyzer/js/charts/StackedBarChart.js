@@ -1,13 +1,15 @@
 /**
- * Stacked Area Chart Implementation
+ * Stacked Bar Chart Implementation
  * 
- * Renders time-series data as stacked area charts using Chart.js.
- * This is useful for showing how part-to-whole relationships change over time.
+ * Renders categorical data as stacked bar charts using Chart.js.
+ * This is useful for showing part-to-whole relationships at discrete time points.
  * 
- * @module StackedAreaChart
+ * Supports percentage mode where each bar totals 100%.
+ * 
+ * @module StackedBarChart
  */
 
-const StackedAreaChart = (function() {
+const StackedBarChart = (function() {
     'use strict';
     
     // Evochora color palette
@@ -28,7 +30,7 @@ const StackedAreaChart = (function() {
     }
     
     /**
-     * Renders a stacked area chart.
+     * Renders a stacked bar chart.
      * 
      * @param {HTMLCanvasElement} canvas - Canvas element
      * @param {Array<Object>} data - Data rows (array of objects)
@@ -56,16 +58,12 @@ const StackedAreaChart = (function() {
                 return val;
             }),
             borderColor: getColor(index),
-            backgroundColor: getColor(index) + '80',
-            borderWidth: 1,
-            fill: true,
-            tension: 0.2,
-            pointRadius: 0,
-            pointHoverRadius: 5
+            backgroundColor: getColor(index) + 'cc',
+            borderWidth: 1
         }));
         
         const chartConfig = {
-            type: 'line',
+            type: 'bar',
             data: {
                 labels: labels,
                 datasets: datasets
@@ -104,7 +102,7 @@ const StackedAreaChart = (function() {
                                     label += ': ';
                                 }
                                 if (context.parsed.y !== null) {
-                                    label += context.parsed.y.toFixed(2);
+                                    label += context.parsed.y.toFixed(1);
                                     if (isPercentage) label += '%';
                                 }
                                 return label;
@@ -114,8 +112,9 @@ const StackedAreaChart = (function() {
                 },
                 scales: {
                     x: {
+                        stacked: true,
                         title: { display: true, text: formatLabel(xKey), color: '#888' },
-                        ticks: { color: '#888', maxTicksLimit: 10 },
+                        ticks: { color: '#888', maxTicksLimit: 15 },
                         grid: { color: '#333', drawBorder: false }
                     },
                     y: {
@@ -222,10 +221,10 @@ const StackedAreaChart = (function() {
 
 // Register with ChartRegistry
 if (typeof ChartRegistry !== 'undefined') {
-    ChartRegistry.register('stacked-area-chart', StackedAreaChart);
+    ChartRegistry.register('stacked-bar-chart', StackedBarChart);
 }
 
 // Export for module systems
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = StackedAreaChart;
+    module.exports = StackedBarChart;
 }

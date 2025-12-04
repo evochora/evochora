@@ -176,6 +176,40 @@ public interface IAnalyticsPlugin extends IMemoryEstimatable {
      * @return Number of LOD levels (default: 1)
      */
     int getLodLevels();
+    
+    /**
+     * Returns the query specification for query-time transformations.
+     * <p>
+     * The QuerySpec defines:
+     * <ul>
+     *   <li>Base columns (stored in Parquet)</li>
+     *   <li>Computed columns (calculated via SQL window functions)</li>
+     *   <li>Output columns (what the query returns)</li>
+     * </ul>
+     * <p>
+     * The controller uses this to generate SQL for both server-side queries
+     * and client-side DuckDB WASM.
+     * <p>
+     * Default implementation returns a passthrough spec (no transformations).
+     *
+     * @return Query specification, or null for passthrough
+     */
+    default QuerySpec getQuerySpec() {
+        return QuerySpec.passthrough(getSchema());
+    }
+    
+    /**
+     * Returns the visualization specification for the frontend.
+     * <p>
+     * Defines how the data should be rendered (chart type, axes, styling).
+     * <p>
+     * Default implementation returns a simple line chart with tick on X axis.
+     *
+     * @return Visualizer specification
+     */
+    default VisualizerSpec getVisualizerSpec() {
+        return VisualizerSpec.lineChart("tick");
+    }
 
     /**
      * Estimates the worst-case heap memory usage for this plugin's internal state.

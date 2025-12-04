@@ -34,12 +34,18 @@ jobs:
         if: runner.os != 'Windows'
         run: chmod +x gradlew
       - name: Build and run tests with Gradle
-        run: ./gradlew build --stacktrace
+        run: ./gradlew build --info --stacktrace
       - name: Publish Test Report with Annotations
         uses: mikepenz/action-junit-report@v4
         if: always()
         with:
           report_paths: '**/build/test-results/test/**/*.xml'
+      - name: Upload HTML Test Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports-${{ matrix.os }}
+          path: '**/build/reports/tests/test/'
       - name: Upload Coverage Reports Artifact
         uses: actions/upload-artifact@v4
         if: always()
