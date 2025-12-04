@@ -15,6 +15,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -63,7 +64,6 @@ import com.typesafe.config.ConfigObject;
 public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements IMemoryEstimatable {
 
     private static final Logger log = LoggerFactory.getLogger(AnalyticsIndexer.class);
-    private static final String TABLE_NAME = "metrics";
     
     /** Default hierarchy divisors: [100M, 100K] creates 000/000/ structure */
     private static final List<Long> DEFAULT_FOLDER_HIERARCHY = List.of(100_000_000L, 100_000L);
@@ -228,178 +228,148 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
 
     @Override
     protected void flushTicks(List<TickData> ticks) throws Exception {
-        if (ticks.isEmpty()) return;
-        
-        // Calculate actual min/max tick numbers (robust, doesn't assume sorted order)
+        if (ticks.isEmpty() || plugins.isEmpty()) {
+            return;
+        }
+
         long startTick = ticks.stream().mapToLong(TickData::getTickNumber).min().orElse(0);
         long endTick = ticks.stream().mapToLong(TickData::getTickNumber).max().orElse(0);
         String runId = getMetadata().getSimulationRunId();
-        
-        boolean anyIoError = false;
-        
-        for (IAnalyticsPlugin plugin : plugins) {
-            try {
-                processPluginBatch(plugin, ticks, runId, startTick, endTick);
-            } catch (RuntimeException e) {
-                // Logic error (Bug) -> Bulkhead: Log and continue other plugins
-                log.error("Plugin {} failed for batch {}-{} (skipping): {}", 
-                    plugin.getMetricId(), startTick, endTick, e.getMessage());
-                log.debug("Plugin failure details:", e);
-            } catch (IOException e) {
-                // IO Error -> Fatal for batch integrity
-                log.warn("Plugin {} IO failure: {}", plugin.getMetricId(), e.getMessage());
-                anyIoError = true;
+        String subPath = calculateFolderPath(startTick);
+        String filename = String.format("batch_%020d_%020d.parquet", startTick, endTick);
+
+        record PluginLodTask(
+            IAnalyticsPlugin plugin,
+            String metricId,
+            String lodLevel,
+            int samplingInterval,
+            PreparedStatement statement,
+            ParquetSchema schema
+        ) {}
+
+        List<PluginLodTask> tasks = new ArrayList<>();
+        Map<PluginLodTask, Integer> rowsWrittenPerTask = new HashMap<>();
+        Path tempFile = null;
+
+        try (Connection conn = DriverManager.getConnection("jdbc:duckdb:")) {
+            // 1. Setup: Create tasks and prepared statements for all plugins and LODs
+            for (IAnalyticsPlugin plugin : plugins) {
+                try {
+                    int baseSamplingInterval = plugin.getSamplingInterval();
+                    
+                    // FIX: Process each LOD level with isolated plugin state
+                    // Group ticks by LOD first to avoid calling extractRows multiple times
+                    // for overlapping sampling intervals
+                    
+                    for (int level = 0; level < plugin.getLodLevels(); level++) {
+                        String lodLevel = "lod" + level;
+                        int effectiveSamplingInterval = baseSamplingInterval * (int) Math.pow(plugin.getLodFactor(), level);
+                        
+                        ParquetSchema schema = plugin.getSchema();
+                        String tableName = plugin.getMetricId() + "_" + lodLevel;
+                        
+                        try (Statement stmt = conn.createStatement()) {
+                            stmt.execute(schema.toCreateTableSql(tableName));
+                        }
+                        
+                        PreparedStatement ps = conn.prepareStatement(schema.toInsertSql(tableName));
+                        PluginLodTask task = new PluginLodTask(plugin, plugin.getMetricId(), lodLevel, effectiveSamplingInterval, ps, schema);
+                        tasks.add(task);
+                        rowsWrittenPerTask.put(task, 0);
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to initialize plugin {} for batch {}-{}. It will be skipped.", 
+                        plugin.getMetricId(), startTick, endTick, e);
+                }
+            }
+
+            // 2. Process: Group by plugin to ensure each plugin only processes each tick ONCE
+            // Then distribute to appropriate LOD levels
+            Map<IAnalyticsPlugin, List<PluginLodTask>> tasksByPlugin = tasks.stream()
+                .collect(java.util.stream.Collectors.groupingBy(PluginLodTask::plugin));
+            
+            for (TickData tick : ticks) {
+                for (Map.Entry<IAnalyticsPlugin, List<PluginLodTask>> entry : tasksByPlugin.entrySet()) {
+                    IAnalyticsPlugin plugin = entry.getKey();
+                    List<PluginLodTask> pluginTasks = entry.getValue();
+                    
+                    // Find the finest-grained LOD that matches this tick
+                    // (lowest sampling interval = lod0)
+                    PluginLodTask finestMatchingTask = null;
+                    for (PluginLodTask task : pluginTasks) {
+                        if (tick.getTickNumber() % task.samplingInterval() == 0) {
+                            if (finestMatchingTask == null || 
+                                task.samplingInterval() < finestMatchingTask.samplingInterval()) {
+                                finestMatchingTask = task;
+                            }
+                        }
+                    }
+                    
+                    if (finestMatchingTask == null) continue;
+                    
+                    // Extract rows ONCE from the plugin
+                    try {
+                        List<Object[]> rows = plugin.extractRows(tick);
+                        
+                        // Distribute the same rows to ALL matching LOD levels
+                        for (PluginLodTask task : pluginTasks) {
+                            if (tick.getTickNumber() % task.samplingInterval() == 0) {
+                                for (Object[] row : rows) {
+                                    bindRow(task.statement(), task.schema(), row);
+                                    task.statement().addBatch();
+                                    rowsWrittenPerTask.compute(task, (k, v) -> v + 1);
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.warn("Plugin {} failed to extract rows for tick {}. Skipping row.", 
+                            plugin.getMetricId(), tick.getTickNumber());
+                        recordError("PLUGIN_EXTRACT_ERROR", "Plugin failed during row extraction", 
+                            String.format("Plugin: %s, Tick: %d", plugin.getMetricId(), tick.getTickNumber()));
+                    }
+                }
+            }
+
+            // 3. Finalize: Execute batches and export to Parquet
+            for (PluginLodTask task : tasks) {
+                try {
+                    int totalRows = rowsWrittenPerTask.get(task);
+                    if (totalRows == 0) continue;
+
+                    task.statement().executeBatch();
+                    
+                    tempFile = Files.createTempFile(tempDirectory, task.metricId() + "_" + task.lodLevel() + "_", ".parquet");
+                    String exportPath = tempFile.toAbsolutePath().toString().replace("\\", "/");
+                    String tableName = task.metricId() + "_" + task.lodLevel();
+                    String exportSql = String.format("COPY %s TO '%s' (FORMAT PARQUET, CODEC 'ZSTD')", tableName, exportPath);
+                    
+                    try (Statement stmt = conn.createStatement()) {
+                        stmt.execute(exportSql);
+                    }
+
+                    try (InputStream in = Files.newInputStream(tempFile);
+                         OutputStream out = analyticsOutput.openAnalyticsOutputStream(
+                             runId, task.metricId(), task.lodLevel(), subPath, filename)) {
+                        in.transferTo(out);
+                    }
+                    
+                    log.debug("Plugin {} wrote {} rows for {} batch {}-{} to {}/{}", 
+                        task.metricId(), totalRows, task.lodLevel(), startTick, endTick, subPath, filename);
+                    
+                    rowsWritten.addAndGet(totalRows);
+
+                } catch (Exception e) {
+                    log.error("Failed to process or write batch for plugin {} LOD {}", task.metricId(), task.lodLevel(), e);
+                    recordError("ANALYTICS_IO_ERROR", "Failed to write analytics data", 
+                        String.format("Plugin: %s, LOD: %s", task.metricId(), task.lodLevel()));
+                } finally {
+                    task.statement().close();
+                    if (tempFile != null) Files.deleteIfExists(tempFile);
+                }
             }
         }
         
         ticksProcessed.addAndGet(ticks.size());
-        
-        if (anyIoError) {
-            throw new IOException("One or more plugins failed with IO error. Failing batch.");
-        }
-    }
-    
-    /**
-     * Processes a batch of ticks for a single plugin using DuckDB.
-     * <p>
-     * Generates Parquet files for all configured LOD levels:
-     * <ul>
-     *   <li>lod0: Full resolution (samplingInterval)</li>
-     *   <li>lod1: samplingInterval * lodFactor</li>
-     *   <li>lod2: samplingInterval * lodFactor^2</li>
-     *   <li>etc.</li>
-     * </ul>
-     * <p>
-     * Flow per LOD level: Filter ticks → Create table → Insert rows → Export Parquet → Upload.
-     */
-    private void processPluginBatch(IAnalyticsPlugin plugin, List<TickData> ticks,
-                                    String runId, long startTick, long endTick) throws IOException {
-        
-        ParquetSchema schema = plugin.getSchema();
-        String metricId = plugin.getMetricId();
-        int baseSamplingInterval = plugin.getSamplingInterval();
-        int lodFactor = plugin.getLodFactor();
-        int lodLevels = plugin.getLodLevels();
-        
-        // Calculate hierarchical folder path based on startTick
-        String subPath = calculateFolderPath(startTick);
-        String filename = String.format("batch_%020d_%020d.parquet", startTick, endTick);
-        
-        // Process each LOD level
-        for (int level = 0; level < lodLevels; level++) {
-            String lodLevel = "lod" + level;
-            int effectiveSamplingInterval = baseSamplingInterval * (int) Math.pow(lodFactor, level);
-            
-            try {
-                int rowsWrittenForLevel = processPluginBatchForLod(
-                    plugin, schema, ticks, runId, metricId, 
-                    lodLevel, subPath, filename, effectiveSamplingInterval,
-                    startTick, endTick
-                );
-                
-                if (rowsWrittenForLevel > 0) {
-                    rowsWritten.addAndGet(rowsWrittenForLevel);
-                }
-            } catch (IOException e) {
-                // Re-throw IO errors (fatal for batch)
-                throw e;
-            } catch (Exception e) {
-                // Log and continue for other LOD levels (best effort)
-                log.warn("Plugin {} failed for LOD {} batch {}-{}: {}", 
-                    metricId, lodLevel, startTick, endTick, e.getMessage());
-                log.debug("LOD processing failure details:", e);
-            }
-        }
-    }
-    
-    /**
-     * Processes a batch for a single LOD level.
-     * 
-     * @return Number of rows written, or 0 if no data
-     */
-    private int processPluginBatchForLod(IAnalyticsPlugin plugin, ParquetSchema schema,
-                                          List<TickData> ticks, String runId, String metricId,
-                                          String lodLevel, String subPath, String filename,
-                                          int samplingInterval, long startTick, long endTick) 
-                                          throws IOException {
-        Path tempFile = null;
-        
-        try (Connection conn = DriverManager.getConnection("jdbc:duckdb:")) {
-            try (Statement stmt = conn.createStatement()) {
-                
-                // 1. Create table from schema
-                String createSql = schema.toCreateTableSql(TABLE_NAME);
-                stmt.execute(createSql);
-                
-                // 2. Insert rows from plugin (with sampling)
-                String insertSql = schema.toInsertSql(TABLE_NAME);
-                int totalRows = 0;
-                
-                try (PreparedStatement ps = conn.prepareStatement(insertSql)) {
-                    for (TickData tick : ticks) {
-                        // Apply sampling for this LOD level
-                        if (tick.getTickNumber() % samplingInterval != 0) {
-                            continue;
-                        }
-                        
-                        // Extract rows from plugin
-                        List<Object[]> rows = plugin.extractRows(tick);
-                        
-                        for (Object[] row : rows) {
-                            bindRow(ps, schema, row);
-                            ps.addBatch();
-                            totalRows++;
-                        }
-                    }
-                    
-                    if (totalRows > 0) {
-                        ps.executeBatch();
-                    }
-                }
-                
-                // 3. Skip if no data for this LOD level
-                if (totalRows == 0) {
-                    log.trace("Plugin {} produced no rows for {} batch {}-{}", 
-                        metricId, lodLevel, startTick, endTick);
-                    return 0;
-                }
-                
-                // 4. Export to Parquet
-                tempFile = Files.createTempFile(tempDirectory, metricId + "_" + lodLevel + "_", ".parquet");
-                String exportPath = tempFile.toAbsolutePath().toString().replace("\\", "/");
-                String exportSql = String.format(
-                    "COPY %s TO '%s' (FORMAT PARQUET, CODEC 'ZSTD')", 
-                    TABLE_NAME, exportPath
-                );
-                stmt.execute(exportSql);
-                
-                // 5. Stream to storage with hierarchical folder structure
-                try (InputStream in = Files.newInputStream(tempFile);
-                     OutputStream out = analyticsOutput.openAnalyticsOutputStream(
-                         runId, metricId, lodLevel, subPath, filename)) {
-                    in.transferTo(out);
-                }
-                
-                log.debug("Plugin {} wrote {} rows for {} batch {}-{} to {}/{}", 
-                    metricId, totalRows, lodLevel, startTick, endTick, subPath, filename);
-                
-                return totalRows;
-            }
-        } catch (Exception e) {
-            if (e instanceof IOException) {
-                throw (IOException) e;
-            }
-            throw new RuntimeException("DuckDB processing failed for plugin " + metricId + " " + lodLevel, e);
-        } finally {
-            // Cleanup temp file
-            if (tempFile != null) {
-                try {
-                    Files.deleteIfExists(tempFile);
-                } catch (IOException e) {
-                    log.debug("Failed to delete temp file: {}", tempFile);
-                }
-            }
-        }
     }
     
     /**

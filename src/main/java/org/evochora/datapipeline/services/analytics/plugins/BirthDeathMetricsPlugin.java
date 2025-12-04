@@ -55,6 +55,13 @@ public class BirthDeathMetricsPlugin extends AbstractAnalyticsPlugin {
         long currentTotalBorn = tick.getTotalOrganismsCreated();
         int currentAlive = tick.getOrganismsList().size();
         
+        // DEBUG: Temporär hinzufügen um Werte zu prüfen
+        System.out.println("[DEBUG] BirthDeathMetricsPlugin tick=" + tick.getTickNumber() 
+            + " totalBorn=" + currentTotalBorn 
+            + " alive=" + currentAlive 
+            + " lastTotalBorn=" + lastTotalBorn 
+            + " lastAliveCount=" + lastAliveCount);
+        
         int births = 0;
         int deaths = 0;
         
