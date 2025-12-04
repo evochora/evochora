@@ -17,5 +17,5 @@ jobs:
           CATEGORY: ${{ github.event.discussion.category.name }}
         run: |
           curl -H "Content-Type: application/json" \
-          -d "{\"content\": \"📢 **New Discussion** in ${CATEGORY}\n\n**${TITLE}**\nvon ${AUTHOR}\n\n${URL}\"}" \
+          -d "{\"content\": \"📢 **New Discussion** in ${CATEGORY}\n\n**${TITLE}**\nby ${AUTHOR}\n\n${URL}\"}" \
           "$DISCORD_WEBHOOK"
