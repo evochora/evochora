@@ -21,6 +21,34 @@ const DuckDBClient = (function() {
     let duckdbModule = null;
     
     /**
+     * Converts BigInt values to Numbers in an object.
+     * DuckDB WASM returns BigInt for BIGINT columns, but Chart.js can't handle them.
+     * 
+     * @param {Object} obj - Object potentially containing BigInt values
+     * @returns {Object} Object with BigInts converted to Numbers
+     */
+    function convertBigInts(obj) {
+        if (obj === null || obj === undefined) {
+            return obj;
+        }
+        if (typeof obj === 'bigint') {
+            // Safe conversion - will lose precision for values > Number.MAX_SAFE_INTEGER
+            return Number(obj);
+        }
+        if (Array.isArray(obj)) {
+            return obj.map(convertBigInts);
+        }
+        if (typeof obj === 'object') {
+            const result = {};
+            for (const [key, value] of Object.entries(obj)) {
+                result[key] = convertBigInts(value);
+            }
+            return result;
+        }
+        return obj;
+    }
+    
+    /**
      * Initializes DuckDB WASM.
      * Safe to call multiple times - will return cached instance.
      */
@@ -94,7 +122,7 @@ const DuckDBClient = (function() {
         
         console.log('[DuckDB] Query:', sql.substring(0, 200) + (sql.length > 200 ? '...' : ''));
         const result = await conn.query(sql);
-        const rows = result.toArray().map(row => row.toJSON());
+        const rows = result.toArray().map(row => convertBigInts(row.toJSON()));
         console.log(`[DuckDB] Returned ${rows.length} rows`);
         return rows;
     }
@@ -129,6 +157,35 @@ const DuckDBClient = (function() {
     }
     
     /**
+     * Registers a Parquet file blob and queries it with the provided SQL.
+     * Used for client-side DuckDB WASM queries on merged Parquet from server.
+     * 
+     * @param {Blob} parquetBlob - Parquet file as Blob
+     * @param {string} sql - SQL query with {table} placeholder
+     * @returns {Promise<Array<Object>>} Query results
+     */
+    async function queryParquetBlob(parquetBlob, sql) {
+        if (!initialized) {
+            await init();
+        }
+        
+        const fileName = 'data.parquet';
+        
+        // Register the blob as a file in DuckDB's virtual filesystem
+        await db.registerFileHandle(fileName, parquetBlob, duckdbModule.DuckDBDataProtocol.BROWSER_FILEREADER, true);
+        
+        // Replace ALL {table} placeholders with the file reference
+        const finalSql = sql.replaceAll('{table}', `'${fileName}'`);
+        
+        console.log('[DuckDB] Query blob:', finalSql.substring(0, 200) + (finalSql.length > 200 ? '...' : ''));
+        const result = await conn.query(finalSql);
+        const rows = result.toArray().map(row => convertBigInts(row.toJSON()));
+        console.log(`[DuckDB] Returned ${rows.length} rows`);
+        
+        return rows;
+    }
+    
+    /**
      * Closes the DuckDB connection and cleans up.
      */
     async function close() {
@@ -156,6 +213,7 @@ const DuckDBClient = (function() {
         init,
         query,
         queryParquetFiles,
+        queryParquetBlob,
         close,
         isInitialized
     };

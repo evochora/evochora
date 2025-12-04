@@ -33,23 +33,28 @@ class EnvironmentCompositionPluginTest {
     void testExtractRows_ExactMode_CountsProvidedCellsCorrectly() {
         TickData tick = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellState.newBuilder().setMoleculeType(Config.TYPE_CODE).setMoleculeValue(1).build()) // 1 code
-            .addCells(CellState.newBuilder().setMoleculeType(Config.TYPE_CODE).setMoleculeValue(2).build()) // 2 code
-            .addCells(CellState.newBuilder().setMoleculeType(Config.TYPE_DATA).build())   // 1 data
-            .addCells(CellState.newBuilder().setMoleculeType(Config.TYPE_ENERGY).build())  // 1 energy
-            .addCells(CellState.newBuilder().setMoleculeType(Config.TYPE_STRUCTURE).build()) // 1 structure
-            .addCells(CellState.newBuilder().setMoleculeType(Config.TYPE_CODE).setMoleculeValue(0).setOwnerId(0).build()) // 1 explicit empty
-            .build(); // Total 6 cells sent
+            .addCells(CellState.newBuilder().setMoleculeType(Config.TYPE_CODE).setMoleculeValue(1).build()) // code
+            .addCells(CellState.newBuilder().setMoleculeType(Config.TYPE_CODE).setMoleculeValue(2).build()) // code
+            .addCells(CellState.newBuilder().setMoleculeType(Config.TYPE_DATA).build())   // data
+            .addCells(CellState.newBuilder().setMoleculeType(Config.TYPE_ENERGY).build())  // energy
+            .addCells(CellState.newBuilder().setMoleculeType(Config.TYPE_STRUCTURE).build()) // structure
+            .addCells(CellState.newBuilder().setMoleculeType(Config.TYPE_CODE).setMoleculeValue(0).setOwnerId(1).build()) // CODE:0 → empty (not counted as code)
+            .addCells(CellState.newBuilder().setMoleculeType(99).build()) // unknown type
+            .build();
 
         List<Object[]> rows = plugin.extractRows(tick);
         Object[] row = rows.get(0);
 
-        assertThat(row[1]).isEqualTo(2L); // code
-        assertThat(row[2]).isEqualTo(1L); // data
-        assertThat(row[3]).isEqualTo(1L); // energy
-        assertThat(row[4]).isEqualTo(1L); // structure
-        // Without context, empty cells = only those explicitly in the list (CODE:0, Owner:0)
-        assertThat(row[5]).isEqualTo(1L); // empty
+        // Schema: tick, code, data, energy, structure, unknown, empty
+        assertThat(row[0]).isEqualTo(1L);  // tick
+        assertThat(row[1]).isEqualTo(2L);  // code (only CODE with value != 0)
+        assertThat(row[2]).isEqualTo(1L);  // data
+        assertThat(row[3]).isEqualTo(1L);  // energy
+        assertThat(row[4]).isEqualTo(1L);  // structure
+        assertThat(row[5]).isEqualTo(1L);  // unknown (type 99)
+        // empty = totalCells - (code + data + energy + structure + unknown)
+        // Without context, totalCells = 0, so empty = max(0, 0 - 6) = 0
+        assertThat(row[6]).isEqualTo(0L);  // empty
     }
 
     @Test
@@ -65,8 +70,9 @@ class EnvironmentCompositionPluginTest {
         List<Object[]> rows = plugin.extractRows(builder.build());
         Object[] row = rows.get(0);
         
-        // We can't assert the exact extrapolated values, but we can ensure it ran.
-        assertThat(row).hasSize(6);
-        assertThat(row[5]).isEqualTo(-1L); // empty cells are marked as unknown in sampling mode
+        // Schema: tick, code, data, energy, structure, unknown, empty (7 columns)
+        assertThat(row).hasSize(7);
+        // Without context (totalCells = 0), empty = max(0, 0 - sum) = 0
+        assertThat(row[6]).isEqualTo(0L);
     }
 }

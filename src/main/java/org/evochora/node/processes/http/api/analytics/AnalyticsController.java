@@ -106,8 +106,39 @@ public class AnalyticsController implements IController {
         app.get(basePath + "/list", this::listFiles);
         app.get(basePath + "/lod-info", this::getLodInfo);
         app.get(basePath + "/data", this::queryData);
+        // New endpoint for merged Parquet streaming (DuckDB WASM client-side)
+        app.get(basePath + "/parquet", this::getParquet);
         // Use wildcard path for nested file paths like population/lod0/000/000/batch.parquet
         app.get(basePath + "/files/*", this::getFile);
+    }
+    
+    /**
+     * Resolves the run ID from query parameter or falls back to latest.
+     * <p>
+     * If no runId parameter is provided, returns the most recent simulation run.
+     * This matches the behavior of the Visualizer controllers for consistency.
+     *
+     * @param ctx Javalin request context
+     * @return Resolved run ID
+     * @throws IllegalStateException if no runs are available
+     */
+    private String resolveRunId(Context ctx) {
+        String queryRunId = ctx.queryParam("runId");
+        if (queryRunId != null && !queryRunId.trim().isEmpty()) {
+            return queryRunId.trim();
+        }
+        
+        // Fall back to latest run
+        try {
+            List<String> runIds = storage.listAnalyticsRunIds();
+            if (runIds.isEmpty()) {
+                throw new IllegalStateException("No simulation runs available");
+            }
+            // runIds are sorted newest first
+            return runIds.get(0);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to find latest run ID", e);
+        }
     }
 
     /**
@@ -310,16 +341,16 @@ public class AnalyticsController implements IController {
         tags = {"analyzer / analytics"},
         queryParams = {
             @OpenApiParam(
-                name = "runId",
-                description = "Simulation run ID",
-                required = true,
-                example = "20251201-143025-550e8400-e29b-41d4-a716-446655440000"
-            ),
-            @OpenApiParam(
                 name = "metric",
                 description = "Metric identifier (e.g., 'population')",
                 required = true,
                 example = "population"
+            ),
+            @OpenApiParam(
+                name = "runId",
+                description = "Simulation run ID. Optional - defaults to latest run.",
+                required = false,
+                example = "20251201-143025-550e8400-e29b-41d4-a716-446655440000"
             ),
             @OpenApiParam(
                 name = "lod",
@@ -356,16 +387,20 @@ public class AnalyticsController implements IController {
         }
     )
     private void queryData(Context ctx) {
-        String runId = ctx.queryParam("runId");
         String metric = ctx.queryParam("metric");
         String lod = ctx.queryParam("lod");
 
-        if (runId == null || runId.isBlank()) {
-            ctx.status(400).result("Missing runId parameter");
-            return;
-        }
         if (metric == null || metric.isBlank()) {
             ctx.status(400).result("Missing metric parameter");
+            return;
+        }
+        
+        // Resolve runId (optional - defaults to latest)
+        String runId;
+        try {
+            runId = resolveRunId(ctx);
+        } catch (IllegalStateException e) {
+            ctx.status(404).result("No simulation runs available");
             return;
         }
 
@@ -425,18 +460,18 @@ public class AnalyticsController implements IController {
                 ctx.json(result);
 
             } finally {
-                // 5. Cleanup temp files
-                for (Path tempFile : tempFiles) {
-                    try {
-                        Files.deleteIfExists(tempFile);
-                    } catch (IOException e) {
-                        log.debug("Failed to delete temp file: {}", tempFile);
-                    }
-                }
-                try {
-                    Files.deleteIfExists(tempDir);
+                // 5. Cleanup temp directory recursively
+                try (var paths = Files.walk(tempDir)) {
+                    paths.sorted(java.util.Comparator.reverseOrder())
+                         .forEach(path -> {
+                             try {
+                                 Files.deleteIfExists(path);
+                             } catch (IOException e) {
+                                 log.debug("Failed to delete: {}", path);
+                             }
+                         });
                 } catch (IOException e) {
-                    log.debug("Failed to delete temp directory: {}", tempDir);
+                    log.debug("Failed to cleanup temp directory: {}", tempDir);
                 }
             }
 
@@ -537,6 +572,207 @@ public class AnalyticsController implements IController {
     }
 
     /**
+     * Streams a merged Parquet file for client-side DuckDB WASM queries.
+     * <p>
+     * Route: GET /parquet?metric=...&amp;runId=...&amp;lod=...
+     * <p>
+     * This endpoint merges all Parquet files for a metric/LOD into a single file
+     * and streams it to the client. The client can then use DuckDB WASM to run
+     * arbitrary queries locally, including the generated SQL from the manifest.
+     * <p>
+     * The response is cacheable - set appropriate Cache-Control headers.
+     *
+     * @param ctx Javalin request context
+     */
+    @OpenApi(
+        path = "parquet",
+        methods = {HttpMethod.GET},
+        summary = "Get merged Parquet file",
+        description = "Merges all Parquet files for a metric/LOD into a single file and streams it. "
+            + "Use this with client-side DuckDB WASM for flexible local queries. "
+            + "The response is cacheable.",
+        tags = {"analyzer / analytics"},
+        queryParams = {
+            @OpenApiParam(
+                name = "metric",
+                description = "Metric identifier (e.g., 'vital_stats')",
+                required = true,
+                example = "vital_stats"
+            ),
+            @OpenApiParam(
+                name = "runId",
+                description = "Simulation run ID. Optional - defaults to latest run.",
+                required = false,
+                example = "20251201-143025-550e8400-e29b-41d4-a716-446655440000"
+            ),
+            @OpenApiParam(
+                name = "lod",
+                description = "LOD level (e.g., 'lod0', 'lod1'). Default: lod0.",
+                required = false,
+                example = "lod0"
+            )
+        },
+        responses = {
+            @OpenApiResponse(
+                status = "200",
+                description = "Merged Parquet file stream",
+                content = @OpenApiContent(mimeType = "application/octet-stream")
+            ),
+            @OpenApiResponse(
+                status = "400",
+                description = "Bad request (missing metric parameter)",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "404",
+                description = "No data found for metric",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            ),
+            @OpenApiResponse(
+                status = "500",
+                description = "Failed to merge Parquet files",
+                content = @OpenApiContent(from = ErrorResponseDto.class)
+            )
+        }
+    )
+    private void getParquet(Context ctx) {
+        String metric = ctx.queryParam("metric");
+        String lod = ctx.queryParam("lod");
+        
+        if (metric == null || metric.isBlank()) {
+            ctx.status(400).result("Missing metric parameter");
+            return;
+        }
+        
+        // Resolve runId (optional - defaults to latest)
+        String runId;
+        try {
+            runId = resolveRunId(ctx);
+        } catch (IllegalStateException e) {
+            ctx.status(404).result("No simulation runs available");
+            return;
+        }
+        
+        // Default LOD
+        if (lod == null || lod.isBlank()) {
+            lod = "lod0";
+        }
+        
+        try {
+            long startTime = System.currentTimeMillis();
+            
+            // 1. List all Parquet files for this metric/LOD
+            String prefix = metric + "/" + lod + "/";
+            List<String> files = storage.listAnalyticsFiles(runId, prefix);
+            List<String> parquetFiles = files.stream()
+                .filter(f -> f.endsWith(".parquet"))
+                .toList();
+
+            if (parquetFiles.isEmpty()) {
+                ctx.status(404).result("No data found for metric: " + metric);
+                return;
+            }
+
+            // 2. Copy files from storage to temp directory
+            Path tempDir = Files.createTempDirectory("analytics-parquet-");
+            List<Path> tempFiles = new ArrayList<>();
+            Path mergedFile = null;
+            
+            try {
+                for (String file : parquetFiles) {
+                    Path tempFile = tempDir.resolve(file.replace("/", "_"));
+                    try (InputStream in = storage.openAnalyticsInputStream(runId, file);
+                         OutputStream out = Files.newOutputStream(tempFile)) {
+                        long bytesWritten = in.transferTo(out);
+                        if (bytesWritten == 0) {
+                            log.debug("Skipping empty Parquet file: {}", file);
+                            Files.deleteIfExists(tempFile);
+                            continue;
+                        }
+                    }
+                    tempFiles.add(tempFile);
+                }
+                
+                if (tempFiles.isEmpty()) {
+                    ctx.status(404).result("All Parquet files are empty for metric: " + metric);
+                    return;
+                }
+
+                // 3. Merge Parquet files using DuckDB
+                mergedFile = tempDir.resolve("merged.parquet");
+                mergeParquetFiles(tempFiles, mergedFile);
+
+                long duration = System.currentTimeMillis() - startTime;
+                log.debug("Merged {}/{}/{}: {} files into {} bytes in {}ms", 
+                    runId, metric, lod, parquetFiles.size(), Files.size(mergedFile), duration);
+
+                // 4. Read merged file to memory and send to client
+                // Note: Cannot use InputStream streaming because Javalin's ctx.result(InputStream)
+                // is asynchronous, and the finally block would delete the file before streaming completes.
+                ctx.contentType("application/octet-stream");
+                ctx.header("Content-Disposition", "attachment; filename=\"" + metric + "_" + lod + ".parquet\"");
+                ctx.header("Cache-Control", "max-age=3600"); // Cache for 1 hour
+                
+                byte[] mergedBytes = Files.readAllBytes(mergedFile);
+                ctx.header("Content-Length", String.valueOf(mergedBytes.length));
+                ctx.result(mergedBytes);
+
+            } finally {
+                // 5. Cleanup temp directory recursively
+                // Must delete files before directory, sorted in reverse order (deepest first)
+                try (var paths = Files.walk(tempDir)) {
+                    paths.sorted(java.util.Comparator.reverseOrder())
+                         .forEach(path -> {
+                             try {
+                                 Files.deleteIfExists(path);
+                             } catch (IOException e) {
+                                 log.debug("Failed to delete: {}", path);
+                             }
+                         });
+                } catch (IOException e) {
+                    log.debug("Failed to cleanup temp directory: {}", tempDir);
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("Failed to get Parquet for {}/{}/{}", metric, lod, ctx.queryParam("runId"), e);
+            ctx.status(500).result("Failed to merge Parquet files: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Merges multiple Parquet files into one using DuckDB.
+     *
+     * @param inputFiles List of input Parquet files
+     * @param outputFile Output merged Parquet file
+     * @throws Exception if merge fails
+     */
+    private void mergeParquetFiles(List<Path> inputFiles, Path outputFile) throws Exception {
+        if (!duckDbDriverLoaded) {
+            throw new IllegalStateException("DuckDB driver not available");
+        }
+
+        // Build file list for read_parquet
+        StringBuilder fileList = new StringBuilder();
+        for (int i = 0; i < inputFiles.size(); i++) {
+            if (i > 0) fileList.append(", ");
+            String path = inputFiles.get(i).toAbsolutePath().toString().replace("\\", "/");
+            fileList.append("'").append(path).append("'");
+        }
+
+        String outputPath = outputFile.toAbsolutePath().toString().replace("\\", "/");
+        String sql = String.format(
+            "COPY (SELECT * FROM read_parquet([%s]) ORDER BY tick) TO '%s' (FORMAT PARQUET, CODEC 'ZSTD')",
+            fileList, outputPath
+        );
+
+        try (Connection conn = DriverManager.getConnection("jdbc:duckdb:");
+             Statement stmt = conn.createStatement()) {
+            stmt.execute(sql);
+        }
+    }
+
+    /**
      * Lists analytics files for a simulation run.
      * <p>
      * Route: GET /list?runId=...&amp;prefix=...
@@ -630,8 +866,8 @@ public class AnalyticsController implements IController {
         queryParams = {
             @OpenApiParam(
                 name = "runId", 
-                description = "Simulation run ID", 
-                required = true,
+                description = "Simulation run ID. Optional - defaults to latest run.", 
+                required = false,
                 example = "20251201-143025-550e8400-e29b-41d4-a716-446655440000"
             )
         },
@@ -678,9 +914,12 @@ public class AnalyticsController implements IController {
         }
     )
     private void getManifest(Context ctx) {
-        String runId = ctx.queryParam("runId");
-        if (runId == null || runId.isBlank()) {
-            ctx.status(400).result("Missing runId parameter");
+        // Resolve runId (optional - defaults to latest)
+        String runId;
+        try {
+            runId = resolveRunId(ctx);
+        } catch (IllegalStateException e) {
+            ctx.status(404).result("No simulation runs available");
             return;
         }
 
