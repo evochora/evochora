@@ -276,14 +276,4 @@ protobuf {
     protoc {
         artifact = "com.google.protobuf:protoc:3.25.3"
     }
-    sourceSets {
-        main {
-            proto {
-                srcDir("src/main/proto")
-            }
-            java {
-                srcDirs("build/generated/source/proto/main/java")
-            }
-        }
-    }
 }
