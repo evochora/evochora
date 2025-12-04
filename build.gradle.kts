@@ -177,6 +177,7 @@ tasks.test {
     useJUnitPlatform {
         excludeTags("benchmark") // Exclude benchmark tests from regular test runs
     }
+    maxHeapSize = "2g" // Increase heap size for tests
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-XX:+EnableDynamicAgentLoading")
     jvmArgs("-Xshare:off")
