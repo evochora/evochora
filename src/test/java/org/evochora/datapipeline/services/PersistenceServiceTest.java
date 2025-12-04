@@ -1,7 +1,31 @@
 package org.evochora.datapipeline.services;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -24,18 +48,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-
-import static org.awaitility.Awaitility.await;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Comprehensive unit tests for PersistenceService with mocked dependencies.
@@ -177,7 +191,7 @@ class PersistenceServiceTest {
         service = new PersistenceService("test-persistence", config, resources);
         
         // Mock queue behavior - return data on first call, then throw InterruptedException to stop
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenAnswer(invocation -> {
                 List<TickData> batch = invocation.getArgument(0);
                 batch.addAll(createTestBatch("sim-123", 100, 102));
@@ -213,7 +227,7 @@ class PersistenceServiceTest {
         service = new PersistenceService("test-persistence", config, resources);
         
         // Mock queue behavior - return mixed simulationRunIds, then throw InterruptedException
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenAnswer(invocation -> {
                 List<TickData> batch = invocation.getArgument(0);
                 batch.add(createTickData("sim-123", 100));
@@ -246,7 +260,7 @@ class PersistenceServiceTest {
         service = new PersistenceService("test-persistence", config, resources);
 
         // Mock queue behavior - return batch with empty simulationRunId, then throw InterruptedException
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenAnswer(invocation -> {
                 List<TickData> batch = invocation.getArgument(0);
                 batch.add(TickData.newBuilder().setSimulationRunId("").setTickNumber(100).build());
@@ -287,7 +301,7 @@ class PersistenceServiceTest {
         service = new PersistenceService("test-persistence", config, resources);
 
         // Mock queue behavior - return batch with null simulationRunId, then throw InterruptedException
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenAnswer(invocation -> {
                 List<TickData> batch = invocation.getArgument(0);
                 // Create a TickData without setting simulationRunId (will be empty string in protobuf)
@@ -331,7 +345,7 @@ class PersistenceServiceTest {
         service = new PersistenceService("test-persistence", config, resources);
 
         // Mock queue behavior - return data, then throw InterruptedException
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenAnswer(invocation -> {
                 List<TickData> batch = invocation.getArgument(0);
                 batch.addAll(createTestBatch("sim-123", 100, 102));
@@ -375,7 +389,7 @@ class PersistenceServiceTest {
         service = new PersistenceService("test-persistence", config, resources);
         
         // Mock queue behavior - return data, then throw InterruptedException
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenAnswer(invocation -> {
                 List<TickData> batch = invocation.getArgument(0);
                 batch.addAll(createTestBatch("sim-123", 100, 102));
@@ -419,7 +433,7 @@ class PersistenceServiceTest {
         service = new PersistenceService("test-persistence", fastRetryConfig, resources);
 
         // Mock queue behavior - return data, then throw InterruptedException
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenAnswer(invocation -> {
                 List<TickData> batch = invocation.getArgument(0);
                 batch.addAll(createTestBatch("sim-123", 100, 102));
@@ -456,7 +470,7 @@ class PersistenceServiceTest {
         service = new PersistenceService("test-persistence", config, resources);
 
         // Mock queue behavior - return data, then throw InterruptedException
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenAnswer(invocation -> {
                 List<TickData> batch = invocation.getArgument(0);
                 batch.addAll(createTestBatch("sim-123", 100, 102));
@@ -485,7 +499,7 @@ class PersistenceServiceTest {
         service = new PersistenceService("test-persistence", config, resources);
         
         // Mock queue behavior - return data on first call, then throw InterruptedException
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenAnswer(invocation -> {
                 List<TickData> batch = invocation.getArgument(0);
                 batch.addAll(createTestBatch("sim-123", 100, 102));
@@ -515,7 +529,7 @@ class PersistenceServiceTest {
         service = new PersistenceService("test-persistence", config, resources);
         
         // Mock queue behavior - return data, then throw InterruptedException
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenAnswer(invocation -> {
                 List<TickData> batch = invocation.getArgument(0);
                 batch.addAll(createTestBatch("sim-123", 100, 102));
@@ -547,7 +561,7 @@ class PersistenceServiceTest {
         service = new PersistenceService("test-persistence", config, resources);
         
         // Mock queue behavior - return 0 (no data), then throw InterruptedException
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenReturn(0) // No data available
             .thenThrow(new InterruptedException("Test shutdown"));
         
@@ -556,7 +570,7 @@ class PersistenceServiceTest {
         // Wait until service processes the empty batch (drainTo called at least once)
         await().atMost(2, java.util.concurrent.TimeUnit.SECONDS)
             .untilAsserted(() -> verify(mockInputQueue, atLeastOnce())
-                .drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)));
+                .drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)));
 
         // Verify no storage operations occurred for empty batch
         verify(mockStorage, never()).writeBatch(anyList(), anyLong(), anyLong());
@@ -578,7 +592,7 @@ class PersistenceServiceTest {
         service = new PersistenceService("test-persistence", config, resources);
 
         // Mock queue behavior - return mixed simulationRunIds to trigger error, then throw InterruptedException
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenAnswer(invocation -> {
                 List<TickData> batch = invocation.getArgument(0);
                 batch.add(createTickData("sim-123", 100));
@@ -620,7 +634,7 @@ class PersistenceServiceTest {
         service = new PersistenceService("test-persistence", config, resources);
 
         // Mock queue behavior - return multiple batches with errors
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenAnswer(invocation -> {
                 List<TickData> batch = invocation.getArgument(0);
                 batch.add(TickData.newBuilder().setSimulationRunId("").setTickNumber(100).build()); // Empty ID
@@ -660,7 +674,7 @@ class PersistenceServiceTest {
         service = new PersistenceService("test-persistence", config, resources);
 
         // Mock queue behavior - return batch with empty simulationRunId
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenAnswer(invocation -> {
                 List<TickData> batch = invocation.getArgument(0);
                 batch.add(TickData.newBuilder().setSimulationRunId("").setTickNumber(100).build());
@@ -694,7 +708,7 @@ class PersistenceServiceTest {
         assertTrue(service.isHealthy());
 
         // Start service - should still be healthy (RUNNING state)
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenReturn(0)
             .thenThrow(new InterruptedException("Test shutdown"));
 
@@ -703,7 +717,7 @@ class PersistenceServiceTest {
         // Wait until service is actually running (has called drainTo at least once)
         await().atMost(2, java.util.concurrent.TimeUnit.SECONDS)
             .untilAsserted(() -> verify(mockInputQueue, atLeastOnce())
-                .drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)));
+                .drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)));
 
         // Should still be healthy during normal operation
         assertTrue(service.isHealthy());
@@ -721,7 +735,7 @@ class PersistenceServiceTest {
         service = new PersistenceService("test-persistence", config, resources);
 
         // Mock queue behavior - first return data, then return 0 (empty drain), then throw InterruptedException
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenAnswer(invocation -> {
                 List<TickData> batch = invocation.getArgument(0);
                 batch.addAll(createTestBatch("sim-123", 100, 102));
@@ -766,7 +780,7 @@ class PersistenceServiceTest {
         service = new PersistenceService("test-persistence", highRetryConfig, resources);
 
         // Mock queue behavior - return data, then throw InterruptedException
-        when(mockInputQueue.drainTo(any(List.class), anyInt(), anyLong(), any(TimeUnit.class)))
+        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
             .thenAnswer(invocation -> {
                 List<TickData> batch = invocation.getArgument(0);
                 batch.addAll(createTestBatch("sim-123", 100, 102));

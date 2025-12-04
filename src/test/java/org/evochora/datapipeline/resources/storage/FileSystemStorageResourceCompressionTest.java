@@ -1,17 +1,6 @@
 package org.evochora.datapipeline.resources.storage;
 
-import com.google.protobuf.Int32Value;
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.resources.storage.StoragePath;
-import org.evochora.junit.extensions.logging.AllowLog;
-import org.evochora.junit.extensions.logging.LogLevel;
-import org.evochora.junit.extensions.logging.LogWatchExtension;
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.api.io.TempDir;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -19,7 +8,23 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.*;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.junit.extensions.logging.AllowLog;
+import org.evochora.junit.extensions.logging.LogLevel;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
+
+import com.google.protobuf.Int32Value;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 @Tag("integration")
 @DisplayName("FileSystemStorageResource Compression Integration Tests")
@@ -359,10 +364,6 @@ class FileSystemStorageResourceCompressionTest {
                 }
                 """, tempDir.resolve("level9").toString().replace("\\", "\\\\")));
             FileSystemStorageResource storageLevel9 = new FileSystemStorageResource("level9", configLevel9);
-
-            // Determine compression extension dynamically (future-proof for gzip, lz4, etc.)
-            String ext = org.evochora.datapipeline.utils.compression.CompressionCodecFactory
-                .create(configLevel1).getFileExtension();
 
             // Arrange: 500 TickData messages (testing compression ratio with meaningful data volume)
             List<TickData> batch = new ArrayList<>();

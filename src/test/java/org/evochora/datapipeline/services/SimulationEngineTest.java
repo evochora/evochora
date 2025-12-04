@@ -1,8 +1,21 @@
 package org.evochora.datapipeline.services;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import com.typesafe.config.ConfigValueFactory;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
@@ -17,17 +30,9 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigValueFactory;
 
 /**
  * Comprehensive unit tests for SimulationEngine focusing on constructor validation,
@@ -53,8 +58,13 @@ class SimulationEngineTest {
 
     @BeforeEach
     void setUp() throws IOException {
-        mockTickDataOutput = mock(IOutputQueueResource.class);
-        mockMetadataOutput = mock(IOutputQueueResource.class);
+        @SuppressWarnings("unchecked")
+        IOutputQueueResource<TickData> tickQueue = mock(IOutputQueueResource.class);
+        mockTickDataOutput = tickQueue;
+        
+        @SuppressWarnings("unchecked")
+        IOutputQueueResource<SimulationMetadata> metadataQueue = mock(IOutputQueueResource.class);
+        mockMetadataOutput = metadataQueue;
 
         resources = new HashMap<>();
         resources.put("tickData", Collections.singletonList(mockTickDataOutput));

@@ -30,8 +30,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
@@ -44,8 +42,6 @@ import com.typesafe.config.ConfigFactory;
 @ExtendWith(LogWatchExtension.class)
 @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
 class SimulationMetadataIntegrationTest {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(SimulationMetadataIntegrationTest.class);
 
     @TempDir
     Path tempDir;
@@ -386,7 +382,6 @@ class SimulationMetadataIntegrationTest {
         // Read metadata using storage resource (same as production would)
         // readMessage() handles length-delimited protobuf format correctly
         Path storageRoot = metadataFile.getParent().getParent();
-        String simulationRunId = metadataFile.getParent().getFileName().toString();
 
         Config storageConfig = ConfigFactory.parseMap(
             Map.of("rootDirectory", storageRoot.toAbsolutePath().toString())

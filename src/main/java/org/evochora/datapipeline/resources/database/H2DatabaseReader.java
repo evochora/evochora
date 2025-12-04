@@ -124,7 +124,7 @@ public class H2DatabaseReader implements IDatabaseReader {
         }
         
         // For now, assume all dimensions have same toroidal setting
-        // TODO: Support per-dimension toroidal settings in future
+        // Probably support per-dimension toroidal settings in future
         boolean isToroidal = envConfig.getToroidalCount() > 0 && envConfig.getToroidal(0);
         
         return new EnvironmentProperties(shape, isToroidal);

@@ -1,9 +1,27 @@
 package org.evochora.node.processes.http.api.visualizer;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import io.javalin.Javalin;
-import org.evochora.datapipeline.api.contracts.*;
+import static io.restassured.RestAssured.given;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.notNullValue;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
+import org.evochora.datapipeline.api.contracts.BatchInfo;
+import org.evochora.datapipeline.api.contracts.CellState;
+import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
@@ -13,27 +31,20 @@ import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.datapipeline.resources.topics.H2TopicResource;
 import org.evochora.datapipeline.services.indexers.EnvironmentIndexer;
-import org.evochora.node.spi.ServiceRegistry;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.evochora.node.spi.ServiceRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Instant;
-import java.util.*;
-import java.util.concurrent.TimeUnit;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
-import static io.restassured.RestAssured.given;
-import static org.assertj.core.api.Assertions.*;
-import static org.awaitility.Awaitility.await;
-import static org.hamcrest.Matchers.*;
+import io.javalin.Javalin;
 
 /**
  * Integration test for SimulationController.
@@ -53,7 +64,7 @@ class SimulationControllerIntegrationTest {
 
     private H2Database testDatabase;
     private FileSystemStorageResource testStorage;
-    private H2TopicResource testBatchTopic;
+    private H2TopicResource<BatchInfo> testBatchTopic;
     private EnvironmentIndexer<?> indexer;
     private Javalin app;
     private Path tempStorageDir;
@@ -90,7 +101,7 @@ class SimulationControllerIntegrationTest {
             "password = \"\"\n" +
             "claimTimeout = 300"
         );
-        testBatchTopic = new H2TopicResource("batch-topic", topicConfig);
+        testBatchTopic = new H2TopicResource<>("batch-topic", topicConfig);
     }
 
     @AfterEach
@@ -277,7 +288,7 @@ class SimulationControllerIntegrationTest {
         return createEnvironmentIndexerWithTopic(name, config, testBatchTopic);
     }
 
-    private EnvironmentIndexer<?> createEnvironmentIndexerWithTopic(String name, Config config, H2TopicResource topic) {
+    private EnvironmentIndexer<?> createEnvironmentIndexerWithTopic(String name, Config config, H2TopicResource<BatchInfo> topic) {
         // Wrap database for metadata reading
         ResourceContext dbMetaContext = new ResourceContext(
             name, "metadata", "db-meta-read", "test-db", Map.of());
@@ -349,9 +360,9 @@ class SimulationControllerIntegrationTest {
 
         // Send batch notification to topic
         ResourceContext topicWriteContext = new ResourceContext("test", "topic-port", "topic-write", "batch-topic", Map.of());
-        var topicWriterResource = testBatchTopic.getWrappedResource(topicWriteContext);
+        IResource topicResource = testBatchTopic.getWrappedResource(topicWriteContext);
         @SuppressWarnings("unchecked")
-        ITopicWriter<BatchInfo> topicWriter = (ITopicWriter<BatchInfo>) topicWriterResource;
+        ITopicWriter<BatchInfo> topicWriter = (ITopicWriter<BatchInfo>) topicResource;
         
         topicWriter.setSimulationRun(runId);
 

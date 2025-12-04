@@ -156,9 +156,10 @@ class EnvironmentControllerUnitTest {
             
             // Create mock response structure
             var response = new Object() {
-                public final int tick = 100;
-                public final String runId = "test_run";
-                public final CellWithCoordinates[] cells = {cell1, cell2};
+                // Using generic Object, fields must be used or suppress warning
+                @SuppressWarnings("unused") public final int tick = 100;
+                @SuppressWarnings("unused") public final String runId = "test_run";
+                @SuppressWarnings("unused") public final CellWithCoordinates[] cells = {cell1, cell2};
             };
             
             String json = objectMapper.writeValueAsString(response);

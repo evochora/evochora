@@ -436,7 +436,6 @@ class NodeTest {
      */
     @SuppressWarnings("unused") // Used via reflection in tests
     private static class FailingStopProcess implements IProcess {
-        @SuppressWarnings("unused")
         private boolean started = false;
 
         /**

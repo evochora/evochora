@@ -1,10 +1,12 @@
 package org.evochora.cli.config;
 
-import ch.qos.logback.classic.LoggerContext;
-import ch.qos.logback.core.Appender;
-import ch.qos.logback.core.ConsoleAppender;
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -12,15 +14,18 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.junit.jupiter.api.Assertions.*;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.core.Appender;
+import ch.qos.logback.core.ConsoleAppender;
 
 /**
  * Tests for the LoggingConfigurator class.
  */
 @Tag("unit")
 class LoggingConfiguratorTest {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(LoggingConfiguratorTest.class);
 
     @BeforeEach
     void setUp() {
@@ -56,7 +61,7 @@ class LoggingConfiguratorTest {
         // Debug: Print all appenders
         final java.util.Iterator<Appender<ch.qos.logback.classic.spi.ILoggingEvent>> iterator = rootLogger.iteratorForAppenders();
         while (iterator.hasNext()) {
-            final Appender<?> appender = iterator.next();
+            iterator.next();
         }
         
         // Check if STDOUT_PLAIN appender exists

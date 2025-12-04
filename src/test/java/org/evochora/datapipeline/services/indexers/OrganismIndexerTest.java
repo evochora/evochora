@@ -1,6 +1,10 @@
 package org.evochora.datapipeline.services.indexers;
 
-import com.typesafe.config.ConfigFactory;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
@@ -13,10 +17,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Unit test for OrganismIndexer wiring against a real H2Database + wrapper.
@@ -34,7 +35,6 @@ class OrganismIndexerTest {
 
     private H2Database database;
     private IResourceSchemaAwareOrganismDataWriter writer;
-    private TestOrganismIndexer<?> indexer;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -55,7 +55,7 @@ class OrganismIndexerTest {
                 "topic", List.of()
         );
 
-        indexer = new TestOrganismIndexer<>("organism-indexer-test",
+        new TestOrganismIndexer<>("organism-indexer-test",
                 ConfigFactory.parseString(""), resources);
 
         // Set schema via wrapper

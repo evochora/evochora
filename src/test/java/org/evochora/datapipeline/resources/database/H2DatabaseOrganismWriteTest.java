@@ -1,7 +1,19 @@
 package org.evochora.datapipeline.resources.database;
 
-import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.contracts.*;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
+import org.evochora.datapipeline.api.contracts.OrganismRuntimeState;
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.ProcFrame;
+import org.evochora.datapipeline.api.contracts.RegisterValue;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.Config;
@@ -15,13 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Tests H2Database organism write path: schema creation, MERGE idempotency and
@@ -142,6 +148,7 @@ class H2DatabaseOrganismWriteTest {
         try {
             java.lang.reflect.Field dataSourceField = H2Database.class.getDeclaredField("dataSource");
             dataSourceField.setAccessible(true);
+            @SuppressWarnings("resource")
             com.zaxxer.hikari.HikariDataSource dataSource =
                     (com.zaxxer.hikari.HikariDataSource) dataSourceField.get(database);
 

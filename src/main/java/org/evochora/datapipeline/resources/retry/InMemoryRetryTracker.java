@@ -55,9 +55,9 @@ public class InMemoryRetryTracker extends AbstractResource implements IRetryTrac
     private final int maxKeys;
     
     // Active tracking (Option A - with active cleanup)
-    private final ConcurrentHashMap<String, AtomicInteger> retryCounts = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Long> lastRetryAt = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Boolean> movedToDlq = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, AtomicInteger> retryCounts;
+    private final ConcurrentHashMap<String, Long> lastRetryAt;
+    private final ConcurrentHashMap<String, Boolean> movedToDlq;
     
     // Metrics - zero overhead counters for monitoring
     private final AtomicLong totalRetries = new AtomicLong(0);
@@ -82,11 +82,16 @@ public class InMemoryRetryTracker extends AbstractResource implements IRetryTrac
         
         // Parse configuration
         this.maxKeys = config.getInt("maxKeys");
+        int initialCapacity = config.getInt("initialCapacity");
+        
         // Create ring buffer for FIFO eviction (Safety Net)
         this.ringBuffer = new Object[maxKeys];
         
         // Create HashMaps with configured capacity
         // Note: ConcurrentHashMap capacity is approximate (load factor applies)
+        this.retryCounts = new ConcurrentHashMap<>(initialCapacity);
+        this.lastRetryAt = new ConcurrentHashMap<>(initialCapacity);
+        this.movedToDlq = new ConcurrentHashMap<>(initialCapacity);
     }
     
     /**
@@ -98,6 +103,9 @@ public class InMemoryRetryTracker extends AbstractResource implements IRetryTrac
         super("test-retry-tracker", ConfigFactory.empty());
         this.maxKeys = maxKeys;
         this.ringBuffer = new Object[maxKeys];
+        this.retryCounts = new ConcurrentHashMap<>(maxKeys);
+        this.lastRetryAt = new ConcurrentHashMap<>(maxKeys);
+        this.movedToDlq = new ConcurrentHashMap<>(maxKeys);
     }
     
     @Override

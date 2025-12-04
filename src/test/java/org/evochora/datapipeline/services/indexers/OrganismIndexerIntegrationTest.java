@@ -1,8 +1,27 @@
 package org.evochora.datapipeline.services.indexers;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.contracts.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
+import org.evochora.datapipeline.api.contracts.BatchInfo;
+import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.ProcFrame;
+import org.evochora.datapipeline.api.contracts.RegisterValue;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
@@ -22,19 +41,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Integration test for OrganismIndexer end-to-end (without HTTP layer).
@@ -53,7 +61,7 @@ class OrganismIndexerIntegrationTest {
 
     private H2Database testDatabase;
     private FileSystemStorageResource testStorage;
-    private H2TopicResource testBatchTopic;
+    private H2TopicResource<BatchInfo> testBatchTopic;
     private OrganismIndexer<?> indexer;
     private Path tempStorageDir;
 
@@ -87,7 +95,7 @@ class OrganismIndexerIntegrationTest {
                 "password = \"\"\n" +
                 "claimTimeout = 300"
         );
-        testBatchTopic = new H2TopicResource("batch-topic", topicConfig);
+        testBatchTopic = new H2TopicResource<>("batch-topic", topicConfig);
     }
 
     @AfterEach
@@ -254,6 +262,7 @@ class OrganismIndexerIntegrationTest {
         try {
             dataSourceField = H2Database.class.getDeclaredField("dataSource");
             dataSourceField.setAccessible(true);
+            @SuppressWarnings("resource")
             com.zaxxer.hikari.HikariDataSource dataSource =
                     (com.zaxxer.hikari.HikariDataSource) dataSourceField.get(testDatabase);
             Connection conn = dataSource.getConnection();

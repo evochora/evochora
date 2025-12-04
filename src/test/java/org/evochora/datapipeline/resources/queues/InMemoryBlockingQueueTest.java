@@ -1,17 +1,11 @@
 package org.evochora.datapipeline.resources.queues;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.ResourceContext;
-import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
-import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
-import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueConsumer;
-import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueProducer;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -24,12 +18,19 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
+import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
+import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
+import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueConsumer;
+import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueProducer;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 @Tag("unit")
 public class InMemoryBlockingQueueTest {
@@ -44,10 +45,14 @@ public class InMemoryBlockingQueueTest {
         queue = new InMemoryBlockingQueue<>("test-queue", config);
 
         ResourceContext producerContext = new ResourceContext("test-service", "out", "queue-out", "test-queue", Collections.emptyMap());
-        producer = (IOutputQueueResource<String>) queue.getWrappedResource(producerContext);
+        @SuppressWarnings("unchecked")
+        IOutputQueueResource<String> prod = (IOutputQueueResource<String>) queue.getWrappedResource(producerContext);
+        producer = prod;
 
         ResourceContext consumerContext = new ResourceContext("test-service", "in", "queue-in", "test-queue", Collections.emptyMap());
-        consumer = (IInputQueueResource<String>) queue.getWrappedResource(consumerContext);
+        @SuppressWarnings("unchecked")
+        IInputQueueResource<String> cons = (IInputQueueResource<String>) queue.getWrappedResource(consumerContext);
+        consumer = cons;
     }
 
     @Test
@@ -153,6 +158,7 @@ public class InMemoryBlockingQueueTest {
     @Test
     void testOfferAll() {
         ResourceContext isolatedContext = new ResourceContext("isolated-service", "out", "queue-out", "test-queue", Collections.emptyMap());
+        @SuppressWarnings("unchecked")
         IOutputQueueResource<String> isolatedProducer = (IOutputQueueResource<String>) queue.getWrappedResource(isolatedContext);
         assertTrue(isolatedProducer instanceof MonitoredQueueProducer);
         MonitoredQueueProducer<String> monitoredProducer = (MonitoredQueueProducer<String>) isolatedProducer;

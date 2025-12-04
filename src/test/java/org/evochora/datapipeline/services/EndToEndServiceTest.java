@@ -43,7 +43,7 @@ public class EndToEndServiceTest {
         consumerResources.put("input", Collections.singletonList(queue));
         consumerResources.put("dlq", Collections.singletonList(dlq));
         consumerResources.put("idempotencyTracker", Collections.singletonList(idempotencyTracker));
-        DummyConsumerService consumer = new DummyConsumerService("test-consumer", consumerConfig, consumerResources);
+        DummyConsumerService<DummyMessage> consumer = new DummyConsumerService<>("test-consumer", consumerConfig, consumerResources);
 
         consumer.start();
         producer.start();
@@ -81,7 +81,7 @@ public class EndToEndServiceTest {
         consumerResources.put("input", Collections.singletonList(queue));
         consumerResources.put("dlq", Collections.singletonList(dlq));
         consumerResources.put("idempotencyTracker", Collections.singletonList(idempotencyTracker));
-        DummyConsumerService consumer = new DummyConsumerService("test-consumer", consumerConfig, consumerResources);
+        DummyConsumerService<DummyMessage> consumer = new DummyConsumerService<>("test-consumer", consumerConfig, consumerResources);
 
         consumer.start();
         producer.start();
