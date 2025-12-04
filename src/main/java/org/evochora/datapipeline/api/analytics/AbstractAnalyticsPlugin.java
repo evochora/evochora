@@ -60,8 +60,8 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
     /** LOD factor: each higher level samples lodFactor^level times. Default is 10. */
     protected int lodFactor = 10;
     
-    /** Number of LOD levels to generate. Default is 3 (lod0, lod1, lod2). */
-    protected int lodLevels = 3;
+    /** Number of LOD levels to generate. Default is 1 (lod0). */
+    protected int lodLevels = 1;
     
     /**
      * {@inheritDoc}

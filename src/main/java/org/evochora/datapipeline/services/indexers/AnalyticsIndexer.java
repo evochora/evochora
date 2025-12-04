@@ -548,7 +548,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         String baseExplanation = String.format("%d insertBatchSize × %s/tick + DuckDB overhead",
             insertBatchSize,
             SimulationParameters.formatBytes(bytesPerTick));
-            
+        
         estimates.add(new MemoryEstimate(
             serviceName,
             totalBaseBytes,

@@ -62,10 +62,7 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
 
     @Override
     public List<Object[]> extractRows(TickData tick) {
-        long codeCells = 0;
-        long dataCells = 0;
-        long energyCells = 0;
-        long structureCells = 0;
+        long[] counts = new long[5]; // code, data, energy, structure, explicit_empty
         long emptyCells = 0;
         long totalCells = 0;
 
@@ -76,42 +73,43 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
             }
         }
 
-        List<CellState> cellsToProcess = new java.util.ArrayList<>(tick.getCellsList());
+        // Direct access to the underlying list - NO COPYING to ArrayList
+        List<CellState> allCells = tick.getCellsList();
+        int cellsAvailable = allCells.size();
+        int processedCount = 0;
         
-        if (monteCarloSamples > 0 && cellsToProcess.size() > monteCarloSamples) {
-            // Sampling mode
-            Collections.shuffle(cellsToProcess);
-            cellsToProcess = cellsToProcess.subList(0, monteCarloSamples);
+        if (monteCarloSamples > 0 && cellsAvailable > monteCarloSamples) {
+            // Efficient sampling: Random access without copying or shuffling the huge list
+            java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
+            for (int i = 0; i < monteCarloSamples; i++) {
+                int index = random.nextInt(cellsAvailable);
+                processCell(allCells.get(index), counts);
+            }
+            processedCount = monteCarloSamples;
+            
             // In sampling mode, we cannot reliably calculate empty cells, so we report -1
             emptyCells = -1; 
         } else {
-            // Exact mode
-            emptyCells = totalCells > 0 ? totalCells - cellsToProcess.size() : 0;
-        }
-
-        for (CellState cell : cellsToProcess) {
-            // Molecule types are bitmasked integers
-            if (cell.getMoleculeType() == Config.TYPE_CODE) {
-                // CODE:0 is considered "empty" program space, not a functional molecule here
-                if (cell.getMoleculeValue() != 0 || cell.getOwnerId() != 0) {
-                     codeCells++;
-                } else {
-                    // This is an explicitly transmitted "empty" cell (owner=0, value=0)
-                    // It was counted as non-empty by the sender, so we add it to our empty count.
-                    if (monteCarloSamples == 0) emptyCells++;
-                }
-            } else if (cell.getMoleculeType() == Config.TYPE_DATA) {
-                dataCells++;
-            } else if (cell.getMoleculeType() == Config.TYPE_ENERGY) {
-                energyCells++;
-            } else if (cell.getMoleculeType() == Config.TYPE_STRUCTURE) {
-                structureCells++;
+            // Exact mode: Iterate all
+            for (CellState cell : allCells) {
+                processCell(cell, counts);
             }
+            processedCount = cellsAvailable;
+            
+            // Exact empty cells calculation (Total world size - occupied cells)
+            emptyCells = totalCells > 0 ? totalCells - cellsAvailable : 0;
+            // Add explicitly transmitted empty cells (e.g. from cleared regions)
+            emptyCells += counts[4];
         }
         
-        if (monteCarloSamples > 0) {
+        long codeCells = counts[0];
+        long dataCells = counts[1];
+        long energyCells = counts[2];
+        long structureCells = counts[3];
+
+        if (monteCarloSamples > 0 && processedCount > 0) {
             // Extrapolate counts
-            double factor = (double) tick.getCellsList().size() / cellsToProcess.size();
+            double factor = (double) cellsAvailable / processedCount;
             codeCells = (long)(codeCells * factor);
             dataCells = (long)(dataCells * factor);
             energyCells = (long)(energyCells * factor);
@@ -126,6 +124,25 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
             structureCells,
             emptyCells
         });
+    }
+
+    private void processCell(CellState cell, long[] counts) {
+        // Molecule types are bitmasked integers
+        if (cell.getMoleculeType() == Config.TYPE_CODE) {
+            // CODE:0 is considered "empty" program space, not a functional molecule here
+            if (cell.getMoleculeValue() != 0 || cell.getOwnerId() != 0) {
+                 counts[0]++; // code
+            } else {
+                // This is an explicitly transmitted "empty" cell (owner=0, value=0)
+                counts[4]++; // explicit empty
+            }
+        } else if (cell.getMoleculeType() == Config.TYPE_DATA) {
+            counts[1]++; // data
+        } else if (cell.getMoleculeType() == Config.TYPE_ENERGY) {
+            counts[2]++; // energy
+        } else if (cell.getMoleculeType() == Config.TYPE_STRUCTURE) {
+            counts[3]++; // structure
+        }
     }
 
     @Override
@@ -146,6 +163,7 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
         entry.visualization.config = new HashMap<>();
         entry.visualization.config.put("x", "tick");
         entry.visualization.config.put("y", List.of("code_cells", "data_cells", "energy_cells", "structure_cells", "empty_cells"));
+        entry.visualization.config.put("yAxisMode", "percent");
 
         return entry;
     }

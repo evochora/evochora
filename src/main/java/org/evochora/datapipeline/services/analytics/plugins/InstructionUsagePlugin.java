@@ -99,6 +99,7 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
         entry.visualization.config = new HashMap<>();
         entry.visualization.config.put("x", "tick");
         entry.visualization.config.put("y", FAMILY_NAMES);
+        entry.visualization.config.put("yAxisMode", "percent");
 
         return entry;
     }

@@ -40,12 +40,20 @@ const StackedAreaChart = (function() {
         
         const xKey = config.x || 'tick';
         const yKeys = Array.isArray(config.y) ? config.y : (config.y ? [config.y] : []);
+        const isPercentage = config.yAxisMode === 'percent';
         
         const labels = data.map(row => toNumber(row[xKey]));
         
         const datasets = yKeys.map((key, index) => ({
             label: formatLabel(key),
-            data: data.map(row => toNumber(row[key])),
+            data: data.map(row => {
+                const val = toNumber(row[key]);
+                if (isPercentage) {
+                    const sum = yKeys.reduce((acc, k) => acc + toNumber(row[k]), 0);
+                    return sum === 0 ? 0 : (val / sum) * 100;
+                }
+                return val;
+            }),
             borderColor: getColor(index),
             backgroundColor: getColor(index) + '80', // More opaque for area
             borderWidth: 1,
@@ -86,7 +94,18 @@ const StackedAreaChart = (function() {
                         borderWidth: 1,
                         padding: 12,
                         callbacks: {
-                            title: items => `Tick ${items[0].label}`
+                            title: items => `Tick ${items[0].label}`,
+                            label: context => {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    label += context.parsed.y.toFixed(2);
+                                    if (isPercentage) label += '%';
+                                }
+                                return label;
+                            }
                         }
                     }
                 },
@@ -98,8 +117,14 @@ const StackedAreaChart = (function() {
                     },
                     y: {
                         stacked: true, // Key change for stacking
+                        max: isPercentage ? 100 : undefined,
                         title: { display: false },
-                        ticks: { color: '#888' },
+                        ticks: { 
+                            color: '#888',
+                            callback: function(value) {
+                                return value + (isPercentage ? '%' : '');
+                            }
+                        },
                         grid: { color: '#333', drawBorder: false }
                     }
                 },
@@ -119,12 +144,20 @@ const StackedAreaChart = (function() {
     function update(chart, data, config) {
         const xKey = config.x || 'tick';
         const yKeys = Array.isArray(config.y) ? config.y : (config.y ? [config.y] : []);
+        const isPercentage = config.yAxisMode === 'percent';
         
         chart.data.labels = data.map(row => toNumber(row[xKey]));
         
         yKeys.forEach((key, index) => {
             if (chart.data.datasets[index]) {
-                chart.data.datasets[index].data = data.map(row => toNumber(row[key]));
+                chart.data.datasets[index].data = data.map(row => {
+                    const val = toNumber(row[key]);
+                    if (isPercentage) {
+                        const sum = yKeys.reduce((acc, k) => acc + toNumber(row[k]), 0);
+                        return sum === 0 ? 0 : (val / sum) * 100;
+                    }
+                    return val;
+                });
             }
         });
         
