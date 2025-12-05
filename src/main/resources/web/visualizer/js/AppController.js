@@ -199,8 +199,10 @@ class AppController {
                 this.sidebarBasicInfo.update(staticInfo, details.organismId, state);
                 
                 // Update instruction view with last and next instructions
-                if (details.instructions) {
-                    this.sidebarInstructionView.update(details.instructions, this.state.currentTick);
+                if (state && state.instructions) {
+                    this.sidebarInstructionView.update(state.instructions, this.state.currentTick);
+                } else {
+                    this.sidebarInstructionView.update(null, this.state.currentTick);
                 }
                 
                 // Update state view with runtime data (starts with DP, no IP/DV/ER)
@@ -537,9 +539,8 @@ class AppController {
             const ip = organism.ip || [];
             const ipStr = ip.length >= 2 ? `${ip[0]}|${ip[1]}` : '?|?';
             
-            // Format DV
-            const dv = organism.dv || [];
-            const dvStr = dv.length >= 2 ? `${dv[0]}|${dv[1]}` : '?|?';
+            // Format DV into an arrow
+            const dvArrow = ValueFormatter.formatDvAsArrow(organism.dv);
             
             // Format DPs: show all DPs, active one in brackets
             let dpStr = '';
@@ -561,8 +562,8 @@ class AppController {
                 }
             }
             
-            // Format: ID: 1     IP: x|y     DV: dx|dy DP: ...     ER: value
-            const text = `ID: ${organism.organismId} &nbsp; IP: ${ipStr} &nbsp; DV: ${dvStr} &nbsp; DP: ${dpStr} &nbsp; ER: ${energy}`;
+            // Format: ID: 1     IP: x|y→ DP: ...     ER: value
+            const text = `ID: ${organism.organismId} &nbsp; IP: ${ipStr}${dvArrow} &nbsp; DP: ${dpStr} &nbsp; ER: ${energy}`;
             optionsHtml += `<option value="${organism.organismId}" style="color: ${color} !important;">${text}</option>`;
         });
         

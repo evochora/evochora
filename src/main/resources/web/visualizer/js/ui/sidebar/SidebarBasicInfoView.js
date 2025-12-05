@@ -62,7 +62,9 @@ class SidebarBasicInfoView {
             if (state.ip && Array.isArray(state.ip) && state.ip.length >= 2) {
                 const ipX = state.ip[0];
                 const ipY = state.ip[1];
-                ipDisplay = `<span class="clickable-position" data-x="${ipX}" data-y="${ipY}">${ipX}|${ipY}</span>`;
+                const ipLink = `<span class="clickable-position" data-x="${ipX}" data-y="${ipY}">${ipX}|${ipY}</span>`;
+                const dvArrow = state.dv ? ValueFormatter.formatDvAsArrow(state.dv) : '';
+                ipDisplay = `${ipLink}${dvArrow}`;
             }
             
             // Format DPs

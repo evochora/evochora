@@ -232,9 +232,10 @@ public class StateInstruction extends Instruction {
 
         Molecule srcMol;
         if ("RBII".equals(opName)) {
-            // immediate uses DATA type
+            // immediate: decode stored value to get scalar, then wrap as DATA
             if (!(src.value() instanceof Integer)) { organism.instructionFailed("RBII requires immediate scalar mask."); return; }
-            srcMol = new Molecule(Config.TYPE_DATA, (Integer) src.value());
+            Molecule imm = org.evochora.runtime.model.Molecule.fromInt((Integer) src.value());
+            srcMol = new Molecule(Config.TYPE_DATA, imm.toScalarValue());
         } else {
             if (!(src.value() instanceof Integer)) { organism.instructionFailed("RBIR requires scalar source register."); return; }
             srcMol = org.evochora.runtime.model.Molecule.fromInt((Integer) src.value());

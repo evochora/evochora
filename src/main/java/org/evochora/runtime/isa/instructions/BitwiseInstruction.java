@@ -1,5 +1,8 @@
 package org.evochora.runtime.isa.instructions;
 
+import java.util.List;
+import java.util.NoSuchElementException;
+
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
@@ -7,9 +10,6 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-
-import java.util.List;
-import java.util.NoSuchElementException;
 
 /**
  * Handles all bitwise instructions, including standard operations like AND, OR, XOR, NOT,
@@ -91,7 +91,8 @@ public class BitwiseInstruction extends Instruction {
                 Molecule s1 = org.evochora.runtime.model.Molecule.fromInt(i1);
                 Molecule s2;
                 if (op2.rawSourceId() == -1) { // Immediate
-                    s2 = new Molecule(s1.type(), i2);
+                    Molecule imm = org.evochora.runtime.model.Molecule.fromInt(i2);
+                    s2 = new Molecule(s1.type(), imm.toScalarValue());
                 } else { // Register
                     s2 = org.evochora.runtime.model.Molecule.fromInt(i2);
                 }
@@ -150,7 +151,7 @@ public class BitwiseInstruction extends Instruction {
             Object valObj = operands.get(1).value();
             if (!(amtObj instanceof Integer) || !(valObj instanceof Integer)) { organism.instructionFailed("ROTS requires scalars."); return; }
             Molecule val = org.evochora.runtime.model.Molecule.fromInt((Integer) valObj);
-            Molecule amt = new Molecule(Config.TYPE_DATA, (Integer) amtObj);
+            Molecule amt = org.evochora.runtime.model.Molecule.fromInt((Integer) amtObj);
             int rotated = rotate(val.toScalarValue(), amt.toScalarValue());
             organism.getDataStack().push(new Molecule(val.type(), rotated).toInt());
             return;
@@ -164,8 +165,9 @@ public class BitwiseInstruction extends Instruction {
         Molecule val = org.evochora.runtime.model.Molecule.fromInt((Integer) opVal.value());
         Molecule amt;
         if (opAmt.rawSourceId() == -1) {
-            // Immediate uses signed literal
-            amt = new Molecule(Config.TYPE_DATA, (Integer) opAmt.value());
+            // Immediate: decode stored value to get scalar
+            Molecule imm = org.evochora.runtime.model.Molecule.fromInt((Integer) opAmt.value());
+            amt = new Molecule(Config.TYPE_DATA, imm.toScalarValue());
         } else {
             amt = org.evochora.runtime.model.Molecule.fromInt((Integer) opAmt.value());
         }
