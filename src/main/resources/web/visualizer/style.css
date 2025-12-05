@@ -363,7 +363,7 @@ main.container.sidebar-visible .world-container {
     min-height: 0; /* CRITICAL for allowing flex children to shrink and scroll */
     display: flex;
     flex-direction: column;
-    overflow-y: hidden; /* Prevent this container from scrolling */
+    overflow-y: auto; /* Allow scrolling for the entire details section */
 }
 
 .details [data-section] {

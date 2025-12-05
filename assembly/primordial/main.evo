@@ -13,7 +13,7 @@
 # ----------------------------
 # Constants
 # ----------------------------
-.DEFINE REPRODUCTION_CONTINUE_THRESHOLD DATA:5000
+.DEFINE REPRODUCTION_CONTINUE_THRESHOLD DATA:15000
 
 # ----------------------------
 # STRUCTURE Shell (50x31)

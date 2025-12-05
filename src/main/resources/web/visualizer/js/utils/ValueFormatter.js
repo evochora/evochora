@@ -54,4 +54,21 @@ class ValueFormatter {
         // Any other object structure is considered an error.
         throw new Error(`Unknown object structure passed to ValueFormatter: ${JSON.stringify(value)}`);
     }
+
+    /**
+     * Converts a DV vector into a Unicode arrow symbol for display.
+     * @param {number[]} dv - The direction vector, e.g., [1, 0].
+     * @returns {string} A string containing the arrow symbol ('→', '←', '↑', '↓') or 'x' for non-cardinal vectors.
+     */
+    static formatDvAsArrow(dv) {
+        if (!Array.isArray(dv) || dv.length < 2) {
+            return 'x';
+        }
+        const [dx, dy] = dv;
+        if (dx === 1 && dy === 0) return '→';
+        if (dx === -1 && dy === 0) return '←';
+        if (dx === 0 && dy === -1) return '↑';
+        if (dx === 0 && dy === 1) return '↓';
+        return 'x';
+    }
 }
