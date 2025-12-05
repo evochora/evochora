@@ -210,7 +210,7 @@ class NodeTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Error while stopping process 'failing-stop-process'.")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Error while stopping process 'failing-stop-process':.*")
     @DisplayName("Should handle process that throws exception in stop method")
     void stop_shouldHandleProcessStopException() {
         // Arrange - Config with process that throws exception in stop
@@ -229,9 +229,10 @@ class NodeTest {
 
         // Act - Should not throw exception, but log error for failing process
         testNode.stop();
+        testNode = null; // <-- HINZUFÜGEN: Verhindert zweiten stop() im @AfterEach
         
         // Assert - Node should handle the failing process gracefully
-        assertThat(testNode).isNotNull();
+        assertThat(testNode).isNull(); // <-- ANPASSEN: testNode ist jetzt null
     }
 
     @Test

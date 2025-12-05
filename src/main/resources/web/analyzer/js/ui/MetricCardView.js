@@ -14,6 +14,20 @@ import * as ChartRegistry from '../charts/ChartRegistry.js';
 let cards = {}; // Store card instances by metric ID
 
 /**
+ * Clears all card instances and destroys their charts.
+ * Should be called before creating a new set of cards.
+ */
+export function reset() {
+    for (const id of Object.keys(cards)) {
+        const card = cards[id];
+        if (card.chart && card.chart.destroy) {
+            card.chart.destroy();
+        }
+    }
+    cards = {};
+}
+
+/**
  * Creates a new metric card element.
  * 
  * @param {Object} metric - Metric manifest entry

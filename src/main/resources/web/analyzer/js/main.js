@@ -27,28 +27,28 @@ import { AppSwitcher } from '../../shared/app-switcher/AppSwitcher.js';
 /**
  * Initializes the application when the DOM is ready.
  */
-function initApp() {
-    console.debug('[Analytics] Starting Evochora Analytics Dashboard...');
-    
-    // Setup error bar close button
-    const closeErrorBtn = document.getElementById('close-error-banner');
-    if (closeErrorBtn) {
-        closeErrorBtn.addEventListener('click', () => {
-            AnalyzerController.hideError();
-        });
-    }
+    function initApp() {
+        console.debug('[Analytics] Starting Evochora Analytics Dashboard...');
+        
+        // Setup error bar close button
+        const closeErrorBtn = document.getElementById('close-error-banner');
+        if (closeErrorBtn) {
+            closeErrorBtn.addEventListener('click', () => {
+                AnalyzerController.hideError();
+            });
+        }
     
     // Initialize shared components
     initAppSwitcher();
     initFooter();
+        
+        // Initialize the main controller
+        AnalyzerController.init().catch(error => {
+            console.error('[Analytics] Initialization failed:', error);
+            AnalyzerController.showError(`Initialization failed: ${error.message}`);
+        });
+    }
     
-    // Initialize the main controller
-    AnalyzerController.init().catch(error => {
-        console.error('[Analytics] Initialization failed:', error);
-        AnalyzerController.showError(`Initialization failed: ${error.message}`);
-    });
-}
-
 /**
  * Initializes the app switcher component.
  */

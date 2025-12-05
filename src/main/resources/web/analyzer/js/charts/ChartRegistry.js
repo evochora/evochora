@@ -7,27 +7,27 @@
  * @module ChartRegistry
  */
 
-// Registered chart types
-const types = {};
-
-/**
+    // Registered chart types
+    const types = {};
+    
+    /**
  * Registers a chart class constructor.
- * 
- * @param {string} typeName - Chart type identifier (e.g. "line-chart")
+     * 
+     * @param {string} typeName - Chart type identifier (e.g. "line-chart")
  * @param {Function} chartClass - The chart class constructor.
- */
+     */
 export function register(typeName, chartClass) {
-    if (types[typeName]) {
-        console.warn(`[ChartRegistry] Overwriting existing chart type: ${typeName}`);
-    }
+        if (types[typeName]) {
+            console.warn(`[ChartRegistry] Overwriting existing chart type: ${typeName}`);
+        }
     types[typeName] = chartClass;
-    console.debug(`[ChartRegistry] Registered chart type: ${typeName}`);
-}
-
-/**
+        console.debug(`[ChartRegistry] Registered chart type: ${typeName}`);
+    }
+    
+    /**
  * Retrieves a chart class constructor by its type name.
- * 
- * @param {string} typeName - Chart type identifier
+     * 
+     * @param {string} typeName - Chart type identifier
  * @returns {Function|null} The chart class constructor, or null if not found.
  */
 export function getChart(typeName) {
@@ -37,24 +37,24 @@ export function getChart(typeName) {
         return null;
     }
     return chartClass;
-}
-
-/**
- * Checks if a chart type is registered.
- * 
- * @param {string} typeName - Chart type identifier
- * @returns {boolean}
- */
+    }
+    
+    /**
+     * Checks if a chart type is registered.
+     * 
+     * @param {string} typeName - Chart type identifier
+     * @returns {boolean}
+     */
 export function has(typeName) {
-    return !!types[typeName];
-}
-
-/**
- * Gets all registered chart type names.
- * 
- * @returns {string[]}
- */
+        return !!types[typeName];
+    }
+    
+    /**
+     * Gets all registered chart type names.
+     * 
+     * @returns {string[]}
+     */
 export function getTypes() {
-    return Object.keys(types);
+        return Object.keys(types);
 }
 

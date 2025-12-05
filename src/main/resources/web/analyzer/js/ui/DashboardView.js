@@ -29,7 +29,8 @@ export function init() {
 export function createCards(metrics) {
     if (!container) return;
     
-    container.innerHTML = ''; // Clear previous cards
+    MetricCardView.reset(); // <-- NEU: State leeren bevor neue Cards erstellt werden
+    container.innerHTML = ''; // Clear previous DOM
     
     const dashboard = document.createElement('div');
     dashboard.className = 'dashboard';
