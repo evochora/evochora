@@ -1,0 +1,230 @@
+/**
+ * Stacked Bar Chart Implementation
+ * 
+ * Renders categorical data as stacked bar charts using Chart.js.
+ * This is useful for showing part-to-whole relationships at discrete time points.
+ * 
+ * Supports percentage mode where each bar totals 100%.
+ * 
+ * @module StackedBarChart
+ */
+
+const StackedBarChart = (function() {
+    'use strict';
+    
+    // Evochora color palette
+    const COLORS = [
+        '#4a9eff', '#a0e0a0', '#ffb366', '#dda0dd', '#87ceeb', 
+        '#ffd700', '#ff6b6b', '#98d8c8', '#f08080', '#c79ecf'
+    ];
+    
+    function getColor(index) {
+        return COLORS[index % COLORS.length];
+    }
+    
+    function toNumber(value) {
+        if (typeof value === 'bigint') {
+            return Number(value);
+        }
+        return value;
+    }
+    
+    /**
+     * Renders a stacked bar chart.
+     * 
+     * @param {HTMLCanvasElement} canvas - Canvas element
+     * @param {Array<Object>} data - Data rows (array of objects)
+     * @param {Object} config - Visualization config with x and y fields
+     * @returns {Chart} Chart.js instance
+     */
+    function render(canvas, data, config) {
+        const ctx = canvas.getContext('2d');
+        
+        const xKey = config.x || 'tick';
+        const yKeys = Array.isArray(config.y) ? config.y : (config.y ? [config.y] : []);
+        const isPercentage = config.yAxisMode === 'percent';
+        
+        const labels = data.map(row => toNumber(row[xKey]));
+        
+        // Calculate percentages based on ALL categories (not just visible ones)
+        const datasets = yKeys.map((key, index) => ({
+            label: formatLabel(key),
+            data: data.map(row => {
+                const val = toNumber(row[key]);
+                if (isPercentage) {
+                    const sum = yKeys.reduce((acc, k) => acc + toNumber(row[k]), 0);
+                    return sum === 0 ? 0 : (val / sum) * 100;
+                }
+                return val;
+            }),
+            borderColor: getColor(index),
+            backgroundColor: getColor(index) + 'cc',
+            borderWidth: 1
+        }));
+        
+        const chartConfig = {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            color: '#e0e0e0',
+                            font: { family: "'Courier New', monospace", size: 11 },
+                            usePointStyle: true,
+                            pointStyle: 'rect'
+                        },
+                        // Custom click handler to adjust Y-axis max
+                        onClick: isPercentage ? createLegendClickHandler() : undefined
+                    },
+                    tooltip: {
+                        backgroundColor: '#191923',
+                        titleColor: '#e0e0e0',
+                        bodyColor: '#aaa',
+                        borderColor: '#333',
+                        borderWidth: 1,
+                        padding: 12,
+                        callbacks: {
+                            title: items => `Tick ${items[0].label}`,
+                            label: context => {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    label += context.parsed.y.toFixed(1);
+                                    if (isPercentage) label += '%';
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                        title: { display: true, text: formatLabel(xKey), color: '#888' },
+                        ticks: { color: '#888', maxTicksLimit: 15 },
+                        grid: { color: '#333', drawBorder: false }
+                    },
+                    y: {
+                        stacked: true,
+                        // Start with max 100 (all categories visible)
+                        max: isPercentage ? 100 : undefined,
+                        title: { display: false },
+                        ticks: { 
+                            color: '#888',
+                            callback: function(value) {
+                                return value.toFixed(0) + (isPercentage ? '%' : '');
+                            }
+                        },
+                        grid: { color: '#333', drawBorder: false }
+                    }
+                },
+                animation: {
+                    duration: 500
+                }
+            }
+        };
+        
+        const chart = new Chart(ctx, chartConfig);
+        
+        // Store metadata
+        chart._isPercentage = isPercentage;
+        chart._totalDatasets = datasets.length;
+        
+        return chart;
+    }
+    
+    /**
+     * Creates a legend click handler that adjusts Y-axis max.
+     * When all categories visible: max = 100
+     * When some hidden: max = undefined (auto-scale)
+     */
+    function createLegendClickHandler() {
+        return function(e, legendItem, legend) {
+            const chart = legend.chart;
+            const index = legendItem.datasetIndex;
+            
+            // Toggle visibility (default behavior)
+            const meta = chart.getDatasetMeta(index);
+            meta.hidden = meta.hidden === null ? !chart.data.datasets[index].hidden : null;
+            
+            // Count visible datasets
+            let visibleCount = 0;
+            chart.data.datasets.forEach((ds, idx) => {
+                const dsMeta = chart.getDatasetMeta(idx);
+                if (!dsMeta.hidden) {
+                    visibleCount++;
+                }
+            });
+            
+            // Adjust Y-axis max
+            if (visibleCount === chart._totalDatasets) {
+                // All visible: fix at 100%
+                chart.options.scales.y.max = 100;
+            } else {
+                // Some hidden: auto-scale
+                chart.options.scales.y.max = undefined;
+            }
+            
+            chart.update();
+        };
+    }
+    
+    function formatLabel(key) {
+        return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    }
+    
+    function update(chart, data, config) {
+        const xKey = config.x || 'tick';
+        const yKeys = Array.isArray(config.y) ? config.y : (config.y ? [config.y] : []);
+        const isPercentage = config.yAxisMode === 'percent';
+        
+        chart.data.labels = data.map(row => toNumber(row[xKey]));
+        
+        yKeys.forEach((key, index) => {
+            if (chart.data.datasets[index]) {
+                chart.data.datasets[index].data = data.map(row => {
+                    const val = toNumber(row[key]);
+                    if (isPercentage) {
+                        const sum = yKeys.reduce((acc, k) => acc + toNumber(row[k]), 0);
+                        return sum === 0 ? 0 : (val / sum) * 100;
+                    }
+                    return val;
+                });
+            }
+        });
+        
+        chart.update('none');
+    }
+    
+    function destroy(chart) {
+        if (chart) {
+            chart.destroy();
+        }
+    }
+    
+    return { render, update, destroy };
+    
+})();
+
+// Register with ChartRegistry
+if (typeof ChartRegistry !== 'undefined') {
+    ChartRegistry.register('stacked-bar-chart', StackedBarChart);
+}
+
+// Export for module systems
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = StackedBarChart;
+}

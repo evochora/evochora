@@ -28,7 +28,7 @@ const DashboardView = (function() {
         dashboardGrid.id = 'dashboard-grid';
         container.appendChild(dashboardGrid);
         
-        console.log('[DashboardView] Initialized');
+        console.debug('[DashboardView] Initialized');
     }
     
     /**

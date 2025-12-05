@@ -166,7 +166,14 @@ const LineChart = (function() {
                             color: '#888'
                         },
                         ticks: {
-                            color: '#888'
+                            color: '#888',
+                            // Only show integer ticks
+                            callback: function(value) {
+                                if (Number.isInteger(value)) {
+                                    return value;
+                                }
+                                return null;
+                            }
                         },
                         grid: {
                             color: '#333',
@@ -183,7 +190,14 @@ const LineChart = (function() {
                             color: '#888'
                         },
                         ticks: {
-                            color: '#888'
+                            color: '#888',
+                            // Only show integer ticks
+                            callback: function(value) {
+                                if (Number.isInteger(value)) {
+                                    return value;
+                                }
+                                return null;
+                            }
                         },
                         grid: {
                             drawOnChartArea: false

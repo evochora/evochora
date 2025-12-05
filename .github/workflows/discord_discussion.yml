@@ -11,15 +11,12 @@ jobs:
       - name: Send Discord Notification
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          TITLE: ${{ github.event.discussion.title }}
-          URL: ${{ github.event.discussion.html_url }}
-          AUTHOR: ${{ github.event.discussion.user.login }}
-          CATEGORY: ${{ github.event.discussion.category.name }}
+        if: ${{ env.DISCORD_WEBHOOK != '' }}
         run: |
           jq -n \
-            --arg category "$CATEGORY" \
-            --arg title "$TITLE" \
-            --arg author "$AUTHOR" \
-            --arg url "$URL" \
+            --arg category "${{ github.event.discussion.category.name }}" \
+            --arg title "${{ github.event.discussion.title }}" \
+            --arg author "${{ github.event.discussion.user.login }}" \
+            --arg url "${{ github.event.discussion.html_url }}" \
             '{ "content": "📢 **New Discussion** in \($category)\n\n**\($title)**\nby \($author)\n\n\($url)" }' |
           curl -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK"

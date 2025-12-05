@@ -21,6 +21,34 @@ const DuckDBClient = (function() {
     let duckdbModule = null;
     
     /**
+     * Converts BigInt values to Numbers in an object.
+     * DuckDB WASM returns BigInt for BIGINT columns, but Chart.js can't handle them.
+     * 
+     * @param {Object} obj - Object potentially containing BigInt values
+     * @returns {Object} Object with BigInts converted to Numbers
+     */
+    function convertBigInts(obj) {
+        if (obj === null || obj === undefined) {
+            return obj;
+        }
+        if (typeof obj === 'bigint') {
+            // Safe conversion - will lose precision for values > Number.MAX_SAFE_INTEGER
+            return Number(obj);
+        }
+        if (Array.isArray(obj)) {
+            return obj.map(convertBigInts);
+        }
+        if (typeof obj === 'object') {
+            const result = {};
+            for (const [key, value] of Object.entries(obj)) {
+                result[key] = convertBigInts(value);
+            }
+            return result;
+        }
+        return obj;
+    }
+    
+    /**
      * Initializes DuckDB WASM.
      * Safe to call multiple times - will return cached instance.
      */
@@ -43,7 +71,7 @@ const DuckDBClient = (function() {
         initializing = true;
         
         try {
-            console.log('[DuckDB] Initializing from esm.sh CDN...');
+            console.debug('[DuckDB] Initializing from esm.sh CDN...');
             
             // Dynamic import from esm.sh (auto-resolves apache-arrow dependency)
             duckdbModule = await import(ESM_URL);
@@ -69,7 +97,7 @@ const DuckDBClient = (function() {
             conn = await db.connect();
             
             initialized = true;
-            console.log('[DuckDB] Initialized successfully');
+            console.debug('[DuckDB] Initialized successfully');
             
             return { db, conn };
             
@@ -92,40 +120,40 @@ const DuckDBClient = (function() {
             await init();
         }
         
-        console.log('[DuckDB] Query:', sql.substring(0, 200) + (sql.length > 200 ? '...' : ''));
+        console.debug('[DuckDB] Query:', sql.substring(0, 200) + (sql.length > 200 ? '...' : ''));
         const result = await conn.query(sql);
-        const rows = result.toArray().map(row => row.toJSON());
-        console.log(`[DuckDB] Returned ${rows.length} rows`);
+        const rows = result.toArray().map(row => convertBigInts(row.toJSON()));
+        console.debug(`[DuckDB] Returned ${rows.length} rows`);
         return rows;
     }
     
     /**
-     * Queries Parquet files directly via HTTP URLs.
-     * DuckDB WASM can read HTTP URLs directly in read_parquet().
+     * Registers a Parquet file blob and queries it with the provided SQL.
+     * Used for client-side DuckDB WASM queries on merged Parquet from server.
      * 
-     * @param {string[]} urls - Array of Parquet file URLs (full HTTP URLs)
-     * @param {string} selectClause - SQL SELECT/ORDER clause (optional)
+     * @param {Blob} parquetBlob - Parquet file as Blob
+     * @param {string} sql - SQL query with {table} placeholder
      * @returns {Promise<Array<Object>>} Query results
      */
-    async function queryParquetFiles(urls, selectClause = null) {
+    async function queryParquetBlob(parquetBlob, sql) {
         if (!initialized) {
             await init();
         }
         
-        if (urls.length === 0) {
-            return [];
-        }
+        const fileName = 'data.parquet';
         
-        // DuckDB can read HTTP URLs directly - no registration needed!
-        // Just pass the URLs as strings in read_parquet()
-        const urlList = urls.map(u => `'${u}'`).join(',');
-        const filesArg = `[${urlList}]`;
+        // Register the blob as a file in DuckDB's virtual filesystem
+        await db.registerFileHandle(fileName, parquetBlob, duckdbModule.DuckDBDataProtocol.BROWSER_FILEREADER, true);
         
-        const sql = selectClause 
-            ? selectClause.replace('$FILES', filesArg)
-            : `SELECT * FROM read_parquet(${filesArg}) ORDER BY tick`;
+        // Replace ALL {table} placeholders with the file reference
+        const finalSql = sql.replaceAll('{table}', `'${fileName}'`);
         
-        return await query(sql);
+        console.debug('[DuckDB] Query blob:', finalSql.substring(0, 200) + (finalSql.length > 200 ? '...' : ''));
+        const result = await conn.query(finalSql);
+        const rows = result.toArray().map(row => convertBigInts(row.toJSON()));
+        console.debug(`[DuckDB] Returned ${rows.length} rows`);
+        
+        return rows;
     }
     
     /**
@@ -141,7 +169,7 @@ const DuckDBClient = (function() {
             db = null;
         }
         initialized = false;
-        console.log('[DuckDB] Closed');
+        console.debug('[DuckDB] Closed');
     }
     
     /**
@@ -155,7 +183,7 @@ const DuckDBClient = (function() {
     return {
         init,
         query,
-        queryParquetFiles,
+        queryParquetBlob,
         close,
         isInitialized
     };

@@ -1,15 +1,5 @@
 package org.evochora.datapipeline.resources.topics;
 
-import com.google.protobuf.InvalidProtocolBufferException;
-import com.google.protobuf.Message;
-import com.typesafe.config.Config;
-import org.evochora.datapipeline.api.contracts.TopicEnvelope;
-import org.evochora.datapipeline.api.resources.ResourceContext;
-import org.evochora.datapipeline.utils.H2SchemaUtil;
-import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -17,6 +7,17 @@ import java.sql.SQLException;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+
+import org.evochora.datapipeline.api.contracts.TopicEnvelope;
+import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.utils.H2SchemaUtil;
+import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.protobuf.Message;
+import com.typesafe.config.Config;
 
 /**
  * H2-based reader delegate for topic messages with PreparedStatement pooling.

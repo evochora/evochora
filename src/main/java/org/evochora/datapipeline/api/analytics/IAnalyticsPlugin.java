@@ -1,8 +1,12 @@
 package org.evochora.datapipeline.api.analytics;
 
+import java.util.Collections;
 import java.util.List;
 
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
 
 import com.typesafe.config.Config;
 
@@ -36,7 +40,7 @@ import com.typesafe.config.Config;
  * <p>
  * Instances are created per-service, so they do NOT need to be thread-safe.
  */
-public interface IAnalyticsPlugin {
+public interface IAnalyticsPlugin extends IMemoryEstimatable {
     
     /**
      * Configure the plugin from HOCON.
@@ -172,4 +176,55 @@ public interface IAnalyticsPlugin {
      * @return Number of LOD levels (default: 1)
      */
     int getLodLevels();
+    
+    /**
+     * Returns the query specification for query-time transformations.
+     * <p>
+     * The QuerySpec defines:
+     * <ul>
+     *   <li>Base columns (stored in Parquet)</li>
+     *   <li>Computed columns (calculated via SQL window functions)</li>
+     *   <li>Output columns (what the query returns)</li>
+     * </ul>
+     * <p>
+     * The controller uses this to generate SQL for both server-side queries
+     * and client-side DuckDB WASM.
+     * <p>
+     * Default implementation returns a passthrough spec (no transformations).
+     *
+     * @return Query specification, or null for passthrough
+     */
+    default QuerySpec getQuerySpec() {
+        return QuerySpec.passthrough(getSchema());
+    }
+    
+    /**
+     * Returns the visualization specification for the frontend.
+     * <p>
+     * Defines how the data should be rendered (chart type, axes, styling).
+     * <p>
+     * Default implementation returns a simple line chart with tick on X axis.
+     *
+     * @return Visualizer specification
+     */
+    default VisualizerSpec getVisualizerSpec() {
+        return VisualizerSpec.lineChart("tick");
+    }
+
+    /**
+     * Estimates the worst-case heap memory usage for this plugin's internal state.
+     * <p>
+     * The default implementation returns an empty list, assuming no significant
+     * internal state. Stateful plugins (e.g., those tracking lineage or history)
+     * MUST override this method to provide an accurate estimate based on the
+     * provided simulation parameters.
+     *
+     * @param params Parameters of the simulation (e.g., max organisms, world size).
+     * @return A list of memory estimates for different components of the plugin's state.
+     *         Returns an empty list by default if the plugin is stateless.
+     */
+    @Override
+    default List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
+        return Collections.emptyList();
+    }
 }
