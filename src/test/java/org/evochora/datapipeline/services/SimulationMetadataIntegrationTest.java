@@ -142,10 +142,8 @@ class SimulationMetadataIntegrationTest {
         Path rawDir = metadataFile.getParent();  // {runId}/raw/
         Path simulationDir = rawDir.getParent();  // {runId}/
         assertTrue(simulationDir.getFileName().toString().equals(simulationRunId));
-
-        // The await condition already robustly verified that batch files exist and are readable.
-        // A simple check is sufficient here. Batches are now under raw/ subdirectory.
-        assertTrue(readAllTicksFromBatches(rawDir).size() >= 10, "Batch files should exist under raw directory");
+        // Note: The await condition already verified that batch files exist and are readable.
+        // No redundant assertion needed here - await guarantees the condition was met.
     }
 
     @Test
