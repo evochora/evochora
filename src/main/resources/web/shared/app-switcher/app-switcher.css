@@ -1,0 +1,79 @@
+:root {
+    --app-switcher-bg: #2a2a2e;
+    --app-switcher-hover-bg: #3a3a3e;
+    --app-switcher-border: #444;
+    --app-switcher-text: #eaeaea;
+    --app-switcher-text-secondary: #aaa;
+    --app-switcher-icon-fill: #ccc;
+}
+
+.app-switcher-button {
+    /* Integrated positioning */
+    width: 36px;
+    height: 36px;
+    margin-right: 12px;
+    
+    background-color: var(--app-switcher-bg);
+    border: 1px solid var(--app-switcher-border);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1001;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    transition: background-color 0.2s;
+}
+
+.app-switcher-button:hover {
+    background-color: var(--app-switcher-hover-bg);
+}
+
+.app-switcher-button svg {
+    width: 22px;
+    height: 22px;
+    fill: var(--app-switcher-icon-fill);
+}
+
+.app-switcher-overlay {
+    position: fixed;
+    top: 55px; /* Below standard header height */
+    left: 10px;
+    width: 300px;
+    background-color: var(--app-switcher-bg);
+    border: 1px solid var(--app-switcher-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    z-index: 1000;
+    padding: 8px;
+    display: none; /* Hidden by default */
+    flex-direction: column;
+    gap: 4px;
+}
+
+.app-switcher-overlay.visible {
+    display: flex;
+}
+
+.app-switcher-overlay a {
+    display: block;
+    padding: 12px 16px;
+    text-decoration: none;
+    color: var(--app-switcher-text);
+    border-radius: 6px;
+    transition: background-color 0.2s ease;
+}
+
+.app-switcher-overlay a:hover {
+    background-color: var(--app-switcher-hover-bg);
+}
+
+.app-switcher-overlay a .app-name {
+    font-weight: bold;
+}
+
+.app-switcher-overlay a .app-description {
+    font-size: 0.85em;
+    color: var(--app-switcher-text-secondary);
+    margin-top: 2px;
+}

@@ -1,9 +1,12 @@
+import { AnnotationUtils } from '../AnnotationUtils.js';
+import { ValueFormatter } from '../../utils/ValueFormatter.js';
+
 /**
  * Handles the annotation of register tokens and their aliases.
  * It identifies tokens that represent registers and annotates them with their
  * current runtime value from the organism's state.
  */
-class RegisterTokenHandler {
+export class RegisterTokenHandler {
     /**
      * Determines if this handler can process the given token.
      * It handles tokens identified as 'ALIAS' or 'VARIABLE' that start with '%'.

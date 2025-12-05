@@ -13,8 +13,9 @@
     <link rel="manifest" href="/favicons/site.webmanifest">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Doto:wght@900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Roboto+Mono&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../shared/app-switcher/app-switcher.css">
     <script src="https://cdn.jsdelivr.net/npm/pixi.js@8.12.0/dist/pixi.min.js"></script>
 </head>
 <body>
@@ -28,6 +29,7 @@
 
 <header>
     <div class="controls-left">
+        <div id="app-switcher-container"></div>
         <div class="tick-input-wrapper">
             <input type="number" id="tick-input" min="0" value="0" aria-label="Tick">
             <span class="tick-total-suffix" id="tick-total-suffix">/N/A</span>
@@ -73,39 +75,41 @@
     </div>
 </main>
 
-<!-- UI Components - Loading Manager must be first -->
-<script src="js/ui/LoadingManager.js"></script>
+<!-- Main entry point -->
+<script type="module" src="js/main.js"></script>
 
-<!-- API Clients -->
-<script src="js/api/ApiClient.js"></script>
-<script src="js/api/SimulationApi.js"></script>
-<script src="js/api/EnvironmentApi.js"></script>
-<script src="js/api/OrganismApi.js"></script>
+<!-- App Switcher Initialization -->
+<script type="module">
+    // Dynamically import the AppSwitcher component
+    const { AppSwitcher } = await import('../shared/app-switcher/AppSwitcher.js');
     
-<!-- Other UI Components -->
-<script src="js/ui/HeaderbarView.js"></script>
-<script src="js/ui/EnvironmentGrid.js"></script>
-<script src="js/ui/sidebar/SidebarBasicInfoView.js"></script>
-<script src="js/ui/sidebar/SidebarInstructionView.js"></script>
-<script src="js/ui/sidebar/SidebarStateView.js"></script>
-<script src="js/ui/sidebar/SidebarManager.js"></script>
-<script src="js/ui/sidebar/SidebarSourceView.js"></script>
+    // Dynamically import the main application module to get the controller instance
+    const { appController } = await import('./js/main.js');
 
-<!-- Annotation Engine -->
-<script src="js/utils/ValueFormatter.js"></script>
-<script src="js/annotator/AnnotationUtils.js"></script>
-<script src="js/annotator/handlers/RegisterTokenHandler.js"></script>
-<script src="js/annotator/handlers/LabelReferenceTokenHandler.js"></script>
-<script src="js/annotator/handlers/ProcedureTokenHandler.js"></script>
-<script src="js/annotator/handlers/ParameterTokenHandler.js"></script>
-<script src="js/annotator/handlers/RetInstructionHandler.js"></script>
-<script src="js/annotator/SourceAnnotator.js"></script>
+    // This function provides the current state from the AppController to the switcher
+    function getAppState() {
+        if (appController) {
+            return {
+                runId: appController.state.runId,
+                tick: appController.state.currentTick
+            };
+        }
+        return {};
+    }
 
-<!-- Application Logic -->
-<script src="js/AppController.js"></script>
-    
-<!-- Main entry point - MUST BE LAST -->
-<script src="js/main.js"></script>
+    const container = document.getElementById('app-switcher-container');
+
+    // Fetch the configuration and initialize the AppSwitcher
+    fetch('../shared/app-switcher/apps.json')
+        .then(res => res.json())
+        .then(apps => {
+            new AppSwitcher({
+                element: container,
+                apps: apps,
+                getState: getAppState
+            });
+        });
+</script>
 
 <!-- Header Logo Positioning -->
 <script>

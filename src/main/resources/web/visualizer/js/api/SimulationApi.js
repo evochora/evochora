@@ -1,10 +1,12 @@
+import { apiClient } from './ApiClient.js';
+
 /**
  * API client for simulation-level endpoints, such as retrieving metadata and tick ranges.
  * This class provides a high-level interface for fetching data related to the overall simulation run.
  *
  * @class SimulationApi
  */
-class SimulationApi {
+export class SimulationApi {
     /**
      * Fetches the complete simulation metadata for a given run ID.
      * If no run ID is provided, the server will default to the latest available run.
@@ -30,7 +32,4 @@ class SimulationApi {
     }
     
 }
-
-// Export for global availability
-window.SimulationApi = SimulationApi;
 

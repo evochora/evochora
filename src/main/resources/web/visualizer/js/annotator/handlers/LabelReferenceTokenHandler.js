@@ -1,9 +1,12 @@
+import { AnnotationUtils } from '../AnnotationUtils.js';
+import { ValueFormatter } from '../../utils/ValueFormatter.js';
+
 /**
  * Handles the annotation of tokens that are references to labels or procedures.
  * It identifies tokens classified as 'LABEL' and annotates them with the
  * absolute world coordinates of their target location.
  */
-class LabelReferenceTokenHandler {
+export class LabelReferenceTokenHandler {
     /**
      * Determines if this handler can process the given token.
      * It specifically handles tokens identified by the compiler as 'LABEL' type.

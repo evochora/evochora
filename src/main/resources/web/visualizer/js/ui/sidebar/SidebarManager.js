@@ -6,7 +6,7 @@
  *
  * @class SidebarManager
  */
-class SidebarManager {
+export class SidebarManager {
     /**
      * Initializes the SidebarManager, caching DOM elements and setting up event listeners.
      * @param {AppController} appController - The main application controller, used to deselect organisms.
@@ -111,7 +111,4 @@ class SidebarManager {
         // Button visibility is already handled in showSidebar()
     }
 }
-
-// Export for global availability
-window.SidebarManager = SidebarManager;
 

@@ -4,7 +4,7 @@
  *
  * @class HeaderbarView
  */
-class HeaderbarView {
+export class HeaderbarView {
     /**
      * Initializes the HeaderbarView and sets up all event listeners.
      * @param {AppController} controller - The main application controller.
@@ -207,7 +207,4 @@ class HeaderbarView {
         }
     }
 }
-
-// Export for global availability
-window.HeaderbarView = HeaderbarView;
 

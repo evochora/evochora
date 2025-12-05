@@ -1,3 +1,6 @@
+import { AnnotationUtils } from '../AnnotationUtils.js';
+import { ValueFormatter } from '../../utils/ValueFormatter.js';
+
 /**
  * Handles the annotation of tokens that are procedure parameter names.
  * Shows the complete binding chain from source register to current FPR and its value.
@@ -7,7 +10,7 @@
  * Works anywhere in procedure bodies, not just on .PROC directive lines.
  * Resolves parameter bindings by walking the call stack to find the complete chain.
  */
-class ParameterTokenHandler {
+export class ParameterTokenHandler {
     /**
      * Determines if this handler can process the given token.
      * It handles tokens identified as 'VARIABLE' type that are in a procedure scope (not global).
@@ -117,6 +120,4 @@ class ParameterTokenHandler {
         };
     }
 }
-
-window.ParameterTokenHandler = ParameterTokenHandler;
 

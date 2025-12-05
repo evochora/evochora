@@ -1,3 +1,6 @@
+import { ValueFormatter } from '../../utils/ValueFormatter.js';
+import { AnnotationUtils, INSTRUCTION_CONSTANTS } from '../../annotator/AnnotationUtils.js';
+
 /**
  * Renders the dynamic runtime state of an organism in the sidebar.
  * This includes registers (DR, PR, FPR, LR) and stacks (Data, Location, Call).
@@ -5,7 +8,7 @@
  *
  * @class SidebarStateView
  */
-class SidebarStateView {
+export class SidebarStateView {
     /**
      * Initializes the view.
      * @param {HTMLElement} root - The root element of the sidebar.
@@ -419,7 +422,4 @@ class SidebarStateView {
         this.previousState = { ...state };
     }
 }
-
-// Export for global availability
-window.SidebarStateView = SidebarStateView;
 

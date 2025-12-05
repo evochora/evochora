@@ -2,10 +2,13 @@
 
 /**
  * @file Main entry point for the visualizer application.
- * This script sets up global utilities like the error banner and then fires a 'uiReady'
- * event to signal that the main application controller can be initialized.
- * It must be the last script loaded to ensure the DOM is fully parsed.
+ * Initializes the main AppController which orchestrates the entire UI.
  */
+import { AppController } from './AppController.js';
+
+// Make the appController instance available for the AppSwitcher
+export const appController = new AppController();
+
 document.addEventListener('DOMContentLoaded', () => {
     // Setup global error banner logic
     const errorBanner = document.getElementById('error-banner');
@@ -15,26 +18,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // Define global error functions BEFORE initializing the app
     window.showError = (message) => {
         errorMessageSpan.textContent = message;
-        // First, remove the inline style to allow the CSS class to take effect.
-        errorBanner.style.display = ''; 
-        // Then, add the class that makes the banner visible via the stylesheet.
-        errorBanner.classList.add('error-bar-visible');
+        errorBanner.style.display = 'flex';
     };
 
     window.hideError = () => {
-        // Use the CSS class to hide the banner
-        errorBanner.classList.remove('error-bar-visible');
+        errorBanner.style.display = 'none';
         errorMessageSpan.textContent = '';
     };
 
     closeButton.addEventListener('click', window.hideError);
 
-    /**
-     * A custom event fired when the DOM is ready and global helpers (like showError)
-     * have been initialized. The AppController listens for this event to begin its
-     * own initialization sequence.
-     * @event uiReady
-     */
-    document.dispatchEvent(new Event('uiReady'));
+    // Initialize the main controller
+    appController.init().catch(error => {
+        console.error('Failed to initialize visualizer:', error);
+        window.showError('Failed to initialize visualizer: ' + error.message);
+    });
 });
 

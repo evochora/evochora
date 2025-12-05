@@ -1,3 +1,9 @@
+import { RegisterTokenHandler } from './handlers/RegisterTokenHandler.js';
+import { LabelReferenceTokenHandler } from './handlers/LabelReferenceTokenHandler.js';
+import { ProcedureTokenHandler } from './handlers/ProcedureTokenHandler.js';
+import { ParameterTokenHandler } from './handlers/ParameterTokenHandler.js';
+import { RetInstructionHandler } from './handlers/RetInstructionHandler.js';
+
 /**
  * Engine for token-level annotation in the source code view.
  * This class orchestrates the annotation process by managing a list of specialized
@@ -6,7 +12,7 @@
  *
  * @class SourceAnnotator
  */
-class SourceAnnotator {
+export class SourceAnnotator {
     /**
      * Initializes the SourceAnnotator and its list of token handlers.
      */
@@ -209,5 +215,3 @@ class SourceAnnotator {
         return spans;
     }
 }
-
-window.SourceAnnotator = SourceAnnotator;

@@ -1,3 +1,5 @@
+import { SourceAnnotator } from '../../annotator/SourceAnnotator.js';
+
 /**
  * Manages the source code view in the sidebar.
  * This class is responsible for displaying the assembly code of the selected organism,
@@ -6,7 +8,7 @@
  *
  * @class SidebarSourceView
  */
-class SidebarSourceView {
+export class SidebarSourceView {
     /**
      * Initializes the view, caching DOM elements and creating the annotator instance.
      * @param {HTMLElement} rootElement - The root element of the sidebar.

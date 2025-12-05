@@ -15,6 +15,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Doto:wght@900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../shared/app-switcher/app-switcher.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -27,6 +28,7 @@
 <!-- Header -->
 <header>
     <div class="controls-left">
+        <div id="app-switcher-container"></div>
         <select id="run-select" aria-label="Select Simulation Run">
             <option value="">Loading runs...</option>
         </select>
@@ -74,6 +76,32 @@
 
 <!-- Main Entry Point (must be last) -->
 <script src="js/main.js"></script>
+
+<!-- App Switcher Initialization -->
+<script type="module">
+    import { AppSwitcher } from '../shared/app-switcher/AppSwitcher.js';
+
+    // Analyzer state is simple and can be read directly from the URL
+    function getAppState() {
+        const params = new URLSearchParams(window.location.search);
+        return {
+            runId: params.get('runId'),
+            tick: params.get('tick') // Pass tick along, even if analyzer doesn't use it
+        };
+    }
+
+    const container = document.getElementById('app-switcher-container');
+
+    fetch('../shared/app-switcher/apps.json')
+        .then(res => res.json())
+        .then(apps => {
+            new AppSwitcher({
+                element: container,
+                apps: apps,
+                getState: getAppState
+            });
+        });
+</script>
 
 <!-- Header Logo Positioning -->
 <script>

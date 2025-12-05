@@ -1,3 +1,5 @@
+import { ValueFormatter } from '../../utils/ValueFormatter.js';
+
 /**
  * Renders the basic static and positional information of an organism in the sidebar.
  * This view displays details like parent ID, birth tick, IP, and DP coordinates,
@@ -5,7 +7,7 @@
  *
  * @class SidebarBasicInfoView
  */
-class SidebarBasicInfoView {
+export class SidebarBasicInfoView {
     /**
      * Initializes the view.
      * @param {HTMLElement} root - The root element of the sidebar.
@@ -153,7 +155,4 @@ class SidebarBasicInfoView {
         this.previousState = state ? { ...state } : null;
     }
 }
-
-// Export for global availability
-window.SidebarBasicInfoView = SidebarBasicInfoView;
 

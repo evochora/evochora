@@ -1,3 +1,6 @@
+import { ValueFormatter } from '../../utils/ValueFormatter.js';
+import { AnnotationUtils } from '../../annotator/AnnotationUtils.js';
+
 /**
  * Renders the instruction execution view in the sidebar.
  * This view displays the last executed instruction and the next instruction to be executed,
@@ -6,7 +9,7 @@
  *
  * @class SidebarInstructionView
  */
-class SidebarInstructionView {
+export class SidebarInstructionView {
     /**
      * Initializes the view.
      * @param {HTMLElement} root - The root element of the sidebar.

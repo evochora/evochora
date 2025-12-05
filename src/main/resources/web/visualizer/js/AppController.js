@@ -1,3 +1,15 @@
+import { EnvironmentApi } from './api/EnvironmentApi.js';
+import { OrganismApi } from './api/OrganismApi.js';
+import { SimulationApi } from './api/SimulationApi.js';
+import { EnvironmentGrid } from './EnvironmentGrid.js';
+import { HeaderbarView } from './ui/HeaderbarView.js';
+import { SidebarBasicInfoView } from './ui/sidebar/SidebarBasicInfoView.js';
+import { SidebarInstructionView } from './ui/sidebar/SidebarInstructionView.js';
+import { SidebarManager } from './ui/sidebar/SidebarManager.js';
+import { SidebarSourceView } from './ui/sidebar/SidebarSourceView.js';
+import { SidebarStateView } from './ui/sidebar/SidebarStateView.js';
+import { ValueFormatter } from './utils/ValueFormatter.js';
+
 /**
  * The main application controller. It initializes all components, manages the application state,
  * and orchestrates the data flow between the API clients and the UI views.
@@ -6,7 +18,7 @@
  *
  * @class AppController
  */
-class AppController {
+export class AppController {
     /**
      * Initializes the AppController, creating instances of all APIs, views, and
      * setting up the initial state and event listeners.
@@ -403,8 +415,35 @@ class AppController {
         // Update headerbar with current values
         this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
 
+        // Update URL state
+        this.updateUrlState();
+
         // Load environment and organisms for new tick
         await this.loadViewport(isForwardStep, previousTick);
+    }
+    
+    /**
+     * Updates the browser URL with the current application state (runId, tick).
+     * This enables deep linking and state persistence across page reloads.
+     * @private
+     */
+    updateUrlState() {
+        try {
+            const url = new URL(window.location.href);
+            if (this.state.runId) {
+                url.searchParams.set('runId', this.state.runId);
+            }
+            if (this.state.currentTick !== null && this.state.currentTick !== undefined) {
+                url.searchParams.set('tick', this.state.currentTick);
+            } else {
+                url.searchParams.delete('tick');
+            }
+            
+            // Use replaceState to avoid cluttering the browser history with every tick change
+            window.history.replaceState({}, '', url);
+        } catch (error) {
+            console.warn('Failed to update URL state:', error);
+        }
     }
     
     /**
@@ -655,18 +694,3 @@ class AppController {
         }
     }
 }
-
-// Export for global availability
-window.AppController = AppController;
-
-// Wait for the UI to be ready before initializing the controller
-document.addEventListener('uiReady', () => {
-    window.visualizer = window.visualizer || {};
-    window.visualizer.controller = new AppController();
-    
-    // Auto-initialize
-    window.visualizer.controller.init().catch(error => {
-        console.error('Failed to initialize visualizer:', error);
-        showError('Failed to initialize visualizer: ' + error.message);
-    });
-});
