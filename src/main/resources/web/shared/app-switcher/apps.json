@@ -1,17 +1,14 @@
 [
   {
     "name": "Visualizer",
-    "url": "/visualizer/index.html",
+    "url": "/visualizer/",
     "description": "Real-time simulation viewer"
   },
   {
     "name": "Analyzer",
-    "url": "/analyzer/index.html",
+    "url": "/analyzer/",
     "description": "Analytics and data exploration"
-  },
-  {
-    "name": "Pipeline Control",
-    "url": "/pipeline/index.html",
-    "description": "Manage the data pipeline"
   }
 ]
+
+

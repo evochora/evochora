@@ -7,74 +7,54 @@
  * @module ChartRegistry
  */
 
-const ChartRegistry = (function() {
-    'use strict';
-    
-    // Registered chart types
-    const types = {};
-    
-    /**
-     * Registers a chart type.
-     * 
-     * @param {string} typeName - Chart type identifier (e.g. "line-chart")
-     * @param {Object} chartModule - Chart module with render(container, data, config) method
-     */
-    function register(typeName, chartModule) {
-        if (types[typeName]) {
-            console.warn(`[ChartRegistry] Overwriting existing chart type: ${typeName}`);
-        }
-        types[typeName] = chartModule;
-        console.debug(`[ChartRegistry] Registered chart type: ${typeName}`);
-    }
-    
-    /**
-     * Creates and renders a chart.
-     * 
-     * @param {string} typeName - Chart type identifier
-     * @param {HTMLElement} container - Container element (canvas or div)
-     * @param {Array<Object>} data - Data rows
-     * @param {Object} config - Visualization config from VisualizationHint
-     * @returns {Object} Chart instance (for later updates/destruction)
-     */
-    function render(typeName, container, data, config) {
-        const chartModule = types[typeName];
-        if (!chartModule) {
-            throw new Error(`Unknown chart type: ${typeName}. Available: ${Object.keys(types).join(', ')}`);
-        }
-        return chartModule.render(container, data, config);
-    }
-    
-    /**
-     * Checks if a chart type is registered.
-     * 
-     * @param {string} typeName - Chart type identifier
-     * @returns {boolean}
-     */
-    function has(typeName) {
-        return !!types[typeName];
-    }
-    
-    /**
-     * Gets all registered chart type names.
-     * 
-     * @returns {string[]}
-     */
-    function getTypes() {
-        return Object.keys(types);
-    }
-    
-    // Public API
-    return {
-        register,
-        render,
-        has,
-        getTypes
-    };
-    
-})();
+// Registered chart types
+const types = {};
 
-// Export for module systems
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = ChartRegistry;
+/**
+ * Registers a chart class constructor.
+ * 
+ * @param {string} typeName - Chart type identifier (e.g. "line-chart")
+ * @param {Function} chartClass - The chart class constructor.
+ */
+export function register(typeName, chartClass) {
+    if (types[typeName]) {
+        console.warn(`[ChartRegistry] Overwriting existing chart type: ${typeName}`);
+    }
+    types[typeName] = chartClass;
+    console.debug(`[ChartRegistry] Registered chart type: ${typeName}`);
+}
+
+/**
+ * Retrieves a chart class constructor by its type name.
+ * 
+ * @param {string} typeName - Chart type identifier
+ * @returns {Function|null} The chart class constructor, or null if not found.
+ */
+export function getChart(typeName) {
+    const chartClass = types[typeName];
+    if (!chartClass) {
+        console.warn(`[ChartRegistry] Unknown chart type: ${typeName}. Available: ${Object.keys(types).join(', ')}`);
+        return null;
+    }
+    return chartClass;
+}
+
+/**
+ * Checks if a chart type is registered.
+ * 
+ * @param {string} typeName - Chart type identifier
+ * @returns {boolean}
+ */
+export function has(typeName) {
+    return !!types[typeName];
+}
+
+/**
+ * Gets all registered chart type names.
+ * 
+ * @returns {string[]}
+ */
+export function getTypes() {
+    return Object.keys(types);
 }
 

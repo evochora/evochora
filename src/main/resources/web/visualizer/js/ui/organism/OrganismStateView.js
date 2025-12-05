@@ -2,16 +2,16 @@ import { ValueFormatter } from '../../utils/ValueFormatter.js';
 import { AnnotationUtils, INSTRUCTION_CONSTANTS } from '../../annotator/AnnotationUtils.js';
 
 /**
- * Renders the dynamic runtime state of an organism in the sidebar.
+ * Renders the dynamic runtime state of an organism in the organism panel.
  * This includes registers (DR, PR, FPR, LR) and stacks (Data, Location, Call).
  * It highlights changes between ticks to make debugging easier.
  *
- * @class SidebarStateView
+ * @class OrganismStateView
  */
-export class SidebarStateView {
+export class OrganismStateView {
     /**
      * Initializes the view.
-     * @param {HTMLElement} root - The root element of the sidebar.
+     * @param {HTMLElement} root - The root element of the organism panel.
      */
     constructor(root) {
         this.root = root;
@@ -80,7 +80,7 @@ export class SidebarStateView {
                     }
                 }
                 
-                const paddedValue = String(finalValue).padEnd(8);
+                const paddedValue = String(finalValue).padEnd(10);
                 return isChanged ? `<span class="changed-field">${paddedValue}</span>` : paddedValue;
             }).join('');
         };
@@ -112,7 +112,7 @@ export class SidebarStateView {
 
             // Format each value with fixed width (8 characters)
             const formattedValues = displayStack.map(value => {
-                return String(value).padEnd(8);
+                return String(value).padEnd(10);
             });
 
             return formattedValues.join('');
@@ -341,7 +341,7 @@ export class SidebarStateView {
                 }
 
                 // Distribute across columns
-                return displayEntries.map(entry => String(entry).padEnd(8)).join('');
+                return displayEntries.map(entry => String(entry).padEnd(10)).join('');
             }
         };
 

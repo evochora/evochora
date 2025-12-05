@@ -13,9 +13,10 @@
     <link rel="manifest" href="/favicons/site.webmanifest">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Doto:wght@900&family=Roboto:wght@400;700&family=Roboto+Mono&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="../shared/app-switcher/app-switcher.css">
+    <link rel="stylesheet" href="../shared/footer/footer.css">
     <script src="https://cdn.jsdelivr.net/npm/pixi.js@8.12.0/dist/pixi.min.js"></script>
 </head>
 <body>
@@ -28,8 +29,21 @@
 <div id="cell-tooltip" class="cell-tooltip"></div>
 
 <header>
-    <div class="controls-left">
+    <div class="header-left">
         <div id="app-switcher-container"></div>
+        <div class="logo-container">
+            <span class="logo-text">EVOCHORA</span>
+            <div class="loading-indicator" id="loading-indicator"></div>
+        </div>
+    </div>
+    <div class="header-right"></div>
+    
+    <!-- Tick Panel (left) -->
+    <div id="tick-panel-collapsed" class="header-panel-collapsed" title="Show tick controls">
+        ▼<span class="panel-info" id="tick-info"></span>
+    </div>
+    <div id="tick-panel" class="header-panel">
+        <button class="panel-toggle" id="tick-panel-hide" title="Hide tick controls">▲</button>
         <div class="tick-input-wrapper">
             <input type="number" id="tick-input" min="0" value="0" aria-label="Tick">
             <span class="tick-total-suffix" id="tick-total-suffix">/N/A</span>
@@ -38,17 +52,26 @@
         <button id="btn-next" data-tooltip="Tick +1 (→) / +1000 (↑)">&gt;</button>
         <button id="btn-zoom-toggle" title="Toggle Zoom Level">Zoom Out</button>
     </div>
-    <div class="logo-container">
-        <div class="logo-wrapper">
-            <span class="logo-text">EVOCHORA</span>
-            <div class="loading-indicator" id="loading-indicator"></div>
+    
+    <!-- Organism Panel (right) -->
+    <div id="organism-panel" class="header-panel">
+        <div class="organism-panel-header" id="organism-panel-header">
+            <div class="organism-panel-title">
+                <span>Organisms</span>
+                <span class="organism-count" id="organism-count">(0/0)</span>
+            </div>
+            <div class="organism-panel-controls">
+                <button class="panel-toggle" id="organism-list-collapse" title="Collapse/Expand list">▲</button>
+            </div>
         </div>
-    </div>
-    <div class="controls-right">
-        <div class="organism-selector-wrapper">
-            <select id="organism-selector" aria-label="Organismus auswählen">
-                <option value="">(0/0)</option>
-            </select>
+        <div class="organism-list-container" id="organism-list-container">
+            <div class="organism-list" id="organism-list"></div>
+        </div>
+        <div class="organism-selected-display" id="organism-selected-display"></div>
+        <div class="organism-details-container" id="organism-details">
+            <div data-section="state"></div>
+            <div data-section="instructions"></div>
+            <div data-section="source"></div>
         </div>
     </div>
 </header>
@@ -57,82 +80,17 @@
     <div class="world-container">
         <canvas id="worldCanvas"></canvas>
     </div>
-    <!-- Virtual Scrollbars moved here, outside of world-container -->
     <div id="scrollbar-track-v" class="scrollbar-track-v">
         <div id="scrollbar-thumb-v" class="scrollbar-thumb-v"></div>
     </div>
     <div id="scrollbar-track-h" class="scrollbar-track-h">
         <div id="scrollbar-thumb-h" class="scrollbar-thumb-h"></div>
     </div>
-    <div id="sidebar" class="sidebar">
-        <button id="sidebar-toggle" class="sidebar-toggle-btn" style="display: none;">X</button>
-        <div id="organism-details" class="details">
-            <div data-section="basic"></div>
-            <div data-section="state"></div>
-            <div data-section="instructions"></div>
-            <div data-section="source"></div>
-        </div>
-    </div>
 </main>
 
-<!-- Main entry point -->
+<div id="footer-container"></div>
+
+<!-- Single entry point - all initialization in main.js -->
 <script type="module" src="js/main.js"></script>
-
-<!-- App Switcher Initialization -->
-<script type="module">
-    // Dynamically import the AppSwitcher component
-    const { AppSwitcher } = await import('../shared/app-switcher/AppSwitcher.js');
-    
-    // Dynamically import the main application module to get the controller instance
-    const { appController } = await import('./js/main.js');
-
-    // This function provides the current state from the AppController to the switcher
-    function getAppState() {
-        if (appController) {
-            return {
-                runId: appController.state.runId,
-                tick: appController.state.currentTick
-            };
-        }
-        return {};
-    }
-
-    const container = document.getElementById('app-switcher-container');
-
-    // Fetch the configuration and initialize the AppSwitcher
-    fetch('../shared/app-switcher/apps.json')
-        .then(res => res.json())
-        .then(apps => {
-            new AppSwitcher({
-                element: container,
-                apps: apps,
-                getState: getAppState
-            });
-        });
-</script>
-
-<!-- Header Logo Positioning -->
-<script>
-(function() {
-    function updateLogoPosition() {
-        const header = document.querySelector('header');
-        const controlsLeft = document.querySelector('.controls-left');
-        const controlsRight = document.querySelector('.controls-right');
-        const logo = document.querySelector('.logo-container');
-        
-        if (header && controlsLeft && controlsRight && logo) {
-            header.style.setProperty('--controls-left-width', controlsLeft.offsetWidth + 'px');
-            header.style.setProperty('--controls-right-width', controlsRight.offsetWidth + 'px');
-            header.style.setProperty('--logo-width', logo.offsetWidth + 'px');
-        }
-    }
-    
-    window.addEventListener('load', updateLogoPosition);
-    window.addEventListener('resize', updateLogoPosition);
-    // Also update when fonts are loaded
-    document.fonts?.ready?.then(updateLogoPosition);
-})();
-</script>
 </body>
 </html>
-

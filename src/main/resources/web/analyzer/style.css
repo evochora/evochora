@@ -26,6 +26,7 @@
     --chart-accent-3: #ffb366;
     --chart-accent-4: #dda0dd;
     --chart-accent-5: #87ceeb;
+    --footer-height: 24px;
 }
 
 * {
@@ -40,6 +41,7 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    padding-bottom: var(--footer-height);
 }
 
 /* --- Header --- */
@@ -51,38 +53,16 @@ header {
     align-items: center;
     flex-shrink: 0;
     border-bottom: 1px solid var(--border-color);
-    position: relative;
-    /* Mindestbreite = controls + logo + 2x20px Abstand */
-    min-width: calc(var(--controls-left-width, 200px) + var(--logo-width, 280px) + var(--controls-right-width, 100px) + 40px);
 }
 
-.controls-left, .controls-right {
+.header-left, .header-right {
     display: flex;
     align-items: center;
-    gap: 10px;
-    flex-shrink: 0; /* Don't shrink controls */
-}
-
-.header-spacer {
-    display: none; /* Nicht mehr benötigt */
+    gap: 15px;
 }
 
 .logo-container {
-    position: absolute;
-    /* Position wird durch CSS-Variablen gesteuert (gesetzt via JavaScript) */
-    left: clamp(
-        calc(var(--controls-left-width, 200px) + 20px),
-        calc(50% - var(--logo-width, 140px) / 2),
-        calc(100% - var(--controls-right-width, 100px) - var(--logo-width, 140px) - 20px)
-    );
     display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-.logo-wrapper {
-    display: flex;
-    flex-direction: column;
     align-items: center;
     position: relative;
 }
@@ -92,19 +72,10 @@ header {
     font-weight: 900;
     font-size: 36px;
     color: var(--text-primary);
-    letter-spacing: 2px;
+    letter-spacing: 1px;
     line-height: 1;
     opacity: 0.9;
     white-space: nowrap;
-}
-
-.logo-subtitle {
-    font-family: 'Doto', sans-serif;
-    font-size: 12px;
-    color: var(--text-muted);
-    letter-spacing: 4px;
-    text-transform: uppercase;
-    margin-top: 2px;
 }
 
 /* Loading Indicator */
@@ -164,6 +135,10 @@ button.primary:hover {
     background-color: #4a5f8a;
 }
 
+#btn-refresh {
+    font-size: 1.1em;
+}
+
 /* --- Select / Dropdown --- */
 select {
     background-color: var(--bg-card);
@@ -219,6 +194,7 @@ main.container {
 
 /* --- Metric Card --- */
 .metric-card {
+    position: relative;
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 6px;
@@ -257,6 +233,42 @@ main.container {
     min-width: 80px;
     padding: 4px 8px;
     font-size: 0.8em;
+}
+
+/* --- Metric Card Chart Container --- */
+.metric-card-chart-container {
+    position: relative;
+    height: 350px;
+    width: 100%;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 12px;
+}
+
+.metric-card-message-overlay {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.7);
+    border-radius: 4px;
+    z-index: 10;
+    color: var(--text-secondary);
+    font-size: 0.9em;
+}
+
+.metric-card-message-overlay.visible {
+    display: flex;
+}
+
+.metric-card-message-overlay.error {
+    background-color: rgba(139, 26, 26, 0.2);
+    color: #ff6b6b;
 }
 
 /* --- Chart Container --- */

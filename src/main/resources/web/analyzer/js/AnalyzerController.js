@@ -1,3 +1,10 @@
+
+import * as AnalyticsApi from './api/AnalyticsApi.js';
+import * as HeaderView from './ui/HeaderView.js';
+import * as DashboardView from './ui/DashboardView.js';
+import * as DuckDBClient from './data/DuckDBClient.js';
+import * as MetricCardView from './ui/MetricCardView.js';
+
 /**
  * Analyzer Controller
  * 
@@ -10,259 +17,254 @@
  * @module AnalyzerController
  */
 
-const AnalyzerController = (function() {
-    'use strict';
-    
-    // Preferred display order for metrics (metrics not in list appear at the end)
-    const METRIC_ORDER = [
-        'population',           // 1. Population Overview
-        'vital_stats',          // 2. Birth & Death Rates
-        'generation_depth',     // 3. Generation Depth
-        'age_distribution',     // 4. Age Distribution
-        'instruction_usage',    // 5. Instruction Usage
-        'environment_composition' // 6. Environment Composition
-    ];
-    
-    // State
-    let currentRunId = null;
-    let manifest = null;
-    let isLoading = false;
-    
-    /**
-     * Initializes the controller and UI components.
-     */
-    async function init() {
-        console.debug('[AnalyzerController] Initializing...');
-        
-        // Initialize UI components
-        HeaderView.init({
-            onRunChange: handleRunChange,
-            onRefresh: handleRefresh
-        });
-        
-        DashboardView.init();
-        
-        // Update logo width for loading animation
-        HeaderView.updateLogoWidth();
-        window.addEventListener('resize', HeaderView.updateLogoWidth);
-        
-        // Load available runs
-        await loadRuns();
-        
-        console.debug('[AnalyzerController] Initialized');
-    }
-    
-    /**
-     * Loads available runs from the API and populates the dropdown.
-     */
-    async function loadRuns() {
-        try {
-            HeaderView.setLoading(true);
-            
-            const runs = await AnalyticsApi.listRuns();
-            HeaderView.setRuns(runs, currentRunId);
-            
-            // Auto-load first run if available
-            if (runs.length > 0 && !currentRunId) {
-                const firstRun = runs[0];
-                currentRunId = firstRun.runId;
-                HeaderView.setRuns(runs, currentRunId); // Ensure dropdown is updated
-                await loadDashboard(currentRunId);
-            } else if (runs.length > 0) {
-                HeaderView.setRuns(runs, currentRunId);
-            }
-            
-        } catch (error) {
-            console.error('[AnalyzerController] Failed to load runs:', error);
-            showError(`Failed to load runs: ${error.message}`);
-        } finally {
-            HeaderView.setLoading(false);
-        }
-    }
-    
-    /**
-     * Handles run selection change.
-     */
-    async function handleRunChange(runId) {
-        if (!runId || runId === currentRunId) return;
-        
-        currentRunId = runId;
-        await loadDashboard(runId);
-    }
-    
-    /**
-     * Handles refresh button click.
-     */
-    async function handleRefresh() {
-        if (currentRunId) {
-            await loadDashboard(currentRunId);
-        } else {
-            await loadRuns();
-        }
-    }
-    
-    /**
-     * Loads the dashboard for a specific run.
-     * 
-     * @param {string} runId - Simulation run ID
-     */
-    async function loadDashboard(runId) {
-        if (isLoading) return;
-        isLoading = true;
-        
-        try {
-            HeaderView.setLoading(true);
-            DashboardView.showMessage('Loading metrics...');
-            
-            // Fetch manifest
-            manifest = await AnalyticsApi.getManifest(runId);
-            
-            if (!manifest.metrics || manifest.metrics.length === 0) {
-                DashboardView.showEmptyState('No metrics available for this run.');
-                return;
-            }
-            
-            // Sort metrics by preferred order
-            manifest.metrics.sort((a, b) => {
-                const orderA = METRIC_ORDER.indexOf(a.id);
-                const orderB = METRIC_ORDER.indexOf(b.id);
-                // Metrics not in METRIC_ORDER go to the end (alphabetically)
-                if (orderA === -1 && orderB === -1) return a.id.localeCompare(b.id);
-                if (orderA === -1) return 1;
-                if (orderB === -1) return -1;
-                return orderA - orderB;
-            });
-            
-            // Create metric cards
-            DashboardView.createCards(manifest.metrics);
-            
-            // Load data for all metrics
-            await loadAllMetricsData();
-            
-        } catch (error) {
-            console.error('[AnalyzerController] Failed to load dashboard:', error);
-            DashboardView.showMessage(`Error: ${error.message}`, true);
-        } finally {
-            isLoading = false;
-            HeaderView.setLoading(false);
-        }
-    }
-    
-    /**
-     * Loads data for all metric cards.
-     */
-    async function loadAllMetricsData() {
-        const cards = DashboardView.getAllCards();
-        
-        // Load all metrics in parallel
-        const promises = Object.entries(cards).map(([metricId, card]) => {
-            return loadMetricData(card).catch(error => {
-                // Extract user-friendly error message (hide technical details)
-                let message = error.message || 'Failed to load data';
-                if (message.includes('Binder Error') || message.includes('Parser Error')) {
-                    message = 'Query error - data may be incomplete';
-                }
-                console.error(`[AnalyzerController] Failed to load metric ${metricId}:`, error);
-                MetricCardView.showError(card, message);
-            });
-        });
-        
-        await Promise.all(promises);
-    }
-    
-    /**
-     * Loads data for a single metric card.
-     * Uses client-side DuckDB WASM for queries on merged Parquet from server.
-     * 
-     * @param {Object} card - MetricCard instance
-     */
-    async function loadMetricData(card) {
-        MetricCardView.showLoading(card);
-        
-        const metric = card.metric;
-        
-        try {
-            const startTime = performance.now();
-            
-            // Check if metric has a generated query (new stateless plugins)
-            const hasGeneratedQuery = metric.generatedQuery && metric.generatedQuery.trim();
-            
-            let data;
-            if (hasGeneratedQuery) {
-                // New architecture: Client-side DuckDB WASM
-                // 1. Fetch merged Parquet blob from server
-                const parquetBlob = await AnalyticsApi.fetchParquetBlob(metric.id, currentRunId);
-                
-                // 2. Query locally with DuckDB WASM using the generated SQL
-                data = await DuckDBClient.queryParquetBlob(parquetBlob, metric.generatedQuery);
-                
-                const duration = Math.round(performance.now() - startTime);
-                console.debug(`[AnalyzerController] ${metric.id}: ${data.length} rows loaded via DuckDB WASM in ${duration}ms`);
-            } else {
-                // Legacy: Server-side query (for plugins without generatedQuery)
-                data = await AnalyticsApi.queryData(currentRunId, metric.id);
-                
-                const duration = Math.round(performance.now() - startTime);
-                console.debug(`[AnalyzerController] ${metric.id}: ${data.length} rows loaded via server in ${duration}ms`);
-            }
-            
-            if (data.length === 0) {
-                MetricCardView.showNoData(card);
-                return;
-            }
-            
-            // Render chart
-            MetricCardView.renderChart(card, data);
-            
-        } catch (error) {
-            // Handle "no data yet" as a non-error state
-            if (error.code === 'NO_DATA') {
-                MetricCardView.showNoData(card);
-                return;
-            }
-            console.error(`[AnalyzerController] Error loading metric ${metric.id}:`, error);
-            throw error;
-        }
-    }
-    
-    /**
-     * Shows a global error message.
-     * 
-     * @param {string} message
-     */
-    function showError(message) {
-        const errorBar = document.getElementById('error-banner');
-        const errorMessage = document.getElementById('error-message');
-        
-        if (errorBar && errorMessage) {
-            errorMessage.textContent = message;
-            errorBar.classList.add('visible');
-        }
-    }
-    
-    /**
-     * Hides the global error message.
-     */
-    function hideError() {
-        const errorBar = document.getElementById('error-banner');
-        if (errorBar) {
-            errorBar.classList.remove('visible');
-        }
-    }
-    
-    // Public API
-    return {
-        init,
-        loadRuns,
-        loadDashboard,
-        showError,
-        hideError
-    };
-    
-})();
+const METRIC_ORDER = [
+    'population',           // 1. Population Overview
+    'vital_stats',          // 2. Birth & Death Rates
+    'generation_depth',     // 3. Generation Depth
+    'age_distribution',     // 4. Age Distribution
+    'instruction_usage',    // 5. Instruction Usage
+    'environment_composition' // 6. Environment Composition
+];
 
-// Export for module systems
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = AnalyzerController;
+// State
+let currentRunId = null;
+let manifest = null;
+let isLoading = false;
+
+/**
+ * Initializes the controller and UI components.
+ */
+export async function init() {
+    console.debug('[AnalyzerController] Initializing...');
+    
+    // Initialize UI components
+    HeaderView.init({
+        onRefresh: handleRefresh
+    });
+    
+    DashboardView.init();
+    
+    // Update logo width for loading animation
+    HeaderView.updateLogoWidth();
+    window.addEventListener('resize', HeaderView.updateLogoWidth);
+    
+    // Load available runs
+    await loadRuns();
+    
+    console.debug('[AnalyzerController] Initialized');
 }
+
+/**
+ * Loads available runs and auto-selects the latest if none selected.
+ */
+async function loadRuns() {
+    try {
+        HeaderView.setLoading(true);
+        
+        const runs = await AnalyticsApi.listRuns();
+        
+        // Auto-load first (latest) run if available and none selected
+        if (runs.length > 0 && !currentRunId) {
+            // Sort by startTime or runId timestamp (newest first)
+            const sorted = [...runs].sort((a, b) => {
+                const scoreA = a.startTime || extractTimestamp(a.runId);
+                const scoreB = b.startTime || extractTimestamp(b.runId);
+                return scoreB - scoreA;
+            });
+            currentRunId = sorted[0].runId;
+            window.footer?.updateCurrent?.();
+            await loadDashboard(currentRunId);
+        } else if (currentRunId) {
+            await loadDashboard(currentRunId);
+        }
+        
+    } catch (error) {
+        console.error('[AnalyzerController] Failed to load runs:', error);
+        showError(`Failed to load runs: ${error.message}`);
+    } finally {
+        HeaderView.setLoading(false);
+    }
+}
+
+/**
+ * Extracts a sortable timestamp from a runId.
+ */
+function extractTimestamp(runId) {
+    const m = (runId || '').match(/^(\d{8})-(\d{8})/);
+    return m ? Number(m[1] + m[2]) : 0;
+}
+
+/**
+ * Handles run selection change.
+ */
+async function handleRunChange(runId) {
+    if (!runId || runId === currentRunId) return;
+    
+    currentRunId = runId;
+    window.footer?.updateCurrent?.();
+    await loadDashboard(runId);
+}
+
+/**
+ * Handles refresh button click.
+ */
+async function handleRefresh() {
+    if (currentRunId) {
+        await loadDashboard(currentRunId);
+    } else {
+        await loadRuns();
+    }
+}
+
+/**
+ * Loads the dashboard for a specific run.
+ * 
+ * @param {string} runId - Simulation run ID
+ */
+export async function loadDashboard(runId) {
+    if (isLoading) return;
+    isLoading = true;
+    
+    try {
+        HeaderView.setLoading(true);
+        DashboardView.showMessage('Loading metrics...');
+        
+        // Fetch manifest
+        manifest = await AnalyticsApi.getManifest(runId);
+        
+        if (!manifest.metrics || manifest.metrics.length === 0) {
+            DashboardView.showEmptyState('No metrics available for this run.');
+            return;
+        }
+        
+        // Sort metrics by preferred order
+        manifest.metrics.sort((a, b) => {
+            const orderA = METRIC_ORDER.indexOf(a.id);
+            const orderB = METRIC_ORDER.indexOf(b.id);
+            // Metrics not in METRIC_ORDER go to the end (alphabetically)
+            if (orderA === -1 && orderB === -1) return a.id.localeCompare(b.id);
+            if (orderA === -1) return 1;
+            if (orderB === -1) return -1;
+            return orderA - orderB;
+        });
+        
+        // Create metric cards
+        DashboardView.createCards(manifest.metrics);
+        
+        // Load data for all metrics
+        await loadAllMetricsData();
+        
+    } catch (error) {
+        console.error('[AnalyzerController] Failed to load dashboard:', error);
+        DashboardView.showMessage(`Error: ${error.message}`, true);
+    } finally {
+        isLoading = false;
+        HeaderView.setLoading(false);
+    }
+}
+
+/**
+ * Loads data for all metric cards.
+ */
+async function loadAllMetricsData() {
+    const cards = DashboardView.getAllCards();
+    
+    // Load all metrics in parallel
+    const promises = Object.entries(cards).map(([metricId, card]) => {
+        return loadMetricData(card).catch(error => {
+            // Extract user-friendly error message (hide technical details)
+            let message = error.message || 'Failed to load data';
+            if (message.includes('Binder Error') || message.includes('Parser Error')) {
+                message = 'Query error - data may be incomplete';
+            }
+            console.error(`[AnalyzerController] Failed to load metric ${metricId}:`, error);
+            MetricCardView.showError(card, message);
+        });
+    });
+    
+    await Promise.all(promises);
+}
+
+/**
+ * Loads data for a single metric card.
+ * Uses client-side DuckDB WASM for queries on merged Parquet from server.
+ * 
+ * @param {Object} card - MetricCard instance
+ */
+async function loadMetricData(card) {
+    MetricCardView.showLoading(card);
+    
+    const metric = card.metric;
+    
+    try {
+        const startTime = performance.now();
+        
+        // Check if metric has a generated query (new stateless plugins)
+        const hasGeneratedQuery = metric.generatedQuery && metric.generatedQuery.trim();
+        
+        let data;
+        if (hasGeneratedQuery) {
+            // New architecture: Client-side DuckDB WASM
+            // 1. Fetch merged Parquet blob from server
+            const parquetBlob = await AnalyticsApi.fetchParquetBlob(metric.id, currentRunId);
+            
+            // 2. Query locally with DuckDB WASM using the generated SQL
+            data = await DuckDBClient.queryParquetBlob(parquetBlob, metric.generatedQuery);
+            
+            const duration = Math.round(performance.now() - startTime);
+            console.debug(`[AnalyzerController] ${metric.id}: ${data.length} rows loaded via DuckDB WASM in ${duration}ms`);
+        } else {
+            // Legacy: Server-side query (for plugins without generatedQuery)
+            data = await AnalyticsApi.queryData(currentRunId, metric.id);
+            
+            const duration = Math.round(performance.now() - startTime);
+            console.debug(`[AnalyzerController] ${metric.id}: ${data.length} rows loaded via server in ${duration}ms`);
+        }
+        
+        if (data.length === 0) {
+            MetricCardView.showNoData(card);
+            return;
+        }
+        
+        // Render chart
+        MetricCardView.renderChart(card, data);
+        
+    } catch (error) {
+        // Handle "no data yet" as a non-error state
+        if (error.code === 'NO_DATA') {
+            MetricCardView.showNoData(card);
+            return;
+        }
+        console.error(`[AnalyzerController] Error loading metric ${metric.id}:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Shows a global error message.
+ * 
+ * @param {string} message
+ */
+export function showError(message) {
+    const errorBar = document.getElementById('error-banner');
+    const errorMessage = document.getElementById('error-message');
+    
+    if (errorBar && errorMessage) {
+        errorMessage.textContent = message;
+        errorBar.classList.add('visible');
+    }
+}
+
+/**
+ * Hides the global error message.
+ */
+export function hideError() {
+    const errorBar = document.getElementById('error-banner');
+    if (errorBar) {
+        errorBar.classList.remove('visible');
+    }
+}
+
+export const changeRun = handleRunChange;
+export const getCurrentRunId = () => currentRunId;
 

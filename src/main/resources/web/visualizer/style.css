@@ -1,6 +1,11 @@
+/* Footer height variable - must be defined at root level */
+:root {
+    --footer-height: 24px;
+}
+
 /* Grundlegende Stile und Farbschema */
 body {
-    font-family: 'Monospaced', 'Courier New', Courier, monospace;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
     background-color: #0a0a14;
     color: #e0e0e0;
     margin: 0;
@@ -10,8 +15,38 @@ body {
     overflow: hidden;
 }
 
+/* Dark scrollbars for all elements */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1a1a24;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #3a3a4a;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #4a4a5a;
+}
+
+::-webkit-scrollbar-corner {
+    background: #1a1a24;
+}
+
+/* Firefox scrollbar styling */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #3a3a4a #1a1a24;
+}
+
 /* Header-Bereich für die Steuerung */
 header {
+    position: relative;
     background-color: #191923;
     padding: 8px 15px;
     display: flex;
@@ -19,34 +54,325 @@ header {
     align-items: center;
     flex-shrink: 0;
     border-bottom: 1px solid #333;
-    position: relative; /* Allow loading indicator to overflow below */
-    /* Mindestbreite = controls + logo + 2x20px Abstand */
-    min-width: calc(var(--controls-left-width, 280px) + var(--logo-width, 280px) + var(--controls-right-width, 150px) + 40px);
 }
 
-/* Logo Container - absolut mittig im Browser, begrenzt durch Controls */
-.logo-container {
-    position: absolute;
-    /* Position wird durch CSS-Variablen gesteuert (gesetzt via JavaScript) */
-    left: clamp(
-        calc(var(--controls-left-width, 280px) + 20px),
-        calc(50% - var(--logo-width, 140px) / 2),
-        calc(100% - var(--controls-right-width, 150px) - var(--logo-width, 140px) - 20px)
-    );
+.header-left, .header-right {
     display: flex;
-    justify-content: center;
     align-items: center;
+    gap: 15px;
 }
 
-/* Logo Wrapper - contains logo text and loading indicator */
-.logo-wrapper {
+/* ============================================
+   Header Panels - Shared Styles
+   ============================================ */
+
+/* Base panel - floating below header */
+.header-panel {
+    position: absolute;
+    top: 100%;
+    background-color: #191923;
+    border: 1px solid #333;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    z-index: 100;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.header-panel.hidden {
+    display: none !important;
+}
+
+/* Collapsed state button */
+.header-panel-collapsed {
+    position: absolute;
+    top: 100%;
+    background-color: #191923;
+    border: 1px solid #333;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    color: #888;
+    cursor: pointer;
+}
+
+.header-panel-collapsed:hover {
+    color: #e0e0e0;
+}
+
+.header-panel-collapsed.hidden {
+    display: none !important;
+}
+
+.header-panel-collapsed .panel-info {
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    white-space: nowrap;
+}
+
+/* Toggle button inside panels */
+.panel-toggle {
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 10px;
+    line-height: 1;
+}
+
+.panel-toggle:hover {
+    color: #e0e0e0;
+    background: rgba(255,255,255,0.05);
+    border-radius: 3px;
+}
+
+/* ============================================
+   Tick Panel - Left side
+   ============================================ */
+
+#tick-panel {
+    left: 22px;
+    padding: 6px 10px 6px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#tick-panel-collapsed {
+    left: 22px;
+    padding: 2px 10px;
+}
+
+/* ============================================
+   Organism Panel - Right side
+   ============================================ */
+
+#organism-panel {
+    right: 35px;
+    width: 620px;
+    padding: 0;
     display: flex;
     flex-direction: column;
+    max-height: calc(100vh - 54px - 40px - var(--footer-height, 24px));
+    overflow: hidden;
+}
+
+/* Organism panel header with toggle and summary */
+.organism-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 10px;
+    border-bottom: 1px solid #333;
+    cursor: pointer;
+}
+
+.organism-panel-header:hover {
+    background: rgba(255,255,255,0.02);
+}
+
+.organism-panel-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #e0e0e0;
+}
+
+.organism-count {
+    color: #888;
+    font-size: 12px;
+}
+
+.organism-panel-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Organism list (collapsible) */
+.organism-list-container {
+    border-bottom: 1px solid #333;
+    max-height: 200px;
+    overflow: hidden;
+    transition: max-height 0.2s ease;
+}
+
+.organism-list-container.collapsed {
+    max-height: 0;
+    border-bottom: none;
+}
+
+.organism-list {
+    max-height: 200px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 4px 0;
+}
+
+.organism-list-item {
+    padding: 3px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #aaa;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    line-height: 1.3;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+}
+
+.organism-list-item:hover {
+    background: rgba(255,255,255,0.05);
+}
+
+.organism-list-item.selected {
+    background: rgba(74, 158, 255, 0.15);
+}
+
+/* Table-like column layout */
+.organism-col {
+    flex-shrink: 0;
+    padding-right: 4px;
+}
+
+.organism-col-id {
+    width: 30px;
+    font-weight: bold;
+}
+
+.organism-col-er {
+    width: 70px;
+    color: #888;
+}
+
+.organism-col-parent {
+    width: 60px;
+    color: #888;
+}
+
+.organism-col-birth {
+    width: 75px;
+    color: #888;
+}
+
+.organism-col-ip {
+    width: 120px;
+    color: #aaa;
+}
+
+.organism-col-dps {
+    width: 25px;
+    color: #666;
+}
+
+.organism-col-dp0 {
+    width: 80px;
+    color: #888;
+}
+
+.organism-col-dp1 {
+    width: 80px;
+    color: #888;
+}
+
+.organism-col-deselect {
+    width: 20px;
+    flex-shrink: 0;
+    margin-left: auto;
+    text-align: right;
+}
+
+/* Labels in columns */
+.organism-label {
+    color: #555;
+    margin-right: 2px;
+}
+
+/* Deselect button */
+.organism-deselect {
+    background: transparent;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    padding: 0 4px;
+    font-size: 12px;
+    line-height: 1;
+}
+
+.organism-deselect:hover {
+    color: #ff6666;
+}
+
+/* Clickable links in organism list */
+.organism-list-item .clickable-position,
+.organism-list-item .clickable-parent,
+.organism-list-item .clickable-tick {
+    color: #4a9eff;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+}
+
+.organism-list-item .clickable-position:hover,
+.organism-list-item .clickable-parent:hover,
+.organism-list-item .clickable-tick:hover {
+    color: #7cb9ff;
+}
+
+/* Selected organism display (shown when list collapsed) */
+.organism-selected-display {
+    border-bottom: 1px solid #333;
+}
+
+.organism-selected-display:empty {
+    display: none;
+    border-bottom: none;
+}
+
+.organism-selected-display .organism-list-item {
+    background: rgba(74, 158, 255, 0.1);
+}
+
+/* Organism details section */
+.organism-details-container {
+    flex: 1;
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 10px;
+    font-size: 12px;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+}
+
+/* Hide padding when all children are empty */
+.organism-details-container:not(:has([data-section]:not(:empty))) {
+    padding: 0;
+}
+
+/* Placeholder when no organism selected */
+.organism-panel-empty {
+    padding: 20px;
+    text-align: center;
+    color: #666;
+    font-size: 12px;
+}
+
+/* Logo Container */
+.logo-container {
+    display: flex;
     align-items: center;
     position: relative;
 }
 
-/* Logo Text - Doto Black 900, nutzt Header-Höhe aus */
+/* Logo Text - Doto Black 900 */
 .logo-text {
     font-family: 'Doto', sans-serif;
     font-weight: 900;
@@ -121,7 +447,7 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    font-family: 'Monospaced', 'Courier New', Courier, monospace;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
     margin: 0; /* Remove default margin to keep spacing tight */
     line-height: 1.4; /* Keep line height consistent */
 }
@@ -133,7 +459,7 @@ header {
 
 .instruction-position {
     display: inline-block;
-    font-family: 'Monospaced', 'Courier New', Courier, monospace;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
 }
 
 .instruction-energy {
@@ -150,7 +476,7 @@ header {
     padding: 8px 12px;
     border-radius: 6px;
     font-size: 12px;
-    font-family: 'Courier New', monospace;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
     white-space: nowrap;
     pointer-events: none;
     z-index: 1000;
@@ -186,17 +512,6 @@ header {
 .cell-tooltip .tooltip-separator {
     color: #666;
     margin: 0 4px;
-}
-
-.controls-left, .controls-right {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0; /* Don't shrink controls */
-}
-
-.header-spacer {
-    display: none; /* Nicht mehr benötigt */
 }
 
 button {
@@ -240,50 +555,7 @@ button:hover { background-color: #4a4a6a; }
     right: 8px;
     pointer-events: none;
     color: #aaa;
-    font-size: 0.95em;
-}
-
-.organism-selector-wrapper {
-    position: relative;
-}
-
-#organism-selector {
-    width: 620px; /* Same width as sidebar */
-    background-color: #000; /* Same as changeable-box */
-    border: 1px solid #333; /* Same as changeable-box */
-    color: #e0e0e0;
-    padding: 8px; /* Same as changeable-box */
-    border-radius: 3px; /* Same as changeable-box */
-    cursor: pointer;
-    font-family: 'Monospaced', 'Courier New', Courier, monospace; /* Same as code-view */
-    font-size: 0.9em; /* Same as changeable-box */
-    white-space: pre; /* Preserve formatting like changeable-box */
-    overflow-x: auto;
-}
-
-#organism-selector:hover {
-    background-color: #0a0a0a; /* Slightly lighter black on hover */
-    border-color: #444;
-}
-
-#organism-selector:focus {
-    outline: none;
-    border-color: #555;
-    box-shadow: 0 0 0 2px rgba(85, 85, 85, 0.2);
-}
-
-/* Ensure option colors are respected (individual colors set via inline styles) */
-#organism-selector option {
-    background-color: #000 !important; /* Same as changeable-box */
-    font-family: 'Monospaced', 'Courier New', Courier, monospace !important;
-    font-size: 0.9em !important;
-    white-space: pre !important;
-    padding: 8px !important; /* Same padding as select element */
-    line-height: 1.4 !important;
-    width: 100% !important; /* Full width like select element */
-    box-sizing: border-box !important;
-    /* Color is set individually via inline style in HTML with !important */
-    /* Inline styles should override the select's color property */
+    font-size: 1em;
 }
 
 /* Hauptcontainer (ohne Header) */
@@ -292,11 +564,7 @@ main.container {
     flex-grow: 1;
     position: relative;
     overflow: hidden;
-}
-
-/* Adjust world container when sidebar is visible */
-main.container.sidebar-visible .world-container {
-    margin-right: 620px; /* Same width as sidebar */
+    margin-bottom: var(--footer-height); /* Leave space for fixed footer */
 }
 
 /* Welt-Container, der den Viewport für das Canvas bereitstellt (keine DOM-Scrollbars für die Welt) */
@@ -306,75 +574,12 @@ main.container.sidebar-visible .world-container {
     overflow: hidden; /* Welt wird über Kamera bewegt, nicht per DOM-Scrollbars */
     padding: 0;
     box-sizing: border-box;
+    background-color: #1a1a28; /* Dark gray border area - distinguishable from grid #14141e */
 }
 
 #worldCanvas {
     background-color: #14141e;
-    border: 1px solid #333;
     flex-shrink: 0;
-}
-
-/* Sidebar */
-.sidebar {
-    width: 620px;
-    background-color: #191923;
-    border-left: 1px solid #333;
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    transform: translateX(100%);
-    transition: transform 0.3s ease-in-out;
-    padding: 15px;
-    display: flex;
-    flex-direction: column;
-    z-index: 1000; /* Ensure sidebar is above other content */
-}
-
-.sidebar.visible {
-    transform: translateX(0);
-}
-
-.sidebar-toggle-btn {
-    position: absolute;
-    left: -40px;
-    top: 15px;
-    width: 40px;
-    height: 40px;
-    background: #3c5078;
-    border: 1px solid #5a5a7a;
-    border-right: none;
-    border-radius: 4px 0 0 4px;
-    color: white;
-    cursor: pointer;
-    font-size: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color 0.2s;
-}
-
-.sidebar-toggle-btn:hover {
-    background: #4a5f8a;
-}
-
-.details {
-    flex: 1;
-    min-height: 0; /* CRITICAL for allowing flex children to shrink and scroll */
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto; /* Allow scrolling for the entire details section */
-}
-
-.details [data-section] {
-    flex-shrink: 0;
-}
-
-.details [data-section="source"] {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
 }
 
 /* Unchangeable info styles */
@@ -454,7 +659,7 @@ main.container.sidebar-visible .world-container {
     margin-top: 5px;
     white-space: pre;
     overflow-x: auto;
-    font-size: 0.9em;
+    font-size: 1em;
 }
 
 .code-view {
@@ -466,7 +671,7 @@ main.container.sidebar-visible .world-container {
     white-space: pre;
     overflow-x: auto;
     overflow-y: visible; /* Allow red bar to extend left */
-    font-size: 0.9em;
+    font-size: 1em;
     line-height: 1.4; /* Fixed line height to prevent height changes when highlighting */
 }
 
@@ -484,7 +689,7 @@ main.container.sidebar-visible .world-container {
     padding: 0;
     border: none;
     background: none;
-    font-family: 'Monospaced', 'Courier New', Courier, monospace !important;
+    font-family: 'Roboto Mono', 'Courier New', monospace !important;
     white-space: pre !important;
     letter-spacing: normal !important;
     word-spacing: normal !important;
@@ -509,7 +714,7 @@ main.container.sidebar-visible .world-container {
 .injected-value {
     font-style: italic;
     color: #a0e0a0;
-    font-size: 0.9em;
+    font-size: 1em;
     margin-left: 1px;
     opacity: 0.8;
 }
@@ -581,10 +786,6 @@ main.container.sidebar-visible .world-container {
     margin-top: 15px;
     border-top: 1px solid #333;
     padding-top: 15px;
-    display: flex; /* Enable flexbox for child elements */
-    flex-direction: column;
-    min-height: 0; /* Allow this container to shrink and take available space */
-    flex-grow: 1; /* Allow this container to grow */
 }
 
 .assembly-code-view {
@@ -592,18 +793,17 @@ main.container.sidebar-visible .world-container {
     border: 1px solid #333;
     padding: 8px;
     border-radius: 3px;
-    font-size: 0.9em;
+    font-size: 10px;
     line-height: 1.4;
-    overflow-y: auto; /* Make ONLY this element scrollable */
-    flex-grow: 1; /* Allow it to take up the remaining space */
-    min-height: 0; /* CRITICAL: Allow this element to shrink in flex container */
+    max-height: 320px;
+    overflow-y: auto;
 }
 
 .source-line {
     display: flex;
     white-space: pre;
     align-items: baseline;
-    line-height: 1.5;
+    line-height: 1.4;
 }
 
 .source-line.collapsible-source-line {
@@ -684,8 +884,8 @@ main.container.sidebar-visible .world-container {
 .machine-instruction {
     display: flex;
     align-items: center;
-    font-family: 'Monospaced', 'Courier New', Courier, monospace;
-    font-size: 0.9em;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 12px;
     color: #aaa;
     margin-left: 10px;
     padding: 2px 0;
@@ -742,10 +942,11 @@ main.container.sidebar-visible .world-container {
     background-color: #000;
     border: 1px solid #333;
     color: #e0e0e0;
-    padding: 8px;
+    padding: 6px 8px;
     border-radius: 3px;
     margin-bottom: 10px;
-    font-family: 'Monospaced', 'Courier New', Courier, monospace;
+    font-size: 12px;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
     flex-shrink: 0; /* Prevent dropdown from shrinking */
 }
 
@@ -759,7 +960,7 @@ main.container.sidebar-visible .world-container {
     box-sizing: border-box; 
 }
 .scrollbar-track-v {
-    left: 0;
+    right: 0;
     top: 0;
     width: 10px;
     height: calc(100% - 10px); /* Avoid overlapping horizontal scrollbar */
@@ -769,13 +970,6 @@ main.container.sidebar-visible .world-container {
     left: 0;
     height: 10px;
     width: calc(100% - 10px); /* Avoid overlapping vertical scrollbar */
-}
-/* Adjust track width/height when sidebar is visible */
-main.container.sidebar-visible .scrollbar-track-h {
-    width: calc(100% - 620px - 10px); /* container width - sidebar width - v-scrollbar width */
-}
-main.container.sidebar-visible .scrollbar-track-v {
-    height: calc(100% - 10px);
 }
 
 .scrollbar-thumb-v, .scrollbar-thumb-h {

@@ -22,6 +22,7 @@ export class EnvironmentGrid {
         // --- PIXI Core & Scene Graph ---
         this.app = new PIXI.Application();
         // Main containers for different layers
+        this.gridBackground = new PIXI.Graphics(); // Background for empty cells
         this.cellContainer = new PIXI.Container();
         this.textContainer = new PIXI.Container();
         this.organismContainer = new PIXI.Container();
@@ -105,7 +106,7 @@ export class EnvironmentGrid {
         this.container.innerHTML = '';
         this.container.appendChild(canvas);
 
-        this.app.stage.addChild(this.cellContainer, this.textContainer, this.organismContainer);
+        this.app.stage.addChild(this.gridBackground, this.cellContainer, this.textContainer, this.organismContainer);
 
         this.detailedRenderer.init();
         this.zoomedOutRenderer.init();
@@ -130,6 +131,7 @@ export class EnvironmentGrid {
         
         // Clear everything, as all scales and positions are now invalid.
         this.clear();
+        this.updateGridBackground();
         this.clampCameraToWorld();
         this.updateStagePosition();
     }
@@ -148,15 +150,34 @@ export class EnvironmentGrid {
             this.worldWidthCells = worldShape[0];
             this.worldHeightCells = worldShape[1];
 
+            this.updateGridBackground();
             this.clampCameraToWorld();
             this.updateStagePosition();
             this.requestViewportLoad();
             this.updateScrollbars();
         }
     }
+    
+    /**
+     * Draws the grid background with empty cell color.
+     * This ensures empty areas show the correct color instead of canvas background.
+     * @private
+     */
+    updateGridBackground() {
+        if (this.worldWidthCells == null || this.worldHeightCells == null) return;
+        
+        const cellSize = this.getCurrentCellSize();
+        const worldWidthPx = this.worldWidthCells * cellSize;
+        const worldHeightPx = this.worldHeightCells * cellSize;
+        
+        this.gridBackground.clear();
+        this.gridBackground.rect(0, 0, worldWidthPx, worldHeightPx);
+        this.gridBackground.fill(this.config.colorEmptyBg);
+    }
 
     /**
      * Ensures the camera stays within the world boundaries.
+     * Allows scrolling 50px beyond the grid edges to show the border area.
      * @private
      */
     clampCameraToWorld() {
@@ -167,12 +188,16 @@ export class EnvironmentGrid {
         const cellSize = this.getCurrentCellSize();
         const worldWidthPx = this.worldWidthCells * cellSize;
         const worldHeightPx = this.worldHeightCells * cellSize;
+        
+        // Allow 50px margin beyond the grid for visual border
+        const margin = 50;
+        const minCameraX = -margin;
+        const minCameraY = -margin;
+        const maxCameraX = Math.max(0, worldWidthPx - this.viewportWidth + margin);
+        const maxCameraY = Math.max(0, worldHeightPx - this.viewportHeight + margin);
 
-        const maxCameraX = Math.max(0, worldWidthPx - this.viewportWidth);
-        const maxCameraY = Math.max(0, worldHeightPx - this.viewportHeight);
-
-        this.cameraX = Math.min(Math.max(this.cameraX, 0), maxCameraX);
-        this.cameraY = Math.min(Math.max(this.cameraY, 0), maxCameraY);
+        this.cameraX = Math.min(Math.max(this.cameraX, minCameraX), maxCameraX);
+        this.cameraY = Math.min(Math.max(this.cameraY, minCameraY), maxCameraY);
     }
 
     /**
@@ -438,6 +463,9 @@ export class EnvironmentGrid {
      */
     setupScrollbarInteraction() {
         if (!this.hScrollThumb || !this.vScrollThumb) return;
+        
+        // Margin for scrolling beyond grid edges (must match clampCameraToWorld)
+        const margin = 50;
 
         // --- Horizontal Scrollbar Interaction ---
         this.hScrollThumb.addEventListener('mousedown', (e) => {
@@ -446,11 +474,12 @@ export class EnvironmentGrid {
             const startCameraX = this.cameraX;
             const trackWidth = this.hScrollTrack.clientWidth;
             const worldWidthPx = this.worldWidthCells * this.getCurrentCellSize();
+            const scrollableWidth = worldWidthPx + 2 * margin;
 
             const onMouseMove = (moveEvent) => {
                 const dx = moveEvent.clientX - startX;
                 // Convert pixel delta on scrollbar to pixel delta in world
-                const cameraDeltaX = (dx / trackWidth) * worldWidthPx;
+                const cameraDeltaX = (dx / trackWidth) * scrollableWidth;
                 this.cameraX = startCameraX + cameraDeltaX;
 
                 this.clampCameraToWorld();
@@ -474,11 +503,12 @@ export class EnvironmentGrid {
             const startCameraY = this.cameraY;
             const trackHeight = this.vScrollTrack.clientHeight;
             const worldHeightPx = this.worldHeightCells * this.getCurrentCellSize();
+            const scrollableHeight = worldHeightPx + 2 * margin;
 
             const onMouseMove = (moveEvent) => {
                 const dy = moveEvent.clientY - startY;
                 // Convert pixel delta on scrollbar to pixel delta in world
-                const cameraDeltaY = (dy / trackHeight) * worldHeightPx;
+                const cameraDeltaY = (dy / trackHeight) * scrollableHeight;
                 this.cameraY = startCameraY + cameraDeltaY;
 
                 this.clampCameraToWorld();
@@ -554,17 +584,25 @@ export class EnvironmentGrid {
         const cellSize = this.getCurrentCellSize();
         const worldWidthPx = this.worldWidthCells * cellSize;
         const worldHeightPx = this.worldHeightCells * cellSize;
+        
+        // Margin for scrolling beyond grid edges (must match clampCameraToWorld)
+        const margin = 50;
+        
+        // Total scrollable range including margins
+        const scrollableWidth = worldWidthPx + 2 * margin;
+        const scrollableHeight = worldHeightPx + 2 * margin;
 
         // --- Horizontal Scrollbar ---
         if (worldWidthPx > this.viewportWidth) {
             this.hScrollTrack.style.display = 'block';
             const trackWidth = this.hScrollTrack.clientWidth;
 
-            const thumbWidth = (this.viewportWidth / worldWidthPx) * trackWidth;
-            const thumbX = (this.cameraX / worldWidthPx) * trackWidth;
+            const thumbWidth = (this.viewportWidth / scrollableWidth) * trackWidth;
+            // Offset cameraX by margin since camera can go negative
+            const thumbX = ((this.cameraX + margin) / scrollableWidth) * trackWidth;
 
             this.hScrollThumb.style.width = `${Math.max(thumbWidth, 10)}px`; // min width 10px
-            this.hScrollThumb.style.left = `${thumbX}px`;
+            this.hScrollThumb.style.left = `${Math.max(0, thumbX)}px`;
         } else {
             this.hScrollTrack.style.display = 'none';
         }
@@ -574,11 +612,12 @@ export class EnvironmentGrid {
             this.vScrollTrack.style.display = 'block';
             const trackHeight = this.vScrollTrack.clientHeight;
 
-            const thumbHeight = (this.viewportHeight / worldHeightPx) * trackHeight;
-            const thumbY = (this.cameraY / worldHeightPx) * trackHeight;
+            const thumbHeight = (this.viewportHeight / scrollableHeight) * trackHeight;
+            // Offset cameraY by margin since camera can go negative
+            const thumbY = ((this.cameraY + margin) / scrollableHeight) * trackHeight;
 
             this.vScrollThumb.style.height = `${Math.max(thumbHeight, 10)}px`; // min height 10px
-            this.vScrollThumb.style.top = `${thumbY}px`;
+            this.vScrollThumb.style.top = `${Math.max(0, thumbY)}px`;
         } else {
             this.vScrollTrack.style.display = 'none';
         }
@@ -1142,8 +1181,8 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
 
         const graphics = new PIXI.Graphics();
         
-        // Fill background first
-        graphics.beginFill(this.config.backgroundColor);
+        // Fill grid background with empty cell color (not canvas background)
+        graphics.beginFill(this.config.colorEmptyBg);
         graphics.drawRect(0, 0, this.grid.worldWidthCells, this.grid.worldHeightCells);
         graphics.endFill();
 
