@@ -1,3 +1,5 @@
+import { loadingManager } from '../ui/LoadingManager.js';
+
 /**
  * Centralized API client for handling network requests and standardizing error responses.
  * It wraps the native `fetch` API to provide consistent error handling for HTTP statuses
@@ -5,7 +7,7 @@
  *
  * @class ApiClient
  */
-class ApiClient {
+export class ApiClient {
     /**
      * Performs a fetch request and handles standard success and error cases.
      * 
@@ -15,7 +17,7 @@ class ApiClient {
      * @throws {Error} If the request fails due to network issues, an HTTP error status, or if it's aborted.
      */
     async fetch(url, options = {}) {
-        if (window.loadingManager) {
+        if (loadingManager) {
             loadingManager.incrementRequests();
         } else {
             console.error('ApiClient: loadingManager not available!');
@@ -43,7 +45,7 @@ class ApiClient {
             throw error; // Re-throw AbortError and other server errors
         } finally {
             // This block ALWAYS runs, guaranteeing a single decrement per fetch call.
-            if (window.loadingManager) {
+            if (loadingManager) {
                 loadingManager.decrementRequests();
             }
         }
@@ -51,4 +53,4 @@ class ApiClient {
 }
 
 // Export a single instance for global use
-window.apiClient = new ApiClient();
+export const apiClient = new ApiClient();

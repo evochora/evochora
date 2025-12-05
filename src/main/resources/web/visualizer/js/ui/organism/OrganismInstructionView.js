@@ -1,15 +1,18 @@
+import { ValueFormatter } from '../../utils/ValueFormatter.js';
+import { AnnotationUtils } from '../../annotator/AnnotationUtils.js';
+
 /**
- * Renders the instruction execution view in the sidebar.
+ * Renders the instruction execution view in the organism panel.
  * This view displays the last executed instruction and the next instruction to be executed,
  * including their arguments, values, and energy costs. It is styled similarly to the
  * state view for consistency.
  *
- * @class SidebarInstructionView
+ * @class OrganismInstructionView
  */
-class SidebarInstructionView {
+export class OrganismInstructionView {
     /**
      * Initializes the view.
-     * @param {HTMLElement} root - The root element of the sidebar.
+     * @param {HTMLElement} root - The root element of the organism panel.
      */
     constructor(root) {
         this.root = root;
@@ -60,7 +63,7 @@ class SidebarInstructionView {
             // Join lines (no newlines needed, each line is a div)
             el.innerHTML = `<div class="code-view instruction-view" style="font-size:0.9em;">${lines.join('')}</div>`;
         } catch (error) {
-            console.error("Failed to render SidebarInstructionView:", error);
+            console.error("Failed to render OrganismInstructionView:", error);
             el.innerHTML = `<div class="code-view instruction-view" style="font-size:0.9em; color: #ffaa00;">Error rendering instructions.</div>`;
         }
     }

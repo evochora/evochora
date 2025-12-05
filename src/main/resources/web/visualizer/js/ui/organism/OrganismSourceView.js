@@ -1,15 +1,17 @@
+import { SourceAnnotator } from '../../annotator/SourceAnnotator.js';
+
 /**
- * Manages the source code view in the sidebar.
+ * Manages the source code view in the organism panel.
  * This class is responsible for displaying the assembly code of the selected organism,
  * handling file switching for included files, highlighting the currently executing line,
  * and applying runtime annotations to the active line.
  *
- * @class SidebarSourceView
+ * @class OrganismSourceView
  */
-class SidebarSourceView {
+export class OrganismSourceView {
     /**
      * Initializes the view, caching DOM elements and creating the annotator instance.
-     * @param {HTMLElement} rootElement - The root element of the sidebar.
+     * @param {HTMLElement} rootElement - The root element of the organism panel.
      */
     constructor(rootElement) {
         this.root = rootElement;
@@ -113,9 +115,11 @@ class SidebarSourceView {
         const el = this.dom.section;
         if (!el) return;
 
-        // Guard: No artifact
+        // Guard: No artifact - clear the section
         if (!this.artifact || !this.artifact.sources) {
-            el.innerHTML = `<div class="source-view-container"><div>No source data available.</div></div>`;
+            el.innerHTML = '';
+            this.dom.codeContainer = null;
+            this.dom.status = null;
             return;
         }
 

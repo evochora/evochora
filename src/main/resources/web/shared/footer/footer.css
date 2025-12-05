@@ -1,0 +1,111 @@
+/* Footer container */
+.footer-bar {
+    --footer-height: 24px;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: var(--footer-height);
+    background: #191923;
+    border-top: 1px solid #333;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    font-family: 'Monospaced', 'Courier New', Courier, monospace;
+    z-index: 1000;
+}
+
+.footer-run {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    color: #e0e0e0;
+}
+
+.footer-run-label {
+    color: #aaa;
+    font-size: 0.9em;
+}
+
+.footer-run-value {
+    min-width: 220px;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 2px 6px;
+    border: 1px solid #333;
+    border-radius: 4px;
+    background: #0f0f18;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.footer-run:hover .footer-run-value {
+    border-color: #555;
+    background: #141422;
+}
+
+.footer-run-input {
+    min-width: 220px;
+    background: #0a0a14;
+    border: 1px solid #4a9eff;
+    color: #e0e0e0;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: inherit;
+    outline: none;
+}
+
+/* Overlay als Dropdown direkt über dem Input */
+.footer-overlay {
+    position: absolute;
+    bottom: calc(100% + 1px);
+    left: 0;
+    min-width: 220px;
+    background: #191923;
+    border: 1px solid #333;
+    border-radius: 4px;
+    display: none;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
+    z-index: 1001;
+    overflow: hidden;
+}
+
+.footer-overlay.visible {
+    display: block;
+}
+
+.footer-run-list {
+    max-height: 260px;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.footer-run-item {
+    padding: 4px 6px;
+    cursor: pointer;
+    border-bottom: 1px solid #222;
+}
+
+.footer-run-item:last-child {
+    border-bottom: none;
+}
+
+.footer-run-item:hover {
+    background: #1a1a2a;
+}
+
+.run-id {
+    color: #e0e0e0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.footer-empty {
+    color: #888;
+    padding: 6px;
+}

@@ -163,10 +163,12 @@ public class H2DatabaseReader implements IDatabaseReader {
         }
 
         String sql = """
-            SELECT organism_id, energy, ip, dv, data_pointers, active_dp_index
-            FROM organism_states
-            WHERE tick_number = ?
-            ORDER BY organism_id
+            SELECT s.organism_id, s.energy, s.ip, s.dv, s.data_pointers, s.active_dp_index,
+                   o.parent_id, o.birth_tick
+            FROM organism_states s
+            LEFT JOIN organisms o ON s.organism_id = o.organism_id
+            WHERE s.tick_number = ?
+            ORDER BY s.organism_id
             """;
 
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
@@ -180,6 +182,11 @@ public class H2DatabaseReader implements IDatabaseReader {
                     byte[] dvBytes = rs.getBytes("dv");
                     byte[] dpBytes = rs.getBytes("data_pointers");
                     int activeDpIndex = rs.getInt("active_dp_index");
+                    
+                    // Static info from organisms table (may be null if JOIN fails)
+                    int parentIdRaw = rs.getInt("parent_id");
+                    Integer parentId = rs.wasNull() ? null : parentIdRaw;
+                    long birthTick = rs.getLong("birth_tick");
 
                     int[] ip = OrganismStateConverter.decodeVector(ipBytes);
                     int[] dv = OrganismStateConverter.decodeVector(dvBytes);
@@ -191,7 +198,9 @@ public class H2DatabaseReader implements IDatabaseReader {
                             ip,
                             dv,
                             dataPointers,
-                            activeDpIndex
+                            activeDpIndex,
+                            parentId,
+                            birthTick
                     ));
                 }
                 return result;

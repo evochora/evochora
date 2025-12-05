@@ -1,10 +1,12 @@
+import { apiClient } from './ApiClient.js';
+
 /**
  * API client for environment-related data endpoints.
  * This class handles fetching the state of the world grid for a specific region and time (tick).
  *
  * @class EnvironmentApi
  */
-class EnvironmentApi {
+export class EnvironmentApi {
     /**
      * Fetches environment data (cell states) for a specific tick and a given rectangular region.
      * Supports cancellation via an AbortSignal.
@@ -54,7 +56,4 @@ class EnvironmentApi {
         return apiClient.fetch(url);
     }
 }
-
-// Export for global availability
-window.EnvironmentApi = EnvironmentApi;
 

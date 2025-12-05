@@ -2,39 +2,122 @@
 
 /**
  * @file Main entry point for the visualizer application.
- * This script sets up global utilities like the error banner and then fires a 'uiReady'
- * event to signal that the main application controller can be initialized.
- * It must be the last script loaded to ensure the DOM is fully parsed.
+ * Initializes all components: AppController, AppSwitcher, and Footer.
  */
-document.addEventListener('DOMContentLoaded', () => {
-    // Setup global error banner logic
+import { AppController } from './AppController.js';
+import { AppSwitcher } from '../../shared/app-switcher/AppSwitcher.js';
+import { Footer } from '../../shared/footer/Footer.js';
+
+// App controller instance (created after DOM is ready)
+export let appController = null;
+
+/**
+ * Sets up global error handling functions.
+ */
+function setupErrorHandling() {
     const errorBanner = document.getElementById('error-banner');
     const errorMessageSpan = document.getElementById('error-message');
     const closeButton = document.getElementById('close-error-banner');
-    
-    // Define global error functions BEFORE initializing the app
+
     window.showError = (message) => {
-        errorMessageSpan.textContent = message;
-        // First, remove the inline style to allow the CSS class to take effect.
-        errorBanner.style.display = ''; 
-        // Then, add the class that makes the banner visible via the stylesheet.
-        errorBanner.classList.add('error-bar-visible');
+        if (errorMessageSpan && errorBanner) {
+            errorMessageSpan.textContent = message;
+            errorBanner.style.display = 'flex';
+        }
     };
 
     window.hideError = () => {
-        // Use the CSS class to hide the banner
-        errorBanner.classList.remove('error-bar-visible');
-        errorMessageSpan.textContent = '';
+        if (errorBanner && errorMessageSpan) {
+            errorBanner.style.display = 'none';
+            errorMessageSpan.textContent = '';
+        }
     };
 
-    closeButton.addEventListener('click', window.hideError);
+    if (closeButton) {
+        closeButton.addEventListener('click', window.hideError);
+    }
+}
 
-    /**
-     * A custom event fired when the DOM is ready and global helpers (like showError)
-     * have been initialized. The AppController listens for this event to begin its
-     * own initialization sequence.
-     * @event uiReady
-     */
-    document.dispatchEvent(new Event('uiReady'));
-});
+/**
+ * Initializes the AppSwitcher component.
+ */
+async function initAppSwitcher() {
+    try {
+        const container = document.getElementById('app-switcher-container');
+        if (!container) return;
 
+        const response = await fetch('../shared/app-switcher/apps.json');
+        const apps = await response.json();
+
+        new AppSwitcher({
+            element: container,
+            apps: apps,
+            getState: () => ({
+                runId: appController?.state?.runId,
+                tick: appController?.state?.currentTick
+            })
+        });
+    } catch (error) {
+        console.error('Failed to initialize AppSwitcher:', error);
+    }
+}
+
+/**
+ * Initializes the Footer component.
+ */
+async function initFooter() {
+    try {
+        const container = document.getElementById('footer-container');
+        if (!container) return;
+
+        const fetchRuns = async () => {
+            const response = await fetch('/analyzer/api/runs');
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || 'Failed to fetch runs');
+            }
+            return response.json();
+        };
+
+        window.footer = new Footer({
+            element: container,
+            fetchRuns,
+            getCurrentRunId: () => appController?.state?.runId || null,
+            onRunChange: (runId) => appController?.changeRun(runId)
+        });
+    } catch (error) {
+        console.error('Failed to initialize Footer:', error);
+    }
+}
+
+/**
+ * Main initialization function.
+ */
+async function init() {
+    try {
+        // Set up error handling first
+        setupErrorHandling();
+
+        // Create the app controller (DOM is now ready)
+        appController = new AppController();
+
+        // Initialize shared components in parallel
+        await Promise.all([
+            initAppSwitcher(),
+            initFooter()
+        ]);
+
+        // Initialize the main controller
+        await appController.init();
+    } catch (error) {
+        console.error('Failed to initialize visualizer:', error);
+        window.showError?.('Failed to initialize visualizer: ' + error.message);
+    }
+}
+
+// Start initialization when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}

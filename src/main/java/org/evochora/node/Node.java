@@ -106,10 +106,12 @@ public final class Node {
                 managedProcesses.get(name).stop();
                 LOGGER.debug("Process '{}' stopped successfully.", name);
             } catch (final Exception e) {
-                LOGGER.error("Error while stopping process '{}'.", name, e);
+                // Use safe logging during shutdown - avoid passing exception object
+                // which requires ThrowableProxy class that may be unloaded during JVM shutdown
+                safeLogError("Error while stopping process '" + name + "': " + e.getMessage());
             }
         }
-        LOGGER.info("All processes stopped. Goodbye.");
+        safeLogInfo("All processes stopped. Goodbye.");
         
         // Ensure all logs are flushed before JVM exits (only during actual JVM shutdown)
         if (isJvmShutdown) {
@@ -341,6 +343,30 @@ public final class Node {
             this.className = className;
             this.options = options;
             this.requires = requires;
+        }
+    }
+
+    /**
+     * Logs an error message safely during shutdown.
+     * Falls back to System.err if the logging framework is unavailable.
+     */
+    private void safeLogError(String message) {
+        try {
+            LOGGER.error(message);
+        } catch (NoClassDefFoundError | ExceptionInInitializerError e) {
+            System.err.println("[ERROR] " + message);
+        }
+    }
+
+    /**
+     * Logs an info message safely during shutdown.
+     * Falls back to System.out if the logging framework is unavailable.
+     */
+    private void safeLogInfo(String message) {
+        try {
+            LOGGER.info(message);
+        } catch (NoClassDefFoundError | ExceptionInInitializerError e) {
+            System.out.println("[INFO] " + message);
         }
     }
 }

@@ -1,134 +1,82 @@
+import * as MetricCardView from './MetricCardView.js';
+
 /**
- * Dashboard View Component
+ * Dashboard View
  * 
- * Manages the grid of metric cards.
+ * Manages the main dashboard grid, creating and holding metric cards.
  * 
  * @module DashboardView
  */
 
-const DashboardView = (function() {
-    'use strict';
-    
-    // DOM elements
-    let container = null;
-    let dashboardGrid = null;
-    
-    // State
-    let metricCards = {}; // metricId -> MetricCard instance
-    
-    /**
-     * Initializes the dashboard view.
-     */
-    function init() {
-        container = document.getElementById('dashboard-container');
-        
-        // Create dashboard grid
-        dashboardGrid = document.createElement('div');
-        dashboardGrid.className = 'dashboard';
-        dashboardGrid.id = 'dashboard-grid';
-        container.appendChild(dashboardGrid);
-        
-        console.debug('[DashboardView] Initialized');
-    }
-    
-    /**
-     * Clears all metric cards from the dashboard.
-     */
-    function clear() {
-        Object.values(metricCards).forEach(card => {
-            MetricCardView.destroy(card);
-        });
-        metricCards = {};
-        dashboardGrid.innerHTML = '';
-    }
-    
-    /**
-     * Creates metric cards for all metrics in manifest.
-     * 
-     * @param {Array<Object>} metrics - Array of ManifestEntry objects
-     */
-    function createCards(metrics) {
-        clear();
-        
-        if (!metrics || metrics.length === 0) {
-            showEmptyState('No metrics available for this run.');
-            return;
-        }
-        
-        metrics.forEach(metric => {
-            const card = MetricCardView.create(metric);
-            metricCards[metric.id] = card;
-            dashboardGrid.appendChild(card.element);
-        });
-    }
-    
-    /**
-     * Gets a metric card by ID.
-     * 
-     * @param {string} metricId
-     * @returns {Object|null} MetricCard instance
-     */
-    function getCard(metricId) {
-        return metricCards[metricId] || null;
-    }
-    
-    /**
-     * Gets all metric cards.
-     * 
-     * @returns {Object} Map of metricId -> MetricCard
-     */
-    function getAllCards() {
-        return metricCards;
-    }
-    
-    /**
-     * Shows a status message (e.g., loading, error).
-     * 
-     * @param {string} message
-     * @param {boolean} isError
-     */
-    function showMessage(message, isError = false) {
-        clear();
-        
-        const msgDiv = document.createElement('div');
-        msgDiv.className = 'status-message' + (isError ? ' error' : '');
-        msgDiv.textContent = message;
-        dashboardGrid.appendChild(msgDiv);
-    }
-    
-    /**
-     * Shows empty state with icon.
-     * 
-     * @param {string} message
-     */
-    function showEmptyState(message) {
-        clear();
-        
-        const emptyDiv = document.createElement('div');
-        emptyDiv.className = 'empty-state';
-        emptyDiv.innerHTML = `
-            <div class="empty-state-icon">📊</div>
-            <h3 class="empty-state-title">No Data</h3>
-            <p class="empty-state-description">${message}</p>
-        `;
-        dashboardGrid.appendChild(emptyDiv);
-    }
-    
-    // Public API
-    return {
-        init,
-        clear,
-        createCards,
-        getCard,
-        getAllCards,
-        showMessage,
-        showEmptyState
-    };
-    
-})();
+let container = null;
 
-// Export for module systems
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = DashboardView;
+/**
+ * Initializes the dashboard view.
+ */
+export function init() {
+    container = document.getElementById('dashboard-container');
+    if (!container) {
+        console.error('[DashboardView] Dashboard container not found');
+    }
+    console.debug('[DashboardView] Initialized');
+}
+
+/**
+ * Clears the dashboard and creates metric cards from a manifest.
+ * 
+ * @param {Array<Object>} metrics - Metric manifest entries
+ */
+export function createCards(metrics) {
+    if (!container) return;
+    
+    MetricCardView.reset(); // <-- NEU: State leeren bevor neue Cards erstellt werden
+    container.innerHTML = ''; // Clear previous DOM
+    
+    const dashboard = document.createElement('div');
+    dashboard.className = 'dashboard';
+    
+    metrics.forEach(metric => {
+        const card = MetricCardView.create(metric);
+        dashboard.appendChild(card);
+    });
+    
+    container.appendChild(dashboard);
+}
+
+/**
+ * Gets all metric card instances from the view.
+ * 
+ * @returns {Object<string, Object>} Map of metric ID to card instance
+ */
+export function getAllCards() {
+    return MetricCardView.getAllCards();
+}
+
+/**
+ * Displays a message in the dashboard area (e.g., loading, error).
+ * 
+ * @param {string} message
+ * @param {boolean} [isError=false]
+ */
+export function showMessage(message, isError = false) {
+    if (!container) return;
+    
+    container.innerHTML = `
+        <div class="message ${isError ? 'error' : ''}">${message}</div>
+    `;
+}
+
+/**
+ * Displays an empty state message (no data for run).
+ */
+export function showEmptyState(message) {
+    if (!container) return;
+    
+    container.innerHTML = `
+        <div class="empty-state">
+            <h2>No Data</h2>
+            <p>${message}</p>
+        </div>
+    `;
 }
 

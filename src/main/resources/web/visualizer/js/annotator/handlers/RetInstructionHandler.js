@@ -1,3 +1,5 @@
+import { ValueFormatter } from '../../utils/ValueFormatter.js';
+
 /**
  * Handles the annotation of RET instruction tokens.
  * Shows the return address coordinates from the call stack.
@@ -5,7 +7,7 @@
  * When a RET instruction is executed, it returns to the calling procedure.
  * The return address is stored in the topmost call stack frame.
  */
-class RetInstructionHandler {
+export class RetInstructionHandler {
     /**
      * Determines if this handler can process the given token.
      * It specifically handles "RET" instruction tokens (case-insensitive).
@@ -60,6 +62,4 @@ class RetInstructionHandler {
         };
     }
 }
-
-window.RetInstructionHandler = RetInstructionHandler;
 

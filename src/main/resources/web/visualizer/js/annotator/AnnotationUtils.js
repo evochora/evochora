@@ -1,4 +1,4 @@
-const INSTRUCTION_CONSTANTS = {
+export const INSTRUCTION_CONSTANTS = {
     PR_BASE: 1000,
     FPR_BASE: 2000
 };
@@ -8,7 +8,7 @@ const INSTRUCTION_CONSTANTS = {
  * It encapsulates logic for resolving artifact data (e.g., registers, labels) that is
  * required by multiple annotation handlers.
  */
-class AnnotationUtils {
+export class AnnotationUtils {
     /**
      * Resolves a register alias or name (e.g., "%COUNTER", "%PR0") to its canonical form
      * (e.g., "%PR0").

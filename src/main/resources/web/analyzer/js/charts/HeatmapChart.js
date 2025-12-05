@@ -1,3 +1,5 @@
+import * as ChartRegistry from './ChartRegistry.js';
+
 /**
  * Heatmap Chart Implementation
  * 
@@ -6,9 +8,6 @@
  * 
  * @module HeatmapChart
  */
-
-const HeatmapChart = (function() {
-    'use strict';
     
     /**
      * Interpolates between two colors based on value.
@@ -51,7 +50,7 @@ const HeatmapChart = (function() {
      * @param {Object} config - Visualization config with x, y, value fields
      * @returns {Object} Heatmap instance
      */
-    function render(canvas, data, config) {
+export function render(canvas, data, config) {
         const ctx = canvas.getContext('2d');
         
         const xKey = config.x || 'x';
@@ -111,26 +110,15 @@ const HeatmapChart = (function() {
         };
     }
     
-    function update(instance, data, config) {
+export function update(instance, data, config) {
         return render(instance.canvas, data, config);
     }
     
-    function destroy(instance) {
+export function destroy(instance) {
         if (instance && instance.destroy) {
             instance.destroy();
         }
     }
-    
-    return { render, update, destroy };
-    
-})();
 
 // Register with ChartRegistry
-if (typeof ChartRegistry !== 'undefined') {
-    ChartRegistry.register('heatmap', HeatmapChart);
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = HeatmapChart;
-}
-
+ChartRegistry.register('heatmap', { render, update, destroy });

@@ -1,3 +1,5 @@
+import * as ChartRegistry from './ChartRegistry.js';
+
 /**
  * Band Chart Implementation
  * 
@@ -6,9 +8,6 @@
  * 
  * @module BandChart
  */
-
-const BandChart = (function() {
-    'use strict';
     
     // Custom palette for bands (darker to lighter) and median
     const PALETTE = {
@@ -24,6 +23,38 @@ const BandChart = (function() {
         }
         return value;
     }
+
+function formatLabel(key) {
+    return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+}
+
+/**
+ * Adds two datasets for a filled band: lower boundary + upper boundary.
+ * The upper boundary fills down to the lower boundary.
+ */
+function addBandDatasets(datasets, data, lowerKey, upperKey, label, color) {
+    // Lower boundary (invisible, just for fill target)
+    datasets.push({
+        label: '_' + label + '_lower',
+        data: data.map(row => toNumber(row[lowerKey])),
+        borderColor: 'transparent',
+        backgroundColor: 'transparent',
+        pointRadius: 0,
+        fill: false,
+        tension: 0.4 // Smooth curves
+    });
+    
+    // Upper boundary (fills down to previous dataset = lower boundary)
+    datasets.push({
+        label: label,
+        data: data.map(row => toNumber(row[upperKey])),
+        borderColor: 'transparent',
+        backgroundColor: color,
+        pointRadius: 0,
+        fill: '-1', // Fill to the previous dataset (the lower boundary)
+        tension: 0.4 // Smooth curves
+    });
+}
     
     /**
      * Renders a band chart.
@@ -33,7 +64,7 @@ const BandChart = (function() {
      * @param {Object} config - Visualization config
      * @returns {Chart} Chart.js instance
      */
-    function render(canvas, data, config) {
+export function render(canvas, data, config) {
         const ctx = canvas.getContext('2d');
         
         const xKey = config.x || 'tick';
@@ -122,61 +153,18 @@ const BandChart = (function() {
         return new Chart(ctx, chartConfig);
     }
     
-    /**
-     * Adds two datasets for a filled band: lower boundary + upper boundary.
-     * The upper boundary fills down to the lower boundary.
-     */
-    function addBandDatasets(datasets, data, lowerKey, upperKey, label, color) {
-        // Lower boundary (invisible, just for fill target)
-        datasets.push({
-            label: '_' + label + '_lower',
-            data: data.map(row => toNumber(row[lowerKey])),
-            borderColor: 'transparent',
-            backgroundColor: 'transparent',
-            pointRadius: 0,
-            fill: false,
-            tension: 0.4 // Smooth curves
-        });
-        
-        // Upper boundary (fills down to previous dataset = lower boundary)
-        datasets.push({
-            label: label,
-            data: data.map(row => toNumber(row[upperKey])),
-            borderColor: 'transparent',
-            backgroundColor: color,
-            pointRadius: 0,
-            fill: '-1', // Fill to the previous dataset (the lower boundary)
-            tension: 0.4 // Smooth curves
-        });
-    }
-    
-    function formatLabel(key) {
-        return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-    }
-    
-    function update(chart, data, config) {
+export function update(chart, data, config) {
         // For bands, just re-render (simpler than updating all datasets)
         if (chart) chart.destroy();
         const canvas = chart.canvas;
         return render(canvas, data, config);
     }
     
-    function destroy(chart) {
+export function destroy(chart) {
         if (chart) {
             chart.destroy();
         }
     }
-    
-    return { render, update, destroy };
-    
-})();
 
 // Register with ChartRegistry
-if (typeof ChartRegistry !== 'undefined') {
-    ChartRegistry.register('band-chart', BandChart);
-}
-
-// Export for module systems
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = BandChart;
-}
+ChartRegistry.register('band-chart', { render, update, destroy });

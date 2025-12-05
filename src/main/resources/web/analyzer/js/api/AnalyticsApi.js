@@ -6,9 +6,6 @@
  * @module AnalyticsApi
  */
 
-const AnalyticsApi = (function() {
-    'use strict';
-    
     const BASE_PATH = '/analyzer/api';
     
     /**
@@ -32,7 +29,7 @@ const AnalyticsApi = (function() {
      * 
      * @returns {Promise<Array<{runId: string, startTime?: number, status?: string}>>}
      */
-    async function listRuns() {
+export async function listRuns() {
         return await fetchJson('/runs');
     }
     
@@ -41,9 +38,9 @@ const AnalyticsApi = (function() {
      * Contains all metrics and their configurations.
      * 
      * @param {string} runId - Simulation run ID
-     * @returns {Promise<{runId: string, metrics: Array<ManifestEntry>}>}
+ * @returns {Promise<{runId: string, metrics: Array<Object>}>}
      */
-    async function getManifest(runId) {
+export async function getManifest(runId) {
         return await fetchJson(`/manifest?runId=${encodeURIComponent(runId)}`);
     }
     
@@ -58,7 +55,7 @@ const AnalyticsApi = (function() {
      * @throws {Error} With code 'NO_DATA' if metric has no data yet
      * @deprecated Use fetchParquetBlob() + DuckDBClient for client-side queries
      */
-    async function queryData(runId, metric, lod = null) {
+export async function queryData(runId, metric, lod = null) {
         let url = `/data?runId=${encodeURIComponent(runId)}&metric=${encodeURIComponent(metric)}`;
         if (lod) {
             url += `&lod=${encodeURIComponent(lod)}`;
@@ -86,7 +83,7 @@ const AnalyticsApi = (function() {
      * @returns {Promise<Blob>} Merged Parquet file as Blob
      * @throws {Error} With code 'NO_DATA' if metric has no data yet
      */
-    async function fetchParquetBlob(metric, runId = null, lod = 'lod0') {
+export async function fetchParquetBlob(metric, runId = null, lod = 'lod0') {
         let url = `${BASE_PATH}/parquet?metric=${encodeURIComponent(metric)}&lod=${encodeURIComponent(lod)}`;
         if (runId) {
             url += `&runId=${encodeURIComponent(runId)}`;
@@ -103,20 +100,5 @@ const AnalyticsApi = (function() {
             throw new Error(`API Error ${response.status}: ${text || response.statusText}`);
         }
         return await response.blob();
-    }
-    
-    // Public API
-    return {
-        listRuns,
-        getManifest,
-        queryData,
-        fetchParquetBlob
-    };
-    
-})();
-
-// Export for module systems
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = AnalyticsApi;
 }
 

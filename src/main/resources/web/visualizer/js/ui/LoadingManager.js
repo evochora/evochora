@@ -5,7 +5,7 @@
  *
  * @class LoadingManager
  */
-class LoadingManager {
+export class LoadingManager {
     constructor() {
         this.activeRequestCount = 0;
         this.activeTaskCount = 0;
@@ -101,4 +101,4 @@ class LoadingManager {
 }
 
 // Export a single instance for global use
-window.loadingManager = new LoadingManager();
+export const loadingManager = new LoadingManager();

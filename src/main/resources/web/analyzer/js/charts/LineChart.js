@@ -1,3 +1,5 @@
+import * as ChartRegistry from './ChartRegistry.js';
+
 /**
  * Line Chart Implementation
  * 
@@ -6,9 +8,6 @@
  * 
  * @module LineChart
  */
-
-const LineChart = (function() {
-    'use strict';
     
     // Evochora color palette
     const COLORS = [
@@ -39,6 +38,17 @@ const LineChart = (function() {
         }
         return value;
     }
+
+/**
+ * Formats a column key as a human-readable label.
+ * Converts snake_case to Title Case.
+ */
+function formatLabel(key) {
+    return key
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+}
     
     /**
      * Renders a line chart.
@@ -48,7 +58,7 @@ const LineChart = (function() {
      * @param {Object} config - Visualization config with x, y, y2 fields
      * @returns {Chart} Chart.js instance
      */
-    function render(canvas, data, config) {
+export function render(canvas, data, config) {
         const ctx = canvas.getContext('2d');
         
         // Extract config
@@ -214,24 +224,13 @@ const LineChart = (function() {
     }
     
     /**
-     * Formats a column key as a human-readable label.
-     * Converts snake_case to Title Case.
-     */
-    function formatLabel(key) {
-        return key
-            .split('_')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
-    }
-    
-    /**
      * Updates an existing chart with new data.
      * 
      * @param {Chart} chart - Existing Chart.js instance
      * @param {Array<Object>} data - New data rows
      * @param {Object} config - Visualization config
      */
-    function update(chart, data, config) {
+export function update(chart, data, config) {
         const xKey = config.x || 'tick';
         const yKeys = Array.isArray(config.y) ? config.y : (config.y ? [config.y] : []);
         const y2Keys = Array.isArray(config.y2) ? config.y2 : (config.y2 ? [config.y2] : []);
@@ -270,28 +269,11 @@ const LineChart = (function() {
      * 
      * @param {Chart} chart - Chart.js instance
      */
-    function destroy(chart) {
+export function destroy(chart) {
         if (chart) {
             chart.destroy();
         }
     }
-    
-    // Public API
-    return {
-        render,
-        update,
-        destroy
-    };
-    
-})();
 
 // Register with ChartRegistry
-if (typeof ChartRegistry !== 'undefined') {
-    ChartRegistry.register('line-chart', LineChart);
-}
-
-// Export for module systems
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = LineChart;
-}
-
+ChartRegistry.register('line-chart', { render, update, destroy });

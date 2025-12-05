@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Visualizer",
+    "url": "/visualizer/",
+    "description": "Real-time simulation viewer"
+  },
+  {
+    "name": "Analyzer",
+    "url": "/analyzer/",
+    "description": "Analytics and data exploration"
+  }
+]
+
+

@@ -6,9 +6,6 @@
  * @module DuckDBClient
  */
 
-const DuckDBClient = (function() {
-    'use strict';
-    
     // esm.sh automatically resolves all dependencies including apache-arrow
     const DUCKDB_VERSION = '1.29.0';
     const ESM_URL = `https://esm.sh/@duckdb/duckdb-wasm@${DUCKDB_VERSION}`;
@@ -52,7 +49,7 @@ const DuckDBClient = (function() {
      * Initializes DuckDB WASM.
      * Safe to call multiple times - will return cached instance.
      */
-    async function init() {
+export async function init() {
         if (initialized) {
             return { db, conn };
         }
@@ -115,7 +112,7 @@ const DuckDBClient = (function() {
      * @param {string} sql - SQL query to execute
      * @returns {Promise<Array<Object>>} Query results
      */
-    async function query(sql) {
+export async function query(sql) {
         if (!initialized) {
             await init();
         }
@@ -135,7 +132,7 @@ const DuckDBClient = (function() {
      * @param {string} sql - SQL query with {table} placeholder
      * @returns {Promise<Array<Object>>} Query results
      */
-    async function queryParquetBlob(parquetBlob, sql) {
+export async function queryParquetBlob(parquetBlob, sql) {
         if (!initialized) {
             await init();
         }
@@ -159,7 +156,7 @@ const DuckDBClient = (function() {
     /**
      * Closes the DuckDB connection and cleans up.
      */
-    async function close() {
+export async function close() {
         if (conn) {
             await conn.close();
             conn = null;
@@ -175,22 +172,6 @@ const DuckDBClient = (function() {
     /**
      * Checks if DuckDB is initialized.
      */
-    function isInitialized() {
+export function isInitialized() {
         return initialized;
-    }
-    
-    // Public API
-    return {
-        init,
-        query,
-        queryParquetBlob,
-        close,
-        isInitialized
-    };
-    
-})();
-
-// Export for module systems (optional)
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = DuckDBClient;
 }
