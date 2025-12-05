@@ -108,9 +108,6 @@ class VitalStatsPluginTest {
         
         // And: Has table placeholder
         assertThat(sql).contains("{table}");
-        
-        // Log for debugging
-        System.out.println("Generated SQL:\n" + sql);
     }
 
     @Test

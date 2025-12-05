@@ -118,10 +118,14 @@ class SimulationMetadataIntegrationTest {
         // This ensures the entire persistence pipeline has completed.
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> {
-                boolean metadataExists = findMetadataFile(tempStorageDir) != null;
+                Path metadataFile = findMetadataFile(tempStorageDir);
+                if (metadataFile == null) {
+                    return false;
+                }
+                Path rawDir = metadataFile.getParent();
                 // In this config, 100 ticks are produced with sampling 10 = 10 ticks total.
-                boolean ticksAreReadable = readAllTicksFromBatches(tempStorageDir).size() >= 10;
-                return metadataExists && ticksAreReadable;
+                boolean ticksAreReadable = readAllTicksFromBatches(rawDir).size() >= 10;
+                return ticksAreReadable;
             });
 
         Path metadataFile = findMetadataFile(tempStorageDir);
