@@ -281,12 +281,12 @@ The following diagram illustrates the high-level data flow architecture:
               ▼
 ┌────────────────────────────┐
 │          Database          │
-└─────────────┬──────────────┘
-              │ (Queries)
-              ▼
-┌────────────────────────────┐
-│       Web Visualizer       │
-└────────────────────────────┘
+└─────┬───────────────┬──────┘
+      │               │ (Queries)
+      ▼               ▼
+┌────────────┐  ┌────────────┐
+│ Visualizer │  │  Analyzer  │ (Web based)
+└────────────┘  └────────────┘
 ```
 
 ### 4.1 Performance and Scalability Architecture
