@@ -23,7 +23,7 @@ public final class Config {
     /**
      * The maximum energy an organism can accumulate.
      */
-    public static final int MAX_ORGANISM_ENERGY = 65534; // avoid register overflow using NRG instruction (16 bit)
+    public static final int MAX_ORGANISM_ENERGY = 32767; // avoid register overflow using NRG instruction (16 bit)
 
     /**
      * If true, enforces strict type checking during operations.
@@ -84,7 +84,7 @@ public final class Config {
     /**
      * The number of bits used to represent the value part of a cell.
      */
-    public static final int VALUE_BITS = 24;
+    public static final int VALUE_BITS = 16;
 
     /**
      * The number of bits used to represent the type part of a cell.
