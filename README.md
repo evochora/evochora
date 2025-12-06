@@ -105,6 +105,7 @@ If you want to dive deeper into the scientific motivation and research questions
 | **Evolutionary Driver** | Implicit competition for memory/CPU | **Directed** (user-defined rewards) | Spontaneous pattern formation | **Open-ended** (via metabolic & spatial constraints) |
 | **Execution Model** | Sequential (Single IP) | Sequential (Single IP) | Parallel (Continuous dynamics) | **Parallel & Multi-threaded** (via FORK)* |
 | **Primary Research Focus** | Ecology of code & parasites | Evolution of complex logic functions | Self-organizing morphology | **Bioenergetics & Major Transitions** |
+
 *\* Features supported by the core architecture and identified as primary research avenues.*
 
 ## Quick Start (Run a Simulation)
