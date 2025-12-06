@@ -1,3 +1,5 @@
+import { apiClient } from './ApiClient.js';
+
 /**
  * API client for organism-related data endpoints.
  * This class provides methods to fetch summary and detailed information about
@@ -5,7 +7,7 @@
  *
  * @class OrganismApi
  */
-class OrganismApi {
+export class OrganismApi {
 
     /**
      * Fetches a list of organism summaries for a given tick.
@@ -98,8 +100,5 @@ class OrganismApi {
         return apiClient.fetch(url);
     }
 }
-
-// Export for global availability
-window.OrganismApi = OrganismApi;
 
 

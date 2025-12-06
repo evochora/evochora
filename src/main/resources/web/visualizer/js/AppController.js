@@ -1,3 +1,14 @@
+import { EnvironmentApi } from './api/EnvironmentApi.js';
+import { OrganismApi } from './api/OrganismApi.js';
+import { SimulationApi } from './api/SimulationApi.js';
+import { EnvironmentGrid } from './EnvironmentGrid.js';
+import { HeaderbarView } from './ui/HeaderbarView.js';
+import { OrganismInstructionView } from './ui/organism/OrganismInstructionView.js';
+import { OrganismSourceView } from './ui/organism/OrganismSourceView.js';
+import { OrganismStateView } from './ui/organism/OrganismStateView.js';
+import { OrganismPanelManager } from './ui/panels/OrganismPanelManager.js';
+import { TickPanelManager } from './ui/panels/TickPanelManager.js';
+
 /**
  * The main application controller. It initializes all components, manages the application state,
  * and orchestrates the data flow between the API clients and the UI views.
@@ -6,7 +17,7 @@
  *
  * @class AppController
  */
-class AppController {
+export class AppController {
     /**
      * Initializes the AppController, creating instances of all APIs, views, and
      * setting up the initial state and event listeners.
@@ -23,6 +34,9 @@ class AppController {
         this.organismDetailsRequestController = null;
         
         // State
+        const storedZoom = localStorage.getItem('evochora-zoom-state');
+        const initialZoom = storedZoom !== null ? storedZoom === 'true' : true; // Default zoomed out
+        
         this.state = {
             currentTick: 0,
             maxTick: null,
@@ -30,9 +44,10 @@ class AppController {
             runId: null,
             selectedOrganismId: null, // Track selected organism across tick changes
             previousTick: null, // For change detection
-            previousOrganisms: null, // For change detection in dropdown
-            previousOrganismDetails: null, // For change detection in sidebar
-            isZoomedOut: false, // NEW: Zoom state
+            previousOrganisms: null, // For change detection
+            previousOrganismDetails: null, // For change detection in details
+            isZoomedOut: initialZoom, // Zoom state (persisted)
+            organisms: [], // Current organisms for the tick
         };
         this.programArtifactCache = new Map(); // Cache for program artifacts
         
@@ -44,7 +59,7 @@ class AppController {
             typeData: 1,
             typeEnergy: 2,
             typeStructure: 3,
-            backgroundColor: '#0a0a14',
+            backgroundColor: '#1a1a28', // Border area visible when scrolling beyond grid
             colorEmptyBg: '#14141e',
             colorCodeBg: '#3c5078',
             colorDataBg: '#32323c',
@@ -62,19 +77,21 @@ class AppController {
         this.renderer = new EnvironmentGrid(this, this.worldContainer, defaultConfig, this.environmentApi);
         this.headerbar = new HeaderbarView(this);
         
-        // Sidebar components (initialize after DOM is ready)
-        const sidebarRoot = document.getElementById('organism-details');
-        if (!sidebarRoot) {
-            console.warn('Sidebar root element not found');
-        }
-        this.sidebarManager = new SidebarManager(this);
-        this.sidebarBasicInfo = new SidebarBasicInfoView(sidebarRoot, this.renderer, this);
-        this.sidebarInstructionView = new SidebarInstructionView(sidebarRoot);
-        this.sidebarStateView = new SidebarStateView(sidebarRoot);
-        this.sidebarSourceView = new SidebarSourceView(sidebarRoot);
+        // Apply initial zoom state (persisted from localStorage, default zoomed out)
+        this.renderer.setZoom(this.state.isZoomedOut);
+        this.headerbar.updateZoomButton(this.state.isZoomedOut);
         
-        // Setup organism selector change handler
-        this.setupOrganismSelector();
+        // Initialize panel managers
+        this.initPanelManagers();
+        
+        // Organism details views (render into organism-details container in the panel)
+        const detailsRoot = document.getElementById('organism-details');
+        if (!detailsRoot) {
+            console.warn('Organism details root element not found');
+        }
+        this.instructionView = new OrganismInstructionView(detailsRoot);
+        this.stateView = new OrganismStateView(detailsRoot);
+        this.sourceView = new OrganismSourceView(detailsRoot);
         
         // Load initial state (runId, tick) from URL if present
         this.loadFromUrl();
@@ -83,6 +100,75 @@ class AppController {
         this.renderer.onViewportChange = () => {
             this.loadEnvironmentForCurrentViewport();
         };
+
+        // Keep footer display in sync when state changes externally
+        window.addEventListener('tickChanged', () => window.footer?.updateCurrent?.());
+    }
+    
+    /**
+     * Changes the active run and reloads all dependent data.
+     * @param {string} runId - The run identifier to load.
+     */
+    async changeRun(runId) {
+        const trimmed = runId ? runId.trim() : null;
+        if (!trimmed || trimmed === this.state.runId) {
+            return;
+        }
+
+        try {
+            hideError();
+
+            // Cancel ongoing requests
+            if (this.simulationRequestController) this.simulationRequestController.abort();
+            if (this.organismSummaryRequestController) this.organismSummaryRequestController.abort();
+            if (this.organismDetailsRequestController) this.organismDetailsRequestController.abort();
+
+            // Reset state
+            this.state.runId = trimmed;
+            this.state.currentTick = 0;
+            this.state.selectedOrganismId = null;
+            this.state.previousTick = null;
+            this.state.previousOrganisms = null;
+            this.state.previousOrganismDetails = null;
+            this.state.maxTick = null;
+            this.state.organisms = [];
+            this.programArtifactCache.clear();
+
+            // Reset organism panel
+            this.organismPanelManager?.updateInfo(0, 0);
+            this.organismPanelManager?.updateList([], null);
+            this.clearOrganismDetails();
+            
+            this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+
+            // Fetch metadata for new run
+            const metadata = await this.simulationApi.fetchMetadata(this.state.runId);
+            if (metadata?.environment?.shape) {
+                this.state.worldShape = Array.from(metadata.environment.shape);
+                this.renderer.updateWorldShape(this.state.worldShape);
+            }
+            if (Array.isArray(metadata?.programs)) {
+                for (const program of metadata.programs) {
+                    if (program && program.programId && program.sources) {
+                        this.programArtifactCache.set(program.programId, program);
+                    }
+                }
+            }
+
+            // Fetch tick range
+            const tickRange = await this.environmentApi.fetchTickRange(this.state.runId);
+            if (tickRange && tickRange.maxTick !== undefined) {
+                this.state.maxTick = tickRange.maxTick;
+                this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+            }
+
+            // Load initial tick for new run
+            await this.navigateToTick(this.state.currentTick, true);
+            window.footer?.updateCurrent?.();
+        } catch (error) {
+            console.error('Failed to change run:', error);
+            showError('Failed to change run: ' + error.message);
+        }
     }
     
     /**
@@ -93,7 +179,6 @@ class AppController {
      * @param {string|number|null} organismId - The ID of the organism to select, or null to deselect.
      */
     async selectOrganism(organismId) {
-        const selector = document.getElementById('organism-selector');
         const numericId = organismId ? parseInt(organismId, 10) : null;
 
         if (organismId && isNaN(numericId)) {
@@ -104,34 +189,44 @@ class AppController {
         // Update state
         this.state.selectedOrganismId = numericId ? String(numericId) : null;
 
-        if (selector) {
-            selector.value = this.state.selectedOrganismId || '';
-        }
+        // Update organism list selection in panel
+        this.updateOrganismListSelection();
 
         if (this.state.selectedOrganismId) {
-            // An organism is selected
-            if (selector) {
-                // Update select element color to match selected organism
-                const selectedOption = selector.options[selector.selectedIndex];
-                if (selectedOption) {
-                    const styleAttr = selectedOption.getAttribute('style');
-                    if (styleAttr) {
-                        const colorMatch = styleAttr.match(/color:\\s*([^;!]+)/);
-                        if (colorMatch) {
-                            selector.style.color = colorMatch[1].trim();
-                        }
-                    }
-                }
-            }
-            // Load organism details and show sidebar
+            // An organism is selected - load its details
             await this.loadOrganismDetails(numericId);
         } else {
-            // No organism is selected (deselection)
-            if (selector) {
-                selector.style.color = '#e0e0e0';
-            }
-            this.sidebarManager.hideSidebar(true);
+            // No organism is selected (deselection) - clear details
+            this.clearOrganismDetails();
         }
+    }
+    
+    /**
+     * Clears the organism details section and resets the view state.
+     * @private
+     */
+    clearOrganismDetails() {
+        const detailsRoot = document.getElementById('organism-details');
+        if (detailsRoot) {
+            // Clear each section
+            const sections = detailsRoot.querySelectorAll('[data-section]');
+            sections.forEach(section => {
+                section.innerHTML = '';
+            });
+        }
+        
+        // Reset view states so they re-render on next selection
+        this.sourceView.setProgram(null);
+        this.stateView.setProgram(null);
+        this.state.previousOrganismDetails = null;
+    }
+    
+    /**
+     * Updates the selection state in the organism list panel.
+     * @private
+     */
+    updateOrganismListSelection() {
+        this.organismPanelManager?.updateSelection(this.state.selectedOrganismId);
     }
     
     /**
@@ -139,6 +234,9 @@ class AppController {
      */
     async toggleZoom() {
         this.state.isZoomedOut = !this.state.isZoomedOut;
+        
+        // Persist zoom state
+        localStorage.setItem('evochora-zoom-state', this.state.isZoomedOut ? 'true' : 'false');
         
         // Update button text via headerbar view
         this.headerbar.updateZoomButton(this.state.isZoomedOut);
@@ -152,21 +250,38 @@ class AppController {
     }
     
     /**
-     * Sets up the event listener for the organism selector dropdown.
-     * Handles loading organism details and showing/hiding the sidebar when the selection changes.
+     * Initializes the tick and organism panel managers.
      * @private
      */
-    setupOrganismSelector() {
-        const selector = document.getElementById('organism-selector');
-        if (!selector) return;
-        
-        selector.addEventListener('change', (event) => {
-            this.selectOrganism(event.target.value);
+    initPanelManagers() {
+        // Tick panel
+        this.tickPanelManager = new TickPanelManager({
+            panel: document.getElementById('tick-panel'),
+            collapsed: document.getElementById('tick-panel-collapsed'),
+            hideBtn: document.getElementById('tick-panel-hide'),
+            tickInput: document.getElementById('tick-input'),
+            tickTotal: document.getElementById('tick-total-suffix'),
+            tickInfo: document.getElementById('tick-info')
+        });
+
+        // Organism panel
+        this.organismPanelManager = new OrganismPanelManager({
+            panel: document.getElementById('organism-panel'),
+            panelHeader: document.getElementById('organism-panel-header'),
+            listContainer: document.getElementById('organism-list-container'),
+            listCollapseBtn: document.getElementById('organism-list-collapse'),
+            organismCount: document.getElementById('organism-count'),
+            organismList: document.getElementById('organism-list'),
+            selectedDisplay: document.getElementById('organism-selected-display'),
+            onOrganismSelect: (organismId) => this.selectOrganism(organismId),
+            onPositionClick: (x, y) => this.renderer?.centerOn(x, y),
+            onTickClick: (tick) => this.navigateToTick(tick),
+            onParentClick: (parentId) => this.selectOrganism(parentId)
         });
     }
     
     /**
-     * Fetches and displays detailed information for a specific organism in the sidebar.
+     * Fetches and displays detailed information for a specific organism in the panel.
      * This includes static info, runtime state, instructions, and source code with annotations.
      * 
      * @param {number} organismId - The ID of the organism to load.
@@ -195,14 +310,11 @@ class AppController {
             const state = details.state;
             
             if (details && staticInfo) {
-                // Update basic info view with static data and clickable IP/DP coordinates
-                this.sidebarBasicInfo.update(staticInfo, details.organismId, state);
-                
                 // Update instruction view with last and next instructions
                 if (state && state.instructions) {
-                    this.sidebarInstructionView.update(state.instructions, this.state.currentTick);
+                    this.instructionView.update(state.instructions, this.state.currentTick);
                 } else {
-                    this.sidebarInstructionView.update(null, this.state.currentTick);
+                    this.instructionView.update(null, this.state.currentTick);
                 }
                 
                 // Update state view with runtime data (starts with DP, no IP/DV/ER)
@@ -211,7 +323,7 @@ class AppController {
                                           this.state.previousOrganismDetails.organismId === organismId) 
                                          ? this.state.previousOrganismDetails.state 
                                          : null;
-                    this.sidebarStateView.update(state, isForwardStep, previousState, staticInfo);
+                    this.stateView.update(state, isForwardStep, previousState, staticInfo);
                 }
                 
                 // Update State View Artifact (Clean Architecture)
@@ -221,9 +333,9 @@ class AppController {
                     let artifactForState = this.programArtifactCache.get(programIdForState) || null;
                     
                     // 2. Set Context (View decides if update needed)
-                    this.sidebarStateView.setProgram(artifactForState);
+                    this.stateView.setProgram(artifactForState);
                 } else {
-                    this.sidebarStateView.setProgram(null);
+                    this.stateView.setProgram(null);
                 }
 
                 // Update Source View (Clean Architecture)
@@ -233,19 +345,16 @@ class AppController {
                     let artifact = this.programArtifactCache.get(programId) || null;
                     
                     // 2. Set Context (View decides if update needed)
-                    this.sidebarSourceView.setProgram(artifact);
+                    this.sourceView.setProgram(artifact);
                     
                     // 3. Update Dynamic State (Fast update)
-                    this.sidebarSourceView.updateExecutionState(state, staticInfo);
+                    this.sourceView.updateExecutionState(state, staticInfo);
                 } else {
-                    this.sidebarSourceView.setProgram(null);
+                    this.sourceView.setProgram(null);
                 }
                 
                 // Save current details for next comparison
                 this.state.previousOrganismDetails = details;
-                
-                // Show sidebar
-                this.sidebarManager.autoShow();
             } else {
                 console.warn('No static info in details:', details);
             }
@@ -256,8 +365,7 @@ class AppController {
                 return;
             }
             console.error('Failed to load organism details:', error);
-            // Hide sidebar on error
-            this.sidebarManager.hideSidebar(true);
+            this.clearOrganismDetails();
             showError('Failed to load organism details: ' + error.message);
         }
     }
@@ -271,6 +379,10 @@ class AppController {
     async init() {
         try {
             hideError();
+
+            // Ensure we have an initial runId (latest if none provided)
+            await this.ensureInitialRunId();
+
             // Initialize renderer
             await this.renderer.init();
             
@@ -284,6 +396,9 @@ class AppController {
             // Load metadata for world shape
             const metadata = await this.simulationApi.fetchMetadata(this.state.runId, { signal });
             if (metadata) {
+                if (metadata.runId && !this.state.runId) {
+                    this.state.runId = metadata.runId;
+                }
                 if (metadata.environment && metadata.environment.shape) {
                     this.state.worldShape = Array.from(metadata.environment.shape);
                     // Wait a bit before updating world shape to ensure devicePixelRatio is stable
@@ -328,6 +443,7 @@ class AppController {
             
             // Load initial tick, force reload to bypass optimization on first load
             await this.navigateToTick(this.state.currentTick, true);
+            window.footer?.updateCurrent?.();
             
         } catch (error) {
             // Ignore AbortError, as it's an expected cancellation
@@ -403,14 +519,41 @@ class AppController {
         // Update headerbar with current values
         this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
 
+        // Update URL state
+        this.updateUrlState();
+
         // Load environment and organisms for new tick
         await this.loadViewport(isForwardStep, previousTick);
     }
     
     /**
+     * Updates the browser URL with the current application state (runId, tick).
+     * This enables deep linking and state persistence across page reloads.
+     * @private
+     */
+    updateUrlState() {
+        try {
+            const url = new URL(window.location.href);
+            if (this.state.runId) {
+                url.searchParams.set('runId', this.state.runId);
+            }
+            if (this.state.currentTick !== null && this.state.currentTick !== undefined) {
+                url.searchParams.set('tick', this.state.currentTick);
+            } else {
+                url.searchParams.delete('tick');
+            }
+            
+            // Use replaceState to avoid cluttering the browser history with every tick change
+            window.history.replaceState({}, '', url);
+        } catch (error) {
+            console.warn('Failed to update URL state:', error);
+        }
+    }
+    
+    /**
      * Loads all necessary data for the current tick and viewport.
      * This includes both the environment cells and the organism summaries. It then
-     * triggers updates for the renderer and the organism selector.
+     * triggers updates for the renderer and the organism panel.
      * 
      * @param {boolean} [isForwardStep=false] - True if navigating forward, for change highlighting.
      * @param {number|null} [previousTick=null] - The previous tick number, for change detection.
@@ -437,13 +580,22 @@ class AppController {
                 { signal: organismSignal }
             );
             this.renderer.renderOrganisms(organisms);
-            this.updateOrganismSelector(organisms, isForwardStep);
+            this.updateOrganismPanel(organisms, isForwardStep);
             
             // Reload organism details if one is selected
             if (this.state.selectedOrganismId) {
                 const organismId = parseInt(this.state.selectedOrganismId, 10);
                 if (!isNaN(organismId)) {
-                    await this.loadOrganismDetails(organismId, isForwardStep);
+                    // Check if selected organism still exists
+                    const stillExists = organisms.some(o => String(o.organismId) === this.state.selectedOrganismId);
+                    if (stillExists) {
+                        await this.loadOrganismDetails(organismId, isForwardStep);
+                    } else {
+                        // Organism died - deselect
+                        this.state.selectedOrganismId = null;
+                        this.clearOrganismDetails();
+                        this.updateOrganismListSelection();
+                    }
                 }
             }
             
@@ -458,8 +610,8 @@ class AppController {
             }
             console.error('Failed to load viewport:', error);
             showError('Failed to load viewport: ' + error.message);
-            // Update dropdown with empty list on error
-            this.updateOrganismSelector([]);
+            // Update panel with empty list on error
+            this.updateOrganismPanel([]);
         }
     }
 
@@ -488,23 +640,20 @@ class AppController {
     }
 
     /**
-     * Updates the organism selector dropdown with the list of organisms for the current tick.
+     * Updates the organism panel with the list of organisms for the current tick.
      * It preserves the user's selection if the organism still exists and updates the summary counts.
      * 
      * @param {Array<object>} organisms - An array of organism summary objects for the current tick.
      * @param {boolean} [isForwardStep=false] - True if navigating forward.
      * @private
      */
-    updateOrganismSelector(organisms, isForwardStep = false) {
-        const selector = document.getElementById('organism-selector');
-        if (!selector) return;
-        
+    updateOrganismPanel(organisms, isForwardStep = false) {
         if (!Array.isArray(organisms)) {
             organisms = [];
         }
         
-        // Save currently selected value before updating
-        const previouslySelected = selector.value;
+        // Store in state for reference
+        this.state.organisms = organisms;
         
         // Calculate organism counts
         const aliveCount = organisms.length;
@@ -517,87 +666,29 @@ class AppController {
             }
         }
         
-        // Build options HTML with inline styles for colors
-        let optionsHtml = `<option value="">(${aliveCount}/${totalCount})</option>`;
+        // Update panel info (alive/total display)
+        this.organismPanelManager?.updateInfo(aliveCount, totalCount);
         
-        // Track which organism IDs exist in the new tick
-        const organismIdsInNewTick = new Set();
-        
-        // Add organism options with formatting matching basic view: ID: 1     IP: x|y     DV: dx|dy DP: ...     ER: value
-        organisms.forEach(organism => {
+        // Build organism list data with all available info from summary
+        const listData = organisms.map(organism => {
             if (!organism || typeof organism.organismId !== 'number') {
-                return;
+                return null;
             }
-            
-            organismIdsInNewTick.add(String(organism.organismId));
-            
-            // Get organism color (as hex string for CSS)
-            const color = this.getOrganismColor(organism.organismId, organism.energy);
-            const energy = organism.energy || 0;
-            
-            // Format IP
-            const ip = organism.ip || [];
-            const ipStr = ip.length >= 2 ? `${ip[0]}|${ip[1]}` : '?|?';
-            
-            // Format DV into an arrow
-            const dvArrow = ValueFormatter.formatDvAsArrow(organism.dv);
-            
-            // Format DPs: show all DPs, active one in brackets
-            let dpStr = '';
-            if (organism.dataPointers && Array.isArray(organism.dataPointers) && organism.dataPointers.length > 0) {
-                const activeDpIndex = organism.activeDpIndex != null ? organism.activeDpIndex : -1;
-                const dpParts = [];
-                for (let i = 0; i < organism.dataPointers.length; i++) {
-                    const dp = organism.dataPointers[i];
-                    if (dp && Array.isArray(dp) && dp.length >= 2) {
-                        let value = `${dp[0]}|${dp[1]}`;
-                        if (i === activeDpIndex) {
-                            value = `[${value}]`;
-                        }
-                        dpParts.push(value);
-                    }
-                }
-                if (dpParts.length > 0) {
-                    dpStr = `${dpParts.join(' ')}`;
-                }
-            }
-            
-            // Format: ID: 1     IP: x|y→ DP: ...     ER: value
-            const text = `ID: ${organism.organismId} &nbsp; IP: ${ipStr}${dvArrow} &nbsp; DP: ${dpStr} &nbsp; ER: ${energy}`;
-            optionsHtml += `<option value="${organism.organismId}" style="color: ${color} !important;">${text}</option>`;
-        });
+            return {
+                id: String(organism.organismId),
+                energy: organism.energy || 0,
+                color: this.getOrganismColor(organism.organismId, organism.energy),
+                ip: organism.ip,
+                dv: organism.dv,
+                dataPointers: organism.dataPointers,
+                activeDpIndex: organism.activeDpIndex,
+                parentId: organism.parentId,
+                birthTick: organism.birthTick
+            };
+        }).filter(Boolean);
         
-        // Set all options at once
-        selector.innerHTML = optionsHtml;
-        
-        // Restore selection if the previously selected organism still exists
-        if (previouslySelected && organismIdsInNewTick.has(previouslySelected)) {
-            selector.value = previouslySelected;
-            // Update state to match
-            this.state.selectedOrganismId = previouslySelected;
-            
-            // Find selected organism
-            const selectedOrg = organisms.find(o => String(o.organismId) === previouslySelected);
-            
-            if (selectedOrg) {
-                // Update select element color to match selected organism
-                const selectedOption = selector.options[selector.selectedIndex];
-                if (selectedOption) {
-                    const styleAttr = selectedOption.getAttribute('style');
-                    if (styleAttr) {
-                        const colorMatch = styleAttr.match(/color:\s*([^;!]+)/);
-                        if (colorMatch) {
-                            selector.style.color = colorMatch[1].trim();
-                        }
-                    }
-                }
-            }
-        } else {
-            // Reset if previously selected organism no longer exists
-            selector.value = '';
-            this.state.selectedOrganismId = null;
-            selector.style.color = '#e0e0e0';
-        }
+        // Update organism list in panel
+        this.organismPanelManager?.updateList(listData, this.state.selectedOrganismId);
     }
     
     /**
@@ -654,19 +745,27 @@ class AppController {
             console.debug('Failed to parse URL parameters for visualizer state:', error);
         }
     }
+
+    /**
+     * Ensures there is an initial runId by fetching the latest run if none is set.
+     * Mirrors analyzer behavior: auto-picks newest run.
+     * @private
+     */
+    async ensureInitialRunId() {
+        if (this.state.runId) return;
+        try {
+            const response = await fetch('/analyzer/api/runs');
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || 'Failed to fetch runs');
+            }
+            const runs = await response.json();
+            if (Array.isArray(runs) && runs.length > 0) {
+                runs.sort((a, b) => (b.startTime || 0) - (a.startTime || 0));
+                this.state.runId = runs[0].runId;
+            }
+        } catch (error) {
+            console.error('Failed to auto-select runId:', error);
+        }
+    }
 }
-
-// Export for global availability
-window.AppController = AppController;
-
-// Wait for the UI to be ready before initializing the controller
-document.addEventListener('uiReady', () => {
-    window.visualizer = window.visualizer || {};
-    window.visualizer.controller = new AppController();
-    
-    // Auto-initialize
-    window.visualizer.controller.init().catch(error => {
-        console.error('Failed to initialize visualizer:', error);
-        showError('Failed to initialize visualizer: ' + error.message);
-    });
-});

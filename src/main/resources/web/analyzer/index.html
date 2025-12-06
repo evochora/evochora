@@ -15,6 +15,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Doto:wght@900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../shared/app-switcher/app-switcher.css">
+    <link rel="stylesheet" href="../shared/footer/footer.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -26,19 +28,14 @@
         
 <!-- Header -->
 <header>
-    <div class="controls-left">
-        <select id="run-select" aria-label="Select Simulation Run">
-            <option value="">Loading runs...</option>
-        </select>
-    </div>
+    <div class="header-left">
+        <div id="app-switcher-container"></div>
     <div class="logo-container">
-        <div class="logo-wrapper">
             <span class="logo-text">EVOCHORA</span>
-            <span class="logo-subtitle">Analytics</span>
             <div class="loading-indicator" id="loading-indicator"></div>
         </div>
     </div>
-    <div class="controls-right">
+    <div class="header-right">
         <button id="btn-refresh" class="primary" data-tooltip="Refresh data">⟳ Refresh</button>
     </div>
 </header>
@@ -48,54 +45,10 @@
     <div id="dashboard-container"></div>
 </main>
 
+<div id="footer-container"></div>
 
-<!-- Data Layer -->
-<script src="js/data/DuckDBClient.js"></script>
+<!-- Main Entry Point (ES Module) -->
+<script type="module" src="js/main.js"></script>
 
-<!-- API -->
-<script src="js/api/AnalyticsApi.js"></script>
-
-<!-- Charts (must load in order: Registry first, then types) -->
-<script src="js/charts/ChartRegistry.js"></script>
-<script src="js/charts/LineChart.js"></script>
-<script src="js/charts/BarChart.js"></script>
-<script src="js/charts/HeatmapChart.js"></script>
-<script src="js/charts/StackedAreaChart.js"></script>
-<script src="js/charts/StackedBarChart.js"></script>
-<script src="js/charts/BandChart.js"></script>
-
-<!-- UI Components -->
-<script src="js/ui/HeaderView.js"></script>
-<script src="js/ui/MetricCardView.js"></script>
-<script src="js/ui/DashboardView.js"></script>
-
-<!-- Application Logic -->
-<script src="js/AnalyzerController.js"></script>
-
-<!-- Main Entry Point (must be last) -->
-<script src="js/main.js"></script>
-
-<!-- Header Logo Positioning -->
-<script>
-(function() {
-    function updateLogoPosition() {
-        const header = document.querySelector('header');
-        const controlsLeft = document.querySelector('.controls-left');
-        const controlsRight = document.querySelector('.controls-right');
-        const logo = document.querySelector('.logo-container');
-        
-        if (header && controlsLeft && controlsRight && logo) {
-            header.style.setProperty('--controls-left-width', controlsLeft.offsetWidth + 'px');
-            header.style.setProperty('--controls-right-width', controlsRight.offsetWidth + 'px');
-            header.style.setProperty('--logo-width', logo.offsetWidth + 'px');
-        }
-    }
-    
-    window.addEventListener('load', updateLogoPosition);
-    window.addEventListener('resize', updateLogoPosition);
-    // Also update when fonts are loaded
-    document.fonts?.ready?.then(updateLogoPosition);
-})();
-    </script>
 </body>
 </html>

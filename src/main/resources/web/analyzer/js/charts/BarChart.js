@@ -1,3 +1,5 @@
+import * as ChartRegistry from './ChartRegistry.js';
+
 /**
  * Bar Chart Implementation
  * 
@@ -5,9 +7,6 @@
  * 
  * @module BarChart
  */
-
-const BarChart = (function() {
-    'use strict';
     
     // Evochora color palette
     const COLORS = [
@@ -17,6 +16,10 @@ const BarChart = (function() {
         '#dda0dd', // plum
         '#87ceeb', // sky blue
     ];
+
+function formatLabel(key) {
+    return key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
     
     /**
      * Renders a bar chart.
@@ -26,7 +29,7 @@ const BarChart = (function() {
      * @param {Object} config - Visualization config with x, y fields
      * @returns {Chart} Chart.js instance
      */
-    function render(canvas, data, config) {
+export function render(canvas, data, config) {
         const ctx = canvas.getContext('2d');
         
         const xKey = config.x || 'category';
@@ -112,11 +115,7 @@ const BarChart = (function() {
         return new Chart(ctx, chartConfig);
     }
     
-    function formatLabel(key) {
-        return key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-    }
-    
-    function update(chart, data, config) {
+export function update(chart, data, config) {
         const xKey = config.x || 'category';
         const yKeys = Array.isArray(config.y) ? config.y : [config.y || 'value'];
         
@@ -129,20 +128,9 @@ const BarChart = (function() {
         chart.update('none');
     }
     
-    function destroy(chart) {
+export function destroy(chart) {
         if (chart) chart.destroy();
     }
-    
-    return { render, update, destroy };
-    
-})();
 
 // Register with ChartRegistry
-if (typeof ChartRegistry !== 'undefined') {
-    ChartRegistry.register('bar-chart', BarChart);
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = BarChart;
-}
-
+ChartRegistry.register('bar-chart', { render, update, destroy });

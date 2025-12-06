@@ -115,20 +115,25 @@ class SimulationMetadataIntegrationTest {
         serviceManager.startAll();
 
         // Wait for the metadata file to exist AND for all expected ticks to be readable.
-        // This ensures the entire persistence pipeline has completed.
+        // Store the found path in a holder to reuse after await (avoids non-deterministic findFirst).
+        final Path[] metadataHolder = new Path[1];
         await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> {
-                Path metadataFile = findMetadataFile(tempStorageDir);
-                if (metadataFile == null) {
+                Path found = findMetadataFile(tempStorageDir);
+                if (found == null) {
                     return false;
                 }
-                Path rawDir = metadataFile.getParent();
+                Path rawDir = found.getParent();
                 // In this config, 100 ticks are produced with sampling 10 = 10 ticks total.
                 boolean ticksAreReadable = readAllTicksFromBatches(rawDir).size() >= 10;
+                if (ticksAreReadable) {
+                    metadataHolder[0] = found;
+                }
                 return ticksAreReadable;
             });
 
-        Path metadataFile = findMetadataFile(tempStorageDir);
+        // Reuse the SAME metadataFile that satisfied the await condition
+        Path metadataFile = metadataHolder[0];
         SimulationMetadata metadata = readMetadataFile(metadataFile);
 
         // Verify metadata and tick data are in the same directory (same simulationRunId)
@@ -137,10 +142,8 @@ class SimulationMetadataIntegrationTest {
         Path rawDir = metadataFile.getParent();  // {runId}/raw/
         Path simulationDir = rawDir.getParent();  // {runId}/
         assertTrue(simulationDir.getFileName().toString().equals(simulationRunId));
-
-        // The await condition already robustly verified that batch files exist and are readable.
-        // A simple check is sufficient here. Batches are now under raw/ subdirectory.
-        assertTrue(readAllTicksFromBatches(rawDir).size() >= 10, "Batch files should exist under raw directory");
+        // Note: The await condition already verified that batch files exist and are readable.
+        // No redundant assertion needed here - await guarantees the condition was met.
     }
 
     @Test

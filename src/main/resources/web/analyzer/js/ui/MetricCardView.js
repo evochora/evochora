@@ -1,183 +1,170 @@
+
+import * as ChartRegistry from '../charts/ChartRegistry.js';
+
 /**
- * Metric Card View Component
+ * Metric Card View
  * 
- * Renders a single metric with its chart.
- * LOD selection is handled automatically by the server.
+ * Manages the creation and state of individual metric cards in the dashboard.
+ * Each card is a self-contained unit with its own chart and controls.
  * 
  * @module MetricCardView
  */
 
-const MetricCardView = (function() {
-    'use strict';
-    
-    /**
-     * Creates a new metric card.
-     * 
-     * @param {Object} metric - ManifestEntry from manifest
-     * @returns {Object} MetricCard instance
-     */
-    function create(metric) {
-        const card = {
-            metric: metric,
-            element: null,
-            canvas: null,
-            chart: null,
-            loadingOverlay: null,
-            errorOverlay: null
-        };
-        
-        // Build DOM
-        card.element = document.createElement('div');
-        card.element.className = 'metric-card';
-        card.element.dataset.metricId = metric.id;
-        
-        // Header
-        const header = document.createElement('div');
-        header.className = 'metric-card-header';
-        
-        const titleContainer = document.createElement('div');
-        
-        const title = document.createElement('h3');
-        title.className = 'metric-card-title';
-        title.textContent = metric.name || metric.id;
-        titleContainer.appendChild(title);
-        
-        if (metric.description) {
-            const desc = document.createElement('p');
-            desc.className = 'metric-card-description';
-            desc.textContent = metric.description;
-            titleContainer.appendChild(desc);
-        }
-        
-        header.appendChild(titleContainer);
-        card.element.appendChild(header);
-        
-        // Chart container
-        const chartContainer = document.createElement('div');
-        chartContainer.className = 'chart-container';
-        
-        card.canvas = document.createElement('canvas');
-        chartContainer.appendChild(card.canvas);
-        
-        // Loading overlay
-        card.loadingOverlay = document.createElement('div');
-        card.loadingOverlay.className = 'chart-loading';
-        card.loadingOverlay.innerHTML = '<span class="chart-loading-text">Loading data...</span>';
-        card.loadingOverlay.style.display = 'none';
-        chartContainer.appendChild(card.loadingOverlay);
-        
-        // Error overlay
-        card.errorOverlay = document.createElement('div');
-        card.errorOverlay.className = 'chart-error';
-        card.errorOverlay.innerHTML = '<span class="chart-error-text"></span>';
-        card.errorOverlay.style.display = 'none';
-        chartContainer.appendChild(card.errorOverlay);
-        
-        card.element.appendChild(chartContainer);
-        
-        return card;
-    }
-    
-    /**
-     * Renders the chart with data.
-     * 
-     * @param {Object} card - MetricCard instance
-     * @param {Array<Object>} data - Data rows
-     */
-    function renderChart(card, data) {
-        // Destroy existing chart
-        if (card.chart) {
-            if (card.chart.destroy) {
-                card.chart.destroy();
-            }
-            card.chart = null;
-        }
-        
-        // Hide overlays
-        card.loadingOverlay.style.display = 'none';
-        card.errorOverlay.style.display = 'none';
-        
-        if (!data || data.length === 0) {
-            showError(card, 'No data available');
-            return;
-        }
-        
-        // Get visualization config
-        const viz = card.metric.visualization || {};
-        const chartType = viz.type || 'line-chart';
-        const config = viz.config || {};
-        
-        try {
-            card.chart = ChartRegistry.render(chartType, card.canvas, data, config);
-        } catch (error) {
-            console.error('[MetricCardView] Chart render failed:', error);
-            showError(card, `Chart error: ${error.message}`);
-        }
-    }
-    
-    /**
-     * Shows loading state.
-     * 
-     * @param {Object} card - MetricCard instance
-     */
-    function showLoading(card) {
-        card.loadingOverlay.style.display = 'flex';
-        card.errorOverlay.style.display = 'none';
-    }
-    
-    /**
-     * Shows error state.
-     * 
-     * @param {Object} card - MetricCard instance
-     * @param {string} message - Error message
-     */
-    function showError(card, message) {
-        card.loadingOverlay.style.display = 'none';
-        card.errorOverlay.style.display = 'flex';
-        card.errorOverlay.classList.remove('no-data');
-        card.errorOverlay.querySelector('.chart-error-text').textContent = message;
-    }
-    
-    /**
-     * Shows "no data yet" state (not an error, just waiting for data).
-     * 
-     * @param {Object} card - MetricCard instance
-     */
-    function showNoData(card) {
-        card.loadingOverlay.style.display = 'none';
-        card.errorOverlay.style.display = 'flex';
-        card.errorOverlay.classList.add('no-data');
-        card.errorOverlay.querySelector('.chart-error-text').textContent = 'No data yet';
-    }
-    
-    /**
-     * Destroys the metric card and cleans up.
-     * 
-     * @param {Object} card - MetricCard instance
-     */
-    function destroy(card) {
+// State
+let cards = {}; // Store card instances by metric ID
+
+/**
+ * Clears all card instances and destroys their charts.
+ * Should be called before creating a new set of cards.
+ */
+export function reset() {
+    for (const id of Object.keys(cards)) {
+        const card = cards[id];
         if (card.chart && card.chart.destroy) {
             card.chart.destroy();
         }
-        if (card.element && card.element.parentNode) {
-            card.element.parentNode.removeChild(card.element);
+    }
+    cards = {};
+}
+
+/**
+ * Creates a new metric card element.
+ * 
+ * @param {Object} metric - Metric manifest entry
+ * @returns {HTMLElement} The created card element
+ */
+export function create(metric) {
+    const cardEl = document.createElement('div');
+    cardEl.className = 'metric-card';
+    cardEl.dataset.metricId = metric.id;
+    
+    // Header
+    const header = document.createElement('div');
+    header.className = 'metric-card-header';
+    header.innerHTML = `
+        <div class="metric-card-title-group">
+            <h3 class="metric-card-title">${metric.name}</h3>
+            <p class="metric-card-description">${metric.description || ''}</p>
+        </div>
+        <div class="metric-card-controls">
+            <!-- Controls can be added here if needed -->
+        </div>
+    `;
+    
+    // Chart container
+    const chartContainer = document.createElement('div');
+    chartContainer.className = 'metric-card-chart-container';
+    chartContainer.innerHTML = `<canvas></canvas>`;
+    
+    // Message overlay (for loading, error, no-data)
+    const messageOverlay = document.createElement('div');
+    messageOverlay.className = 'metric-card-message-overlay';
+    
+    cardEl.appendChild(header);
+    cardEl.appendChild(chartContainer);
+    cardEl.appendChild(messageOverlay);
+    
+    // Store instance
+    cards[metric.id] = {
+        element: cardEl,
+        metric: metric,
+        chart: null,
+        messageOverlay: messageOverlay
+    };
+    
+    return cardEl;
+}
+
+/**
+ * Gets all card instances.
+ * 
+ * @returns {Object<string, Object>}
+ */
+export function getAllCards() {
+    return cards;
+}
+
+/**
+ * Renders a chart inside a metric card.
+ * 
+ * @param {Object} card - Card instance
+ * @param {Array<Object>} data - Data for the chart
+ */
+export function renderChart(card, data) {
+    if (!card) return;
+    
+    const canvas = card.element.querySelector('canvas');
+    const chartType = card.metric.visualization?.type;
+    const chartConfig = card.metric.visualization?.config || {};
+    
+    if (card.chart) {
+        if (card.chart.destroy) {
+            card.chart.destroy();
         }
     }
     
-    // Public API
-    return {
-        create,
-        renderChart,
-        showLoading,
-        showError,
-        showNoData,
-        destroy
-    };
-    
-})();
+    const chartModule = ChartRegistry.getChart(chartType);
+    if (chartModule && chartModule.render) {
+        card.chart = chartModule.render(canvas, data, chartConfig);
+        hideMessage(card);
+    } else {
+        console.warn(`[MetricCardView] Unknown chart type: ${chartType}`);
+        showError(card, `Unknown chart type: ${chartType}`);
+    }
+}
 
-// Export for module systems
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = MetricCardView;
+/**
+ * Shows a loading state on the card.
+ */
+export function showLoading(card) {
+    if (card) {
+        showMessage(card, 'Loading...');
+    }
+}
+
+/**
+ * Shows an error state on the card.
+ */
+export function showError(card, message) {
+    if (card) {
+        showMessage(card, `Error: ${message}`, true);
+    }
+}
+
+/**
+ * Shows a no-data state on the card.
+ */
+export function showNoData(card) {
+    if (card) {
+        showMessage(card, 'No data available');
+    }
+}
+
+/**
+ * Shows a message on the card overlay.
+ * 
+ * @param {Object} card
+ * @param {string} message
+ * @param {boolean} [isError=false]
+ */
+function showMessage(card, message, isError = false) {
+    if (!card || !card.messageOverlay) return;
+    
+    card.messageOverlay.textContent = message;
+    card.messageOverlay.classList.add('visible');
+    if (isError) {
+        card.messageOverlay.classList.add('error');
+    } else {
+        card.messageOverlay.classList.remove('error');
+    }
+}
+
+/**
+ * Hides the message overlay.
+ */
+function hideMessage(card) {
+    if (card && card.messageOverlay) {
+        card.messageOverlay.classList.remove('visible');
+    }
 }
 

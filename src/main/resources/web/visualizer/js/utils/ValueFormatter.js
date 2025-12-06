@@ -10,7 +10,7 @@
  * @returns {string} A string representation of the value suitable for display.
  * @throws {Error} If the value is null, undefined, or has an unknown/invalid structure.
  */
-class ValueFormatter {
+export class ValueFormatter {
     /**
      * Formats a given value into a display string.
      * It strictly requires valid, non-null inputs. It accepts primitives, recognized

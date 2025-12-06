@@ -1,3 +1,5 @@
+import * as ChartRegistry from './ChartRegistry.js';
+
 /**
  * Stacked Area Chart Implementation
  * 
@@ -6,9 +8,6 @@
  * 
  * @module StackedAreaChart
  */
-
-const StackedAreaChart = (function() {
-    'use strict';
     
     // Evochora color palette
     const COLORS = [
@@ -26,6 +25,46 @@ const StackedAreaChart = (function() {
         }
         return value;
     }
+
+function formatLabel(key) {
+    return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+}
+
+/**
+ * Creates a legend click handler that adjusts Y-axis max.
+ * When all categories visible: max = 100
+ * When some hidden: max = undefined (auto-scale)
+ */
+function createLegendClickHandler() {
+    return function(e, legendItem, legend) {
+        const chart = legend.chart;
+        const index = legendItem.datasetIndex;
+        
+        // Toggle visibility (default behavior)
+        const meta = chart.getDatasetMeta(index);
+        meta.hidden = meta.hidden === null ? !chart.data.datasets[index].hidden : null;
+        
+        // Count visible datasets
+        let visibleCount = 0;
+        chart.data.datasets.forEach((ds, idx) => {
+            const dsMeta = chart.getDatasetMeta(idx);
+            if (!dsMeta.hidden) {
+                visibleCount++;
+            }
+        });
+        
+        // Adjust Y-axis max
+        if (visibleCount === chart._totalDatasets) {
+            // All visible: fix at 100%
+            chart.options.scales.y.max = 100;
+        } else {
+            // Some hidden: auto-scale
+            chart.options.scales.y.max = undefined;
+        }
+        
+        chart.update();
+    };
+}
     
     /**
      * Renders a stacked area chart.
@@ -35,7 +74,7 @@ const StackedAreaChart = (function() {
      * @param {Object} config - Visualization config with x and y fields
      * @returns {Chart} Chart.js instance
      */
-    function render(canvas, data, config) {
+export function render(canvas, data, config) {
         const ctx = canvas.getContext('2d');
         
         const xKey = config.x || 'tick';
@@ -147,47 +186,7 @@ const StackedAreaChart = (function() {
         return chart;
     }
     
-    /**
-     * Creates a legend click handler that adjusts Y-axis max.
-     * When all categories visible: max = 100
-     * When some hidden: max = undefined (auto-scale)
-     */
-    function createLegendClickHandler() {
-        return function(e, legendItem, legend) {
-            const chart = legend.chart;
-            const index = legendItem.datasetIndex;
-            
-            // Toggle visibility (default behavior)
-            const meta = chart.getDatasetMeta(index);
-            meta.hidden = meta.hidden === null ? !chart.data.datasets[index].hidden : null;
-            
-            // Count visible datasets
-            let visibleCount = 0;
-            chart.data.datasets.forEach((ds, idx) => {
-                const dsMeta = chart.getDatasetMeta(idx);
-                if (!dsMeta.hidden) {
-                    visibleCount++;
-                }
-            });
-            
-            // Adjust Y-axis max
-            if (visibleCount === chart._totalDatasets) {
-                // All visible: fix at 100%
-                chart.options.scales.y.max = 100;
-            } else {
-                // Some hidden: auto-scale
-                chart.options.scales.y.max = undefined;
-            }
-            
-            chart.update();
-        };
-    }
-    
-    function formatLabel(key) {
-        return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-    }
-    
-    function update(chart, data, config) {
+export function update(chart, data, config) {
         const xKey = config.x || 'tick';
         const yKeys = Array.isArray(config.y) ? config.y : (config.y ? [config.y] : []);
         const isPercentage = config.yAxisMode === 'percent';
@@ -210,22 +209,11 @@ const StackedAreaChart = (function() {
         chart.update('none');
     }
     
-    function destroy(chart) {
+export function destroy(chart) {
         if (chart) {
             chart.destroy();
         }
     }
-    
-    return { render, update, destroy };
-    
-})();
 
 // Register with ChartRegistry
-if (typeof ChartRegistry !== 'undefined') {
-    ChartRegistry.register('stacked-area-chart', StackedAreaChart);
-}
-
-// Export for module systems
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = StackedAreaChart;
-}
+ChartRegistry.register('stacked-area-chart', { render, update, destroy });

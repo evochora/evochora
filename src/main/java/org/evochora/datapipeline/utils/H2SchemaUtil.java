@@ -1,11 +1,11 @@
 package org.evochora.datapipeline.utils;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * H2-specific utility for schema management in simulation runs.
@@ -109,11 +109,17 @@ public final class H2SchemaUtil {
             connection.commit();
             log.debug("Created H2 schema: {}", schemaName);
         } catch (SQLException e) {
-            // Workaround for H2 bug in version 2.2.224:
-            // "CREATE SCHEMA IF NOT EXISTS" can fail with "object already exists"
-            // when multiple connections create the same schema concurrently
-            if (e.getMessage() != null && e.getMessage().contains("object already exists")) {
-                // Expected in parallel scenarios - schema created by another connection
+            // Workaround for H2 bug in version 2.2.224 (and platform-dependent wording):
+            // "CREATE SCHEMA IF NOT EXISTS" can fail with "object already exists" or SQLState 90078
+            // when multiple connections create the same schema concurrently.
+            boolean alreadyExists =
+                // Generic message seen on Linux/macOS
+                (e.getMessage() != null && e.getMessage().contains("object already exists"))
+                // Windows runner emits SQLState 90078 with phrasing "Schema \"SIM_...\" already exists"
+                || "90078".equals(e.getSQLState());
+
+            if (alreadyExists) {
+                // Expected in parallel scenarios - schema was created by another connection
                 connection.rollback();  // Clean up failed transaction
                 log.debug("Schema '{}' already exists (created by another connection)", schemaName);
             } else {

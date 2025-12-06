@@ -1,3 +1,10 @@
+
+import * as AnalyticsApi from './api/AnalyticsApi.js';
+import * as HeaderView from './ui/HeaderView.js';
+import * as DashboardView from './ui/DashboardView.js';
+import * as DuckDBClient from './data/DuckDBClient.js';
+import * as MetricCardView from './ui/MetricCardView.js';
+
 /**
  * Analyzer Controller
  * 
@@ -10,10 +17,6 @@
  * @module AnalyzerController
  */
 
-const AnalyzerController = (function() {
-    'use strict';
-    
-    // Preferred display order for metrics (metrics not in list appear at the end)
     const METRIC_ORDER = [
         'population',           // 1. Population Overview
         'vital_stats',          // 2. Birth & Death Rates
@@ -31,12 +34,11 @@ const AnalyzerController = (function() {
     /**
      * Initializes the controller and UI components.
      */
-    async function init() {
+export async function init() {
         console.debug('[AnalyzerController] Initializing...');
         
         // Initialize UI components
         HeaderView.init({
-            onRunChange: handleRunChange,
             onRefresh: handleRefresh
         });
         
@@ -53,23 +55,27 @@ const AnalyzerController = (function() {
     }
     
     /**
-     * Loads available runs from the API and populates the dropdown.
+ * Loads available runs and auto-selects the latest if none selected.
      */
     async function loadRuns() {
         try {
             HeaderView.setLoading(true);
             
             const runs = await AnalyticsApi.listRuns();
-            HeaderView.setRuns(runs, currentRunId);
             
-            // Auto-load first run if available
+        // Auto-load first (latest) run if available and none selected
             if (runs.length > 0 && !currentRunId) {
-                const firstRun = runs[0];
-                currentRunId = firstRun.runId;
-                HeaderView.setRuns(runs, currentRunId); // Ensure dropdown is updated
+            // Sort by startTime or runId timestamp (newest first)
+            const sorted = [...runs].sort((a, b) => {
+                const scoreA = a.startTime || extractTimestamp(a.runId);
+                const scoreB = b.startTime || extractTimestamp(b.runId);
+                return scoreB - scoreA;
+            });
+            currentRunId = sorted[0].runId;
+            window.footer?.updateCurrent?.();
+            await loadDashboard(currentRunId);
+        } else if (currentRunId) {
                 await loadDashboard(currentRunId);
-            } else if (runs.length > 0) {
-                HeaderView.setRuns(runs, currentRunId);
             }
             
         } catch (error) {
@@ -79,6 +85,14 @@ const AnalyzerController = (function() {
             HeaderView.setLoading(false);
         }
     }
+
+/**
+ * Extracts a sortable timestamp from a runId.
+ */
+function extractTimestamp(runId) {
+    const m = (runId || '').match(/^(\d{8})-(\d{8})/);
+    return m ? Number(m[1] + m[2]) : 0;
+}
     
     /**
      * Handles run selection change.
@@ -87,6 +101,7 @@ const AnalyzerController = (function() {
         if (!runId || runId === currentRunId) return;
         
         currentRunId = runId;
+    window.footer?.updateCurrent?.();
         await loadDashboard(runId);
     }
     
@@ -106,7 +121,7 @@ const AnalyzerController = (function() {
      * 
      * @param {string} runId - Simulation run ID
      */
-    async function loadDashboard(runId) {
+export async function loadDashboard(runId) {
         if (isLoading) return;
         isLoading = true;
         
@@ -230,7 +245,7 @@ const AnalyzerController = (function() {
      * 
      * @param {string} message
      */
-    function showError(message) {
+export function showError(message) {
         const errorBar = document.getElementById('error-banner');
         const errorMessage = document.getElementById('error-message');
         
@@ -243,26 +258,13 @@ const AnalyzerController = (function() {
     /**
      * Hides the global error message.
      */
-    function hideError() {
+export function hideError() {
         const errorBar = document.getElementById('error-banner');
         if (errorBar) {
             errorBar.classList.remove('visible');
         }
     }
     
-    // Public API
-    return {
-        init,
-        loadRuns,
-        loadDashboard,
-        showError,
-        hideError
-    };
-    
-})();
-
-// Export for module systems
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = AnalyzerController;
-}
+export const changeRun = handleRunChange;
+export const getCurrentRunId = () => currentRunId;
 
