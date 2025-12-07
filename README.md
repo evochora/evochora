@@ -72,8 +72,8 @@ Visualizer: 2D view into the simulated world (cells, organisms, energy).
 
 Technically, the engine is fully operational. We have successfully evolved viable ancestors capable of sustaining stable populations for over **500,000 ticks**, producing lineage trees deeper than 15 generations.
 
-**However, long-running simulations have revealed a critical open problem:**
-Eventually, ecosystems collapse due to **fragility**. A mutated organism can enter a "Zombie state"—executing a tight, non-replicating loop that indiscriminately overwrites its neighbors. In a shared memory space, this damage propagates, turning victims into broken zombies themselves, triggering a chain reaction that wipes the grid.
+**However, we are facing the expected first hurdle of Open-Ended Evolution:**
+In its current unconstrained state, the system behaves like a raw physical medium and tends towards a **"Grey Goo"** scenario. Damaged organisms can enter aggressive "Zombie" loops that overwrite the shared memory space. Unlike legacy systems (*Tierra*, *Avida*) that solved this via artificial CPU quotas, we treat this as a signal to implement **Thermodynamics**. We aim to stabilize the system through physical costs (Entropy), turning this hurdle into a driver for emergent complexity.
 
 This is not a software bug, but a theoretical challenge: **How do we engineer stability without hard-coding behavior?**
 
