@@ -164,8 +164,6 @@ class ArtemisTopicIntegrationTest {
         }
         
         assertThat(consumed1 + consumed2).isEqualTo(messageCount);
-        // Both should have consumed something (exact distribution varies)
-        System.out.println("Artemis Competing Consumers: Reader1=" + consumed1 + ", Reader2=" + consumed2);
     }
     
     @Test
