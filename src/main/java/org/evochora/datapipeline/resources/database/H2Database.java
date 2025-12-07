@@ -52,6 +52,7 @@ public class H2Database extends AbstractDatabaseResource
         implements IDatabaseReaderProvider, IMemoryEstimatable {
 
     private static final Logger log = LoggerFactory.getLogger(H2Database.class);
+    
     private final HikariDataSource dataSource;
     private final AtomicLong diskWrites = new AtomicLong(0);
     private final SlidingWindowCounter diskWritesCounter;

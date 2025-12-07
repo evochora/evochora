@@ -176,7 +176,7 @@ public interface IAnalyticsPlugin extends IMemoryEstimatable {
      * @return Number of LOD levels (default: 1)
      */
     int getLodLevels();
-    
+
     /**
      * Returns the query specification for query-time transformations.
      * <p>

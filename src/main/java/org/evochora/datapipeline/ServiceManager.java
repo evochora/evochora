@@ -22,6 +22,7 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IContextualResource;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.IResourceInitializer;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.services.IService;
@@ -54,6 +55,10 @@ public class ServiceManager implements IMonitorable {
     public ServiceManager(Config rootConfig) {
         this.pipelineConfig = loadPipelineConfig(rootConfig);
         log.info("Initializing ServiceManager...");
+
+        // Run resource initializers BEFORE loading any resource classes
+        // This allows initializers to set system properties that drivers read at load time
+        runResourceInitializers(this.pipelineConfig);
 
         instantiateResources(this.pipelineConfig);
         buildServiceFactories(this.pipelineConfig);
@@ -90,6 +95,86 @@ public class ServiceManager implements IMonitorable {
             throw new IllegalArgumentException("Configuration must contain 'pipeline' section");
         }
         return rootConfig.getConfig("pipeline");
+    }
+
+    /**
+     * Runs resource initializers before any resource classes are loaded.
+     * <p>
+     * Initializers are used for early system-level configuration that must happen
+     * before certain drivers are loaded (e.g., H2's temp directory must be set
+     * before the H2 driver is loaded because H2 caches the value at load time).
+     * <p>
+     * The method:
+     * <ol>
+     *   <li>Scans all resource definitions for {@code init} blocks</li>
+     *   <li>Deduplicates by {@code init.className} (each initializer runs once)</li>
+     *   <li>Instantiates and runs each initializer</li>
+     * </ol>
+     *
+     * @param config The pipeline configuration
+     */
+    private void runResourceInitializers(Config config) {
+        if (!config.hasPath("resources")) {
+            return;
+        }
+
+        Config resourcesConfig = config.getConfig("resources");
+        
+        // Collect and deduplicate initializers by className
+        Map<String, Config> initializersByClass = new LinkedHashMap<>();
+        
+        for (String resourceName : resourcesConfig.root().keySet()) {
+            try {
+                Config resourceDefinition = resourcesConfig.getConfig(resourceName);
+                if (resourceDefinition.hasPath("init")) {
+                    Config initConfig = resourceDefinition.getConfig("init");
+                    if (initConfig.hasPath("className")) {
+                        String className = initConfig.getString("className");
+                        // First one wins (for consistent behavior)
+                        if (!initializersByClass.containsKey(className)) {
+                            Config options = initConfig.hasPath("options") 
+                                ? initConfig.getConfig("options") 
+                                : ConfigFactory.empty();
+                            initializersByClass.put(className, options);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("Skipping init block scan for resource '{}': {}", resourceName, e.getMessage());
+            }
+        }
+
+        if (initializersByClass.isEmpty()) {
+            return;
+        }
+
+        // Run each initializer once, collect successfully executed ones for summary log
+        List<String> executedInitializers = new ArrayList<>();
+        for (Map.Entry<String, Config> entry : initializersByClass.entrySet()) {
+            String className = entry.getKey();
+            Config options = entry.getValue();
+            
+            try {
+                log.debug("Running resource initializer: {}", className);
+                IResourceInitializer initializer = (IResourceInitializer) Class.forName(className)
+                    .getDeclaredConstructor()
+                    .newInstance();
+                initializer.initialize(options);
+                // Extract simple class name for readable log
+                String simpleName = className.substring(className.lastIndexOf('.') + 1);
+                executedInitializers.add(simpleName);
+            } catch (ClassNotFoundException e) {
+                log.error("Resource initializer class not found: {}", className);
+            } catch (ClassCastException e) {
+                log.error("Resource initializer '{}' does not implement IResourceInitializer", className);
+            } catch (Exception e) {
+                log.error("Failed to run resource initializer '{}': {}", className, e.getMessage());
+            }
+        }
+        
+        if (!executedInitializers.isEmpty()) {
+            log.info("Resource initializers executed: {}", String.join(", ", executedInitializers));
+        }
     }
 
     private void instantiateResources(Config config) {

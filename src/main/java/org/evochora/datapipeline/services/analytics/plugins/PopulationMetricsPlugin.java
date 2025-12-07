@@ -68,7 +68,7 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
         ManifestEntry entry = new ManifestEntry();
         entry.id = metricId;
         entry.name = "Population Overview";
-        entry.description = "Overview of alive organisms, total deaths, and average energy over time.";
+        entry.description = "Overview of alive organisms, and average energy over time.";
         
         // Generate dataSources for all configured LOD levels
         entry.dataSources = new HashMap<>();

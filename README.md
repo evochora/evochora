@@ -128,6 +128,8 @@ This will:
 - Start the in-process simulation node (simulation engine, persistence, indexer, HTTP server)
 - Run until you terminate it (Ctrl + C)
 
+**Note on Storage:** By default, Evochora records high-fidelity telemetry for every tick to allow perfect replay and debugging. For long-running experiments or huge environments, ensure you have sufficient disk space or adjust the configuration to reduce logging frequency (see Config docs).
+
 ### 3. Open the Web UI
 
 Once the node is running, it will by default execute the primordial organism defined in [`assembly/primordial/main.evo`](./assembly/primordial/main.evo) as configured in [`config/evochora.conf`](./evochora.conf).  

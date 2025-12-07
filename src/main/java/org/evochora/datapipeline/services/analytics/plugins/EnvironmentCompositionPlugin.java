@@ -80,7 +80,7 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
         // Direct access to the underlying list - NO COPYING to ArrayList
         List<CellState> allCells = tick.getCellsList();
         int cellsAvailable = allCells.size();
-
+        
         if (monteCarloSamples > 0 && cellsAvailable > monteCarloSamples) {
             // Sampling mode: Random sample without copying
             java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
@@ -103,7 +103,7 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
             long[] counts = new long[5];
             for (CellState cell : allCells) {
                 countCell(cell, counts);
-            }
+        }
             codeCells = counts[0];
             dataCells = counts[1];
             energyCells = counts[2];

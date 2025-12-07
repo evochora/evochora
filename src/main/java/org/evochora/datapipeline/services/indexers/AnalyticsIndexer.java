@@ -297,7 +297,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                     // (lowest sampling interval = lod0)
                     PluginLodTask finestMatchingTask = null;
                     for (PluginLodTask task : pluginTasks) {
-                        if (tick.getTickNumber() % task.samplingInterval() == 0) {
+                    if (tick.getTickNumber() % task.samplingInterval() == 0) {
                             if (finestMatchingTask == null || 
                                 task.samplingInterval() < finestMatchingTask.samplingInterval()) {
                                 finestMatchingTask = task;
@@ -308,23 +308,23 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                     if (finestMatchingTask == null) continue;
                     
                     // Extract rows ONCE from the plugin
-                    try {
+                        try {
                         List<Object[]> rows = plugin.extractRows(tick);
                         
                         // Distribute the same rows to ALL matching LOD levels
                         for (PluginLodTask task : pluginTasks) {
                             if (tick.getTickNumber() % task.samplingInterval() == 0) {
-                                for (Object[] row : rows) {
-                                    bindRow(task.statement(), task.schema(), row);
-                                    task.statement().addBatch();
-                                    rowsWrittenPerTask.compute(task, (k, v) -> v + 1);
-                                }
+                            for (Object[] row : rows) {
+                                bindRow(task.statement(), task.schema(), row);
+                                task.statement().addBatch();
+                                rowsWrittenPerTask.compute(task, (k, v) -> v + 1);
+                            }
                             }
                         }
-                    } catch (Exception e) {
-                        log.warn("Plugin {} failed to extract rows for tick {}. Skipping row.", 
+                        } catch (Exception e) {
+                            log.warn("Plugin {} failed to extract rows for tick {}. Skipping row.", 
                             plugin.getMetricId(), tick.getTickNumber());
-                        recordError("PLUGIN_EXTRACT_ERROR", "Plugin failed during row extraction", 
+                            recordError("PLUGIN_EXTRACT_ERROR", "Plugin failed during row extraction", 
                             String.format("Plugin: %s, Tick: %d", plugin.getMetricId(), tick.getTickNumber()));
                     }
                 }

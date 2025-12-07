@@ -356,11 +356,11 @@ public class AnalyticsController implements IController {
                 try (var paths = Files.walk(tempDir)) {
                     paths.sorted(java.util.Comparator.reverseOrder())
                          .forEach(path -> {
-                             try {
+                    try {
                                  Files.deleteIfExists(path);
-                             } catch (IOException e) {
+                    } catch (IOException e) {
                                  log.debug("Failed to delete: {}", path);
-                             }
+                    }
                          });
                 } catch (IOException e) {
                     log.debug("Failed to cleanup temp directory: {}", tempDir);
@@ -506,12 +506,12 @@ public class AnalyticsController implements IController {
         },
         responses = {
             @OpenApiResponse(
-                status = "200",
+                status = "200", 
                 description = "Merged Parquet file stream",
                 content = @OpenApiContent(mimeType = "application/octet-stream")
             ),
             @OpenApiResponse(
-                status = "400",
+                status = "400", 
                 description = "Bad request (missing metric parameter)",
                 content = @OpenApiContent(from = ErrorResponseDto.class)
             ),
@@ -521,7 +521,7 @@ public class AnalyticsController implements IController {
                 content = @OpenApiContent(from = ErrorResponseDto.class)
             ),
             @OpenApiResponse(
-                status = "500",
+                status = "500", 
                 description = "Failed to merge Parquet files",
                 content = @OpenApiContent(from = ErrorResponseDto.class)
             )
@@ -530,12 +530,12 @@ public class AnalyticsController implements IController {
     private void getParquet(Context ctx) {
         String metric = ctx.queryParam("metric");
         String lod = ctx.queryParam("lod");
-        
+
         if (metric == null || metric.isBlank()) {
             ctx.status(400).result("Missing metric parameter");
             return;
         }
-        
+
         // Resolve runId (optional - defaults to latest)
         String runId;
         try {
