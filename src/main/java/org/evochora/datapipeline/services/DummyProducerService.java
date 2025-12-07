@@ -54,7 +54,8 @@ public class DummyProducerService extends AbstractService {
     @Override
     protected void run() throws InterruptedException {
         long messageCounter = 0;
-        while (!Thread.currentThread().isInterrupted() && (maxMessages == -1 || messageCounter < maxMessages)) {
+        // Check both isStopRequested() (graceful) and isInterrupted() (forced)
+        while (!isStopRequested() && !Thread.currentThread().isInterrupted() && (maxMessages == -1 || messageCounter < maxMessages)) {
             checkPause();
 
             DummyMessage message = DummyMessage.newBuilder()

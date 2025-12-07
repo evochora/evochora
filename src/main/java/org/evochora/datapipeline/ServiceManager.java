@@ -309,7 +309,7 @@ public class ServiceManager implements IMonitorable {
     }
 
     public void startAll() {
-        log.info("========== Starting Services ==========");
+        log.info("\u001B[34m========== Starting Services ==========\u001B[0m");
         startAllInternal();
     }
     
@@ -320,7 +320,7 @@ public class ServiceManager implements IMonitorable {
     }
 
     public void stopAll() {
-        log.info("\u001B[34m========== Stopping Service ==========\u001B[0m");
+        log.info("\u001B[34m========== Stopping Services ==========\u001B[0m");
         List<String> toStop = new ArrayList<>(startupSequence);
         Collections.reverse(toStop);
         services.keySet().stream().filter(s -> !toStop.contains(s)).forEach(toStop::add);

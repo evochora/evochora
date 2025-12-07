@@ -42,7 +42,8 @@ public class DummyWriterService extends AbstractService {
     protected void run() throws InterruptedException {
         int writeCount = 0;
 
-        while (!Thread.currentThread().isInterrupted()) {
+        // Check both isStopRequested() (graceful) and isInterrupted() (forced)
+        while (!isStopRequested() && !Thread.currentThread().isInterrupted()) {
             checkPause();
 
             if (maxWrites > 0 && writeCount >= maxWrites) {

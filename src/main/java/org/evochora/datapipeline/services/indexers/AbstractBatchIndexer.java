@@ -326,7 +326,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             prepareTables(runId);
             
             // Step 3: Topic loop
-            while (!Thread.currentThread().isInterrupted()) {
+            // Check both isStopRequested() (graceful) and isInterrupted() (forced)
+            while (!isStopRequested() && !Thread.currentThread().isInterrupted()) {
                 TopicMessage<BatchInfo, ACK> msg = topic.poll(topicPollTimeoutMs, TimeUnit.MILLISECONDS);
                 
                 if (msg == null) {

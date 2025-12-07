@@ -204,8 +204,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             throw e; // Let AbstractService handle it as normal shutdown
         }
 
+        // Check isStopRequested() for graceful shutdown (in addition to state and interrupt)
         while ((getCurrentState() == State.RUNNING || getCurrentState() == State.PAUSED)
-                && !Thread.currentThread().isInterrupted()) {
+                && !isStopRequested() && !Thread.currentThread().isInterrupted()) {
             checkPause();
 
             simulation.tick();

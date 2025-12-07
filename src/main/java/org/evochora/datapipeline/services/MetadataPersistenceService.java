@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.evochora.datapipeline.api.contracts.MetadataInfo;
@@ -142,17 +143,30 @@ public class MetadataPersistenceService extends AbstractService {
      * <p>
      * One-shot pattern:
      * <ol>
-     *   <li>Blocks waiting for metadata message from queue</li>
+     *   <li>Polls for metadata message with timeout (checks isStopRequested periodically)</li>
      *   <li>Validates and persists message with retry logic</li>
      *   <li>Exits run() method, causing service to stop naturally</li>
      * </ol>
      *
-     * @throws InterruptedException if interrupted during queue take or retry backoff
+     * @throws InterruptedException if interrupted during queue poll or retry backoff
      */
     @Override
     protected void run() throws InterruptedException {
-        // Block until metadata message arrives (one-shot pattern)
-        SimulationMetadata metadata = inputQueue.take();
+        // Poll until metadata message arrives or stop requested (one-shot pattern)
+        // Uses poll() with timeout to allow graceful shutdown via isStopRequested()
+        SimulationMetadata metadata = null;
+        while (!isStopRequested() && metadata == null) {
+            var optionalMetadata = inputQueue.poll(500, TimeUnit.MILLISECONDS);
+            if (optionalMetadata.isPresent()) {
+                metadata = optionalMetadata.get();
+            }
+        }
+        
+        // Check if we stopped without receiving metadata
+        if (metadata == null) {
+            log.debug("MetadataPersistenceService stopped before receiving metadata");
+            return;
+        }
 
         log.debug("Received metadata message for simulation {}", metadata.getSimulationRunId());
 

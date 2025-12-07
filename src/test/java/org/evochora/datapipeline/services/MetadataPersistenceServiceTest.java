@@ -27,6 +27,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
@@ -173,7 +175,7 @@ class MetadataPersistenceServiceTest {
         SimulationMetadata metadata = createTestMetadata("sim-123");
 
         // Mock queue to return metadata
-        when(mockInputQueue.take()).thenReturn(metadata);
+        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
         when(mockStorage.writeMessage(anyString(), any())).thenReturn(StoragePath.of("sim-123/raw/metadata.pb"));
 
         // Start service (will process message and stop)
@@ -211,7 +213,7 @@ class MetadataPersistenceServiceTest {
 
         SimulationMetadata metadata = createTestMetadata("my-simulation-run-42");
 
-        when(mockInputQueue.take()).thenReturn(metadata);
+        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
         when(mockStorage.writeMessage(anyString(), any())).thenReturn(StoragePath.of("sim-123/raw/metadata.pb"));
 
         service.start();
@@ -238,7 +240,7 @@ class MetadataPersistenceServiceTest {
             .setInitialSeed(42)
             .build();
 
-        when(mockInputQueue.take()).thenReturn(metadata);
+        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
         when(mockInputQueue.getResourceName()).thenReturn("context-data");
         when(mockDLQ.offer(any())).thenReturn(true);
 
@@ -272,7 +274,7 @@ class MetadataPersistenceServiceTest {
             // simulationRunId not set (defaults to empty string in proto3)
             .build();
 
-        when(mockInputQueue.take()).thenReturn(metadata);
+        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
         when(mockInputQueue.getResourceName()).thenReturn("context-data");
         when(mockDLQ.offer(any())).thenReturn(true);
 
@@ -295,7 +297,7 @@ class MetadataPersistenceServiceTest {
 
         SimulationMetadata metadata = createTestMetadata("sim-123");
 
-        when(mockInputQueue.take()).thenReturn(metadata);
+        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
 
         // First attempt fails, second succeeds
         when(mockStorage.writeMessage(anyString(), any()))
@@ -325,7 +327,7 @@ class MetadataPersistenceServiceTest {
 
         SimulationMetadata metadata = createTestMetadata("sim-123");
 
-        when(mockInputQueue.take()).thenReturn(metadata);
+        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
         when(mockInputQueue.getResourceName()).thenReturn("context-data");
         doThrow(new IOException("Persistent error")).when(mockStorage).writeMessage(anyString(), any());
         when(mockDLQ.offer(any())).thenReturn(true);
@@ -358,7 +360,7 @@ class MetadataPersistenceServiceTest {
 
         SimulationMetadata metadata = createTestMetadata("sim-456");
 
-        when(mockInputQueue.take()).thenReturn(metadata);
+        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
         when(mockInputQueue.getResourceName()).thenReturn("context-data");
         doThrow(new IOException("Storage failure")).when(mockStorage).writeMessage(anyString(), any());
         when(mockDLQ.offer(any())).thenReturn(true);
@@ -388,7 +390,7 @@ class MetadataPersistenceServiceTest {
 
         SimulationMetadata metadata = createTestMetadata("sim-789");
 
-        when(mockInputQueue.take()).thenReturn(metadata);
+        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
         doThrow(new IOException("Storage failure")).when(mockStorage).writeMessage(anyString(), any());
 
         service.start();
@@ -410,7 +412,7 @@ class MetadataPersistenceServiceTest {
 
         SimulationMetadata metadata = createTestMetadata("sim-full");
 
-        when(mockInputQueue.take()).thenReturn(metadata);
+        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
         when(mockInputQueue.getResourceName()).thenReturn("context-data");
         doThrow(new IOException("Storage failure")).when(mockStorage).writeMessage(anyString(), any());
         when(mockDLQ.offer(any())).thenReturn(false); // DLQ full
@@ -432,18 +434,16 @@ class MetadataPersistenceServiceTest {
     void testGracefulShutdownBeforeMessageReceived() throws Exception {
         service = new MetadataPersistenceService("test-metadata-persistence", config, resources);
 
-        // Mock queue.take() to block indefinitely (simulating waiting for message)
-        when(mockInputQueue.take()).thenAnswer(invocation -> {
-            Thread.sleep(Long.MAX_VALUE);
-            return null;
-        });
+        // Mock queue.poll() to return empty (simulating no message available)
+        // Service will check isStopRequested() between polls
+        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.empty());
 
         service.start();
 
-        // Wait a bit to ensure service is running and blocking on take()
+        // Wait a bit to ensure service is running and polling
         Thread.sleep(100);
 
-        // Stop service while it's waiting
+        // Stop service while it's waiting (graceful shutdown via isStopRequested)
         service.stop();
 
         // Verify service stopped cleanly
@@ -463,7 +463,7 @@ class MetadataPersistenceServiceTest {
 
         SimulationMetadata metadata = createTestMetadata("sim-metrics");
 
-        when(mockInputQueue.take()).thenReturn(metadata);
+        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
         when(mockStorage.writeMessage(anyString(), any())).thenReturn(StoragePath.of("sim-123/raw/metadata.pb"));
 
         service.start();

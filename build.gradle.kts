@@ -75,9 +75,20 @@ dependencies {
     // DuckDB JDBC driver for analytics
     implementation("org.duckdb:duckdb_jdbc:1.1.3")
 
+    // ActiveMQ Artemis for high-performance messaging (Topics/Queues)
+    implementation("org.apache.activemq:artemis-jms-server:2.33.0")
+    implementation("org.apache.activemq:artemis-jms-client:2.33.0")
+
+    // Artemis JUnit 5 support for testing embedded broker
+    testImplementation("org.apache.activemq:artemis-junit-5:2.33.0") {
+        exclude(group = "org.slf4j")
+        exclude(group = "ch.qos.logback")
+    }
+
     // Test fixtures: dependencies needed to compile the JUnit extension
     testFixturesImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
     testFixturesImplementation("ch.qos.logback:logback-classic:1.5.6")
+    testFixturesImplementation("com.google.protobuf:protobuf-java:3.25.3")
 
 }
 
@@ -136,12 +147,7 @@ tasks.named<Jar>("jar") {
     manifest {
         attributes["Main-Class"] = "org.evochora.cli.CommandLineInterface"
     }
-    
-    
-    from(sourceSets.main.get().output)
-    from(configurations.runtimeClasspath.map { config -> 
-        config.map { if (it.isDirectory) it else zipTree(it) }
-    })
+    // Dependencies werden über lib/ und den Classpath im Start-Skript geladen (installDist)
 }
 
 tasks.withType<Copy> {

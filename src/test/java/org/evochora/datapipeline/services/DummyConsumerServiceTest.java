@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doAnswer;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -14,6 +14,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 import org.evochora.datapipeline.api.contracts.SystemContracts.DummyMessage;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
@@ -65,9 +67,9 @@ public class DummyConsumerServiceTest {
         DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
 
         // Use unique IDs for idempotency tracking
-        when(mockInputQueue.take())
-                .thenReturn(DummyMessage.newBuilder().setId(1).setContent("Msg1").build())
-                .thenReturn(DummyMessage.newBuilder().setId(2).setContent("Msg2").build());
+        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class)))
+                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(1).setContent("Msg1").build()))
+                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(2).setContent("Msg2").build()));
 
         service.start();
 
@@ -77,7 +79,7 @@ public class DummyConsumerServiceTest {
         }
         assertEquals(IService.State.STOPPED, service.getCurrentState());
 
-        verify(mockInputQueue, times(2)).take();
+        verify(mockInputQueue, times(2)).poll(anyLong(), any(TimeUnit.class));
         Map<String, Number> metrics = service.getMetrics();
         assertEquals(2L, metrics.get("messages_received").longValue());
         assertEquals(0L, metrics.get("messages_duplicate").longValue()); // No duplicates
@@ -88,11 +90,8 @@ public class DummyConsumerServiceTest {
         Config config = ConfigFactory.parseString("maxMessages=-1");
         DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
 
-        // Make the mock block in a way that's interruptible
-        doAnswer(invocation -> {
-            Thread.sleep(2000); // Block long enough for the test to run
-            return null;
-        }).when(mockInputQueue).take();
+        // Make the mock return empty (no message) - service will poll and check isStopRequested
+        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.empty());
 
         assertEquals(IService.State.STOPPED, service.getCurrentState());
         service.start();
@@ -103,7 +102,7 @@ public class DummyConsumerServiceTest {
         assertEquals(IService.State.PAUSED, service.getCurrentState());
         service.resume();
         assertEquals(IService.State.RUNNING, service.getCurrentState());
-        service.stop(); // This will interrupt the Thread.sleep in the mock
+        service.stop(); // This will set stopRequested and service exits gracefully
         Thread.sleep(100);
         assertEquals(IService.State.STOPPED, service.getCurrentState());
     }
@@ -114,10 +113,10 @@ public class DummyConsumerServiceTest {
         DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
 
         // Use unique IDs to avoid idempotency filtering
-        when(mockInputQueue.take())
-                .thenReturn(DummyMessage.newBuilder().setId(10).build())
-                .thenReturn(DummyMessage.newBuilder().setId(11).build())
-                .thenReturn(DummyMessage.newBuilder().setId(12).build());
+        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class)))
+                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(10).build()))
+                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(11).build()))
+                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(12).build()));
 
         service.start();
 
@@ -140,12 +139,12 @@ public class DummyConsumerServiceTest {
         Config config = ConfigFactory.parseString("maxMessages=2");
         DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
         // Use unique IDs so messages aren't filtered as duplicates
-        when(mockInputQueue.take())
-                .thenReturn(DummyMessage.newBuilder().setId(20).build())
-                .thenReturn(DummyMessage.newBuilder().setId(21).build());
+        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class)))
+                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(20).build()))
+                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(21).build()));
         service.start();
         Thread.sleep(100); // Let service run and stop itself
-        verify(mockInputQueue, times(2)).take();
+        verify(mockInputQueue, times(2)).poll(anyLong(), any(TimeUnit.class));
         assertEquals(IService.State.STOPPED, service.getCurrentState());
     }
 
@@ -155,11 +154,11 @@ public class DummyConsumerServiceTest {
         DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
 
         // Send same ID twice - second one should be filtered
-        when(mockInputQueue.take())
-                .thenReturn(DummyMessage.newBuilder().setId(100).setContent("First").build())
-                .thenReturn(DummyMessage.newBuilder().setId(101).setContent("Second").build())
-                .thenReturn(DummyMessage.newBuilder().setId(100).setContent("Duplicate of first").build()) // Duplicate!
-                .thenReturn(DummyMessage.newBuilder().setId(102).setContent("Third").build());
+        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class)))
+                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(100).setContent("First").build()))
+                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(101).setContent("Second").build()))
+                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(100).setContent("Duplicate of first").build())) // Duplicate!
+                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(102).setContent("Third").build()));
 
         service.start();
 

@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.evochora.datapipeline.api.resources.IMonitorable;
@@ -34,6 +35,21 @@ public abstract class AbstractService implements IService, IMonitorable {
     private final Object pauseLock = new Object();
     private Thread serviceThread;
     private final int shutdownTimeoutSeconds;
+    
+    /**
+     * Flag indicating that a graceful shutdown has been requested.
+     * <p>
+     * Services should check {@link #isStopRequested()} in their main loop
+     * and exit gracefully when this flag is set, completing any in-progress
+     * operations before returning from {@link #run()}.
+     * <p>
+     * Two-Phase Shutdown:
+     * <ol>
+     *   <li>Phase 1: This flag is set, giving the service time to finish current work</li>
+     *   <li>Phase 2: If the service doesn't stop within timeout, Thread.interrupt() is called</li>
+     * </ol>
+     */
+    private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     
     /**
      * Collection of operational errors that occurred during service execution.
@@ -77,6 +93,8 @@ public abstract class AbstractService implements IService, IMonitorable {
         if (!currentState.compareAndSet(State.STOPPED, State.RUNNING)) {
             throw new IllegalStateException(String.format("Cannot start service '%s' as it is already in state %s", serviceName, getCurrentState()));
         }
+        // Reset stop flag for restart scenarios
+        stopRequested.set(false);
         serviceThread = new Thread(this::runService);
         serviceThread.setName(serviceName);
         serviceThread.start();
@@ -95,19 +113,57 @@ public abstract class AbstractService implements IService, IMonitorable {
     public final void stop() {
         State state = getCurrentState();
         if (state == State.RUNNING || state == State.PAUSED) {
-            // First, wake up paused threads
+            // ============================================================
+            // TWO-PHASE GRACEFUL SHUTDOWN
+            // ============================================================
+            // Phase 1: Signal stop request, allow service to finish current work
+            // Phase 2: Force interrupt if service doesn't stop in time
+            // ============================================================
+            
+            // Phase 1: Signal graceful shutdown
+            stopRequested.set(true);
+            
+            // Wake up paused threads so they can see stopRequested
             if (state == State.PAUSED) {
                 synchronized (pauseLock) {
                     pauseLock.notifyAll();
                 }
             }
 
-            // Interrupt the service thread to signal shutdown
             if (serviceThread != null) {
-                serviceThread.interrupt();
                 try {
-                    // Wait for thread to terminate
-                    serviceThread.join(shutdownTimeoutSeconds * 1000L);
+                    // ============================================================
+                    // TWO-PHASE GRACEFUL SHUTDOWN
+                    // Phase 1: Short grace period for services using poll() with timeout
+                    // Phase 2: Force interrupt for services in blocking calls
+                    // ============================================================
+                    
+                    long totalTimeoutMs = shutdownTimeoutSeconds * 1000L;
+                    long startTime = System.currentTimeMillis();
+                    long pollIntervalMs = 50; // Check every 50ms
+                    
+                    // Phase 1: Short grace period (max 1 second)
+                    // Services using poll(500ms) will see isStopRequested() quickly
+                    // Services in long blocking calls need the interrupt anyway
+                    long gracePeriodMs = Math.min(1000L, totalTimeoutMs / 5);
+                    
+                    while (serviceThread.isAlive() && 
+                           (System.currentTimeMillis() - startTime) < gracePeriodMs) {
+                        serviceThread.join(pollIntervalMs);
+                    }
+                    
+                    // Phase 2: If still alive, force interrupt
+                    if (serviceThread.isAlive()) {
+                        log.debug("{} did not stop gracefully within {}ms, sending interrupt", 
+                            this.getClass().getSimpleName(), gracePeriodMs);
+                        serviceThread.interrupt();
+                        
+                        // Wait remaining time for forced termination
+                        while (serviceThread.isAlive() && 
+                               (System.currentTimeMillis() - startTime) < totalTimeoutMs) {
+                            serviceThread.join(pollIntervalMs);
+                        }
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     log.warn("{} interrupted while waiting for service shutdown", this.getClass().getSimpleName());
@@ -220,8 +276,29 @@ public abstract class AbstractService implements IService, IMonitorable {
 
     /**
      * The main logic of the service, to be implemented by subclasses. This method
-     * will be executed in a dedicated thread. It should periodically check for
-     * pause and interruption status.
+     * will be executed in a dedicated thread.
+     * <p>
+     * <strong>Graceful Shutdown Pattern:</strong>
+     * Services should check {@link #isStopRequested()} in their main loop and exit
+     * gracefully when it returns {@code true}. This enables completing current work
+     * (ACKs, flushes) before shutdown.
+     * <pre>
+     * &#64;Override
+     * protected void run() throws InterruptedException {
+     *     while (!isStopRequested()) {
+     *         checkPause();
+     *         T item = queue.poll(1, TimeUnit.SECONDS); // Use timeout!
+     *         if (item != null) {
+     *             processItem(item);  // Completes fully
+     *             sendAck(item);      // ACK also completes
+     *         }
+     *     }
+     *     flushPendingWork(); // Optional cleanup
+     * }
+     * </pre>
+     * <p>
+     * <strong>IMPORTANT:</strong> Use timeouts on blocking operations (queue.poll, I/O)
+     * so the loop can check isStopRequested() periodically.
      * <p>
      * <strong>Error Handling Guidelines for Services:</strong>
      * <p>
@@ -278,6 +355,45 @@ public abstract class AbstractService implements IService, IMonitorable {
                 log.debug("Woke up from pause.");
             }
         }
+    }
+    
+    /**
+     * Checks if a graceful shutdown has been requested.
+     * <p>
+     * Services should check this method in their main loop and exit gracefully
+     * when it returns {@code true}. This enables the Two-Phase Shutdown pattern:
+     * <ol>
+     *   <li>Phase 1: stopRequested is set, service completes current work and exits</li>
+     *   <li>Phase 2: If service doesn't exit in time, Thread.interrupt() is called</li>
+     * </ol>
+     * <p>
+     * <strong>Usage Example:</strong>
+     * <pre>
+     * &#64;Override
+     * protected void run() throws InterruptedException {
+     *     while (!isStopRequested()) {
+     *         checkPause();
+     *         
+     *         // Process one item (will complete even if stop is requested mid-processing)
+     *         T item = queue.poll(1, TimeUnit.SECONDS);
+     *         if (item != null) {
+     *             processItem(item);  // This completes fully
+     *             sendAck(item);      // ACK also completes
+     *         }
+     *     }
+     *     
+     *     // Optional: Flush remaining work before exit
+     *     flushPendingWork();
+     * }
+     * </pre>
+     * <p>
+     * <strong>Note:</strong> Blocking operations (queue.take(), I/O) should use
+     * timeouts so the loop can check isStopRequested() periodically.
+     *
+     * @return {@code true} if a graceful shutdown has been requested
+     */
+    protected boolean isStopRequested() {
+        return stopRequested.get();
     }
 
     /**
