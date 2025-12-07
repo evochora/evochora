@@ -37,9 +37,15 @@ public class ArtemisTopicReaderDelegate<T extends Message>
     
     private final Connection connection;
     private final Session session;
-    private final MessageConsumer consumer;
-    private final String topicName;
-    private final String subscriptionName;
+    private final String consumerGroup; // The base name for the subscription
+    
+    // Volatile and lazily initialized to ensure thread-safety and robustness
+    // against out-of-order calls to setSimulationRun()
+    private volatile MessageConsumer consumer;
+    
+    // Keep track of the topic and subscription this consumer is attached to
+    private volatile String activeTopicName;
+    private volatile String activeSubscriptionName;
     
     // Stuck message tracking - volatile for watchdog thread visibility
     private volatile Instant claimedAt;
@@ -52,39 +58,21 @@ public class ArtemisTopicReaderDelegate<T extends Message>
      */
     public ArtemisTopicReaderDelegate(ArtemisTopicResource<T> parent, ResourceContext context) {
         super(parent, context);
-        this.topicName = parent.getTopicName();
-        // Use consumerGroup as subscription name for shared subscription
-        this.subscriptionName = context.parameters().get("consumerGroup");
+        this.consumerGroup = context.parameters().get("consumerGroup");
         
         try {
             this.connection = parent.createConnection();
             
-            // Use INDIVIDUAL_ACKNOWLEDGE to allow acknowledging messages individually
-            // independent of processing order. This is critical for parallel processing scenarios.
+            // Use INDIVIDUAL_ACKNOWLEDGE for precise message acknowledgment.
             this.session = connection.createSession(false, ActiveMQJMSConstants.INDIVIDUAL_ACKNOWLEDGE);
             
-            Topic topic = session.createTopic(topicName);
-            
-            // Create Shared Durable Consumer (JMS 2.0)
-            // Allows multiple threads/processes with same subscriptionName to load-balance messages.
-            // Filter by runId if set? 
-            // Currently runId filtering happens via setSimulationRun(), but persistent subscriptions
-            // might receive old messages. We should probably filter by selector if runId is set.
-            
-            // Note: We create consumer lazily or here? Here is fine.
-            // But selector might change if setSimulationRun is called later.
-            // H2 implementation handles runId via "setSimulationRun" which sets a filter.
-            // JMS consumer selector is immutable once created.
-            // If runId changes, we must recreate consumer.
-            
-            // Initial consumer creation (without selector or with empty selector)
-            this.consumer = session.createSharedDurableConsumer(topic, subscriptionName);
+            // Consumer is now created lazily on the first receiveEnvelope() call.
             
             // Register with parent for watchdog monitoring
             parent.registerReader(this);
             
-            log.debug("Created Artemis reader delegate for topic '{}', subscription='{}', claimTimeout={}s",
-                topicName, subscriptionName, parent.getClaimTimeoutSeconds());
+            log.debug("Created Artemis reader delegate for consumer group='{}', claimTimeout={}s",
+                consumerGroup, parent.getClaimTimeoutSeconds());
             
         } catch (JMSException e) {
             throw new RuntimeException("Failed to initialize Artemis reader delegate", e);
@@ -94,26 +82,81 @@ public class ArtemisTopicReaderDelegate<T extends Message>
     @Override
     protected synchronized void onSimulationRunSet(String simulationRunId) {
         super.onSimulationRunSet(simulationRunId);
-        // In JMS, we can't change selector of existing consumer.
-        // We would need to close and recreate consumer if we want server-side filtering.
-        // For simplicity and robustness, we can filter client-side or assume the topic is logical
-        // and only contains relevant data (handled by upstream).
-        // H2TopicReader implementation relies on the fact that tables are per-run or filtered.
-        // Since ArtemisTopicResource is intended to be a replacement, let's trust the writer 
-        // to put the runId in properties, and we COULD filter.
-        // But recreating consumer here is complex because of thread-safety.
+        // The parent resource has updated its effectiveTopicName.
+        // We must recreate our consumer to subscribe to the new topic and use a new unique subscription name.
+        try {
+            ensureConsumerInitialized();
+            log.debug("Artemis consumer for group '{}' was recreated for new runId '{}'. New subscription: '{}' on topic '{}'.",
+                this.consumerGroup, simulationRunId, this.activeSubscriptionName, this.activeTopicName);
+        } catch (JMSException e) {
+            // This is a critical failure. The reader will not be able to receive messages for the new run.
+            String topicName = parent.getTopicName();
+            log.error("CRITICAL: Failed to recreate Artemis consumer for group '{}' on topic '{}' for runId '{}'. This reader will be non-functional.",
+                this.consumerGroup, topicName, simulationRunId, e);
+            recordError("CONSUMER_RECREATE_FAILED", "Failed to recreate consumer for new runId, reader is non-functional.",
+                "Topic: " + topicName + ", RunId: " + simulationRunId);
+        }
+    }
+
+    /**
+     * Closes the current consumer if it exists and sets it to null.
+     * This forces lazy recreation on the next receive call.
+     */
+    private synchronized void invalidateConsumer() {
+        if (this.consumer != null) {
+            try {
+                // IMPORTANT: In JMS, closing the consumer of a durable subscription does NOT
+                // remove the subscription from the broker. This is by design.
+                // Since our subscription name is now dynamic per runId, we don't need to
+                // worry about unsubscribing, as the old subscription will simply be abandoned.
+                this.consumer.close();
+            } catch (JMSException e) {
+                log.warn("Error closing invalidated Artemis consumer for subscription '{}'. A new consumer will be created anyway.", activeSubscriptionName, e);
+            } finally {
+                this.consumer = null;
+                this.activeTopicName = null;
+                this.activeSubscriptionName = null;
+            }
+        }
+    }
+
+    /**
+     * Ensures the consumer is initialized and subscribed to the correct topic.
+     * Implements lazy initialization and re-creation after invalidation.
+     * This method is synchronized to be thread-safe.
+     *
+     * @throws JMSException
+     */
+    private synchronized void ensureConsumerInitialized() throws JMSException {
+        final String targetTopicName = parent.getTopicName();
+        final String runId = parent.getSimulationRunId();
         
-        // Strategy: Client-side filtering check (Message property) is done in upstream logic?
-        // No, upstream expects valid messages.
-        // Let's rely on the fact that pipeline setup usually ensures one run per topic usage.
-        
-        log.debug("Simulation run set to '{}' for Artemis reader (subscription: {})", 
-            simulationRunId, subscriptionName);
+        // Subscription names must be unique per topic subscription. Since we have a unique topic per run,
+        // we must also have a unique subscription name per run.
+        final String targetSubscriptionName = this.consumerGroup + (runId != null ? "_" + runId.trim() : "");
+
+        // If consumer is null or is subscribed to an outdated topic/subscription, recreate it.
+        if (this.consumer == null || !targetSubscriptionName.equals(this.activeSubscriptionName)) {
+            // Invalidate just in case it's an outdated consumer and we are just updating the topic
+            invalidateConsumer();
+            
+            Topic topic = session.createTopic(targetTopicName);
+            
+            // Create Shared Durable Consumer (JMS 2.0)
+            this.consumer = session.createSharedDurableConsumer(topic, targetSubscriptionName);
+            this.activeTopicName = targetTopicName;
+            this.activeSubscriptionName = targetSubscriptionName;
+            
+            log.debug("Artemis consumer initialized for topic '{}' with subscription '{}'", this.activeTopicName, this.activeSubscriptionName);
+        }
     }
 
     @Override
-    protected synchronized ReceivedEnvelope<javax.jms.Message> receiveEnvelope(long timeout, TimeUnit unit) throws InterruptedException {
+    protected ReceivedEnvelope<javax.jms.Message> receiveEnvelope(long timeout, TimeUnit unit) throws InterruptedException {
         try {
+            // Lazy initialization: ensure consumer exists and is on the correct topic
+            ensureConsumerInitialized();
+            
             javax.jms.Message message;
             if (timeout == 0 && unit == null) {
                 message = consumer.receive(); // Block indefinitely
@@ -144,7 +187,7 @@ public class ArtemisTopicReaderDelegate<T extends Message>
                 // Return with message itself as ACK token
                 return new ReceivedEnvelope<>(envelope, message);
             } else {
-                log.warn("Received non-BytesMessage in Artemis topic '{}': {}", topicName, message.getClass().getName());
+                log.warn("Received non-BytesMessage in Artemis topic '{}': {}", activeTopicName, message.getClass().getName());
                 // Ack it to get it out of the way? Or DLQ?
                 message.acknowledge();
                 clearClaimTracking();
@@ -154,12 +197,12 @@ public class ArtemisTopicReaderDelegate<T extends Message>
         } catch (JMSException e) {
             // Check if this is caused by thread interruption (graceful shutdown)
             if (isInterruptedException(e)) {
-                log.debug("JMS receive interrupted during shutdown (topic: {})", topicName);
+                log.debug("JMS receive interrupted during shutdown (topic: {})", activeTopicName);
                 throw new InterruptedException("JMS receive interrupted");
             }
             
             // Transient error - log at WARN level (AGENTS.md: Resources use WARN for transient errors)
-            log.warn("JMS receive failed on topic '{}'", topicName);
+            log.warn("JMS receive failed on topic '{}'", activeTopicName);
             throw new RuntimeException("JMS receive failed", e);
         } catch (Exception e) {
              throw new RuntimeException("Deserialization failed", e);
@@ -192,7 +235,7 @@ public class ArtemisTopicReaderDelegate<T extends Message>
             // Consumers are idempotent, so redelivery on next startup is safe.
             // Log at DEBUG to keep shutdown logs clean.
             log.debug("ACK failed (will redeliver on restart): topic={}, subscription={}", 
-                topicName, subscriptionName);
+                activeTopicName, activeSubscriptionName);
         } finally {
             // Clear tracking regardless of ACK success
             clearClaimTracking();
@@ -212,7 +255,8 @@ public class ArtemisTopicReaderDelegate<T extends Message>
      * @return The subscription name
      */
     String getSubscriptionName() {
-        return subscriptionName;
+        // Return the dynamic, active subscription name
+        return activeSubscriptionName;
     }
     
     /**
@@ -245,7 +289,7 @@ public class ArtemisTopicReaderDelegate<T extends Message>
         // Session.recover() marks all unacknowledged messages for redelivery
         session.recover();
         
-        log.debug("Session recovered for Artemis reader (topic: {}, subscription: {})", topicName, subscriptionName);
+        log.debug("Session recovered for Artemis reader (topic: {}, subscription: {})", activeTopicName, activeSubscriptionName);
     }
 
     @Override
@@ -258,13 +302,15 @@ public class ArtemisTopicReaderDelegate<T extends Message>
         // Unregister from parent watchdog
         parent.unregisterReader(this);
         
+        // Use the invalidate method to cleanly close the consumer
+        invalidateConsumer();
+        
         try {
-            consumer.close();
             session.close();
             // Connection closed by parent
             parent.closeConnection(connection);
         } catch (JMSException e) {
-            log.debug("Error closing Artemis reader (expected during shutdown)");
+            log.debug("Error closing Artemis reader session (expected during shutdown)");
         }
     }
 }
