@@ -49,6 +49,7 @@ class ArtemisTopicIntegrationTest {
     
     @Test
     @DisplayName("Should initialize Artemis broker and connect")
+    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     void shouldInitializeBroker() throws Exception {
         // Given - Use In-VM broker connected to the server managed by EmbeddedActiveMQExtension
         // ID 0 is the default for the first in-vm acceptor
