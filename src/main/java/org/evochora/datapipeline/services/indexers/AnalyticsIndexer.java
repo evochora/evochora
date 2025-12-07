@@ -162,7 +162,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                 }
                 
                 plugins.add(plugin);
-                log.info("Loaded analytics plugin: {} (metricId={}, columns={})", 
+                log.debug("Loaded analytics plugin: {} (metricId={}, columns={})", 
                     className, plugin.getMetricId(), schema.getColumnCount());
                 
             } catch (Exception e) {

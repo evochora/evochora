@@ -57,7 +57,8 @@ public class DummyReaderService extends AbstractService {
     protected void run() throws InterruptedException {
         int filesProcessed = 0;
         
-        while (!Thread.currentThread().isInterrupted() 
+        // Check both isStopRequested() (graceful) and isInterrupted() (forced)
+        while (!isStopRequested() && !Thread.currentThread().isInterrupted() 
                && (maxFiles == -1 || filesProcessed < maxFiles)) {
             checkPause();
 

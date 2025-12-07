@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.evochora.datapipeline.api.contracts.SystemContracts;
@@ -125,12 +126,17 @@ public class DummyConsumerService<T> extends AbstractService {
     @Override
     protected void run() throws InterruptedException {
         long messageCounter = 0;
-        while (!Thread.currentThread().isInterrupted() && (maxMessages == -1 || messageCounter < maxMessages)) {
+        while (!isStopRequested() && (maxMessages == -1 || messageCounter < maxMessages)) {
             checkPause();
 
             T message = null;
             try {
-                message = inputQueue.take();
+                // Use poll() with timeout to allow graceful shutdown via isStopRequested()
+                var optionalMessage = inputQueue.poll(500, TimeUnit.MILLISECONDS);
+                if (optionalMessage.isEmpty()) {
+                    continue; // Timeout - loop back to check isStopRequested()
+                }
+                message = optionalMessage.get();
 
                 messagesReceived.incrementAndGet();
                 int messageId = extractMessageId(message);

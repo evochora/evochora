@@ -139,7 +139,8 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
     @Override
     protected void run() throws InterruptedException {
         try {
-            while (!Thread.currentThread().isInterrupted()) {
+            // Check both isStopRequested() (graceful) and isInterrupted() (forced)
+            while (!isStopRequested() && !Thread.currentThread().isInterrupted()) {
                 checkPause();
 
                 currentBatch = new ArrayList<>();
