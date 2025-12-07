@@ -68,9 +68,12 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
     private static final Object brokerLock = new Object();
     
     private final String brokerUrl;
-    private final String topicName;
+    private final String baseTopicName; // Renamed from topicName
     private final ConnectionFactory connectionFactory;
     private final int claimTimeoutSeconds;
+    
+    // The effective topic name, incorporating the runId if set
+    private volatile String effectiveTopicName;
     
     // Track connections to close them on shutdown
     private final Set<Connection> openConnections = ConcurrentHashMap.newKeySet();
@@ -97,7 +100,8 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
         super(name, options);
         
         this.brokerUrl = options.hasPath("brokerUrl") ? options.getString("brokerUrl") : "vm://0";
-        this.topicName = options.hasPath("topicName") ? options.getString("topicName") : name;
+        this.baseTopicName = options.hasPath("topicName") ? options.getString("topicName") : name;
+        this.effectiveTopicName = this.baseTopicName; // Default to base name until runId is set
         this.claimTimeoutSeconds = options.hasPath("claimTimeout") ? options.getInt("claimTimeout") : 300;
         
         // Start embedded broker if configured and using In-VM transport
@@ -115,7 +119,7 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
             }
             
             log.debug("Artemis topic resource '{}' initialized (url={}, topic={}, claimTimeout={}s)", 
-                name, brokerUrl, topicName, claimTimeoutSeconds);
+                name, brokerUrl, effectiveTopicName, claimTimeoutSeconds);
             
         } catch (JMSException e) {
             log.error("Failed to initialize Artemis topic resource '{}'", name);
@@ -327,7 +331,7 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
             if (reader.isStuck(threshold)) {
                 String consumerGroup = reader.getSubscriptionName();
                 log.warn("Stuck message detected in topic '{}' (consumer: {}), forcing session recovery for redelivery",
-                    topicName, consumerGroup);
+                    effectiveTopicName, consumerGroup);
                 
                 try {
                     reader.recover();
@@ -336,7 +340,7 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
                         "Consumer: " + consumerGroup + ", Timeout: " + claimTimeoutSeconds + "s");
                 } catch (Exception e) {
                     log.error("Failed to recover session for stuck message in topic '{}' (consumer: {})",
-                        topicName, consumerGroup);
+                        effectiveTopicName, consumerGroup);
                     recordError("STUCK_MESSAGE_RECOVERY_FAILED",
                         "Failed to recover stuck message",
                         "Consumer: " + consumerGroup + ", Error: " + e.getMessage());
@@ -391,7 +395,7 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
     }
 
     public String getTopicName() {
-        return topicName;
+        return effectiveTopicName;
     }
 
     @Override
@@ -419,10 +423,16 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
     
     @Override
     protected void onSimulationRunSet(String simulationRunId) {
-        // Artemis doesn't strictly need per-run setup like H2 (tables).
-        // Messages are isolated by consumer behavior, but we could 
-        // potentially use runId in topic name if we wanted strict physical isolation.
-        // For now, we follow the H2 pattern: logical isolation on shared topic.
+        // Physically isolate topics by runId to prevent consumers from reading
+        // messages from a different simulation run.
+        if (simulationRunId != null && !simulationRunId.trim().isEmpty()) {
+            this.effectiveTopicName = this.baseTopicName + "_" + simulationRunId.trim();
+            log.debug("Artemis topic for '{}' is now physically isolated for runId '{}'. Effective topic name: {}",
+                baseTopicName, simulationRunId, effectiveTopicName);
+        } else {
+            this.effectiveTopicName = this.baseTopicName;
+            log.debug("Artemis topic for '{}' is using base topic name: {}", baseTopicName, effectiveTopicName);
+        }
     }
 
     @Override

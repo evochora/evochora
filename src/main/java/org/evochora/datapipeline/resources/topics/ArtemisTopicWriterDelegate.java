@@ -29,13 +29,11 @@ public class ArtemisTopicWriterDelegate<T extends Message> extends AbstractTopic
     
     // We keep the connection open, but create sessions on demand for thread safety
     private final Connection connection;
-    private final String topicName;
 
     public ArtemisTopicWriterDelegate(ArtemisTopicResource<T> parent, ResourceContext context) {
         super(parent, context);
         try {
             this.connection = parent.createConnection();
-            this.topicName = parent.getTopicName();
         } catch (JMSException e) {
             throw new RuntimeException("Failed to create JMS connection for writer", e);
         }
@@ -43,11 +41,24 @@ public class ArtemisTopicWriterDelegate<T extends Message> extends AbstractTopic
 
     @Override
     protected void sendEnvelope(TopicEnvelope envelope) throws InterruptedException {
+        // Fail fast: Do not allow writing messages until the simulation runId is set.
+        // This prevents messages from being sent to a base topic without a runId suffix,
+        // which could lead to them being ignored by all runId-specific consumers.
+        if (getSimulationRunId() == null) {
+            throw new IllegalStateException(
+                "Attempted to send a message before simulation runId was set on the topic resource. " +
+                "This would cause the message to be lost. Halting operation."
+            );
+        }
+        
+        // Always get the latest topic name from the parent resource, as it can change when the runId is set.
+        final String currentTopicName = parent.getTopicName();
+        
         try {
             // JMS Session is NOT thread-safe, so we create one per send.
             // In Artemis (especially In-VM), this is very cheap.
             try (Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE)) {
-                Topic topic = session.createTopic(topicName);
+                Topic topic = session.createTopic(currentTopicName);
                 MessageProducer producer = session.createProducer(topic);
                 producer.setDeliveryMode(DeliveryMode.PERSISTENT);
                 
@@ -56,9 +67,6 @@ public class ArtemisTopicWriterDelegate<T extends Message> extends AbstractTopic
                 
                 // Add properties for filtering/routing
                 message.setStringProperty("message_id", envelope.getMessageId());
-                if (getSimulationRunId() != null) {
-                    message.setStringProperty("simulation_run_id", getSimulationRunId());
-                }
                 
                 producer.send(message);
                 
@@ -68,13 +76,13 @@ public class ArtemisTopicWriterDelegate<T extends Message> extends AbstractTopic
         } catch (JMSException e) {
             // Check if this is caused by thread interruption (graceful shutdown)
             if (isInterruptedException(e)) {
-                log.debug("JMS send interrupted during shutdown (topic: {})", topicName);
+                log.debug("JMS send interrupted during shutdown (topic: {})", currentTopicName);
                 throw new InterruptedException("JMS send interrupted");
             }
             
             // Transient error - log at WARN level (AGENTS.md: Resources use WARN for transient errors)
-            log.warn("Failed to send message to Artemis topic '{}'", topicName);
-            recordError("SEND_FAILED", "JMS send failed", "Topic: " + topicName + ", Cause: " + e.getMessage());
+            log.warn("Failed to send message to Artemis topic '{}'", currentTopicName);
+            recordError("SEND_FAILED", "JMS send failed", "Topic: " + currentTopicName + ", Cause: " + e.getMessage());
             throw new RuntimeException("Failed to send JMS message", e);
         }
     }

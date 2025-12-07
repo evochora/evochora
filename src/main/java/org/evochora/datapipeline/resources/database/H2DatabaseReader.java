@@ -1,10 +1,24 @@
 package org.evochora.datapipeline.resources.database;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
-import org.evochora.datapipeline.api.resources.database.dto.*;
+import org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates;
+import org.evochora.datapipeline.api.resources.database.dto.InstructionView;
+import org.evochora.datapipeline.api.resources.database.dto.InstructionsView;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismRuntimeView;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismStaticInfo;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
+import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
@@ -12,13 +26,6 @@ import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Per-request database reader for H2.
