@@ -11,6 +11,7 @@ import org.evochora.datapipeline.api.resources.IResource.UsageState;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
+import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -108,7 +109,7 @@ class ArtemisTopicIntegrationTest {
         writer.send(message);
         
         // Then - Read message
-        var receivedMessage = reader.poll(5, TimeUnit.SECONDS);
+        TopicMessage<BatchInfo, javax.jms.Message> receivedMessage = reader.poll(5, TimeUnit.SECONDS);
         
         assertThat(receivedMessage).isNotNull();
         assertThat(receivedMessage.payload()).isEqualTo(message);
