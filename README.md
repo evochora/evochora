@@ -43,7 +43,7 @@
 
 The biological evolution on Earth stagnated for over 1 billion years (the "Boring Billion") because prokaryotes were energetically constrained. Traditional ALife platforms (like *Tierra* or *Avida*) are stuck in a similar trap: they achieve stability through artificial constraints (CPU quotas), which prevents the emergence of open-ended complexity.
 
-**Evochora fixes this by simulating rigorous physics.**
+**Evochora aims to fix this by simulating rigorous physics.**
 
 Instead of executing scripts in a sandbox, agents are **fully embodied**. They occupy space and must harvest energy to pay for every CPU cycle. This architecture finally allows us to investigate **Major Evolutionary Transitions**:
 
