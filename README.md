@@ -1,10 +1,12 @@
+
+
+
 <div align="center">
 
-  <img width="540" height="109" alt="Evochora Simulation" src="https://github.com/user-attachments/assets/a6b9b41e-ce71-4b31-a205-f456c08c2c87" />
-  
-  <code>A Distributed Laboratory for Embodied Artificial Life</code>
+  <img width="465" height="74" alt="logo" src="https://github.com/user-attachments/assets/4724aed1-a596-4e03-9c3c-41f791b0babd" />
+  <br><code>Distributed Laboratory for Embodied Artificial Life</code>
 
-  <br>
+  <br><br>
 
   <a href="http://evochora.org" style="font-size: 1.5em; font-weight: bold; text-decoration: none;">👉 SEE LIVE DEMO</a>
   <br>
