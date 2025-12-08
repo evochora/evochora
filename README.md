@@ -63,12 +63,12 @@ For nearly a billion years, Earth’s evolution slipped into the “Boring Billi
 
 **Evochora aims to fix this by simulating rigorous physics.**
 
-Instead of executing scripts in a sandbox, agents are **fully embodied**. They occupy space and must harvest energy to pay for every CPU cycle. This architecture opens a path to experimentally investigate **Major Evolutionary Transitions**:
+Instead of executing scripts in a sandbox, agents are fully embodied. They occupy space and must harvest energy to pay for every CPU cycle. This architecture opens a path to experimentally investigate Major Evolutionary Transitions:
 
-* **The Milestone:** We have achieved **viable self-replication** (see video) capable of sustaining populations for over 500,000 ticks. Agents navigate the grid, harvest resources, and copy their 1500-instruction genome without central oversight.
+* **The Milestone:** We have achieved viable self-replication (see video) capable of sustaining populations for over 500,000 ticks. Agents navigate the grid, harvest resources, and copy their 1500-instruction genome without central oversight.
 
-* **The Physics of Stability:** Unlike legacy systems that "patch" aggressive replication with artificial rules, we are implementing **Thermodynamics**. By introducing energy loss and waste heat, we aim to stabilize the "Grey Goo" problem *without* sacrificing the evolvability of the code.
-* **The Frontier (Ecosystems & Niche Construction):** We are expanding the physics to support complex **Reaction Chains** (e.g., `A + B -> Energy + Waste`). This is designed to enable the emergence of trophic levels, where the waste of one species becomes the resource for another.
+* **The Physics of Stability:** Unlike legacy systems that "patch" aggressive replication with artificial rules, we are implementing Thermodynamics. By introducing energy loss and waste heat, we aim to stabilize the "Grey Goo" problem *without* sacrificing the evolvability of the code.
+* **The Frontier (Ecosystems & Niche Construction):** We are expanding the physics to support complex Reaction Chains (e.g., `A + B -> Energy + Waste`). This is designed to enable the emergence of trophic levels, where the waste of one species becomes the resource for another.
 * **The Frontier (Digital Eukaryogenesis):** The VM allows agents to `FORK` internal execution threads. We are investigating whether this can facilitate the evolution of "Digital Mitochondria"—dedicated background threads for metabolism—paving the way for true multicellularity.
 
 👉 **[Read the full Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md)** or **[Jump to Quick Start](#quick-start-run-a-simulation)**
@@ -79,7 +79,7 @@ Instead of executing scripts in a sandbox, agents are **fully embodied**. They o
 
 ## Key Features
 - **N-Dimensional Spatial Worlds**: Configurable grid size and dimensionality (2D to n-D), bounded or toroidal topology.
-- **High-Performance Simulation Core**: The core runs on a flattened `int32` memory grid for maximum **CPU cache locality**, avoiding Java object overhead.
+- **High-Performance Simulation Core**: The core runs on a flattened `int32` memory grid for maximum CPU cache locality, avoiding Java object overhead.
 - **Embodied Agency**: Organisms have no "god mode" access. They must navigate via instruction pointers (IP) and data pointers (DPs) to interact with the world.
 - **Intrinsic Selection Pressure**: Survival requires active energy foraging; every instruction costs thermodynamic energy.
 - **Custom Compiler Stack**: Includes a full multi-pass compiler converting high-level `EvoASM` assembly into raw executable molecules.
@@ -93,13 +93,13 @@ Instead of executing scripts in a sandbox, agents are **fully embodied**. They o
 
 | Feature / Aspect | Tierra (Ray, 1991) | Avida (Ofria et al., 2004) | Lenia (Chan, 2019) | **Evochora (Current)** |
 | :--- | :--- | :--- | :--- | :--- |
-| **Core Concept** | Self-replicating code in linear RAM ("Soup") | Agents solving logic tasks in 2D grid | Continuous cellular automata (Math-Biology) | **Embodied agents** in n-Dimensional space |
-| **Physics / Environment** | CPU cycles & memory access (Fixed) | Rewards for logical tasks (NOT, AND) (Fixed) | Differential equations (flow, kernel) (Fixed) | **Extensible** via Plugins (e.g., Energy, Mutation*) |
-| **Organism Body** | **Disembodied** (Code string only) | **Disembodied** (CPU + Memory buffer) | Morphological patterns (solitons) | **Embodied** (IP + DPs navigating spatial grid) |
-| **Interaction Model** | Parasitism (reading neighbor's RAM) | Limited (mostly competition for space) | Collision, fusion & repulsion of patterns | **Direct & Spatial** (via DPs) & **Signaling*** |
-| **Evolutionary Driver** | Implicit competition for memory/CPU | **Directed** (user-defined rewards) | Spontaneous pattern formation | **Open-ended** (via metabolic & spatial constraints) |
-| **Execution Model** | Sequential (Single IP) | Sequential (Single IP) | Parallel (Continuous dynamics) | **Parallel & Multi-threaded** (via FORK)* |
-| **Primary Research Focus** | Ecology of code & parasites | Evolution of complex logic functions | Self-organizing morphology | **Bioenergetics & Major Transitions** |
+| **Core Concept** | Self-replicating code in linear RAM ("Soup") | Agents solving logic tasks in 2D grid | Continuous cellular automata (Math-Biology) | Embodied agents in n-Dimensional space |
+| **Physics / Environment** | CPU cycles & memory access (Fixed) | Rewards for logical tasks (NOT, AND) (Fixed) | Differential equations (flow, kernel) (Fixed) | Extensible via Plugins (e.g., Energy, Mutation*) |
+| **Organism Body** | Disembodied (Code string only) | Disembodied (CPU + Memory buffer) | Morphological patterns (solitons) | Embodied (IP + DPs navigating spatial grid) |
+| **Interaction Model** | Parasitism (reading neighbor's RAM) | Limited (mostly competition for space) | Collision, fusion & repulsion of patterns | Direct & Spatial (via DPs) & Signaling* |
+| **Evolutionary Driver** | Implicit competition for memory/CPU | Directed (user-defined rewards) | Spontaneous pattern formation | Open-ended potential (via metabolic & spatial constraints) |
+| **Execution Model** | Sequential (Single IP) | Sequential (Single IP) | Parallel (Continuous dynamics) | Parallel & Multi-threaded (via FORK)* |
+| **Primary Research Focus** | Ecology of code & parasites | Evolution of complex logic functions | Self-organizing morphology | Bioenergetics & Major Transitions |
 
 *\* Features supported by the core architecture and identified as primary research avenues.*
 
@@ -107,11 +107,11 @@ Instead of executing scripts in a sandbox, agents are **fully embodied**. They o
 
 ## Request for Comments & Collaboration
 
-Evochora addresses the stagnation of current ALife systems by creating a "digital universe" where the rules of physics are not pre-supposed but are themselves objects of research. By making these "laws" modular and extensible, we invite the scientific community to collaboratively explore what properties an environment must possess for **Open-Ended Evolution** to emerge. We are looking for **Systems Engineers** and **ALife Researchers** to help design and implement:
+Evochora addresses the stagnation of current ALife systems by creating a "digital universe" where the rules of physics are not pre-supposed but are themselves objects of research. By making these "laws" modular and extensible, we invite the scientific community to collaboratively explore what properties an environment must possess for Open-Ended Evolution to emerge. We are looking for Systems Engineers and ALife Researchers to help design and implement:
 
 - **Thermodynamics (Entropy)**: Designing a system-wide energy loss model to naturally suppress infinite loops and drive efficiency.
 - **Spatial Ownership**: Implementing VM-level "property rights" to distinguish between aggressive overwriting (attacks) and offspring placement.
-- **Fuzzy Addressing (SignalGP)**: Moving from absolute memory addresses to pattern-matching jumps to make the genome resilient to mutation and enable **Digital Eukaryogenesis**.
+- **Fuzzy Addressing (SignalGP)**: Moving from absolute memory addresses to pattern-matching jumps to make the genome resilient to mutation and enable Digital Eukaryogenesis.
 
 👉 **Deep dive into the problems:** [Read OPEN_RESEARCH_QUESTIONS.md](docs/OPEN_RESEARCH_QUESTIONS.md)
 
@@ -138,7 +138,7 @@ Evochora is built as a modular stack:
 
 ### Compiler
 
-The Evochora compiler is a multi-pass pipeline that transforms human-readable EvoASM assembly code into a `ProgramArtifact` ready for execution. This design ensures determinism and separates concerns into a **frontend** (parsing and analysis) and a **backend** (layout and code generation). Most phases are extensible via handler registries, allowing new features to be added in a modular way.
+The Evochora compiler is a multi-pass pipeline that transforms human-readable EvoASM assembly code into a `ProgramArtifact` ready for execution. This design ensures determinism and separates concerns into a frontend (parsing and analysis) and a backend (layout and code generation). Most phases are extensible via handler registries, allowing new features to be added in a modular way.
 
 #### Compiler Frontend
 The frontend parses the source code and transforms it into a machine-independent Intermediate Representation (IR).
@@ -297,7 +297,7 @@ Every service in this diagram can be deployed in Docker or a dedicated machine. 
 
 Evochora includes two primary web-based frontends for interacting with the simulation data: the **Visualizer** and the **Analyzer**. Both are built with modern vanilla JavaScript, emphasizing performance and direct API interaction without heavy frameworks.
 
-The backend is powered by a lightweight **Javalin** HTTP server. Backend `Controller` classes register API endpoints (e.g., `/api/visualizer/...`) that are called by the frontend. These controllers, in turn, interact with backend services like the `ServiceRegistry` to fetch simulation data.
+The backend is powered by a lightweight Javalin HTTP server. Backend `Controller` classes register API endpoints (e.g., `/api/visualizer/...`) that are called by the frontend. These controllers, in turn, interact with backend services like the `ServiceRegistry` to fetch simulation data.
 
 -   **Visualizer**: Provides a high-fidelity, tick-by-tick view of the simulation. It allows you to step through time, inspect the state of individual organisms (registers, stacks), and debug the execution of their EvoASM code live in the browser.
 -   **Analyzer**: Offers a high-level overview of simulation metrics over the entire run. It features a pluggable interface for adding new metrics and visualizations. For maximum flexibility, the Analyzer can perform range requests on Parquet files served by the backend, enabling custom queries and analysis directly in the browser using DuckDB-WASM.
