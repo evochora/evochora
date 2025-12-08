@@ -1,3 +1,6 @@
+<img width="1080" height="218" alt="Screenshot From 2025-12-08 02-26-35" src="https://github.com/user-attachments/assets/33b22b45-4d5c-44fc-9732-f27a3e5696db" />
+
+
 <div align="center">
 
 | <h3>👉 <a href="http://evochora.org">SEE LIVE DEMO</a></h3><code>All web based, no installation, full simulation run,<br>with analytics and visual debugger.</code> |
@@ -9,19 +12,12 @@
 
 </div>
 
-
-# Evochora
-A distributed scientific simulation platform for research into the foundational physics of digital evolution.
-
-<br>
-
 <video src="https://github.com/user-attachments/assets/2dd2163a-6abe-4121-936d-eb46cc314859" loop></video>
 
 <br>
 
 ## Table of Contents
 
-- [Evochora](#evochora)
 - [The Vision: Embodied Artificial Life](#the-vision-embodied-artificial-life)
 - [Key Features](#key-features)
 - [Current Research Status: The "Zombie" Frontier](#current-research-status-the-zombie-frontier)
@@ -41,7 +37,9 @@ A distributed scientific simulation platform for research into the foundational 
 
 ## The Vision: Embodied Artificial Life
 
-Evochora represents a shift in Artificial Life research: Unlike traditional systems (as *Tierra* or *Avida*), Evochora moves beyond simulating abstract logic. Instead, it simulates **embodied agents** in a rigorous spatial environment. 
+Evochora is a distributed scientific simulation platform for research into the foundational physics of digital evolution.
+
+It represents a shift in Artificial Life research: Unlike traditional systems (as *Tierra* or *Avida*), Evochora moves beyond simulating abstract logic. Instead, it simulates **embodied agents** in a rigorous spatial environment. 
 
 Rather than executing high-level scripts, each organism in Evochora runs its own instance of a **low-level Assembly VM**. These agents share a common, n-dimensional memory space — the "Chora". They do not just process data; they occupy territory, harvest energy, and must evolve their own machine-code algorithms to survive and replicate.
 
