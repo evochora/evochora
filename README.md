@@ -1,32 +1,32 @@
 <div align="center">
 
-  <img width="1080" height="218" alt="Screenshot From 2025-12-08 02-26-35" src="https://github.com/user-attachments/assets/a6b9b41e-ce71-4b31-a205-f456c08c2c87" />
+  <img width="540" height="109" alt="Evochora Simulation" src="https://github.com/user-attachments/assets/a6b9b41e-ce71-4b31-a205-f456c08c2c87" />
   
-  <code>&block;&block;&nbsp;&block;&block;&nbsp;&block;&block;&nbsp;&block;&block;&nbsp;&block;&block;&nbsp;&block;&block;&nbsp;&block;&block;&nbsp;A Distributed Laboratory for Embodied Artificial Life&nbsp;&block;&block;&nbsp;&block;&block;&nbsp;&block;&block;&nbsp;&block;&block;&nbsp;&block;&block;&nbsp;&block;&block;&nbsp;&block;&block;</code>
+  <code>A Distributed Laboratory for Embodied Artificial Life</code>
 
   <br>
 
-  
-| <br><h3>👉 <a href="http://evochora.org">SEE LIVE DEMO</a></h3>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; |
-| :---: |
-
+  <a href="http://evochora.org" style="font-size: 1.5em; font-weight: bold; text-decoration: none;">👉 SEE LIVE DEMO</a>
   <br>
+  <sub>Runs in your browser. No installation required.</sub>
+
+  
 
   <a href="https://opensource.org/licenses/MIT">
-    <img src="https://img.shields.io/badge/License-MIT-2ea44f?style=for-the-badge&logo=opensourceinitiative&logoColor=white">
+    <img src="https://img.shields.io/badge/License-MIT-2ea44f?style=flat&logo=opensourceinitiative&logoColor=white" height="28">
   </a>
   &nbsp;&nbsp;
   <a href="https://discord.gg/1442908877648822466">
-    <img src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=for-the-badge&logo=discord&logoColor=white">
+    <img src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat&logo=discord&logoColor=white" height="28">
   </a>
   &nbsp;&nbsp;
   <a href="https://github.com/evochora/evochora/actions">
-    <img src="https://img.shields.io/github/actions/workflow/status/evochora/evochora/build.yml?branch=main&style=for-the-badge&logo=github&logoColor=white&label=Build">
+    <img src="https://img.shields.io/github/actions/workflow/status/evochora/evochora/build.yml?branch=main&style=flat&logo=github&logoColor=white&label=Build" height="28">
   </a>
 
 </div>
 
-<br>
+<br><br>
 
 <video src="https://github.com/user-attachments/assets/2dd2163a-6abe-4121-936d-eb46cc314859" loop></video>
 
