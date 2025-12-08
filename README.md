@@ -23,7 +23,6 @@ A distributed platform for research into the foundational physics of digital evo
 
 - [Evochora](#evochora)
 - [The Vision: Embodied Artificial Life](#the-vision-embodied-artificial-life)
-- [Preview](#preview)
 - [Key Features](#key-features)
 - [Current Research Status: The "Zombie" Frontier](#current-research-status-the-zombie-frontier)
 - [Scientific Overview & Background](#scientific-background)
