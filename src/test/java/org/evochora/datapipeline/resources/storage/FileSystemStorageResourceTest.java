@@ -168,7 +168,8 @@ class FileSystemStorageResourceTest {
         Path testDir = Path.of(javaTmpDir, "evochora-test-sysprop");
         createdDirectories.add(testDir);
         
-        Map<String, String> configMap = Map.of("rootDirectory", "${java.io.tmpdir}/evochora-test-sysprop");
+        String configPath = String.join(File.separator, "${java.io.tmpdir}", "evochora-test-sysprop");
+        Map<String, String> configMap = Map.of("rootDirectory", configPath);
         Config config = ConfigFactory.parseMap(configMap);
 
         FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
@@ -178,7 +179,7 @@ class FileSystemStorageResourceTest {
     @Test
     void testVariableExpansion_EnvironmentVariable() {
         // Set a custom environment-like variable via system properties for testing
-        String testDirPath = System.getProperty("java.io.tmpdir") + "/evochora-test-env";
+        String testDirPath = System.getProperty("java.io.tmpdir") + File.separator + "evochora-test-env";
         System.setProperty("TEST_EVOCHORA_DIR", testDirPath);
         
         Path testDir = Path.of(testDirPath);
@@ -204,7 +205,8 @@ class FileSystemStorageResourceTest {
         createdDirectories.add(testDir);
 
         try {
-            Map<String, String> configMap = Map.of("rootDirectory", "${java.io.tmpdir}/${test.project}/data");
+            String configPath = String.join(File.separator, "${java.io.tmpdir}", "${test.project}", "data");
+            Map<String, String> configMap = Map.of("rootDirectory", configPath);
             Config config = ConfigFactory.parseMap(configMap);
 
             FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
@@ -239,10 +241,11 @@ class FileSystemStorageResourceTest {
 
     @Test
     void testVariableExpansion_MustBeAbsoluteAfterExpansion() {
-        System.setProperty("test.relative", "relative/path");
+        System.setProperty("test.relative", "relative" + File.separator + "path");
 
         try {
-            Map<String, String> configMap = Map.of("rootDirectory", "${test.relative}/data");
+            String configPath = "${test.relative}" + File.separator + "data";
+            Map<String, String> configMap = Map.of("rootDirectory", configPath);
             Config config = ConfigFactory.parseMap(configMap);
 
             IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
@@ -272,7 +275,8 @@ class FileSystemStorageResourceTest {
         Path testDir = Path.of(javaTmpDir, "evochora-test");
         createdDirectories.add(testDir);
         
-        Map<String, String> configMap = Map.of("rootDirectory", "${java.io.tmpdir}/evochora-test");
+        String configPath = String.join(File.separator, "${java.io.tmpdir}", "evochora-test");
+        Map<String, String> configMap = Map.of("rootDirectory", configPath);
         Config config = ConfigFactory.parseMap(configMap);
 
         FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
