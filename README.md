@@ -59,7 +59,7 @@
 
 ## I. The Mission: Breaking the "Boring Billion"
 
-For nearly a billion years, Earth’s evolution slipped into the “Boring Billion” — a long stretch of slow innovation, likely held back by the energetic limits of prokaryotic life. Traditional ALife platforms (like Tierra or Avida), while beeing pioneering landmarks in the field, are stuck in a similar trap: their stability depends on artificial constraints (like hard-coded rewards or global culling), which prevent the emergence of open-ended complexity.
+For nearly a billion years, Earth’s evolution slipped into the “Boring Billion” — a long stretch of slow innovation, likely held back by the energetic limits of prokaryotic life. Traditional ALife platforms (like Tierra or Avida), while being pioneering landmarks in the field, are stuck in a similar trap: their stability depends on artificial constraints (like hard-coded rewards or global culling), which prevent the emergence of open-ended complexity.
 
 **Evochora aims to fix this by simulating rigorous physics.**
 
@@ -67,8 +67,8 @@ Instead of executing scripts in a sandbox, agents are fully embodied. They occup
 
 * **The Milestone:** We have achieved viable self-replication (see video) capable of sustaining populations for over 500,000 ticks. Agents navigate the grid, harvest resources, and copy their 1500-instruction genome without central oversight.
 
-* **The Physics of Stability:** Unlike legacy systems that "patch" aggressive replication with artificial rules, Evochora is implementing Thermodynamics. By introducing energy antropy, it aims to stabilize the "Grey Goo" problem *without* sacrificing the evolvability of the code.
-* **The Frontier (Ecosystems & Niche Construction):** Evochora is build be for flexible physics to be extended with complex Reaction Chains (e.g., `A + B -> Energy + Entropy`). This is designed to enable the emergence of trophic levels, where the waste of one species becomes the resource for another.
+* **The Physics of Stability:** Unlike legacy systems that "patch" aggressive replication with artificial rules, Evochora is implementing Thermodynamics. By introducing energy and entropy, it aims to stabilize the "Grey Goo" problem *without* sacrificing the evolvability of the code.
+* **The Frontier (Ecosystems & Niche Construction):** Evochora is build with flexible physics to be extended with complex Reaction Chains (e.g., `A + B -> Energy + Entropy`). This is designed to enable the emergence of trophic levels, where the waste of one species becomes the resource for another.
 * **The Frontier (Digital Eukaryogenesis):** The VM allows organisms to `FORK` internal execution threads. We should investigate whether this can facilitate the evolution of "Digital Mitochondria"—dedicated background threads for metabolism—paving the way for true multicellularity.
 
 👉 **[Read the full Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md)** or **[Jump to Quick Start](#quick-start-run-a-simulation)**
@@ -121,7 +121,7 @@ I am looking for input from **Systems Engineers** or **ALife Researchers** on:
 
 ## Request for Comments & Collaboration
 
-Evochora addresses the stagnation of current ALife systems by creating a "digital universe" where the rules of physics are not pre-supposed but are themselves objects of research. By making these "laws" modular and extensible, the scientific community is invited to collaboratively explore what properties an environment must possess for Open-Ended Evolution to emerge. Evochora is seeking for support of Systems Engineers and ALife Researchers to help design and implement basicaly every part of the system. Some examples:
+Evochora addresses the stagnation of current ALife systems by creating a "digital universe" where the rules of physics are not pre-supposed but are themselves objects of research. By making these "laws" modular and extensible, the scientific community is invited to collaboratively explore what properties an environment must possess for Open-Ended Evolution to emerge. Evochora is seeking for support of Systems Engineers and ALife Researchers to help design and implement basically every part of the system. Some examples:
 
 - **Thermodynamics (Entropy)**: Designing a system-wide energy loss model to naturally suppress infinite loops and drive efficiency.
 - **Spatial Ownership**: Implementing VM-level "property rights" to distinguish between aggressive overwriting (attacks) and offspring placement.
