@@ -11,7 +11,7 @@
 
 
 # Evochora
-A distributed platform for research into the foundational physics of digital evolution.
+A distributed scientific simulation platform for research into the foundational physics of digital evolution.
 
 <br>
 
