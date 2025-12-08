@@ -41,16 +41,17 @@
 
 ## I. The Mission: Breaking the "Boring Billion"
 
-The biological evolution on Earth stagnated for over 1 billion years (the "Boring Billion") because prokaryotes were energetically constrained. Traditional ALife platforms (like *Tierra* or *Avida*) are stuck in a similar trap: they achieve stability through artificial constraints (CPU quotas), which prevents the emergence of open-ended complexity.
+For nearly a billion years, Earth’s evolution slipped into the “Boring Billion” — a long stretch of slow innovation, likely held back by the energetic limits of prokaryotic life. Traditional ALife platforms (like Tierra or Avida), while pioneering landmarks in the field, are stuck in a similar trap: their stability depends on artificial constraints (like hard-coded rewards or global culling), which prevent the emergence of open-ended complexity.
 
 **Evochora aims to fix this by simulating rigorous physics.**
 
-Instead of executing scripts in a sandbox, agents are **fully embodied**. They occupy space and must harvest energy to pay for every CPU cycle. This architecture finally allows us to investigate **Major Evolutionary Transitions**:
+Instead of executing scripts in a sandbox, agents are **fully embodied**. They occupy space and must harvest energy to pay for every CPU cycle. This architecture opens a path to experimentally investigate **Major Evolutionary Transitions**:
 
 * **The Milestone:** We have achieved **viable self-replication** (see video) capable of sustaining populations for over 500,000 ticks. Agents navigate the grid, harvest resources, and copy their 1500-instruction genome without central oversight.
-* **The Physics of Stability:** Unlike legacy systems that "patch" aggressive replication with artificial rules, we use **Thermodynamics** (Entropy). By introducing energy loss and waste heat, we solve the "Grey Goo" problem *without* sacrificing the evolvability of the code.
-* **The Frontier (Ecosystems & Niche Construction):** We are expanding the physics to support complex **Reaction Chains** (e.g., `A + B -> Energy + Waste`). This allows for the emergence of trophic levels, where the waste of one species becomes the resource for another.
-* **The Frontier (Digital Eukaryogenesis):** The VM allows agents to `FORK` internal execution threads and send fuzzy signals between them. This enables the evolution of "Digital Mitochondria"—dedicated background threads for metabolism—paving the way for true multicellularity.
+
+* **The Physics of Stability:** Unlike legacy systems that "patch" aggressive replication with artificial rules, we are implementing **Thermodynamics**. By introducing energy loss and waste heat, we aim to stabilize the "Grey Goo" problem *without* sacrificing the evolvability of the code.
+* **The Frontier (Ecosystems & Niche Construction):** We are expanding the physics to support complex **Reaction Chains** (e.g., `A + B -> Energy + Waste`). This is designed to enable the emergence of trophic levels, where the waste of one species becomes the resource for another.
+* **The Frontier (Digital Eukaryogenesis):** The VM allows agents to `FORK` internal execution threads. We are investigating whether this can facilitate the evolution of "Digital Mitochondria"—dedicated background threads for metabolism—paving the way for true multicellularity.
 
 👉 **[Read the full Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md)** or **[Jump to Quick Start](#quick-start-run-a-simulation)**
 
