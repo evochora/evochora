@@ -66,7 +66,7 @@ Evochora is an experiment to explore an alternative. What if the primary constra
 This approach appears to be viable, and the results are encouraging:
 * **A Working Primordial:** There is a self-replicating organism (see video) capable of sustaining populations for over 500,000 ticks. It navigates, harvests resources, and copies its 1500-instruction genome without any central oversight or pre-defined rewards.
 
-The stable primordial organism is just the starting point. The platform's true potential lies in extending its physics to tackle deeper questions. The architecture is a foundation for future research, and here are some of the next frontiers it's designed to explore:
+The stable primordial organism is just the starting point. The platform is designed to extend its physics to tackle deeper questions. The architecture serves as a foundation for future research, and here are some of the next frontiers it's designed to explore:
 
 *   **Stability through Thermodynamics:** Can "grey goo" scenarios be prevented not by artificial rules, but by energy and entropy? The hypothesis is that thermodynamic constraints alone could be enough to foster stable ecosystems *without* sacrificing the evolvability of the code.
 *   **Emergent Ecosystems & Niche Construction:** The physics engine is designed to be extensible with reaction chains (e.g., `A + B -> Energy + C`). This would create a testbed for exploring if trophic levels can emerge spontaneously, allowing organisms to alter their environment by creating waste that becomes a resource for others—a process known as Niche Construction.
@@ -81,11 +81,11 @@ The stable primordial organism is just the starting point. The platform's true p
 
 ## Key Features
 - **Spatial Worlds**: Configurable grid size and dimensionality (2D to n-D), bounded or toroidal shape containing molecules of different types.
-- **Simulation Core**: The core runs on a flattened `int32` memory grid for maximum CPU cache locality, avoiding Java object overhead.
+- **Simulation Core**: The core runs on a flattened `int32` memory grid optimized for CPU cache locality, avoiding Java object overhead.
 - **Embodied Agency**: Organisms must navigate via instruction pointers (IP) and data pointers (DPs) to interact with the molecules in their direct surrounding, and know nothing about the simulation itself.
 - **Compiler Stack**: Includes a custom multi-pass compiler converting high-level and spatial `EvoASM` assembly into raw executable molecules.
 - **Selection Pressure**: Survival requires actively dealing with thermodynamics. Every instruction costs energy and/or creates entropy that organisms need to manage.
-- **Data Pipeline**: The simulation engine is decoupled from data processing to index and analyze raw simulation data (via Protobuf/Queue). The pipeline supports horizontal scaling in cloud infrastructure.
+- **Data Pipeline**: The simulation engine is decoupled from data processing to index and analyze raw simulation data (via Protobuf/Queue). The pipeline architecture is designed for horizontal scaling in cloud infrastructure (currently in roadmap).
 - **Web Frontends**: Simulation runs can be visualized and analyzed. The visualizer allows inspection of every simulation step and debugging of internal state and `EvoASM` execution for each organism. The analyzer can visualize population and environment metrics, and a video renderer can render full simulation runs. (all 2D only currently)
 - **Extensibility**: Plugin systems for the simulation, the VM, each compiler pass, and the analyzer allow for customization.
 - **Determinism**: The simulation is deterministic, ensuring experiments are reproducible with a given seed.
@@ -99,14 +99,12 @@ Evochora builds on the legacy of seminal Artificial Life platforms. This compari
 | Feature / Aspect | Tierra (Ray, 1991) | Avida (Ofria et al., 2004) | Lenia (Chan, 2019) | Evochora |
 | :--- | :--- | :--- | :--- | :--- |
 | **Core Concept** | Self-replicating code in linear RAM ("Soup") | Agents solving logic tasks in 2D grid | Continuous cellular automata (Math-Biology) | Embodied agents in n-Dimensional space |
-| **Physics / Environment** | CPU cycles & memory access (Fixed) | Rewards for logical tasks (NOT, AND) (Fixed) | Differential equations (flow, kernel) (Fixed) | Extensible via Plugins (e.g., Energy, Mutation)¹ |
+| **Physics / Environment** | CPU cycles & memory access (Fixed) | Rewards for logical tasks (NOT, AND) (Fixed) | Differential equations (flow, kernel) (Fixed) | Extensible via Plugins (e.g., Energy; Planned: Mutation) |
 | **Organism Body** | Disembodied (Code string only) | Disembodied (CPU + Memory buffer) | Morphological patterns (solitons) | Embodied (IP + DPs navigating spatial grid) |
-| **Interaction Model** | Parasitism (reading neighbor's RAM) | Limited (mostly competition for space) | Collision, fusion & repulsion of patterns | Direct & Spatial (via DPs) & Signaling¹ |
+| **Interaction Model** | Parasitism (reading neighbor's RAM) | Limited (mostly competition for space) | Collision, fusion & repulsion of patterns | Direct & Spatial (via DPs); Planned: Signaling |
 | **Evolutionary Driver** | Implicit competition for memory/CPU | Directed (user-defined rewards) | Spontaneous pattern formation | Metabolic & spatial constraints |
-| **Execution Model** | Sequential (Single IP) | Sequential (Single IP) | Parallel (Continuous dynamics) | Parallel & Multi-threaded (via FORK)¹ |
+| **Execution Model** | Sequential (Single IP) | Sequential (Single IP) | Parallel (Continuous dynamics) | Parallel (Planned: Multi-threaded via FORK) |
 | **Primary Research Focus** | Ecology of code & parasites | Evolution of complex logic functions | Self-organizing morphology | Bioenergetics & Major Transitions |
-
-¹ These capabilities are supported by the core architecture and represent key future research directions.
 
 <br>
 
@@ -127,7 +125,7 @@ This is just a starting point, and we're open to new ideas.
 
 ## III. System Architecture
 
-Evochora is built as a modular stack:
+The system is designed as a modular stack to serve as a flexible testbed for evolutionary experiments. Its architecture emphasizes clear separation of concerns and extensibility across all layers:
 
 - **Compiler**  
   Translates EvoASM into VM instructions and layouts via an immutable phase pipeline (preprocessor, parser, semantic analyzer, IR generator, layout engine, and emitter).
@@ -217,7 +215,7 @@ For more details on the assembly language and the compiler's internal representa
 
 ### Runtime: The Digital Physics of Evochora
 
-The Evochora platform is architected from the ground up to serve as a flexible and high-performance testbed for exploring the prerequisites of open-ended evolution. Its design is guided by the principles of modularity, spatial embodiment, and extensible physics. This section details the core, currently implemented components of the system.
+The Runtime implements the simulation environment and its physical laws. It enforces spatial embodiment and thermodynamic constraints within the n-dimensional grid. 
 
 #### Conceptual Architecture of an Evochora Organism
          +---------------------------------------------------------------+
@@ -303,7 +301,7 @@ Every service in this diagram can be deployed in Docker or a dedicated machine. 
 
 ### Web frontends
 
-Evochora includes two primary web-based frontends for interacting with the simulation data: the **Visualizer** and the **Analyzer**. Both are built with modern vanilla JavaScript, emphasizing performance and direct API interaction without heavy frameworks.
+Evochora includes two web-based frontends for interacting with the simulation data: the **Visualizer** and the **Analyzer**. Both are built with modern vanilla JavaScript to enable direct API interaction without heavy frameworks.
 
 The backend is powered by a lightweight Javalin HTTP server. Backend `Controller` classes register API endpoints (e.g., `/api/visualizer/...`) that are called by the frontend. These controllers, in turn, interact with backend services like the `ServiceRegistry` to fetch simulation data.
 
@@ -364,7 +362,10 @@ This will:
 - Start the in-process simulation node (simulation engine, persistence, indexer, HTTP server)
 - Run until you terminate it (Ctrl + C)
 
-**Note on Storage:** By default, Evochora records high-fidelity telemetry for every tick to allow perfect replay and debugging. For long-running experiments or huge environments, ensure you have sufficient disk space or adjust the configuration to reduce logging frequency (see Config docs).
+**Note on Resources:** By default, Evochora records telemetry for every tick to allow perfect replay.
+
+*   **Storage:** Ensure sufficient disk space for long-running experiments or adjust the configuration to reduce logging frequency.
+*   **Memory:** Running all services in a single process (default mode) requires significant heap memory (8GB+ recommended). The system estimates requirements at startup and warns if the allocated heap is insufficient.
 
 #### Open the Web UI
 
