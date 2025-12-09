@@ -46,18 +46,16 @@ The following table contextualizes Evochora within the history of major A-Life s
 | Feature / Aspect | Tierra (Ray, 1991) | Avida (Ofria et al., 2004) | Lenia (Chan, 2019) | **Evochora (Current)** |
 | :--- | :--- | :--- | :--- | :--- |
 | **Core Concept** | Self-replicating code in linear RAM ("Soup") | Agents solving logic tasks in 2D grid | Continuous cellular automata (Math-Biology) | **Embodied agents** in n-Dimensional space |
-| **Physics / Environment** | CPU cycles & memory access (Fixed) | Rewards for logical tasks (NOT, AND) (Fixed) | Differential equations (flow, kernel) (Fixed) | **Extensible** via Plugins (e.g., Energy, Mutation*) |
+| **Physics / Environment** | CPU cycles & memory access (Fixed) | Rewards for logical tasks (NOT, AND) (Fixed) | Differential equations (flow, kernel) (Fixed) | **Extensible** via Plugins (e.g., Energy; Planned: Mutation) |
 | **Organism Body** | **Disembodied** (Code string only) | **Disembodied** (CPU + Memory buffer) | Morphological patterns (solitons) | **Embodied** (IP + DPs navigating spatial grid) |
-| **Interaction Model** | Parasitism (reading neighbor's RAM) | Limited (mostly competition for space) | Collision, fusion & repulsion of patterns | **Direct & Spatial** (via DPs) & **Signaling*** |
+| **Interaction Model** | Parasitism (reading neighbor's RAM) | Limited (mostly competition for space) | Collision, fusion & repulsion of patterns | **Direct & Spatial** (via DPs); Planned: Signaling |
 | **Evolutionary Driver** | Implicit competition for memory/CPU | **Directed** (user-defined rewards) | Spontaneous pattern formation | **Open-ended** (via metabolic & spatial constraints) |
-| **Execution Model** | Sequential (Single IP) | Sequential (Single IP) | Parallel (Continuous dynamics) | **Parallel & Multi-threaded** (via FORK)* |
+| **Execution Model** | Sequential (Single IP) | Sequential (Single IP) | Parallel (Continuous dynamics) | **Parallel** (Planned: Multi-threaded via FORK) |
 | **Primary Research Focus** | Ecology of code & parasites | Evolution of complex logic functions | Self-organizing morphology | **Bioenergetics & Major Transitions** |
-
-*\* Features supported by the core architecture and identified as primary research avenues.*
 
 ## 2. The Digital Physics of Evochora
 
-The Evochora platform is architected from the ground up to serve as a flexible and high-performance testbed for exploring the prerequisites of open-ended evolution. Its design is guided by the principles of modularity, spatial embodiment, and extensible physics. This section details the core, currently implemented components of the system.
+The Evochora platform is designed to serve as a flexible testbed for exploring the prerequisites of open-ended evolution. Its design is guided by the principles of modularity, spatial embodiment, and extensible physics. This section details the core, currently implemented components of the system.
 
 ### Fig. 1: Conceptual Architecture of an Evochora Organism
          +---------------------------------------------------------------+
@@ -292,9 +290,9 @@ The following diagram illustrates the high-level data flow architecture:
 
 ### 4.1 Performance and Scalability Architecture
 
-The core simulation is designed for high performance. The raw, in-memory simulation engine can achieve over 300,000 instructions per second on standard consumer hardware (e.g., quad-core laptop). However, in a typical local setup where the entire data pipeline (persistence, indexing) shares the same machine resources, the sustainable throughput is constrained by I/O to approximately 1,000–10,000 instructions per second and slows down additionally with increased desity of the evironment grid. This bottleneck is an artifact of the single-node configuration; the decoupled architecture is designed to overcome this by distributing services across a cloud cluster, allowing the engine to run at much hi speed.
+The core simulation is optimized for throughput. The raw, in-memory simulation engine can achieve over 300,000 instructions per second on standard consumer hardware (e.g., quad-core laptop). However, in a typical local setup where the entire data pipeline (persistence, indexing) shares the same machine resources, the sustainable throughput is constrained by I/O to approximately 1,000–10,000 instructions per second and slows down additionally with increased density of the environment grid. This bottleneck is an artifact of the single-node configuration; the decoupled architecture is designed to overcome this by distributing services across a cloud cluster.
 
-The primary computational load (CPU) scales linearly with the number of active organisms (O(N)). However, the data pipeline load (I/O) scales with the size of the environment and the update frequency. For example, a densely populated 1000x1000 grid generates significant data volume per tick, making decoupled, asynchronous persistence essential to avoid stalling the simulation loop.
+The primary computational load (CPU) scales linearly with the number of active organisms (O(N)). However, the data pipeline load (I/O) scales with the size of the environment and the update frequency.
 
 To move beyond the limitations of single-core execution, the simulation tick is architected in three distinct phases:
 
