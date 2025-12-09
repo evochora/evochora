@@ -65,8 +65,9 @@ For nearly a billion years, Earth’s evolution slipped into the “Boring Billi
 
 Instead of executing scripts in a sandbox, agents are fully embodied. They occupy space and must harvest energy to pay for every CPU cycle. This architecture opens a path to experimentally investigate Major Evolutionary Transitions:
 
-* **The Milestone:** We have achieved viable self-replication (see video) capable of sustaining populations for over 500,000 ticks. Agents navigate the grid, harvest resources, and copy their 1500-instruction genome without central oversight.
+* **The Milestone:** There is a viable self-replication primordial (see video) capable of sustaining populations for over 500,000 ticks. Agents navigate the grid, harvest resources, and copy their 1500-instruction genome without central oversight.
 
+**Examples of current research:**
 * **The Physics of Stability:** Unlike legacy systems that "patch" aggressive replication with artificial rules, Evochora is implementing Thermodynamics. By introducing energy and entropy, it aims to stabilize the "Grey Goo" problem *without* sacrificing the evolvability of the code.
 * **The Frontier (Ecosystems & Niche Construction):** Evochora is build with flexible physics to be extended with complex Reaction Chains (e.g., `A + B -> Energy + Entropy`). This is designed to enable the emergence of trophic levels, where the waste of one species becomes the resource for another.
 * **The Frontier (Digital Eukaryogenesis):** The VM allows organisms to `FORK` internal execution threads. We should investigate whether this can facilitate the evolution of "Digital Mitochondria"—dedicated background threads for metabolism—paving the way for true multicellularity.
@@ -106,20 +107,6 @@ Instead of executing scripts in a sandbox, agents are fully embodied. They occup
 <br>
 
 ## Looking for Contributors
-
-I built the engine and the compiler, but I need help with the "laws of physics".
-The goal is to create an environment where open-ended evolution emerges from physical constraints, not hard-coded rules.
-
-I am looking for input from **Systems Engineers** or **ALife Researchers** on:
-
-- **Thermodynamics:** How to implement entropy/waste heat efficiently to stop infinite loops?
-- **Spatial Ownership:** How to implement "cell membranes" or property rights at the VM level?
-- **SignalGP:** I want to move from absolute addressing to fuzzy pattern matching.
-
-👉 **See open questions:** [OPEN_RESEARCH_QUESTIONS.md](docs/OPEN_RESEARCH_QUESTIONS.md)
-
-
-## Request for Comments & Collaboration
 
 Evochora addresses the stagnation of current ALife systems by creating a "digital universe" where the rules of physics are not pre-supposed but are themselves objects of research. By making these "laws" modular and extensible, the scientific community is invited to collaboratively explore what properties an environment must possess for Open-Ended Evolution to emerge. Evochora is seeking for support of Systems Engineers and ALife Researchers to help design and implement basically every part of the system. Some examples:
 
@@ -492,6 +479,10 @@ Some key directions for the technical evolution of Evochora:
     - [Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md)
     - [CLI Usage Guide](docs/CLI_USAGE.md)
     - [Assembly Specification](docs/ASSEMBLY_SPEC.md) (EvoASM – Evochora Assembly)
+
+---
+
+_Full disclosure: This system is build using AI coding tools extensively, but definitely not on autopilot. You can't build a custom VM, a compiler, and a distributed data pipeline by just pressing 'generate'. The workflow involved creating precise specifications for every module and rigorously reviewing/debugging the AI's output. The AI wrote the syntax, but the architecture and the logic are 100% manually engineered and verified._
 
 ---
 
